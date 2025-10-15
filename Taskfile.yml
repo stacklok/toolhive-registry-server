@@ -1,0 +1,200 @@
+version: '3'
+
+includes:
+  operator:
+    taskfile: ./cmd/thv-operator/Taskfile.yml
+    flatten: true
+  registry-api:
+    taskfile: ./cmd/thv-registry-api/Taskfile.yml
+    flatten: true
+
+tasks:
+  docs:
+    desc: Regenerate the docs
+    deps: [swagger-install]
+    cmds:
+      - rm -rf docs/cli/*
+      - go run cmd/help/main.go --dir docs/cli
+      - swag init -g pkg/api/server.go --v3.1 -o docs/server --exclude ./cmd/thv-registry-api
+
+  swagger-install:
+    desc: Install the swag tool for OpenAPI/Swagger generation
+    cmds:
+      - go install github.com/swaggo/swag/v2/cmd/swag@latest
+
+  mock-install:
+    desc: Install the mockgen tool for mock generation
+    cmds:
+      - go install go.uber.org/mock/mockgen@latest
+
+  gen:
+    desc: Generate mock files using go generate
+    deps: [mock-install]
+    cmds:
+      - go generate ./...
+
+  lint:
+    desc: Run linting tools
+    cmds:
+      - golangci-lint run ./...
+      - go vet ./...
+
+  lint-fix:
+    desc: Run linting tools, and apply fixes.
+    cmds:
+      - golangci-lint run --fix ./...
+
+  test-unixlike:
+    desc: Run unit tests (excluding e2e tests) on Linux and macOS with race detection
+    platforms: [linux, darwin]
+    internal: true
+    cmds:
+      - go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
+      # we have to use ldflags to avoid the LC_DYSYMTAB linker error. 
+      # https://github.com/stacklok/toolhive/issues/1687
+      - go test -ldflags=-extldflags=-Wl,-w -v -json -race $(go list ./... | grep -v '/test/e2e' | grep -v '/cmd/thv-operator/test-integration') | gotestfmt -hide "all"
+
+  test-windows:
+    desc: Run unit tests (excluding e2e tests) on Windows with race detection
+    platforms: [windows]
+    internal: true
+    vars:
+      DIR_LIST:
+        sh: go list ./... | findstr -V "\/test\/e2e"
+    cmds:
+      - go test -v -race {{.DIR_LIST | catLines}}
+
+  test:
+    desc: Run unit tests (excluding e2e tests)
+    deps: [gen]
+    cmds:
+      - task: test-unixlike
+        platforms: [linux, darwin]
+      - task: test-windows
+        platforms: [windows]
+
+  test-coverage-unixlike:
+    desc: Run unit tests with coverage analysis and race detection (excluding e2e tests) on Linux and macOS
+    platforms: [linux, darwin]
+    internal: true
+    cmds:
+      - cmd: mkdir -p coverage
+        platforms: [linux, darwin]
+      - go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
+      # we have to use ldflags to avoid the LC_DYSYMTAB linker error. 
+      # https://github.com/stacklok/toolhive/issues/1687
+      - go test -ldflags=-extldflags=-Wl,-w -json -race -coverprofile=coverage/coverage.out $(go list ./... | grep -v '/test/e2e' | grep -v '/cmd/thv-operator/test-integration') | gotestfmt
+      - go tool cover -func=coverage/coverage.out
+      - echo "Generating HTML coverage report in coverage/coverage.html"
+      - go tool cover -html=coverage/coverage.out -o coverage/coverage.html
+
+  test-coverage-windows:
+    desc: Run unit tests with coverage analysis and race detection (excluding e2e tests) on Windows
+    platforms: [windows]
+    internal: true
+    vars:
+      DIR_LIST:
+        sh: go list ./... | findstr -V "\/test\/e2e"
+    cmds:
+      - cmd: cmd.exe /c mkdir coverage
+        ignore_error: true   # Windows has no mkdir -p, so just ignore error if it exists
+      - go test -race -coverprofile=coverage/coverage.out {{.DIR_LIST | catLines}}
+      - go tool cover -func=coverage/coverage.out
+      - echo "Generating HTML coverage report in coverage/coverage.html"
+      - go tool cover -html=coverage/coverage.out -o coverage/coverage.html
+
+  test-coverage:
+    desc: Run unit tests with coverage analysis (excluding e2e tests)
+    cmds:
+      - task: test-coverage-unixlike
+        platforms: [linux, darwin]
+      - task: test-coverage-windows
+        platforms: [windows]
+
+  test-e2e-unixlike:
+    desc: Run end-to-end tests on Linux and macOS
+    platforms: [linux, darwin]
+    internal: true
+    env:
+      THV_BINARY: "{{.PWD}}/bin/thv"
+    cmds:
+      - ./test/e2e/run_tests.sh
+
+  test-e2e-windows:
+    desc: Run end-to-end tests on Windows
+    platforms: [windows]
+    internal: true
+    env:
+      THV_BINARY: "{{.ROOT_DIR}}\\bin\\thv.exe"
+    cmds:
+      - cmd: .\\test\\e2e\\run_tests.bat
+
+  test-e2e:
+    desc: Run end-to-end tests
+    deps: [build]
+    cmds:
+      - go install github.com/onsi/ginkgo/v2/ginkgo
+      - task: test-e2e-unixlike
+        platforms: [linux, darwin]
+      - task: test-e2e-windows
+        platforms: [windows]
+
+  test-all:
+    desc: Run all tests (unit and e2e)
+    deps: [test, test-e2e]
+
+  build:
+    desc: Build the binary
+    deps: [gen]
+    vars:
+      VERSION:
+        sh: git describe --tags --always --dirty --match "v*" || echo "dev"
+      COMMIT:
+        sh: git rev-parse --short HEAD || echo "unknown"
+      BUILD_DATE: '{{dateInZone "2006-01-02T15:04:05Z" (now) "UTC"}}'
+    cmds:
+      - cmd: mkdir -p bin
+        platforms: [linux, darwin]
+      - cmd: go build -ldflags "-s -w -X github.com/stacklok/toolhive/pkg/versions.Version={{.VERSION}} -X github.com/stacklok/toolhive/pkg/versions.Commit={{.COMMIT}} -X github.com/stacklok/toolhive/pkg/versions.BuildDate={{.BUILD_DATE}}" -o bin/thv ./cmd/thv
+        platforms: [linux, darwin]
+      - cmd: cmd.exe /c mkdir bin
+        platforms: [windows]
+        ignore_error: true   # Windows has no mkdir -p, so just ignore error if it exists
+      - cmd: go build -ldflags "-s -w -X github.com/stacklok/toolhive/pkg/versions.Version={{.VERSION}} -X github.com/stacklok/toolhive/pkg/versions.Commit={{.COMMIT}} -X github.com/stacklok/toolhive/pkg/versions.BuildDate={{.BUILD_DATE}}" -o bin/thv.exe ./cmd/thv
+        platforms: [windows]
+
+  install:
+    desc: Install the thv binary to GOPATH/bin
+    vars:
+      VERSION:
+        sh: git describe --tags --always --dirty --match "v*" || echo "dev"
+      COMMIT:
+        sh: git rev-parse --short HEAD || echo "unknown"
+      BUILD_DATE: '{{dateInZone "2006-01-02T15:04:05Z" (now) "UTC"}}'
+    cmds:
+      - go install -ldflags "-s -w -X github.com/stacklok/toolhive/pkg/versions.Version={{.VERSION}} -X github.com/stacklok/toolhive/pkg/versions.Commit={{.COMMIT}} -X github.com/stacklok/toolhive/pkg/versions.BuildDate={{.BUILD_DATE}}" -v ./cmd/thv
+
+  all:
+    desc: Run linting, tests, and build
+    deps: [lint, test, build]
+
+  all-with-coverage:
+    desc: Run linting, tests with coverage, and build
+    deps: [lint, test-coverage, build]
+
+  build-image:
+    desc: Build the image with ko
+    env:
+      KO_DOCKER_REPO: ghcr.io/stacklok/toolhive
+    cmds:
+      - ko build --local --bare ./cmd/thv
+
+
+  build-egress-proxy:
+    desc: Build the egress proxy container image
+    cmds:
+      - docker build --load -t ghcr.io/stacklok/toolhive/egress-proxy:local containers/egress-proxy/
+
+  build-all-images:
+    desc: Build all container images (main app and egress proxy)
+    deps: [build-image, build-egress-proxy]
