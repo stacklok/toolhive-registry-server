@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"github.com/stacklok/toolhive/cmd/thv-registry-api/app"
+	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/app"
 	"github.com/stacklok/toolhive/pkg/logger"
 )
 

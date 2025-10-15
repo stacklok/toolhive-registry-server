@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/stacklok/toolhive/cmd/thv-registry-api/internal/service"
+	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/internal/service"
 	"github.com/stacklok/toolhive/pkg/logger"
 )
 

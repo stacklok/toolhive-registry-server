@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	v1 "github.com/stacklok/toolhive/cmd/thv-registry-api/api/v1"
-	"github.com/stacklok/toolhive/cmd/thv-registry-api/internal/service"
-	"github.com/stacklok/toolhive/cmd/thv-registry-api/internal/service/mocks"
+	v1 "github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/api/v1"
+	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/internal/service"
+	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/internal/service/mocks"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
 

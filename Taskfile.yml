@@ -1,9 +1,6 @@
 version: '3'
 
 includes:
-  operator:
-    taskfile: ./cmd/thv-operator/Taskfile.yml
-    flatten: true
   registry-api:
     taskfile: ./cmd/thv-registry-api/Taskfile.yml
     flatten: true

@@ -10,8 +10,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"gopkg.in/yaml.v3"
 
-	"github.com/stacklok/toolhive/cmd/thv-registry-api/docs"
-	"github.com/stacklok/toolhive/cmd/thv-registry-api/internal/service"
+	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/docs"
+	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/internal/service"
 	"github.com/stacklok/toolhive/pkg/logger"
 	"github.com/stacklok/toolhive/pkg/registry"
 	"github.com/stacklok/toolhive/pkg/versions"
