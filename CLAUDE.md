@@ -73,7 +73,7 @@ The codebase follows clean architecture with three layers:
 **Adding a new API endpoint:**
 1. Add handler in [api/v1/routes.go](cmd/thv-registry-api/api/v1/routes.go)
 2. Add Swagger annotations
-3. Run `task registry-docs`
+3. Run `task docs`
 4. Add tests
 
 **Adding a new data provider:**
