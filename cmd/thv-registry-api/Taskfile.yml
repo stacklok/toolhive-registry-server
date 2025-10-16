@@ -14,6 +14,8 @@ tasks:
 
   registry-build-image:
     desc: Build the registry API image with ko
+    env:
+      KO_DOCKER_REPO: ghcr.io/stacklok/toolhive
     cmds:
       - ko build --local -B ./cmd/thv-registry-api
 
