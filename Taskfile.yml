@@ -6,6 +6,13 @@ includes:
     flatten: true
 
 tasks:
+  docs:
+    desc: Regenerate the registry API documentation
+    cmds:
+      - rm -rf docs/cli/*
+      - go run cmd/help/main.go --dir docs/cli
+      - swag init -g cmd/thv-registry-api/docs.go --v3.1 -o docs/thv-registry-api
+
   swagger-install:
     desc: Install the swag tool for OpenAPI/Swagger generation
     cmds:
