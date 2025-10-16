@@ -2,6 +2,8 @@ components:
   schemas:
     service.DeployedServer:
       properties:
+        endpoint_url:
+          type: string
         image:
           type: string
         name:
@@ -15,6 +17,19 @@ components:
         transport:
           type: string
       type: object
+    v1.EnvVarDetail:
+      properties:
+        default:
+          type: string
+        description:
+          type: string
+        name:
+          type: string
+        required:
+          type: boolean
+        secret:
+          type: boolean
+      type: object
     v1.ErrorResponse:
       properties:
         error:
@@ -24,7 +39,7 @@ components:
       properties:
         servers:
           items:
-            $ref: '#/components/schemas/v1.ServerResponse'
+            $ref: '#/components/schemas/v1.ServerSummaryResponse'
           type: array
           uniqueItems: false
         total:
@@ -41,7 +56,53 @@ components:
         version:
           type: string
       type: object
-    v1.ServerResponse:
+    v1.ServerDetailResponse:
+      properties:
+        args:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        description:
+          type: string
+        env_vars:
+          items:
+            $ref: '#/components/schemas/v1.EnvVarDetail'
+          type: array
+          uniqueItems: false
+        image:
+          type: string
+        metadata:
+          additionalProperties: {}
+          type: object
+        name:
+          type: string
+        permissions:
+          additionalProperties: {}
+          type: object
+        repository_url:
+          type: string
+        status:
+          type: string
+        tags:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        tier:
+          type: string
+        tools:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        transport:
+          type: string
+        volumes:
+          additionalProperties: {}
+          type: object
+      type: object
+    v1.ServerSummaryResponse:
       properties:
         description:
           type: string
@@ -51,11 +112,8 @@ components:
           type: string
         tier:
           type: string
-        tools:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
+        tools_count:
+          type: integer
         transport:
           type: string
       type: object
@@ -203,7 +261,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ServerResponse'
+                $ref: '#/components/schemas/v1.ServerDetailResponse'
           description: OK
         "400":
           content:
@@ -328,6 +386,25 @@ paths:
       summary: Readiness check
       tags:
       - system
+  /v0/publish:
+    post:
+      description: Publish a new MCP server to the registry or update an existing
+        one
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "501":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v1.ErrorResponse'
+          description: Not Implemented
+      summary: Publish MCP server (Not Implemented)
+      tags:
+      - servers
   /version:
     get:
       description: Get version information about the registry API
