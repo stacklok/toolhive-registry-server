@@ -30,3 +30,12 @@ go.work.sum
 # Editor/IDE
 .idea/
 .vscode/
+
+# IDE specific files
+*.swp
+*.swo
+ 
+# Build output
+/bin/
+/dist/
+/coverage/
