@@ -5,7 +5,7 @@ go 1.25.2
 require (
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/spf13/viper v1.21.0
-	github.com/stacklok/toolhive v0.3.8
+	github.com/stacklok/toolhive v0.3.9
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc4
 	go.uber.org/mock v0.6.0
@@ -65,7 +65,7 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
-	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1 // indirect
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
