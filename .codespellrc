@@ -1,0 +1,3 @@
+[codespell]
+ignore-words-list = NotIn,notin,AfterAll,ND,aks,deriver
+skip = *.svg,*.mod,*.sum

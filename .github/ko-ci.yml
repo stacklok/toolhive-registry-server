@@ -1,0 +1,9 @@
+builds:
+  - id: thv-registry-api
+    dir: ./cmd/thv-registry-api
+    ldflags:
+      - -s -w
+      - -X github.com/stacklok/toolhive/pkg/versions.Version={{.Env.VERSION}}
+      - -X github.com/stacklok/toolhive/pkg/versions.Commit={{.Env.COMMIT}}
+      - -X github.com/stacklok/toolhive/pkg/versions.BuildDate={{.Env.BUILD_DATE}}
+      - -X github.com/stacklok/toolhive/pkg/versions.BuildType=release
