@@ -13,7 +13,7 @@ jobs:
       id-token: write
 
     env:
-      BASE_REPO: "ghcr.io/stacklok/toolhive-registry-server"
+      BASE_REPO: "ghcr.io/stacklok/thv-registry-api"
 
     steps:
       - name: Checkout repository
