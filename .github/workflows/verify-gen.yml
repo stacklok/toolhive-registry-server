@@ -27,7 +27,7 @@ jobs:
         run: task gen
       - name: Check for changes
         run: |
-          if ! git diff --exit-code docs/server/; then
+          if ! git diff --exit-code docs/thv-registry-api/; then
             echo "❌ Generated code files are not up to date!"
             echo "Please run 'task gen' and commit the changes."
             exit 1
