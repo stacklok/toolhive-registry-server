@@ -5,7 +5,7 @@ go 1.25.2
 require (
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/spf13/viper v1.21.0
-	github.com/stacklok/toolhive v0.3.9
+	github.com/stacklok/toolhive v0.3.11
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc4
 	go.uber.org/mock v0.6.0
