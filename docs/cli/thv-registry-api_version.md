@@ -20,7 +20,8 @@ thv-registry-api version [flags]
 ### Options
 
 ```
-  -h, --help   help for version
+      --format string   Output format (json)
+  -h, --help            help for version
 ```
 
 ### Options inherited from parent commands
