@@ -2,11 +2,14 @@
 package app
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/stacklok/toolhive/pkg/logger"
-	"github.com/stacklok/toolhive/pkg/versions"
+	"github.com/stacklok/toolhive-registry-server/pkg/versions"
 )
 
 var rootCmd = &cobra.Command{
@@ -45,9 +48,28 @@ func NewRootCmd() *cobra.Command {
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
-	Run: func(_ *cobra.Command, _ []string) {
+	Run: func(cmd *cobra.Command, _ []string) {
 		info := versions.GetVersionInfo()
-		logger.Infof("thv-registry-api version %s (commit: %s, built: %s, go: %s, platform: %s)",
-			info.Version, info.Commit, info.BuildDate, info.GoVersion, info.Platform)
+		format, err := cmd.Flags().GetString("format")
+		if err != nil {
+			logger.Errorf("Error retrieving format flag: %v", err)
+			return
+		}
+
+		if format == "json" {
+			output, err := json.MarshalIndent(info, "", "  ")
+			if err != nil {
+				logger.Errorf("Error formatting version info as JSON: %v", err)
+				return
+			}
+			fmt.Println(string(output))
+		} else {
+			logger.Infof("thv-registry-api version %s (commit: %s, built: %s, go: %s, platform: %s)",
+				info.Version, info.Commit, info.BuildDate, info.GoVersion, info.Platform)
+		}
 	},
+}
+
+func init() {
+	versionCmd.Flags().String("format", "", "Output format (json)")
 }
