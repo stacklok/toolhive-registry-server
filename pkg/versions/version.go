@@ -21,7 +21,7 @@ var (
 	//nolint:goconst // This is a placeholder for the commit hash
 	Commit = unknownStr
 	// BuildDate is the date when the binary was built
-	// nolint:goconst // This is a placeholder for the build date
+	//nolint:goconst // This is a placeholder for the build date
 	BuildDate = unknownStr
 	// BuildType indicates if this is a release build.
 	// Set to "release" only in official release builds, everything else is considered "development".

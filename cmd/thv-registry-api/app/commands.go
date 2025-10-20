@@ -50,7 +50,11 @@ var versionCmd = &cobra.Command{
 	Short: "Print version information",
 	Run: func(cmd *cobra.Command, _ []string) {
 		info := versions.GetVersionInfo()
-		format, _ := cmd.Flags().GetString("format")
+		format, err := cmd.Flags().GetString("format")
+		if err != nil {
+			logger.Errorf("Error retrieving format flag: %v", err)
+			return
+		}
 
 		if format == "json" {
 			output, err := json.MarshalIndent(info, "", "  ")
