@@ -88,7 +88,7 @@ jobs:
           go build -ldflags "-s -w -X github.com/stacklok/toolhive-registry-server/pkg/versions.Version=${VERSION} -X github.com/stacklok/toolhive-registry-server/pkg/versions.Commit=${COMMIT} -X github.com/stacklok/toolhive-registry-server/pkg/versions.BuildDate=$(date -Iseconds) -X github.com/stacklok/toolhive-registry-server/pkg/versions.BuildType=release" -o ./thv-test ./cmd/thv-registry-api
 
           # Get version from binary
-          BINARY_VERSION=$(./thv-registry-api version --format json | jq -r '.version')
+          BINARY_VERSION=$(./thv-test version --format json | jq -r '.version')
           EXPECTED_TAG="${GITHUB_REF_NAME}"
 
           echo "Expected tag: $EXPECTED_TAG"
