@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+project_name: toolhive-registry-server
+version: 2
+# This section defines the build matrix.
+builds:
+  - env:
+      - GO111MODULE=on
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -tags=netgo
+    ldflags:
+      - "-s -w"
+      - "-X github.com/stacklok/toolhive-registry-server/pkg/versions.Version={{ .Env.VERSION }}"
+      - "-X github.com/stacklok/toolhive-registry-server/pkg/versions.Commit={{ .Env.COMMIT }}"
+      - "-X github.com/stacklok/toolhive-registry-server/pkg/versions.BuildDate={{ .Date }}"
+      - "-X github.com/stacklok/toolhive-registry-server/pkg/versions.BuildType=release"
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    main: ./cmd/thv-registry-api
+    binary: thv-registry-api
+# This section defines the release format.
+archives:
+  - formats: [ 'tar.gz' ]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [ 'zip' ]
+# This section defines whether we want to release the source code too.
+source:
+  enabled: true
+# This section defines how to generate the changelog
+changelog:
+  sort: asc
+  use: github
+# This section defines for which artifact types to generate SBOMs.
+sboms:
+  - artifacts: archive
+# This section defines the release policy.
+release:
+  github:
+    owner: stacklok
+    name: toolhive-registry-server
+# This section defines how and which artifacts we want to sign for the release.
+signs:
+  - cmd: cosign
+    args:
+      - "sign-blob"
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+      - "--yes" # needed on cosign 2.0.0+
+    artifacts: archive
+    output: true
+    certificate: '{{ trimsuffix (trimsuffix .Env.artifact ".zip") ".tar.gz" }}.pem'
