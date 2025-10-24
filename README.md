@@ -152,7 +152,6 @@ The server follows a clean architecture pattern:
 3. **Provider Layer**: Pluggable backends for registry data sources
    - `FileRegistryDataProvider`: Reads from local files
    - `K8sRegistryDataProvider`: Fetches from Kubernetes ConfigMaps
-   - `K8sDeploymentProvider`: Queries deployed MCP server instances
 
 ### Testing
 
@@ -208,8 +207,6 @@ docker run -v /path/to/registry.json:/data/registry.json \
 The Registry API server works seamlessly with the ToolHive ecosystem:
 
 - **ToolHive Operator**: Automatically deployed as part of MCPRegistry resources
-- **ToolHive CLI**: Discovers and deploys servers from registry API endpoints
-- **ToolHive Studio**: Provides UI access to available MCP servers
 
 See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for more details.
 
