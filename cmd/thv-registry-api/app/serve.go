@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"k8s.io/client-go/kubernetes"
@@ -46,6 +47,7 @@ const (
 
 func init() {
 	serveCmd.Flags().String("address", ":8080", "Address to listen on")
+	serveCmd.Flags().String("config", "", "Path to configuration file (YAML format)")
 	serveCmd.Flags().String("from-configmap", "", "ConfigMap name containing registry data (mutually exclusive with --from-file)")
 	serveCmd.Flags().String("from-file", "", "File path to registry.json (mutually exclusive with --from-configmap)")
 	serveCmd.Flags().String("registry-name", "", "Registry name identifier (required)")
@@ -53,6 +55,10 @@ func init() {
 	err := viper.BindPFlag("address", serveCmd.Flags().Lookup("address"))
 	if err != nil {
 		logger.Fatalf("Failed to bind address flag: %v", err)
+	}
+	err = viper.BindPFlag("config", serveCmd.Flags().Lookup("config"))
+	if err != nil {
+		logger.Fatalf("Failed to bind config flag: %v", err)
 	}
 	err = viper.BindPFlag("from-configmap", serveCmd.Flags().Lookup("from-configmap"))
 	if err != nil {
@@ -140,6 +146,17 @@ func runServe(_ *cobra.Command, _ []string) error {
 	address := viper.GetString("address")
 
 	logger.Infof("Starting registry API server on %s", address)
+
+	configPath := viper.GetString("config")
+	if configPath != "" {
+		// TODO: Use the configuration
+		// TODO: Validate the path to avoid path traversal issues
+		_, err := config.NewConfigLoader().LoadConfig(configPath)
+		if err != nil {
+			return fmt.Errorf("failed to load configuration: %w", err)
+		}
+		logger.Infof("Loaded configuration from %s", configPath)
+	}
 
 	providerConfig, err := buildProviderConfig()
 	if err != nil {
