@@ -31,6 +31,7 @@ thv-registry-api serve [flags]
 
 ```
       --address string          Address to listen on (default ":8080")
+      --config string           Path to configuration file (YAML format)
       --from-configmap string   ConfigMap name containing registry data (mutually exclusive with --from-file)
       --from-file string        File path to registry.json (mutually exclusive with --from-configmap)
   -h, --help                    help for serve
