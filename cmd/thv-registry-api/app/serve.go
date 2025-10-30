@@ -11,12 +11,13 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-git/go-git/v5/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 
 	v1 "github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/api/v1"
 	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/internal/service"
