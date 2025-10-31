@@ -144,7 +144,7 @@ filter:
 			yamlContent: `source: [invalid yaml`,
 			wantConfig:  nil,
 			wantErr:     true,
-			errMsg:      "failed to parse YAML config",
+			errMsg:      "failed to parse YAML",
 		},
 		{
 			name:        "file_not_found",

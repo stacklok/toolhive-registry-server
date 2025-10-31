@@ -8,8 +8,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ConfigLoader defines the interface for loading configuration
+// ConfigLoader defines the interface for loading configuration from files.
+// This is a read-only interface - configuration files are never modified by the application.
+// All config changes come from external sources (Kubernetes ConfigMaps, volume mounts, etc.)
 type ConfigLoader interface {
+	// LoadConfig reads and parses a configuration file from the given path.
+	// The file is only read, never modified.
 	LoadConfig(path string) (*Config, error)
 }
 
@@ -55,18 +59,19 @@ func NewConfigLoader() ConfigLoader {
 	return &configLoader{}
 }
 
-// LoadConfig loads and parses configuration from a YAML file
+// LoadConfig reads and parses a YAML configuration file.
+// This is a read-only operation - the file is never modified.
 func (c *configLoader) LoadConfig(path string) (*Config, error) {
-	// Read the entire file into memory
+	// Read-only file access
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Parse YAML content
+	// Parse the YAML content
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+		return nil, fmt.Errorf("failed to parse YAML: %w", err)
 	}
 
 	return &config, nil

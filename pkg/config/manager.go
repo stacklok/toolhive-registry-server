@@ -9,29 +9,31 @@ import (
 	"github.com/stacklok/toolhive/pkg/logger"
 )
 
-// ConfigManager provides thread-safe configuration management with reload capabilities.
-// It supports atomic configuration updates and file watching for automatic reloads.
+// ConfigManager provides thread-safe, read-only configuration management.
+// Configuration files are never modified by the application - all updates come from
+// external sources (Kubernetes ConfigMaps, Docker volume mounts, orchestration tools).
 //
-// Design decisions:
-// - Uses sync.RWMutex for efficient concurrent reads with occasional writes
-// - Validates configuration before applying to prevent invalid states
-// - Preserves old configuration on validation or load failures
-// - Optimized for container environments (Kubernetes ConfigMap updates, volume mounts)
-// - Provides context-aware watching for graceful shutdown
+// Design for read-only operation:
+// - No file locking needed - we only observe external changes
+// - No write coordination required - we never modify files
+// - Uses sync.RWMutex optimized for concurrent reads
+// - Validates externally-updated configs before applying
+// - Preserves last known good configuration on invalid updates
+// - Optimized for container environments with atomic file updates
 type ConfigManager interface {
 	// GetConfig safely retrieves the current configuration
 	GetConfig() *Config
 
-	// ReloadConfig atomically loads and applies a new configuration from the file path
-	// Returns error if loading or validation fails, preserving the old config
+	// ReloadConfig reads the latest configuration from disk and applies it if valid.
+	// The file is only read, never written. Returns error if the new config is invalid.
 	ReloadConfig() error
 
-	// WatchConfig starts watching the configuration file for changes
-	// Automatically reloads when changes are detected (with debouncing)
-	// Blocks until context is cancelled or an unrecoverable error occurs
+	// WatchConfig observes the configuration file for external changes.
+	// Automatically reloads when the file is updated by external systems.
+	// Blocks until context is cancelled.
 	WatchConfig(ctx context.Context) error
 
-	// Close releases any resources held by the manager
+	// Close releases the file watcher resources
 	Close() error
 }
 
@@ -113,38 +115,37 @@ func (cm *configManager) GetConfig() *Config {
 	return &configCopy
 }
 
-// ReloadConfig atomically loads and applies a new configuration
-// If loading or validation fails, the old configuration is preserved
+// ReloadConfig reads the configuration file and applies it if valid.
+// The file is treated as read-only - we never modify it.
+// If the new configuration is invalid, the previous configuration remains active.
 func (cm *configManager) ReloadConfig() error {
-	// Load new configuration (outside the lock to allow concurrent reads)
+	// Read the configuration file (read-only operation)
 	newConfig, err := cm.loader.LoadConfig(cm.configPath)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Validate new configuration
+	// Validate before applying
 	if err := cm.validator.Validate(newConfig); err != nil {
-		return fmt.Errorf("config validation failed: %w", err)
+		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// Atomically swap the configuration
+	// Atomically update the in-memory configuration
 	cm.mu.Lock()
 	cm.config = newConfig
 	cm.mu.Unlock()
 
-	logger.Infof("Configuration reloaded successfully from %s", cm.configPath)
+	logger.Infof("Configuration reloaded from %s", cm.configPath)
 	return nil
 }
 
-// WatchConfig starts watching the configuration file for changes.
-// It uses fsnotify to detect file system events.
+// WatchConfig observes the configuration file for external changes.
+// Since we never write to the file, all changes come from external sources:
+// - Kubernetes ConfigMap updates (atomic via symlink swaps)
+// - Docker volume mount updates
+// - Configuration management tools
 //
-// In container environments, config updates typically happen atomically through:
-// - Kubernetes ConfigMap volume mounts (using symlink swaps)
-// - Docker volume updates
-// - Orchestration tool updates
-//
-// Blocks until the context is cancelled or an unrecoverable error occurs.
+// This method blocks until the context is cancelled.
 func (cm *configManager) WatchConfig(ctx context.Context) error {
 	cm.watcherMu.Lock()
 	if cm.watcher != nil {
@@ -179,22 +180,19 @@ func (cm *configManager) WatchConfig(ctx context.Context) error {
 				return fmt.Errorf("watcher event channel closed")
 			}
 
-			// In containers, we primarily care about Write events
-			// Kubernetes ConfigMaps update files atomically via symlink swaps
+			// Detect external file modifications
 			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
-				logger.Infof("Config file change detected (%s), reloading configuration", event.Op)
+				logger.Infof("External config update detected, reloading")
 
-				// Reload immediately - container environments have atomic updates
 				if err := cm.ReloadConfig(); err != nil {
-					logger.Errorf("Failed to reload config after file change: %v", err)
-					// Continue watching - old configuration remains active
+					logger.Errorf("Failed to reload config: %v", err)
+					// Continue observing - previous config remains active
 				}
 			}
 
-			// Handle Remove events for Kubernetes ConfigMap updates
-			// K8s may remove and recreate the symlink during updates
+			// Handle K8s ConfigMap updates (may remove/recreate symlinks)
 			if event.Has(fsnotify.Remove) {
-				logger.Debugf("Config file removed (likely K8s ConfigMap update), re-watching")
+				logger.Debugf("Config file removed (K8s update), re-watching")
 				_ = watcher.Add(cm.configPath)
 			}
 

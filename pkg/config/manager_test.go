@@ -67,7 +67,7 @@ func TestNewConfigManager(t *testing.T) {
 				return configPath
 			},
 			wantErr: true,
-			errMsg:  "validation failed",
+			errMsg:  "invalid configuration",
 		},
 		{
 			name: "nonexistent_config",
@@ -246,7 +246,7 @@ func TestReloadConfigFailure(t *testing.T) {
 	// Attempt to reload (should fail)
 	err = manager.ReloadConfig()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "validation failed")
+	assert.Contains(t, err.Error(), "invalid configuration")
 
 	// Verify old config is still active
 	config = manager.GetConfig()
