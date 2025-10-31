@@ -2,7 +2,6 @@ package sources_test
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -100,11 +99,11 @@ var _ = Describe("APISourceHandler", func() {
 					case toolhiveInfoPath:
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{"version":"1.0.0","last_updated":"2025-01-14T00:00:00Z","source":"file:/data/registry.json","total_servers":5}`)
+						_, _ = w.Write([]byte(`{"version":"1.0.0","last_updated":"2025-01-14T00:00:00Z","source":"file:/data/registry.json","total_servers":5}`))
 					case toolhiveServersPath:
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{"servers":[],"total":0}`)
+						_, _ = w.Write([]byte(`{"servers":[],"total":0}`))
 					default:
 						w.WriteHeader(http.StatusNotFound)
 					}
@@ -137,11 +136,11 @@ var _ = Describe("APISourceHandler", func() {
 					case toolhiveInfoPath:
 						// Return 404 for /v0/info (upstream doesn't have this)
 						w.WriteHeader(http.StatusNotFound)
-						fmt.Fprint(w, `{"detail":"Endpoint not found"}`)
+						_, _ = w.Write([]byte(`{"detail":"Endpoint not found"}`))
 					case openapiPath:
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `
+						_, _ = w.Write([]byte(`
 info:
   title: Official MCP Registry
   description: |
@@ -150,7 +149,7 @@ info:
     [GitHub repository](https://github.com/modelcontextprotocol/registry)
   version: 1.0.0
 openapi: 3.1.0
-`)
+`))
 					default:
 						w.WriteHeader(http.StatusNotFound)
 					}

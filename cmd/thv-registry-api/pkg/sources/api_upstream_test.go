@@ -2,7 +2,6 @@ package sources_test
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 
@@ -42,7 +41,7 @@ var _ = Describe("UpstreamAPIHandler", func() {
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `
+						_, _ = w.Write([]byte(`
 openapi: 3.1.0
 info:
   title: Official MCP Registry
@@ -55,7 +54,7 @@ paths:
   /v0/servers:
     get:
       summary: List servers
-`)
+`))
 					} else {
 						w.WriteHeader(http.StatusNotFound)
 					}
@@ -88,7 +87,7 @@ paths:
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{invalid: yaml: [unclosed`)
+						_, _ = w.Write([]byte(`{invalid: yaml: [unclosed`))
 					}
 				}))
 			})
@@ -106,13 +105,13 @@ paths:
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `
+						_, _ = w.Write([]byte(`
 openapi: 3.1.0
 paths:
   /v0/servers:
     get:
       summary: List servers
-`)
+`))
 					}
 				}))
 			})
@@ -130,12 +129,12 @@ paths:
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `
+						_, _ = w.Write([]byte(`
 openapi: 3.1.0
 info:
   title: Some Registry
   description: A registry without version
-`)
+`))
 					}
 				}))
 			})
@@ -153,13 +152,13 @@ info:
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `
+						_, _ = w.Write([]byte(`
 openapi: 3.1.0
 info:
   title: Some Registry
   description: Contains GitHub URL https://github.com/modelcontextprotocol/registry
   version: 2.0.0
-`)
+`))
 					}
 				}))
 			})
@@ -177,12 +176,12 @@ info:
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `
+						_, _ = w.Write([]byte(`
 openapi: 3.1.0
 info:
   title: Some Registry
   version: 1.0.0
-`)
+`))
 					}
 				}))
 			})
@@ -200,13 +199,13 @@ info:
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `
+						_, _ = w.Write([]byte(`
 openapi: 3.1.0
 info:
   title: Some Registry
   description: A registry without the expected GitHub URL
   version: 1.0.0
-`)
+`))
 					}
 				}))
 			})
@@ -224,13 +223,13 @@ info:
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `
+						_, _ = w.Write([]byte(`
 openapi: 3.1.0
 info:
   title: Some Registry
   description: Contains https://github.com/modelcontextprotocol/registry
   version: 1.0
-`)
+`))
 					}
 				}))
 			})

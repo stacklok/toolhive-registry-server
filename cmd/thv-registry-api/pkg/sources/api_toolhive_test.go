@@ -2,7 +2,6 @@ package sources_test
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 
@@ -40,7 +39,7 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 					if r.URL.Path == toolhiveInfoPath {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{"version":"1.0.0","last_updated":"2025-01-14T00:00:00Z","source":"file:/data/registry.json","total_servers":10}`)
+						_, _ = w.Write([]byte(`{"version":"1.0.0","last_updated":"2025-01-14T00:00:00Z","source":"file:/data/registry.json","total_servers":10}`))
 					} else {
 						w.WriteHeader(http.StatusNotFound)
 					}
@@ -73,7 +72,7 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 					if r.URL.Path == toolhiveInfoPath {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{invalid json}`)
+						_, _ = w.Write([]byte(`{invalid json}`))
 					}
 				}))
 			})
@@ -91,7 +90,7 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 					if r.URL.Path == toolhiveInfoPath {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{"last_updated":"2025-01-14T00:00:00Z","total_servers":10}`)
+						_, _ = w.Write([]byte(`{"last_updated":"2025-01-14T00:00:00Z","total_servers":10}`))
 					}
 				}))
 			})
@@ -109,7 +108,7 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 					if r.URL.Path == toolhiveInfoPath {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{"version":"1.0.0","total_servers":-5}`)
+						_, _ = w.Write([]byte(`{"version":"1.0.0","total_servers":-5}`))
 					}
 				}))
 			})
@@ -127,7 +126,7 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 					if r.URL.Path == toolhiveInfoPath {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{"version":"1.0.0","total_servers":0}`)
+						_, _ = w.Write([]byte(`{"version":"1.0.0","total_servers":0}`))
 					}
 				}))
 			})
@@ -154,17 +153,17 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 					case toolhiveServersPath:
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{
+						_, _ = w.Write([]byte(`{
 							"servers": [
 								{"name": "server1", "description": "Test Server 1", "tier": "official", "status": "active", "transport": "stdio"},
 								{"name": "server2", "description": "Test Server 2", "tier": "community", "status": "active", "transport": "sse"}
 							],
 							"total": 2
-						}`)
+						}`))
 					case "/v0/servers/server1":
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{
+						_, _ = w.Write([]byte(`{
 							"name": "server1",
 							"description": "Test Server 1",
 							"tier": "official",
@@ -172,18 +171,18 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 							"transport": "stdio",
 							"image": "ghcr.io/test/server1:latest",
 							"env": {"KEY": "value"}
-						}`)
+						}`))
 					case "/v0/servers/server2":
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{
+						_, _ = w.Write([]byte(`{
 							"name": "server2",
 							"description": "Test Server 2",
 							"tier": "community",
 							"status": "active",
 							"transport": "sse",
 							"image": "ghcr.io/test/server2:v1.0"
-						}`)
+						}`))
 					default:
 						w.WriteHeader(http.StatusNotFound)
 					}
@@ -223,12 +222,12 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 					if r.URL.Path == toolhiveServersPath {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{
+						_, _ = w.Write([]byte(`{
 							"servers": [
 								{"name": "server1", "description": "Test Server", "tier": "official", "status": "active", "transport": "stdio"}
 							],
 							"total": 1
-						}`)
+						}`))
 					} else {
 						// Server detail endpoint fails
 						w.WriteHeader(http.StatusNotFound)
@@ -267,7 +266,7 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 					if r.URL.Path == toolhiveServersPath {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{invalid json}`)
+						_, _ = w.Write([]byte(`{invalid json}`))
 					}
 				}))
 				mcpRegistry.Spec.Source.API.Endpoint = mockServer.URL
@@ -286,7 +285,7 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 					if r.URL.Path == toolhiveServersPath {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{"servers": [], "total": 0}`)
+						_, _ = w.Write([]byte(`{"servers": [], "total": 0}`))
 					}
 				}))
 				mcpRegistry.Spec.Source.API.Endpoint = mockServer.URL
@@ -314,7 +313,7 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 					if r.URL.Path == toolhiveServersPath {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
-						fmt.Fprint(w, `{"servers": [], "total": 0}`)
+						_, _ = w.Write([]byte(`{"servers": [], "total": 0}`))
 					}
 				}))
 				mcpRegistry.Spec.Source.API.Endpoint = mockServer.URL

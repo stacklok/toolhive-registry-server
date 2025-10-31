@@ -57,7 +57,7 @@ var _ = Describe("DefaultClient", func() {
 					Expect(r.Header.Get("Accept")).To(Equal("application/json"))
 
 					w.WriteHeader(http.StatusOK)
-					fmt.Fprint(w, `{"message": "success"}`)
+					_, _ = w.Write([]byte(`{"message": "success"}`))
 				}))
 				client = httpclient.NewDefaultClient(30 * time.Second)
 			})
@@ -82,7 +82,7 @@ var _ = Describe("DefaultClient", func() {
 			It("should handle 404 Not Found", func() {
 				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusNotFound)
-					fmt.Fprint(w, "Not Found")
+					_, _ = w.Write([]byte("Not Found"))
 				}))
 
 				_, err := client.Get(ctx, mockServer.URL)
@@ -93,7 +93,7 @@ var _ = Describe("DefaultClient", func() {
 			It("should handle 500 Internal Server Error", func() {
 				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusInternalServerError)
-					fmt.Fprint(w, "Internal Server Error")
+					_, _ = w.Write([]byte("Internal Server Error"))
 				}))
 
 				_, err := client.Get(ctx, mockServer.URL)
@@ -104,7 +104,7 @@ var _ = Describe("DefaultClient", func() {
 			It("should handle 401 Unauthorized", func() {
 				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusUnauthorized)
-					fmt.Fprint(w, "Unauthorized")
+					_, _ = w.Write([]byte("Unauthorized"))
 				}))
 
 				_, err := client.Get(ctx, mockServer.URL)

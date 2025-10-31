@@ -85,7 +85,7 @@ func TestDefaultGitClient_CloneInvalidCommit(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for invalid commit hash, got nil")
 		if repoInfo != nil {
-			client.Cleanup(ctx, repoInfo)
+			_ = client.Cleanup(ctx, repoInfo)
 		}
 	}
 

@@ -12,8 +12,8 @@ import (
 
 // TestRepoConfig contains configuration for creating a test repository
 type TestRepoConfig struct {
-	Files  map[string]string      // Map of filename to content
-	Author *object.Signature      // Author for commits (uses default if nil)
+	Files  map[string]string // Map of filename to content
+	Author *object.Signature // Author for commits (uses default if nil)
 }
 
 // CreateTestRepo creates a temporary Git repository with the specified files and commits
@@ -28,7 +28,7 @@ func CreateTestRepo(t *testing.T, config TestRepoConfig) (string, func()) {
 	}
 
 	cleanup := func() {
-		os.RemoveAll(repoDir)
+		_ = os.RemoveAll(repoDir)
 	}
 
 	// Initialize the repository
@@ -101,7 +101,7 @@ func CreateTestRepoWithCommits(t *testing.T, commits []TestRepoConfig) (string, 
 	}
 
 	cleanup := func() {
-		os.RemoveAll(repoDir)
+		_ = os.RemoveAll(repoDir)
 	}
 
 	// Initialize the repository
@@ -182,7 +182,7 @@ func CreateTestRepoWithBranches(t *testing.T, mainCommit TestRepoConfig, branche
 	}
 
 	cleanup := func() {
-		os.RemoveAll(repoDir)
+		_ = os.RemoveAll(repoDir)
 	}
 
 	// Initialize the repository
