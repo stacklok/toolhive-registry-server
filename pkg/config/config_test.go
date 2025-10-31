@@ -193,6 +193,124 @@ filter:
 	}
 }
 
+func TestConfigValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  *Config
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid_config",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "configmap",
+					ConfigMap: &ConfigMapConfig{
+						Name: "test-configmap",
+					},
+				},
+				SyncPolicy: SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing_source_type",
+			config: &Config{
+				Source: SourceConfig{
+					ConfigMap: &ConfigMapConfig{
+						Name: "test",
+					},
+				},
+				SyncPolicy: SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			wantErr: true,
+			errMsg:  "source.type is required",
+		},
+		{
+			name: "missing_configmap_when_type_is_configmap",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "configmap",
+				},
+				SyncPolicy: SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			wantErr: true,
+			errMsg:  "source.configmap is required",
+		},
+		{
+			name: "missing_configmap_name",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "configmap",
+					ConfigMap: &ConfigMapConfig{},
+				},
+				SyncPolicy: SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			wantErr: true,
+			errMsg:  "source.configmap.name is required",
+		},
+		{
+			name: "missing_sync_interval",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "configmap",
+					ConfigMap: &ConfigMapConfig{
+						Name: "test",
+					},
+				},
+				SyncPolicy: SyncPolicyConfig{},
+			},
+			wantErr: true,
+			errMsg:  "syncPolicy.interval is required",
+		},
+		{
+			name: "invalid_sync_interval",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "configmap",
+					ConfigMap: &ConfigMapConfig{
+						Name: "test",
+					},
+				},
+				SyncPolicy: SyncPolicyConfig{
+					Interval: "invalid",
+				},
+			},
+			wantErr: true,
+			errMsg:  "syncPolicy.interval must be a valid duration",
+		},
+		{
+			name:    "nil_config",
+			config:  nil,
+			wantErr: true,
+			errMsg:  "config cannot be nil",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestConfigStructure(t *testing.T) {
 	// Test that the Config struct can be properly marshaled and unmarshaled
 	originalConfig := &Config{
