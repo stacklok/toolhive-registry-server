@@ -17,4 +17,7 @@ tasks:
     desc: Run registry API tests
     dir: cmd/thv-registry-api
     cmds:
-      - go test ./api/v1 -v
+      - go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
+      # we have to use ldflags to avoid the LC_DYSYMTAB linker error. 
+      # https://github.com/stacklok/toolhive/issues/1687
+      - go test -ldflags=-extldflags=-Wl,-w -race $(go list ./... | grep -v '/test-integration')  | gotestfmt -hide "all"
