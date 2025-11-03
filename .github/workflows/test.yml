@@ -32,18 +32,10 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run tests with coverage
-        run: task registry-test
-        # TODO: Uncomment this when coverage is implemented
-        # run: task registry-test-coverage
-        
-      # TODO: Uncomment this when coverage is implemented
-      # - name: Upload coverage reports to Codecov with GitHub Action
-      #   uses: codecov/codecov-action@v5
-      #   with:
-      #     token: ${{ secrets.CODECOV_TOKEN }}
-      #     slug: stacklok/toolhive
+        run: task test-coverage
 
-      # - name: Upload coverage to Coveralls
-      #   uses: coverallsapp/github-action@v2
-      #   with:
-      #     file: coverage/coverage.out
+      - name: Upload coverage reports to Codecov with GitHub Action
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: stacklok/toolhive-registry-server
