@@ -22,7 +22,7 @@ jobs:
           version: 3.44.1
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install mockgen
-        run: task mock-install
+        run: task install-mock
       - name: Generate code files
         run: task gen
       - name: Check for changes
