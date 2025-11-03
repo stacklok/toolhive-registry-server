@@ -40,7 +40,7 @@ filter:
 					Interval: "30m",
 				},
 				Filter: FilterConfig{
-					Tags: TagFilterConfig{
+					Tags: &TagFilterConfig{
 						Include: []string{"database", "production"},
 						Exclude: []string{"experimental", "deprecated", "beta"},
 					},
@@ -71,7 +71,7 @@ filter:
 					Interval: "1h",
 				},
 				Filter: FilterConfig{
-					Tags: TagFilterConfig{
+					Tags: &TagFilterConfig{
 						Include: []string{},
 						Exclude: []string{},
 					},
@@ -101,7 +101,7 @@ filter:
 					Interval: "15m",
 				},
 				Filter: FilterConfig{
-					Tags: TagFilterConfig{
+					Tags: &TagFilterConfig{
 						Include: []string{"api", "backend", "frontend"},
 						Exclude: nil,
 					},
@@ -131,7 +131,7 @@ filter:
 					Interval: "5m",
 				},
 				Filter: FilterConfig{
-					Tags: TagFilterConfig{
+					Tags: &TagFilterConfig{
 						Include: nil,
 						Exclude: []string{"test", "debug", "experimental"},
 					},
@@ -206,7 +206,7 @@ func TestConfigStructure(t *testing.T) {
 			Interval: "45m",
 		},
 		Filter: FilterConfig{
-			Tags: TagFilterConfig{
+			Tags: &TagFilterConfig{
 				Include: []string{"prod", "stable"},
 				Exclude: []string{"beta", "alpha"},
 			},

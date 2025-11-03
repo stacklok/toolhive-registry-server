@@ -29,6 +29,7 @@ type SourceConfig struct {
 // ConfigMapConfig defines Kubernetes ConfigMap source settings
 type ConfigMapConfig struct {
 	Name string `yaml:"name"`
+	Key  string `yaml:"key,omitempty"`
 }
 
 // SyncPolicyConfig defines synchronization settings
@@ -38,7 +39,14 @@ type SyncPolicyConfig struct {
 
 // FilterConfig defines filtering rules for registry entries
 type FilterConfig struct {
-	Tags TagFilterConfig `yaml:"tags"`
+	Names *NameFilterConfig `yaml:"names,omitempty"`
+	Tags  *TagFilterConfig  `yaml:"tags,omitempty"`
+}
+
+// NameFilterConfig defines name-based filtering
+type NameFilterConfig struct {
+	Include []string `yaml:"include,omitempty"`
+	Exclude []string `yaml:"exclude,omitempty"`
 }
 
 // TagFilterConfig defines tag-based filtering
