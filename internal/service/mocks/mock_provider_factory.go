@@ -12,7 +12,7 @@ package mocks
 import (
 	reflect "reflect"
 
-	service "github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/internal/service"
+	service "github.com/stacklok/toolhive-registry-server/internal/service"
 	gomock "go.uber.org/mock/gomock"
 )
 

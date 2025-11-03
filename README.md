@@ -43,7 +43,7 @@ The ToolHive Registry API (`thv-registry-api`) implements the official [Model Co
 
 ```bash
 # Build the binary
-task registry-build
+task build
 ```
 
 ### Running the Server
@@ -111,7 +111,7 @@ Reads registry data from a local file. Useful for:
 
 ```bash
 # Build the binary
-task registry-build
+task build
 
 # Run linting
 task lint
@@ -120,13 +120,13 @@ task lint
 task lint-fix
 
 # Run tests
-task registry-test
+task test
 
 # Generate mocks
 task gen
 
 # Build container image
-task registry-build-image
+task build-image
 ```
 
 ### Project Structure
@@ -162,7 +162,7 @@ The project uses table-driven tests with mocks generated via `go.uber.org/mock`:
 task gen
 
 # Run all tests
-task registry-test
+task test
 ```
 
 ## Deployment
@@ -194,7 +194,7 @@ spec:
 
 ```bash
 # Build the image
-task registry-build-image
+task build-image
 
 # Run with file backend
 docker run -v /path/to/registry.json:/data/registry.json \
@@ -220,8 +220,8 @@ We welcome contributions! Please see:
 
 ### Development Guidelines
 
-- Run `task registry-lint-fix` before committing
-- Ensure tests pass with `task registry-test`
+- Run `task lint-fix` before committing
+- Ensure tests pass with `task test`
 - Follow Go standard project layout
 - Use mockgen for test mocks, not hand-written mocks
 - See [CLAUDE.md](./CLAUDE.md) for AI assistant guidance

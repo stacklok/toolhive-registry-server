@@ -13,9 +13,9 @@ See [README.md](README.md) for complete project documentation including features
 See [README.md](README.md#development) for complete build and development documentation.
 
 **Most commonly used:**
-- `task registry-build` - Build the binary
+- `task build` - Build the binary
 - `task lint-fix` - **Preferred** linting (auto-fixes issues)
-- `task registry-test` - Run tests
+- `task test` - Run tests
 - `task gen` - Generate mocks (run before testing)
 - `task all` - Lint, test, and build
 
