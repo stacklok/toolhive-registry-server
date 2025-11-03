@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/internal/service"
-	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/internal/service/mocks"
+	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
 

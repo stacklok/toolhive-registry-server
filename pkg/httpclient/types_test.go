@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/pkg/httpclient"
+	"github.com/stacklok/toolhive-registry-server/pkg/httpclient"
 )
 
 var _ = Describe("HTTPError", func() {

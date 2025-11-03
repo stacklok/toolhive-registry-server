@@ -6,7 +6,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/pkg/httpclient"
+	"github.com/stacklok/toolhive-registry-server/pkg/httpclient"
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 )
 

@@ -19,8 +19,8 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 
-	v1 "github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/api/v1"
-	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/internal/service"
+	v1 "github.com/stacklok/toolhive-registry-server/internal/api/v1"
+	"github.com/stacklok/toolhive-registry-server/internal/service"
 	thvk8scli "github.com/stacklok/toolhive/pkg/container/kubernetes"
 	"github.com/stacklok/toolhive/pkg/logger"
 )
