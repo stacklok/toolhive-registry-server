@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -69,4 +70,38 @@ func (c *configLoader) LoadConfig(path string) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+// Validate performs validation on the configuration
+func (c *Config) Validate() error {
+	if c == nil {
+		return fmt.Errorf("config cannot be nil")
+	}
+
+	// Validate source configuration
+	if c.Source.Type == "" {
+		return fmt.Errorf("source.type is required")
+	}
+
+	// Validate ConfigMap settings if type is configmap
+	if c.Source.Type == "configmap" {
+		if c.Source.ConfigMap == nil {
+			return fmt.Errorf("source.configmap is required when type is configmap")
+		}
+		if c.Source.ConfigMap.Name == "" {
+			return fmt.Errorf("source.configmap.name is required")
+		}
+	}
+
+	// Validate sync policy
+	if c.SyncPolicy.Interval == "" {
+		return fmt.Errorf("syncPolicy.interval is required")
+	}
+
+	// Try to parse the interval to ensure it's valid
+	if _, err := time.ParseDuration(c.SyncPolicy.Interval); err != nil {
+		return fmt.Errorf("syncPolicy.interval must be a valid duration (e.g., '30m', '1h'): %w", err)
+	}
+
+	return nil
 }

@@ -152,7 +152,10 @@ func runServe(_ *cobra.Command, _ []string) error {
 	if configPath != "" {
 		// TODO: Use the configuration
 		// TODO: Validate the path to avoid path traversal issues
-		_, err := config.NewConfigLoader().LoadConfig(configPath)
+		c, err := config.NewConfigLoader().LoadConfig(configPath)
+		if err := c.Validate(); err != nil {
+			return fmt.Errorf("invalid configuration: %w", err)
+		}
 		if err != nil {
 			return fmt.Errorf("failed to load configuration: %w", err)
 		}
