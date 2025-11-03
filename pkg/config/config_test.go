@@ -193,6 +193,54 @@ filter:
 	}
 }
 
+func TestConfigStructure(t *testing.T) {
+	// Test that the Config struct can be properly marshaled and unmarshaled
+	originalConfig := &Config{
+		Source: SourceConfig{
+			Type: "configmap",
+			ConfigMap: &ConfigMapConfig{
+				Name: "test-configmap",
+			},
+		},
+		SyncPolicy: SyncPolicyConfig{
+			Interval: "45m",
+		},
+		Filter: FilterConfig{
+			Tags: TagFilterConfig{
+				Include: []string{"prod", "stable"},
+				Exclude: []string{"beta", "alpha"},
+			},
+		},
+	}
+
+	// Create a temporary directory and file
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "test-config.yaml")
+
+	// Write the config using YAML
+	yamlContent := `source:
+  type: configmap
+  configmap:
+    name: test-configmap
+syncPolicy:
+  interval: "45m"
+filter:
+  tags:
+    include: ["prod", "stable"]
+    exclude: ["beta", "alpha"]`
+
+	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	// Load it back
+	loader := NewConfigLoader()
+	loadedConfig, err := loader.LoadConfig(configPath)
+	require.NoError(t, err)
+
+	// Compare the structures
+	assert.Equal(t, originalConfig, loadedConfig)
+}
+
 func TestConfigValidate(t *testing.T) {
 	tests := []struct {
 		name    string
