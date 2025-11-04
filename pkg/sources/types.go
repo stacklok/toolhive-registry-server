@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
 
@@ -79,9 +78,9 @@ func (*DefaultSourceDataValidator) ValidateData(data []byte, format string) (*re
 	}
 
 	switch format {
-	case mcpv1alpha1.RegistryFormatToolHive:
+	case config.SourceFormatToolHive:
 		return validateToolhiveFormatAndParse(data)
-	case mcpv1alpha1.RegistryFormatUpstream:
+	case config.SourceFormatUpstream:
 		return validateUpstreamFormatAndParse(data)
 	default:
 		return nil, fmt.Errorf("unsupported format: %s", format)

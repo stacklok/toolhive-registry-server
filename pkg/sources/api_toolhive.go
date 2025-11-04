@@ -14,7 +14,6 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/httpclient"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
 
@@ -61,9 +60,9 @@ func (h *ToolHiveAPIHandler) Validate(ctx context.Context, endpoint string) erro
 }
 
 // FetchRegistry retrieves registry data from the ToolHive API endpoint
-func (h *ToolHiveAPIHandler) FetchRegistry(ctx context.Context, config *config.Config) (*FetchResult, error) {
+func (h *ToolHiveAPIHandler) FetchRegistry(ctx context.Context, registryConfig *config.Config) (*FetchResult, error) {
 	logger := log.FromContext(ctx)
-	baseURL := h.getBaseURL(config)
+	baseURL := h.getBaseURL(registryConfig)
 
 	// Build API URL: /v0/servers?format=toolhive
 	apiURL := h.buildServersURL(baseURL)
@@ -105,7 +104,7 @@ func (h *ToolHiveAPIHandler) FetchRegistry(ctx context.Context, config *config.C
 	hash := fmt.Sprintf("%x", sha256.Sum256(data))
 
 	// Create and return fetch result
-	return NewFetchResult(toolhiveRegistry, hash, mcpv1alpha1.RegistryFormatToolHive), nil
+	return NewFetchResult(toolhiveRegistry, hash, config.SourceFormatToolHive), nil
 }
 
 // CurrentHash returns the current hash of the API response

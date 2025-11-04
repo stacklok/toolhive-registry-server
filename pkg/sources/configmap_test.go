@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -528,23 +527,23 @@ func TestConfigMapSourceHandler_ValidationWithBuilder(t *testing.T) {
 		{
 			name: "upstream format with servers",
 			builder: func() []byte {
-				return NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatUpstream).
+				return NewTestRegistryBuilder(config.SourceFormatUpstream).
 					WithServerName("s1").
 					WithServerName("s2").
 					BuildJSON()
 			},
-			format:        mcpv1alpha1.RegistryFormatUpstream,
+			format:        config.SourceFormatUpstream,
 			expectedCount: 2,
 			expectError:   false,
 		},
 		{
 			name: "upstream format empty array",
 			builder: func() []byte {
-				return NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatUpstream).
+				return NewTestRegistryBuilder(config.SourceFormatUpstream).
 					Empty().
 					BuildJSON()
 			},
-			format:        mcpv1alpha1.RegistryFormatUpstream,
+			format:        config.SourceFormatUpstream,
 			expectError:   true,
 			errorContains: "upstream registry must contain at least one server",
 		},
@@ -573,7 +572,7 @@ func TestConfigMapSourceHandler_ValidationWithBuilder(t *testing.T) {
 			builder: func() []byte {
 				return InvalidJSON()
 			},
-			format:        mcpv1alpha1.RegistryFormatUpstream,
+			format:        config.SourceFormatUpstream,
 			expectError:   true,
 			errorContains: "invalid upstream format",
 		},

@@ -11,7 +11,6 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/git"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 )
 
 const (
@@ -42,7 +41,7 @@ func (*GitSourceHandler) Validate(source *config.SourceConfig) error {
 
 	if source.Git == nil {
 		return fmt.Errorf("git configuration is required for source type %s",
-			mcpv1alpha1.RegistrySourceTypeGit)
+			config.SourceTypeGit)
 	}
 
 	gitSource := source.Git

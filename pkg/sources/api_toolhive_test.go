@@ -11,7 +11,6 @@ import (
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/httpclient"
 	"github.com/stacklok/toolhive-registry-server/pkg/sources"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 )
 
 var _ = Describe("ToolHiveAPIHandler", func() {
@@ -204,7 +203,7 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 				Expect(result.Registry.Servers).To(HaveKey("server1"))
 				Expect(result.Registry.Servers).To(HaveKey("server2"))
 				Expect(result.Hash).NotTo(BeEmpty())
-				Expect(result.Format).To(Equal(mcpv1alpha1.RegistryFormatToolHive))
+				Expect(result.Format).To(Equal(config.SourceFormatToolHive))
 			})
 
 			It("should fetch server details correctly", func() {

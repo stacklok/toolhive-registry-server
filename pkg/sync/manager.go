@@ -17,7 +17,6 @@ import (
 	"github.com/stacklok/toolhive-registry-server/pkg/filtering"
 	"github.com/stacklok/toolhive-registry-server/pkg/sources"
 	"github.com/stacklok/toolhive-registry-server/pkg/status"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 )
 
 // Result contains the result of a successful sync operation
@@ -368,7 +367,7 @@ func (s *DefaultSyncManager) fetchAndProcessRegistryData(
 		return nil, &Error{
 			Err:             err,
 			Message:         fmt.Sprintf("Failed to create source handler: %v", err),
-			ConditionType:   mcpv1alpha1.ConditionSourceAvailable,
+			ConditionType:   ConditionSourceAvailable,
 			ConditionReason: conditionReasonHandlerCreationFailed,
 		}
 	}
@@ -379,7 +378,7 @@ func (s *DefaultSyncManager) fetchAndProcessRegistryData(
 		return nil, &Error{
 			Err:             err,
 			Message:         fmt.Sprintf("Source validation failed: %v", err),
-			ConditionType:   mcpv1alpha1.ConditionSourceAvailable,
+			ConditionType:   ConditionSourceAvailable,
 			ConditionReason: conditionReasonValidationFailed,
 		}
 	}
@@ -392,7 +391,7 @@ func (s *DefaultSyncManager) fetchAndProcessRegistryData(
 		return nil, &Error{
 			Err:             err,
 			Message:         fmt.Sprintf("Fetch failed: %v", err),
-			ConditionType:   mcpv1alpha1.ConditionSyncSuccessful,
+			ConditionType:   ConditionSyncSuccessful,
 			ConditionReason: conditionReasonFetchFailed,
 		}
 	}
@@ -428,7 +427,7 @@ func (s *DefaultSyncManager) applyFilteringIfConfigured(
 			return &Error{
 				Err:             err,
 				Message:         fmt.Sprintf("Filtering failed: %v", err),
-				ConditionType:   mcpv1alpha1.ConditionSyncSuccessful,
+				ConditionType:   ConditionSyncSuccessful,
 				ConditionReason: conditionReasonFetchFailed,
 			}
 		}
@@ -461,7 +460,7 @@ func (s *DefaultSyncManager) storeRegistryData(
 		return &Error{
 			Err:             err,
 			Message:         fmt.Sprintf("Storage failed: %v", err),
-			ConditionType:   mcpv1alpha1.ConditionSyncSuccessful,
+			ConditionType:   ConditionSyncSuccessful,
 			ConditionReason: conditionReasonStorageFailed,
 		}
 	}
