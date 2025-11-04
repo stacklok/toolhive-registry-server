@@ -36,10 +36,10 @@ filter:
 						Name: "minimal-registry-data",
 					},
 				},
-				SyncPolicy: SyncPolicyConfig{
+				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
-				Filter: FilterConfig{
+				Filter: &FilterConfig{
 					Tags: &TagFilterConfig{
 						Include: []string{"database", "production"},
 						Exclude: []string{"experimental", "deprecated", "beta"},
@@ -67,10 +67,10 @@ filter:
 						Name: "test-registry",
 					},
 				},
-				SyncPolicy: SyncPolicyConfig{
+				SyncPolicy: &SyncPolicyConfig{
 					Interval: "1h",
 				},
-				Filter: FilterConfig{
+				Filter: &FilterConfig{
 					Tags: &TagFilterConfig{
 						Include: []string{},
 						Exclude: []string{},
@@ -97,10 +97,10 @@ filter:
 						Name: "prod-registry",
 					},
 				},
-				SyncPolicy: SyncPolicyConfig{
+				SyncPolicy: &SyncPolicyConfig{
 					Interval: "15m",
 				},
-				Filter: FilterConfig{
+				Filter: &FilterConfig{
 					Tags: &TagFilterConfig{
 						Include: []string{"api", "backend", "frontend"},
 						Exclude: nil,
@@ -127,10 +127,10 @@ filter:
 						Name: "dev-registry",
 					},
 				},
-				SyncPolicy: SyncPolicyConfig{
+				SyncPolicy: &SyncPolicyConfig{
 					Interval: "5m",
 				},
-				Filter: FilterConfig{
+				Filter: &FilterConfig{
 					Tags: &TagFilterConfig{
 						Include: nil,
 						Exclude: []string{"test", "debug", "experimental"},
@@ -202,10 +202,10 @@ func TestConfigStructure(t *testing.T) {
 				Name: "test-configmap",
 			},
 		},
-		SyncPolicy: SyncPolicyConfig{
+		SyncPolicy: &SyncPolicyConfig{
 			Interval: "45m",
 		},
-		Filter: FilterConfig{
+		Filter: &FilterConfig{
 			Tags: &TagFilterConfig{
 				Include: []string{"prod", "stable"},
 				Exclude: []string{"beta", "alpha"},
@@ -257,7 +257,7 @@ func TestConfigValidate(t *testing.T) {
 						Name: "test-configmap",
 					},
 				},
-				SyncPolicy: SyncPolicyConfig{
+				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
 			},
@@ -271,7 +271,7 @@ func TestConfigValidate(t *testing.T) {
 						Name: "test",
 					},
 				},
-				SyncPolicy: SyncPolicyConfig{
+				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
 			},
@@ -284,7 +284,7 @@ func TestConfigValidate(t *testing.T) {
 				Source: SourceConfig{
 					Type: "configmap",
 				},
-				SyncPolicy: SyncPolicyConfig{
+				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
 			},
@@ -298,7 +298,7 @@ func TestConfigValidate(t *testing.T) {
 					Type:      "configmap",
 					ConfigMap: &ConfigMapConfig{},
 				},
-				SyncPolicy: SyncPolicyConfig{
+				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
 			},
@@ -314,7 +314,7 @@ func TestConfigValidate(t *testing.T) {
 						Name: "test",
 					},
 				},
-				SyncPolicy: SyncPolicyConfig{},
+				SyncPolicy: &SyncPolicyConfig{},
 			},
 			wantErr: true,
 			errMsg:  "syncPolicy.interval is required",
@@ -328,7 +328,7 @@ func TestConfigValidate(t *testing.T) {
 						Name: "test",
 					},
 				},
-				SyncPolicy: SyncPolicyConfig{
+				SyncPolicy: &SyncPolicyConfig{
 					Interval: "invalid",
 				},
 			},

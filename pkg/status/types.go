@@ -35,6 +35,9 @@ type SyncStatus struct {
 	// Used to detect changes in source data
 	LastSyncHash string `yaml:"lastSyncHash,omitempty"`
 
+	// LastAppliedFilterHash is the hash of the last applied filter
+	LastAppliedFilterHash string `yaml:"lastAppliedFilterHash,omitempty"`
+
 	// ServerCount is the total number of servers in the registry
 	ServerCount int `yaml:"serverCount,omitempty"`
 }

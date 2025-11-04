@@ -8,6 +8,25 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	// RegistrySourceTypeConfigMap is the type for registry data stored in ConfigMaps
+	SourceTypeConfigMap = "configmap"
+
+	// RegistrySourceTypeGit is the type for registry data stored in Git repositories
+	SourceTypeGit = "git"
+
+	// SourceTypeAPI is the type for registry data fetched from API endpoints
+	SourceTypeAPI = "api"
+)
+
+const (
+	// RegistryFormatToolHive is the native ToolHive registry format
+	SourceFormatToolHive = "toolhive"
+
+	// RegistryFormatUpstream is the upstream MCP registry format
+	SourceFormatUpstream = "upstream"
+)
+
 // ConfigLoader defines the interface for loading configuration
 type ConfigLoader interface {
 	LoadConfig(path string) (*Config, error)
@@ -15,21 +34,54 @@ type ConfigLoader interface {
 
 // Config represents the root configuration structure
 type Config struct {
-	Source     SourceConfig     `yaml:"source"`
-	SyncPolicy SyncPolicyConfig `yaml:"syncPolicy"`
-	Filter     FilterConfig     `yaml:"filter"`
+	Source     SourceConfig      `yaml:"source"`
+	SyncPolicy *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
+	Filter     *FilterConfig     `yaml:"filter,omitempty"`
 }
 
 // SourceConfig defines the data source configuration
 type SourceConfig struct {
 	Type      string           `yaml:"type"`
+	Format    string           `yaml:"format"`
 	ConfigMap *ConfigMapConfig `yaml:"configmap,omitempty"`
+	Git       *GitConfig       `yaml:"git,omitempty"`
+	API       *APIConfig       `yaml:"api,omitempty"`
 }
 
 // ConfigMapConfig defines Kubernetes ConfigMap source settings
 type ConfigMapConfig struct {
-	Name string `yaml:"name"`
-	Key  string `yaml:"key,omitempty"`
+	Namespace string `yaml:"namespace"`
+	Name      string `yaml:"name"`
+	Key       string `yaml:"key,omitempty"`
+}
+
+// GitConfig defines Git source settings
+type GitConfig struct {
+	// Repository is the Git repository URL (HTTP/HTTPS/SSH)
+	Repository string `yaml:"repository"`
+
+	// Branch is the Git branch to use (mutually exclusive with Tag and Commit)
+	Branch string `yaml:"branch,omitempty"`
+
+	// Tag is the Git tag to use (mutually exclusive with Branch and Commit)
+	Tag string `yaml:"tag,omitempty"`
+
+	// Commit is the Git commit SHA to use (mutually exclusive with Branch and Tag)
+	Commit string `yaml:"commit,omitempty"`
+
+	// Path is the path to the registry file within the repository
+	Path string `yaml:"path,omitempty"`
+}
+
+// APIConfig defines API source configuration for ToolHive Registry APIs
+type APIConfig struct {
+	// Endpoint is the base API URL (without path)
+	// The source handler will append the appropriate paths, for instance:
+	//   - /v0/servers - List all servers (single response, no pagination)
+	//   - /v0/servers/{name} - Get specific server (future)
+	//   - /v0/info - Get registry metadata (future)
+	// Example: "http://my-registry-api.default.svc.cluster.local/api"
+	Endpoint string `yaml:"endpoint"`
 }
 
 // SyncPolicyConfig defines synchronization settings

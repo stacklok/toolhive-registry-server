@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/httpclient"
 	"github.com/stacklok/toolhive-registry-server/pkg/sources"
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
@@ -139,11 +140,15 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 	})
 
 	Describe("FetchRegistry", func() {
-		var mcpRegistry *mcpv1alpha1.MCPRegistry
+		var registryConfig *config.Config
 
 		BeforeEach(func() {
-			mcpRegistry = &mcpv1alpha1.MCPRegistry{}
-			mcpRegistry.Spec.Source.API = &mcpv1alpha1.APISource{}
+			registryConfig = &config.Config{
+				Source: config.SourceConfig{
+					Type: config.SourceTypeAPI,
+					API:  &config.APIConfig{},
+				},
+			}
 		})
 
 		Context("Successful fetch with server details", func() {
@@ -187,11 +192,11 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 						w.WriteHeader(http.StatusNotFound)
 					}
 				}))
-				mcpRegistry.Spec.Source.API.Endpoint = mockServer.URL
+				registryConfig.Source.API.Endpoint = mockServer.URL
 			})
 
 			It("should fetch and convert servers successfully", func() {
-				result, err := handler.FetchRegistry(ctx, mcpRegistry)
+				result, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result).NotTo(BeNil())
 				Expect(result.Registry).NotTo(BeNil())
@@ -203,7 +208,7 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 			})
 
 			It("should fetch server details correctly", func() {
-				result, err := handler.FetchRegistry(ctx, mcpRegistry)
+				result, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).NotTo(HaveOccurred())
 
 				server1 := result.Registry.Servers["server1"]
@@ -233,11 +238,11 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 						w.WriteHeader(http.StatusNotFound)
 					}
 				}))
-				mcpRegistry.Spec.Source.API.Endpoint = mockServer.URL
+				registryConfig.Source.API.Endpoint = mockServer.URL
 			})
 
 			It("should use summary data when detail fetch fails", func() {
-				result, err := handler.FetchRegistry(ctx, mcpRegistry)
+				result, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.Registry.Servers).To(HaveLen(1))
 				Expect(result.Registry.Servers).To(HaveKey("server1"))
@@ -250,11 +255,11 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusInternalServerError)
 				}))
-				mcpRegistry.Spec.Source.API.Endpoint = mockServer.URL
+				registryConfig.Source.API.Endpoint = mockServer.URL
 			})
 
 			It("should return error", func() {
-				_, err := handler.FetchRegistry(ctx, mcpRegistry)
+				_, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to fetch from API"))
 			})
@@ -269,11 +274,11 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 						_, _ = w.Write([]byte(`{invalid json}`))
 					}
 				}))
-				mcpRegistry.Spec.Source.API.Endpoint = mockServer.URL
+				registryConfig.Source.API.Endpoint = mockServer.URL
 			})
 
 			It("should return parse error", func() {
-				_, err := handler.FetchRegistry(ctx, mcpRegistry)
+				_, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to parse API response"))
 			})
@@ -288,11 +293,11 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 						_, _ = w.Write([]byte(`{"servers": [], "total": 0}`))
 					}
 				}))
-				mcpRegistry.Spec.Source.API.Endpoint = mockServer.URL
+				registryConfig.Source.API.Endpoint = mockServer.URL
 			})
 
 			It("should return empty registry", func() {
-				result, err := handler.FetchRegistry(ctx, mcpRegistry)
+				result, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.Registry.Servers).To(BeEmpty())
 			})
@@ -300,11 +305,15 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 	})
 
 	Describe("CurrentHash", func() {
-		var mcpRegistry *mcpv1alpha1.MCPRegistry
+		var registryConfig *config.Config
 
 		BeforeEach(func() {
-			mcpRegistry = &mcpv1alpha1.MCPRegistry{}
-			mcpRegistry.Spec.Source.API = &mcpv1alpha1.APISource{}
+			registryConfig = &config.Config{
+				Source: config.SourceConfig{
+					Type: config.SourceTypeAPI,
+					API:  &config.APIConfig{},
+				},
+			}
 		})
 
 		Context("Successful hash calculation", func() {
@@ -316,11 +325,11 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 						_, _ = w.Write([]byte(`{"servers": [], "total": 0}`))
 					}
 				}))
-				mcpRegistry.Spec.Source.API.Endpoint = mockServer.URL
+				registryConfig.Source.API.Endpoint = mockServer.URL
 			})
 
 			It("should return hash of response", func() {
-				hash, err := handler.CurrentHash(ctx, mcpRegistry)
+				hash, err := handler.CurrentHash(ctx, registryConfig)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(hash).NotTo(BeEmpty())
 				Expect(hash).To(HaveLen(64)) // SHA256 hex string length
@@ -332,11 +341,11 @@ var _ = Describe("ToolHiveAPIHandler", func() {
 				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusInternalServerError)
 				}))
-				mcpRegistry.Spec.Source.API.Endpoint = mockServer.URL
+				registryConfig.Source.API.Endpoint = mockServer.URL
 			})
 
 			It("should return error", func() {
-				_, err := handler.CurrentHash(ctx, mcpRegistry)
+				_, err := handler.CurrentHash(ctx, registryConfig)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to fetch from API"))
 			})

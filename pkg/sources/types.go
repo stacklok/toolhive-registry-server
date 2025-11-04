@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
@@ -20,13 +21,13 @@ type SourceDataValidator interface {
 // SourceHandler is an interface with methods to fetch data from external data sources
 type SourceHandler interface {
 	// FetchRegistry retrieves data from the source and returns the result
-	FetchRegistry(ctx context.Context, mcpRegistry *mcpv1alpha1.MCPRegistry) (*FetchResult, error)
+	FetchRegistry(ctx context.Context, config *config.Config) (*FetchResult, error)
 
 	// Validate validates the source configuration
-	Validate(source *mcpv1alpha1.MCPRegistrySource) error
+	Validate(source *config.SourceConfig) error
 
 	// CurrentHash returns the current hash of the source data without performing a full fetch
-	CurrentHash(ctx context.Context, mcpRegistry *mcpv1alpha1.MCPRegistry) (string, error)
+	CurrentHash(ctx context.Context, config *config.Config) (string, error)
 }
 
 // FetchResult contains the result of a fetch operation

@@ -1,7 +1,7 @@
-// Package git provides Git repository operations for MCPRegistry sources.
+// Package git provides Git repository operations for registry sources.
 //
 // This package implements a thin wrapper around the go-git library to enable
-// MCPRegistry resources to fetch registry data directly from Git repositories.
+// registry resources to fetch registry data directly from Git repositories.
 // It supports cloning repositories, checking out specific branches/tags/commits,
 // and retrieving file contents from the repository.
 //

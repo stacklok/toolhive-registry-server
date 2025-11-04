@@ -13,8 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
+	config "github.com/stacklok/toolhive-registry-server/pkg/config"
 	sources "github.com/stacklok/toolhive-registry-server/pkg/sources"
-	v1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	registry "github.com/stacklok/toolhive/pkg/registry"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -83,37 +83,37 @@ func (m *MockSourceHandler) EXPECT() *MockSourceHandlerMockRecorder {
 }
 
 // CurrentHash mocks base method.
-func (m *MockSourceHandler) CurrentHash(ctx context.Context, mcpRegistry *v1alpha1.MCPRegistry) (string, error) {
+func (m *MockSourceHandler) CurrentHash(ctx context.Context, arg1 *config.Config) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CurrentHash", ctx, mcpRegistry)
+	ret := m.ctrl.Call(m, "CurrentHash", ctx, arg1)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CurrentHash indicates an expected call of CurrentHash.
-func (mr *MockSourceHandlerMockRecorder) CurrentHash(ctx, mcpRegistry any) *gomock.Call {
+func (mr *MockSourceHandlerMockRecorder) CurrentHash(ctx, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentHash", reflect.TypeOf((*MockSourceHandler)(nil).CurrentHash), ctx, mcpRegistry)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentHash", reflect.TypeOf((*MockSourceHandler)(nil).CurrentHash), ctx, arg1)
 }
 
 // FetchRegistry mocks base method.
-func (m *MockSourceHandler) FetchRegistry(ctx context.Context, mcpRegistry *v1alpha1.MCPRegistry) (*sources.FetchResult, error) {
+func (m *MockSourceHandler) FetchRegistry(ctx context.Context, arg1 *config.Config) (*sources.FetchResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FetchRegistry", ctx, mcpRegistry)
+	ret := m.ctrl.Call(m, "FetchRegistry", ctx, arg1)
 	ret0, _ := ret[0].(*sources.FetchResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // FetchRegistry indicates an expected call of FetchRegistry.
-func (mr *MockSourceHandlerMockRecorder) FetchRegistry(ctx, mcpRegistry any) *gomock.Call {
+func (mr *MockSourceHandlerMockRecorder) FetchRegistry(ctx, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchRegistry", reflect.TypeOf((*MockSourceHandler)(nil).FetchRegistry), ctx, mcpRegistry)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchRegistry", reflect.TypeOf((*MockSourceHandler)(nil).FetchRegistry), ctx, arg1)
 }
 
 // Validate mocks base method.
-func (m *MockSourceHandler) Validate(source *v1alpha1.MCPRegistrySource) error {
+func (m *MockSourceHandler) Validate(source *config.SourceConfig) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Validate", source)
 	ret0, _ := ret[0].(error)

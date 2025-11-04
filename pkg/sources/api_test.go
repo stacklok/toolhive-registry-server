@@ -9,8 +9,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/sources"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 )
 
 const (
@@ -45,8 +45,8 @@ var _ = Describe("APISourceHandler", func() {
 
 	Describe("Validate", func() {
 		It("should reject non-API source types", func() {
-			source := &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeGit,
+			source := &config.SourceConfig{
+				Type: config.SourceTypeGit,
 			}
 
 			err := handler.Validate(source)
@@ -55,8 +55,8 @@ var _ = Describe("APISourceHandler", func() {
 		})
 
 		It("should reject missing API configuration", func() {
-			source := &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeAPI,
+			source := &config.SourceConfig{
+				Type: config.SourceTypeAPI,
 				API:  nil,
 			}
 
@@ -66,9 +66,9 @@ var _ = Describe("APISourceHandler", func() {
 		})
 
 		It("should reject empty endpoint", func() {
-			source := &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeAPI,
-				API: &mcpv1alpha1.APISource{
+			source := &config.SourceConfig{
+				Type: config.SourceTypeAPI,
+				API: &config.APIConfig{
 					Endpoint: "",
 				},
 			}
@@ -79,9 +79,9 @@ var _ = Describe("APISourceHandler", func() {
 		})
 
 		It("should accept valid API configuration", func() {
-			source := &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeAPI,
-				API: &mcpv1alpha1.APISource{
+			source := &config.SourceConfig{
+				Type: config.SourceTypeAPI,
+				API: &config.APIConfig{
 					Endpoint: "http://example.com",
 				},
 			}
@@ -111,21 +111,18 @@ var _ = Describe("APISourceHandler", func() {
 			})
 
 			It("should detect and validate ToolHive format", func() {
-				mcpRegistry := &mcpv1alpha1.MCPRegistry{
-					Spec: mcpv1alpha1.MCPRegistrySpec{
-						Source: mcpv1alpha1.MCPRegistrySource{
-							Type: mcpv1alpha1.RegistrySourceTypeAPI,
-							API: &mcpv1alpha1.APISource{
-								Endpoint: mockServer.URL,
-							},
+				registryConfig := &config.Config{
+					Source: config.SourceConfig{
+						Type: config.SourceTypeAPI,
+						API: &config.APIConfig{
+							Endpoint: mockServer.URL,
 						},
 					},
 				}
-
-				result, err := handler.FetchRegistry(ctx, mcpRegistry)
+				result, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result).NotTo(BeNil())
-				Expect(result.Format).To(Equal(mcpv1alpha1.RegistryFormatToolHive))
+				Expect(result.Format).To(Equal(config.SourceFormatToolHive))
 			})
 		})
 
@@ -157,19 +154,16 @@ openapi: 3.1.0
 			})
 
 			It("should detect upstream format", func() {
-				mcpRegistry := &mcpv1alpha1.MCPRegistry{
-					Spec: mcpv1alpha1.MCPRegistrySpec{
-						Source: mcpv1alpha1.MCPRegistrySource{
-							Type: mcpv1alpha1.RegistrySourceTypeAPI,
-							API: &mcpv1alpha1.APISource{
-								Endpoint: mockServer.URL,
-							},
+				registryConfig := &config.Config{
+					Source: config.SourceConfig{
+						Type: config.SourceTypeAPI,
+						API: &config.APIConfig{
+							Endpoint: mockServer.URL,
 						},
 					},
 				}
-
 				// Should detect as upstream but fail fetch (Phase 2 not implemented)
-				_, err := handler.FetchRegistry(ctx, mcpRegistry)
+				_, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("upstream MCP Registry API support not yet implemented"))
 			})
@@ -184,18 +178,16 @@ openapi: 3.1.0
 			})
 
 			It("should fail when neither format validates", func() {
-				mcpRegistry := &mcpv1alpha1.MCPRegistry{
-					Spec: mcpv1alpha1.MCPRegistrySpec{
-						Source: mcpv1alpha1.MCPRegistrySource{
-							Type: mcpv1alpha1.RegistrySourceTypeAPI,
-							API: &mcpv1alpha1.APISource{
-								Endpoint: mockServer.URL,
-							},
+				registryConfig := &config.Config{
+					Source: config.SourceConfig{
+						Type: config.SourceTypeAPI,
+						API: &config.APIConfig{
+							Endpoint: mockServer.URL,
 						},
 					},
 				}
 
-				_, err := handler.FetchRegistry(ctx, mcpRegistry)
+				_, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("format detection failed"))
 			})

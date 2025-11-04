@@ -7,8 +7,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/httpclient"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 )
 
 // UpstreamAPIHandler handles registry data from upstream MCP Registry API endpoints
@@ -74,13 +74,13 @@ func (h *UpstreamAPIHandler) Validate(ctx context.Context, endpoint string) erro
 
 // FetchRegistry retrieves registry data from the upstream MCP Registry API endpoint
 // Phase 2: Not yet implemented - will support pagination and format conversion
-func (*UpstreamAPIHandler) FetchRegistry(_ context.Context, _ *mcpv1alpha1.MCPRegistry) (*FetchResult, error) {
+func (*UpstreamAPIHandler) FetchRegistry(_ context.Context, _ *config.Config) (*FetchResult, error) {
 	return nil, fmt.Errorf("upstream MCP Registry API support not yet implemented (Phase 2)")
 }
 
 // CurrentHash returns the current hash of the API response
 // Phase 2: Not yet implemented
-func (*UpstreamAPIHandler) CurrentHash(_ context.Context, _ *mcpv1alpha1.MCPRegistry) (string, error) {
+func (*UpstreamAPIHandler) CurrentHash(_ context.Context, _ *config.Config) (string, error) {
 	return "", fmt.Errorf("upstream MCP Registry API support not yet implemented (Phase 2)")
 }
 

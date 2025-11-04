@@ -10,10 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/git"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
 
@@ -91,15 +90,15 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		source      *mcpv1alpha1.MCPRegistrySource
+		source      *config.SourceConfig
 		expectError bool
 		errorMsg    string
 	}{
 		{
 			name: "valid git source with repository only",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeGit,
-				Git: &mcpv1alpha1.GitSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeGit,
+				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 				},
 			},
@@ -107,9 +106,9 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "valid git source with branch",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeGit,
-				Git: &mcpv1alpha1.GitSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeGit,
+				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 					Branch:     testBranch,
 				},
@@ -118,9 +117,9 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "valid git source with tag",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeGit,
-				Git: &mcpv1alpha1.GitSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeGit,
+				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 					Tag:        testTag,
 				},
@@ -129,9 +128,9 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "valid git source with commit",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeGit,
-				Git: &mcpv1alpha1.GitSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeGit,
+				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 					Commit:     testCommit,
 				},
@@ -140,9 +139,9 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "valid git source with custom path",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeGit,
-				Git: &mcpv1alpha1.GitSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeGit,
+				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 					Path:       testFilePath,
 				},
@@ -151,9 +150,9 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "invalid source type",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeConfigMap,
-				Git: &mcpv1alpha1.GitSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeConfigMap,
+				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 				},
 			},
@@ -162,8 +161,8 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "missing git configuration",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeGit,
+			source: &config.SourceConfig{
+				Type: config.SourceTypeGit,
 				Git:  nil,
 			},
 			expectError: true,
@@ -171,9 +170,9 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "empty repository URL",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeGit,
-				Git: &mcpv1alpha1.GitSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeGit,
+				Git: &config.GitConfig{
 					Repository: "",
 				},
 			},
@@ -182,9 +181,9 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "multiple reference types - branch and tag",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeGit,
-				Git: &mcpv1alpha1.GitSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeGit,
+				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 					Branch:     testBranch,
 					Tag:        testTag,
@@ -195,9 +194,9 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "multiple reference types - branch and commit",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeGit,
-				Git: &mcpv1alpha1.GitSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeGit,
+				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 					Branch:     testBranch,
 					Commit:     testCommit,
@@ -208,9 +207,9 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "multiple reference types - tag and commit",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeGit,
-				Git: &mcpv1alpha1.GitSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeGit,
+				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 					Tag:        testTag,
 					Commit:     testCommit,
@@ -221,9 +220,9 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "all reference types specified",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeGit,
-				Git: &mcpv1alpha1.GitSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeGit,
+				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 					Branch:     testBranch,
 					Tag:        testTag,
@@ -260,26 +259,20 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		registry      *mcpv1alpha1.MCPRegistry
+		config        *config.Config
 		setupMocks    func(*MockGitClient, *MockSourceDataValidator)
 		expectError   bool
 		errorContains string
 	}{
 		{
 			name: "successful fetch with default path",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type:   mcpv1alpha1.RegistrySourceTypeGit,
-						Format: mcpv1alpha1.RegistryFormatToolHive,
-						Git: &mcpv1alpha1.GitSource{
-							Repository: testGitRepoURL,
-							Branch:     testBranch,
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeGit,
+					Format: config.SourceFormatToolHive,
+					Git: &config.GitConfig{
+						Repository: testGitRepoURL,
+						Branch:     testBranch,
 					},
 				},
 			},
@@ -301,26 +294,20 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 				gitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
 				gitClient.On("Cleanup", repoInfo).Return(nil)
 
-				validator.On("ValidateData", testData, mcpv1alpha1.RegistryFormatToolHive).Return(testRegistry, nil)
+				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return(testRegistry, nil)
 			},
 			expectError: false,
 		},
 		{
 			name: "successful fetch with custom path",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type:   mcpv1alpha1.RegistrySourceTypeGit,
-						Format: mcpv1alpha1.RegistryFormatToolHive,
-						Git: &mcpv1alpha1.GitSource{
-							Repository: testGitRepoURL,
-							Tag:        testTag,
-							Path:       testFilePath,
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeGit,
+					Format: config.SourceFormatToolHive,
+					Git: &config.GitConfig{
+						Repository: testGitRepoURL,
+						Tag:        testTag,
+						Path:       testFilePath,
 					},
 				},
 			},
@@ -342,23 +329,18 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 				gitClient.On("GetFileContent", repoInfo, testFilePath).Return(testData, nil)
 				gitClient.On("Cleanup", repoInfo).Return(nil)
 
-				validator.On("ValidateData", testData, mcpv1alpha1.RegistryFormatToolHive).Return(testRegistry, nil)
+				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return(testRegistry, nil)
 			},
 			expectError: false,
 		},
 		{
 			name: "validation failure",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type: mcpv1alpha1.RegistrySourceTypeGit,
-						Git: &mcpv1alpha1.GitSource{
-							Repository: "", // Invalid
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Format: config.SourceFormatToolHive,
+					Type:   config.SourceTypeGit,
+					Git: &config.GitConfig{
+						Repository: "", // Invalid
 					},
 				},
 			},
@@ -370,19 +352,13 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "clone failure",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type:   mcpv1alpha1.RegistrySourceTypeGit,
-						Format: mcpv1alpha1.RegistryFormatToolHive,
-						Git: &mcpv1alpha1.GitSource{
-							Repository: testGitRepoURL,
-							Commit:     testCommit,
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Format: config.SourceFormatToolHive,
+					Type:   config.SourceTypeGit,
+					Git: &config.GitConfig{
+						Repository: testGitRepoURL,
+						Commit:     testCommit,
 					},
 				},
 			},
@@ -396,18 +372,12 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "file not found",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type:   mcpv1alpha1.RegistrySourceTypeGit,
-						Format: mcpv1alpha1.RegistryFormatToolHive,
-						Git: &mcpv1alpha1.GitSource{
-							Repository: testGitRepoURL,
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Format: config.SourceFormatToolHive,
+					Type:   config.SourceTypeGit,
+					Git: &config.GitConfig{
+						Repository: testGitRepoURL,
 					},
 				},
 			},
@@ -425,18 +395,12 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "validation data failure",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type:   mcpv1alpha1.RegistrySourceTypeGit,
-						Format: mcpv1alpha1.RegistryFormatToolHive,
-						Git: &mcpv1alpha1.GitSource{
-							Repository: testGitRepoURL,
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Format: config.SourceFormatToolHive,
+					Type:   config.SourceTypeGit,
+					Git: &config.GitConfig{
+						Repository: testGitRepoURL,
 					},
 				},
 			},
@@ -450,7 +414,7 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 				gitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
 				gitClient.On("Cleanup", repoInfo).Return(nil)
 
-				validator.On("ValidateData", testData, mcpv1alpha1.RegistryFormatToolHive).Return(nil, errors.New("invalid data"))
+				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return(nil, errors.New("invalid data"))
 			},
 			expectError:   true,
 			errorContains: "registry data validation failed",
@@ -475,7 +439,7 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 			}
 
 			// Execute test
-			result, err := handler.FetchRegistry(context.Background(), tt.registry)
+			result, err := handler.FetchRegistry(context.Background(), tt.config)
 
 			// Verify results
 			if tt.expectError {
@@ -486,7 +450,7 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotNil(t, result)
 				assert.NotEmpty(t, result.Hash)
-				assert.Equal(t, tt.registry.Spec.Source.Format, result.Format)
+				assert.Equal(t, tt.config.Source.Format, result.Format)
 			}
 
 			// Verify all mock expectations
@@ -501,7 +465,7 @@ func TestGitSourceHandler_CurrentHash(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		registry      *mcpv1alpha1.MCPRegistry
+		config        *config.Config
 		setupMocks    func(*MockGitClient)
 		expectError   bool
 		errorContains string
@@ -509,18 +473,13 @@ func TestGitSourceHandler_CurrentHash(t *testing.T) {
 	}{
 		{
 			name: "successful hash calculation",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type: mcpv1alpha1.RegistrySourceTypeGit,
-						Git: &mcpv1alpha1.GitSource{
-							Repository: testGitRepoURL,
-							Branch:     testBranch,
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Format: config.SourceFormatToolHive,
+					Type:   config.SourceTypeGit,
+					Git: &config.GitConfig{
+						Repository: testGitRepoURL,
+						Branch:     testBranch,
 					},
 				},
 			},
@@ -542,17 +501,12 @@ func TestGitSourceHandler_CurrentHash(t *testing.T) {
 		},
 		{
 			name: "validation failure",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type: mcpv1alpha1.RegistrySourceTypeGit,
-						Git: &mcpv1alpha1.GitSource{
-							Repository: "", // Invalid
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Format: config.SourceFormatToolHive,
+					Type:   config.SourceTypeGit,
+					Git: &config.GitConfig{
+						Repository: "",
 					},
 				},
 			},
@@ -564,17 +518,12 @@ func TestGitSourceHandler_CurrentHash(t *testing.T) {
 		},
 		{
 			name: "clone failure",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type: mcpv1alpha1.RegistrySourceTypeGit,
-						Git: &mcpv1alpha1.GitSource{
-							Repository: testGitRepoURL,
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Format: config.SourceFormatToolHive,
+					Type:   config.SourceTypeGit,
+					Git: &config.GitConfig{
+						Repository: testGitRepoURL,
 					},
 				},
 			},
@@ -586,18 +535,13 @@ func TestGitSourceHandler_CurrentHash(t *testing.T) {
 		},
 		{
 			name: "file not found",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type: mcpv1alpha1.RegistrySourceTypeGit,
-						Git: &mcpv1alpha1.GitSource{
-							Repository: testGitRepoURL,
-							Path:       testFilePath,
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Format: config.SourceFormatToolHive,
+					Type:   config.SourceTypeGit,
+					Git: &config.GitConfig{
+						Repository: testGitRepoURL,
+						Path:       testFilePath,
 					},
 				},
 			},
@@ -632,7 +576,7 @@ func TestGitSourceHandler_CurrentHash(t *testing.T) {
 			}
 
 			// Execute test
-			hash, err := handler.CurrentHash(context.Background(), tt.registry)
+			hash, err := handler.CurrentHash(context.Background(), tt.config)
 
 			// Verify results
 			if tt.expectError {
@@ -659,11 +603,10 @@ func TestGitSourceHandler_DefaultPath(t *testing.T) {
 	handler := NewGitSourceHandler()
 
 	// Test that default path is set when Path is empty
-	source := &mcpv1alpha1.MCPRegistrySource{
-		Type: mcpv1alpha1.RegistrySourceTypeGit,
-		Git: &mcpv1alpha1.GitSource{
+	source := &config.SourceConfig{
+		Type: config.SourceTypeGit,
+		Git: &config.GitConfig{
 			Repository: testGitRepoURL,
-			// Path is intentionally empty
 		},
 	}
 
@@ -679,18 +622,12 @@ func TestGitSourceHandler_CleanupFailure(t *testing.T) {
 	mockGitClient := new(MockGitClient)
 	mockValidator := new(MockSourceDataValidator)
 
-	mcpRegistry := &mcpv1alpha1.MCPRegistry{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-registry",
-			Namespace: "test",
-		},
-		Spec: mcpv1alpha1.MCPRegistrySpec{
-			Source: mcpv1alpha1.MCPRegistrySource{
-				Type:   mcpv1alpha1.RegistrySourceTypeGit,
-				Format: mcpv1alpha1.RegistryFormatToolHive,
-				Git: &mcpv1alpha1.GitSource{
-					Repository: testGitRepoURL,
-				},
+	registryConfig := &config.Config{
+		Source: config.SourceConfig{
+			Format: config.SourceFormatToolHive,
+			Type:   config.SourceTypeGit,
+			Git: &config.GitConfig{
+				Repository: testGitRepoURL,
 			},
 		},
 	}
@@ -709,7 +646,7 @@ func TestGitSourceHandler_CleanupFailure(t *testing.T) {
 	mockGitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
 	mockGitClient.On("Cleanup", repoInfo).Return(errors.New("cleanup failed")) // Cleanup fails
 
-	mockValidator.On("ValidateData", testData, mcpv1alpha1.RegistryFormatToolHive).Return(testRegistry, nil)
+	mockValidator.On("ValidateData", testData, config.SourceFormatToolHive).Return(testRegistry, nil)
 
 	handler := &GitSourceHandler{
 		gitClient: mockGitClient,
@@ -717,7 +654,7 @@ func TestGitSourceHandler_CleanupFailure(t *testing.T) {
 	}
 
 	// Despite cleanup failure, the operation should succeed
-	result, err := handler.FetchRegistry(context.Background(), mcpRegistry)
+	result, err := handler.FetchRegistry(context.Background(), registryConfig)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 

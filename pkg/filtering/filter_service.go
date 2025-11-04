@@ -7,7 +7,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/pkg/config"
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
 

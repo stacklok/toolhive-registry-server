@@ -3,9 +3,8 @@ package sources
 import (
 	"fmt"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 )
 
 // DefaultSourceHandlerFactory is the default implementation of SourceHandlerFactory
@@ -23,11 +22,11 @@ func NewSourceHandlerFactory(k8sClient client.Client) SourceHandlerFactory {
 // CreateHandler creates a source handler for the given source type
 func (f *DefaultSourceHandlerFactory) CreateHandler(sourceType string) (SourceHandler, error) {
 	switch sourceType {
-	case mcpv1alpha1.RegistrySourceTypeConfigMap:
+	case config.SourceTypeConfigMap:
 		return NewConfigMapSourceHandler(f.client), nil
-	case mcpv1alpha1.RegistrySourceTypeGit:
+	case config.SourceTypeGit:
 		return NewGitSourceHandler(), nil
-	case mcpv1alpha1.RegistrySourceTypeAPI:
+	case config.SourceTypeAPI:
 		return NewAPISourceHandler(), nil
 	default:
 		return nil, fmt.Errorf("unsupported source type: %s", sourceType)

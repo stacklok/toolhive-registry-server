@@ -2,12 +2,12 @@ package sources
 
 // ToolHive Registry API response types
 //
-// NOTE: These types are duplicated from github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/api/v1
+// NOTE: These types are duplicated from github.com/stacklok/toolhive-registry-server/internal/api/v1
 // to avoid circular dependency issues. Once thv-operator is moved to a separate repository,
 // we can import these types directly from toolhive-registry-server.
 //
 // TODO: When thv-operator is extracted to its own repo, remove these duplicates and import from:
-//       github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/api/v1
+//       github.com/stacklok/toolhive-registry-server/internal/api/v1
 
 // RegistryInfoResponse represents the registry information response from /v0/info
 type RegistryInfoResponse struct {
