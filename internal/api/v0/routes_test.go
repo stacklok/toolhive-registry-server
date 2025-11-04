@@ -1,4 +1,4 @@
-package v1_test
+package v0_test
 
 import (
 	"context"
@@ -12,7 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	v1 "github.com/stacklok/toolhive-registry-server/internal/api/v1"
+	"github.com/stacklok/toolhive-registry-server/internal/api"
+	v0 "github.com/stacklok/toolhive-registry-server/internal/api/v0"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 	"github.com/stacklok/toolhive/pkg/registry"
@@ -271,7 +272,7 @@ func TestHealthRouter(t *testing.T) {
 	// Set up expectations for readiness check
 	mockSvc.EXPECT().CheckReadiness(gomock.Any()).Return(nil).AnyTimes()
 
-	router := v1.HealthRouter(mockSvc)
+	router := v0.HealthRouter(mockSvc)
 
 	tests := []struct {
 		name       string
@@ -340,7 +341,7 @@ func TestRegistryRouter(t *testing.T) {
 		},
 	}, nil).AnyTimes()
 
-	router := v1.Router(mockSvc)
+	router := v0.Router(mockSvc)
 
 	tests := []struct {
 		name       string
@@ -403,7 +404,7 @@ func TestListServers_FormatParameter(t *testing.T) {
 	// Expect successful calls for toolhive format only
 	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]registry.ServerMetadata{}, nil).Times(2) // default and explicit toolhive
 
-	router := v1.Router(mockSvc)
+	router := v0.Router(mockSvc)
 
 	tests := []struct {
 		name       string
@@ -460,7 +461,7 @@ func TestGetServer_NotFound(t *testing.T) {
 	// Expect server not found error
 	mockSvc.EXPECT().GetServer(gomock.Any(), "nonexistent").Return(nil, service.ErrServerNotFound)
 
-	router := v1.Router(mockSvc)
+	router := v0.Router(mockSvc)
 
 	req, err := http.NewRequest("GET", "/servers/nonexistent", nil)
 	require.NoError(t, err)
@@ -494,7 +495,7 @@ func TestNewServer(t *testing.T) {
 	mockSvc.EXPECT().ListDeployedServers(gomock.Any()).Return([]*service.DeployedServer{}, nil).AnyTimes()
 
 	// Create server with mock service (no options needed for basic testing)
-	router := v1.NewServer(mockSvc)
+	router := api.NewServer(mockSvc)
 	require.NotNil(t, router)
 
 	// Test that routes are registered
@@ -539,7 +540,7 @@ func TestNewServer_WithMockService(t *testing.T) {
 	mockSvc.EXPECT().CheckReadiness(gomock.Any()).Return(nil)
 
 	// Create server with mock service (no options needed)
-	router := v1.NewServer(mockSvc)
+	router := api.NewServer(mockSvc)
 	require.NotNil(t, router)
 
 	// Test readiness with custom service
@@ -571,7 +572,7 @@ func TestNewServer_WithMiddleware(t *testing.T) {
 	}
 
 	// Create server with middleware
-	router := v1.NewServer(mockSvc, v1.WithMiddlewares(testMiddleware))
+	router := api.NewServer(mockSvc, api.WithMiddlewares(testMiddleware))
 	require.NotNil(t, router)
 
 	// Test that middleware is applied
@@ -618,12 +619,12 @@ func (*fileBasedRegistryProvider) GetRegistryName() string {
 }
 
 // Helper functions for testing the response conversion functions
-func newServerSummaryResponseForTesting(server registry.ServerMetadata) v1.ServerSummaryResponse {
-	return v1.NewServerSummaryResponseForTesting(server)
+func newServerSummaryResponseForTesting(server registry.ServerMetadata) v0.ServerSummaryResponse {
+	return v0.NewServerSummaryResponseForTesting(server)
 }
 
-func newServerDetailResponseForTesting(server registry.ServerMetadata) v1.ServerDetailResponse {
-	return v1.NewServerDetailResponseForTesting(server)
+func newServerDetailResponseForTesting(server registry.ServerMetadata) v0.ServerDetailResponse {
+	return v0.NewServerDetailResponseForTesting(server)
 }
 
 // TestRoutesWithRealData tests all routes using the embedded registry.json data
@@ -642,7 +643,7 @@ func TestRoutesWithRealData(t *testing.T) {
 	require.NotNil(t, svc)
 
 	// Create router with the real service
-	router := v1.Router(svc)
+	router := v0.Router(svc)
 	require.NotNil(t, router)
 
 	// Test registry info endpoint
@@ -795,7 +796,7 @@ func TestFormatConversion(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create router
-	router := v1.Router(svc)
+	router := v0.Router(svc)
 
 	// Get servers in ToolHive format
 	req, err := http.NewRequest("GET", "/servers?format=toolhive", nil)
@@ -839,7 +840,7 @@ func TestComplexServerConfiguration(t *testing.T) {
 	svc, err := service.NewService(ctx, provider, nil)
 	require.NoError(t, err)
 
-	router := v1.Router(svc)
+	router := v0.Router(svc)
 
 	// Get registry data to find servers with complex configurations
 	regData, err := provider.GetRegistryData(ctx)
@@ -891,7 +892,7 @@ func TestRoutesWithRealisticData(t *testing.T) {
 	require.NotNil(t, svc)
 
 	// Create router with the real service
-	router := v1.Router(svc)
+	router := v0.Router(svc)
 	require.NotNil(t, router)
 
 	// Test registry info endpoint with realistic data
@@ -1006,7 +1007,7 @@ func TestSpecificServersWithRealisticData(t *testing.T) {
 	svc, err := service.NewService(ctx, provider, nil)
 	require.NoError(t, err)
 
-	router := v1.Router(svc)
+	router := v0.Router(svc)
 
 	testCases := []struct {
 		name         string
@@ -1091,7 +1092,7 @@ func TestFormatConversionWithRealisticData(t *testing.T) {
 	svc, err := service.NewService(ctx, provider, nil)
 	require.NoError(t, err)
 
-	router := v1.Router(svc)
+	router := v0.Router(svc)
 
 	// Get servers in ToolHive format
 	req, err := http.NewRequest("GET", "/servers?format=toolhive", nil)
@@ -1139,7 +1140,7 @@ func BenchmarkRoutesWithRealisticData(b *testing.B) {
 		b.Fatalf("Failed to create service: %v", err)
 	}
 
-	router := v1.Router(svc)
+	router := v0.Router(svc)
 
 	b.Run("registry info", func(b *testing.B) {
 		req, _ := http.NewRequest("GET", "/info", nil)
@@ -1192,7 +1193,7 @@ func BenchmarkRoutesWithRealData(b *testing.B) {
 		b.Fatalf("Failed to create service: %v", err)
 	}
 
-	router := v1.Router(svc)
+	router := v0.Router(svc)
 
 	b.Run("registry info", func(b *testing.B) {
 		req, _ := http.NewRequest("GET", "/info", nil)
@@ -1233,7 +1234,7 @@ func TestServerResponseStructures(t *testing.T) {
 	svc, err := service.NewService(ctx, provider, nil)
 	require.NoError(t, err)
 
-	router := v1.Router(svc)
+	router := v0.Router(svc)
 
 	t.Run("list servers returns tools_count instead of tools array", func(t *testing.T) {
 		t.Parallel()
@@ -1315,7 +1316,7 @@ func TestResponseFieldMapping(t *testing.T) {
 	svc, err := service.NewService(ctx, provider, nil)
 	require.NoError(t, err)
 
-	router := v1.Router(svc)
+	router := v0.Router(svc)
 
 	t.Run("container server with env vars and permissions", func(t *testing.T) {
 		t.Parallel()
@@ -1474,7 +1475,7 @@ func TestErrorScenarios(t *testing.T) {
 		t.Parallel()
 		mockSvc.EXPECT().GetRegistry(gomock.Any()).Return(nil, "", assert.AnError)
 
-		router := v1.Router(mockSvc)
+		router := v0.Router(mockSvc)
 		req, err := http.NewRequest("GET", "/info", nil)
 		require.NoError(t, err)
 
@@ -1493,7 +1494,7 @@ func TestErrorScenarios(t *testing.T) {
 		t.Parallel()
 		mockSvc.EXPECT().ListServers(gomock.Any()).Return(nil, assert.AnError)
 
-		router := v1.Router(mockSvc)
+		router := v0.Router(mockSvc)
 		req, err := http.NewRequest("GET", "/servers", nil)
 		require.NoError(t, err)
 
@@ -1507,7 +1508,7 @@ func TestErrorScenarios(t *testing.T) {
 		t.Parallel()
 		mockSvc.EXPECT().GetServer(gomock.Any(), "error-server").Return(nil, assert.AnError)
 
-		router := v1.Router(mockSvc)
+		router := v0.Router(mockSvc)
 		req, err := http.NewRequest("GET", "/servers/error-server", nil)
 		require.NoError(t, err)
 
@@ -1523,7 +1524,7 @@ func TestErrorScenarios(t *testing.T) {
 		emptyNameMockSvc := mocks.NewMockRegistryService(ctrl)
 		emptyNameMockSvc.EXPECT().ListServers(gomock.Any()).Return([]registry.ServerMetadata{}, nil)
 
-		router := v1.Router(emptyNameMockSvc)
+		router := v0.Router(emptyNameMockSvc)
 
 		// Test with empty path parameter (though chi wouldn't normally route this)
 		req, err := http.NewRequest("GET", "/servers/", nil)
@@ -1545,7 +1546,7 @@ func TestOpenAPIEndpoint(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
-	router := v1.Router(mockSvc)
+	router := v0.Router(mockSvc)
 
 	req, err := http.NewRequest("GET", "/openapi.yaml", nil)
 	require.NoError(t, err)
@@ -1565,7 +1566,7 @@ func TestPublishServerEndpoint(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
-	router := v1.Router(mockSvc)
+	router := v0.Router(mockSvc)
 
 	req, err := http.NewRequest("POST", "/publish", nil)
 	require.NoError(t, err)
@@ -1591,7 +1592,7 @@ func TestReadinessWithServiceError(t *testing.T) {
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	mockSvc.EXPECT().CheckReadiness(gomock.Any()).Return(assert.AnError)
 
-	router := v1.HealthRouter(mockSvc)
+	router := v0.HealthRouter(mockSvc)
 	req, err := http.NewRequest("GET", "/readiness", nil)
 	require.NoError(t, err)
 

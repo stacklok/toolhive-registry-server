@@ -1,5 +1,5 @@
 // Package v1 provides the REST API server for MCP Registry access.
-package v1
+package api
 
 import (
 	"net/http"
@@ -8,6 +8,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	v01 "github.com/stacklok/toolhive-registry-server/internal/api/registry/v01"
+	v0 "github.com/stacklok/toolhive-registry-server/internal/api/v0"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive/pkg/logger"
 )
@@ -47,13 +49,14 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 	}
 
 	// Mount health check routes directly at root
-	r.Mount("/", HealthRouter(svc))
+	r.Mount("/", v0.HealthRouter(svc))
 
 	// Mount OpenAPI endpoint
 	r.Get("/openapi.json", openAPIHandler)
 
 	// Mount MCP Registry API v0 compatible routes
-	r.Mount("/v0", Router(svc))
+	r.Mount("/registry/v0.1", v01.Router(svc))
+	r.Mount("/v0", v0.Router(svc))
 
 	return r
 }

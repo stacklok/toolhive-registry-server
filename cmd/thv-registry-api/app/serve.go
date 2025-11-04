@@ -19,7 +19,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 
-	v1 "github.com/stacklok/toolhive-registry-server/internal/api/v1"
+	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	thvk8scli "github.com/stacklok/toolhive/pkg/container/kubernetes"
 	"github.com/stacklok/toolhive/pkg/logger"
@@ -201,13 +201,13 @@ func runServe(_ *cobra.Command, _ []string) error {
 	}
 
 	// Create the registry server with middleware
-	router := v1.NewServer(svc,
-		v1.WithMiddlewares(
+	router := api.NewServer(svc,
+		api.WithMiddlewares(
 			middleware.RequestID,
 			middleware.RealIP,
 			middleware.Recoverer,
 			middleware.Timeout(serverRequestTimeout),
-			v1.LoggingMiddleware,
+			api.LoggingMiddleware,
 		),
 	)
 
