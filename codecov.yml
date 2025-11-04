@@ -3,3 +3,9 @@ coverage:
     - "**/mocks/"
     - "cmd/"
     - "docs/"
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 2%
+    patch: false
