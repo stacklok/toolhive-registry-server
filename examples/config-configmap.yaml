@@ -1,0 +1,65 @@
+# Example configuration for syncing from a Kubernetes ConfigMap
+#
+# This configuration pulls registry data from a ConfigMap in the Kubernetes cluster
+# and syncs it to the local storage every 15 minutes.
+#
+# Prerequisites:
+#   - Running in a Kubernetes cluster or have kubeconfig configured
+#   - ConfigMap 'rh-partners-mcp' exists in 'toolhive-system' namespace
+#   - ConfigMap has a 'registry.json' key with MCP registry data
+#   - Appropriate RBAC permissions to read ConfigMaps
+#
+# Usage:
+#   thv-registry-api serve \
+#     --config examples/config-configmap.yaml \
+#     --from-file ./data/registry.json \
+#     --registry-name rh-partners
+
+# Data source configuration
+source:
+  # Source type: git, configmap, or api
+  type: configmap
+
+  # Data format: toolhive (native) or upstream (MCP registry format)
+  format: toolhive
+
+  # Kubernetes ConfigMap configuration
+  configmap:
+    # Namespace where the ConfigMap is located
+    namespace: toolhive-system
+
+    # ConfigMap name
+    name: rh-partners-mcp
+
+    # Key within the ConfigMap containing the registry data
+    # Defaults to 'registry.json' if not specified
+    key: registry.json
+
+# Automatic synchronization policy
+syncPolicy:
+  # Sync interval (valid duration: 1m, 5m, 30m, 1h, 24h, etc.)
+  # More frequent checks for ConfigMap sources since they're local
+  interval: "15m"
+
+# Optional: Filter configuration to include/exclude specific servers
+# filter:
+#   # Name-based filtering
+#   names:
+#     # Only include servers matching these patterns (glob syntax)
+#     include:
+#       - "redhat/*"
+#       - "partners/*"
+#     # Exclude servers matching these patterns
+#     exclude:
+#       - "*/internal"
+#       - "*/test"
+#
+#   # Tag-based filtering
+#   tags:
+#     # Only include servers with these tags
+#     include:
+#       - "partner"
+#       - "certified"
+#     # Exclude servers with these tags
+#     exclude:
+#       - "deprecated"

@@ -1,0 +1,64 @@
+# Example configuration for syncing from an API endpoint
+#
+# This configuration pulls registry data from the official MCP Registry API
+# and syncs it to the local storage every hour.
+#
+# The API source type is useful for:
+#   - Aggregating data from multiple upstream registries
+#   - Consuming data from other ToolHive Registry API instances
+#   - Integrating with third-party MCP registry services
+#
+# Usage:
+#   thv-registry-api serve \
+#     --config examples/config-api.yaml \
+#     --from-file ./data/registry.json \
+#     --registry-name mcp-registry
+
+# Data source configuration
+source:
+  # Source type: git, configmap, or api
+  type: api
+
+  # Data format: toolhive (native) or upstream (MCP registry format)
+  # Use 'upstream' for the official MCP registry format
+  format: upstream
+
+  # API endpoint configuration
+  api:
+    # Base API URL (without path)
+    # The sync manager will append the appropriate API paths:
+    #   - /v0/servers - List all servers (single response, no pagination)
+    #   - /v0/servers/{name} - Get specific server (future)
+    #   - /v0/info - Get registry metadata (future)
+    endpoint: https://registry.modelcontextprotocol.io/api
+
+# Automatic synchronization policy
+syncPolicy:
+  # Sync interval (valid duration: 1m, 5m, 30m, 1h, 24h, etc.)
+  # Less frequent for upstream API to be respectful of external services
+  interval: "1h"
+
+# Optional: Filter configuration to include/exclude specific servers
+# This is especially useful when syncing from upstream to curate
+# a subset of servers for your organization
+# filter:
+#   # Name-based filtering
+#   names:
+#     # Only include servers matching these patterns (glob syntax)
+#     include:
+#       - "@modelcontextprotocol/*"
+#       - "anthropic/*"
+#     # Exclude servers matching these patterns
+#     exclude:
+#       - "*/experimental"
+#
+#   # Tag-based filtering
+#   tags:
+#     # Only include servers with these tags
+#     include:
+#       - "official"
+#       - "verified"
+#     # Exclude servers with these tags
+#     exclude:
+#       - "alpha"
+#       - "unmaintained"

@@ -116,7 +116,7 @@ func (e *Error) Unwrap() error {
 // Manager manages synchronization operations for Registry resources
 type Manager interface {
 	// ShouldSync determines if a sync operation is needed
-	ShouldSync(ctx context.Context, config *config.Config, syncStatus *status.SyncStatus) (bool, string, *time.Time)
+	ShouldSync(ctx context.Context, config *config.Config, syncStatus *status.SyncStatus, manualSyncRequested bool) (bool, string, *time.Time)
 
 	// PerformSync executes the complete sync operation
 	PerformSync(ctx context.Context, config *config.Config) (ctrl.Result, *Result, *Error)

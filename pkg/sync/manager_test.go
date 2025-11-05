@@ -28,8 +28,7 @@ func TestNewDefaultSyncManager(t *testing.T) {
 		Build()
 
 	sourceHandlerFactory := sources.NewSourceHandlerFactory(fakeClient)
-	storageManager, err := sources.NewStorageManager()
-	require.Error(t, err)
+	storageManager := sources.NewFileStorageManager("/tmp/test-storage")
 
 	syncManager := NewDefaultSyncManager(fakeClient, scheme, sourceHandlerFactory, storageManager)
 
@@ -158,8 +157,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 				Build()
 
 			sourceHandlerFactory := sources.NewSourceHandlerFactory(fakeClient)
-			storageManager, err := sources.NewStorageManager()
-			require.Error(t, err)
+			storageManager := sources.NewFileStorageManager("/tmp/test-storage")
 			syncManager := NewDefaultSyncManager(fakeClient, scheme, sourceHandlerFactory, storageManager)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
