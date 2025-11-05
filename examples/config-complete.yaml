@@ -7,6 +7,19 @@
 #   - config-git.yaml: Git repository source
 #   - config-configmap.yaml: Kubernetes ConfigMap source
 #   - config-api.yaml: API endpoint source
+#   - config-file.yaml: Local file source
+
+# ==============================================================================
+# REGISTRY IDENTIFICATION (Optional)
+# ==============================================================================
+
+# Registry name/identifier
+# This name is used for:
+#   - Identifying this registry instance in logs
+#   - Naming Kubernetes resources (if deployed)
+#   - API responses and metadata
+# Defaults to "default" if not specified
+registryName: my-registry
 
 # ==============================================================================
 # DATA SOURCE CONFIGURATION (Required)
@@ -14,7 +27,7 @@
 
 source:
   # Source type (Required)
-  # Options: git, configmap, api
+  # Options: git, configmap, api, file
   type: git
 
   # Data format (Required)
@@ -68,6 +81,18 @@ source:
   #   #   - /v0/servers/{name} (get specific server, future)
   #   #   - /v0/info (registry metadata, future)
   #   endpoint: https://registry.modelcontextprotocol.io/api
+
+  # ------------------------------------------------------------------------------
+  # LOCAL FILE SOURCE OPTIONS (used when type: file)
+  # ------------------------------------------------------------------------------
+  # file:
+  #   # Path to registry.json file (Required)
+  #   # Can be absolute or relative to the working directory
+  #   # Useful for:
+  #   #   - Reading from mounted volumes (e.g., ConfigMaps as files)
+  #   #   - Pre-downloaded or static registry data
+  #   #   - Development and testing
+  #   path: ./data/registry.json
 
 # ==============================================================================
 # SYNCHRONIZATION POLICY (Required)

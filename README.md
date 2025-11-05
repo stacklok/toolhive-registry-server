@@ -26,10 +26,11 @@ The ToolHive Registry API (`thv-registry-api`) implements the official [Model Co
 ## Features
 
 - **Standards-compliant**: Implements the official MCP Registry API specification
-- **Multiple backends**: Supports Kubernetes ConfigMaps and file-based registry data
+- **Multiple data sources**: Git repositories, Kubernetes ConfigMaps, API endpoints, and local files
+- **Automatic synchronization**: Background sync with configurable intervals and retry logic
 - **Container-ready**: Designed for deployment in Kubernetes clusters
 - **Flexible deployment**: Works standalone or as part of ToolHive infrastructure
-- **Production-ready**: Built-in health checks, graceful shutdown, and basic observability
+- **Production-ready**: Built-in health checks, graceful shutdown, and sync status persistence
 
 ## Quick Start
 
@@ -37,7 +38,7 @@ The ToolHive Registry API (`thv-registry-api`) implements the official [Model Co
 
 - Go 1.23 or later
 - [Task](https://taskfile.dev) for build automation
-- Access to a Kubernetes cluster (for ConfigMap backend)
+- Access to a Kubernetes cluster (for ConfigMap data source)
 
 ### Building the binary
 
@@ -48,21 +49,32 @@ task build
 
 ### Running the Server
 
-**From a Kubernetes ConfigMap:**
+All configuration is done via YAML configuration files. See the [examples/](examples/) directory for sample configurations.
+
+**Quick start with Git source:**
 ```bash
-thv-registry-api serve \
-  --from-configmap my-registry-cm \
-  --registry-name my-registry
+thv-registry-api serve --config examples/config-git.yaml
 ```
 
-**From a local file:**
+**With Kubernetes ConfigMap:**
 ```bash
-thv-registry-api serve \
-  --from-file /path/to/registry.json \
-  --registry-name my-registry
+thv-registry-api serve --config examples/config-configmap.yaml
+```
+
+**With local file:**
+```bash
+thv-registry-api serve --config examples/config-file.yaml
 ```
 
 The server starts on port 8080 by default. Use `--address :PORT` to customize.
+
+**What happens when the server starts:**
+1. Loads configuration from the specified YAML file
+2. Immediately fetches registry data from the configured source
+3. Starts background sync coordinator for automatic updates
+4. Serves MCP Registry API endpoints on the configured address
+
+For detailed configuration options and examples, see the [examples/README.md](examples/README.md).
 
 ## API Endpoints
 
@@ -78,32 +90,75 @@ See the [MCP Registry API specification](https://github.com/modelcontextprotocol
 
 ## Configuration
 
-### Command-line Flags
+All configuration is done via YAML files. The server requires a `--config` flag pointing to a YAML configuration file.
 
-The `thv-registry-api serve` command supports the following flags:
+### Configuration File Structure
+
+```yaml
+# Registry name/identifier (optional, defaults to "default")
+registryName: my-registry
+
+# Data source configuration (required)
+source:
+  # Source type: git, configmap, api, or file
+  type: git
+
+  # Data format: toolhive (native) or upstream (MCP registry format)
+  format: toolhive
+
+  # Source-specific configuration
+  git:
+    repository: https://github.com/stacklok/toolhive.git
+    branch: main
+    path: pkg/registry/data/registry.json
+
+# Automatic sync policy (required)
+syncPolicy:
+  # Sync interval (e.g., "30m", "1h", "24h")
+  interval: "30m"
+
+# Optional: Server filtering
+filter:
+  names:
+    include: ["official/*"]
+    exclude: ["*/deprecated"]
+  tags:
+    include: ["production"]
+    exclude: ["experimental"]
+```
+
+### Command-line Flags
 
 | Flag | Description | Required | Default |
 |------|-------------|----------|---------|
+| `--config` | Path to YAML configuration file | Yes | - |
 | `--address` | Server listen address | No | `:8080` |
-| `--from-configmap` | ConfigMap name containing registry data | Yes* | - |
-| `--from-file` | Path to registry.json file | Yes* | - |
-| `--registry-name` | Registry identifier | Yes | - |
 
-*One of `--from-configmap` or `--from-file` must be specified (mutually exclusive)
+### Data Sources
 
-### Backend Options
+The server supports four data source types:
 
-#### ConfigMap Backend
-Fetches registry data from a Kubernetes ConfigMap. Requires:
-- Kubernetes API access (in-cluster or via kubeconfig)
-- ConfigMap with a `registry.json` key containing MCP registry data
-- Appropriate RBAC permissions to read ConfigMaps
+1. **Git Repository** - Clone and sync from Git repositories
+   - Supports branch, tag, or commit pinning
+   - Ideal for version-controlled registries
+   - Example: [config-git.yaml](examples/config-git.yaml)
 
-#### File Backend
-Reads registry data from a local file. Useful for:
-- Mounting ConfigMaps as volumes in Kubernetes
-- Local development and testing
-- Static registry deployments
+2. **Kubernetes ConfigMap** - Read from ConfigMaps in the cluster
+   - Requires Kubernetes API access and RBAC permissions
+   - Ideal for Kubernetes-native deployments
+   - Example: [config-configmap.yaml](examples/config-configmap.yaml)
+
+3. **API Endpoint** - Sync from upstream MCP Registry APIs
+   - Supports federation and aggregation scenarios
+   - Format conversion from upstream to ToolHive format
+   - Example: [config-api.yaml](examples/config-api.yaml)
+
+4. **Local File** - Read from filesystem
+   - Ideal for local development and testing
+   - Supports mounted volumes in containers
+   - Example: [config-file.yaml](examples/config-file.yaml)
+
+For complete configuration examples and advanced options, see [examples/README.md](examples/README.md).
 
 ## Development
 
@@ -133,25 +188,47 @@ task build-image
 
 ```
 cmd/thv-registry-api/
-├── api/v1/              # REST API handlers and routes
+├── api/                 # REST API implementation
+│   └── v1/              # API v1 handlers and routes
 ├── app/                 # CLI commands and application setup
-├── internal/service/    # Business logic and data providers
-│   ├── file_provider.go     # File-based registry backend
-│   ├── k8s_provider.go      # Kubernetes ConfigMap backend
-│   ├── provider.go          # Provider interfaces
+├── internal/service/    # Legacy service layer (being refactored)
+│   ├── file_provider.go     # File-based registry provider
+│   ├── k8s_provider.go      # Kubernetes provider
 │   └── service.go           # Core service implementation
 └── main.go              # Application entry point
+
+pkg/
+├── config/              # Configuration loading and validation
+├── sources/             # Data source handlers
+│   ├── git.go               # Git repository source
+│   ├── configmap.go         # Kubernetes ConfigMap source
+│   ├── api.go               # API endpoint source
+│   ├── file.go              # File system source
+│   ├── factory.go           # Source handler factory
+│   └── storage_manager.go   # Storage abstraction
+├── sync/                # Sync manager and coordination
+│   └── manager.go           # Background sync logic
+└── status/              # Sync status tracking
+    └── persistence.go       # Status file persistence
+
+examples/                # Example configurations
 ```
 
 ### Architecture
 
-The server follows a clean architecture pattern:
+The server follows a clean architecture pattern with the following layers:
 
-1. **API Layer** (`api/v1`): HTTP handlers implementing the MCP Registry API
-2. **Service Layer** (`internal/service`): Business logic for registry operations
-3. **Provider Layer**: Pluggable backends for registry data sources
-   - `FileRegistryDataProvider`: Reads from local files
-   - `K8sRegistryDataProvider`: Fetches from Kubernetes ConfigMaps
+1. **API Layer** (`cmd/thv-registry-api/api`): HTTP handlers implementing the MCP Registry API
+2. **Service Layer** (`cmd/thv-registry-api/internal/service`): Legacy business logic (being refactored)
+3. **Configuration Layer** (`pkg/config`): YAML configuration loading and validation
+4. **Source Handler Layer** (`pkg/sources`): Pluggable data source implementations
+   - `GitSourceHandler`: Clones Git repositories and extracts registry files
+   - `ConfigMapSourceHandler`: Reads from Kubernetes ConfigMaps
+   - `APISourceHandler`: Fetches from upstream MCP Registry APIs
+   - `FileSourceHandler`: Reads from local filesystem
+5. **Sync Manager** (`pkg/sync`): Coordinates automatic registry synchronization
+6. **Storage Layer** (`pkg/sources`): Persists registry data to local storage
+7. **Status Tracking** (`pkg/status`): Tracks and persists sync status
 
 ### Testing
 
@@ -184,10 +261,33 @@ spec:
         image: ghcr.io/stacklok/toolhive/thv-registry-api:latest
         args:
         - serve
-        - --from-configmap=my-registry
-        - --registry-name=my-registry
+        - --config=/etc/registry/config.yaml
         ports:
         - containerPort: 8080
+        volumeMounts:
+        - name: config
+          mountPath: /etc/registry
+      volumes:
+      - name: config
+        configMap:
+          name: registry-api-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-api-config
+data:
+  config.yaml: |
+    registryName: my-registry
+    source:
+      type: configmap
+      format: toolhive
+      configmap:
+        namespace: toolhive-system
+        name: my-registry-data
+        key: registry.json
+    syncPolicy:
+      interval: "15m"
 ```
 
 ### Docker
@@ -196,10 +296,16 @@ spec:
 # Build the image
 task build-image
 
-# Run with file backend
-docker run -v /path/to/registry.json:/data/registry.json \
+# Run with Git source
+docker run -v $(pwd)/examples:/config \
   ghcr.io/stacklok/toolhive/thv-registry-api:latest \
-  serve --from-file /data/registry.json --registry-name my-registry
+  serve --config /config/config-git.yaml
+
+# Run with file source (mount local registry file)
+docker run -v $(pwd)/examples:/config \
+  -v /path/to/registry.json:/data/registry.json \
+  ghcr.io/stacklok/toolhive/thv-registry-api:latest \
+  serve --config /config/config-file.yaml
 ```
 
 ## Integration with ToolHive

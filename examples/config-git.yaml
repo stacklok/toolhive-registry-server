@@ -4,10 +4,10 @@
 # and syncs it to the local storage every 30 minutes.
 #
 # Usage:
-#   thv-registry-api serve \
-#     --config examples/config-git.yaml \
-#     --from-file ./data/registry.json \
-#     --registry-name toolhive
+#   thv-registry-api serve --config examples/config-git.yaml
+
+# Registry name/identifier (optional, defaults to "default")
+registryName: toolhive
 
 # Data source configuration
 source:

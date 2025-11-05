@@ -9,10 +9,10 @@
 #   - Integrating with third-party MCP registry services
 #
 # Usage:
-#   thv-registry-api serve \
-#     --config examples/config-api.yaml \
-#     --from-file ./data/registry.json \
-#     --registry-name mcp-registry
+#   thv-registry-api serve --config examples/config-api.yaml
+
+# Registry name/identifier (optional, defaults to "default")
+registryName: mcp-registry
 
 # Data source configuration
 source:

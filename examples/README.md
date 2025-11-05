@@ -11,27 +11,22 @@ This directory contains sample configuration files demonstrating automatic regis
 | **Git** | Official registries, version control | [config-git.yaml](config-git.yaml) | 30m |
 | **ConfigMap** | Kubernetes-native, internal data | [config-configmap.yaml](config-configmap.yaml) | 15m |
 | **API** | Upstream aggregation, federation | [config-api.yaml](config-api.yaml) | 1h |
+| **File** | Local development, testing | [config-file.yaml](config-file.yaml) | 5m |
 
 **Start the server with sync:**
 
 ```bash
 # Git source (recommended for getting started)
-thv-registry-api serve \
-  --config examples/config-git.yaml \
-  --from-file ./data/registry.json \
-  --registry-name toolhive
+thv-registry-api serve --config examples/config-git.yaml
 
 # ConfigMap source (Kubernetes)
-thv-registry-api serve \
-  --config examples/config-configmap.yaml \
-  --from-file ./data/registry.json \
-  --registry-name partners
+thv-registry-api serve --config examples/config-configmap.yaml
 
 # API source (upstream MCP registry)
-thv-registry-api serve \
-  --config examples/config-api.yaml \
-  --from-file ./data/registry.json \
-  --registry-name mcp-registry
+thv-registry-api serve --config examples/config-api.yaml
+
+# File source (local development)
+thv-registry-api serve --config examples/config-file.yaml
 ```
 
 **Verify sync is working:**
@@ -100,6 +95,8 @@ Syncs from a Kubernetes ConfigMap in the cluster.
 
 **Configuration:**
 ```yaml
+registryName: rh-partners
+
 source:
   type: configmap
   format: toolhive
@@ -163,6 +160,8 @@ Syncs from another MCP Registry API endpoint (like the official upstream registr
 
 **Configuration:**
 ```yaml
+registryName: mcp-registry
+
 source:
   type: api
   format: upstream
@@ -189,7 +188,43 @@ syncPolicy:
 
 ---
 
-### 4. Complete Reference
+### 4. File Source
+
+**File:** [config-file.yaml](config-file.yaml)
+
+Reads registry data from a local file on the filesystem.
+
+**Configuration:**
+```yaml
+registryName: toolhive
+
+source:
+  type: file
+  format: toolhive
+  file:
+    path: ./data/registry.json
+
+syncPolicy:
+  interval: "5m"
+```
+
+**What happens when you start:**
+1. Reads registry data from the specified file path
+2. Validates the JSON data structure
+3. Saves validated data to `./data/registry.json` (if different from source)
+4. Repeats every 5 minutes to detect file changes
+
+**Best for:**
+- Local development and testing
+- Reading from mounted volumes in containers
+- Using pre-generated registry files
+- Quick prototyping without external dependencies
+
+**Note:** For file source, the source file and storage location can be the same path. The sync manager will detect if the file has changed by comparing content hashes.
+
+---
+
+### 5. Complete Reference
 
 **File:** [config-complete.yaml](config-complete.yaml)
 
@@ -208,9 +243,12 @@ Use this as a reference when you need to:
 All config files follow this structure:
 
 ```yaml
+# Registry name/identifier (optional, defaults to "default")
+registryName: <name>
+
 # Data source configuration (required)
 source:
-  type: <git|configmap|api>
+  type: <git|configmap|api|file>
   format: <toolhive|upstream>
 
   # Source-specific config (one of):
@@ -226,6 +264,9 @@ source:
 
   api:
     endpoint: <base-url>
+
+  file:
+    path: <file-path>
 
 # Automatic sync policy (required)
 syncPolicy:
@@ -364,7 +405,7 @@ Look for these log messages:
 **Solution:**
 1. Verify `--config` flag is provided:
    ```bash
-   thv-registry-api serve --config examples/config-git.yaml ...
+   thv-registry-api serve --config examples/config-git.yaml
    ```
 2. Check logs for "Loaded configuration from..."
 3. Ensure `syncPolicy` is defined in config
@@ -484,24 +525,20 @@ Run multiple instances and aggregate at the application level:
 # Instance 1: Official ToolHive (port 8081)
 thv-registry-api serve \
   --config examples/config-git.yaml \
-  --address :8081 \
-  --from-file ./data/toolhive.json \
-  --registry-name toolhive &
+  --address :8081 &
 
 # Instance 2: Partners (port 8082)
 thv-registry-api serve \
   --config examples/config-configmap.yaml \
-  --address :8082 \
-  --from-file ./data/partners.json \
-  --registry-name partners &
+  --address :8082 &
 
 # Instance 3: Upstream MCP (port 8083)
 thv-registry-api serve \
   --config examples/config-api.yaml \
-  --address :8083 \
-  --from-file ./data/upstream.json \
-  --registry-name upstream &
+  --address :8083 &
 ```
+
+**Note:** Each instance will use its own `./data/` directory for storage. If you need separate storage locations, start each instance from a different working directory or modify the configuration to support custom storage paths (planned feature).
 
 ---
 
@@ -512,22 +549,19 @@ thv-registry-api serve \
 ./examples/validate-configs.sh
 
 # Start with Git sync
-thv-registry-api serve \
-  --config examples/config-git.yaml \
-  --from-file ./data/registry.json \
-  --registry-name toolhive
+thv-registry-api serve --config examples/config-git.yaml
 
 # Start with ConfigMap sync (Kubernetes)
-thv-registry-api serve \
-  --config examples/config-configmap.yaml \
-  --from-file ./data/registry.json \
-  --registry-name partners
+thv-registry-api serve --config examples/config-configmap.yaml
 
 # Start with API sync
-thv-registry-api serve \
-  --config examples/config-api.yaml \
-  --from-file ./data/registry.json \
-  --registry-name upstream
+thv-registry-api serve --config examples/config-api.yaml
+
+# Start with File sync (local development)
+thv-registry-api serve --config examples/config-file.yaml
+
+# Start with custom address
+thv-registry-api serve --config examples/config-git.yaml --address :9090
 
 # Check sync status
 cat ./data/status.json | jq

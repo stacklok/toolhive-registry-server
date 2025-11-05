@@ -10,10 +10,10 @@
 #   - Appropriate RBAC permissions to read ConfigMaps
 #
 # Usage:
-#   thv-registry-api serve \
-#     --config examples/config-configmap.yaml \
-#     --from-file ./data/registry.json \
-#     --registry-name rh-partners
+#   thv-registry-api serve --config examples/config-configmap.yaml
+
+# Registry name/identifier (optional, defaults to "default")
+registryName: rh-partners
 
 # Data source configuration
 source:

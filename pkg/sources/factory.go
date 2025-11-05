@@ -28,6 +28,8 @@ func (f *DefaultSourceHandlerFactory) CreateHandler(sourceType string) (SourceHa
 		return NewGitSourceHandler(), nil
 	case config.SourceTypeAPI:
 		return NewAPISourceHandler(), nil
+	case config.SourceTypeFile:
+		return NewFileSourceHandler(), nil
 	default:
 		return nil, fmt.Errorf("unsupported source type: %s", sourceType)
 	}

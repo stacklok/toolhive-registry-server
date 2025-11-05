@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -27,7 +26,6 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	thvk8scli "github.com/stacklok/toolhive/pkg/container/kubernetes"
 	"github.com/stacklok/toolhive/pkg/logger"
 )
 
@@ -35,12 +33,13 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the registry API server",
 	Long: `Start the registry API server to serve MCP registry data.
-The server can read registry data from either:
-- ConfigMaps using --from-configmap flag (requires Kubernetes API access)
-- Local files using --from-file flag (for mounted ConfigMaps)
 
-Both options require --registry-name to specify the registry identifier.
-One of --from-configmap or --from-file must be specified.`,
+The server requires a configuration file (--config) that specifies:
+- Registry name and data source (Git, ConfigMap, API, or File)
+- Sync policy and filtering rules
+- All other operational settings
+
+See examples/ directory for sample configurations.`,
 	RunE: runServe,
 }
 
@@ -54,10 +53,7 @@ const (
 
 func init() {
 	serveCmd.Flags().String("address", ":8080", "Address to listen on")
-	serveCmd.Flags().String("config", "", "Path to configuration file (YAML format)")
-	serveCmd.Flags().String("from-configmap", "", "ConfigMap name containing registry data (mutually exclusive with --from-file)")
-	serveCmd.Flags().String("from-file", "", "File path to registry.json (mutually exclusive with --from-configmap)")
-	serveCmd.Flags().String("registry-name", "", "Registry name identifier (required)")
+	serveCmd.Flags().String("config", "", "Path to configuration file (YAML format, required)")
 
 	err := viper.BindPFlag("address", serveCmd.Flags().Lookup("address"))
 	if err != nil {
@@ -67,17 +63,10 @@ func init() {
 	if err != nil {
 		logger.Fatalf("Failed to bind config flag: %v", err)
 	}
-	err = viper.BindPFlag("from-configmap", serveCmd.Flags().Lookup("from-configmap"))
-	if err != nil {
-		logger.Fatalf("Failed to bind from-configmap flag: %v", err)
-	}
-	err = viper.BindPFlag("from-file", serveCmd.Flags().Lookup("from-file"))
-	if err != nil {
-		logger.Fatalf("Failed to bind from-file flag: %v", err)
-	}
-	err = viper.BindPFlag("registry-name", serveCmd.Flags().Lookup("registry-name"))
-	if err != nil {
-		logger.Fatalf("Failed to bind registry-name flag: %v", err)
+
+	// Mark config as required
+	if err := serveCmd.MarkFlagRequired("config"); err != nil {
+		logger.Fatalf("Failed to mark config flag as required: %v", err)
 	}
 }
 
@@ -96,53 +85,13 @@ func getKubernetesConfig() (*rest.Config, error) {
 	return kubeConfig.ClientConfig()
 }
 
-// buildProviderConfig creates provider configuration based on command-line flags
-func buildProviderConfig() (*service.RegistryProviderConfig, error) {
-	configMapName := viper.GetString("from-configmap")
-	filePath := viper.GetString("from-file")
-	registryName := viper.GetString("registry-name")
-
-	// Validate mutual exclusivity
-	if configMapName != "" && filePath != "" {
-		return nil, fmt.Errorf("--from-configmap and --from-file flags are mutually exclusive")
-	}
-
-	// // Require one of the flags
-	// if configMapName == "" && filePath == "" {
-	// 	return nil, fmt.Errorf("either --from-configmap or --from-file flag is required")
-	// }
-
-	// Require registry name
-	if registryName == "" {
-		return nil, fmt.Errorf("--registry-name flag is required")
-	}
-
-	if configMapName != "" {
-		config, err := getKubernetesConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create kubernetes config: %w", err)
-		}
-
-		clientset, err := kubernetes.NewForConfig(config)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-		}
-
-		return &service.RegistryProviderConfig{
-			Type: service.RegistryProviderTypeConfigMap,
-			ConfigMap: &service.ConfigMapProviderConfig{
-				Name:         configMapName,
-				Namespace:    thvk8scli.GetCurrentNamespace(),
-				Clientset:    clientset,
-				RegistryName: registryName,
-			},
-		}, nil
-	}
-
+// createFileProviderForSyncedData creates a file provider that reads from the synced storage location
+// All source types (git, configmap, api, file) are synced to ./data/registry.json by the sync manager
+func createFileProviderForSyncedData(registryName string) (*service.RegistryProviderConfig, error) {
 	return &service.RegistryProviderConfig{
 		Type: service.RegistryProviderTypeFile,
 		File: &service.FileProviderConfig{
-			FilePath:     filePath,
+			FilePath:     "./data/registry.json",
 			RegistryName: registryName,
 		},
 	}, nil
@@ -154,29 +103,77 @@ func runServe(_ *cobra.Command, _ []string) error {
 
 	logger.Infof("Starting registry API server on %s", address)
 
-	// Load configuration if provided
-	var cfg *config.Config
+	// Load and validate configuration (now required)
 	configPath := viper.GetString("config")
-	if configPath != "" {
-		// TODO: Validate the path to avoid path traversal issues
-		c, err := config.NewConfigLoader().LoadConfig(configPath)
-		if err != nil {
-			return fmt.Errorf("failed to load configuration: %w", err)
-		}
-		if err := c.Validate(); err != nil {
-			return fmt.Errorf("invalid configuration: %w", err)
-		}
-		cfg = c
-		logger.Infof("Loaded configuration from %s", configPath)
-	}
-
-	providerConfig, err := buildProviderConfig()
+	// TODO: Validate the path to avoid path traversal issues
+	cfg, err := config.NewConfigLoader().LoadConfig(configPath)
 	if err != nil {
-		return fmt.Errorf("failed to build provider configuration: %w", err)
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+	logger.Infof("Loaded configuration from %s (registry: %s, source: %s)",
+		configPath, cfg.GetRegistryName(), cfg.Source.Type)
+
+	// Get Kubernetes config (needed for both sync manager and deployment provider)
+	k8sRestConfig, err := getKubernetesConfig()
+	if err != nil {
+		logger.Warnf("Failed to create kubernetes config: %v", err)
+		logger.Warn("ConfigMap source and deployment provider will not be available")
 	}
 
-	if err := providerConfig.Validate(); err != nil {
-		return fmt.Errorf("invalid provider configuration: %w", err)
+	// Initialize sync manager for automatic registry synchronization
+	logger.Info("Initializing sync manager for automatic registry synchronization")
+
+	// Create Kubernetes scheme and register core types
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		return fmt.Errorf("failed to add Kubernetes core types to scheme: %w", err)
+	}
+
+	// Create Kubernetes client (may be nil if k8s not available)
+	var k8sClient client.Client
+	if k8sRestConfig != nil {
+		k8sClient, err = client.New(k8sRestConfig, client.Options{Scheme: scheme})
+		if err != nil {
+			logger.Warnf("Failed to create Kubernetes client: %v", err)
+			logger.Warn("ConfigMap source will not be available")
+		}
+	}
+
+	// Initialize sync dependencies
+	sourceHandlerFactory := sources.NewSourceHandlerFactory(k8sClient)
+	storageManager := sources.NewFileStorageManager("./data")
+	statusPersistence := status.NewFileStatusPersistence("./data/status.json")
+
+	// Create sync manager
+	syncManager := sync.NewDefaultSyncManager(k8sClient, scheme, sourceHandlerFactory, storageManager)
+
+	// Load existing sync status
+	syncStatus, err := statusPersistence.LoadStatus(ctx)
+	if err != nil {
+		logger.Warnf("Failed to load sync status, starting fresh: %v", err)
+		syncStatus = &status.SyncStatus{}
+	} else if syncStatus.LastSyncTime != nil {
+		logger.Infof("Loaded sync status: last sync at %s, %d servers",
+			syncStatus.LastSyncTime.Format(time.RFC3339), syncStatus.ServerCount)
+	}
+
+	// Start background sync coordinator (handles initial sync too)
+	syncCtx, syncCancel := context.WithCancel(context.Background())
+	defer func() {
+		if syncCancel != nil {
+			syncCancel()
+		}
+	}()
+	go runBackgroundSync(syncCtx, syncManager, cfg, syncStatus, statusPersistence)
+
+	// Create file provider that reads from the synced data
+	// All sources (git, configmap, api, file) are now synced to ./data/registry.json
+	providerConfig, err := createFileProviderForSyncedData(cfg.GetRegistryName())
+	if err != nil {
+		return fmt.Errorf("failed to create file provider config: %w", err)
 	}
 
 	factory := service.NewRegistryProviderFactory()
@@ -185,70 +182,16 @@ func runServe(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to create registry provider: %w", err)
 	}
 
-	logger.Infof("Created registry data provider: %s", registryProvider.GetSource())
+	logger.Infof("Created registry data provider reading from synced storage: %s", registryProvider.GetSource())
 
+	// Create deployment provider (optional, requires Kubernetes)
 	var deploymentProvider service.DeploymentProvider
-	k8sRestConfig, err := getKubernetesConfig()
-	if err != nil {
-		return fmt.Errorf("failed to create kubernetes config for deployment provider: %w", err)
-	}
-
-	// Use registry name from provider
-	registryName := registryProvider.GetRegistryName()
-
-	deploymentProvider, err = service.NewK8sDeploymentProvider(k8sRestConfig, registryName)
-	if err != nil {
-		return fmt.Errorf("failed to create kubernetes deployment provider: %w", err)
-	}
-	logger.Infof("Created Kubernetes deployment provider for registry: %s", registryName)
-
-	// Initialize sync manager if configuration is provided
-	var syncManager sync.Manager
-	var syncStatus *status.SyncStatus
-	var statusPersistence status.StatusPersistence
-	var syncCtx context.Context
-	var syncCancel context.CancelFunc
-
-	if cfg != nil {
-		logger.Info("Initializing sync manager for automatic registry synchronization")
-
-		// Create Kubernetes scheme and register core types
-		scheme := runtime.NewScheme()
-
-		// Register core Kubernetes API types (ConfigMap, Secret, etc.)
-		if err := clientgoscheme.AddToScheme(scheme); err != nil {
-			logger.Warnf("Failed to add Kubernetes core types to scheme: %v", err)
-			logger.Warn("Sync manager will not be available")
-		} else if k8sClient, err := client.New(k8sRestConfig, client.Options{Scheme: scheme}); err != nil {
-			logger.Warnf("Failed to create Kubernetes client for sync manager: %v", err)
-			logger.Warn("Sync manager will not be available")
+	if k8sRestConfig != nil {
+		deploymentProvider, err = service.NewK8sDeploymentProvider(k8sRestConfig, cfg.GetRegistryName())
+		if err != nil {
+			logger.Warnf("Failed to create deployment provider: %v", err)
 		} else {
-			// Initialize sync dependencies
-			sourceHandlerFactory := sources.NewSourceHandlerFactory(k8sClient)
-			storageManager := sources.NewFileStorageManager("./data")
-			statusPersistence = status.NewFileStatusPersistence("./data/status.json")
-
-			// Create sync manager
-			syncManager = sync.NewDefaultSyncManager(k8sClient, scheme, sourceHandlerFactory, storageManager)
-
-			// Load existing sync status
-			syncStatus, err = statusPersistence.LoadStatus(ctx)
-			if err != nil {
-				logger.Warnf("Failed to load sync status, starting fresh: %v", err)
-				syncStatus = &status.SyncStatus{}
-			} else if syncStatus.LastSyncTime != nil {
-				logger.Infof("Loaded sync status: last sync at %s, %d servers",
-					syncStatus.LastSyncTime.Format(time.RFC3339), syncStatus.ServerCount)
-			}
-
-			// Start background sync coordinator
-			syncCtx, syncCancel = context.WithCancel(context.Background())
-			defer func() {
-				if syncCancel != nil {
-					syncCancel()
-				}
-			}()
-			go runBackgroundSync(syncCtx, syncManager, cfg, syncStatus, statusPersistence)
+			logger.Infof("Created Kubernetes deployment provider for registry: %s", cfg.GetRegistryName())
 		}
 	}
 
@@ -321,9 +264,6 @@ func runBackgroundSync(
 ) {
 	logger.Info("Starting background sync coordinator")
 
-	// Perform initial sync immediately
-	performSync(ctx, mgr, cfg, syncStatus, statusPersistence, false)
-
 	// Continue with periodic sync
 	for {
 		// Check if we should sync
@@ -332,7 +272,7 @@ func runBackgroundSync(
 		logger.Infof("Sync check: shouldSync=%v, reason=%s, nextTime=%v", shouldSync, reason, nextTime)
 
 		if shouldSync {
-			performSync(ctx, mgr, cfg, syncStatus, statusPersistence, false)
+			performSync(ctx, mgr, cfg, syncStatus, statusPersistence)
 		}
 
 		// Calculate sleep duration
@@ -355,7 +295,6 @@ func performSync(
 	cfg *config.Config,
 	syncStatus *status.SyncStatus,
 	statusPersistence status.StatusPersistence,
-	manual bool,
 ) {
 	// Update status: Syncing
 	syncStatus.Phase = status.SyncPhaseSyncing
