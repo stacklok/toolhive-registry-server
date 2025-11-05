@@ -269,23 +269,30 @@ func runBackgroundSync(
 ) {
 	logger.Info("Starting background sync coordinator")
 
+	// Get sync interval from policy
+	interval := getSyncInterval(cfg.SyncPolicy)
+	logger.Infof("Configured sync interval: %v", interval)
+
+	// Create ticker for periodic sync
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// Perform initial sync immediately
+	shouldSync, reason, _ := mgr.ShouldSync(ctx, cfg, syncStatus, false)
+	logger.Infof("Initial sync check: shouldSync=%v, reason=%s", shouldSync, reason)
+	if shouldSync {
+		performSync(ctx, mgr, cfg, syncStatus, statusPersistence)
+	}
+
 	// Continue with periodic sync
 	for {
-		// Check if we should sync
-		shouldSync, reason, nextTime := mgr.ShouldSync(ctx, cfg, syncStatus, false)
-
-		logger.Infof("Sync check: shouldSync=%v, reason=%s, nextTime=%v", shouldSync, reason, nextTime)
-
-		if shouldSync {
-			performSync(ctx, mgr, cfg, syncStatus, statusPersistence)
-		}
-
-		// Calculate sleep duration
-		sleepDuration := calculateSleepDuration(nextTime, cfg.SyncPolicy)
-
 		select {
-		case <-time.After(sleepDuration):
-			continue
+		case <-ticker.C:
+			shouldSync, reason, _ := mgr.ShouldSync(ctx, cfg, syncStatus, false)
+			logger.Infof("Periodic sync check: shouldSync=%v, reason=%s", shouldSync, reason)
+			if shouldSync {
+				performSync(ctx, mgr, cfg, syncStatus, statusPersistence)
+			}
 		case <-ctx.Done():
 			logger.Info("Background sync coordinator shutting down")
 			return
@@ -336,19 +343,14 @@ func performSync(
 	}
 }
 
-// calculateSleepDuration determines how long to sleep before the next sync check
-func calculateSleepDuration(nextTime *time.Time, policy *config.SyncPolicyConfig) time.Duration {
-	if nextTime != nil && !nextTime.IsZero() {
-		if duration := time.Until(*nextTime); duration > 0 {
-			return duration
-		}
-	}
-
-	// If no next time specified, use policy interval or default to 1 minute
+// getSyncInterval extracts the sync interval from the policy configuration
+func getSyncInterval(policy *config.SyncPolicyConfig) time.Duration {
+	// Use policy interval if configured
 	if policy != nil && policy.Interval != "" {
 		if interval, err := time.ParseDuration(policy.Interval); err == nil {
 			return interval
 		}
+		logger.Warnf("Invalid sync interval '%s', using default: 1m", policy.Interval)
 	}
 
 	// Default to 1 minute if no valid interval
