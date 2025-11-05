@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestRegistryProviderConfig_Validate(t *testing.T) {
@@ -19,109 +18,36 @@ func TestRegistryProviderConfig_Validate(t *testing.T) {
 		errContains string
 	}{
 		{
-			name: "valid configmap provider",
-			config: &RegistryProviderConfig{
-				Type: RegistryProviderTypeConfigMap,
-				ConfigMap: &ConfigMapProviderConfig{
-					Name:         "test-cm",
-					Namespace:    "test-ns",
-					Clientset:    fake.NewSimpleClientset(),
-					RegistryName: "test-registry",
-				},
-			},
-			wantErr: false,
-		},
-		{
 			name: "valid file provider",
 			config: &RegistryProviderConfig{
-				Type: RegistryProviderTypeFile,
-				File: &FileProviderConfig{
-					FilePath:     "/data/registry.json",
-					RegistryName: "test-registry",
-				},
+				FilePath:     "/data/registry.json",
+				RegistryName: "test-registry",
 			},
 			wantErr: false,
 		},
 		{
-			name: "empty provider type",
+			name: "empty file path",
 			config: &RegistryProviderConfig{
-				Type: "",
+				FilePath:     "",
+				RegistryName: "test-registry",
 			},
 			wantErr:     true,
-			errContains: "provider type is required",
+			errContains: "file path is required",
 		},
 		{
-			name: "configmap provider without config",
+			name: "empty registry name",
 			config: &RegistryProviderConfig{
-				Type:      RegistryProviderTypeConfigMap,
-				ConfigMap: nil,
+				FilePath:     "/data/registry.json",
+				RegistryName: "",
 			},
 			wantErr:     true,
-			errContains: "configmap configuration required",
+			errContains: "registry name is required",
 		},
 		{
-			name: "file provider without config",
+			name: "both fields empty",
 			config: &RegistryProviderConfig{
-				Type: RegistryProviderTypeFile,
-				File: nil,
-			},
-			wantErr:     true,
-			errContains: "file configuration required",
-		},
-		{
-			name: "unsupported provider type",
-			config: &RegistryProviderConfig{
-				Type: "unsupported",
-			},
-			wantErr:     true,
-			errContains: "unsupported provider type",
-		},
-		{
-			name: "configmap with missing clientset",
-			config: &RegistryProviderConfig{
-				Type: RegistryProviderTypeConfigMap,
-				ConfigMap: &ConfigMapProviderConfig{
-					Name:      "test-cm",
-					Namespace: "test-ns",
-					Clientset: nil,
-				},
-			},
-			wantErr:     true,
-			errContains: "kubernetes clientset is required",
-		},
-		{
-			name: "configmap with empty name",
-			config: &RegistryProviderConfig{
-				Type: RegistryProviderTypeConfigMap,
-				ConfigMap: &ConfigMapProviderConfig{
-					Name:      "",
-					Namespace: "test-ns",
-					Clientset: fake.NewSimpleClientset(),
-				},
-			},
-			wantErr:     true,
-			errContains: "configmap name is required",
-		},
-		{
-			name: "configmap with empty namespace",
-			config: &RegistryProviderConfig{
-				Type: RegistryProviderTypeConfigMap,
-				ConfigMap: &ConfigMapProviderConfig{
-					Name:      "test-cm",
-					Namespace: "",
-					Clientset: fake.NewSimpleClientset(),
-				},
-			},
-			wantErr:     true,
-			errContains: "configmap namespace is required",
-		},
-		{
-			name: "file with empty path",
-			config: &RegistryProviderConfig{
-				Type: RegistryProviderTypeFile,
-				File: &FileProviderConfig{
-					FilePath: "",
-				},
+				FilePath:     "",
+				RegistryName: "",
 			},
 			wantErr:     true,
 			errContains: "file path is required",
@@ -167,32 +93,10 @@ func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
 		checkType   func(*testing.T, RegistryDataProvider)
 	}{
 		{
-			name: "create configmap provider",
-			config: &RegistryProviderConfig{
-				Type: RegistryProviderTypeConfigMap,
-				ConfigMap: &ConfigMapProviderConfig{
-					Name:         "test-cm",
-					Namespace:    "test-ns",
-					Clientset:    fake.NewSimpleClientset(),
-					RegistryName: "test-registry",
-				},
-			},
-			wantErr: false,
-			checkType: func(t *testing.T, provider RegistryDataProvider) {
-				t.Helper()
-				assert.IsType(t, &K8sRegistryDataProvider{}, provider)
-				assert.Equal(t, "configmap:test-ns/test-cm", provider.GetSource())
-				assert.Equal(t, "test-registry", provider.GetRegistryName())
-			},
-		},
-		{
 			name: "create file provider",
 			config: &RegistryProviderConfig{
-				Type: RegistryProviderTypeFile,
-				File: &FileProviderConfig{
-					FilePath:     tmpFile,
-					RegistryName: "test-file-registry",
-				},
+				FilePath:     tmpFile,
+				RegistryName: "test-file-registry",
 			},
 			wantErr: false,
 			checkType: func(t *testing.T, provider RegistryDataProvider) {
@@ -209,54 +113,22 @@ func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
 			errContains: "registry provider config cannot be nil",
 		},
 		{
-			name: "invalid config - missing configmap",
+			name: "missing file path",
 			config: &RegistryProviderConfig{
-				Type:      RegistryProviderTypeConfigMap,
-				ConfigMap: nil,
-			},
-			wantErr:     true,
-			errContains: "configmap configuration required",
-		},
-		{
-			name: "invalid config - missing file",
-			config: &RegistryProviderConfig{
-				Type: RegistryProviderTypeFile,
-				File: nil,
-			},
-			wantErr:     true,
-			errContains: "file configuration required",
-		},
-		{
-			name: "invalid config - unsupported type",
-			config: &RegistryProviderConfig{
-				Type: "unknown",
-			},
-			wantErr:     true,
-			errContains: "unsupported registry provider type",
-		},
-		{
-			name: "configmap with missing clientset",
-			config: &RegistryProviderConfig{
-				Type: RegistryProviderTypeConfigMap,
-				ConfigMap: &ConfigMapProviderConfig{
-					Name:      "test-cm",
-					Namespace: "test-ns",
-					Clientset: nil,
-				},
-			},
-			wantErr:     true,
-			errContains: "kubernetes clientset is required",
-		},
-		{
-			name: "file with empty path",
-			config: &RegistryProviderConfig{
-				Type: RegistryProviderTypeFile,
-				File: &FileProviderConfig{
-					FilePath: "",
-				},
+				FilePath:     "",
+				RegistryName: "test-registry",
 			},
 			wantErr:     true,
 			errContains: "file path is required",
+		},
+		{
+			name: "missing registry name",
+			config: &RegistryProviderConfig{
+				FilePath:     tmpFile,
+				RegistryName: "",
+			},
+			wantErr:     true,
+			errContains: "registry name is required",
 		},
 	}
 
@@ -289,48 +161,4 @@ func TestNewRegistryProviderFactory(t *testing.T) {
 	factory := NewRegistryProviderFactory()
 	assert.NotNil(t, factory)
 	assert.IsType(t, &DefaultRegistryProviderFactory{}, factory)
-}
-
-func TestProviderTypes(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, "configmap", string(RegistryProviderTypeConfigMap))
-	assert.Equal(t, "file", string(RegistryProviderTypeFile))
-}
-
-func TestK8sRegistryDataProvider_GetRegistryName(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name          string
-		configMapName string
-		namespace     string
-		registryName  string
-	}{
-		{
-			name:          "registry name independent of configmap",
-			configMapName: "my-configmap",
-			namespace:     "default",
-			registryName:  "production-registry",
-		},
-		{
-			name:          "different registry name",
-			configMapName: "some-configmap",
-			namespace:     "test-namespace",
-			registryName:  "custom-registry",
-		},
-		{
-			name:          "empty registry name",
-			configMapName: "test-cm",
-			namespace:     "default",
-			registryName:  "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			provider := NewK8sRegistryDataProvider(fake.NewSimpleClientset(), tt.configMapName, tt.namespace, tt.registryName)
-			result := provider.GetRegistryName()
-			assert.Equal(t, tt.registryName, result)
-		})
-	}
 }

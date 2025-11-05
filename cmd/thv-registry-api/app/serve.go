@@ -91,11 +91,8 @@ func getKubernetesConfig() (*rest.Config, error) {
 // All source types (git, configmap, api, file) are synced to ./data/registry.json by the sync manager
 func createFileProviderForSyncedData(registryName string) (*service.RegistryProviderConfig, error) {
 	return &service.RegistryProviderConfig{
-		Type: service.RegistryProviderTypeFile,
-		File: &service.FileProviderConfig{
-			FilePath:     "./data/registry.json",
-			RegistryName: registryName,
-		},
+		FilePath:     "./data/registry.json",
+		RegistryName: registryName,
 	}, nil
 }
 
@@ -158,11 +155,26 @@ func runServe(_ *cobra.Command, _ []string) error {
 	// Load existing sync status
 	syncStatus, err := statusPersistence.LoadStatus(ctx)
 	if err != nil {
-		logger.Warnf("Failed to load sync status, starting fresh: %v", err)
-		syncStatus = &status.SyncStatus{}
-	} else if syncStatus.LastSyncTime != nil {
-		logger.Infof("Loaded sync status: last sync at %s, %d servers",
-			syncStatus.LastSyncTime.Format(time.RFC3339), syncStatus.ServerCount)
+		logger.Warnf("Failed to load sync status, initializing with defaults: %v", err)
+		syncStatus = &status.SyncStatus{
+			Phase:   status.SyncPhaseFailed,
+			Message: "No previous sync status found",
+		}
+	} else {
+		// If status was left in Syncing state, it means the previous run was interrupted
+		// Reset it to Failed so the sync will be triggered
+		if syncStatus.Phase == status.SyncPhaseSyncing {
+			logger.Warn("Previous sync was interrupted (status=Syncing), resetting to Failed")
+			syncStatus.Phase = status.SyncPhaseFailed
+			syncStatus.Message = "Previous sync was interrupted"
+		}
+
+		if syncStatus.LastSyncTime != nil {
+			logger.Infof("Loaded sync status: phase=%s, last sync at %s, %d servers",
+				syncStatus.Phase, syncStatus.LastSyncTime.Format(time.RFC3339), syncStatus.ServerCount)
+		} else {
+			logger.Infof("Loaded sync status: phase=%s, no previous sync", syncStatus.Phase)
+		}
 	}
 
 	// Start background sync coordinator (handles initial sync too)
@@ -277,25 +289,58 @@ func runBackgroundSync(
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	// Perform initial sync immediately
-	shouldSync, reason, _ := mgr.ShouldSync(ctx, cfg, syncStatus, false)
-	logger.Infof("Initial sync check: shouldSync=%v, reason=%s", shouldSync, reason)
-	if shouldSync {
-		performSync(ctx, mgr, cfg, syncStatus, statusPersistence)
-	}
+	// Perform initial sync check
+	checkSync(ctx, mgr, cfg, syncStatus, statusPersistence, "initial")
 
 	// Continue with periodic sync
 	for {
 		select {
 		case <-ticker.C:
-			shouldSync, reason, _ := mgr.ShouldSync(ctx, cfg, syncStatus, false)
-			logger.Infof("Periodic sync check: shouldSync=%v, reason=%s", shouldSync, reason)
-			if shouldSync {
-				performSync(ctx, mgr, cfg, syncStatus, statusPersistence)
-			}
+			checkSync(ctx, mgr, cfg, syncStatus, statusPersistence, "periodic")
 		case <-ctx.Done():
 			logger.Info("Background sync coordinator shutting down")
 			return
+		}
+	}
+}
+
+// checkSync performs a sync check and updates status accordingly
+func checkSync(
+	ctx context.Context,
+	mgr sync.Manager,
+	cfg *config.Config,
+	syncStatus *status.SyncStatus,
+	statusPersistence status.StatusPersistence,
+	checkType string,
+) {
+	// Update LastAttempt to track when we checked
+	now := time.Now()
+	syncStatus.LastAttempt = &now
+
+	// Check if sync is needed
+	shouldSync, reason, _ := mgr.ShouldSync(ctx, cfg, syncStatus, false)
+	logger.Infof("%s sync check: shouldSync=%v, reason=%s", checkType, shouldSync, reason)
+
+	if shouldSync {
+		performSync(ctx, mgr, cfg, syncStatus, statusPersistence)
+	} else {
+		updateStatusForSkippedSync(ctx, syncStatus, statusPersistence, reason)
+	}
+}
+
+// updateStatusForSkippedSync updates the status when a sync check determines sync is not needed
+func updateStatusForSkippedSync(
+	ctx context.Context,
+	syncStatus *status.SyncStatus,
+	statusPersistence status.StatusPersistence,
+	reason string,
+) {
+	// Only update if we have a previous successful sync
+	// Don't overwrite Failed/Syncing states with "skipped" messages
+	if syncStatus.Phase == status.SyncPhaseComplete {
+		syncStatus.Message = fmt.Sprintf("Sync skipped: %s", reason)
+		if err := statusPersistence.SaveStatus(ctx, syncStatus); err != nil {
+			logger.Warnf("Failed to persist skipped sync status: %v", err)
 		}
 	}
 }
@@ -308,13 +353,22 @@ func performSync(
 	syncStatus *status.SyncStatus,
 	statusPersistence status.StatusPersistence,
 ) {
+	// Ensure status is persisted at the end, whatever the result
+	defer func() {
+		if err := statusPersistence.SaveStatus(ctx, syncStatus); err != nil {
+			logger.Errorf("Failed to persist final sync status: %v", err)
+		}
+	}()
+
 	// Update status: Syncing
 	syncStatus.Phase = status.SyncPhaseSyncing
 	now := time.Now()
 	syncStatus.LastAttempt = &now
 	syncStatus.AttemptCount++
+
+	// Persist the "Syncing" state immediately so it's visible
 	if err := statusPersistence.SaveStatus(ctx, syncStatus); err != nil {
-		logger.Warnf("Failed to save sync status: %v", err)
+		logger.Warnf("Failed to persist syncing status: %v", err)
 	}
 
 	logger.Infof("Starting sync operation (attempt %d)", syncStatus.AttemptCount)
@@ -334,12 +388,11 @@ func performSync(
 		syncStatus.LastSyncHash = result.Hash
 		syncStatus.ServerCount = result.ServerCount
 		syncStatus.AttemptCount = 0
-		logger.Infof("Sync completed successfully: %d servers, hash=%s", result.ServerCount, result.Hash[:8])
-	}
-
-	// Persist updated status
-	if err := statusPersistence.SaveStatus(ctx, syncStatus); err != nil {
-		logger.Warnf("Failed to save sync status: %v", err)
+		hashPreview := result.Hash
+		if len(hashPreview) > 8 {
+			hashPreview = hashPreview[:8]
+		}
+		logger.Infof("Sync completed successfully: %d servers, hash=%s", result.ServerCount, hashPreview)
 	}
 }
 

@@ -114,6 +114,8 @@ func (e *Error) Unwrap() error {
 }
 
 // Manager manages synchronization operations for Registry resources
+//
+//go:generate mockgen -destination=mocks/mock_manager.go -package=mocks github.com/stacklok/toolhive-registry-server/pkg/sync Manager
 type Manager interface {
 	// ShouldSync determines if a sync operation is needed
 	ShouldSync(ctx context.Context, config *config.Config, syncStatus *status.SyncStatus, manualSyncRequested bool) (bool, string, *time.Time)
