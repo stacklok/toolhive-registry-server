@@ -15,12 +15,11 @@
 // Current implementations:
 //   - ConfigMapSourceHandler: Retrieves registry data from Kubernetes ConfigMaps
 //     Supports both ToolHive and Upstream registry formats with format validation
+//   - GitSourceHandler: Retrieves registry data from Git repositories
+//     Supports public repos via HTTPS with branch/tag/commit checkout
+//   - APISourceHandler: Retrieves registry data from HTTP/HTTPS endpoints
+//     Delegates to format-specific handlers (ToolHiveAPIHandler, UpstreamAPIHandler)
 //   - ConfigMapStorageManager: Persists Registry data to Kubernetes ConfigMaps
-//
-// Future implementations may include:
-//   - URLSourceHandler: HTTP/HTTPS endpoints
-//   - GitSourceHandler: Git repositories
-//   - RegistrySourceHandler: External registries
 //
 // The package provides a factory pattern for creating appropriate
 // source handlers based on the source type configuration, and uses

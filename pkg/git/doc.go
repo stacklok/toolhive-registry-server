@@ -10,11 +10,12 @@
 // # Client Interface
 //
 // The Client interface defines the core Git operations:
-//   - Clone: Clone public repositories
-//   - Pull: Update existing repositories (planned for future implementation)
+//   - Clone: Clone public repositories to in-memory filesystem
 //   - GetFileContent: Retrieve specific files from repositories
-//   - GetCommitHash: Get current commit hash for change detection
-//   - Cleanup: Remove local repository directories
+//   - Cleanup: Clean up in-memory repository resources
+//
+// Repository information including commit hashes is tracked via the
+// RepositoryInfo struct which is populated during clone operations.
 //
 // # Example Usage
 //
@@ -39,23 +40,32 @@
 // # Security Considerations
 //
 // This package is designed to be used within a Kubernetes operator environment
-// where Git repositories contain MCP server registry data. Future versions will
-// include security hardening such as:
+// where Git repositories contain MCP server registry data. Security features include:
+//   - In-memory filesystem operations (no disk access)
+//   - Size limits on cloned repositories (max files and total size)
+//   - Shallow clones by default for efficiency
+//
+// Future security hardening may include:
 //   - Repository URL validation to prevent SSRF attacks
-//   - Sandboxed Git operations
-//   - Secure credential management via Kubernetes secrets
+//   - Additional resource limits and timeouts
+//   - Secure credential management via Kubernetes secrets for private repos
 //
-// # Implementation Status
+// # Implementation Details
 //
-// Current implementation supports:
+// Current implementation uses:
+//   - In-memory filesystems (go-billy memfs) for all Git operations
+//   - LimitedFs wrapper to enforce size constraints (10k files, 100MB total)
+//   - Shallow clones (depth=1) for branch/tag checkouts
+//   - Full clones only when specific commits are requested
+//   - Explicit memory cleanup via Cleanup() method with GC hints
+//
+// Supported features:
 //   - Public repository access via HTTPS
 //   - Branch, tag, and commit checkout
-//   - File content retrieval
-//   - Temporary directory management
+//   - File content retrieval from any path in the repository
 //
 // Planned features:
 //   - Authentication for private repositories
-//   - Repository caching for performance
 //   - Webhook support for immediate sync triggers
 //   - Git LFS support for large files
 package git
