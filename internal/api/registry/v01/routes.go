@@ -9,6 +9,8 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
+//go:generate go tool oapi-codegen -package v01 -generate types -o types.go openapi.yml
+
 type Routes struct {
 	service service.RegistryService
 }
