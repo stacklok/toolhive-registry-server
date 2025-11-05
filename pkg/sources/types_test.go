@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
 
@@ -26,7 +26,7 @@ func TestNewFetchResult(t *testing.T) {
 				RemoteServers: make(map[string]*registry.RemoteServerMetadata),
 			},
 			hash:   "abcd1234",
-			format: mcpv1alpha1.RegistryFormatToolHive,
+			format: config.SourceFormatToolHive,
 		},
 		{
 			name: "registry with servers",
@@ -39,7 +39,7 @@ func TestNewFetchResult(t *testing.T) {
 				RemoteServers: make(map[string]*registry.RemoteServerMetadata),
 			},
 			hash:   "efgh5678",
-			format: mcpv1alpha1.RegistryFormatToolHive,
+			format: config.SourceFormatToolHive,
 		},
 		{
 			name: "registry with remote servers",
@@ -51,7 +51,7 @@ func TestNewFetchResult(t *testing.T) {
 				},
 			},
 			hash:   "ijkl9012",
-			format: mcpv1alpha1.RegistryFormatUpstream,
+			format: config.SourceFormatUpstream,
 		},
 	}
 
@@ -85,7 +85,7 @@ func TestFetchResultHashConsistency(t *testing.T) {
 		RemoteServers: make(map[string]*registry.RemoteServerMetadata),
 	}
 	hash := "consistent-hash-value"
-	format := mcpv1alpha1.RegistryFormatToolHive
+	format := config.SourceFormatToolHive
 
 	result1 := NewFetchResult(registryData, hash, format)
 	result2 := NewFetchResult(registryData, hash, format)
@@ -118,7 +118,7 @@ func TestFetchResultHashDifference(t *testing.T) {
 
 	hash1 := "hash-for-data1"
 	hash2 := "hash-for-data2"
-	format := mcpv1alpha1.RegistryFormatToolHive
+	format := config.SourceFormatToolHive
 
 	result1 := NewFetchResult(registryData1, hash1, format)
 	result2 := NewFetchResult(registryData2, hash2, format)
@@ -191,19 +191,19 @@ func TestDefaultSourceDataValidator_ValidateData(t *testing.T) {
 		{
 			name:        "valid toolhive format",
 			data:        validToolhiveData,
-			format:      mcpv1alpha1.RegistryFormatToolHive,
+			format:      config.SourceFormatToolHive,
 			expectError: false,
 		},
 		{
 			name:        "valid upstream format",
 			data:        validUpstreamData,
-			format:      mcpv1alpha1.RegistryFormatUpstream,
+			format:      config.SourceFormatUpstream,
 			expectError: false,
 		},
 		{
 			name:          "empty data",
 			data:          []byte{},
-			format:        mcpv1alpha1.RegistryFormatToolHive,
+			format:        config.SourceFormatToolHive,
 			expectError:   true,
 			errorContains: "data cannot be empty",
 		},
@@ -217,21 +217,21 @@ func TestDefaultSourceDataValidator_ValidateData(t *testing.T) {
 		{
 			name:          "invalid json for toolhive",
 			data:          []byte("invalid json"),
-			format:        mcpv1alpha1.RegistryFormatToolHive,
+			format:        config.SourceFormatToolHive,
 			expectError:   true,
 			errorContains: "invalid",
 		},
 		{
 			name:          "invalid json for upstream",
 			data:          []byte("invalid json"),
-			format:        mcpv1alpha1.RegistryFormatUpstream,
+			format:        config.SourceFormatUpstream,
 			expectError:   true,
 			errorContains: "invalid upstream format",
 		},
 		{
 			name:          "empty upstream array",
 			data:          []byte("[]"),
-			format:        mcpv1alpha1.RegistryFormatUpstream,
+			format:        config.SourceFormatUpstream,
 			expectError:   true,
 			errorContains: "must contain at least one server",
 		},
@@ -242,7 +242,7 @@ func TestDefaultSourceDataValidator_ValidateData(t *testing.T) {
 					"description": "Test server"
 				}
 			}]`),
-			format:        mcpv1alpha1.RegistryFormatUpstream,
+			format:        config.SourceFormatUpstream,
 			expectError:   true,
 			errorContains: "name is required",
 		},
@@ -253,7 +253,7 @@ func TestDefaultSourceDataValidator_ValidateData(t *testing.T) {
 					"name": "test-server"
 				}
 			}]`),
-			format:        mcpv1alpha1.RegistryFormatUpstream,
+			format:        config.SourceFormatUpstream,
 			expectError:   true,
 			errorContains: "description is required",
 		},

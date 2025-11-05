@@ -5,21 +5,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 )
 
 func TestNewConfigMapSourceHandler(t *testing.T) {
 	t.Parallel()
 
 	scheme := runtime.NewScheme()
-	require.NoError(t, mcpv1alpha1.AddToScheme(scheme))
 	require.NoError(t, corev1.AddToScheme(scheme))
 
 	fakeClient := fake.NewClientBuilder().
@@ -35,8 +33,6 @@ func TestNewConfigMapSourceHandler_Validate(t *testing.T) {
 	t.Parallel()
 
 	scheme := runtime.NewScheme()
-	require.NoError(t, mcpv1alpha1.AddToScheme(scheme))
-
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		Build()
@@ -45,15 +41,15 @@ func TestNewConfigMapSourceHandler_Validate(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		source        *mcpv1alpha1.MCPRegistrySource
+		source        *config.SourceConfig
 		expectError   bool
 		errorContains string
 	}{
 		{
 			name: "valid configmap source",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeConfigMap,
-				ConfigMap: &mcpv1alpha1.ConfigMapSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeConfigMap,
+				ConfigMap: &config.ConfigMapConfig{
 					Name: "test-config",
 					Key:  ConfigMapSourceDataKey,
 				},
@@ -62,9 +58,9 @@ func TestNewConfigMapSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "valid configmap source with default key",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeConfigMap,
-				ConfigMap: &mcpv1alpha1.ConfigMapSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeConfigMap,
+				ConfigMap: &config.ConfigMapConfig{
 					Name: "test-config",
 					// Key will be set to default
 				},
@@ -73,9 +69,9 @@ func TestNewConfigMapSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "invalid source type",
-			source: &mcpv1alpha1.MCPRegistrySource{
+			source: &config.SourceConfig{
 				Type: "invalid",
-				ConfigMap: &mcpv1alpha1.ConfigMapSource{
+				ConfigMap: &config.ConfigMapConfig{
 					Name: "test-config",
 				},
 			},
@@ -84,8 +80,8 @@ func TestNewConfigMapSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "missing configmap configuration",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeConfigMap,
+			source: &config.SourceConfig{
+				Type: config.SourceTypeConfigMap,
 				// ConfigMap is nil
 			},
 			expectError:   true,
@@ -93,9 +89,9 @@ func TestNewConfigMapSourceHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "empty configmap name",
-			source: &mcpv1alpha1.MCPRegistrySource{
-				Type: mcpv1alpha1.RegistrySourceTypeConfigMap,
-				ConfigMap: &mcpv1alpha1.ConfigMapSource{
+			source: &config.SourceConfig{
+				Type: config.SourceTypeConfigMap,
+				ConfigMap: &config.ConfigMapConfig{
 					Name: "",
 				},
 			},
@@ -130,12 +126,11 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 	t.Parallel()
 
 	scheme := runtime.NewScheme()
-	require.NoError(t, mcpv1alpha1.AddToScheme(scheme))
 	require.NoError(t, corev1.AddToScheme(scheme))
 
 	tests := []struct {
 		name                string
-		registry            *mcpv1alpha1.MCPRegistry
+		config              *config.Config
 		configMaps          []corev1.ConfigMap
 		expectError         bool
 		errorContains       string
@@ -143,19 +138,14 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 	}{
 		{
 			name: "successful sync with toolhive format",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test-namespace",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type:   mcpv1alpha1.RegistrySourceTypeConfigMap,
-						Format: mcpv1alpha1.RegistryFormatToolHive,
-						ConfigMap: &mcpv1alpha1.ConfigMapSource{
-							Name: "test-config",
-							Key:  ConfigMapSourceDataKey,
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeConfigMap,
+					Format: config.SourceFormatToolHive,
+					ConfigMap: &config.ConfigMapConfig{
+						Namespace: "test-namespace",
+						Name:      "test-config",
+						Key:       ConfigMapSourceDataKey,
 					},
 				},
 			},
@@ -198,19 +188,13 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "failed sync with upstream format",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test-namespace",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type:   mcpv1alpha1.RegistrySourceTypeConfigMap,
-						Format: mcpv1alpha1.RegistryFormatUpstream,
-						ConfigMap: &mcpv1alpha1.ConfigMapSource{
-							Name: "test-config",
-							Key:  ConfigMapSourceDataKey,
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeConfigMap,
+					Format: config.SourceFormatUpstream,
+					ConfigMap: &config.ConfigMapConfig{
+						Name: "test-config",
+						Key:  ConfigMapSourceDataKey,
 					},
 				},
 			},
@@ -297,19 +281,14 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "successful sync with default key",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test-namespace",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type:   mcpv1alpha1.RegistrySourceTypeConfigMap,
-						Format: mcpv1alpha1.RegistryFormatToolHive,
-						ConfigMap: &mcpv1alpha1.ConfigMapSource{
-							Name: "test-config",
-							// Key not specified, should default
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeConfigMap,
+					Format: config.SourceFormatToolHive,
+					ConfigMap: &config.ConfigMapConfig{
+						Namespace: "test-namespace",
+						Name:      "test-config",
+						// Key not specified, should default
 					},
 				},
 			},
@@ -320,7 +299,7 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 						Namespace: "test-namespace",
 					},
 					Data: map[string]string{
-						ConfigMapSourceDataKey: string(NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatToolHive).
+						ConfigMapSourceDataKey: string(NewTestRegistryBuilder(config.SourceFormatToolHive).
 							WithServerName("server1").
 							BuildJSON()),
 					},
@@ -331,19 +310,14 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "successful sync with same namespace",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "registry-namespace",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type:   mcpv1alpha1.RegistrySourceTypeConfigMap,
-						Format: mcpv1alpha1.RegistryFormatToolHive,
-						ConfigMap: &mcpv1alpha1.ConfigMapSource{
-							Name: "test-config",
-							Key:  ConfigMapSourceDataKey,
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeConfigMap,
+					Format: config.SourceFormatToolHive,
+					ConfigMap: &config.ConfigMapConfig{
+						Namespace: "registry-namespace",
+						Name:      "test-config",
+						Key:       ConfigMapSourceDataKey,
 					},
 				},
 			},
@@ -354,7 +328,7 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 						Namespace: "registry-namespace",
 					},
 					Data: map[string]string{
-						ConfigMapSourceDataKey: string(NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatToolHive).
+						ConfigMapSourceDataKey: string(NewTestRegistryBuilder(config.SourceFormatToolHive).
 							Empty().
 							BuildJSON()),
 					},
@@ -365,17 +339,12 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "configmap not found",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test-namespace",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type: mcpv1alpha1.RegistrySourceTypeConfigMap,
-						ConfigMap: &mcpv1alpha1.ConfigMapSource{
-							Name: "missing-config",
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Type: config.SourceTypeConfigMap,
+					ConfigMap: &config.ConfigMapConfig{
+						Namespace: "test-namespace",
+						Name:      "missing-config",
 					},
 				},
 			},
@@ -385,18 +354,13 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "key not found in configmap",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test-namespace",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type: mcpv1alpha1.RegistrySourceTypeConfigMap,
-						ConfigMap: &mcpv1alpha1.ConfigMapSource{
-							Name: "test-config",
-							Key:  "missing-key",
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Type: config.SourceTypeConfigMap,
+					ConfigMap: &config.ConfigMapConfig{
+						Namespace: "test-namespace",
+						Name:      "test-config",
+						Key:       "missing-key",
 					},
 				},
 			},
@@ -420,17 +384,12 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "invalid json data",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test-namespace",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type: mcpv1alpha1.RegistrySourceTypeConfigMap,
-						ConfigMap: &mcpv1alpha1.ConfigMapSource{
-							Name: "test-config",
-						},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Type: config.SourceTypeConfigMap,
+					ConfigMap: &config.ConfigMapConfig{
+						Namespace: "test-namespace",
+						Name:      "test-config",
 					},
 				},
 			},
@@ -450,16 +409,10 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "invalid source configuration",
-			registry: &mcpv1alpha1.MCPRegistry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-registry",
-					Namespace: "test-namespace",
-				},
-				Spec: mcpv1alpha1.MCPRegistrySpec{
-					Source: mcpv1alpha1.MCPRegistrySource{
-						Type: mcpv1alpha1.RegistrySourceTypeConfigMap,
-						// ConfigMap is nil
-					},
+			config: &config.Config{
+				Source: config.SourceConfig{
+					Type: config.SourceTypeConfigMap,
+					// ConfigMap is nil
 				},
 			},
 			configMaps:    []corev1.ConfigMap{},
@@ -472,7 +425,7 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			objects := []runtime.Object{tt.registry}
+			objects := []runtime.Object{}
 			for i := range tt.configMaps {
 				objects = append(objects, &tt.configMaps[i])
 			}
@@ -487,7 +440,7 @@ func TestConfigMapSourceHandler_FetchRegistry(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			result, err := handler.FetchRegistry(ctx, tt.registry)
+			result, err := handler.FetchRegistry(ctx, tt.config)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -524,19 +477,19 @@ func TestConfigMapSourceHandler_ValidationWithBuilder(t *testing.T) {
 		{
 			name: "toolhive format with container servers",
 			builder: func() []byte {
-				return NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatToolHive).
+				return NewTestRegistryBuilder(config.SourceFormatToolHive).
 					WithServer("container-server1").
 					WithServer("container-server2").
 					BuildJSON()
 			},
-			format:        mcpv1alpha1.RegistryFormatToolHive,
+			format:        config.SourceFormatToolHive,
 			expectedCount: 2,
 			expectError:   false,
 		},
 		{
 			name: "toolhive format with servers and remote servers",
 			builder: func() []byte {
-				return NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatToolHive).
+				return NewTestRegistryBuilder(config.SourceFormatToolHive).
 					WithServer("container-server1").
 					WithServer("container-server2").
 					WithRemoteServerName("remote-server1", "https://remote-1.com").
@@ -544,60 +497,60 @@ func TestConfigMapSourceHandler_ValidationWithBuilder(t *testing.T) {
 					WithRemoteServerName("remote-server3", "https://remote-3.com").
 					BuildJSON()
 			},
-			format:        mcpv1alpha1.RegistryFormatToolHive,
+			format:        config.SourceFormatToolHive,
 			expectedCount: 5, // 2 container servers + 3 remote servers
 			expectError:   false,
 		},
 		{
 			name: "toolhive format empty servers",
 			builder: func() []byte {
-				return NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatToolHive).
+				return NewTestRegistryBuilder(config.SourceFormatToolHive).
 					Empty().
 					BuildJSON()
 			},
-			format:      mcpv1alpha1.RegistryFormatToolHive,
+			format:      config.SourceFormatToolHive,
 			expectError: false, // Empty is now valid for ToolHive format
 		},
 		{
 			name: "toolhive format with only remote servers",
 			builder: func() []byte {
-				return NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatToolHive).
+				return NewTestRegistryBuilder(config.SourceFormatToolHive).
 					Empty().
 					WithRemoteServerName("remote-only-1", "https://remote-only-1.com").
 					WithRemoteServerName("remote-only-2", "https://remote-only-2.com").
 					BuildJSON()
 			},
-			format:        mcpv1alpha1.RegistryFormatToolHive,
+			format:        config.SourceFormatToolHive,
 			expectedCount: 2, // 0 container servers + 2 remote servers
 			expectError:   false,
 		},
 		{
 			name: "upstream format with servers",
 			builder: func() []byte {
-				return NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatUpstream).
+				return NewTestRegistryBuilder(config.SourceFormatUpstream).
 					WithServerName("s1").
 					WithServerName("s2").
 					BuildJSON()
 			},
-			format:        mcpv1alpha1.RegistryFormatUpstream,
+			format:        config.SourceFormatUpstream,
 			expectedCount: 2,
 			expectError:   false,
 		},
 		{
 			name: "upstream format empty array",
 			builder: func() []byte {
-				return NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatUpstream).
+				return NewTestRegistryBuilder(config.SourceFormatUpstream).
 					Empty().
 					BuildJSON()
 			},
-			format:        mcpv1alpha1.RegistryFormatUpstream,
+			format:        config.SourceFormatUpstream,
 			expectError:   true,
 			errorContains: "upstream registry must contain at least one server",
 		},
 		{
 			name: "unsupported format",
 			builder: func() []byte {
-				return NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatToolHive).
+				return NewTestRegistryBuilder(config.SourceFormatToolHive).
 					WithServer("s1").
 					BuildJSON()
 			},
@@ -610,7 +563,7 @@ func TestConfigMapSourceHandler_ValidationWithBuilder(t *testing.T) {
 			builder: func() []byte {
 				return InvalidJSON()
 			},
-			format:        mcpv1alpha1.RegistryFormatToolHive,
+			format:        config.SourceFormatToolHive,
 			expectError:   true,
 			errorContains: "failed to parse registry data",
 		},
@@ -619,7 +572,7 @@ func TestConfigMapSourceHandler_ValidationWithBuilder(t *testing.T) {
 			builder: func() []byte {
 				return InvalidJSON()
 			},
-			format:        mcpv1alpha1.RegistryFormatUpstream,
+			format:        config.SourceFormatUpstream,
 			expectError:   true,
 			errorContains: "invalid upstream format",
 		},

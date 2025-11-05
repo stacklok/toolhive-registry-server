@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	v1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	config "github.com/stacklok/toolhive-registry-server/pkg/config"
 	registry "github.com/stacklok/toolhive/pkg/registry"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -43,72 +43,44 @@ func (m *MockStorageManager) EXPECT() *MockStorageManagerMockRecorder {
 }
 
 // Delete mocks base method.
-func (m *MockStorageManager) Delete(ctx context.Context, mcpRegistry *v1alpha1.MCPRegistry) error {
+func (m *MockStorageManager) Delete(ctx context.Context, arg1 *config.Config) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, mcpRegistry)
+	ret := m.ctrl.Call(m, "Delete", ctx, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Delete indicates an expected call of Delete.
-func (mr *MockStorageManagerMockRecorder) Delete(ctx, mcpRegistry any) *gomock.Call {
+func (mr *MockStorageManagerMockRecorder) Delete(ctx, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockStorageManager)(nil).Delete), ctx, mcpRegistry)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockStorageManager)(nil).Delete), ctx, arg1)
 }
 
 // Get mocks base method.
-func (m *MockStorageManager) Get(ctx context.Context, mcpRegistry *v1alpha1.MCPRegistry) (*registry.Registry, error) {
+func (m *MockStorageManager) Get(ctx context.Context, arg1 *config.Config) (*registry.Registry, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, mcpRegistry)
+	ret := m.ctrl.Call(m, "Get", ctx, arg1)
 	ret0, _ := ret[0].(*registry.Registry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Get indicates an expected call of Get.
-func (mr *MockStorageManagerMockRecorder) Get(ctx, mcpRegistry any) *gomock.Call {
+func (mr *MockStorageManagerMockRecorder) Get(ctx, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockStorageManager)(nil).Get), ctx, mcpRegistry)
-}
-
-// GetStorageReference mocks base method.
-func (m *MockStorageManager) GetStorageReference(mcpRegistry *v1alpha1.MCPRegistry) *v1alpha1.StorageReference {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetStorageReference", mcpRegistry)
-	ret0, _ := ret[0].(*v1alpha1.StorageReference)
-	return ret0
-}
-
-// GetStorageReference indicates an expected call of GetStorageReference.
-func (mr *MockStorageManagerMockRecorder) GetStorageReference(mcpRegistry any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStorageReference", reflect.TypeOf((*MockStorageManager)(nil).GetStorageReference), mcpRegistry)
-}
-
-// GetType mocks base method.
-func (m *MockStorageManager) GetType() string {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetType")
-	ret0, _ := ret[0].(string)
-	return ret0
-}
-
-// GetType indicates an expected call of GetType.
-func (mr *MockStorageManagerMockRecorder) GetType() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetType", reflect.TypeOf((*MockStorageManager)(nil).GetType))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockStorageManager)(nil).Get), ctx, arg1)
 }
 
 // Store mocks base method.
-func (m *MockStorageManager) Store(ctx context.Context, mcpRegistry *v1alpha1.MCPRegistry, reg *registry.Registry) error {
+func (m *MockStorageManager) Store(ctx context.Context, arg1 *config.Config, reg *registry.Registry) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Store", ctx, mcpRegistry, reg)
+	ret := m.ctrl.Call(m, "Store", ctx, arg1, reg)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Store indicates an expected call of Store.
-func (mr *MockStorageManagerMockRecorder) Store(ctx, mcpRegistry, reg any) *gomock.Call {
+func (mr *MockStorageManagerMockRecorder) Store(ctx, arg1, reg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Store", reflect.TypeOf((*MockStorageManager)(nil).Store), ctx, mcpRegistry, reg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Store", reflect.TypeOf((*MockStorageManager)(nil).Store), ctx, arg1, reg)
 }

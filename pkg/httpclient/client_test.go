@@ -53,7 +53,7 @@ var _ = Describe("DefaultClient", func() {
 			BeforeEach(func() {
 				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					// Verify headers
-					Expect(r.Header.Get("User-Agent")).To(Equal("toolhive-operator/1.0"))
+					Expect(r.Header.Get("User-Agent")).To(Equal("toolhive-registry-server/1.0"))
 					Expect(r.Header.Get("Accept")).To(Equal("application/json"))
 
 					w.WriteHeader(http.StatusOK)

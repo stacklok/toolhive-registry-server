@@ -6,8 +6,8 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/httpclient"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 )
 
 // APISourceHandler handles registry data from API endpoints
@@ -32,15 +32,15 @@ func NewAPISourceHandler() *APISourceHandler {
 }
 
 // Validate validates the API source configuration
-func (*APISourceHandler) Validate(source *mcpv1alpha1.MCPRegistrySource) error {
-	if source.Type != mcpv1alpha1.RegistrySourceTypeAPI {
+func (*APISourceHandler) Validate(source *config.SourceConfig) error {
+	if source.Type != config.SourceTypeAPI {
 		return fmt.Errorf("invalid source type: expected %s, got %s",
-			mcpv1alpha1.RegistrySourceTypeAPI, source.Type)
+			config.SourceTypeAPI, source.Type)
 	}
 
 	if source.API == nil {
 		return fmt.Errorf("api configuration is required for source type %s",
-			mcpv1alpha1.RegistrySourceTypeAPI)
+			config.SourceTypeAPI)
 	}
 
 	if source.API.Endpoint == "" {
@@ -52,16 +52,16 @@ func (*APISourceHandler) Validate(source *mcpv1alpha1.MCPRegistrySource) error {
 
 // FetchRegistry retrieves registry data from the API endpoint
 // It auto-detects the format and delegates to the appropriate handler
-func (h *APISourceHandler) FetchRegistry(ctx context.Context, mcpRegistry *mcpv1alpha1.MCPRegistry) (*FetchResult, error) {
+func (h *APISourceHandler) FetchRegistry(ctx context.Context, config *config.Config) (*FetchResult, error) {
 	logger := log.FromContext(ctx)
 
 	// Validate source configuration
-	if err := h.Validate(&mcpRegistry.Spec.Source); err != nil {
+	if err := h.Validate(&config.Source); err != nil {
 		return nil, fmt.Errorf("source validation failed: %w", err)
 	}
 
 	// Detect format and get appropriate handler
-	handler, format, err := h.detectFormatAndGetHandler(ctx, mcpRegistry)
+	handler, format, err := h.detectFormatAndGetHandler(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("format detection failed: %w", err)
 	}
@@ -70,40 +70,40 @@ func (h *APISourceHandler) FetchRegistry(ctx context.Context, mcpRegistry *mcpv1
 		"format", format)
 
 	// Delegate to the appropriate handler
-	return handler.FetchRegistry(ctx, mcpRegistry)
+	return handler.FetchRegistry(ctx, config)
 }
 
 // CurrentHash returns the current hash of the API response
-func (h *APISourceHandler) CurrentHash(ctx context.Context, mcpRegistry *mcpv1alpha1.MCPRegistry) (string, error) {
+func (h *APISourceHandler) CurrentHash(ctx context.Context, config *config.Config) (string, error) {
 	// Validate source configuration
-	if err := h.Validate(&mcpRegistry.Spec.Source); err != nil {
+	if err := h.Validate(&config.Source); err != nil {
 		return "", fmt.Errorf("source validation failed: %w", err)
 	}
 
 	// Detect format and get appropriate handler
-	handler, _, err := h.detectFormatAndGetHandler(ctx, mcpRegistry)
+	handler, _, err := h.detectFormatAndGetHandler(ctx, config)
 	if err != nil {
 		return "", fmt.Errorf("format detection failed: %w", err)
 	}
 
 	// Delegate to the appropriate handler
-	return handler.CurrentHash(ctx, mcpRegistry)
+	return handler.CurrentHash(ctx, config)
 }
 
 // apiFormatHandler is an internal interface for format-specific handlers
 type apiFormatHandler interface {
 	Validate(ctx context.Context, endpoint string) error
-	FetchRegistry(ctx context.Context, mcpRegistry *mcpv1alpha1.MCPRegistry) (*FetchResult, error)
-	CurrentHash(ctx context.Context, mcpRegistry *mcpv1alpha1.MCPRegistry) (string, error)
+	FetchRegistry(ctx context.Context, config *config.Config) (*FetchResult, error)
+	CurrentHash(ctx context.Context, config *config.Config) (string, error)
 }
 
 // detectFormatAndGetHandler detects the API format and returns the appropriate handler
 func (h *APISourceHandler) detectFormatAndGetHandler(
 	ctx context.Context,
-	mcpRegistry *mcpv1alpha1.MCPRegistry,
+	config *config.Config,
 ) (apiFormatHandler, string, error) {
 	logger := log.FromContext(ctx)
-	endpoint := h.getBaseURL(mcpRegistry)
+	endpoint := h.getBaseURL(config)
 
 	// Try ToolHive format first (/v0/info)
 	toolhiveErr := h.toolhiveHandler.Validate(ctx, endpoint)
@@ -125,8 +125,8 @@ func (h *APISourceHandler) detectFormatAndGetHandler(
 }
 
 // getBaseURL extracts and normalizes the base URL
-func (*APISourceHandler) getBaseURL(mcpRegistry *mcpv1alpha1.MCPRegistry) string {
-	baseURL := mcpRegistry.Spec.Source.API.Endpoint
+func (*APISourceHandler) getBaseURL(config *config.Config) string {
+	baseURL := config.Source.API.Endpoint
 
 	// Remove trailing slash
 	if len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
 
@@ -20,13 +20,13 @@ func TestNewTestRegistryBuilder(t *testing.T) {
 	}{
 		{
 			name:           "toolhive format",
-			format:         mcpv1alpha1.RegistryFormatToolHive,
-			expectedFormat: mcpv1alpha1.RegistryFormatToolHive,
+			format:         config.SourceFormatToolHive,
+			expectedFormat: config.SourceFormatToolHive,
 		},
 		{
 			name:           "upstream format",
-			format:         mcpv1alpha1.RegistryFormatUpstream,
-			expectedFormat: mcpv1alpha1.RegistryFormatUpstream,
+			format:         config.SourceFormatUpstream,
+			expectedFormat: config.SourceFormatUpstream,
 		},
 		{
 			name:           "empty format defaults to toolhive",
@@ -46,14 +46,14 @@ func TestNewTestRegistryBuilder(t *testing.T) {
 			assert.Equal(t, 1, builder.serverCounter)
 
 			switch tt.format {
-			case mcpv1alpha1.RegistryFormatToolHive, "":
+			case config.SourceFormatToolHive, "":
 				assert.NotNil(t, builder.registry)
 				assert.Equal(t, "1.0.0", builder.registry.Version)
 				assert.NotEmpty(t, builder.registry.LastUpdated)
 				assert.NotNil(t, builder.registry.Servers)
 				assert.NotNil(t, builder.registry.RemoteServers)
 				assert.Nil(t, builder.upstreamData)
-			case mcpv1alpha1.RegistryFormatUpstream:
+			case config.SourceFormatUpstream:
 				assert.NotNil(t, builder.upstreamData)
 				assert.Empty(t, builder.upstreamData)
 				assert.Nil(t, builder.registry)
@@ -73,25 +73,25 @@ func TestTestRegistryBuilder_WithServer(t *testing.T) {
 	}{
 		{
 			name:         "toolhive format with explicit name",
-			format:       mcpv1alpha1.RegistryFormatToolHive,
+			format:       config.SourceFormatToolHive,
 			serverName:   "my-server",
 			expectedName: "my-server",
 		},
 		{
 			name:         "toolhive format with empty name",
-			format:       mcpv1alpha1.RegistryFormatToolHive,
+			format:       config.SourceFormatToolHive,
 			serverName:   "",
 			expectedName: "test-server-1",
 		},
 		{
 			name:         "upstream format with explicit name",
-			format:       mcpv1alpha1.RegistryFormatUpstream,
+			format:       config.SourceFormatUpstream,
 			serverName:   "upstream-server",
 			expectedName: "upstream-server",
 		},
 		{
 			name:         "upstream format with empty name",
-			format:       mcpv1alpha1.RegistryFormatUpstream,
+			format:       config.SourceFormatUpstream,
 			serverName:   "",
 			expectedName: "test-server-1",
 		},
@@ -114,7 +114,7 @@ func TestTestRegistryBuilder_WithServer(t *testing.T) {
 			assert.Equal(t, builder, result)
 
 			switch tt.format {
-			case mcpv1alpha1.RegistryFormatToolHive, "":
+			case config.SourceFormatToolHive, "":
 				assert.Len(t, builder.registry.Servers, 1)
 				server, exists := builder.registry.Servers[tt.expectedName]
 				assert.True(t, exists)
@@ -125,7 +125,7 @@ func TestTestRegistryBuilder_WithServer(t *testing.T) {
 				assert.Equal(t, "stdio", server.Transport)
 				assert.Equal(t, []string{"test_tool"}, server.Tools)
 				assert.Equal(t, "test/image:latest", server.Image)
-			case mcpv1alpha1.RegistryFormatUpstream:
+			case config.SourceFormatUpstream:
 				assert.Len(t, builder.upstreamData, 1)
 				serverDetail := builder.upstreamData[0]
 				assert.Equal(t, tt.expectedName, serverDetail.Server.Name)
@@ -152,14 +152,14 @@ func TestTestRegistryBuilder_WithRemoteServer(t *testing.T) {
 	}{
 		{
 			name:        "toolhive format with explicit URL",
-			format:      mcpv1alpha1.RegistryFormatToolHive,
+			format:      config.SourceFormatToolHive,
 			url:         "https://example.com",
 			expectedURL: "https://example.com",
 			shouldAdd:   true,
 		},
 		{
 			name:        "toolhive format with empty URL",
-			format:      mcpv1alpha1.RegistryFormatToolHive,
+			format:      config.SourceFormatToolHive,
 			url:         "",
 			expectedURL: "https://remote-server-1.example.com",
 			shouldAdd:   true,
@@ -173,7 +173,7 @@ func TestTestRegistryBuilder_WithRemoteServer(t *testing.T) {
 		},
 		{
 			name:      "upstream format should not add remote server",
-			format:    mcpv1alpha1.RegistryFormatUpstream,
+			format:    config.SourceFormatUpstream,
 			url:       "https://example.com",
 			shouldAdd: false,
 		},
@@ -227,7 +227,7 @@ func TestTestRegistryBuilder_WithRemoteServerName(t *testing.T) {
 	}{
 		{
 			name:        "toolhive format with name and explicit URL",
-			format:      mcpv1alpha1.RegistryFormatToolHive,
+			format:      config.SourceFormatToolHive,
 			serverName:  "my-remote",
 			url:         "https://example.com",
 			expectedURL: "https://example.com",
@@ -235,7 +235,7 @@ func TestTestRegistryBuilder_WithRemoteServerName(t *testing.T) {
 		},
 		{
 			name:        "toolhive format with name and empty URL",
-			format:      mcpv1alpha1.RegistryFormatToolHive,
+			format:      config.SourceFormatToolHive,
 			serverName:  "my-remote",
 			url:         "",
 			expectedURL: "https://my-remote.example.com",
@@ -243,7 +243,7 @@ func TestTestRegistryBuilder_WithRemoteServerName(t *testing.T) {
 		},
 		{
 			name:       "upstream format should not add remote server",
-			format:     mcpv1alpha1.RegistryFormatUpstream,
+			format:     config.SourceFormatUpstream,
 			serverName: "my-remote",
 			url:        "https://example.com",
 			shouldAdd:  false,
@@ -286,7 +286,7 @@ func TestTestRegistryBuilder_WithVersion(t *testing.T) {
 	}{
 		{
 			name:         "toolhive format should update version",
-			format:       mcpv1alpha1.RegistryFormatToolHive,
+			format:       config.SourceFormatToolHive,
 			version:      "2.0.0",
 			shouldUpdate: true,
 		},
@@ -298,7 +298,7 @@ func TestTestRegistryBuilder_WithVersion(t *testing.T) {
 		},
 		{
 			name:         "upstream format should not update version",
-			format:       mcpv1alpha1.RegistryFormatUpstream,
+			format:       config.SourceFormatUpstream,
 			version:      "2.0.0",
 			shouldUpdate: false,
 		},
@@ -337,7 +337,7 @@ func TestTestRegistryBuilder_WithLastUpdated(t *testing.T) {
 	}{
 		{
 			name:         "toolhive format should update timestamp",
-			format:       mcpv1alpha1.RegistryFormatToolHive,
+			format:       config.SourceFormatToolHive,
 			timestamp:    "2023-01-01T00:00:00Z",
 			shouldUpdate: true,
 		},
@@ -349,7 +349,7 @@ func TestTestRegistryBuilder_WithLastUpdated(t *testing.T) {
 		},
 		{
 			name:         "upstream format should not update timestamp",
-			format:       mcpv1alpha1.RegistryFormatUpstream,
+			format:       config.SourceFormatUpstream,
 			timestamp:    "2023-01-01T00:00:00Z",
 			shouldUpdate: false,
 		},
@@ -391,11 +391,11 @@ func TestTestRegistryBuilder_Empty(t *testing.T) {
 	}{
 		{
 			name:   "toolhive format",
-			format: mcpv1alpha1.RegistryFormatToolHive,
+			format: config.SourceFormatToolHive,
 		},
 		{
 			name:   "upstream format",
-			format: mcpv1alpha1.RegistryFormatUpstream,
+			format: config.SourceFormatUpstream,
 		},
 		{
 			name:   "empty format",
@@ -411,7 +411,7 @@ func TestTestRegistryBuilder_Empty(t *testing.T) {
 
 			// Add some servers first
 			builder.WithServer("test1").WithServer("test2")
-			if tt.format != mcpv1alpha1.RegistryFormatUpstream {
+			if tt.format != config.SourceFormatUpstream {
 				builder.WithRemoteServer("https://example.com")
 			}
 
@@ -421,13 +421,13 @@ func TestTestRegistryBuilder_Empty(t *testing.T) {
 			assert.Equal(t, builder, result)
 
 			switch tt.format {
-			case mcpv1alpha1.RegistryFormatToolHive, "":
+			case config.SourceFormatToolHive, "":
 				assert.Empty(t, builder.registry.Servers)
 				assert.Empty(t, builder.registry.RemoteServers)
 				// Other fields should remain
 				assert.Equal(t, "1.0.0", builder.registry.Version)
 				assert.NotEmpty(t, builder.registry.LastUpdated)
-			case mcpv1alpha1.RegistryFormatUpstream:
+			case config.SourceFormatUpstream:
 				assert.Empty(t, builder.upstreamData)
 			}
 		})
@@ -443,11 +443,11 @@ func TestTestRegistryBuilder_BuildJSON(t *testing.T) {
 	}{
 		{
 			name:   "toolhive format",
-			format: mcpv1alpha1.RegistryFormatToolHive,
+			format: config.SourceFormatToolHive,
 		},
 		{
 			name:   "upstream format",
-			format: mcpv1alpha1.RegistryFormatUpstream,
+			format: config.SourceFormatUpstream,
 		},
 		{
 			name:   "empty format",
@@ -472,14 +472,14 @@ func TestTestRegistryBuilder_BuildJSON(t *testing.T) {
 			assert.NoError(t, err)
 
 			switch tt.format {
-			case mcpv1alpha1.RegistryFormatToolHive, "":
+			case config.SourceFormatToolHive, "":
 				// Should be a registry object
 				var registry registry.Registry
 				err = json.Unmarshal(jsonData, &registry)
 				assert.NoError(t, err)
 				assert.Equal(t, "1.0.0", registry.Version)
 				assert.Len(t, registry.Servers, 1)
-			case mcpv1alpha1.RegistryFormatUpstream:
+			case config.SourceFormatUpstream:
 				// Should be an array of server details
 				var upstreamData []registry.UpstreamServerDetail
 				err = json.Unmarshal(jsonData, &upstreamData)
@@ -493,7 +493,7 @@ func TestTestRegistryBuilder_BuildJSON(t *testing.T) {
 func TestTestRegistryBuilder_BuildPrettyJSON(t *testing.T) {
 	t.Parallel()
 
-	builder := NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatToolHive)
+	builder := NewTestRegistryBuilder(config.SourceFormatToolHive)
 	builder.WithServer("test-server")
 
 	prettyJSON := builder.BuildPrettyJSON()
@@ -524,7 +524,7 @@ func TestTestRegistryBuilder_GetRegistry(t *testing.T) {
 	}{
 		{
 			name:         "toolhive format should return registry",
-			format:       mcpv1alpha1.RegistryFormatToolHive,
+			format:       config.SourceFormatToolHive,
 			shouldReturn: true,
 		},
 		{
@@ -534,7 +534,7 @@ func TestTestRegistryBuilder_GetRegistry(t *testing.T) {
 		},
 		{
 			name:         "upstream format should return nil",
-			format:       mcpv1alpha1.RegistryFormatUpstream,
+			format:       config.SourceFormatUpstream,
 			shouldReturn: false,
 		},
 	}
@@ -569,12 +569,12 @@ func TestTestRegistryBuilder_GetUpstreamData(t *testing.T) {
 	}{
 		{
 			name:         "upstream format should return data",
-			format:       mcpv1alpha1.RegistryFormatUpstream,
+			format:       config.SourceFormatUpstream,
 			shouldReturn: true,
 		},
 		{
 			name:         "toolhive format should return nil",
-			format:       mcpv1alpha1.RegistryFormatToolHive,
+			format:       config.SourceFormatToolHive,
 			shouldReturn: false,
 		},
 		{
@@ -615,21 +615,21 @@ func TestTestRegistryBuilder_ServerCount(t *testing.T) {
 	}{
 		{
 			name:               "toolhive format with container servers",
-			format:             mcpv1alpha1.RegistryFormatToolHive,
+			format:             config.SourceFormatToolHive,
 			serversToAdd:       2,
 			remoteServersToAdd: 0,
 			expectedCount:      2,
 		},
 		{
 			name:               "toolhive format with mixed servers",
-			format:             mcpv1alpha1.RegistryFormatToolHive,
+			format:             config.SourceFormatToolHive,
 			serversToAdd:       2,
 			remoteServersToAdd: 1,
 			expectedCount:      3,
 		},
 		{
 			name:               "upstream format with servers",
-			format:             mcpv1alpha1.RegistryFormatUpstream,
+			format:             config.SourceFormatUpstream,
 			serversToAdd:       3,
 			remoteServersToAdd: 0, // Remote servers not supported in upstream
 			expectedCount:      3,
@@ -655,7 +655,7 @@ func TestTestRegistryBuilder_ServerCount(t *testing.T) {
 			}
 
 			// Add remote servers (only for supported formats)
-			if tt.format != mcpv1alpha1.RegistryFormatUpstream {
+			if tt.format != config.SourceFormatUpstream {
 				for i := 0; i < tt.remoteServersToAdd; i++ {
 					builder.WithRemoteServer("")
 				}
@@ -670,7 +670,7 @@ func TestTestRegistryBuilder_ServerCount(t *testing.T) {
 func TestTestRegistryBuilder_ContainerServerCount(t *testing.T) {
 	t.Parallel()
 
-	builder := NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatToolHive)
+	builder := NewTestRegistryBuilder(config.SourceFormatToolHive)
 	builder.WithServer("server1").WithServer("server2").WithRemoteServer("https://example.com")
 
 	containerCount := builder.ContainerServerCount()
@@ -694,7 +694,7 @@ func TestTestRegistryBuilder_RemoteServerCount(t *testing.T) {
 	}{
 		{
 			name:               "toolhive format with remote servers",
-			format:             mcpv1alpha1.RegistryFormatToolHive,
+			format:             config.SourceFormatToolHive,
 			remoteServersToAdd: 2,
 			expectedCount:      2,
 		},
@@ -706,7 +706,7 @@ func TestTestRegistryBuilder_RemoteServerCount(t *testing.T) {
 		},
 		{
 			name:               "upstream format should return 0",
-			format:             mcpv1alpha1.RegistryFormatUpstream,
+			format:             config.SourceFormatUpstream,
 			remoteServersToAdd: 0, // Remote servers not supported
 			expectedCount:      0,
 		},
@@ -719,7 +719,7 @@ func TestTestRegistryBuilder_RemoteServerCount(t *testing.T) {
 			builder := NewTestRegistryBuilder(tt.format)
 
 			// Add remote servers (only for supported formats)
-			if tt.format != mcpv1alpha1.RegistryFormatUpstream {
+			if tt.format != config.SourceFormatUpstream {
 				for i := 0; i < tt.remoteServersToAdd; i++ {
 					builder.WithRemoteServer("")
 				}
@@ -735,7 +735,7 @@ func TestTestRegistryBuilder_ChainedCalls(t *testing.T) {
 	t.Parallel()
 
 	// Test method chaining works correctly
-	builder := NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatToolHive)
+	builder := NewTestRegistryBuilder(config.SourceFormatToolHive)
 
 	result := builder.
 		WithVersion("2.0.0").
@@ -783,12 +783,12 @@ func TestEmptyJSON(t *testing.T) {
 	}{
 		{
 			name:         "toolhive format",
-			format:       mcpv1alpha1.RegistryFormatToolHive,
+			format:       config.SourceFormatToolHive,
 			expectedJSON: "{}",
 		},
 		{
 			name:         "upstream format",
-			format:       mcpv1alpha1.RegistryFormatUpstream,
+			format:       config.SourceFormatUpstream,
 			expectedJSON: "[]",
 		},
 		{
@@ -822,7 +822,7 @@ func TestTestRegistryBuilder_WithServerName(t *testing.T) {
 	t.Parallel()
 
 	// Test WithServerName is an alias for WithServer
-	builder := NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatToolHive)
+	builder := NewTestRegistryBuilder(config.SourceFormatToolHive)
 
 	result1 := builder.WithServerName("test-server")
 	result2 := builder.WithServer("test-server-2")
@@ -842,7 +842,7 @@ func TestTestRegistryBuilder_PanicOnMarshalError(t *testing.T) {
 
 	// This is harder to test since we need to cause a marshal error
 	// For now, just verify the methods don't panic with normal usage
-	builder := NewTestRegistryBuilder(mcpv1alpha1.RegistryFormatToolHive)
+	builder := NewTestRegistryBuilder(config.SourceFormatToolHive)
 	builder.WithServer("test")
 
 	assert.NotPanics(t, func() {

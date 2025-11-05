@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 )
 
 const (
@@ -32,15 +32,15 @@ func NewConfigMapSourceHandler(k8sClient client.Client) *ConfigMapSourceHandler 
 }
 
 // Validate validates the ConfigMap source configuration
-func (*ConfigMapSourceHandler) Validate(source *mcpv1alpha1.MCPRegistrySource) error {
-	if source.Type != mcpv1alpha1.RegistrySourceTypeConfigMap {
+func (*ConfigMapSourceHandler) Validate(source *config.SourceConfig) error {
+	if source.Type != config.SourceTypeConfigMap {
 		return fmt.Errorf("invalid source type: expected %s, got %s",
-			mcpv1alpha1.RegistrySourceTypeConfigMap, source.Type)
+			config.SourceTypeConfigMap, source.Type)
 	}
 
 	if source.ConfigMap == nil {
 		return fmt.Errorf("configMap configuration is required for source type %s",
-			mcpv1alpha1.RegistrySourceTypeConfigMap)
+			config.SourceTypeConfigMap)
 	}
 
 	if source.ConfigMap.Name == "" {
@@ -55,28 +55,25 @@ func (*ConfigMapSourceHandler) Validate(source *mcpv1alpha1.MCPRegistrySource) e
 	return nil
 }
 
-// fetchConfigMapData retrieves and validates ConfigMap data for the given MCPRegistry
-func (h *ConfigMapSourceHandler) fetchConfigMapData(ctx context.Context, mcpRegistry *mcpv1alpha1.MCPRegistry) (*string, error) {
-	source := &mcpRegistry.Spec.Source
+// fetchConfigMapData retrieves and validates ConfigMap data for the given config
+func (h *ConfigMapSourceHandler) fetchConfigMapData(ctx context.Context, config *config.Config) (*string, error) {
+	source := &config.Source
 
 	// Validate source configuration
-	if err := h.Validate(source); err != nil {
+	if err := h.Validate(&config.Source); err != nil {
 		return nil, fmt.Errorf("source validation failed: %w", err)
 	}
-
-	// Determine ConfigMap namespace (use registry namespace since ConfigMapSource doesn't have namespace field)
-	configMapNamespace := mcpRegistry.Namespace
 
 	// Retrieve ConfigMap
 	configMap := &corev1.ConfigMap{}
 	configMapKey := types.NamespacedName{
 		Name:      source.ConfigMap.Name,
-		Namespace: configMapNamespace,
+		Namespace: source.ConfigMap.Namespace,
 	}
 
 	if err := h.client.Get(ctx, configMapKey, configMap); err != nil {
 		return nil, fmt.Errorf("failed to get ConfigMap %s/%s: %w",
-			configMapNamespace, source.ConfigMap.Name, err)
+			source.ConfigMap.Namespace, source.ConfigMap.Name, err)
 	}
 
 	// Get registry data from ConfigMap
@@ -88,20 +85,20 @@ func (h *ConfigMapSourceHandler) fetchConfigMapData(ctx context.Context, mcpRegi
 	data, exists := configMap.Data[key]
 	if !exists {
 		return nil, fmt.Errorf("key %s not found in ConfigMap %s/%s",
-			key, configMapNamespace, source.ConfigMap.Name)
+			key, source.ConfigMap.Namespace, source.ConfigMap.Name)
 	}
 
 	return &data, nil
 }
 
 // FetchRegistry retrieves registry data from the ConfigMap source
-func (h *ConfigMapSourceHandler) FetchRegistry(ctx context.Context, mcpRegistry *mcpv1alpha1.MCPRegistry) (*FetchResult, error) {
-	if mcpRegistry.Spec.Source.Format == mcpv1alpha1.RegistryFormatUpstream {
+func (h *ConfigMapSourceHandler) FetchRegistry(ctx context.Context, registryConfig *config.Config) (*FetchResult, error) {
+	if registryConfig.Source.Format == config.SourceFormatUpstream {
 		return nil, fmt.Errorf("upstream registry format is not yet supported")
 	}
 
 	// Fetch ConfigMap data using reusable function
-	configMapData, err := h.fetchConfigMapData(ctx, mcpRegistry)
+	configMapData, err := h.fetchConfigMapData(ctx, registryConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -110,25 +107,25 @@ func (h *ConfigMapSourceHandler) FetchRegistry(ctx context.Context, mcpRegistry 
 	registryData := []byte(*configMapData)
 
 	// Validate and parse registry data
-	reg, err := h.validator.ValidateData(registryData, mcpRegistry.Spec.Source.Format)
+	reg, err := h.validator.ValidateData(registryData, registryConfig.Source.Format)
 	if err != nil {
 		return nil, fmt.Errorf("registry data validation failed: %w", err)
 	}
 
 	// Calculate hash using the same method as CurrentHash for consistency
-	hash, err := h.CurrentHash(ctx, mcpRegistry)
+	hash, err := h.CurrentHash(ctx, registryConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate hash: %w", err)
 	}
 
 	// Create and return fetch result with pre-calculated hash
-	return NewFetchResult(reg, hash, mcpRegistry.Spec.Source.Format), nil
+	return NewFetchResult(reg, hash, registryConfig.Source.Format), nil
 }
 
 // CurrentHash returns the current hash of the source data without performing a full fetch
-func (h *ConfigMapSourceHandler) CurrentHash(ctx context.Context, mcpRegistry *mcpv1alpha1.MCPRegistry) (string, error) {
+func (h *ConfigMapSourceHandler) CurrentHash(ctx context.Context, registryConfig *config.Config) (string, error) {
 	// Fetch ConfigMap data using reusable function
-	configMapData, err := h.fetchConfigMapData(ctx, mcpRegistry)
+	configMapData, err := h.fetchConfigMapData(ctx, registryConfig)
 	if err != nil {
 		return "", err
 	}

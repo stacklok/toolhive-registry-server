@@ -12,8 +12,8 @@ import (
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/httpclient"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
 
@@ -60,9 +60,9 @@ func (h *ToolHiveAPIHandler) Validate(ctx context.Context, endpoint string) erro
 }
 
 // FetchRegistry retrieves registry data from the ToolHive API endpoint
-func (h *ToolHiveAPIHandler) FetchRegistry(ctx context.Context, mcpRegistry *mcpv1alpha1.MCPRegistry) (*FetchResult, error) {
+func (h *ToolHiveAPIHandler) FetchRegistry(ctx context.Context, registryConfig *config.Config) (*FetchResult, error) {
 	logger := log.FromContext(ctx)
-	baseURL := h.getBaseURL(mcpRegistry)
+	baseURL := h.getBaseURL(registryConfig)
 
 	// Build API URL: /v0/servers?format=toolhive
 	apiURL := h.buildServersURL(baseURL)
@@ -104,12 +104,12 @@ func (h *ToolHiveAPIHandler) FetchRegistry(ctx context.Context, mcpRegistry *mcp
 	hash := fmt.Sprintf("%x", sha256.Sum256(data))
 
 	// Create and return fetch result
-	return NewFetchResult(toolhiveRegistry, hash, mcpv1alpha1.RegistryFormatToolHive), nil
+	return NewFetchResult(toolhiveRegistry, hash, config.SourceFormatToolHive), nil
 }
 
 // CurrentHash returns the current hash of the API response
-func (h *ToolHiveAPIHandler) CurrentHash(ctx context.Context, mcpRegistry *mcpv1alpha1.MCPRegistry) (string, error) {
-	baseURL := h.getBaseURL(mcpRegistry)
+func (h *ToolHiveAPIHandler) CurrentHash(ctx context.Context, config *config.Config) (string, error) {
+	baseURL := h.getBaseURL(config)
 	apiURL := h.buildServersURL(baseURL)
 
 	// Fetch data from API
@@ -124,8 +124,8 @@ func (h *ToolHiveAPIHandler) CurrentHash(ctx context.Context, mcpRegistry *mcpv1
 }
 
 // getBaseURL extracts and normalizes the base URL
-func (*ToolHiveAPIHandler) getBaseURL(mcpRegistry *mcpv1alpha1.MCPRegistry) string {
-	baseURL := mcpRegistry.Spec.Source.API.Endpoint
+func (*ToolHiveAPIHandler) getBaseURL(config *config.Config) string {
+	baseURL := config.Source.API.Endpoint
 
 	// Remove trailing slash
 	if len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {

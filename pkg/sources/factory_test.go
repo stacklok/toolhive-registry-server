@@ -4,19 +4,16 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 )
 
 func TestNewSourceHandlerFactory(t *testing.T) {
 	t.Parallel()
 
 	scheme := runtime.NewScheme()
-	require.NoError(t, mcpv1alpha1.AddToScheme(scheme))
-
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		Build()
@@ -30,8 +27,6 @@ func TestDefaultSourceHandlerFactory_CreateHandler(t *testing.T) {
 	t.Parallel()
 
 	scheme := runtime.NewScheme()
-	require.NoError(t, mcpv1alpha1.AddToScheme(scheme))
-
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		Build()
@@ -47,19 +42,19 @@ func TestDefaultSourceHandlerFactory_CreateHandler(t *testing.T) {
 	}{
 		{
 			name:         "configmap source type",
-			sourceType:   mcpv1alpha1.RegistrySourceTypeConfigMap,
+			sourceType:   config.SourceTypeConfigMap,
 			expectError:  false,
 			expectedType: &ConfigMapSourceHandler{},
 		},
 		{
 			name:         "git source type",
-			sourceType:   mcpv1alpha1.RegistrySourceTypeGit,
+			sourceType:   config.SourceTypeGit,
 			expectError:  false,
 			expectedType: &GitSourceHandler{},
 		},
 		{
 			name:         "api source type",
-			sourceType:   mcpv1alpha1.RegistrySourceTypeAPI,
+			sourceType:   config.SourceTypeAPI,
 			expectError:  false,
 			expectedType: &APISourceHandler{},
 		},
