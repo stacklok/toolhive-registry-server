@@ -17,7 +17,7 @@ components:
         transport:
           type: string
       type: object
-    v1.EnvVarDetail:
+    v0.EnvVarDetail:
       properties:
         default:
           type: string
@@ -30,22 +30,22 @@ components:
         secret:
           type: boolean
       type: object
-    v1.ErrorResponse:
+    v0.ErrorResponse:
       properties:
         error:
           type: string
       type: object
-    v1.ListServersResponse:
+    v0.ListServersResponse:
       properties:
         servers:
           items:
-            $ref: '#/components/schemas/v1.ServerSummaryResponse'
+            $ref: '#/components/schemas/v0.ServerSummaryResponse'
           type: array
           uniqueItems: false
         total:
           type: integer
       type: object
-    v1.RegistryInfoResponse:
+    v0.RegistryInfoResponse:
       properties:
         last_updated:
           type: string
@@ -56,7 +56,7 @@ components:
         version:
           type: string
       type: object
-    v1.ServerDetailResponse:
+    v0.ServerDetailResponse:
       properties:
         args:
           items:
@@ -67,7 +67,7 @@ components:
           type: string
         env_vars:
           items:
-            $ref: '#/components/schemas/v1.EnvVarDetail'
+            $ref: '#/components/schemas/v0.EnvVarDetail'
           type: array
           uniqueItems: false
         image:
@@ -102,7 +102,7 @@ components:
           additionalProperties: {}
           type: object
       type: object
-    v1.ServerSummaryResponse:
+    v0.ServerSummaryResponse:
       properties:
         description:
           type: string
@@ -134,8 +134,9 @@ info:
   version: "0.1"
 openapi: 3.1.0
 paths:
-  /api/v1/registry/info:
+  /api/v0/registry/info:
     get:
+      deprecated: true
       description: Get registry metadata including version, last updated time, and
         total servers
       parameters:
@@ -158,25 +159,26 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.RegistryInfoResponse'
+                $ref: '#/components/schemas/v0.RegistryInfoResponse'
           description: OK
         "400":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Bad Request
         "501":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Not Implemented
       summary: Get registry information
       tags:
       - registry
-  /api/v1/registry/openapi.yaml:
+  /api/v0/registry/openapi.yaml:
     get:
+      deprecated: true
       description: Returns the OpenAPI specification for the registry API in YAML
         format
       responses:
@@ -192,8 +194,9 @@ paths:
       summary: Get OpenAPI specification
       tags:
       - system
-  /api/v1/registry/servers:
+  /api/v0/registry/servers:
     get:
+      deprecated: true
       description: Get a list of all available MCP servers in the registry
       parameters:
       - description: Response format
@@ -215,25 +218,26 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ListServersResponse'
+                $ref: '#/components/schemas/v0.ListServersResponse'
           description: OK
         "400":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Bad Request
         "501":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Not Implemented
       summary: List all servers
       tags:
       - servers
-  /api/v1/registry/servers/{name}:
+  /api/v0/registry/servers/{name}:
     get:
+      deprecated: true
       description: Get detailed information about a specific MCP server
       parameters:
       - description: Server name
@@ -261,31 +265,32 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ServerDetailResponse'
+                $ref: '#/components/schemas/v0.ServerDetailResponse'
           description: OK
         "400":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Bad Request
         "404":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Not Found
         "501":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Not Implemented
       summary: Get server by name
       tags:
       - servers
-  /api/v1/registry/servers/deployed:
+  /api/v0/registry/servers/deployed:
     get:
+      deprecated: true
       description: Get a list of all currently deployed MCP servers
       requestBody:
         content:
@@ -305,13 +310,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Internal Server Error
       summary: List deployed servers
       tags:
       - deployed-servers
-  /api/v1/registry/servers/deployed/{name}:
+  /api/v0/registry/servers/deployed/{name}:
     get:
+      deprecated: true
       description: Get all deployed MCP servers that match the specified server registry
         name
       parameters:
@@ -339,19 +345,20 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Bad Request
         "500":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Internal Server Error
       summary: Get deployed servers by registry name
       tags:
       - deployed-servers
   /health:
     get:
+      deprecated: true
       description: Check if the registry API is healthy
       responses:
         "200":
@@ -367,6 +374,7 @@ paths:
       - system
   /readiness:
     get:
+      deprecated: true
       description: Check if the registry API is ready to serve requests
       responses:
         "200":
@@ -381,13 +389,134 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Service Unavailable
       summary: Readiness check
       tags:
       - system
+  /registry/v0.1/publish:
+    post:
+      description: Publish a server to the registry
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      summary: Publish server
+      tags:
+      - registry
+      - official
+  /registry/v0.1/servers:
+    get:
+      description: Get a list of available servers in the registry
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      summary: List servers
+      tags:
+      - registry
+      - official
+  /registry/v0.1/servers/{serverName}/versions:
+    get:
+      description: Get a list of available versions for a specific server
+      parameters:
+      - description: Server name
+        in: path
+        name: serverName
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      summary: List server versions
+      tags:
+      - registry
+      - official
+  /registry/v0.1/servers/{serverName}/versions/{version}:
+    get:
+      description: Get details for a specific version of a server
+      parameters:
+      - description: Server name
+        in: path
+        name: serverName
+        required: true
+        schema:
+          type: string
+      - description: Version identifier
+        in: path
+        name: version
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      summary: Get server version
+      tags:
+      - registry
+      - official
   /v0/publish:
     post:
+      deprecated: true
       description: Publish a new MCP server to the registry or update an existing
         one
       requestBody:
@@ -400,13 +529,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/v1.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Not Implemented
       summary: Publish MCP server (Not Implemented)
       tags:
       - servers
   /version:
     get:
+      deprecated: true
       description: Get version information about the registry API
       responses:
         "200":

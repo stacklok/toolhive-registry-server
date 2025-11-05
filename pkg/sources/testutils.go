@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
 
@@ -25,14 +25,14 @@ func NewTestRegistryBuilder(format string) *TestRegistryBuilder {
 	}
 
 	switch format {
-	case mcpv1alpha1.RegistryFormatToolHive, "":
+	case config.SourceFormatToolHive, "":
 		builder.registry = &registry.Registry{
 			Version:       "1.0.0",
 			LastUpdated:   time.Now().Format(time.RFC3339),
 			Servers:       make(map[string]*registry.ImageMetadata),
 			RemoteServers: make(map[string]*registry.RemoteServerMetadata),
 		}
-	case mcpv1alpha1.RegistryFormatUpstream:
+	case config.SourceFormatUpstream:
 		builder.upstreamData = []registry.UpstreamServerDetail{}
 	}
 
@@ -47,7 +47,7 @@ func (b *TestRegistryBuilder) WithServer(name string) *TestRegistryBuilder {
 	}
 
 	switch b.format {
-	case mcpv1alpha1.RegistryFormatToolHive, "":
+	case config.SourceFormatToolHive, "":
 		b.registry.Servers[name] = &registry.ImageMetadata{
 			BaseServerMetadata: registry.BaseServerMetadata{
 				Name:        name,
@@ -59,7 +59,7 @@ func (b *TestRegistryBuilder) WithServer(name string) *TestRegistryBuilder {
 			},
 			Image: "test/image:latest",
 		}
-	case mcpv1alpha1.RegistryFormatUpstream:
+	case config.SourceFormatUpstream:
 		b.upstreamData = append(b.upstreamData, registry.UpstreamServerDetail{
 			Server: registry.UpstreamServer{
 				Name:        name,
@@ -80,7 +80,7 @@ func (b *TestRegistryBuilder) WithServer(name string) *TestRegistryBuilder {
 
 // WithRemoteServer adds a remote server with the given URL (only for ToolHive format)
 func (b *TestRegistryBuilder) WithRemoteServer(url string) *TestRegistryBuilder {
-	if b.format != mcpv1alpha1.RegistryFormatToolHive && b.format != "" {
+	if b.format != config.SourceFormatToolHive && b.format != "" {
 		return b // Only supported for ToolHive format
 	}
 
@@ -113,7 +113,7 @@ func (b *TestRegistryBuilder) WithServerName(name string) *TestRegistryBuilder {
 
 // WithRemoteServerName adds a remote server with a specific name and URL
 func (b *TestRegistryBuilder) WithRemoteServerName(name, url string) *TestRegistryBuilder {
-	if b.format != mcpv1alpha1.RegistryFormatToolHive && b.format != "" {
+	if b.format != config.SourceFormatToolHive && b.format != "" {
 		return b // Only supported for ToolHive format
 	}
 
@@ -138,7 +138,7 @@ func (b *TestRegistryBuilder) WithRemoteServerName(name, url string) *TestRegist
 
 // WithVersion sets a custom version (ToolHive format only)
 func (b *TestRegistryBuilder) WithVersion(version string) *TestRegistryBuilder {
-	if b.format == mcpv1alpha1.RegistryFormatToolHive || b.format == "" {
+	if b.format == config.SourceFormatToolHive || b.format == "" {
 		b.registry.Version = version
 	}
 	return b
@@ -146,7 +146,7 @@ func (b *TestRegistryBuilder) WithVersion(version string) *TestRegistryBuilder {
 
 // WithLastUpdated sets a custom last updated timestamp (ToolHive format only)
 func (b *TestRegistryBuilder) WithLastUpdated(timestamp string) *TestRegistryBuilder {
-	if b.format == mcpv1alpha1.RegistryFormatToolHive || b.format == "" {
+	if b.format == config.SourceFormatToolHive || b.format == "" {
 		b.registry.LastUpdated = timestamp
 	}
 	return b
@@ -155,11 +155,11 @@ func (b *TestRegistryBuilder) WithLastUpdated(timestamp string) *TestRegistryBui
 // Empty creates an empty registry with minimal required fields
 func (b *TestRegistryBuilder) Empty() *TestRegistryBuilder {
 	switch b.format {
-	case mcpv1alpha1.RegistryFormatToolHive, "":
+	case config.SourceFormatToolHive, "":
 		// Keep the registry structure but clear servers
 		b.registry.Servers = make(map[string]*registry.ImageMetadata)
 		b.registry.RemoteServers = make(map[string]*registry.RemoteServerMetadata)
-	case mcpv1alpha1.RegistryFormatUpstream:
+	case config.SourceFormatUpstream:
 		b.upstreamData = []registry.UpstreamServerDetail{}
 	}
 	return b
@@ -171,9 +171,9 @@ func (b *TestRegistryBuilder) BuildJSON() []byte {
 	var err error
 
 	switch b.format {
-	case mcpv1alpha1.RegistryFormatToolHive, "":
+	case config.SourceFormatToolHive, "":
 		data, err = json.Marshal(b.registry)
-	case mcpv1alpha1.RegistryFormatUpstream:
+	case config.SourceFormatUpstream:
 		data, err = json.Marshal(b.upstreamData)
 	}
 
@@ -190,9 +190,9 @@ func (b *TestRegistryBuilder) BuildPrettyJSON() []byte {
 	var err error
 
 	switch b.format {
-	case mcpv1alpha1.RegistryFormatToolHive, "":
+	case config.SourceFormatToolHive, "":
 		data, err = json.MarshalIndent(b.registry, "", "  ")
-	case mcpv1alpha1.RegistryFormatUpstream:
+	case config.SourceFormatUpstream:
 		data, err = json.MarshalIndent(b.upstreamData, "", "  ")
 	}
 
@@ -205,7 +205,7 @@ func (b *TestRegistryBuilder) BuildPrettyJSON() []byte {
 
 // GetRegistry returns the built registry (for ToolHive format only)
 func (b *TestRegistryBuilder) GetRegistry() *registry.Registry {
-	if b.format == mcpv1alpha1.RegistryFormatToolHive || b.format == "" {
+	if b.format == config.SourceFormatToolHive || b.format == "" {
 		return b.registry
 	}
 	return nil
@@ -213,7 +213,7 @@ func (b *TestRegistryBuilder) GetRegistry() *registry.Registry {
 
 // GetUpstreamData returns the built upstream data (for Upstream format only)
 func (b *TestRegistryBuilder) GetUpstreamData() []registry.UpstreamServerDetail {
-	if b.format == mcpv1alpha1.RegistryFormatUpstream {
+	if b.format == config.SourceFormatUpstream {
 		return b.upstreamData
 	}
 	return nil
@@ -222,9 +222,9 @@ func (b *TestRegistryBuilder) GetUpstreamData() []registry.UpstreamServerDetail 
 // ServerCount returns the number of servers (both container and remote for ToolHive format)
 func (b *TestRegistryBuilder) ServerCount() int {
 	switch b.format {
-	case mcpv1alpha1.RegistryFormatToolHive, "":
+	case config.SourceFormatToolHive, "":
 		return len(b.registry.Servers) + len(b.registry.RemoteServers)
-	case mcpv1alpha1.RegistryFormatUpstream:
+	case config.SourceFormatUpstream:
 		return len(b.upstreamData)
 	}
 	return 0
@@ -233,9 +233,9 @@ func (b *TestRegistryBuilder) ServerCount() int {
 // ContainerServerCount returns the number of container servers only
 func (b *TestRegistryBuilder) ContainerServerCount() int {
 	switch b.format {
-	case mcpv1alpha1.RegistryFormatToolHive, "":
+	case config.SourceFormatToolHive, "":
 		return len(b.registry.Servers)
-	case mcpv1alpha1.RegistryFormatUpstream:
+	case config.SourceFormatUpstream:
 		return len(b.upstreamData)
 	}
 	return 0
@@ -243,7 +243,7 @@ func (b *TestRegistryBuilder) ContainerServerCount() int {
 
 // RemoteServerCount returns the number of remote servers only (ToolHive format only)
 func (b *TestRegistryBuilder) RemoteServerCount() int {
-	if b.format == mcpv1alpha1.RegistryFormatToolHive || b.format == "" {
+	if b.format == config.SourceFormatToolHive || b.format == "" {
 		return len(b.registry.RemoteServers)
 	}
 	return 0
@@ -257,9 +257,9 @@ func InvalidJSON() []byte {
 // EmptyJSON returns empty JSON object/array based on format
 func EmptyJSON(format string) []byte {
 	switch format {
-	case mcpv1alpha1.RegistryFormatToolHive, "":
+	case config.SourceFormatToolHive, "":
 		return []byte("{}")
-	case mcpv1alpha1.RegistryFormatUpstream:
+	case config.SourceFormatUpstream:
 		return []byte("[]")
 	default:
 		return []byte("{}")

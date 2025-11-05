@@ -8,9 +8,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/httpclient"
 	"github.com/stacklok/toolhive-registry-server/pkg/sources"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 )
 
 const upstreamOpenapiPath = "/openapi.yaml"
@@ -244,16 +244,20 @@ info:
 	})
 
 	Describe("FetchRegistry", func() {
-		var mcpRegistry *mcpv1alpha1.MCPRegistry
+		var registryConfig *config.Config
 
 		BeforeEach(func() {
-			mcpRegistry = &mcpv1alpha1.MCPRegistry{}
-			mcpRegistry.Spec.Source.API = &mcpv1alpha1.APISource{}
+			registryConfig = &config.Config{
+				Source: config.SourceConfig{
+					Type: config.SourceTypeAPI,
+					API:  &config.APIConfig{},
+				},
+			}
 		})
 
 		Context("Phase 2 not implemented", func() {
 			It("should return not implemented error", func() {
-				_, err := handler.FetchRegistry(ctx, mcpRegistry)
+				_, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("not yet implemented"))
 				Expect(err.Error()).To(ContainSubstring("Phase 2"))
@@ -262,16 +266,20 @@ info:
 	})
 
 	Describe("CurrentHash", func() {
-		var mcpRegistry *mcpv1alpha1.MCPRegistry
+		var registryConfig *config.Config
 
 		BeforeEach(func() {
-			mcpRegistry = &mcpv1alpha1.MCPRegistry{}
-			mcpRegistry.Spec.Source.API = &mcpv1alpha1.APISource{}
+			registryConfig = &config.Config{
+				Source: config.SourceConfig{
+					Type: config.SourceTypeAPI,
+					API:  &config.APIConfig{},
+				},
+			}
 		})
 
 		Context("Phase 2 not implemented", func() {
 			It("should return not implemented error", func() {
-				_, err := handler.CurrentHash(ctx, mcpRegistry)
+				_, err := handler.CurrentHash(ctx, registryConfig)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("not yet implemented"))
 				Expect(err.Error()).To(ContainSubstring("Phase 2"))

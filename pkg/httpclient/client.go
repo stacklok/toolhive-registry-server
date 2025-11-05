@@ -17,7 +17,7 @@ const (
 	MaxResponseSize = 100 * 1024 * 1024
 
 	// UserAgent is the user agent string for HTTP requests
-	UserAgent = "toolhive-operator/1.0"
+	UserAgent = "toolhive-registry-server/1.0"
 )
 
 // Client is an interface for HTTP operations

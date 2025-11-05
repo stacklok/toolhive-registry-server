@@ -1,5 +1,5 @@
-// Package v1 provides the REST API handlers for MCP Registry access.
-package v1
+// Package v0 provides the REST API handlers for MCP Registry access.
+package v0
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"gopkg.in/yaml.v3"
 
-	docs "github.com/stacklok/toolhive-registry-server/docs/thv-registry-api"
+	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/docs"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive/pkg/logger"
 	"github.com/stacklok/toolhive/pkg/registry"
@@ -19,14 +19,17 @@ import (
 
 const (
 	// FormatToolhive is the toolhive format for registry responses
+	// Deprecated: Use API v0.1 instead
 	FormatToolhive = "toolhive"
 	// FormatUpstream is the upstream MCP registry format
+	// Deprecated: Use API v0.1 instead
 	FormatUpstream = "upstream"
 )
 
 // Response models for API consistency
 
 // RegistryInfoResponse represents the registry information response
+// Deprecated: Use API v0.1 instead
 type RegistryInfoResponse struct {
 	Version      string `json:"version"`
 	LastUpdated  string `json:"last_updated"`
@@ -35,6 +38,7 @@ type RegistryInfoResponse struct {
 }
 
 // ServerSummaryResponse represents a server in list API responses (summary view)
+// Deprecated: Use API v0.1 instead
 type ServerSummaryResponse struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -45,6 +49,7 @@ type ServerSummaryResponse struct {
 }
 
 // EnvVarDetail represents detailed environment variable information
+// Deprecated: Use API v0.1 instead
 type EnvVarDetail struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -54,6 +59,7 @@ type EnvVarDetail struct {
 }
 
 // ServerDetailResponse represents a server in detail API responses (full view)
+// Deprecated: Use API v0.1 instead
 type ServerDetailResponse struct {
 	Name          string                 `json:"name"`
 	Description   string                 `json:"description"`
@@ -72,22 +78,26 @@ type ServerDetailResponse struct {
 }
 
 // ListServersResponse represents the servers list response
+// Deprecated: Use API v0.1 instead
 type ListServersResponse struct {
 	Servers []ServerSummaryResponse `json:"servers"`
 	Total   int                     `json:"total"`
 }
 
 // ErrorResponse represents a standardized error response
+// Deprecated: Use API v0.1 instead
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
 // Routes defines the routes for the registry API with dependency injection
+// Deprecated: Use API v0.1 instead
 type Routes struct {
 	service service.RegistryService
 }
 
 // NewRoutes creates a new Routes instance with the provided service
+// Deprecated: Use API v0.1 instead
 func NewRoutes(svc service.RegistryService) *Routes {
 	return &Routes{
 		service: svc,
@@ -95,6 +105,7 @@ func NewRoutes(svc service.RegistryService) *Routes {
 }
 
 // Router creates a new router for the registry API
+// Deprecated: Use API v0.1 instead
 func Router(svc service.RegistryService) http.Handler {
 	routes := NewRoutes(svc)
 
@@ -125,18 +136,19 @@ func Router(svc service.RegistryService) http.Handler {
 	return r
 }
 
-// getRegistryInfo handles GET /api/v1/registry/info
+// getRegistryInfo handles GET /api/v0/registry/info
 //
-//	@Summary		Get registry information
-//	@Description	Get registry metadata including version, last updated time, and total servers
-//	@Tags			registry
-//	@Accept			json
-//	@Produce		json
-//	@Param			format	query		string	false	"Response format"	Enums(toolhive,upstream)	default(toolhive)
-//	@Success		200		{object}	RegistryInfoResponse
-//	@Failure		400		{object}	ErrorResponse
-//	@Failure		501		{object}	ErrorResponse
-//	@Router			/api/v1/registry/info [get]
+// @Summary		Get registry information
+// @Description	Get registry metadata including version, last updated time, and total servers
+// @Tags			registry
+// @Accept			json
+// @Produce		json
+// @Param			format	query		string	false	"Response format"	Enums(toolhive,upstream)	default(toolhive)
+// @Success		200		{object}	RegistryInfoResponse
+// @Failure		400		{object}	ErrorResponse
+// @Failure		501		{object}	ErrorResponse
+// @Router			/api/v0/registry/info [get]
+// @Deprecated
 func (rr *Routes) getRegistryInfo(w http.ResponseWriter, r *http.Request) {
 	// Get format parameter (default to toolhive for now)
 	format := r.URL.Query().Get("format")
@@ -174,18 +186,19 @@ func (rr *Routes) getRegistryInfo(w http.ResponseWriter, r *http.Request) {
 	rr.writeJSONResponse(w, info)
 }
 
-// listServers handles GET /api/v1/registry/servers
+// listServers handles GET /api/v0/registry/servers
 //
-//	@Summary		List all servers
-//	@Description	Get a list of all available MCP servers in the registry
-//	@Tags			servers
-//	@Accept			json
-//	@Produce		json
-//	@Param			format	query		string	false	"Response format"	Enums(toolhive,upstream)	default(toolhive)
-//	@Success		200		{object}	ListServersResponse
-//	@Failure		400		{object}	ErrorResponse
-//	@Failure		501		{object}	ErrorResponse
-//	@Router			/api/v1/registry/servers [get]
+// @Summary		List all servers
+// @Description	Get a list of all available MCP servers in the registry
+// @Tags			servers
+// @Accept			json
+// @Produce		json
+// @Param			format	query		string	false	"Response format"	Enums(toolhive,upstream)	default(toolhive)
+// @Success		200		{object}	ListServersResponse
+// @Failure		400		{object}	ErrorResponse
+// @Failure		501		{object}	ErrorResponse
+// @Router			/api/v0/registry/servers [get]
+// @Deprecated
 func (rr *Routes) listServers(w http.ResponseWriter, r *http.Request) {
 	// Get format parameter (default to toolhive for now)
 	format := r.URL.Query().Get("format")
@@ -227,20 +240,21 @@ func (rr *Routes) listServers(w http.ResponseWriter, r *http.Request) {
 	rr.writeJSONResponse(w, response)
 }
 
-// getServer handles GET /api/v1/registry/servers/{name}
+// getServer handles GET /api/v0/registry/servers/{name}
 //
-//	@Summary		Get server by name
-//	@Description	Get detailed information about a specific MCP server
-//	@Tags			servers
-//	@Accept			json
-//	@Produce		json
-//	@Param			name	path		string	true	"Server name"
-//	@Param			format	query		string	false	"Response format"	Enums(toolhive,upstream)	default(toolhive)
-//	@Success		200		{object}	ServerDetailResponse
-//	@Failure		400		{object}	ErrorResponse
-//	@Failure		404		{object}	ErrorResponse
-//	@Failure		501		{object}	ErrorResponse
-//	@Router			/api/v1/registry/servers/{name} [get]
+// @Summary		Get server by name
+// @Description	Get detailed information about a specific MCP server
+// @Tags			servers
+// @Accept			json
+// @Produce		json
+// @Param			name	path		string	true	"Server name"
+// @Param			format	query		string	false	"Response format"	Enums(toolhive,upstream)	default(toolhive)
+// @Success		200		{object}	ServerDetailResponse
+// @Failure		400		{object}	ErrorResponse
+// @Failure		404		{object}	ErrorResponse
+// @Failure		501		{object}	ErrorResponse
+// @Router			/api/v0/registry/servers/{name} [get]
+// @Deprecated
 func (rr *Routes) getServer(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if name == "" {
@@ -286,27 +300,29 @@ func (rr *Routes) getServer(w http.ResponseWriter, r *http.Request) {
 
 // publishServer handles POST /v0/publish
 //
-//	@Summary		Publish MCP server (Not Implemented)
-//	@Description	Publish a new MCP server to the registry or update an existing one
-//	@Tags			servers
-//	@Accept			json
-//	@Produce		json
-//	@Success		501		{object}	ErrorResponse
-//	@Router			/v0/publish [post]
+// @Summary		Publish MCP server (Not Implemented)
+// @Description	Publish a new MCP server to the registry or update an existing one
+// @Tags			servers
+// @Accept			json
+// @Produce		json
+// @Success		501		{object}	ErrorResponse
+// @Router			/v0/publish [post]
+// @Deprecated
 func (rr *Routes) publishServer(w http.ResponseWriter, _ *http.Request) {
 	rr.writeErrorResponse(w, "Publishing is not supported by this registry implementation", http.StatusNotImplemented)
 }
 
-// listDeployedServers handles GET /api/v1/registry/servers/deployed
+// listDeployedServers handles GET /api/v0/registry/servers/deployed
 //
-//	@Summary		List deployed servers
-//	@Description	Get a list of all currently deployed MCP servers
-//	@Tags			deployed-servers
-//	@Accept			json
-//	@Produce		json
-//	@Success		200	{array}		service.DeployedServer
-//	@Failure		500	{object}	ErrorResponse
-//	@Router			/api/v1/registry/servers/deployed [get]
+// @Summary		List deployed servers
+// @Description	Get a list of all currently deployed MCP servers
+// @Tags			deployed-servers
+// @Accept			json
+// @Produce		json
+// @Success		200	{array}		service.DeployedServer
+// @Failure		500	{object}	ErrorResponse
+// @Router			/api/v0/registry/servers/deployed [get]
+// @Deprecated
 func (rr *Routes) listDeployedServers(w http.ResponseWriter, r *http.Request) {
 	servers, err := rr.service.ListDeployedServers(r.Context())
 	if err != nil {
@@ -484,18 +500,19 @@ func extractEmbeddedServerMetadata(server registry.ServerMetadata) registry.Serv
 	return server
 }
 
-// getDeployedServer handles GET /api/v1/registry/servers/deployed/{name}
+// getDeployedServer handles GET /api/v0/registry/servers/deployed/{name}
 //
-//	@Summary		Get deployed servers by registry name
-//	@Description	Get all deployed MCP servers that match the specified server registry name
-//	@Tags			deployed-servers
-//	@Accept			json
-//	@Produce		json
-//	@Param			name	path		string	true	"Server registry name"
-//	@Success		200		{array}		service.DeployedServer
-//	@Failure		400		{object}	ErrorResponse
-//	@Failure		500		{object}	ErrorResponse
-//	@Router			/api/v1/registry/servers/deployed/{name} [get]
+// @Summary		Get deployed servers by registry name
+// @Description	Get all deployed MCP servers that match the specified server registry name
+// @Tags			deployed-servers
+// @Accept			json
+// @Produce		json
+// @Param			name	path		string	true	"Server registry name"
+// @Success		200		{array}		service.DeployedServer
+// @Failure		400		{object}	ErrorResponse
+// @Failure		500		{object}	ErrorResponse
+// @Router			/api/v0/registry/servers/deployed/{name} [get]
+// @Deprecated
 func (rr *Routes) getDeployedServer(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if name == "" {
@@ -526,12 +543,13 @@ func HealthRouter(svc service.RegistryService) http.Handler {
 
 // healthHandler handles health check requests
 //
-//	@Summary		Health check
-//	@Description	Check if the registry API is healthy
-//	@Tags			system
-//	@Produce		json
-//	@Success		200	{object}	map[string]string
-//	@Router			/health [get]
+// @Summary		Health check
+// @Description	Check if the registry API is healthy
+// @Tags			system
+// @Produce		json
+// @Success		200	{object}	map[string]string
+// @Router			/health [get]
+// @Deprecated
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -540,13 +558,14 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 
 // readinessHandler handles readiness check requests
 //
-//	@Summary		Readiness check
-//	@Description	Check if the registry API is ready to serve requests
-//	@Tags			system
-//	@Produce		json
-//	@Success		200	{object}	map[string]string
-//	@Failure		503	{object}	ErrorResponse
-//	@Router			/readiness [get]
+// @Summary		Readiness check
+// @Description	Check if the registry API is ready to serve requests
+// @Tags			system
+// @Produce		json
+// @Success		200	{object}	map[string]string
+// @Failure		503	{object}	ErrorResponse
+// @Router			/readiness [get]
+// @Deprecated
 func readinessHandler(svc service.RegistryService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := svc.CheckReadiness(r.Context()); err != nil {
@@ -569,12 +588,13 @@ func readinessHandler(svc service.RegistryService) http.HandlerFunc {
 
 // versionHandler handles version information requests
 //
-//	@Summary		Version information
-//	@Description	Get version information about the registry API
-//	@Tags			system
-//	@Produce		json
-//	@Success		200	{object}	map[string]string
-//	@Router			/version [get]
+// @Summary		Version information
+// @Description	Get version information about the registry API
+// @Tags			system
+// @Produce		json
+// @Success		200	{object}	map[string]string
+// @Router			/version [get]
+// @Deprecated
 func versionHandler(w http.ResponseWriter, _ *http.Request) {
 	info := versions.GetVersionInfo()
 
@@ -620,12 +640,13 @@ func (*Routes) writeErrorResponse(w http.ResponseWriter, message string, statusC
 
 // serveOpenAPIYAML serves the OpenAPI specification in YAML format
 //
-//	@Summary		Get OpenAPI specification
-//	@Description	Returns the OpenAPI specification for the registry API in YAML format
-//	@Tags			system
-//	@Produce		application/x-yaml
-//	@Success		200	{string}	string	"OpenAPI specification in YAML format"
-//	@Router			/api/v1/registry/openapi.yaml [get]
+// @Summary		Get OpenAPI specification
+// @Description	Returns the OpenAPI specification for the registry API in YAML format
+// @Tags			system
+// @Produce		application/x-yaml
+// @Success		200	{string}	string	"OpenAPI specification in YAML format"
+// @Router			/api/v0/registry/openapi.yaml [get]
+// @Deprecated
 func serveOpenAPIYAML(w http.ResponseWriter, _ *http.Request) {
 	// Parse the JSON OpenAPI spec
 	var openAPISpec map[string]interface{}
@@ -649,11 +670,13 @@ func serveOpenAPIYAML(w http.ResponseWriter, _ *http.Request) {
 // Test helpers - these functions are exported only for testing purposes
 
 // NewServerSummaryResponseForTesting creates a ServerSummaryResponse for testing
+// Deprecated: Use API v0.1 instead
 func NewServerSummaryResponseForTesting(server registry.ServerMetadata) ServerSummaryResponse {
 	return newServerSummaryResponse(server)
 }
 
 // NewServerDetailResponseForTesting creates a ServerDetailResponse for testing
+// Deprecated: Use API v0.1 instead
 func NewServerDetailResponseForTesting(server registry.ServerMetadata) ServerDetailResponse {
 	return newServerDetailResponse(server)
 }
