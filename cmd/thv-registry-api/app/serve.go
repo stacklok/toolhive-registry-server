@@ -18,6 +18,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/sources"
@@ -100,6 +102,9 @@ func createFileProviderForSyncedData(registryName string) (*service.RegistryProv
 func runServe(_ *cobra.Command, _ []string) error {
 	ctx := context.Background()
 	address := viper.GetString("address")
+
+	// Initialize controller-runtime logger to suppress warnings
+	log.SetLogger(zap.New(zap.UseDevMode(false)))
 
 	logger.Infof("Starting registry API server on %s", address)
 
