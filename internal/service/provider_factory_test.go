@@ -1,108 +1,42 @@
 package service
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
+	sourcesmocks "github.com/stacklok/toolhive-registry-server/pkg/sources/mocks"
 )
-
-func TestRegistryProviderConfig_Validate(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name        string
-		config      *RegistryProviderConfig
-		wantErr     bool
-		errContains string
-	}{
-		{
-			name: "valid file provider",
-			config: &RegistryProviderConfig{
-				FilePath:     "/data/registry.json",
-				RegistryName: "test-registry",
-			},
-			wantErr: false,
-		},
-		{
-			name: "empty file path",
-			config: &RegistryProviderConfig{
-				FilePath:     "",
-				RegistryName: "test-registry",
-			},
-			wantErr:     true,
-			errContains: "file path is required",
-		},
-		{
-			name: "empty registry name",
-			config: &RegistryProviderConfig{
-				FilePath:     "/data/registry.json",
-				RegistryName: "",
-			},
-			wantErr:     true,
-			errContains: "registry name is required",
-		},
-		{
-			name: "both fields empty",
-			config: &RegistryProviderConfig{
-				FilePath:     "",
-				RegistryName: "",
-			},
-			wantErr:     true,
-			errContains: "file path is required",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			err := tt.config.Validate()
-
-			if tt.wantErr {
-				assert.Error(t, err)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
-				}
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
 
 func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
 	t.Parallel()
-	tmpDir := t.TempDir()
-	tmpFile := filepath.Join(tmpDir, "test-registry.json")
-
-	// Create a test file
-	err := os.WriteFile(tmpFile, []byte(`{
-		"version": "1.0",
-		"last_updated": "",
-		"servers": {},
-		"remote_servers": {}
-	}`), 0644)
-	require.NoError(t, err)
 
 	tests := []struct {
 		name        string
-		config      *RegistryProviderConfig
+		config      *config.Config
 		wantErr     bool
 		errContains string
 		checkType   func(*testing.T, RegistryDataProvider)
 	}{
 		{
-			name: "create file provider",
-			config: &RegistryProviderConfig{
-				FilePath:     tmpFile,
+			name: "create file provider with valid config",
+			config: &config.Config{
 				RegistryName: "test-file-registry",
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeFile,
+					Format: config.SourceFormatToolHive,
+					File:   &config.FileConfig{Path: "/data/registry.json"},
+				},
+				SyncPolicy: &config.SyncPolicyConfig{Interval: "30m"},
 			},
 			wantErr: false,
 			checkType: func(t *testing.T, provider RegistryDataProvider) {
 				t.Helper()
 				assert.IsType(t, &FileRegistryDataProvider{}, provider)
-				assert.Equal(t, "file:"+tmpFile, provider.GetSource())
+				assert.Equal(t, "file:/data/registry.json", provider.GetSource())
 				assert.Equal(t, "test-file-registry", provider.GetRegistryName())
 			},
 		},
@@ -110,33 +44,31 @@ func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
 			name:        "nil config",
 			config:      nil,
 			wantErr:     true,
-			errContains: "registry provider config cannot be nil",
+			errContains: "config cannot be nil",
 		},
 		{
-			name: "missing file path",
-			config: &RegistryProviderConfig{
-				FilePath:     "",
+			name: "invalid config - missing source type",
+			config: &config.Config{
 				RegistryName: "test-registry",
+				Source: config.SourceConfig{
+					Type:   "",
+					Format: config.SourceFormatToolHive,
+				},
 			},
 			wantErr:     true,
-			errContains: "file path is required",
-		},
-		{
-			name: "missing registry name",
-			config: &RegistryProviderConfig{
-				FilePath:     tmpFile,
-				RegistryName: "",
-			},
-			wantErr:     true,
-			errContains: "registry name is required",
+			errContains: "invalid config",
 		},
 	}
-
-	factory := NewRegistryProviderFactory()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
+			factory := NewRegistryProviderFactory(mockStorageManager)
+
 			provider, err := factory.CreateProvider(tt.config)
 
 			if tt.wantErr {
@@ -158,7 +90,17 @@ func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
 
 func TestNewRegistryProviderFactory(t *testing.T) {
 	t.Parallel()
-	factory := NewRegistryProviderFactory()
-	assert.NotNil(t, factory)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
+	factory := NewRegistryProviderFactory(mockStorageManager)
+
+	require.NotNil(t, factory)
 	assert.IsType(t, &DefaultRegistryProviderFactory{}, factory)
+
+	// Verify that the factory has the storage manager injected
+	concreteFactory, ok := factory.(*DefaultRegistryProviderFactory)
+	require.True(t, ok)
+	assert.NotNil(t, concreteFactory.storageManager)
 }

@@ -281,20 +281,16 @@ func (b *RegistryAppBuilder) buildSyncComponents(kube *KubernetesComponents) (co
 func (b *RegistryAppBuilder) buildServiceComponents(ctx context.Context, kube *KubernetesComponents) (service.RegistryService, error) {
 	logger.Info("Initializing service components")
 
-	// Build registry provider (reads from synced data)
+	// Build registry provider (reads from synced data via StorageManager)
 	if b.registryProvider == nil {
-		providerConfig := &service.RegistryProviderConfig{
-			FilePath:     b.registryFile,
-			RegistryName: b.config.GetRegistryName(),
-		}
-
-		factory := service.NewRegistryProviderFactory()
-		provider, err := factory.CreateProvider(providerConfig)
+		// StorageManager was already built in buildSyncComponents
+		factory := service.NewRegistryProviderFactory(b.storageManager)
+		provider, err := factory.CreateProvider(b.config)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create registry provider: %w", err)
 		}
 		b.registryProvider = provider
-		logger.Infof("Created registry data provider reading from: %s", b.registryFile)
+		logger.Infof("Created registry data provider using storage manager")
 	}
 
 	// Build deployment provider (optional, requires Kubernetes)

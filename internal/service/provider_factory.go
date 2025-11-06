@@ -3,53 +3,40 @@ package service
 
 import (
 	"fmt"
+
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
+	"github.com/stacklok/toolhive-registry-server/pkg/sources"
 )
-
-// RegistryProviderConfig holds configuration for creating a file-based registry data provider
-type RegistryProviderConfig struct {
-	FilePath     string
-	RegistryName string
-}
-
-// Validate validates the RegistryProviderConfig
-func (c *RegistryProviderConfig) Validate() error {
-	if c.FilePath == "" {
-		return fmt.Errorf("file path is required")
-	}
-	if c.RegistryName == "" {
-		return fmt.Errorf("registry name is required")
-	}
-	return nil
-}
 
 //go:generate mockgen -destination=mocks/mock_provider_factory.go -package=mocks -source=provider_factory.go RegistryProviderFactory
 
 // RegistryProviderFactory creates registry data providers based on configuration
 type RegistryProviderFactory interface {
 	// CreateProvider creates a registry data provider based on the provided configuration
-	CreateProvider(config *RegistryProviderConfig) (RegistryDataProvider, error)
+	CreateProvider(cfg *config.Config) (RegistryDataProvider, error)
 }
 
 // DefaultRegistryProviderFactory is the default implementation of RegistryProviderFactory
-type DefaultRegistryProviderFactory struct{}
+type DefaultRegistryProviderFactory struct {
+	storageManager sources.StorageManager
+}
 
 // NewRegistryProviderFactory creates a new default registry provider factory
-func NewRegistryProviderFactory() RegistryProviderFactory {
-	return &DefaultRegistryProviderFactory{}
+func NewRegistryProviderFactory(storageManager sources.StorageManager) RegistryProviderFactory {
+	return &DefaultRegistryProviderFactory{
+		storageManager: storageManager,
+	}
 }
 
 // CreateProvider implements RegistryProviderFactory.CreateProvider
-func (f *DefaultRegistryProviderFactory) CreateProvider(config *RegistryProviderConfig) (RegistryDataProvider, error) {
-	if config == nil {
-		return nil, fmt.Errorf("registry provider config cannot be nil")
+func (f *DefaultRegistryProviderFactory) CreateProvider(cfg *config.Config) (RegistryDataProvider, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config cannot be nil")
 	}
 
-	if config.FilePath == "" {
-		return nil, fmt.Errorf("file path is required")
-	}
-	if config.RegistryName == "" {
-		return nil, fmt.Errorf("registry name is required")
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	return NewFileRegistryDataProvider(config.FilePath, config.RegistryName), nil
+	return NewFileRegistryDataProvider(f.storageManager, cfg), nil
 }
