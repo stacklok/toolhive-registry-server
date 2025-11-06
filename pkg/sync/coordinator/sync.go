@@ -87,11 +87,10 @@ func (c *DefaultCoordinator) updateStatusForSkippedSync(ctx context.Context, rea
 	// Only update if we have a previous successful sync
 	// Don't overwrite Failed/Syncing states with "skipped" messages
 	c.withStatus(func(syncStatus *status.SyncStatus) {
-		if syncStatus.Phase == status.SyncPhaseComplete {
-			syncStatus.Message = fmt.Sprintf("Sync skipped: %s", reason)
-			if err := c.statusPersistence.SaveStatus(ctx, syncStatus); err != nil {
-				logger.Warnf("Failed to persist skipped sync status: %v", err)
-			}
+		syncStatus.Phase = status.SyncPhaseComplete
+		syncStatus.Message = fmt.Sprintf("Sync skipped: %s", reason)
+		if err := c.statusPersistence.SaveStatus(ctx, syncStatus); err != nil {
+			logger.Warnf("Failed to persist skipped sync status: %v", err)
 		}
 	})
 }

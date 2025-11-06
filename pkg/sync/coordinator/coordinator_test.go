@@ -302,11 +302,11 @@ func TestPerformSync_PhaseTransitions(t *testing.T) {
 
 func TestUpdateStatusForSkippedSync(t *testing.T) {
 	tests := []struct {
-		name        string
+		name         string
 		initialPhase status.SyncPhase
-		initialMsg  string
-		reason      string
-		expectedMsg string
+		initialMsg   string
+		reason       string
+		expectedMsg  string
 	}{
 		{
 			name:         "updates message when phase is Complete",
@@ -316,18 +316,18 @@ func TestUpdateStatusForSkippedSync(t *testing.T) {
 			expectedMsg:  "Sync skipped: up-to-date-no-policy",
 		},
 		{
-			name:         "does not update message when phase is Failed",
+			name:         "does update message when phase is Failed",
 			initialPhase: status.SyncPhaseFailed,
 			initialMsg:   "Previous sync failed",
 			reason:       "up-to-date-no-policy",
-			expectedMsg:  "Previous sync failed", // Should NOT change
+			expectedMsg:  "Sync skipped: up-to-date-no-policy",
 		},
 		{
-			name:         "does not update message when phase is Syncing",
+			name:         "does update message when phase is Syncing",
 			initialPhase: status.SyncPhaseSyncing,
 			initialMsg:   "Sync in progress",
 			reason:       "already-in-progress",
-			expectedMsg:  "Sync in progress", // Should NOT change
+			expectedMsg:  "Sync skipped: already-in-progress",
 		},
 	}
 
@@ -359,7 +359,7 @@ func TestUpdateStatusForSkippedSync(t *testing.T) {
 			loadedStatus, err := statusPersistence.LoadStatus(context.Background())
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedMsg, loadedStatus.Message, "Persisted message should match")
-			assert.Equal(t, tt.initialPhase, loadedStatus.Phase, "Phase should not change")
+			assert.Equal(t, status.SyncPhaseComplete, loadedStatus.Phase, "Phase should not change")
 		})
 	}
 }
