@@ -18,7 +18,6 @@ import (
 	status "github.com/stacklok/toolhive-registry-server/pkg/status"
 	sync "github.com/stacklok/toolhive-registry-server/pkg/sync"
 	gomock "go.uber.org/mock/gomock"
-	controllerruntime "sigs.k8s.io/controller-runtime"
 )
 
 // MockManager is a mock of Manager interface.
@@ -60,13 +59,12 @@ func (mr *MockManagerMockRecorder) Delete(ctx, arg1 any) *gomock.Call {
 }
 
 // PerformSync mocks base method.
-func (m *MockManager) PerformSync(ctx context.Context, arg1 *config.Config) (controllerruntime.Result, *sync.Result, *sync.Error) {
+func (m *MockManager) PerformSync(ctx context.Context, arg1 *config.Config) (*sync.Result, *sync.Error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PerformSync", ctx, arg1)
-	ret0, _ := ret[0].(controllerruntime.Result)
-	ret1, _ := ret[1].(*sync.Result)
-	ret2, _ := ret[2].(*sync.Error)
-	return ret0, ret1, ret2
+	ret0, _ := ret[0].(*sync.Result)
+	ret1, _ := ret[1].(*sync.Error)
+	return ret0, ret1
 }
 
 // PerformSync indicates an expected call of PerformSync.

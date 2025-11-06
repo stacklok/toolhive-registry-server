@@ -50,6 +50,10 @@ type DefaultAutomaticSyncChecker struct{}
 // Returns: (syncNeeded, nextSyncTime, error)
 // nextSyncTime is always a future time when the next sync should occur
 func (*DefaultAutomaticSyncChecker) IsIntervalSyncNeeded(config *config.Config, syncStatus *status.SyncStatus) (bool, time.Time, error) {
+	if config.SyncPolicy == nil || config.SyncPolicy.Interval == "" {
+		return false, time.Time{}, nil
+	}
+
 	// Parse the sync interval
 	interval, err := time.ParseDuration(config.SyncPolicy.Interval)
 	if err != nil {

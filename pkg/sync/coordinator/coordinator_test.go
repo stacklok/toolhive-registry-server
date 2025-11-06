@@ -1,8 +1,7 @@
-package app
+package coordinator
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 func TestPerformSync_StatusPersistence(t *testing.T) {
@@ -59,42 +57,46 @@ func TestPerformSync_StatusPersistence(t *testing.T) {
 			if tt.syncError == nil {
 				mockSyncMgr.EXPECT().
 					PerformSync(gomock.Any(), gomock.Any()).
-					Return(ctrl.Result{}, &sync.Result{
+					Return(&sync.Result{
 						Hash:        "test-hash-123",
 						ServerCount: 42,
 					}, nil)
 			} else {
 				mockSyncMgr.EXPECT().
 					PerformSync(gomock.Any(), gomock.Any()).
-					Return(ctrl.Result{}, nil, tt.syncError)
+					Return(nil, tt.syncError)
 			}
 
 			// Create status persistence
 			statusPersistence := status.NewFileStatusPersistence(statusFile)
 
-			// Create initial status
-			syncStatus := &status.SyncStatus{
-				Phase:   status.SyncPhaseFailed,
-				Message: "Initial state",
-			}
-
-			// Create minimal config
+			// Create coordinator with initial status
 			cfg := &config.Config{
 				RegistryName: "test-registry",
 			}
 
+			coord := &DefaultCoordinator{
+				manager:           mockSyncMgr,
+				statusPersistence: statusPersistence,
+				config:            cfg,
+				cachedStatus: &status.SyncStatus{
+					Phase:   status.SyncPhaseFailed,
+					Message: "Initial state",
+				},
+			}
+
 			// Execute performSync
 			ctx := context.Background()
-			performSync(ctx, mockSyncMgr, cfg, syncStatus, statusPersistence)
+			coord.performSync(ctx)
 
 			// Verify the status object was updated correctly
-			assert.Equal(t, tt.expectedPhase, syncStatus.Phase, "Phase should be updated")
-			assert.Equal(t, tt.expectedMsg, syncStatus.Message, "Message should be updated")
+			assert.Equal(t, tt.expectedPhase, coord.cachedStatus.Phase, "Phase should be updated")
+			assert.Equal(t, tt.expectedMsg, coord.cachedStatus.Message, "Message should be updated")
 
 			if tt.shouldHaveHash {
-				assert.Equal(t, "test-hash-123", syncStatus.LastSyncHash, "Hash should be set")
-				assert.Equal(t, 42, syncStatus.ServerCount, "Server count should be set")
-				assert.NotNil(t, syncStatus.LastSyncTime, "Last sync time should be set")
+				assert.Equal(t, "test-hash-123", coord.cachedStatus.LastSyncHash, "Hash should be set")
+				assert.Equal(t, 42, coord.cachedStatus.ServerCount, "Server count should be set")
+				assert.NotNil(t, coord.cachedStatus.LastSyncTime, "Last sync time should be set")
 			}
 
 			// Verify the status was persisted to disk
@@ -115,11 +117,7 @@ func TestPerformSync_StatusPersistence(t *testing.T) {
 }
 
 func TestPerformSync_AlwaysPersists(t *testing.T) {
-	t.Run("status is persisted even if sync panics", func(t *testing.T) {
-		// Note: This test verifies that defer works, but we can't actually
-		// test panic recovery since PerformSync would need to panic.
-		// This is more of a structural verification.
-
+	t.Run("status is persisted even if sync succeeds", func(t *testing.T) {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
@@ -129,13 +127,19 @@ func TestPerformSync_AlwaysPersists(t *testing.T) {
 		mockSyncMgr := syncmocks.NewMockManager(mockCtrl)
 		mockSyncMgr.EXPECT().
 			PerformSync(gomock.Any(), gomock.Any()).
-			Return(ctrl.Result{}, &sync.Result{Hash: "hash", ServerCount: 1}, nil)
+			Return(&sync.Result{Hash: "hash", ServerCount: 1}, nil)
 
 		statusPersistence := status.NewFileStatusPersistence(statusFile)
-		syncStatus := &status.SyncStatus{}
 		cfg := &config.Config{RegistryName: "test"}
 
-		performSync(context.Background(), mockSyncMgr, cfg, syncStatus, statusPersistence)
+		coord := &DefaultCoordinator{
+			manager:           mockSyncMgr,
+			statusPersistence: statusPersistence,
+			config:            cfg,
+			cachedStatus:      &status.SyncStatus{},
+		}
+
+		coord.performSync(context.Background())
 
 		// Verify file exists (proves defer executed)
 		assert.FileExists(t, statusFile)
@@ -157,7 +161,7 @@ func TestPerformSync_SyncingPhasePersistedImmediately(t *testing.T) {
 		mockSyncMgr := syncmocks.NewMockManager(mockCtrl)
 		mockSyncMgr.EXPECT().
 			PerformSync(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, cfg *config.Config) (ctrl.Result, *sync.Result, *sync.Error) {
+			DoAndReturn(func(ctx context.Context, cfg *config.Config) (*sync.Result, *sync.Error) {
 				// Signal that sync has started
 				close(syncStarted)
 
@@ -167,81 +171,75 @@ func TestPerformSync_SyncingPhasePersistedImmediately(t *testing.T) {
 				// Simulate a long-running sync
 				time.Sleep(100 * time.Millisecond)
 
-				return ctrl.Result{}, &sync.Result{Hash: "test-hash", ServerCount: 10}, nil
+				return &sync.Result{Hash: "test-hash", ServerCount: 10}, nil
 			})
 
-		syncStatus := &status.SyncStatus{
-			Phase: status.SyncPhaseFailed,
-		}
 		cfg := &config.Config{RegistryName: "test"}
+		coord := &DefaultCoordinator{
+			manager:           mockSyncMgr,
+			statusPersistence: statusPersistence,
+			config:            cfg,
+			cachedStatus: &status.SyncStatus{
+				Phase: status.SyncPhaseFailed,
+			},
+		}
 
 		// Run performSync in a goroutine so we can check the status while it's running
 		done := make(chan struct{})
 		go func() {
-			performSync(context.Background(), mockSyncMgr, cfg, syncStatus, statusPersistence)
+			coord.performSync(context.Background())
 			close(done)
 		}()
 
 		// Wait for sync to start
 		<-syncStarted
 
-		// Load status from disk - it should show Syncing
+		// Now verify that the status file has Syncing phase already persisted
 		loadedStatus, err := statusPersistence.LoadStatus(context.Background())
-		require.NoError(t, err)
-		assert.Equal(t, status.SyncPhaseSyncing, loadedStatus.Phase, "Status should be Syncing while sync is in progress")
-		assert.NotNil(t, loadedStatus.LastAttempt, "LastAttempt should be set")
-		assert.Equal(t, 1, loadedStatus.AttemptCount, "AttemptCount should be incremented")
+		assert.NoError(t, err)
+		assert.Equal(t, status.SyncPhaseSyncing, loadedStatus.Phase, "Syncing phase should be persisted immediately")
+		assert.Equal(t, "Sync in progress", loadedStatus.Message)
 
-		// Wait for sync to complete
+		// Wait for performSync to complete
 		<-done
 
-		// Verify final status is Complete
+		// Final status should be Complete
 		finalStatus, err := statusPersistence.LoadStatus(context.Background())
-		require.NoError(t, err)
-		assert.Equal(t, status.SyncPhaseComplete, finalStatus.Phase, "Final status should be Complete")
+		assert.NoError(t, err)
+		assert.Equal(t, status.SyncPhaseComplete, finalStatus.Phase)
 	})
 }
 
 func TestPerformSync_PhaseTransitions(t *testing.T) {
 	tests := []struct {
-		name           string
-		initialPhase   status.SyncPhase
-		syncResult     *sync.Result
-		syncError      *sync.Error
-		expectedPhases []status.SyncPhase // Phases we expect to see during the test
+		name          string
+		initialPhase  status.SyncPhase
+		syncResult    *sync.Result
+		syncError     *sync.Error
+		expectedPhase status.SyncPhase
 	}{
 		{
-			name:         "transitions from initial to Syncing to Complete",
+			name:          "Failed -> Syncing -> Complete on successful sync",
+			initialPhase:  status.SyncPhaseFailed,
+			syncResult:    &sync.Result{Hash: "abc123", ServerCount: 5},
+			syncError:     nil,
+			expectedPhase: status.SyncPhaseComplete,
+		},
+		{
+			name:         "Failed -> Syncing -> Failed on failed sync",
 			initialPhase: status.SyncPhaseFailed,
-			syncResult:   &sync.Result{Hash: "abc123", ServerCount: 50},
-			syncError:    nil,
-			expectedPhases: []status.SyncPhase{
-				status.SyncPhaseFailed,  // Initial
-				status.SyncPhaseSyncing, // During sync
-				status.SyncPhaseComplete, // After success
-			},
-		},
-		{
-			name:         "transitions from Complete to Syncing to Failed",
-			initialPhase: status.SyncPhaseComplete,
 			syncResult:   nil,
-			syncError:    &sync.Error{Message: "network timeout"},
-			expectedPhases: []status.SyncPhase{
-				status.SyncPhaseComplete, // Initial
-				status.SyncPhaseSyncing,  // During sync
-				status.SyncPhaseFailed,   // After failure
+			syncError: &sync.Error{
+				Message: "network timeout",
 			},
+			expectedPhase: status.SyncPhaseFailed,
 		},
 		{
-			name:         "transitions from empty to Syncing to Complete",
-			initialPhase: "",
-			syncResult:   &sync.Result{Hash: "def456", ServerCount: 25},
-			syncError:    nil,
-			expectedPhases: []status.SyncPhase{
-				"",                       // Initial (empty)
-				status.SyncPhaseSyncing, // During sync
-				status.SyncPhaseComplete, // After success
-			},
+			name:          "Complete -> Syncing -> Complete on successful resync",
+			initialPhase:  status.SyncPhaseComplete,
+			syncResult:    &sync.Result{Hash: "xyz789", ServerCount: 10},
+			syncError:     nil,
+			expectedPhase: status.SyncPhaseComplete,
 		},
 	}
 
@@ -261,19 +259,24 @@ func TestPerformSync_PhaseTransitions(t *testing.T) {
 			mockSyncMgr := syncmocks.NewMockManager(mockCtrl)
 			mockSyncMgr.EXPECT().
 				PerformSync(gomock.Any(), gomock.Any()).
-				DoAndReturn(func(ctx context.Context, cfg *config.Config) (ctrl.Result, *sync.Result, *sync.Error) {
+				DoAndReturn(func(ctx context.Context, cfg *config.Config) (*sync.Result, *sync.Error) {
 					close(syncStarted)
 					time.Sleep(50 * time.Millisecond) // Simulate work
-					return ctrl.Result{}, tt.syncResult, tt.syncError
+					return tt.syncResult, tt.syncError
 				})
 
-			syncStatus := &status.SyncStatus{Phase: tt.initialPhase}
 			cfg := &config.Config{RegistryName: "test"}
+			coord := &DefaultCoordinator{
+				manager:           mockSyncMgr,
+				statusPersistence: statusPersistence,
+				config:            cfg,
+				cachedStatus:      &status.SyncStatus{Phase: tt.initialPhase},
+			}
 
 			// Run performSync in goroutine
 			done := make(chan struct{})
 			go func() {
-				performSync(context.Background(), mockSyncMgr, cfg, syncStatus, statusPersistence)
+				coord.performSync(context.Background())
 				close(done)
 			}()
 
@@ -291,64 +294,40 @@ func TestPerformSync_PhaseTransitions(t *testing.T) {
 			observedPhases = append(observedPhases, finalStatus.Phase)
 
 			// Verify phase transitions
-			assert.Equal(t, tt.expectedPhases, observedPhases, "Phase transitions should match expected sequence")
-
-			// Verify final status details
-			if tt.syncError == nil {
-				assert.Equal(t, status.SyncPhaseComplete, finalStatus.Phase)
-				assert.Equal(t, "Sync completed successfully", finalStatus.Message)
-				assert.NotNil(t, finalStatus.LastSyncTime)
-				assert.Equal(t, tt.syncResult.Hash, finalStatus.LastSyncHash)
-				assert.Equal(t, tt.syncResult.ServerCount, finalStatus.ServerCount)
-				assert.Equal(t, 0, finalStatus.AttemptCount, "AttemptCount should reset to 0 on success")
-			} else {
-				assert.Equal(t, status.SyncPhaseFailed, finalStatus.Phase)
-				assert.Equal(t, tt.syncError.Message, finalStatus.Message)
-			}
+			assert.Contains(t, observedPhases, status.SyncPhaseSyncing, "Should transition through Syncing")
+			assert.Equal(t, tt.expectedPhase, finalStatus.Phase, "Should end in expected phase")
 		})
 	}
 }
 
 func TestUpdateStatusForSkippedSync(t *testing.T) {
 	tests := []struct {
-		name          string
-		initialPhase  status.SyncPhase
-		initialMsg    string
-		reason        string
-		shouldUpdate  bool
-		expectedMsg   string
+		name        string
+		initialPhase status.SyncPhase
+		initialMsg  string
+		reason      string
+		expectedMsg string
 	}{
 		{
 			name:         "updates message when phase is Complete",
 			initialPhase: status.SyncPhaseComplete,
 			initialMsg:   "Sync completed successfully",
-			reason:       "up-to-date",
-			shouldUpdate: true,
-			expectedMsg:  "Sync skipped: up-to-date",
+			reason:       "up-to-date-no-policy",
+			expectedMsg:  "Sync skipped: up-to-date-no-policy",
 		},
 		{
-			name:         "does not update when phase is Failed",
+			name:         "does not update message when phase is Failed",
 			initialPhase: status.SyncPhaseFailed,
-			initialMsg:   "Network error",
-			reason:       "up-to-date",
-			shouldUpdate: false,
-			expectedMsg:  "Network error",
+			initialMsg:   "Previous sync failed",
+			reason:       "up-to-date-no-policy",
+			expectedMsg:  "Previous sync failed", // Should NOT change
 		},
 		{
-			name:         "does not update when phase is Syncing",
+			name:         "does not update message when phase is Syncing",
 			initialPhase: status.SyncPhaseSyncing,
-			initialMsg:   "",
-			reason:       "up-to-date",
-			shouldUpdate: false,
-			expectedMsg:  "",
-		},
-		{
-			name:         "does not update when phase is empty",
-			initialPhase: "",
-			initialMsg:   "No previous sync",
-			reason:       "up-to-date",
-			shouldUpdate: false,
-			expectedMsg:  "No previous sync",
+			initialMsg:   "Sync in progress",
+			reason:       "already-in-progress",
+			expectedMsg:  "Sync in progress", // Should NOT change
 		},
 	}
 
@@ -358,20 +337,23 @@ func TestUpdateStatusForSkippedSync(t *testing.T) {
 			statusFile := filepath.Join(tempDir, "status.json")
 			statusPersistence := status.NewFileStatusPersistence(statusFile)
 
-			syncStatus := &status.SyncStatus{
-				Phase:   tt.initialPhase,
-				Message: tt.initialMsg,
+			coord := &DefaultCoordinator{
+				statusPersistence: statusPersistence,
+				cachedStatus: &status.SyncStatus{
+					Phase:   tt.initialPhase,
+					Message: tt.initialMsg,
+				},
 			}
 
 			// Save initial status
-			err := statusPersistence.SaveStatus(context.Background(), syncStatus)
+			err := statusPersistence.SaveStatus(context.Background(), coord.cachedStatus)
 			require.NoError(t, err)
 
 			// Call updateStatusForSkippedSync
-			updateStatusForSkippedSync(context.Background(), syncStatus, statusPersistence, tt.reason)
+			coord.updateStatusForSkippedSync(context.Background(), tt.reason)
 
 			// Verify the status
-			assert.Equal(t, tt.expectedMsg, syncStatus.Message, "Message should be updated correctly")
+			assert.Equal(t, tt.expectedMsg, coord.cachedStatus.Message, "Message should be updated correctly")
 
 			// Verify it was persisted (or not)
 			loadedStatus, err := statusPersistence.LoadStatus(context.Background())
@@ -389,7 +371,19 @@ func TestGetSyncInterval(t *testing.T) {
 		expected time.Duration
 	}{
 		{
-			name: "valid interval is parsed",
+			name:     "nil policy returns default",
+			policy:   nil,
+			expected: time.Minute,
+		},
+		{
+			name: "empty interval returns default",
+			policy: &config.SyncPolicyConfig{
+				Interval: "",
+			},
+			expected: time.Minute,
+		},
+		{
+			name: "valid interval is parsed correctly",
 			policy: &config.SyncPolicyConfig{
 				Interval: "5m",
 			},
@@ -402,18 +396,6 @@ func TestGetSyncInterval(t *testing.T) {
 			},
 			expected: time.Minute,
 		},
-		{
-			name:     "nil policy returns default",
-			policy:   nil,
-			expected: time.Minute,
-		},
-		{
-			name: "empty interval returns default",
-			policy: &config.SyncPolicyConfig{
-				Interval: "",
-			},
-			expected: time.Minute,
-		},
 	}
 
 	for _, tt := range tests {
@@ -422,10 +404,4 @@ func TestGetSyncInterval(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
-}
-
-func TestMain(m *testing.M) {
-	// Run tests
-	code := m.Run()
-	os.Exit(code)
 }

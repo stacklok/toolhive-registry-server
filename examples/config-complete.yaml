@@ -183,10 +183,10 @@ filter:
 #   - API: Currently no authentication (will be added in future)
 
 # Error Handling:
-#   - Failed syncs are retried automatically
-#   - Retry interval: 5 minutes (DefaultSyncRequeueAfter)
+#   - Failed syncs are retried at the next configured sync interval
+#   - Sync interval is configured via syncPolicy.interval (e.g., "5m", "30m", "1h")
 #   - Server continues running even if sync fails
-#   - Status is persisted to track failures
+#   - Status is persisted to track failures and attempts
 
 # Filter Behavior:
 #   - Filters are applied in order: name include → name exclude → tag include → tag exclude

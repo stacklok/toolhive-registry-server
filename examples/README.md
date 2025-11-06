@@ -375,7 +375,7 @@ cat ./data/status.json | jq
 **Status phases:**
 - `Syncing`: Sync operation in progress
 - `Complete`: Last sync successful
-- `Failed`: Last sync failed (will auto-retry in 5 minutes)
+- `Failed`: Last sync failed (will auto-retry at next sync interval)
 
 ### Server Logs
 

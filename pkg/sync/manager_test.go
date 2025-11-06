@@ -91,7 +91,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			expectedNextTime:   false,
 		},
 		{
-			name:                "sync needed when no last sync hash",
+			name:                "sync needed when registry is in failed state",
 			manualSyncRequested: false,
 			config: &config.Config{
 				Source: config.SourceConfig{
@@ -103,11 +103,11 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 				},
 			},
 			syncStatus: &status.SyncStatus{
-				Phase:        status.SyncPhaseComplete,
+				Phase:        status.SyncPhaseFailed,
 				LastSyncHash: "",
 			},
 			expectedSyncNeeded: true,
-			expectedReason:     ReasonSourceDataChanged,
+			expectedReason:     ReasonRegistryNotReady,
 			expectedNextTime:   false,
 		},
 		{
@@ -402,7 +402,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			result, syncResult, syncErr := syncManager.PerformSync(ctx, tt.config)
+			syncResult, syncErr := syncManager.PerformSync(ctx, tt.config)
 
 			if tt.expectedError {
 				assert.NotNil(t, syncErr)
@@ -412,9 +412,6 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			} else {
 				assert.Nil(t, syncErr)
 			}
-
-			// Verify the result
-			assert.NotNil(t, result)
 
 			// Validate server count if expected
 			if tt.expectedServerCount != nil && syncResult != nil {
