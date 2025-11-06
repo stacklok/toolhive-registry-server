@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"github.com/stacklok/toolhive/pkg/registry"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFileStorageManager_StoreAndGet(t *testing.T) {
@@ -85,4 +85,41 @@ func TestFileStorageManager_GetNonExistent(t *testing.T) {
 	ctx := context.Background()
 	_, err := manager.Get(ctx, nil)
 	require.Error(t, err)
+}
+
+func TestFileStorageManager_Delete_PermissionDenied(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	manager := NewFileStorageManager(tmpDir)
+
+	// Create and store a file
+	testRegistry := &registry.Registry{Version: "1.0.0"}
+	ctx := context.Background()
+	err := manager.Store(ctx, nil, testRegistry)
+	require.NoError(t, err)
+
+	// Make directory read-only to prevent deletion
+	err = os.Chmod(tmpDir, 0555) // Read + execute only, no write
+	require.NoError(t, err)
+	defer os.Chmod(tmpDir, 0755) // Restore permissions
+
+	// Try to delete - should fail with permission error
+	err = manager.Delete(ctx, nil)
+	require.Error(t, err) //
+	require.Contains(t, err.Error(), "failed to delete registry file")
+}
+
+func TestFileStorageManager_Delete_NonExistent(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	manager := NewFileStorageManager(tmpDir)
+
+	// Try to delete file that doesn't exist
+	ctx := context.Background()
+	err := manager.Delete(ctx, nil)
+
+	// Should succeed (idempotent operation)
+	require.NoError(t, err)
 }
