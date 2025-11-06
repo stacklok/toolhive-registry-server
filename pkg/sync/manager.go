@@ -180,7 +180,7 @@ func (s *DefaultSyncManager) ShouldSync(
 	shouldSync := false
 	reason := ReasonUpToDateNoPolicy
 
-	// Check update needed for state, manual sync, or filter changed
+	// Check if update is needed for state, manual sync, or filter change
 	dataChangedString := "N/A"
 	if syncNeededForState || manualSyncRequested || filterChanged || checkIntervalElapsed {
 		// Check if source data has changed

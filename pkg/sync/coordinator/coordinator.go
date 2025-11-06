@@ -110,6 +110,9 @@ func (c *DefaultCoordinator) GetStatus() *status.SyncStatus {
 	defer c.mu.Unlock()
 
 	// Return a copy to prevent external modification
+	if c.cachedStatus == nil {
+		return nil
+	}
 	statusCopy := *c.cachedStatus
 	return &statusCopy
 }
