@@ -1,17 +1,20 @@
 version: '3'
 
-# includes:
-#   registry-api:
-#     taskfile: ./cmd/thv-registry-api/Taskfile.yml
-#     flatten: true
-
 tasks:
   docs:
     desc: Regenerate the registry API documentation
+    vars:
+      SWAG_OUTPUT_DIR: '{{.SWAG_OUTPUT_DIR | default "docs/thv-registry-api"}}'
     cmds:
       - rm -rf docs/cli/*
       - go run cmd/help/main.go --dir docs/cli
-      - swag init -g cmd/thv-registry-api/docs.go --v3.1 -o docs/thv-registry-api
+      # NOTE: check out .swaggo file in the root of the project
+      # NOTE: We suppress the output to avoid "go/build" messages, it might
+      #       drop messages we care about.
+      - |
+        swag init -q -g cmd/thv-registry-api/docs.go \
+          --v3.1 --output {{.SWAG_OUTPUT_DIR}} \
+          --parseDependencyLevel 1 2>/dev/null
 
   install-swagger:
     desc: Install the swag tool for OpenAPI/Swagger generation
