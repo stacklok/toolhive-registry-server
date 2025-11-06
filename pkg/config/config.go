@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"time"
@@ -39,7 +40,7 @@ type ConfigLoader interface {
 type Config struct {
 	// RegistryName is the name/identifier for this registry instance
 	// Defaults to "default" if not specified
-	RegistryName string            `yaml:"registryName,omitempty"`
+	RegistryName string            `yaml:"registryName"`
 	Source       SourceConfig      `yaml:"source"`
 	SyncPolicy   *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
 	Filter       *FilterConfig     `yaml:"filter,omitempty"`
@@ -137,9 +138,12 @@ func (c *configLoader) LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Parse YAML content
+	// Parse YAML content with strict mode to catch unknown fields
 	var config Config
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true) // Enable strict mode - reject unknown fields
+
+	if err := decoder.Decode(&config); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML config: %w", err)
 	}
 

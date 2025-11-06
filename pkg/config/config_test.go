@@ -449,3 +449,110 @@ func TestGetRegistryName(t *testing.T) {
 		})
 	}
 }
+
+func TestStrictYAMLUnmarshaling(t *testing.T) {
+	tests := []struct {
+		name        string
+		yamlContent string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "valid_config_all_fields_correct",
+			yamlContent: `registryName: test-registry
+source:
+  type: file
+  format: toolhive
+  file:
+    path: /tmp/registry.json
+syncPolicy:
+  interval: "30m"`,
+			wantErr: false,
+		},
+		{
+			name: "typo_in_top_level_field",
+			yamlContent: `oooregistryName: test-registry
+source:
+  type: file
+  file:
+    path: /tmp/registry.json
+syncPolicy:
+  interval: "30m"`,
+			wantErr:     true,
+			errContains: "field oooregistryName not found",
+		},
+		{
+			name: "typo_in_source_type",
+			yamlContent: `registryName: test-registry
+source:
+  typeeee: file
+  file:
+    path: /tmp/registry.json
+syncPolicy:
+  interval: "30m"`,
+			wantErr:     true,
+			errContains: "field typeeee not found",
+		},
+		{
+			name: "unknown_field_in_file_config",
+			yamlContent: `registryName: test-registry
+source:
+  type: file
+  file:
+    path: /tmp/registry.json
+    unknownField: value
+syncPolicy:
+  interval: "30m"`,
+			wantErr:     true,
+			errContains: "field unknownField not found",
+		},
+		{
+			name: "unknown_field_in_sync_policy",
+			yamlContent: `registryName: test-registry
+source:
+  type: file
+  file:
+    path: /tmp/registry.json
+syncPolicy:
+  interval: "30m"
+  invalidField: true`,
+			wantErr:     true,
+			errContains: "field invalidField not found",
+		},
+		{
+			name: "unknown_field_in_git_config",
+			yamlContent: `registryName: test-registry
+source:
+  type: git
+  git:
+    repository: https://github.com/example/repo.git
+    branch: main
+    path: registry.json
+    unknownGitField: value
+syncPolicy:
+  interval: "30m"`,
+			wantErr:     true,
+			errContains: "field unknownGitField not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configPath := filepath.Join(tmpDir, "config.yaml")
+			err := os.WriteFile(configPath, []byte(tt.yamlContent), 0644)
+			require.NoError(t, err)
+
+			loader := NewConfigLoader()
+			_, err = loader.LoadConfig(configPath)
+
+			if tt.wantErr {
+				require.Error(t, err, "Expected error for config with unknown fields")
+				assert.Contains(t, err.Error(), tt.errContains,
+					"Error message should mention the unknown field")
+			} else {
+				require.NoError(t, err, "Valid config should load without error")
+			}
+		})
+	}
+}
