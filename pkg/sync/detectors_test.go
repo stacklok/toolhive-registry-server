@@ -2,15 +2,13 @@ package sync
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/sources"
@@ -20,14 +18,18 @@ import (
 func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 	t.Parallel()
 
-	scheme := runtime.NewScheme()
-	require.NoError(t, corev1.AddToScheme(scheme))
+	// Create a temporary directory for test files
+	tempDir := t.TempDir()
+	testFilePath := filepath.Join(tempDir, "registry.json")
+
+	// Create test registry data with hash "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" (SHA256 of "test")
+	testData := []byte("test")
+	require.NoError(t, os.WriteFile(testFilePath, testData, 0644))
 
 	tests := []struct {
 		name            string
 		config          *config.Config
 		status          *status.SyncStatus
-		configMap       *corev1.ConfigMap
 		expectedChanged bool
 		expectError     bool
 	}{
@@ -35,25 +37,14 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 			name: "data changed when no last sync hash",
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type: "configmap",
-					ConfigMap: &config.ConfigMapConfig{
-						Namespace: "test-namespace",
-						Name:      "test-configmap",
-						Key:       "registry.json",
+					Type: "file",
+					File: &config.FileConfig{
+						Path: testFilePath,
 					},
 				},
 			},
 			status: &status.SyncStatus{
 				LastSyncHash: "", // No hash means data changed
-			},
-			configMap: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-configmap",
-					Namespace: "test-namespace",
-				},
-				Data: map[string]string{
-					"registry.json": "test data",
-				},
 			},
 			expectedChanged: true,
 			expectError:     false,
@@ -62,25 +53,14 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 			name: "data unchanged when hash matches",
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type: "configmap",
-					ConfigMap: &config.ConfigMapConfig{
-						Namespace: "test-namespace",
-						Name:      "test-configmap",
-						Key:       "registry.json",
+					Type: "file",
+					File: &config.FileConfig{
+						Path: testFilePath,
 					},
 				},
 			},
 			status: &status.SyncStatus{
 				LastSyncHash: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", // SHA256 of "test"
-			},
-			configMap: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-configmap",
-					Namespace: "test-namespace",
-				},
-				Data: map[string]string{
-					"registry.json": "test", // Same content
-				},
 			},
 			expectedChanged: false,
 			expectError:     false,
@@ -89,46 +69,33 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 			name: "data changed when hash differs",
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type:   "configmap",
+					Type:   "file",
 					Format: config.SourceFormatToolHive,
-					ConfigMap: &config.ConfigMapConfig{
-						Namespace: "test-namespace",
-						Name:      "test-configmap",
-						Key:       "registry.json",
+					File: &config.FileConfig{
+						Path: testFilePath,
 					},
 				},
 			},
 			status: &status.SyncStatus{
 				LastSyncHash: "old-hash",
 			},
-			configMap: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-configmap",
-					Namespace: "test-namespace",
-				},
-				Data: map[string]string{
-					"registry.json": "new data",
-				},
-			},
 			expectedChanged: true,
 			expectError:     false,
 		},
 		{
-			name: "error when configmap not found",
+			name: "error when file not found",
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type:   "configmap",
+					Type:   "file",
 					Format: config.SourceFormatToolHive,
-					ConfigMap: &config.ConfigMapConfig{
-						Name: "missing-configmap",
-						Key:  "registry.json",
+					File: &config.FileConfig{
+						Path: filepath.Join(tempDir, "missing-registry.json"),
 					},
 				},
 			},
 			status: &status.SyncStatus{
 				LastSyncHash: "some-hash",
 			},
-			configMap:       nil,  // ConfigMap doesn't exist
 			expectedChanged: true, // Should return true on error
 			expectError:     true,
 		},
@@ -139,17 +106,7 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			objects := []runtime.Object{}
-			if tt.configMap != nil {
-				objects = append(objects, tt.configMap)
-			}
-
-			fakeClient := fake.NewClientBuilder().
-				WithScheme(scheme).
-				WithRuntimeObjects(objects...).
-				Build()
-
-			sourceHandlerFactory := sources.NewSourceHandlerFactory(fakeClient)
+			sourceHandlerFactory := sources.NewSourceHandlerFactory()
 			detector := &DefaultDataChangeDetector{
 				sourceHandlerFactory: sourceHandlerFactory,
 			}

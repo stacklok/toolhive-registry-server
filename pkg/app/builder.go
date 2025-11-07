@@ -8,9 +8,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -45,11 +42,6 @@ type RegistryAppBuilder struct {
 	syncManager          pkgsync.Manager
 	registryProvider     service.RegistryDataProvider
 	deploymentProvider   service.DeploymentProvider
-
-	// Kubernetes components (optional)
-	kubeConfig *rest.Config
-	kubeClient client.Client
-	kubeScheme *runtime.Scheme
 
 	// HTTP server options
 	address            string
@@ -100,19 +92,6 @@ func (b *RegistryAppBuilder) WithDataDirectory(dir string) *RegistryAppBuilder {
 	return b
 }
 
-// WithKubernetesConfig sets the Kubernetes REST configuration
-func (b *RegistryAppBuilder) WithKubernetesConfig(cfg *rest.Config) *RegistryAppBuilder {
-	b.kubeConfig = cfg
-	return b
-}
-
-// WithKubernetesClient sets the Kubernetes client (for testing)
-func (b *RegistryAppBuilder) WithKubernetesClient(client client.Client, scheme *runtime.Scheme) *RegistryAppBuilder {
-	b.kubeClient = client
-	b.kubeScheme = scheme
-	return b
-}
-
 // WithSourceHandlerFactory allows injecting a custom source handler factory (for testing)
 func (b *RegistryAppBuilder) WithSourceHandlerFactory(factory sources.SourceHandlerFactory) *RegistryAppBuilder {
 	b.sourceHandlerFactory = factory
@@ -156,21 +135,14 @@ func (b *RegistryAppBuilder) Build(ctx context.Context) (*RegistryApp, error) {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// Build Kubernetes components if needed (non-fatal if unavailable)
-	kubeComponents, err := b.buildKubernetesComponents()
-	if err != nil {
-		logger.Warnf("Kubernetes components unavailable: %v", err)
-		logger.Warn("ConfigMap source and deployment provider will not be available")
-	}
-
 	// Build sync components
-	syncCoordinator, err := b.buildSyncComponents(kubeComponents)
+	syncCoordinator, err := b.buildSyncComponents()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build sync components: %w", err)
 	}
 
 	// Build service components
-	registryService, err := b.buildServiceComponents(ctx, kubeComponents)
+	registryService, err := b.buildServiceComponents(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build service components: %w", err)
 	}
@@ -189,7 +161,6 @@ func (b *RegistryAppBuilder) Build(ctx context.Context) (*RegistryApp, error) {
 		components: &AppComponents{
 			SyncCoordinator: syncCoordinator,
 			RegistryService: registryService,
-			KubeComponents:  kubeComponents,
 		},
 		httpServer: httpServer,
 		ctx:        appCtx,
@@ -197,47 +168,13 @@ func (b *RegistryAppBuilder) Build(ctx context.Context) (*RegistryApp, error) {
 	}, nil
 }
 
-// buildKubernetesComponents builds Kubernetes client, scheme, etc.
-// Returns nil if Kubernetes is not available (non-fatal)
-func (b *RegistryAppBuilder) buildKubernetesComponents() (*KubernetesComponents, error) {
-	// Use injected config if provided (for testing)
-	if b.kubeConfig == nil {
-		cfg, err := getKubernetesConfig()
-		if err != nil {
-			return nil, fmt.Errorf("kubernetes config unavailable: %w", err)
-		}
-		b.kubeConfig = cfg
-	}
-
-	// Use injected client if provided (for testing)
-	if b.kubeClient == nil {
-		client, scheme, err := createKubernetesClient(b.kubeConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-		}
-		b.kubeClient = client
-		b.kubeScheme = scheme
-	}
-
-	logger.Info("Kubernetes components initialized successfully")
-	return &KubernetesComponents{
-		RestConfig: b.kubeConfig,
-		Client:     b.kubeClient,
-		Scheme:     b.kubeScheme,
-	}, nil
-}
-
 // buildSyncComponents builds sync manager, coordinator, and related components
-func (b *RegistryAppBuilder) buildSyncComponents(kube *KubernetesComponents) (coordinator.Coordinator, error) {
+func (b *RegistryAppBuilder) buildSyncComponents() (coordinator.Coordinator, error) {
 	logger.Info("Initializing sync components")
 
 	// Build source handler factory
 	if b.sourceHandlerFactory == nil {
-		var k8sClient client.Client
-		if kube != nil {
-			k8sClient = kube.Client
-		}
-		b.sourceHandlerFactory = sources.NewSourceHandlerFactory(k8sClient)
+		b.sourceHandlerFactory = sources.NewSourceHandlerFactory()
 	}
 
 	// Build storage manager
@@ -256,15 +193,7 @@ func (b *RegistryAppBuilder) buildSyncComponents(kube *KubernetesComponents) (co
 
 	// Build sync manager
 	if b.syncManager == nil {
-		var k8sClient client.Client
-		var scheme *runtime.Scheme
-		if kube != nil {
-			k8sClient = kube.Client
-			scheme = kube.Scheme
-		}
 		b.syncManager = pkgsync.NewDefaultSyncManager(
-			k8sClient,
-			scheme,
 			b.sourceHandlerFactory,
 			b.storageManager,
 		)
@@ -278,7 +207,7 @@ func (b *RegistryAppBuilder) buildSyncComponents(kube *KubernetesComponents) (co
 }
 
 // buildServiceComponents builds registry service and providers
-func (b *RegistryAppBuilder) buildServiceComponents(ctx context.Context, kube *KubernetesComponents) (service.RegistryService, error) {
+func (b *RegistryAppBuilder) buildServiceComponents(ctx context.Context) (service.RegistryService, error) {
 	logger.Info("Initializing service components")
 
 	// Build registry provider (reads from synced data via StorageManager)
@@ -293,18 +222,7 @@ func (b *RegistryAppBuilder) buildServiceComponents(ctx context.Context, kube *K
 		logger.Infof("Created registry data provider using storage manager")
 	}
 
-	// Build deployment provider (optional, requires Kubernetes)
-	if b.deploymentProvider == nil && kube != nil {
-		provider, err := service.NewK8sDeploymentProvider(kube.RestConfig, b.config.GetRegistryName())
-		if err != nil {
-			logger.Warnf("Failed to create deployment provider: %v", err)
-		} else {
-			b.deploymentProvider = provider
-			logger.Infof("Created Kubernetes deployment provider for registry: %s", b.config.GetRegistryName())
-		}
-	}
-
-	// Create service
+	// Create service (deployment provider is optional and can be injected via WithDeploymentProvider for testing)
 	svc, err := service.NewService(ctx, b.registryProvider, b.deploymentProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create registry service: %w", err)

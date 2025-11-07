@@ -26,7 +26,7 @@ The ToolHive Registry API (`thv-registry-api`) implements the official [Model Co
 ## Features
 
 - **Standards-compliant**: Implements the official MCP Registry API specification
-- **Multiple data sources**: Git repositories, Kubernetes ConfigMaps, API endpoints, and local files
+- **Multiple data sources**: Git repositories, API endpoints, and local files
 - **Automatic synchronization**: Background sync with configurable intervals and retry logic
 - **Container-ready**: Designed for deployment in Kubernetes clusters
 - **Flexible deployment**: Works standalone or as part of ToolHive infrastructure
@@ -38,7 +38,6 @@ The ToolHive Registry API (`thv-registry-api`) implements the official [Model Co
 
 - Go 1.23 or later
 - [Task](https://taskfile.dev) for build automation
-- Access to a Kubernetes cluster (for ConfigMap data source)
 
 ### Building the binary
 
@@ -56,14 +55,14 @@ All configuration is done via YAML configuration files. See the [examples/](exam
 thv-registry-api serve --config examples/config-git.yaml
 ```
 
-**With Kubernetes ConfigMap:**
-```bash
-thv-registry-api serve --config examples/config-configmap.yaml
-```
-
 **With local file:**
 ```bash
 thv-registry-api serve --config examples/config-file.yaml
+```
+
+**With API endpoint:**
+```bash
+thv-registry-api serve --config examples/config-api.yaml
 ```
 
 The server starts on port 8080 by default. Use `--address :PORT` to customize.
@@ -100,7 +99,7 @@ registryName: my-registry
 
 # Data source configuration (required)
 source:
-  # Source type: git, configmap, api, or file
+  # Source type: git, api, or file
   type: git
 
   # Data format: toolhive (native) or upstream (MCP registry format)
@@ -136,24 +135,19 @@ filter:
 
 ### Data Sources
 
-The server supports four data source types:
+The server supports three data source types:
 
 1. **Git Repository** - Clone and sync from Git repositories
    - Supports branch, tag, or commit pinning
    - Ideal for version-controlled registries
    - Example: [config-git.yaml](examples/config-git.yaml)
 
-2. **Kubernetes ConfigMap** - Read from ConfigMaps in the cluster
-   - Requires Kubernetes API access and RBAC permissions
-   - Ideal for Kubernetes-native deployments
-   - Example: [config-configmap.yaml](examples/config-configmap.yaml)
-
-3. **API Endpoint** - Sync from upstream MCP Registry APIs
+2. **API Endpoint** - Sync from upstream MCP Registry APIs
    - Supports federation and aggregation scenarios
    - Format conversion from upstream to ToolHive format
    - Example: [config-api.yaml](examples/config-api.yaml)
 
-4. **Local File** - Read from filesystem
+3. **Local File** - Read from filesystem
    - Ideal for local development and testing
    - Supports mounted volumes in containers
    - Example: [config-file.yaml](examples/config-file.yaml)
@@ -201,7 +195,6 @@ pkg/
 ├── config/              # Configuration loading and validation
 ├── sources/             # Data source handlers
 │   ├── git.go               # Git repository source
-│   ├── configmap.go         # Kubernetes ConfigMap source
 │   ├── api.go               # API endpoint source
 │   ├── file.go              # File system source
 │   ├── factory.go           # Source handler factory
@@ -223,7 +216,6 @@ The server follows a clean architecture pattern with the following layers:
 3. **Configuration Layer** (`pkg/config`): YAML configuration loading and validation
 4. **Source Handler Layer** (`pkg/sources`): Pluggable data source implementations
    - `GitSourceHandler`: Clones Git repositories and extracts registry files
-   - `ConfigMapSourceHandler`: Reads from Kubernetes ConfigMaps
    - `APISourceHandler`: Fetches from upstream MCP Registry APIs
    - `FileSourceHandler`: Reads from local filesystem
 5. **Sync Manager** (`pkg/sync`): Coordinates automatic registry synchronization
@@ -280,12 +272,12 @@ data:
   config.yaml: |
     registryName: my-registry
     source:
-      type: configmap
+      type: git
       format: toolhive
-      configmap:
-        namespace: toolhive-system
-        name: my-registry-data
-        key: registry.json
+      git:
+        repository: https://github.com/stacklok/toolhive.git
+        branch: main
+        path: pkg/registry/data/registry.json
     syncPolicy:
       interval: "15m"
 ```

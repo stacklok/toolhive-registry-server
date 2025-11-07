@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
@@ -127,8 +125,6 @@ type AutomaticSyncChecker interface {
 
 // DefaultSyncManager is the default implementation of Manager
 type DefaultSyncManager struct {
-	client               client.Client
-	scheme               *runtime.Scheme
 	sourceHandlerFactory sources.SourceHandlerFactory
 	storageManager       sources.StorageManager
 	filterService        filtering.FilterService
@@ -137,11 +133,9 @@ type DefaultSyncManager struct {
 }
 
 // NewDefaultSyncManager creates a new DefaultSyncManager
-func NewDefaultSyncManager(k8sClient client.Client, scheme *runtime.Scheme,
+func NewDefaultSyncManager(
 	sourceHandlerFactory sources.SourceHandlerFactory, storageManager sources.StorageManager) *DefaultSyncManager {
 	return &DefaultSyncManager{
-		client:               k8sClient,
-		scheme:               scheme,
 		sourceHandlerFactory: sourceHandlerFactory,
 		storageManager:       storageManager,
 		filterService:        filtering.NewDefaultFilterService(),

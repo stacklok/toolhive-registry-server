@@ -5,7 +5,6 @@
 #
 # For practical examples, see:
 #   - config-git.yaml: Git repository source
-#   - config-configmap.yaml: Kubernetes ConfigMap source
 #   - config-api.yaml: API endpoint source
 #   - config-file.yaml: Local file source
 
@@ -27,7 +26,7 @@ registryName: my-registry
 
 source:
   # Source type (Required)
-  # Options: git, configmap, api, file
+  # Options: git, api, file
   type: git
 
   # Data format (Required)
@@ -57,19 +56,6 @@ source:
 
     # Path to registry file within repository (Required)
     path: pkg/registry/data/registry.json
-
-  # ------------------------------------------------------------------------------
-  # KUBERNETES CONFIGMAP SOURCE OPTIONS (used when type: configmap)
-  # ------------------------------------------------------------------------------
-  # configmap:
-  #   # Kubernetes namespace (Required)
-  #   namespace: toolhive-system
-  #
-  #   # ConfigMap name (Required)
-  #   name: registry-data
-  #
-  #   # Key containing registry data (Optional, defaults to "registry.json")
-  #   key: registry.json
 
   # ------------------------------------------------------------------------------
   # API ENDPOINT SOURCE OPTIONS (used when type: api)
@@ -104,8 +90,7 @@ syncPolicy:
   # Format: Go duration string (e.g., "30s", "5m", "1h", "24h")
   #
   # Recommended values:
-  #   - Development: 1m-5m (fast iteration)
-  #   - ConfigMap: 15m-30m (local source, low latency)
+  #   - File: 1m-5m (local source, low latency)
   #   - Git: 30m-1h (balance freshness vs. load)
   #   - API: 1h-6h (respectful of external services)
   #   - Stable: 24h (infrequent updates)
@@ -178,8 +163,8 @@ filter:
 # via CLI flags in a future release.
 
 # Authentication:
+#   - File: No authentication required
 #   - Git: Uses default git credential helper (SSH keys, .netrc, etc.)
-#   - ConfigMap: Uses in-cluster service account or kubeconfig
 #   - API: Currently no authentication (will be added in future)
 
 # Error Handling:
