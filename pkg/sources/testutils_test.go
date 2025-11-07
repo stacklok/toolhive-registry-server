@@ -115,7 +115,7 @@ func TestTestRegistryBuilder_WithServer(t *testing.T) {
 
 			switch tt.format {
 			case config.SourceFormatToolHive, "":
-				assert.Len(t, builder.registry.Servers, 1)
+				assert.Len(t, builder.registry.Servers, 2)
 				server, exists := builder.registry.Servers[tt.expectedName]
 				assert.True(t, exists)
 				assert.Equal(t, tt.expectedName, server.Name)
@@ -125,8 +125,10 @@ func TestTestRegistryBuilder_WithServer(t *testing.T) {
 				assert.Equal(t, "stdio", server.Transport)
 				assert.Equal(t, []string{"test_tool"}, server.Tools)
 				assert.Equal(t, "test/image:latest", server.Image)
+				_, exists = builder.registry.Servers[tt.expectedName+"-legacy"]
+				assert.True(t, exists)
 			case config.SourceFormatUpstream:
-				assert.Len(t, builder.upstreamData, 1)
+				assert.Len(t, builder.upstreamData, 2)
 				serverDetail := builder.upstreamData[0]
 				assert.Equal(t, tt.expectedName, serverDetail.Server.Name)
 				assert.NotEmpty(t, serverDetail.Server.Description)
@@ -135,6 +137,8 @@ func TestTestRegistryBuilder_WithServer(t *testing.T) {
 				assert.Equal(t, "docker", pkg.RegistryName)
 				assert.Equal(t, "test/image", pkg.Name)
 				assert.Equal(t, "latest", pkg.Version)
+				serverDetailLegacy := builder.upstreamData[1]
+				assert.Equal(t, tt.expectedName+"-legacy", serverDetailLegacy.Server.Name)
 			}
 		})
 	}
@@ -478,13 +482,13 @@ func TestTestRegistryBuilder_BuildJSON(t *testing.T) {
 				err = json.Unmarshal(jsonData, &registry)
 				assert.NoError(t, err)
 				assert.Equal(t, "1.0.0", registry.Version)
-				assert.Len(t, registry.Servers, 1)
+				assert.Len(t, registry.Servers, 2)
 			case config.SourceFormatUpstream:
 				// Should be an array of server details
 				var upstreamData []registry.UpstreamServerDetail
 				err = json.Unmarshal(jsonData, &upstreamData)
 				assert.NoError(t, err)
-				assert.Len(t, upstreamData, 1)
+				assert.Len(t, upstreamData, 2)
 			}
 		})
 	}
@@ -551,7 +555,7 @@ func TestTestRegistryBuilder_GetRegistry(t *testing.T) {
 			if tt.shouldReturn {
 				assert.NotNil(t, registry)
 				assert.Equal(t, "1.0.0", registry.Version)
-				assert.Len(t, registry.Servers, 1)
+				assert.Len(t, registry.Servers, 2)
 			} else {
 				assert.Nil(t, registry)
 			}
@@ -595,7 +599,7 @@ func TestTestRegistryBuilder_GetUpstreamData(t *testing.T) {
 
 			if tt.shouldReturn {
 				assert.NotNil(t, upstreamData)
-				assert.Len(t, upstreamData, 1)
+				assert.Len(t, upstreamData, 2)
 			} else {
 				assert.Nil(t, upstreamData)
 			}
@@ -618,28 +622,28 @@ func TestTestRegistryBuilder_ServerCount(t *testing.T) {
 			format:             config.SourceFormatToolHive,
 			serversToAdd:       2,
 			remoteServersToAdd: 0,
-			expectedCount:      2,
+			expectedCount:      4,
 		},
 		{
 			name:               "toolhive format with mixed servers",
 			format:             config.SourceFormatToolHive,
 			serversToAdd:       2,
 			remoteServersToAdd: 1,
-			expectedCount:      3,
+			expectedCount:      5,
 		},
 		{
 			name:               "upstream format with servers",
 			format:             config.SourceFormatUpstream,
 			serversToAdd:       3,
 			remoteServersToAdd: 0, // Remote servers not supported in upstream
-			expectedCount:      3,
+			expectedCount:      6,
 		},
 		{
 			name:               "empty format with servers",
 			format:             "",
 			serversToAdd:       1,
 			remoteServersToAdd: 1,
-			expectedCount:      2,
+			expectedCount:      3,
 		},
 	}
 
@@ -674,13 +678,13 @@ func TestTestRegistryBuilder_ContainerServerCount(t *testing.T) {
 	builder.WithServer("server1").WithServer("server2").WithRemoteServer("https://example.com")
 
 	containerCount := builder.ContainerServerCount()
-	assert.Equal(t, 2, containerCount)
+	assert.Equal(t, 4, containerCount)
 
 	remoteCount := builder.RemoteServerCount()
 	assert.Equal(t, 1, remoteCount)
 
 	totalCount := builder.ServerCount()
-	assert.Equal(t, 3, totalCount)
+	assert.Equal(t, 5, totalCount)
 }
 
 func TestTestRegistryBuilder_RemoteServerCount(t *testing.T) {
@@ -751,12 +755,12 @@ func TestTestRegistryBuilder_ChainedCalls(t *testing.T) {
 	// Verify all operations were applied
 	assert.Equal(t, "2.0.0", builder.registry.Version)
 	assert.Equal(t, "2023-01-01T00:00:00Z", builder.registry.LastUpdated)
-	assert.Len(t, builder.registry.Servers, 2)
+	assert.Len(t, builder.registry.Servers, 4)
 	assert.Len(t, builder.registry.RemoteServers, 2)
 
 	// Verify server count
-	assert.Equal(t, 4, builder.ServerCount())
-	assert.Equal(t, 2, builder.ContainerServerCount())
+	assert.Equal(t, 6, builder.ServerCount())
+	assert.Equal(t, 4, builder.ContainerServerCount())
 	assert.Equal(t, 2, builder.RemoteServerCount())
 }
 
@@ -831,10 +835,12 @@ func TestTestRegistryBuilder_WithServerName(t *testing.T) {
 	assert.Equal(t, builder, result1)
 	assert.Equal(t, builder, result2)
 
-	// Should have 2 servers
-	assert.Len(t, builder.registry.Servers, 2)
+	// Should have 4 servers
+	assert.Len(t, builder.registry.Servers, 4)
 	assert.Contains(t, builder.registry.Servers, "test-server")
 	assert.Contains(t, builder.registry.Servers, "test-server-2")
+	assert.Contains(t, builder.registry.Servers, "test-server-legacy")
+	assert.Contains(t, builder.registry.Servers, "test-server-2-legacy")
 }
 
 func TestTestRegistryBuilder_PanicOnMarshalError(t *testing.T) {

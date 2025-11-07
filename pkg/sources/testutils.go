@@ -56,6 +56,19 @@ func (b *TestRegistryBuilder) WithServer(name string) *TestRegistryBuilder {
 				Status:      "Active",
 				Transport:   "stdio",
 				Tools:       []string{"test_tool"},
+				Tags:        []string{"database"},
+			},
+			Image: "test/image:latest",
+		}
+		b.registry.Servers[name+"-legacy"] = &registry.ImageMetadata{
+			BaseServerMetadata: registry.BaseServerMetadata{
+				Name:        name + "-legacy",
+				Description: fmt.Sprintf("Test server description for %s", name),
+				Tier:        "Community",
+				Status:      "Active",
+				Transport:   "stdio",
+				Tools:       []string{"test_tool"},
+				Tags:        []string{"database", "deprecated"},
 			},
 			Image: "test/image:latest",
 		}
@@ -63,6 +76,19 @@ func (b *TestRegistryBuilder) WithServer(name string) *TestRegistryBuilder {
 		b.upstreamData = append(b.upstreamData, registry.UpstreamServerDetail{
 			Server: registry.UpstreamServer{
 				Name:        name,
+				Description: fmt.Sprintf("Test server description for %s", name),
+				Packages: []registry.UpstreamPackage{
+					{
+						RegistryName: "docker",
+						Name:         "test/image",
+						Version:      "latest",
+					},
+				},
+			},
+		})
+		b.upstreamData = append(b.upstreamData, registry.UpstreamServerDetail{
+			Server: registry.UpstreamServer{
+				Name:        name + "-legacy",
 				Description: fmt.Sprintf("Test server description for %s", name),
 				Packages: []registry.UpstreamPackage{
 					{

@@ -151,7 +151,7 @@ func TestGitSourceHandler_Validate(t *testing.T) {
 		{
 			name: "invalid source type",
 			source: &config.SourceConfig{
-				Type: config.SourceTypeConfigMap,
+				Type: config.SourceTypeFile,
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 				},

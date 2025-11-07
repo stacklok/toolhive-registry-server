@@ -4,26 +4,19 @@ import (
 	"fmt"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // DefaultSourceHandlerFactory is the default implementation of SourceHandlerFactory
-type DefaultSourceHandlerFactory struct {
-	client client.Client
-}
+type DefaultSourceHandlerFactory struct{}
 
 // NewSourceHandlerFactory creates a new source handler factory
-func NewSourceHandlerFactory(k8sClient client.Client) SourceHandlerFactory {
-	return &DefaultSourceHandlerFactory{
-		client: k8sClient,
-	}
+func NewSourceHandlerFactory() SourceHandlerFactory {
+	return &DefaultSourceHandlerFactory{}
 }
 
 // CreateHandler creates a source handler for the given source type
-func (f *DefaultSourceHandlerFactory) CreateHandler(sourceType string) (SourceHandler, error) {
+func (*DefaultSourceHandlerFactory) CreateHandler(sourceType string) (SourceHandler, error) {
 	switch sourceType {
-	case config.SourceTypeConfigMap:
-		return NewConfigMapSourceHandler(f.client), nil
 	case config.SourceTypeGit:
 		return NewGitSourceHandler(), nil
 	case config.SourceTypeAPI:
