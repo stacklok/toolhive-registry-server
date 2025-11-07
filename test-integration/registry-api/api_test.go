@@ -58,7 +58,9 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 
 			resp, err := serverHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -127,7 +129,9 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 
 			resp, err := serverHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).NotTo(HaveOccurred())

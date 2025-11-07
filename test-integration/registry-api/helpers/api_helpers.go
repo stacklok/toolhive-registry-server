@@ -91,7 +91,7 @@ func (b *MockAPIServerBuilder) Build() *httptest.Server {
 			if b.infoResponse != "" {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				fmt.Fprint(w, b.infoResponse)
+				_, _ = w.Write([]byte(b.infoResponse))
 				return
 			}
 
@@ -99,7 +99,7 @@ func (b *MockAPIServerBuilder) Build() *httptest.Server {
 			if b.serversResponse != "" {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				fmt.Fprint(w, b.serversResponse)
+				_, _ = w.Write([]byte(b.serversResponse))
 				return
 			}
 
@@ -109,7 +109,7 @@ func (b *MockAPIServerBuilder) Build() *httptest.Server {
 				if r.URL.Path == "/v0/servers/"+serverName {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusOK)
-					fmt.Fprint(w, detailResponse)
+					_, _ = w.Write([]byte(detailResponse))
 					return
 				}
 			}
