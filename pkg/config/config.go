@@ -9,9 +9,6 @@ import (
 )
 
 const (
-	// SourceTypeConfigMap is the type for registry data stored in ConfigMaps
-	SourceTypeConfigMap = "configmap"
-
 	// SourceTypeGit is the type for registry data stored in Git repositories
 	SourceTypeGit = "git"
 
@@ -47,19 +44,11 @@ type Config struct {
 
 // SourceConfig defines the data source configuration
 type SourceConfig struct {
-	Type      string           `yaml:"type"`
-	Format    string           `yaml:"format"`
-	ConfigMap *ConfigMapConfig `yaml:"configmap,omitempty"`
-	Git       *GitConfig       `yaml:"git,omitempty"`
-	API       *APIConfig       `yaml:"api,omitempty"`
-	File      *FileConfig      `yaml:"file,omitempty"`
-}
-
-// ConfigMapConfig defines Kubernetes ConfigMap source settings
-type ConfigMapConfig struct {
-	Namespace string `yaml:"namespace"`
-	Name      string `yaml:"name"`
-	Key       string `yaml:"key,omitempty"`
+	Type   string      `yaml:"type"`
+	Format string      `yaml:"format"`
+	Git    *GitConfig  `yaml:"git,omitempty"`
+	API    *APIConfig  `yaml:"api,omitempty"`
+	File   *FileConfig `yaml:"file,omitempty"`
 }
 
 // GitConfig defines Git source settings
@@ -167,14 +156,6 @@ func (c *Config) Validate() error {
 
 	// Validate source-specific settings
 	switch c.Source.Type {
-	case SourceTypeConfigMap:
-		if c.Source.ConfigMap == nil {
-			return fmt.Errorf("source.configmap is required when type is configmap")
-		}
-		if c.Source.ConfigMap.Name == "" {
-			return fmt.Errorf("source.configmap.name is required")
-		}
-
 	case SourceTypeGit:
 		if c.Source.Git == nil {
 			return fmt.Errorf("source.git is required when type is git")

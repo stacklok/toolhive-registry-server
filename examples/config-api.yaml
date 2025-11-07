@@ -16,7 +16,7 @@ registryName: mcp-registry
 
 # Data source configuration
 source:
-  # Source type: git, configmap, or api
+  # Source type: git, or api
   type: api
 
   # Data format: toolhive (native) or upstream (MCP registry format)

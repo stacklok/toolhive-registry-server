@@ -18,7 +18,7 @@ Start the registry API server
 Start the registry API server to serve MCP registry data.
 
 The server requires a configuration file (--config) that specifies:
-- Registry name and data source (Git, ConfigMap, API, or File)
+- Registry name and data source (Git, API, or File)
 - Sync policy and filtering rules
 - All other operational settings
 

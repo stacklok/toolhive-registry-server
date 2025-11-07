@@ -9,7 +9,6 @@ This directory contains sample configuration files demonstrating automatic regis
 | Source | Use Case | Config File | Sync Interval |
 |--------|----------|-------------|---------------|
 | **Git** | Official registries, version control | [config-git.yaml](config-git.yaml) | 30m |
-| **ConfigMap** | Kubernetes-native, internal data | [config-configmap.yaml](config-configmap.yaml) | 15m |
 | **API** | Upstream aggregation, federation | [config-api.yaml](config-api.yaml) | 1h |
 | **File** | Local development, testing | [config-file.yaml](config-file.yaml) | 5m |
 
@@ -18,9 +17,6 @@ This directory contains sample configuration files demonstrating automatic regis
 ```bash
 # Git source (recommended for getting started)
 thv-registry-api serve --config examples/config-git.yaml
-
-# ConfigMap source (Kubernetes)
-thv-registry-api serve --config examples/config-configmap.yaml
 
 # API source (upstream MCP registry)
 thv-registry-api serve --config examples/config-api.yaml
@@ -87,72 +83,7 @@ syncPolicy:
 
 ---
 
-### 2. Kubernetes ConfigMap Source
-
-**File:** [config-configmap.yaml](config-configmap.yaml)
-
-Syncs from a Kubernetes ConfigMap in the cluster.
-
-**Configuration:**
-```yaml
-registryName: rh-partners
-
-source:
-  type: configmap
-  format: toolhive
-  configmap:
-    namespace: toolhive-system
-    name: rh-partners-mcp
-    key: registry.json
-
-syncPolicy:
-  interval: "15m"
-```
-
-**Prerequisites:**
-```bash
-# Create a sample ConfigMap (or use existing)
-kubectl create configmap rh-partners-mcp \
-  -n toolhive-system \
-  --from-file=registry.json=./my-registry.json
-
-# Verify it exists
-kubectl get configmap rh-partners-mcp -n toolhive-system
-
-# Check you have permissions
-kubectl auth can-i get configmaps -n toolhive-system
-```
-
-**What happens when you start:**
-1. Connects to Kubernetes API (in-cluster or via kubeconfig)
-2. Reads ConfigMap `rh-partners-mcp` from namespace `toolhive-system`
-3. Extracts data from the `registry.json` key
-4. Saves to `./data/registry.json`
-5. Repeats every 15 minutes
-
-**Best for:**
-- Kubernetes-native deployments
-- Internal/private registry data
-- Partner or organization-specific servers
-- Dynamic updates without redeploying the server
-
-**RBAC Requirements:**
-The ServiceAccount needs permission to read ConfigMaps:
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: registry-reader
-  namespace: toolhive-system
-rules:
-- apiGroups: [""]
-  resources: ["configmaps"]
-  verbs: ["get", "list", "watch"]
-```
-
----
-
-### 3. API Endpoint Source
+### 2. API Endpoint Source
 
 **File:** [config-api.yaml](config-api.yaml)
 
@@ -184,11 +115,11 @@ syncPolicy:
 - Creating curated/filtered subsets
 - Registry federation scenarios
 
-**Note:** Upstream format conversion is not yet fully implemented. Use Git or ConfigMap sources for production.
+**Note:** Upstream format conversion is not yet fully implemented. Use Git or File sources for production.
 
 ---
 
-### 4. File Source
+### 3. File Source
 
 **File:** [config-file.yaml](config-file.yaml)
 
@@ -224,7 +155,7 @@ syncPolicy:
 
 ---
 
-### 5. Complete Reference
+### 4. Complete Reference
 
 **File:** [config-complete.yaml](config-complete.yaml)
 
@@ -248,7 +179,7 @@ registryName: <name>
 
 # Data source configuration (required)
 source:
-  type: <git|configmap|api|file>
+  type: <git|api|file>
   format: <toolhive|upstream>
 
   # Source-specific config (one of):
@@ -256,11 +187,6 @@ source:
     repository: <url>
     branch: <name>      # OR tag: <name> OR commit: <sha>
     path: <file-path>
-
-  configmap:
-    namespace: <ns>
-    name: <cm-name>
-    key: <data-key>     # optional, defaults to "registry.json"
 
   api:
     endpoint: <base-url>
@@ -293,7 +219,6 @@ Choose based on your source and needs:
 ```yaml
 syncPolicy:
   interval: "5m"   # Development/testing - very frequent
-  interval: "15m"  # ConfigMap sources - local, low latency
   interval: "30m"  # Git sources - balance freshness vs load
   interval: "1h"   # API sources - respectful rate limiting
   interval: "6h"   # Stable sources - infrequent updates
@@ -420,25 +345,6 @@ Look for these log messages:
 - Verify branch/tag/commit exists
 - Check network connectivity
 
-#### ConfigMap Not Found
-
-**Symptom:** Status shows `Failed` with "not found"
-
-**Solutions:**
-```bash
-# Check ConfigMap exists
-kubectl get configmap rh-partners-mcp -n toolhive-system
-
-# Verify namespace is correct in config
-grep namespace examples/config-configmap.yaml
-
-# Check RBAC permissions
-kubectl auth can-i get configmaps -n toolhive-system
-
-# Describe ConfigMap to see its keys
-kubectl describe configmap rh-partners-mcp -n toolhive-system
-```
-
 #### Permission Denied (File System)
 
 **Symptom:** Can't write to `./data/`
@@ -502,11 +408,11 @@ Conservative config with filtering:
 
 ```yaml
 source:
-  type: configmap
-  configmap:
-    namespace: toolhive-production
-    name: prod-registry
-    key: registry.json
+  type: git
+  git:
+    repository: https://github.com/your-org/registry.git
+    branch: production
+    path: registry.json
 
 syncPolicy:
   interval: "30m"
@@ -527,14 +433,14 @@ thv-registry-api serve \
   --config examples/config-git.yaml \
   --address :8081 &
 
-# Instance 2: Partners (port 8082)
-thv-registry-api serve \
-  --config examples/config-configmap.yaml \
-  --address :8082 &
-
-# Instance 3: Upstream MCP (port 8083)
+# Instance 2: Upstream MCP (port 8082)
 thv-registry-api serve \
   --config examples/config-api.yaml \
+  --address :8082 &
+
+# Instance 3: Local file (port 8083)
+thv-registry-api serve \
+  --config examples/config-file.yaml \
   --address :8083 &
 ```
 
@@ -550,9 +456,6 @@ thv-registry-api serve \
 
 # Start with Git sync
 thv-registry-api serve --config examples/config-git.yaml
-
-# Start with ConfigMap sync (Kubernetes)
-thv-registry-api serve --config examples/config-configmap.yaml
 
 # Start with API sync
 thv-registry-api serve --config examples/config-api.yaml

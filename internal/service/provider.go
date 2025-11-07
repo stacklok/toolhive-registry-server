@@ -18,7 +18,7 @@ type RegistryDataProvider interface {
 	GetRegistryData(ctx context.Context) (*registry.Registry, error)
 
 	// GetSource returns a descriptive string about where the registry data comes from.
-	// Examples: "configmap:namespace/name", "file:/path/to/registry.json", "remote:https://example.com/registry"
+	// Examples: "file:/path/to/registry.json", "remote:https://example.com/registry"
 	GetSource() string
 
 	// GetRegistryName returns the registry name/identifier for this provider.

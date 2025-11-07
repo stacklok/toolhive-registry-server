@@ -14,7 +14,7 @@ registryName: toolhive
 
 # Data source configuration
 source:
-  # Source type: file, git, configmap, or api
+  # Source type: file, git, or api
   type: file
 
   # Data format: toolhive (native) or upstream (MCP registry format)
