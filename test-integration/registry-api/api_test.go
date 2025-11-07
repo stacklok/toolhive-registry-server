@@ -239,7 +239,9 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 			// Verify initial data is loaded (original test servers)
 			resp, err := serverHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -269,7 +271,9 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 				if err != nil {
 					return ""
 				}
-				defer resp.Body.Close()
+				defer func() {
+					_ = resp.Body.Close()
+				}()
 
 				body, err := io.ReadAll(resp.Body)
 				if err != nil {
@@ -298,7 +302,9 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 			// Verify the synced data contains both servers
 			resp, err = serverHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			body, err = io.ReadAll(resp.Body)
 			Expect(err).NotTo(HaveOccurred())
@@ -389,7 +395,9 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 				if err != nil {
 					return 0
 				}
-				defer resp.Body.Close()
+				defer func() {
+					_ = resp.Body.Close()
+				}()
 
 				if resp.StatusCode != http.StatusOK {
 					return 0
@@ -419,7 +427,9 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 			// Verify the synced data is correct
 			resp, err := retryServerHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).NotTo(HaveOccurred())

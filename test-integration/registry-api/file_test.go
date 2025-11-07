@@ -15,12 +15,12 @@ import (
 
 var _ = Describe("File Source Integration", Label("file"), func() {
 	var (
-		tempDir        string
-		registryFile   string
-		configFile     string
-		serverHelper   *helpers.ServerTestHelper
-		testServers    []helpers.RegistryServer
-		storageDir     string
+		tempDir      string
+		registryFile string
+		configFile   string
+		serverHelper *helpers.ServerTestHelper
+		testServers  []helpers.RegistryServer
+		storageDir   string
 	)
 
 	BeforeEach(func() {
@@ -72,7 +72,9 @@ var _ = Describe("File Source Integration", Label("file"), func() {
 			// 3. Query the API to verify data was loaded
 			resp, err := serverHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 

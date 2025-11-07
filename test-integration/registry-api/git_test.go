@@ -70,7 +70,9 @@ var _ = Describe("Git Source Integration", Label("git"), func() {
 			// Verify data was loaded from Git
 			resp, err := serverHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -122,7 +124,9 @@ var _ = Describe("Git Source Integration", Label("git"), func() {
 			// Verify we got the development branch data (2 servers)
 			resp, err := serverHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).NotTo(HaveOccurred())
@@ -152,7 +156,9 @@ var _ = Describe("Git Source Integration", Label("git"), func() {
 			// Verify we got the tagged version (1 server)
 			resp, err := serverHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).NotTo(HaveOccurred())
@@ -189,7 +195,9 @@ var _ = Describe("Git Source Integration", Label("git"), func() {
 
 			resp, err := serverHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 		})
 	})
@@ -224,7 +232,9 @@ var _ = Describe("Git Source Integration", Label("git"), func() {
 				if err != nil {
 					return 0
 				}
-				defer resp.Body.Close()
+				defer func() {
+					_ = resp.Body.Close()
+				}()
 
 				body, _ := io.ReadAll(resp.Body)
 				var response map[string]interface{}

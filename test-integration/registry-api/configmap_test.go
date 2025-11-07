@@ -87,7 +87,9 @@ var _ = Describe("ConfigMap Source Integration", Label("k8s", "configmap"), func
 
 			resp, err := serverHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -160,7 +162,9 @@ var _ = Describe("ConfigMap Source Integration", Label("k8s", "configmap"), func
 			// Verify initial data loaded
 			resp, err := serverHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).NotTo(HaveOccurred())
@@ -188,7 +192,9 @@ var _ = Describe("ConfigMap Source Integration", Label("k8s", "configmap"), func
 				if err != nil {
 					return 0
 				}
-				defer resp.Body.Close()
+				defer func() {
+					_ = resp.Body.Close()
+				}()
 
 				body, _ := io.ReadAll(resp.Body)
 				var response map[string]interface{}
@@ -209,7 +215,9 @@ var _ = Describe("ConfigMap Source Integration", Label("k8s", "configmap"), func
 			// Verify initial data loaded successfully
 			resp, err := serverHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
-			resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
 			// Delete the ConfigMap source
@@ -229,14 +237,18 @@ var _ = Describe("ConfigMap Source Integration", Label("k8s", "configmap"), func
 				if err != nil {
 					return 0
 				}
-				defer resp.Body.Close()
+				defer func() {
+					_ = resp.Body.Close()
+				}()
 				return resp.StatusCode
 			}, 10, 1).Should(Equal(http.StatusOK), "Server should continue serving cached data after source deletion")
 
 			// Health endpoint should indicate degraded state
 			resp, err = serverHelper.GetHealth()
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			// Note: Health check behavior depends on implementation
 			// May return 200 with degraded status in body, or 503
