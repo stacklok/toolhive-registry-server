@@ -1,0 +1,208 @@
+# Complete configuration example showing all available options
+#
+# This is a comprehensive reference showing every supported configuration option.
+# Most deployments will only need a subset of these settings.
+#
+# For practical examples, see:
+#   - config-git.yaml: Git repository source
+#   - config-configmap.yaml: Kubernetes ConfigMap source
+#   - config-api.yaml: API endpoint source
+#   - config-file.yaml: Local file source
+
+# ==============================================================================
+# REGISTRY IDENTIFICATION (Optional)
+# ==============================================================================
+
+# Registry name/identifier
+# This name is used for:
+#   - Identifying this registry instance in logs
+#   - Naming Kubernetes resources (if deployed)
+#   - API responses and metadata
+# Defaults to "default" if not specified
+registryName: my-registry
+
+# ==============================================================================
+# DATA SOURCE CONFIGURATION (Required)
+# ==============================================================================
+
+source:
+  # Source type (Required)
+  # Options: git, configmap, api, file
+  type: git
+
+  # Data format (Required)
+  # Options:
+  #   - toolhive: Native ToolHive registry format (recommended)
+  #   - upstream: Official MCP registry format (not yet fully supported)
+  format: toolhive
+
+  # ------------------------------------------------------------------------------
+  # GIT SOURCE OPTIONS (used when type: git)
+  # ------------------------------------------------------------------------------
+  git:
+    # Repository URL (Required for git source)
+    # Supports HTTP, HTTPS, and SSH protocols
+    repository: https://github.com/stacklok/toolhive.git
+
+    # Version selection (Choose ONE of: branch, tag, or commit)
+
+    # Option 1: Use a branch (tracks latest commits)
+    branch: main
+
+    # Option 2: Use a specific tag (pinned version)
+    # tag: v1.0.0
+
+    # Option 3: Use a specific commit SHA (exact version)
+    # commit: abc123def456789
+
+    # Path to registry file within repository (Required)
+    path: pkg/registry/data/registry.json
+
+  # ------------------------------------------------------------------------------
+  # KUBERNETES CONFIGMAP SOURCE OPTIONS (used when type: configmap)
+  # ------------------------------------------------------------------------------
+  # configmap:
+  #   # Kubernetes namespace (Required)
+  #   namespace: toolhive-system
+  #
+  #   # ConfigMap name (Required)
+  #   name: registry-data
+  #
+  #   # Key containing registry data (Optional, defaults to "registry.json")
+  #   key: registry.json
+
+  # ------------------------------------------------------------------------------
+  # API ENDPOINT SOURCE OPTIONS (used when type: api)
+  # ------------------------------------------------------------------------------
+  # api:
+  #   # Base API URL without path (Required)
+  #   # The sync manager appends standard MCP registry API paths:
+  #   #   - /v0/servers (list all servers)
+  #   #   - /v0/servers/{name} (get specific server, future)
+  #   #   - /v0/info (registry metadata, future)
+  #   endpoint: https://registry.modelcontextprotocol.io/api
+
+  # ------------------------------------------------------------------------------
+  # LOCAL FILE SOURCE OPTIONS (used when type: file)
+  # ------------------------------------------------------------------------------
+  # file:
+  #   # Path to registry.json file (Required)
+  #   # Can be absolute or relative to the working directory
+  #   # Useful for:
+  #   #   - Reading from mounted volumes (e.g., ConfigMaps as files)
+  #   #   - Pre-downloaded or static registry data
+  #   #   - Development and testing
+  #   path: ./data/registry.json
+
+# ==============================================================================
+# SYNCHRONIZATION POLICY (Required)
+# ==============================================================================
+
+syncPolicy:
+  # Sync interval (Required)
+  # How often to check for and sync updates from the source
+  # Format: Go duration string (e.g., "30s", "5m", "1h", "24h")
+  #
+  # Recommended values:
+  #   - Development: 1m-5m (fast iteration)
+  #   - ConfigMap: 15m-30m (local source, low latency)
+  #   - Git: 30m-1h (balance freshness vs. load)
+  #   - API: 1h-6h (respectful of external services)
+  #   - Stable: 24h (infrequent updates)
+  interval: "30m"
+
+# ==============================================================================
+# FILTERING CONFIGURATION (Optional)
+# ==============================================================================
+
+# Filter configuration allows you to include/exclude servers from the synced registry
+# This is useful for:
+#   - Creating curated subsets of larger registries
+#   - Removing deprecated or internal-only servers
+#   - Enforcing organizational policies
+#   - Reducing registry size for specific use cases
+
+filter:
+  # ------------------------------------------------------------------------------
+  # NAME-BASED FILTERING (Optional)
+  # ------------------------------------------------------------------------------
+  names:
+    # Include patterns (Optional)
+    # Only servers matching these glob patterns will be included
+    # Patterns are evaluated before exclude patterns
+    include:
+      - "official/*"          # Include all official servers
+      - "stacklok/*"          # Include all Stacklok servers
+      - "@modelcontextprotocol/*"  # Include all MCP organization servers
+
+    # Exclude patterns (Optional)
+    # Servers matching these patterns will be removed
+    # Applied after include patterns
+    exclude:
+      - "*/deprecated"        # Exclude deprecated servers
+      - "*/internal"          # Exclude internal-only servers
+      - "*/test"              # Exclude test servers
+      - "experimental/*"      # Exclude experimental namespace
+
+  # ------------------------------------------------------------------------------
+  # TAG-BASED FILTERING (Optional)
+  # ------------------------------------------------------------------------------
+  tags:
+    # Include tags (Optional)
+    # Only servers with at least one of these tags will be included
+    include:
+      - "production"          # Only production-ready servers
+      - "stable"              # Only stable releases
+      - "verified"            # Only verified servers
+      - "certified"           # Only certified servers
+
+    # Exclude tags (Optional)
+    # Servers with any of these tags will be removed
+    # Applied after include tags
+    exclude:
+      - "experimental"        # Exclude experimental servers
+      - "beta"                # Exclude beta versions
+      - "alpha"               # Exclude alpha versions
+      - "deprecated"          # Exclude deprecated servers
+      - "unmaintained"        # Exclude unmaintained servers
+
+# ==============================================================================
+# NOTES
+# ==============================================================================
+
+# Storage Locations:
+#   - Registry data: ./data/registry.json
+#   - Sync status: ./data/status.json
+#
+# The storage location is currently hardcoded but will be configurable
+# via CLI flags in a future release.
+
+# Authentication:
+#   - Git: Uses default git credential helper (SSH keys, .netrc, etc.)
+#   - ConfigMap: Uses in-cluster service account or kubeconfig
+#   - API: Currently no authentication (will be added in future)
+
+# Error Handling:
+#   - Failed syncs are retried at the next configured sync interval
+#   - Sync interval is configured via syncPolicy.interval (e.g., "5m", "30m", "1h")
+#   - Server continues running even if sync fails
+#   - Status is persisted to track failures and attempts
+
+# Filter Behavior:
+#   - Filters are applied in order: name include → name exclude → tag include → tag exclude
+#   - Empty include list means "include all"
+#   - Empty exclude list means "exclude none"
+#   - Patterns use glob syntax: * (any chars), ? (single char)
+#   - Tag matching is exact (no glob patterns)
+
+# Performance:
+#   - Sync runs in background, doesn't block server startup
+#   - Registry data is cached in memory (refreshes every 30s by default)
+#   - Sync status is written atomically to prevent corruption
+#   - Git clones are shallow (depth=1) to minimize bandwidth
+
+# Monitoring:
+#   - Check ./data/status.json for sync health
+#   - Watch server logs for sync messages
+#   - Use GET /api/v0/info endpoint for registry metadata
+#   - Monitor serverCount in status for changes

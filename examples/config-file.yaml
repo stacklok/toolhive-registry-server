@@ -1,0 +1,51 @@
+# Example configuration for reading from a local file
+#
+# This configuration reads registry data from a local JSON file on the filesystem.
+# This is useful for:
+#   - Testing and development
+#   - Reading from mounted volumes (e.g., ConfigMaps mounted as files)
+#   - Pre-downloaded or statically provided registry data
+#
+# Usage:
+#   thv-registry-api serve --config examples/config-file.yaml
+
+# Registry name/identifier (optional, defaults to "default")
+registryName: toolhive
+
+# Data source configuration
+source:
+  # Source type: file, git, configmap, or api
+  type: file
+
+  # Data format: toolhive (native) or upstream (MCP registry format)
+  format: toolhive
+
+  # Local file configuration
+  file:
+    # Path to the registry.json file (absolute or relative)
+    # Can be a mounted ConfigMap, downloaded file, or any JSON file
+    path: ./data/registry.json
+
+# Automatic synchronization policy
+syncPolicy:
+  # Sync interval - how often to check if the file has changed
+  # For local files, you can use shorter intervals
+  interval: "5m"
+
+# Optional: Filter configuration to include/exclude specific servers
+# filter:
+#   # Name-based filtering
+#   names:
+#     include:
+#       - "official/*"
+#       - "stacklok/*"
+#     exclude:
+#       - "*/deprecated"
+#
+#   # Tag-based filtering
+#   tags:
+#     include:
+#       - "production"
+#       - "stable"
+#     exclude:
+#       - "experimental"

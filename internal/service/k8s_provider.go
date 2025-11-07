@@ -3,17 +3,14 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	thvv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
-	"github.com/stacklok/toolhive/pkg/registry"
 )
 
 // Label constants for deployed server identification
@@ -33,69 +30,6 @@ func (p *K8sDeploymentProvider) getDeployedServerLabelSelector() string {
 	// 1. Have registry-name matching our registry
 	// 2. Have registry-namespace present (any value)
 	return fmt.Sprintf("%s=%s,%s", LabelRegistryName, p.registryName, LabelRegistryNamespace)
-}
-
-// K8sRegistryDataProvider implements RegistryDataProvider using Kubernetes ConfigMaps.
-// This implementation fetches registry data from a ConfigMap in a Kubernetes cluster.
-type K8sRegistryDataProvider struct {
-	client        kubernetes.Interface
-	configMapName string
-	namespace     string
-	registryName  string
-}
-
-// NewK8sRegistryDataProvider creates a new Kubernetes-based registry data provider.
-// It requires a Kubernetes client, the ConfigMap details where registry data is stored,
-// and the registry name identifier for business logic purposes.
-func NewK8sRegistryDataProvider(
-	kubeClient kubernetes.Interface,
-	configMapName, namespace, registryName string,
-) *K8sRegistryDataProvider {
-	return &K8sRegistryDataProvider{
-		client:        kubeClient,
-		configMapName: configMapName,
-		namespace:     namespace,
-		registryName:  registryName,
-	}
-}
-
-// GetRegistryData implements RegistryDataProvider.GetRegistryData.
-// It fetches the ConfigMap from Kubernetes and extracts the registry.json data.
-func (p *K8sRegistryDataProvider) GetRegistryData(ctx context.Context) (*registry.Registry, error) {
-	if p.client == nil {
-		return nil, fmt.Errorf("kubernetes client not initialized")
-	}
-
-	// Get the ConfigMap
-	configMap, err := p.client.CoreV1().ConfigMaps(p.namespace).Get(ctx, p.configMapName, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get configmap %s/%s: %w", p.namespace, p.configMapName, err)
-	}
-
-	// Parse registry data from ConfigMap
-	registryJSON, exists := configMap.Data["registry.json"]
-	if !exists {
-		return nil, fmt.Errorf("registry.json not found in configmap %s/%s", p.namespace, p.configMapName)
-	}
-
-	var data registry.Registry
-	if err := json.Unmarshal([]byte(registryJSON), &data); err != nil {
-		return nil, fmt.Errorf("failed to parse registry data from configmap %s/%s: %w", p.namespace, p.configMapName, err)
-	}
-
-	return &data, nil
-}
-
-// GetSource implements RegistryDataProvider.GetSource.
-// It returns a descriptive string indicating the ConfigMap source.
-func (p *K8sRegistryDataProvider) GetSource() string {
-	return fmt.Sprintf("configmap:%s/%s", p.namespace, p.configMapName)
-}
-
-// GetRegistryName implements RegistryDataProvider.GetRegistryName.
-// It returns the injected registry name identifier.
-func (p *K8sRegistryDataProvider) GetRegistryName() string {
-	return p.registryName
 }
 
 // K8sDeploymentProvider implements DeploymentProvider using Kubernetes API.

@@ -37,9 +37,8 @@ The codebase follows clean architecture with three layers:
    - Provider abstraction with factory pattern
 
 3. **Provider Layer** (backends for registry data)
-   - `FileRegistryDataProvider` - Local file backend
-   - `K8sRegistryDataProvider` - Kubernetes ConfigMap backend
-   - `K8sDeploymentProvider` - Queries deployed instances
+   - `FileRegistryDataProvider` - Local file backend (reads synced data)
+   - `K8sDeploymentProvider` - Queries deployed MCP server instances
 
 ### Key Patterns for AI Development
 

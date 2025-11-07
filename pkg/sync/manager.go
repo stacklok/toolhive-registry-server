@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -28,9 +27,8 @@ type Result struct {
 // Sync reason constants
 const (
 	// Registry state related reasons
-	ReasonAlreadyInProgress     = "sync-already-in-progress"
-	ReasonRegistryNotReady      = "registry-not-ready"
-	ReasonRequeueTimeNotElapsed = "requeue-time-not-elapsed"
+	ReasonAlreadyInProgress = "sync-already-in-progress"
+	ReasonRegistryNotReady  = "registry-not-ready"
 
 	// Filter change related reasons
 	ReasonFilterChanged = "filter-changed"
@@ -69,19 +67,6 @@ const (
 	conditionReasonStorageFailed         = "StorageFailed"
 )
 
-// Default timing constants for the sync manager
-const (
-	// DefaultSyncRequeueAfterConstant is the constant default requeue interval for sync operations
-	DefaultSyncRequeueAfterConstant = time.Minute * 5
-)
-
-// Configurable timing variables for testing
-var (
-	// DefaultSyncRequeueAfter is the configurable default requeue interval for sync operations
-	// This can be modified in tests to speed up requeue behavior
-	DefaultSyncRequeueAfter = DefaultSyncRequeueAfterConstant
-)
-
 // Condition types for Config
 const (
 	// ConditionSourceAvailable indicates whether the source is available and accessible
@@ -114,12 +99,14 @@ func (e *Error) Unwrap() error {
 }
 
 // Manager manages synchronization operations for Registry resources
+//
+//go:generate mockgen -destination=mocks/mock_manager.go -package=mocks github.com/stacklok/toolhive-registry-server/pkg/sync Manager
 type Manager interface {
 	// ShouldSync determines if a sync operation is needed
-	ShouldSync(ctx context.Context, config *config.Config, syncStatus *status.SyncStatus) (bool, string, *time.Time)
+	ShouldSync(ctx context.Context, config *config.Config, syncStatus *status.SyncStatus, manualSyncRequested bool) (bool, string, *time.Time)
 
 	// PerformSync executes the complete sync operation
-	PerformSync(ctx context.Context, config *config.Config) (ctrl.Result, *Result, *Error)
+	PerformSync(ctx context.Context, config *config.Config) (*Result, *Error)
 
 	// Delete cleans up storage resources for the Registry
 	Delete(ctx context.Context, config *config.Config) error
@@ -163,8 +150,9 @@ func NewDefaultSyncManager(k8sClient client.Client, scheme *runtime.Scheme,
 	}
 }
 
-// ShouldSync determines if a sync operation is needed and when the next sync should occur
-// nolint:gocyclo
+// ShouldSync determines if a sync operation is needed
+// Returns: (shouldSync bool, reason string, nextSyncTime *time.Time)
+// nextSyncTime is always nil - timing is controlled by the configured sync interval
 func (s *DefaultSyncManager) ShouldSync(
 	ctx context.Context,
 	config *config.Config,
@@ -178,39 +166,24 @@ func (s *DefaultSyncManager) ShouldSync(
 		return false, ReasonAlreadyInProgress, nil
 	}
 
-	// Check if requeue time has elapsed and pre-compute next sync time
-	requeueElapsed, nextSyncTime := s.calculateNextSyncTime(ctx, config, syncStatus)
-
 	// Check if sync is needed based on registry state
 	syncNeededForState := s.isSyncNeededForState(syncStatus)
 	// Check if filter has changed
 	filterChanged := s.isFilterChanged(ctx, config, syncStatus)
+	// Check if interval has elapsed
+	checkIntervalElapsed, _, err := s.automaticSyncChecker.IsIntervalSyncNeeded(config, syncStatus)
+	if err != nil {
+		ctxLogger.Error(err, "Failed to determine if interval has elapsed")
+		return false, ReasonErrorCheckingSyncNeed, nil
+	}
 
 	shouldSync := false
 	reason := ReasonUpToDateNoPolicy
 
-	if syncNeededForState {
-		if !requeueElapsed {
-			ctxLogger.Info("Sync not needed because requeue time not elapsed",
-				"requeueTime", DefaultSyncRequeueAfter, "lastAttempt", syncStatus.LastAttempt)
-			reason = ReasonRequeueTimeNotElapsed
-		} else {
-			shouldSync = true
-		}
-	}
-
-	if !shouldSync && manualSyncRequested {
-		// Manual sync requested
-		shouldSync = true
-		nextSyncTime = nil
-	}
-
-	if !shouldSync && filterChanged {
-		// Filter changed
-		shouldSync = true
-		reason = ReasonFilterChanged
-	} else if shouldSync || requeueElapsed {
-		// Check if source data has changed by comparing hash
+	// Check if update is needed for state, manual sync, or filter change
+	dataChangedString := "N/A"
+	if syncNeededForState || manualSyncRequested || filterChanged || checkIntervalElapsed {
+		// Check if source data has changed
 		dataChanged, err := s.dataChangeDetector.IsDataChanged(ctx, config, syncStatus)
 		if err != nil {
 			ctxLogger.Error(err, "Failed to determine if data has changed")
@@ -224,29 +197,26 @@ func (s *DefaultSyncManager) ShouldSync(
 					reason = ReasonRegistryNotReady
 				} else if manualSyncRequested {
 					reason = ReasonManualWithChanges
+				} else if filterChanged {
+					reason = ReasonFilterChanged
 				} else {
 					reason = ReasonSourceDataChanged
 				}
 			} else {
 				shouldSync = false
-				if syncNeededForState {
-					reason = ReasonUpToDateWithPolicy
-				} else {
+				if manualSyncRequested {
 					reason = ReasonManualNoChanges
 				}
 			}
 		}
+		dataChangedString = fmt.Sprintf("%t", dataChanged)
 	}
 
 	ctxLogger.Info("ShouldSync", "syncNeededForState", syncNeededForState, "filterChanged", filterChanged,
-		"requeueElapsed", requeueElapsed, "manualSyncRequested", manualSyncRequested, "nextSyncTime",
-		nextSyncTime)
-	ctxLogger.Info("ShouldSync returning", "shouldSync", shouldSync, "reason", reason, "nextSyncTime", nextSyncTime)
+		"manualSyncRequested", manualSyncRequested, "checkIntervalElapsed", checkIntervalElapsed, "dataChanged", dataChangedString)
+	ctxLogger.Info("ShouldSync returning", "shouldSync", shouldSync, "reason", reason)
 
-	if shouldSync {
-		return shouldSync, reason, nil
-	}
-	return shouldSync, reason, nextSyncTime
+	return shouldSync, reason, nil
 }
 
 // isSyncNeededForState checks if sync is needed based on the registry's current state
@@ -294,50 +264,20 @@ func (*DefaultSyncManager) isFilterChanged(ctx context.Context, config *config.C
 	return currentHashStr != lastHash
 }
 
-// calculateNextSyncTime checks if the requeue or sync policy time has elapsed and calculates the next requeue time
-func (s *DefaultSyncManager) calculateNextSyncTime(ctx context.Context, config *config.Config, syncStatus *status.SyncStatus) (bool, *time.Time) {
-	ctxLogger := log.FromContext(ctx)
-
-	// First consider the requeue time
-	requeueElapsed := false
-	var nextSyncTime time.Time
-	if syncStatus != nil {
-		if syncStatus.LastAttempt != nil {
-			nextSyncTime = syncStatus.LastAttempt.Add(DefaultSyncRequeueAfter)
-		}
-	}
-
-	// If we have a sync policy, check if the next automatic sync time is sooner than the next requeue time
-	if config != nil && config.SyncPolicy != nil {
-		autoSyncNeeded, nextAutomaticSyncTime, err := s.automaticSyncChecker.IsIntervalSyncNeeded(config, syncStatus)
-		if err != nil {
-			ctxLogger.Error(err, "Failed to determine if interval sync is needed")
-		}
-
-		// Resync at the earlier time between the next sync time and the next automatic sync time
-		if autoSyncNeeded && nextSyncTime.After(nextAutomaticSyncTime) {
-			nextSyncTime = nextAutomaticSyncTime
-		}
-	}
-
-	requeueElapsed = time.Now().After(nextSyncTime)
-	return requeueElapsed, &nextSyncTime
-}
-
 // PerformSync performs the complete sync operation for the Registry
-// The controller is responsible for setting sync status via the status collector
+// Returns sync result on success, or error on failure
 func (s *DefaultSyncManager) PerformSync(
 	ctx context.Context, config *config.Config,
-) (ctrl.Result, *Result, *Error) {
+) (*Result, *Error) {
 	// Fetch and process registry data
 	fetchResult, err := s.fetchAndProcessRegistryData(ctx, config)
 	if err != nil {
-		return ctrl.Result{RequeueAfter: DefaultSyncRequeueAfter}, nil, err
+		return nil, err
 	}
 
 	// Store the processed registry data
 	if err := s.storeRegistryData(ctx, config, fetchResult); err != nil {
-		return ctrl.Result{RequeueAfter: DefaultSyncRequeueAfter}, nil, err
+		return nil, err
 	}
 
 	// Return sync result with data for status collector
@@ -346,7 +286,7 @@ func (s *DefaultSyncManager) PerformSync(
 		ServerCount: fetchResult.ServerCount,
 	}
 
-	return ctrl.Result{}, syncResult, nil
+	return syncResult, nil
 }
 
 // Delete cleans up storage resources for the Registry

@@ -13,6 +13,7 @@ import (
 	reflect "reflect"
 
 	service "github.com/stacklok/toolhive-registry-server/internal/service"
+	config "github.com/stacklok/toolhive-registry-server/pkg/config"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,16 +42,16 @@ func (m *MockRegistryProviderFactory) EXPECT() *MockRegistryProviderFactoryMockR
 }
 
 // CreateProvider mocks base method.
-func (m *MockRegistryProviderFactory) CreateProvider(config *service.RegistryProviderConfig) (service.RegistryDataProvider, error) {
+func (m *MockRegistryProviderFactory) CreateProvider(cfg *config.Config) (service.RegistryDataProvider, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateProvider", config)
+	ret := m.ctrl.Call(m, "CreateProvider", cfg)
 	ret0, _ := ret[0].(service.RegistryDataProvider)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateProvider indicates an expected call of CreateProvider.
-func (mr *MockRegistryProviderFactoryMockRecorder) CreateProvider(config any) *gomock.Call {
+func (mr *MockRegistryProviderFactoryMockRecorder) CreateProvider(cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateProvider", reflect.TypeOf((*MockRegistryProviderFactory)(nil).CreateProvider), config)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateProvider", reflect.TypeOf((*MockRegistryProviderFactory)(nil).CreateProvider), cfg)
 }

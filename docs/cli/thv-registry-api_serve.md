@@ -16,12 +16,13 @@ Start the registry API server
 ### Synopsis
 
 Start the registry API server to serve MCP registry data.
-The server can read registry data from either:
-- ConfigMaps using --from-configmap flag (requires Kubernetes API access)
-- Local files using --from-file flag (for mounted ConfigMaps)
 
-Both options require --registry-name to specify the registry identifier.
-One of --from-configmap or --from-file must be specified.
+The server requires a configuration file (--config) that specifies:
+- Registry name and data source (Git, ConfigMap, API, or File)
+- Sync policy and filtering rules
+- All other operational settings
+
+See examples/ directory for sample configurations.
 
 ```
 thv-registry-api serve [flags]
@@ -30,12 +31,9 @@ thv-registry-api serve [flags]
 ### Options
 
 ```
-      --address string          Address to listen on (default ":8080")
-      --config string           Path to configuration file (YAML format)
-      --from-configmap string   ConfigMap name containing registry data (mutually exclusive with --from-file)
-      --from-file string        File path to registry.json (mutually exclusive with --from-configmap)
-  -h, --help                    help for serve
-      --registry-name string    Registry name identifier (required)
+      --address string   Address to listen on (default ":8080")
+      --config string    Path to configuration file (YAML format, required)
+  -h, --help             help for serve
 ```
 
 ### Options inherited from parent commands

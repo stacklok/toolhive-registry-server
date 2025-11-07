@@ -173,7 +173,7 @@ filter:
 
 			// Create test config file
 			configPath := filepath.Join(tmpDir, "config.yaml")
-			err := os.WriteFile(configPath, []byte(tt.yamlContent), 0644)
+			err := os.WriteFile(configPath, []byte(tt.yamlContent), 0600)
 			require.NoError(t, err)
 
 			// Load the config
@@ -229,7 +229,7 @@ filter:
     include: ["prod", "stable"]
     exclude: ["beta", "alpha"]`
 
-	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
+	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
 	require.NoError(t, err)
 
 	// Load it back
@@ -341,6 +341,62 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: true,
 			errMsg:  "config cannot be nil",
 		},
+		{
+			name: "valid_file_source",
+			config: &Config{
+				RegistryName: "test-registry",
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/tmp/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing_file_config",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			wantErr: true,
+			errMsg:  "source.file is required",
+		},
+		{
+			name: "missing_file_path",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			wantErr: true,
+			errMsg:  "source.file.path is required",
+		},
+		{
+			name: "unsupported_source_type",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "unknown",
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			wantErr: true,
+			errMsg:  "unsupported source type",
+		},
 	}
 
 	for _, tt := range tests {
@@ -355,6 +411,41 @@ func TestConfigValidate(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestGetRegistryName(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *Config
+		expected string
+	}{
+		{
+			name: "with_registry_name",
+			config: &Config{
+				RegistryName: "my-registry",
+			},
+			expected: "my-registry",
+		},
+		{
+			name:     "without_registry_name",
+			config:   &Config{},
+			expected: "default",
+		},
+		{
+			name: "empty_registry_name",
+			config: &Config{
+				RegistryName: "",
+			},
+			expected: "default",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.config.GetRegistryName()
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
