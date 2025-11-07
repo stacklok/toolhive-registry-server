@@ -1,0 +1,6 @@
+// replace internal/api/v0.EnvVarDetail EnvVarDetail
+// replace internal/api/v0.ErrorResponse ErrorResponse
+// replace internal/api/v0.ListServersResponse ListServersResponse
+// replace internal/api/v0.RegistryInfoResponse RegistryInfoResponse
+// replace internal/api/v0.ServerDetailResponse ServerDetailResponse
+// replace internal/api/v0.ServerSummaryResponse ServerSummaryResponse

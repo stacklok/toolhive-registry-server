@@ -6,6 +6,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-git/go-billy/v5 v5.6.2
 	github.com/go-git/go-git/v5 v5.16.3
+	github.com/modelcontextprotocol/registry v1.3.8
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	github.com/spf13/viper v1.21.0
