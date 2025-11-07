@@ -1,10 +1,13 @@
 #!/bin/bash
 # Validate example configuration files
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "Validating example configurations..."
 echo
 
-for config in examples/config-*.yaml; do
+for config in "$SCRIPT_DIR"/config-*.yaml; do
     echo "Checking $config..."
     
     # Basic YAML syntax check using yq (if available) or python
