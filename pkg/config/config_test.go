@@ -173,7 +173,7 @@ filter:
 
 			// Create test config file
 			configPath := filepath.Join(tmpDir, "config.yaml")
-			err := os.WriteFile(configPath, []byte(tt.yamlContent), 0644)
+			err := os.WriteFile(configPath, []byte(tt.yamlContent), 0600)
 			require.NoError(t, err)
 
 			// Load the config
@@ -229,7 +229,7 @@ filter:
     include: ["prod", "stable"]
     exclude: ["beta", "alpha"]`
 
-	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
+	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
 	require.NoError(t, err)
 
 	// Load it back

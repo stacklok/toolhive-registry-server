@@ -64,7 +64,7 @@ func (f *FileStorageManager) Store(ctx context.Context, config *config.Config, r
 
 	// Write to temporary file first for atomic operation
 	tempPath := filePath + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+	if err := os.WriteFile(tempPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write temporary registry file: %w", err)
 	}
 
