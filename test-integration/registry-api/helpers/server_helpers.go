@@ -77,8 +77,21 @@ func (s *ServerTestHelper) GetBaseURL() string {
 	return s.baseURL
 }
 
+// FilterOptions holds optional configuration for WriteConfigYAMLWithOptions
+type FilterOptions struct {
+	NameInclude []string
+	NameExclude []string
+	TagInclude  []string
+	TagExclude  []string
+}
+
 // WriteConfigYAML writes a YAML configuration file for testing
 func WriteConfigYAML(dir, registryName, sourceType string, sourceConfig map[string]string) string {
+	return WriteConfigYAMLWithOptions(dir, registryName, sourceType, sourceConfig, nil)
+}
+
+// WriteConfigYAMLWithOptions writes a YAML configuration file with optional filter configuration
+func WriteConfigYAMLWithOptions(dir, registryName, sourceType string, sourceConfig map[string]string, filterOpts *FilterOptions) string {
 	configContent := fmt.Sprintf(`registryName: %s
 
 source:
@@ -125,6 +138,12 @@ source:
 syncPolicy:
   interval: %s
 `, interval)
+	} else {
+		// Default sync policy for tests
+		configContent += `
+syncPolicy:
+  interval: 1h
+`
 	}
 
 	// Add storage configuration
@@ -133,6 +152,56 @@ syncPolicy:
 storage:
   path: %s
 `, storagePath)
+	}
+
+	// Add filter configuration if provided
+	if filterOpts != nil && (len(filterOpts.NameInclude) > 0 || len(filterOpts.NameExclude) > 0 || len(filterOpts.TagInclude) > 0 || len(filterOpts.TagExclude) > 0) {
+		configContent += `
+filter:
+`
+		// Add name filters
+		if len(filterOpts.NameInclude) > 0 || len(filterOpts.NameExclude) > 0 {
+			configContent += `  names:
+`
+			if len(filterOpts.NameInclude) > 0 {
+				configContent += `    include:
+`
+				for _, pattern := range filterOpts.NameInclude {
+					configContent += fmt.Sprintf(`      - %s
+`, pattern)
+				}
+			}
+			if len(filterOpts.NameExclude) > 0 {
+				configContent += `    exclude:
+`
+				for _, pattern := range filterOpts.NameExclude {
+					configContent += fmt.Sprintf(`      - %s
+`, pattern)
+				}
+			}
+		}
+
+		// Add tag filters
+		if len(filterOpts.TagInclude) > 0 || len(filterOpts.TagExclude) > 0 {
+			configContent += `  tags:
+`
+			if len(filterOpts.TagInclude) > 0 {
+				configContent += `    include:
+`
+				for _, tag := range filterOpts.TagInclude {
+					configContent += fmt.Sprintf(`      - %s
+`, tag)
+				}
+			}
+			if len(filterOpts.TagExclude) > 0 {
+				configContent += `    exclude:
+`
+				for _, tag := range filterOpts.TagExclude {
+					configContent += fmt.Sprintf(`      - %s
+`, tag)
+				}
+			}
+		}
 	}
 
 	configPath := fmt.Sprintf("%s/config.yaml", dir)
