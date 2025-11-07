@@ -2,13 +2,15 @@ package service
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
+	sourcesmocks "github.com/stacklok/toolhive-registry-server/pkg/sources/mocks"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
 
@@ -18,25 +20,32 @@ func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		fileContent string
+		setupMock   func(*sourcesmocks.MockStorageManager)
 		wantErr     bool
 		errContains string
 		validate    func(*testing.T, *registry.Registry)
 	}{
 		{
-			name: "valid registry file",
-			fileContent: `{
-				"version": "1.0",
-				"last_updated": "2024-01-01T00:00:00Z",
-				"servers": {
-					"test-server": {
-						"name": "test-server",
-						"description": "A test server",
-						"image": "test:latest"
-					}
-				},
-				"remote_servers": {}
-			}`,
+			name: "successful retrieval",
+			setupMock: func(m *sourcesmocks.MockStorageManager) {
+				expectedRegistry := &registry.Registry{
+					Version:     "1.0",
+					LastUpdated: "2024-01-01T00:00:00Z",
+					Servers: map[string]*registry.ImageMetadata{
+						"test-server": {
+							BaseServerMetadata: registry.BaseServerMetadata{
+								Name:        "test-server",
+								Description: "A test server",
+							},
+							Image: "test:latest",
+						},
+					},
+					RemoteServers: map[string]*registry.RemoteServerMetadata{},
+				}
+				m.EXPECT().
+					Get(gomock.Any(), gomock.Any()).
+					Return(expectedRegistry, nil)
+			},
 			wantErr: false,
 			validate: func(t *testing.T, reg *registry.Registry) {
 				t.Helper()
@@ -44,55 +53,59 @@ func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
 				assert.Equal(t, "2024-01-01T00:00:00Z", reg.LastUpdated)
 				assert.Len(t, reg.Servers, 1)
 				assert.Contains(t, reg.Servers, "test-server")
-				assert.Equal(t, "test-server", reg.Servers["test-server"].Name)
-				assert.Equal(t, "A test server", reg.Servers["test-server"].Description)
-				assert.Equal(t, "test:latest", reg.Servers["test-server"].Image)
 			},
 		},
 		{
-			name: "empty registry file",
-			fileContent: `{
-				"version": "1.0",
-				"last_updated": "",
-				"servers": {},
-				"remote_servers": {}
-			}`,
+			name: "empty registry",
+			setupMock: func(m *sourcesmocks.MockStorageManager) {
+				expectedRegistry := &registry.Registry{
+					Version:       "1.0",
+					Servers:       map[string]*registry.ImageMetadata{},
+					RemoteServers: map[string]*registry.RemoteServerMetadata{},
+				}
+				m.EXPECT().
+					Get(gomock.Any(), gomock.Any()).
+					Return(expectedRegistry, nil)
+			},
 			wantErr: false,
 			validate: func(t *testing.T, reg *registry.Registry) {
 				t.Helper()
 				assert.Equal(t, "1.0", reg.Version)
 				assert.Len(t, reg.Servers, 0)
-				assert.Len(t, reg.RemoteServers, 0)
 			},
 		},
 		{
-			name:        "invalid JSON",
-			fileContent: `{invalid json}`,
+			name: "storage manager returns error",
+			setupMock: func(m *sourcesmocks.MockStorageManager) {
+				m.EXPECT().
+					Get(gomock.Any(), gomock.Any()).
+					Return(nil, errors.New("registry file not found"))
+			},
 			wantErr:     true,
-			errContains: "failed to parse registry data",
-		},
-		{
-			name:        "empty file",
-			fileContent: "",
-			wantErr:     true,
-			errContains: "failed to parse registry data",
+			errContains: "registry file not found",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			// Create temporary file
-			tmpDir := t.TempDir()
-			tmpFile := filepath.Join(tmpDir, "registry.json")
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
 
-			err := os.WriteFile(tmpFile, []byte(tt.fileContent), 0644)
-			require.NoError(t, err)
+			mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
+			tt.setupMock(mockStorageManager)
 
-			// Create provider
-			provider := NewFileRegistryDataProvider(tmpFile, "test-registry")
+			cfg := &config.Config{
+				RegistryName: "test-registry",
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeFile,
+					Format: config.SourceFormatToolHive,
+					File:   &config.FileConfig{Path: "/tmp/registry.json"},
+				},
+			}
 
-			// Test GetRegistryData
+			provider := NewFileRegistryDataProvider(mockStorageManager, cfg)
+
 			result, err := provider.GetRegistryData(ctx)
 
 			if tt.wantErr {
@@ -112,76 +125,64 @@ func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
 	}
 }
 
-func TestFileRegistryDataProvider_GetRegistryData_FileErrors(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	tests := []struct {
-		name        string
-		filePath    string
-		wantErr     bool
-		errContains string
-	}{
-		{
-			name:        "empty file path",
-			filePath:    "",
-			wantErr:     true,
-			errContains: "file path not configured",
-		},
-		{
-			name:        "non-existent file",
-			filePath:    "/non/existent/file.json",
-			wantErr:     true,
-			errContains: "registry file not found",
-		},
-		{
-			name:        "directory instead of file",
-			filePath:    t.TempDir(),
-			wantErr:     true,
-			errContains: "failed to read registry file",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			provider := NewFileRegistryDataProvider(tt.filePath, "test-registry")
-			result, err := provider.GetRegistryData(ctx)
-
-			if tt.wantErr {
-				assert.Error(t, err)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
-				}
-				assert.Nil(t, result)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, result)
-			}
-		})
-	}
-}
-
 func TestFileRegistryDataProvider_GetSource(t *testing.T) {
 	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
+
 	tests := []struct {
 		name     string
-		filePath string
+		config   *config.Config
 		expected string
 	}{
 		{
-			name:     "absolute path",
-			filePath: "/data/registry/registry.json",
+			name: "absolute path",
+			config: &config.Config{
+				RegistryName: "test-registry",
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeFile,
+					Format: config.SourceFormatToolHive,
+					File:   &config.FileConfig{Path: "/data/registry/registry.json"},
+				},
+			},
 			expected: "file:/data/registry/registry.json",
 		},
 		{
-			name:     "relative path",
-			filePath: "./registry.json",
-			expected: "file:registry.json", // filepath.Clean removes ./
+			name: "relative path",
+			config: &config.Config{
+				RegistryName: "test-registry",
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeFile,
+					Format: config.SourceFormatToolHive,
+					File:   &config.FileConfig{Path: "./registry.json"},
+				},
+			},
+			expected: "file:./registry.json",
 		},
 		{
-			name:     "empty path",
-			filePath: "",
+			name: "empty path",
+			config: &config.Config{
+				RegistryName: "test-registry",
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeFile,
+					Format: config.SourceFormatToolHive,
+					File:   &config.FileConfig{Path: ""},
+				},
+			},
+			expected: "file:<not-configured>",
+		},
+		{
+			name: "nil file config",
+			config: &config.Config{
+				RegistryName: "test-registry",
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeFile,
+					Format: config.SourceFormatToolHive,
+					File:   nil,
+				},
+			},
 			expected: "file:<not-configured>",
 		},
 	}
@@ -189,7 +190,7 @@ func TestFileRegistryDataProvider_GetSource(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			provider := NewFileRegistryDataProvider(tt.filePath, "test-registry")
+			provider := NewFileRegistryDataProvider(mockStorageManager, tt.config)
 			result := provider.GetSource()
 			assert.Equal(t, tt.expected, result)
 		})
@@ -198,35 +199,48 @@ func TestFileRegistryDataProvider_GetSource(t *testing.T) {
 
 func TestNewFileRegistryDataProvider(t *testing.T) {
 	t.Parallel()
-	filePath := "/test/path/registry.json"
-	registryName := "test-registry"
-	provider := NewFileRegistryDataProvider(filePath, registryName)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	assert.NotNil(t, provider)
+	mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
+
+	cfg := &config.Config{
+		RegistryName: "test-registry",
+		Source: config.SourceConfig{
+			Type:   config.SourceTypeFile,
+			Format: config.SourceFormatToolHive,
+			File:   &config.FileConfig{Path: "/test/path/registry.json"},
+		},
+	}
+
+	provider := NewFileRegistryDataProvider(mockStorageManager, cfg)
+
+	require.NotNil(t, provider)
 	assert.Equal(t, "file:/test/path/registry.json", provider.GetSource())
-	assert.Equal(t, registryName, provider.GetRegistryName())
+	assert.Equal(t, "test-registry", provider.GetRegistryName())
 }
 
 func TestFileRegistryDataProvider_GetRegistryName(t *testing.T) {
 	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
+
 	tests := []struct {
 		name         string
-		filePath     string
 		registryName string
 	}{
 		{
 			name:         "normal registry name",
-			filePath:     "/data/registry/registry.json",
 			registryName: "my-custom-registry",
 		},
 		{
 			name:         "production registry",
-			filePath:     "/path/to/file.json",
 			registryName: "production-registry",
 		},
 		{
-			name:         "empty registry name",
-			filePath:     "/some/path.json",
+			name:         "empty registry name defaults to default",
 			registryName: "",
 		},
 	}
@@ -234,9 +248,24 @@ func TestFileRegistryDataProvider_GetRegistryName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			provider := NewFileRegistryDataProvider(tt.filePath, tt.registryName)
+			cfg := &config.Config{
+				RegistryName: tt.registryName,
+				Source: config.SourceConfig{
+					Type:   config.SourceTypeFile,
+					Format: config.SourceFormatToolHive,
+					File:   &config.FileConfig{Path: "/path/to/file.json"},
+				},
+			}
+
+			provider := NewFileRegistryDataProvider(mockStorageManager, cfg)
 			result := provider.GetRegistryName()
-			assert.Equal(t, tt.registryName, result)
+
+			// Config.GetRegistryName() returns "default" for empty names
+			expectedName := tt.registryName
+			if expectedName == "" {
+				expectedName = "default"
+			}
+			assert.Equal(t, expectedName, result)
 		})
 	}
 }

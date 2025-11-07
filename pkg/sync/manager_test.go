@@ -2,15 +2,15 @@ package sync
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/sources"
@@ -22,16 +22,10 @@ import (
 func TestNewDefaultSyncManager(t *testing.T) {
 	t.Parallel()
 
-	scheme := runtime.NewScheme()
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		Build()
+	sourceHandlerFactory := sources.NewSourceHandlerFactory()
+	storageManager := sources.NewFileStorageManager("/tmp/test-storage")
 
-	sourceHandlerFactory := sources.NewSourceHandlerFactory(fakeClient)
-	storageManager, err := sources.NewStorageManager()
-	require.Error(t, err)
-
-	syncManager := NewDefaultSyncManager(fakeClient, scheme, sourceHandlerFactory, storageManager)
+	syncManager := NewDefaultSyncManager(sourceHandlerFactory, storageManager)
 
 	assert.NotNil(t, syncManager)
 	assert.IsType(t, &DefaultSyncManager{}, syncManager)
@@ -40,15 +34,19 @@ func TestNewDefaultSyncManager(t *testing.T) {
 func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 	t.Parallel()
 
-	scheme := runtime.NewScheme()
-	require.NoError(t, corev1.AddToScheme(scheme))
+	// Create temp directory and test file
+	tempDir := t.TempDir()
+	testFilePath := filepath.Join(tempDir, "registry.json")
+	testData := sources.NewTestRegistryBuilder(config.SourceFormatToolHive).WithServer("test-server").BuildJSON()
+	testHash := fmt.Sprintf("%x", sha256.Sum256(testData))
+
+	require.NoError(t, os.WriteFile(testFilePath, testData, 0644))
 
 	tests := []struct {
 		name                string
 		manualSyncRequested bool
 		config              *config.Config
 		syncStatus          *status.SyncStatus
-		configMap           *corev1.ConfigMap
 		expectedSyncNeeded  bool
 		expectedReason      string
 		expectedNextTime    bool // whether nextSyncTime should be set
@@ -58,10 +56,9 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			manualSyncRequested: false,
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type: "configmap",
-					ConfigMap: &config.ConfigMapConfig{
-						Name: "test-configmap",
-						Key:  "registry.json",
+					Type: "file",
+					File: &config.FileConfig{
+						Path: testFilePath,
 					},
 				},
 			},
@@ -77,10 +74,9 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			manualSyncRequested: false,
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type: "configmap",
-					ConfigMap: &config.ConfigMapConfig{
-						Name: "test-configmap",
-						Key:  "registry.json",
+					Type: "file",
+					File: &config.FileConfig{
+						Path: testFilePath,
 					},
 				},
 			},
@@ -92,23 +88,22 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			expectedNextTime:   false,
 		},
 		{
-			name:                "sync needed when no last sync hash",
+			name:                "sync needed when registry is in failed state",
 			manualSyncRequested: false,
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type: "configmap",
-					ConfigMap: &config.ConfigMapConfig{
-						Name: "test-configmap",
-						Key:  "registry.json",
+					Type: "file",
+					File: &config.FileConfig{
+						Path: testFilePath,
 					},
 				},
 			},
 			syncStatus: &status.SyncStatus{
-				Phase:        status.SyncPhaseComplete,
+				Phase:        status.SyncPhaseFailed,
 				LastSyncHash: "",
 			},
 			expectedSyncNeeded: true,
-			expectedReason:     ReasonSourceDataChanged,
+			expectedReason:     ReasonRegistryNotReady,
 			expectedNextTime:   false,
 		},
 		{
@@ -116,26 +111,15 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			manualSyncRequested: true,
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type: "configmap",
-					ConfigMap: &config.ConfigMapConfig{
-						Namespace: "test-namespace",
-						Name:      "test-configmap",
-						Key:       "registry.json",
+					Type: "file",
+					File: &config.FileConfig{
+						Path: testFilePath,
 					},
 				},
 			},
 			syncStatus: &status.SyncStatus{
 				Phase:        status.SyncPhaseComplete,
-				LastSyncHash: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", // SHA256 of "test"
-			},
-			configMap: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-configmap",
-					Namespace: "test-namespace",
-				},
-				Data: map[string]string{
-					"registry.json": "test", // This will produce the same hash as above
-				},
+				LastSyncHash: testHash,
 			},
 			expectedSyncNeeded: false,
 			expectedReason:     ReasonManualNoChanges, // No data changes but manual trigger
@@ -147,27 +131,16 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			objects := []runtime.Object{}
-			if tt.configMap != nil {
-				objects = append(objects, tt.configMap)
-			}
-
-			fakeClient := fake.NewClientBuilder().
-				WithScheme(scheme).
-				WithRuntimeObjects(objects...).
-				Build()
-
-			sourceHandlerFactory := sources.NewSourceHandlerFactory(fakeClient)
-			storageManager, err := sources.NewStorageManager()
-			require.Error(t, err)
-			syncManager := NewDefaultSyncManager(fakeClient, scheme, sourceHandlerFactory, storageManager)
+			sourceHandlerFactory := sources.NewSourceHandlerFactory()
+			storageManager := sources.NewFileStorageManager("/tmp/test-storage")
+			syncManager := NewDefaultSyncManager(sourceHandlerFactory, storageManager)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
 			syncNeeded, reason, nextSyncTime := syncManager.ShouldSync(ctx, tt.config, tt.syncStatus, tt.manualSyncRequested)
 
-			// We expect some errors for ConfigMap not found, but that's okay for this test
+			// We expect some errors for file source operations, but that's okay for this test
 			if tt.expectedSyncNeeded {
 				assert.True(t, syncNeeded, "Expected sync to be needed for "+tt.name)
 				assert.Equal(t, tt.expectedReason, reason, "Expected specific sync reason")
@@ -188,16 +161,22 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 func TestDefaultSyncManager_PerformSync(t *testing.T) {
 	t.Parallel()
 
-	scheme := runtime.NewScheme()
-	require.NoError(t, corev1.AddToScheme(scheme))
+	// Create temp directory and test files for different scenarios
+	tempDir := t.TempDir()
+	testFilePath := filepath.Join(tempDir, "registry.json")
+
+	// Create test file with valid registry data (1 server)
+	testData := sources.NewTestRegistryBuilder(config.SourceFormatToolHive).WithServer("test-server").BuildJSON()
+	require.NoError(t, os.WriteFile(testFilePath, testData, 0644))
+	emptyTestData := sources.NewTestRegistryBuilder(config.SourceFormatToolHive).BuildJSON()
+	emptyTestFilePath := filepath.Join(tempDir, "empty-registry.json")
+	require.NoError(t, os.WriteFile(emptyTestFilePath, emptyTestData, 0644))
 
 	intPtr := func(i int) *int { return &i }
 
 	tests := []struct {
 		name                string
 		config              *config.Config
-		sourceConfigMap     *corev1.ConfigMap
-		existingStorageCM   *corev1.ConfigMap
 		expectedError       bool
 		expectedServerCount *int // nil means don't validate
 		errorContains       string
@@ -206,41 +185,27 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			name: "successful sync with valid data",
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type:   config.SourceTypeConfigMap,
+					Type:   config.SourceTypeFile,
 					Format: config.SourceFormatToolHive,
-					ConfigMap: &config.ConfigMapConfig{
-						Name:      "source-configmap",
-						Namespace: "test-namespace",
-						Key:       "registry.json",
+					File: &config.FileConfig{
+						Path: testFilePath,
 					},
-				},
-			},
-			sourceConfigMap: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "source-configmap",
-					Namespace: "test-namespace",
-				},
-				Data: map[string]string{
-					"registry.json": `{"version": "1.0.0", "last_updated": "2023-01-01T00:00:00Z", "servers": {"test-server": {"name": "test-server", "description": "Test server", "tier": "Community", "status": "Active", "transport": "stdio", "tools": ["test_tool"], "image": "test/image:latest"}}, "remoteServers": {}}`,
 				},
 			},
 			expectedError:       false,
-			expectedServerCount: intPtr(1), // 1 server in the registry data
+			expectedServerCount: intPtr(2), // 2 server in the registry data
 		},
 		{
-			name: "sync fails when source configmap not found",
+			name: "sync fails when source file not found",
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type:   config.SourceTypeConfigMap,
+					Type:   config.SourceTypeFile,
 					Format: config.SourceFormatToolHive,
-					ConfigMap: &config.ConfigMapConfig{
-						Name:      "missing-configmap",
-						Namespace: "test-namespace",
-						Key:       "registry.json",
+					File: &config.FileConfig{
+						Path: "/data/missing-registry.json",
 					},
 				},
 			},
-			sourceConfigMap:     nil,
 			expectedError:       true, // PerformSync returns errors for controller to handle
 			expectedServerCount: nil,  // Don't validate server count for failed sync
 			errorContains:       "",
@@ -249,22 +214,11 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			name: "successful sync with empty registry data",
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type:   config.SourceTypeConfigMap,
+					Type:   config.SourceTypeFile,
 					Format: config.SourceFormatToolHive,
-					ConfigMap: &config.ConfigMapConfig{
-						Name:      "source-configmap",
-						Namespace: "test-namespace",
-						Key:       "registry.json",
+					File: &config.FileConfig{
+						Path: emptyTestFilePath,
 					},
-				},
-			},
-			sourceConfigMap: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "source-configmap",
-					Namespace: "test-namespace",
-				},
-				Data: map[string]string{
-					"registry.json": `{"version": "1.0.0", "last_updated": "2023-01-01T00:00:00Z", "servers": {}, "remoteServers": {}}`,
 				},
 			},
 			expectedError:       false,
@@ -274,28 +228,17 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			name: "successful sync with name filtering",
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type:   config.SourceTypeConfigMap,
+					Type:   config.SourceTypeFile,
 					Format: config.SourceFormatToolHive,
-					ConfigMap: &config.ConfigMapConfig{
-						Name:      "source-configmap",
-						Namespace: "test-namespace",
-						Key:       "registry.json",
+					File: &config.FileConfig{
+						Path: testFilePath,
 					},
 				},
 				Filter: &config.FilterConfig{
 					Names: &config.NameFilterConfig{
 						Include: []string{"test-*"},
-						Exclude: []string{"*-excluded"},
+						Exclude: []string{"*-legacy"},
 					},
-				},
-			},
-			sourceConfigMap: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "source-configmap",
-					Namespace: "test-namespace",
-				},
-				Data: map[string]string{
-					"registry.json": `{"version": "1.0.0", "last_updated": "2023-01-01T00:00:00Z", "servers": {"test-server": {"name": "test-server", "description": "Test server", "tier": "Community", "status": "Active", "transport": "stdio", "tools": ["test_tool"], "image": "test/image:latest"}, "excluded-server": {"name": "excluded-server", "description": "Excluded server", "tier": "Community", "status": "Active", "transport": "stdio", "tools": ["test_tool"], "image": "test/image:latest"}, "other-server": {"name": "other-server", "description": "Other server", "tier": "Community", "status": "Active", "transport": "stdio", "tools": ["test_tool"], "image": "test/image:latest"}}, "remoteServers": {}}`,
 				},
 			},
 			expectedError:       false,
@@ -305,12 +248,10 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			name: "successful sync with tag filtering",
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type:   config.SourceTypeConfigMap,
+					Type:   config.SourceTypeFile,
 					Format: config.SourceFormatToolHive,
-					ConfigMap: &config.ConfigMapConfig{
-						Name:      "source-configmap",
-						Namespace: "test-namespace",
-						Key:       "registry.json",
+					File: &config.FileConfig{
+						Path: testFilePath,
 					},
 				},
 				Filter: &config.FilterConfig{
@@ -320,15 +261,6 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 					},
 				},
 			},
-			sourceConfigMap: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "source-configmap",
-					Namespace: "test-namespace",
-				},
-				Data: map[string]string{
-					"registry.json": `{"version": "1.0.0", "last_updated": "2023-01-01T00:00:00Z", "servers": {"db-server": {"name": "db-server", "description": "Database server", "tier": "Community", "status": "Active", "transport": "stdio", "tools": ["db_tool"], "tags": ["database", "sql"], "image": "db/image:latest"}, "old-db-server": {"name": "old-db-server", "description": "Old database server", "tier": "Community", "status": "Active", "transport": "stdio", "tools": ["db_tool"], "tags": ["database", "deprecated"], "image": "db/image:old"}, "web-server": {"name": "web-server", "description": "Web server", "tier": "Community", "status": "Active", "transport": "stdio", "tools": ["web_tool"], "tags": ["web"], "image": "web/image:latest"}}, "remoteServers": {}}`,
-				},
-			},
 			expectedError:       false,
 			expectedServerCount: intPtr(1), // 1 server after filtering (db-server has "database" tag, old-db-server excluded by "deprecated", web-server doesn't have "database")
 		},
@@ -336,35 +268,24 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			name: "successful sync with combined name and tag filtering",
 			config: &config.Config{
 				Source: config.SourceConfig{
-					Type:   config.SourceTypeConfigMap,
+					Type:   config.SourceTypeFile,
 					Format: config.SourceFormatToolHive,
-					ConfigMap: &config.ConfigMapConfig{
-						Name:      "source-configmap",
-						Namespace: "test-namespace",
-						Key:       "registry.json",
+					File: &config.FileConfig{
+						Path: testFilePath,
 					},
 				},
 				Filter: &config.FilterConfig{
 					Names: &config.NameFilterConfig{
-						Include: []string{"prod-*"},
+						Include: []string{"test-*"},
 					},
 					Tags: &config.TagFilterConfig{
-						Include: []string{"production"},
-						Exclude: []string{"experimental"},
+						Include: []string{"database"},
+						Exclude: []string{"deprecated"},
 					},
-				},
-			},
-			sourceConfigMap: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "source-configmap",
-					Namespace: "test-namespace",
-				},
-				Data: map[string]string{
-					"registry.json": `{"version": "1.0.0", "last_updated": "2023-01-01T00:00:00Z", "servers": {"prod-db": {"name": "prod-db", "description": "Production database", "tier": "Official", "status": "Active", "transport": "stdio", "tools": ["db_tool"], "tags": ["database", "production"], "image": "db/image:prod"}, "prod-web": {"name": "prod-web", "description": "Production web server", "tier": "Official", "status": "Active", "transport": "stdio", "tools": ["web_tool"], "tags": ["web", "production"], "image": "web/image:prod"}, "prod-experimental": {"name": "prod-experimental", "description": "Experimental prod server", "tier": "Community", "status": "Active", "transport": "stdio", "tools": ["exp_tool"], "tags": ["production", "experimental"], "image": "exp/image:latest"}, "dev-db": {"name": "dev-db", "description": "Development database", "tier": "Community", "status": "Active", "transport": "stdio", "tools": ["db_tool"], "tags": ["database", "development"], "image": "db/image:dev"}}, "remoteServers": {}}`,
 				},
 			},
 			expectedError:       false,
-			expectedServerCount: intPtr(2), // 2 servers after filtering (prod-db and prod-web match name pattern and have "production" tag, prod-experimental excluded by "experimental", dev-db doesn't match "prod-*")
+			expectedServerCount: intPtr(1), // 1 server after filtering (test-server and test-server-legacy match name pattern and have "database" tag, test-server-legacy excluded by "deprecated")
 		},
 	}
 
@@ -375,20 +296,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			objects := []runtime.Object{}
-			if tt.sourceConfigMap != nil {
-				objects = append(objects, tt.sourceConfigMap)
-			}
-			if tt.existingStorageCM != nil {
-				objects = append(objects, tt.existingStorageCM)
-			}
-
-			fakeClient := fake.NewClientBuilder().
-				WithScheme(scheme).
-				WithRuntimeObjects(objects...).
-				Build()
-
-			sourceHandlerFactory := sources.NewSourceHandlerFactory(fakeClient)
+			sourceHandlerFactory := sources.NewSourceHandlerFactory()
 			mockStorageManager := mocks.NewMockStorageManager(ctrl)
 
 			// Setup expectations for successful syncs
@@ -399,12 +307,12 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 					Times(1)
 			}
 
-			syncManager := NewDefaultSyncManager(fakeClient, scheme, sourceHandlerFactory, mockStorageManager)
+			syncManager := NewDefaultSyncManager(sourceHandlerFactory, mockStorageManager)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			result, syncResult, syncErr := syncManager.PerformSync(ctx, tt.config)
+			syncResult, syncErr := syncManager.PerformSync(ctx, tt.config)
 
 			if tt.expectedError {
 				assert.NotNil(t, syncErr)
@@ -414,9 +322,6 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			} else {
 				assert.Nil(t, syncErr)
 			}
-
-			// Verify the result
-			assert.NotNil(t, result)
 
 			// Validate server count if expected
 			if tt.expectedServerCount != nil && syncResult != nil {

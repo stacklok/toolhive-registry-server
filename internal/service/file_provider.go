@@ -3,72 +3,48 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
+	"github.com/stacklok/toolhive-registry-server/pkg/sources"
 	"github.com/stacklok/toolhive/pkg/registry"
 )
 
-// FileRegistryDataProvider implements RegistryDataProvider using local file system.
-// This implementation reads registry data from a mounted file instead of calling the Kubernetes API.
-// It is designed to work with ConfigMaps mounted as volumes in Kubernetes deployments.
+// FileRegistryDataProvider implements RegistryDataProvider by delegating to StorageManager.
+// This implementation uses the adapter pattern to reuse storage infrastructure instead of
+// duplicating file reading logic. It delegates to StorageManager for all file operations.
 type FileRegistryDataProvider struct {
-	filePath     string
-	registryName string
+	storageManager sources.StorageManager
+	config         *config.Config
+	registryName   string
 }
 
 // NewFileRegistryDataProvider creates a new file-based registry data provider.
-// The filePath parameter should point to the registry.json file, typically mounted from a ConfigMap.
-// The registryName parameter specifies the registry identifier for business logic purposes.
-func NewFileRegistryDataProvider(filePath, registryName string) *FileRegistryDataProvider {
+// It accepts a StorageManager to delegate file operations and a Config for registry metadata.
+// This design eliminates code duplication and improves testability through dependency injection.
+func NewFileRegistryDataProvider(storageManager sources.StorageManager, cfg *config.Config) *FileRegistryDataProvider {
 	return &FileRegistryDataProvider{
-		filePath:     filePath,
-		registryName: registryName,
+		storageManager: storageManager,
+		config:         cfg,
+		registryName:   cfg.GetRegistryName(),
 	}
 }
 
 // GetRegistryData implements RegistryDataProvider.GetRegistryData.
-// It reads the registry.json file from the local filesystem and parses it into a Registry struct.
-func (p *FileRegistryDataProvider) GetRegistryData(_ context.Context) (*registry.Registry, error) {
-	if p.filePath == "" {
-		return nil, fmt.Errorf("file path not configured")
-	}
-
-	// Check if the file exists and is readable
-	if _, err := os.Stat(p.filePath); err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("registry file not found at %s: %w", p.filePath, err)
-		}
-		return nil, fmt.Errorf("cannot access registry file at %s: %w", p.filePath, err)
-	}
-
-	// Read the file contents
-	data, err := os.ReadFile(p.filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read registry file at %s: %w", p.filePath, err)
-	}
-
-	// Parse the JSON data
-	var reg registry.Registry
-	if err := json.Unmarshal(data, &reg); err != nil {
-		return nil, fmt.Errorf("failed to parse registry data from file %s: %w", p.filePath, err)
-	}
-
-	return &reg, nil
+// It delegates to the StorageManager to retrieve and parse registry data.
+// This eliminates code duplication and provides a single source of truth for file operations.
+func (p *FileRegistryDataProvider) GetRegistryData(ctx context.Context) (*registry.Registry, error) {
+	// Delegate to storage manager - all file reading logic is centralized there
+	return p.storageManager.Get(ctx, p.config)
 }
 
 // GetSource implements RegistryDataProvider.GetSource.
-// It returns a descriptive string indicating the file source.
+// It returns a descriptive string indicating the file source from the configuration.
 func (p *FileRegistryDataProvider) GetSource() string {
-	if p.filePath == "" {
+	if p.config.Source.File == nil || p.config.Source.File.Path == "" {
 		return "file:<not-configured>"
 	}
-
-	// Clean the path for consistent display
-	cleanPath := filepath.Clean(p.filePath)
-	return fmt.Sprintf("file:%s", cleanPath)
+	return fmt.Sprintf("file:%s", p.config.Source.File.Path)
 }
 
 // GetRegistryName implements RegistryDataProvider.GetRegistryName.

@@ -40,9 +40,9 @@ func TestService_GetRegistry(t *testing.T) {
 						},
 					},
 				}, nil)
-				m.EXPECT().GetSource().Return("configmap:test-namespace/test-configmap").AnyTimes()
+				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
 			},
-			expectedSource: "configmap:test-namespace/test-configmap",
+			expectedSource: "file:/path/to/registry.json",
 			validateResult: func(t *testing.T, r *registry.Registry) {
 				t.Helper()
 				assert.Equal(t, "1.0.0", r.Version)
@@ -53,10 +53,10 @@ func TestService_GetRegistry(t *testing.T) {
 		{
 			name: "provider returns error",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(nil, errors.New("configmap not found")).Times(2) // Once during NewService, once during GetRegistry
-				m.EXPECT().GetSource().Return("configmap:test-namespace/test-configmap").AnyTimes()
+				m.EXPECT().GetRegistryData(gomock.Any()).Return(nil, errors.New("file not found")).Times(2) // Once during NewService, once during GetRegistry
+				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
 			},
-			expectedSource: "configmap:test-namespace/test-configmap",
+			expectedSource: "file:/path/to/registry.json",
 			validateResult: func(t *testing.T, r *registry.Registry) {
 				t.Helper()
 				// Should return empty registry on error

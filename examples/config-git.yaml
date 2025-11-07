@@ -1,0 +1,63 @@
+# Example configuration for syncing from the ToolHive Git repository
+#
+# This configuration pulls registry data from the official ToolHive repository
+# and syncs it to the local storage every 30 minutes.
+#
+# Usage:
+#   thv-registry-api serve --config examples/config-git.yaml
+
+# Registry name/identifier (optional, defaults to "default")
+registryName: toolhive
+
+# Data source configuration
+source:
+  # Source type: git, configmap, or api
+  type: git
+
+  # Data format: toolhive (native) or upstream (MCP registry format)
+  format: toolhive
+
+  # Git repository configuration
+  git:
+    # Repository URL (HTTP/HTTPS/SSH)
+    repository: https://github.com/stacklok/toolhive.git
+
+    # Branch to use (mutually exclusive with tag and commit)
+    branch: main
+
+    # Alternative: Use a specific tag
+    # tag: v1.0.0
+
+    # Alternative: Use a specific commit SHA
+    # commit: abc123def456
+
+    # Path to registry file within the repository
+    path: pkg/registry/data/registry.json
+
+# Automatic synchronization policy
+syncPolicy:
+  # Sync interval (valid duration: 1m, 5m, 30m, 1h, 24h, etc.)
+  interval: "30m"
+
+# Optional: Filter configuration to include/exclude specific servers
+# filter:
+#   # Name-based filtering
+#   names:
+#     # Only include servers matching these patterns (glob syntax)
+#     include:
+#       - "stacklok/*"
+#       - "official/*"
+#     # Exclude servers matching these patterns
+#     exclude:
+#       - "*/deprecated"
+#
+#   # Tag-based filtering
+#   tags:
+#     # Only include servers with these tags
+#     include:
+#       - "production"
+#       - "stable"
+#     # Exclude servers with these tags
+#     exclude:
+#       - "experimental"
+#       - "beta"
