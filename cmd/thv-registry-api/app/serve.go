@@ -63,8 +63,9 @@ func runServe(_ *cobra.Command, _ []string) error {
 
 	// Load and validate configuration
 	configPath := viper.GetString("config")
-	// TODO: Validate the path to avoid path traversal issues
-	cfg, err := config.NewConfigLoader().LoadConfig(configPath)
+	cfg, err := config.LoadConfig(
+		config.WithConfigPath(configPath),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
@@ -74,9 +75,11 @@ func runServe(_ *cobra.Command, _ []string) error {
 
 	// Build application using the builder pattern
 	address := viper.GetString("address")
-	app, err := registryapp.NewRegistryAppBuilder(cfg).
-		WithAddress(address).
-		Build(ctx)
+	app, err := registryapp.NewRegistryApp(
+		ctx,
+		registryapp.WithConfig(cfg),
+		registryapp.WithAddress(address),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to build application: %w", err)
 	}

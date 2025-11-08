@@ -162,12 +162,10 @@ filter:
 			// Create a temporary directory for test files
 			tmpDir := t.TempDir()
 
-			// Create the ConfigLoader
-			loader := NewConfigLoader()
-
+			// TODO: this is typical Claude Code pattern, we must fix this
 			if tt.name == "file_not_found" {
 				// Test with non-existent file
-				_, err := loader.LoadConfig(filepath.Join(tmpDir, "non-existent.yaml"))
+				_, err := LoadConfig(WithConfigPath(filepath.Join(tmpDir, "non-existent.yaml")))
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
 				return
@@ -179,7 +177,7 @@ filter:
 			require.NoError(t, err)
 
 			// Load the config
-			config, err := loader.LoadConfig(configPath)
+			config, err := LoadConfig(WithConfigPath(configPath))
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -236,8 +234,7 @@ filter:
 	require.NoError(t, err)
 
 	// Load it back
-	loader := NewConfigLoader()
-	loadedConfig, err := loader.LoadConfig(configPath)
+	loadedConfig, err := LoadConfig(WithConfigPath(configPath))
 	require.NoError(t, err)
 
 	// Compare the structures
@@ -405,7 +402,7 @@ func TestConfigValidate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := tt.config.Validate()
+			err := tt.config.validate()
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -452,6 +449,97 @@ func TestGetRegistryName(t *testing.T) {
 			t.Parallel()
 			result := tt.config.GetRegistryName()
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestLoadConfig_PathValidation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "empty path",
+			path:    "",
+			wantErr: true,
+			errMsg:  "path is required",
+		},
+		{
+			name:    "path traversal at start",
+			path:    "../etc/passwd",
+			wantErr: true,
+			errMsg:  "path contains invalid traversal sequence",
+		},
+		{
+			name:    "path traversal in middle",
+			path:    "config/../../etc/passwd",
+			wantErr: true,
+			errMsg:  "path contains invalid traversal sequence",
+		},
+		{
+			name:    "path traversal multiple",
+			path:    "a/b/../../../etc/passwd",
+			wantErr: true,
+			errMsg:  "path contains invalid traversal sequence",
+		},
+		{
+			name:    "path traversal with dot",
+			path:    "./../etc/passwd",
+			wantErr: true,
+			errMsg:  "path contains invalid traversal sequence",
+		},
+		{
+			name:    "valid relative path",
+			path:    "config.yaml",
+			wantErr: false,
+		},
+		{
+			name:    "valid relative path with subdir",
+			path:    "configs/app.yaml",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tmpDir := t.TempDir()
+
+			var testPath string
+			if tt.wantErr {
+				// For error cases, use the path as-is
+				testPath = tt.path
+			} else {
+				// For valid paths, create the file in temp directory
+				testPath = filepath.Join(tmpDir, tt.path)
+				// Create directory if needed
+				if err := os.MkdirAll(filepath.Dir(testPath), 0755); err != nil {
+					t.Fatalf("Failed to create test directory: %v", err)
+				}
+				// Write a minimal valid config
+				yamlContent := `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"`
+				err := os.WriteFile(testPath, []byte(yamlContent), 0600)
+				require.NoError(t, err)
+			}
+
+			_, err := LoadConfig(WithConfigPath(testPath))
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }
