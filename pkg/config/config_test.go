@@ -20,9 +20,9 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name: "valid_config_matching_spec",
 			yamlContent: `source:
-  type: configmap
-  configmap:
-    name: minimal-registry-data
+  type: file
+  file:
+    path: /data/registry.json
 syncPolicy:
   interval: "30m"
 filter:
@@ -31,9 +31,9 @@ filter:
     exclude: ["experimental", "deprecated", "beta"]`,
 			wantConfig: &Config{
 				Source: SourceConfig{
-					Type: "configmap",
-					ConfigMap: &ConfigMapConfig{
-						Name: "minimal-registry-data",
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
 					},
 				},
 				SyncPolicy: &SyncPolicyConfig{
@@ -51,9 +51,9 @@ filter:
 		{
 			name: "minimal_config",
 			yamlContent: `source:
-  type: configmap
-  configmap:
-    name: test-registry
+  type: file
+  file:
+    path: /data/registry.json
 syncPolicy:
   interval: "1h"
 filter:
@@ -62,9 +62,9 @@ filter:
     exclude: []`,
 			wantConfig: &Config{
 				Source: SourceConfig{
-					Type: "configmap",
-					ConfigMap: &ConfigMapConfig{
-						Name: "test-registry",
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
 					},
 				},
 				SyncPolicy: &SyncPolicyConfig{
@@ -82,9 +82,9 @@ filter:
 		{
 			name: "config_with_only_include_tags",
 			yamlContent: `source:
-  type: configmap
-  configmap:
-    name: prod-registry
+  type: file
+  file:
+    path: /data/registry.json
 syncPolicy:
   interval: "15m"
 filter:
@@ -92,9 +92,9 @@ filter:
     include: ["api", "backend", "frontend"]`,
 			wantConfig: &Config{
 				Source: SourceConfig{
-					Type: "configmap",
-					ConfigMap: &ConfigMapConfig{
-						Name: "prod-registry",
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
 					},
 				},
 				SyncPolicy: &SyncPolicyConfig{
@@ -112,9 +112,9 @@ filter:
 		{
 			name: "config_with_only_exclude_tags",
 			yamlContent: `source:
-  type: configmap
-  configmap:
-    name: dev-registry
+  type: file
+  file:
+    path: /data/registry.json
 syncPolicy:
   interval: "5m"
 filter:
@@ -122,9 +122,9 @@ filter:
     exclude: ["test", "debug", "experimental"]`,
 			wantConfig: &Config{
 				Source: SourceConfig{
-					Type: "configmap",
-					ConfigMap: &ConfigMapConfig{
-						Name: "dev-registry",
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
 					},
 				},
 				SyncPolicy: &SyncPolicyConfig{
@@ -173,7 +173,7 @@ filter:
 
 			// Create test config file
 			configPath := filepath.Join(tmpDir, "config.yaml")
-			err := os.WriteFile(configPath, []byte(tt.yamlContent), 0644)
+			err := os.WriteFile(configPath, []byte(tt.yamlContent), 0600)
 			require.NoError(t, err)
 
 			// Load the config
@@ -197,9 +197,9 @@ func TestConfigStructure(t *testing.T) {
 	// Test that the Config struct can be properly marshaled and unmarshaled
 	originalConfig := &Config{
 		Source: SourceConfig{
-			Type: "configmap",
-			ConfigMap: &ConfigMapConfig{
-				Name: "test-configmap",
+			Type: "file",
+			File: &FileConfig{
+				Path: "/data/registry.json",
 			},
 		},
 		SyncPolicy: &SyncPolicyConfig{
@@ -219,9 +219,9 @@ func TestConfigStructure(t *testing.T) {
 
 	// Write the config using YAML
 	yamlContent := `source:
-  type: configmap
-  configmap:
-    name: test-configmap
+  type: file
+  file:
+    path: /data/registry.json
 syncPolicy:
   interval: "45m"
 filter:
@@ -229,7 +229,7 @@ filter:
     include: ["prod", "stable"]
     exclude: ["beta", "alpha"]`
 
-	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
+	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
 	require.NoError(t, err)
 
 	// Load it back
@@ -252,9 +252,9 @@ func TestConfigValidate(t *testing.T) {
 			name: "valid_config",
 			config: &Config{
 				Source: SourceConfig{
-					Type: "configmap",
-					ConfigMap: &ConfigMapConfig{
-						Name: "test-configmap",
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
 					},
 				},
 				SyncPolicy: &SyncPolicyConfig{
@@ -267,8 +267,8 @@ func TestConfigValidate(t *testing.T) {
 			name: "missing_source_type",
 			config: &Config{
 				Source: SourceConfig{
-					ConfigMap: &ConfigMapConfig{
-						Name: "test",
+					File: &FileConfig{
+						Path: "/data/registry.json",
 					},
 				},
 				SyncPolicy: &SyncPolicyConfig{
@@ -279,39 +279,39 @@ func TestConfigValidate(t *testing.T) {
 			errMsg:  "source.type is required",
 		},
 		{
-			name: "missing_configmap_when_type_is_configmap",
+			name: "missing_file_when_type_is_file",
 			config: &Config{
 				Source: SourceConfig{
-					Type: "configmap",
+					Type: "file",
 				},
 				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
 			},
 			wantErr: true,
-			errMsg:  "source.configmap is required",
+			errMsg:  "source.file is required",
 		},
 		{
-			name: "missing_configmap_name",
+			name: "missing_file_path",
 			config: &Config{
 				Source: SourceConfig{
-					Type:      "configmap",
-					ConfigMap: &ConfigMapConfig{},
+					Type: "file",
+					File: &FileConfig{},
 				},
 				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
 			},
 			wantErr: true,
-			errMsg:  "source.configmap.name is required",
+			errMsg:  "source.file.path is required",
 		},
 		{
 			name: "missing_sync_interval",
 			config: &Config{
 				Source: SourceConfig{
-					Type: "configmap",
-					ConfigMap: &ConfigMapConfig{
-						Name: "test",
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
 					},
 				},
 				SyncPolicy: &SyncPolicyConfig{},
@@ -323,9 +323,9 @@ func TestConfigValidate(t *testing.T) {
 			name: "invalid_sync_interval",
 			config: &Config{
 				Source: SourceConfig{
-					Type: "configmap",
-					ConfigMap: &ConfigMapConfig{
-						Name: "test",
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
 					},
 				},
 				SyncPolicy: &SyncPolicyConfig{
@@ -341,6 +341,61 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: true,
 			errMsg:  "config cannot be nil",
 		},
+		{
+			name: "valid_file_source",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/tmp/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing_file_config",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			wantErr: true,
+			errMsg:  "source.file is required",
+		},
+		{
+			name: "missing_file_path",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			wantErr: true,
+			errMsg:  "source.file.path is required",
+		},
+		{
+			name: "unsupported_source_type",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "unknown",
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			wantErr: true,
+			errMsg:  "unsupported source type",
+		},
 	}
 
 	for _, tt := range tests {
@@ -355,6 +410,41 @@ func TestConfigValidate(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestGetRegistryName(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *Config
+		expected string
+	}{
+		{
+			name: "with_registry_name",
+			config: &Config{
+				RegistryName: "my-registry",
+			},
+			expected: "my-registry",
+		},
+		{
+			name:     "without_registry_name",
+			config:   &Config{},
+			expected: "default",
+		},
+		{
+			name: "empty_registry_name",
+			config: &Config{
+				RegistryName: "",
+			},
+			expected: "default",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.config.GetRegistryName()
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

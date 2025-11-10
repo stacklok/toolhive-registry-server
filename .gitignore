@@ -39,3 +39,6 @@ go.work.sum
 /bin/
 /dist/
 /coverage/
+
+# data folder created by local examples
+data/

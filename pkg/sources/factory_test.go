@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 )
@@ -13,12 +11,7 @@ import (
 func TestNewSourceHandlerFactory(t *testing.T) {
 	t.Parallel()
 
-	scheme := runtime.NewScheme()
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		Build()
-
-	factory := NewSourceHandlerFactory(fakeClient)
+	factory := NewSourceHandlerFactory()
 	assert.NotNil(t, factory)
 	assert.IsType(t, &DefaultSourceHandlerFactory{}, factory)
 }
@@ -26,12 +19,7 @@ func TestNewSourceHandlerFactory(t *testing.T) {
 func TestDefaultSourceHandlerFactory_CreateHandler(t *testing.T) {
 	t.Parallel()
 
-	scheme := runtime.NewScheme()
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		Build()
-
-	factory := NewSourceHandlerFactory(fakeClient)
+	factory := NewSourceHandlerFactory()
 
 	tests := []struct {
 		name          string
@@ -41,10 +29,10 @@ func TestDefaultSourceHandlerFactory_CreateHandler(t *testing.T) {
 		errorContains string
 	}{
 		{
-			name:         "configmap source type",
-			sourceType:   config.SourceTypeConfigMap,
+			name:         "file source type",
+			sourceType:   config.SourceTypeFile,
 			expectError:  false,
-			expectedType: &ConfigMapSourceHandler{},
+			expectedType: &FileSourceHandler{},
 		},
 		{
 			name:         "git source type",

@@ -9,14 +9,14 @@ import (
 )
 
 const (
-	// RegistrySourceTypeConfigMap is the type for registry data stored in ConfigMaps
-	SourceTypeConfigMap = "configmap"
-
-	// RegistrySourceTypeGit is the type for registry data stored in Git repositories
+	// SourceTypeGit is the type for registry data stored in Git repositories
 	SourceTypeGit = "git"
 
 	// SourceTypeAPI is the type for registry data fetched from API endpoints
 	SourceTypeAPI = "api"
+
+	// SourceTypeFile is the type for registry data stored in local files
+	SourceTypeFile = "file"
 )
 
 const (
@@ -34,25 +34,21 @@ type ConfigLoader interface {
 
 // Config represents the root configuration structure
 type Config struct {
-	Source     SourceConfig      `yaml:"source"`
-	SyncPolicy *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
-	Filter     *FilterConfig     `yaml:"filter,omitempty"`
+	// RegistryName is the name/identifier for this registry instance
+	// Defaults to "default" if not specified
+	RegistryName string            `yaml:"registryName,omitempty"`
+	Source       SourceConfig      `yaml:"source"`
+	SyncPolicy   *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
+	Filter       *FilterConfig     `yaml:"filter,omitempty"`
 }
 
 // SourceConfig defines the data source configuration
 type SourceConfig struct {
-	Type      string           `yaml:"type"`
-	Format    string           `yaml:"format"`
-	ConfigMap *ConfigMapConfig `yaml:"configmap,omitempty"`
-	Git       *GitConfig       `yaml:"git,omitempty"`
-	API       *APIConfig       `yaml:"api,omitempty"`
-}
-
-// ConfigMapConfig defines Kubernetes ConfigMap source settings
-type ConfigMapConfig struct {
-	Namespace string `yaml:"namespace"`
-	Name      string `yaml:"name"`
-	Key       string `yaml:"key,omitempty"`
+	Type   string      `yaml:"type"`
+	Format string      `yaml:"format"`
+	Git    *GitConfig  `yaml:"git,omitempty"`
+	API    *APIConfig  `yaml:"api,omitempty"`
+	File   *FileConfig `yaml:"file,omitempty"`
 }
 
 // GitConfig defines Git source settings
@@ -82,6 +78,13 @@ type APIConfig struct {
 	//   - /v0/info - Get registry metadata (future)
 	// Example: "http://my-registry-api.default.svc.cluster.local/api"
 	Endpoint string `yaml:"endpoint"`
+}
+
+// FileConfig defines local file source configuration
+type FileConfig struct {
+	// Path is the path to the registry.json file on the local filesystem
+	// Can be absolute or relative to the working directory
+	Path string `yaml:"path"`
 }
 
 // SyncPolicyConfig defines synchronization settings
@@ -132,6 +135,14 @@ func (c *configLoader) LoadConfig(path string) (*Config, error) {
 	return &config, nil
 }
 
+// GetRegistryName returns the registry name, using "default" if not specified
+func (c *Config) GetRegistryName() string {
+	if c.RegistryName == "" {
+		return "default"
+	}
+	return c.RegistryName
+}
+
 // Validate performs validation on the configuration
 func (c *Config) Validate() error {
 	if c == nil {
@@ -143,18 +154,38 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("source.type is required")
 	}
 
-	// Validate ConfigMap settings if type is configmap
-	if c.Source.Type == "configmap" {
-		if c.Source.ConfigMap == nil {
-			return fmt.Errorf("source.configmap is required when type is configmap")
+	// Validate source-specific settings
+	switch c.Source.Type {
+	case SourceTypeGit:
+		if c.Source.Git == nil {
+			return fmt.Errorf("source.git is required when type is git")
 		}
-		if c.Source.ConfigMap.Name == "" {
-			return fmt.Errorf("source.configmap.name is required")
+		if c.Source.Git.Repository == "" {
+			return fmt.Errorf("source.git.repository is required")
 		}
+
+	case SourceTypeAPI:
+		if c.Source.API == nil {
+			return fmt.Errorf("source.api is required when type is api")
+		}
+		if c.Source.API.Endpoint == "" {
+			return fmt.Errorf("source.api.endpoint is required")
+		}
+
+	case SourceTypeFile:
+		if c.Source.File == nil {
+			return fmt.Errorf("source.file is required when type is file")
+		}
+		if c.Source.File.Path == "" {
+			return fmt.Errorf("source.file.path is required")
+		}
+
+	default:
+		return fmt.Errorf("unsupported source type: %s", c.Source.Type)
 	}
 
 	// Validate sync policy
-	if c.SyncPolicy.Interval == "" {
+	if c.SyncPolicy == nil || c.SyncPolicy.Interval == "" {
 		return fmt.Errorf("syncPolicy.interval is required")
 	}
 

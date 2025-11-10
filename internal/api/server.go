@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	extensionv0 "github.com/stacklok/toolhive-registry-server/internal/api/extension/v0"
 	v01 "github.com/stacklok/toolhive-registry-server/internal/api/registry/v01"
 	v0 "github.com/stacklok/toolhive-registry-server/internal/api/v0"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -56,6 +57,7 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 
 	// Mount MCP Registry API v0 compatible routes
 	r.Mount("/registry/v0.1", v01.Router(svc))
+	r.Mount("/extension/v0", extensionv0.Router(svc))
 	r.Mount("/v0", v0.Router(svc))
 
 	return r
