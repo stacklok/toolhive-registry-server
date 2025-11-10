@@ -6,6 +6,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-git/go-billy/v5 v5.6.2
 	github.com/go-git/go-git/v5 v5.16.3
+	github.com/modelcontextprotocol/registry v1.3.8
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	github.com/spf13/viper v1.21.0
@@ -14,7 +15,6 @@ require (
 	github.com/swaggo/swag/v2 v2.0.0-rc4
 	go.uber.org/mock v0.6.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.34.1
 	k8s.io/apimachinery v0.34.1
 	sigs.k8s.io/controller-runtime v0.22.4
 )
@@ -119,6 +119,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+	k8s.io/api v0.34.1 // indirect
 	k8s.io/apiextensions-apiserver v0.34.1 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250710124328-f3f2b991d03b // indirect

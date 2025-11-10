@@ -6,7 +6,7 @@ This file provides AI assistant guidance for working with the ToolHive Registry 
 
 See [README.md](README.md) for complete project documentation including features, API endpoints, configuration, and deployment.
 
-**Quick Summary**: This is a standards-compliant MCP Registry API server that provides REST endpoints for discovering MCP servers. It supports Kubernetes ConfigMap and file-based backends.
+**Quick Summary**: This is a standards-compliant MCP Registry API server that provides REST endpoints for discovering MCP servers. It supports Git, API, and file-based data sources.
 
 ## Essential Build Commands
 
@@ -52,7 +52,7 @@ The codebase follows clean architecture with three layers:
 - **Always run `task gen` before testing** to generate mocks
 - Tests are located alongside source files (`*_test.go`)
 - Use table-driven test pattern for comprehensive coverage
-- Mock external dependencies (Kubernetes client, file system)
+- Mock external dependencies (HTTP clients, file system, Git operations)
 - Mocks location: [internal/service/mocks/](cmd/thv-registry-api/internal/service/mocks/)
 
 ## AI Assistant Best Practices
@@ -84,6 +84,8 @@ The codebase follows clean architecture with three layers:
 ### Key Dependencies
 - **Web**: Chi router
 - **CLI**: Cobra + Viper
-- **K8s**: client-go (for ConfigMap/deployment backends)
+- **Git**: go-git (for Git repository sources)
+- **HTTP**: net/http (for API sources)
+- **K8s**: client-go (for K8sDeploymentProvider only)
 - **Testing**: `go.uber.org/mock`
 - **Docs**: Swag/Swagger
