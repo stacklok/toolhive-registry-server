@@ -114,6 +114,11 @@ func TestListVersions(t *testing.T) {
 			path:       "/servers//versions",
 			wantStatus: http.StatusBadRequest,
 		},
+		{
+			name:       "list versions - empty server name",
+			path:       "/servers/%20/versions",
+			wantStatus: http.StatusBadRequest,
+		},
 	}
 
 	for _, tt := range tests {
@@ -170,6 +175,16 @@ func TestGetVersion(t *testing.T) {
 			name:       "get version - empty version",
 			path:       "/servers/test-server/versions/",
 			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "get version - empty server name",
+			path:       "/servers/%20/versions/1.0.0",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "get version - empty version",
+			path:       "/servers/test-server/versions/%20",
+			wantStatus: http.StatusBadRequest,
 		},
 	}
 
