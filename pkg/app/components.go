@@ -6,6 +6,8 @@ import (
 )
 
 // AppComponents groups all application components
+//
+//nolint:revive // This name is fine
 type AppComponents struct {
 	// SyncCoordinator manages background synchronization
 	SyncCoordinator coordinator.Coordinator

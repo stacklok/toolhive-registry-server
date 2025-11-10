@@ -1,3 +1,4 @@
+// Package v0 provides extension API v0 endpoints for server management.
 package v0
 
 import (
@@ -10,16 +11,19 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
+// Routes handles HTTP requests for extension API v0 endpoints.
 type Routes struct {
 	service service.RegistryService
 }
 
+// NewRoutes creates a new Routes instance with the given service.
 func NewRoutes(svc service.RegistryService) *Routes {
 	return &Routes{
 		service: svc,
 	}
 }
 
+// Router creates and configures the HTTP router for extension API v0 endpoints.
 func Router(svc service.RegistryService) http.Handler {
 	routes := NewRoutes(svc)
 
@@ -42,7 +46,7 @@ func Router(svc service.RegistryService) http.Handler {
 // @Failure		400	{object}	map[string]string	"Bad request"
 // @Failure		501	{object}	map[string]string	"Not implemented"
 // @Router		/extension/v0/servers/{id} [put]
-func (rr *Routes) upsertServer(w http.ResponseWriter, r *http.Request) {
+func (*Routes) upsertServer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if strings.TrimSpace(id) == "" {
 		common.WriteErrorResponse(w, "Server ID is required", http.StatusBadRequest)
@@ -63,7 +67,7 @@ func (rr *Routes) upsertServer(w http.ResponseWriter, r *http.Request) {
 // @Failure		400	{object}	map[string]string	"Bad request"
 // @Failure		501	{object}	map[string]string	"Not implemented"
 // @Router		/extension/v0/servers/{id} [delete]
-func (rr *Routes) deleteServer(w http.ResponseWriter, r *http.Request) {
+func (*Routes) deleteServer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if strings.TrimSpace(id) == "" {
 		common.WriteErrorResponse(w, "Server ID is required", http.StatusBadRequest)

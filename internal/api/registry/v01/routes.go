@@ -1,3 +1,4 @@
+// Package v01 provides registry API v0.1 endpoints for MCP server discovery.
 package v01
 
 import (
@@ -13,16 +14,19 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
+// Routes handles HTTP requests for registry API v0.1 endpoints.
 type Routes struct {
 	service service.RegistryService
 }
 
+// NewRoutes creates a new Routes instance with the given service.
 func NewRoutes(svc service.RegistryService) *Routes {
 	return &Routes{
 		service: svc,
 	}
 }
 
+// Router creates and configures the HTTP router for registry API v0.1 endpoints.
 func Router(svc service.RegistryService) http.Handler {
 	routes := NewRoutes(svc)
 
@@ -53,7 +57,7 @@ func Router(svc service.RegistryService) http.Handler {
 // @Success		200		{object}	upstreamv0.ServerListResponse
 // @Failure		400		{object}	map[string]string	"Bad request"
 // @Router		/registry/v0.1/servers [get]
-func (rr *Routes) listServers(w http.ResponseWriter, r *http.Request) {
+func (*Routes) listServers(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	query := r.URL.Query()
 
@@ -79,7 +83,11 @@ func (rr *Routes) listServers(w http.ResponseWriter, r *http.Request) {
 	if updatedSinceStr := query.Get("updated_since"); updatedSinceStr != "" {
 		parsedTime, err := time.Parse(time.RFC3339, updatedSinceStr)
 		if err != nil {
-			common.WriteErrorResponse(w, "Invalid updated_since parameter: must be RFC3339 format (e.g., 2025-08-07T13:15:04.280Z)", http.StatusBadRequest)
+			common.WriteErrorResponse(
+				w,
+				"Invalid updated_since parameter: must be RFC3339 format (e.g., 2025-08-07T13:15:04.280Z)",
+				http.StatusBadRequest,
+			)
 			return
 		}
 		updatedSince = &parsedTime
@@ -116,7 +124,7 @@ func (rr *Routes) listServers(w http.ResponseWriter, r *http.Request) {
 // @Failure		400		{object}	map[string]string	"Bad request"
 // @Failure		404		{object}	map[string]string	"Server not found"
 // @Router		/registry/v0.1/servers/{serverName}/versions [get]
-func (rr *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
+func (*Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 	serverName := chi.URLParam(r, "serverName")
 	if strings.TrimSpace(serverName) == "" {
 		common.WriteErrorResponse(w, "Server name is required", http.StatusBadRequest)
@@ -135,17 +143,18 @@ func (rr *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 // getVersion handles GET /registry/v0.1/servers/{serverName}/versions/{version}
 //
 // @Summary		Get specific MCP server version
-// @Description	Returns detailed information about a specific version of an MCP server. Use the special version `latest` to get the latest version.
+// @Description	Returns detailed information about a specific version of an MCP server.
+// @Description	Use the special version `latest` to get the latest version.
 // @Tags		servers
 // @Accept		json
 // @Produce		json
 // @Param		serverName	path		string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
-// @Param		version		path		string	true	"URL-encoded version to retrieve (e.g., \"1.0.0\" or \"1.0.0%2B20130313144700\" for versions with build metadata)"
+// @Param		version		path		string	true	"URL-encoded version to retrieve (e.g., \"1.0.0\")"
 // @Success		200		{object}	upstreamv0.ServerResponse	"Detailed server information"
 // @Failure		400		{object}	map[string]string	"Bad request"
 // @Failure		404		{object}	map[string]string	"Server or version not found"
 // @Router		/registry/v0.1/servers/{serverName}/versions/{version} [get]
-func (rr *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
+func (*Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 	serverName := chi.URLParam(r, "serverName")
 	version := chi.URLParam(r, "version")
 	if strings.TrimSpace(serverName) == "" || strings.TrimSpace(version) == "" {
@@ -165,6 +174,6 @@ func (rr *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 // @Produce		json
 // @Failure		501	{object}	map[string]string	"Not implemented"
 // @Router		/registry/v0.1/publish [post]
-func (rr *Routes) publish(w http.ResponseWriter, r *http.Request) {
+func (*Routes) publish(w http.ResponseWriter, _ *http.Request) {
 	common.WriteErrorResponse(w, "Publishing is not supported", http.StatusNotImplemented)
 }

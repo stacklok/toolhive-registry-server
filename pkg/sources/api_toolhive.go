@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/stacklok/toolhive/pkg/registry"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/httpclient"
-	"github.com/stacklok/toolhive/pkg/registry"
 )
 
 // ToolHiveAPIHandler handles registry data from ToolHive Registry API endpoints
@@ -108,8 +108,8 @@ func (h *ToolHiveAPIHandler) FetchRegistry(ctx context.Context, registryConfig *
 }
 
 // CurrentHash returns the current hash of the API response
-func (h *ToolHiveAPIHandler) CurrentHash(ctx context.Context, config *config.Config) (string, error) {
-	baseURL := h.getBaseURL(config)
+func (h *ToolHiveAPIHandler) CurrentHash(ctx context.Context, cfg *config.Config) (string, error) {
+	baseURL := h.getBaseURL(cfg)
 	apiURL := h.buildServersURL(baseURL)
 
 	// Fetch data from API
@@ -124,8 +124,8 @@ func (h *ToolHiveAPIHandler) CurrentHash(ctx context.Context, config *config.Con
 }
 
 // getBaseURL extracts and normalizes the base URL
-func (*ToolHiveAPIHandler) getBaseURL(config *config.Config) string {
-	baseURL := config.Source.API.Endpoint
+func (*ToolHiveAPIHandler) getBaseURL(cfg *config.Config) string {
+	baseURL := cfg.Source.API.Endpoint
 
 	// Remove trailing slash
 	if len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {

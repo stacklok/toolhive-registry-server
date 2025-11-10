@@ -52,16 +52,16 @@ func (*APISourceHandler) Validate(source *config.SourceConfig) error {
 
 // FetchRegistry retrieves registry data from the API endpoint
 // It auto-detects the format and delegates to the appropriate handler
-func (h *APISourceHandler) FetchRegistry(ctx context.Context, config *config.Config) (*FetchResult, error) {
+func (h *APISourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config) (*FetchResult, error) {
 	logger := log.FromContext(ctx)
 
 	// Validate source configuration
-	if err := h.Validate(&config.Source); err != nil {
+	if err := h.Validate(&cfg.Source); err != nil {
 		return nil, fmt.Errorf("source validation failed: %w", err)
 	}
 
 	// Detect format and get appropriate handler
-	handler, format, err := h.detectFormatAndGetHandler(ctx, config)
+	handler, format, err := h.detectFormatAndGetHandler(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("format detection failed: %w", err)
 	}
@@ -70,40 +70,40 @@ func (h *APISourceHandler) FetchRegistry(ctx context.Context, config *config.Con
 		"format", format)
 
 	// Delegate to the appropriate handler
-	return handler.FetchRegistry(ctx, config)
+	return handler.FetchRegistry(ctx, cfg)
 }
 
 // CurrentHash returns the current hash of the API response
-func (h *APISourceHandler) CurrentHash(ctx context.Context, config *config.Config) (string, error) {
+func (h *APISourceHandler) CurrentHash(ctx context.Context, cfg *config.Config) (string, error) {
 	// Validate source configuration
-	if err := h.Validate(&config.Source); err != nil {
+	if err := h.Validate(&cfg.Source); err != nil {
 		return "", fmt.Errorf("source validation failed: %w", err)
 	}
 
 	// Detect format and get appropriate handler
-	handler, _, err := h.detectFormatAndGetHandler(ctx, config)
+	handler, _, err := h.detectFormatAndGetHandler(ctx, cfg)
 	if err != nil {
 		return "", fmt.Errorf("format detection failed: %w", err)
 	}
 
 	// Delegate to the appropriate handler
-	return handler.CurrentHash(ctx, config)
+	return handler.CurrentHash(ctx, cfg)
 }
 
 // apiFormatHandler is an internal interface for format-specific handlers
 type apiFormatHandler interface {
 	Validate(ctx context.Context, endpoint string) error
-	FetchRegistry(ctx context.Context, config *config.Config) (*FetchResult, error)
-	CurrentHash(ctx context.Context, config *config.Config) (string, error)
+	FetchRegistry(ctx context.Context, cfg *config.Config) (*FetchResult, error)
+	CurrentHash(ctx context.Context, cfg *config.Config) (string, error)
 }
 
 // detectFormatAndGetHandler detects the API format and returns the appropriate handler
 func (h *APISourceHandler) detectFormatAndGetHandler(
 	ctx context.Context,
-	config *config.Config,
+	cfg *config.Config,
 ) (apiFormatHandler, string, error) {
 	logger := log.FromContext(ctx)
-	endpoint := h.getBaseURL(config)
+	endpoint := h.getBaseURL(cfg)
 
 	// Try ToolHive format first (/v0/info)
 	toolhiveErr := h.toolhiveHandler.Validate(ctx, endpoint)
@@ -125,8 +125,8 @@ func (h *APISourceHandler) detectFormatAndGetHandler(
 }
 
 // getBaseURL extracts and normalizes the base URL
-func (*APISourceHandler) getBaseURL(config *config.Config) string {
-	baseURL := config.Source.API.Endpoint
+func (*APISourceHandler) getBaseURL(cfg *config.Config) string {
+	baseURL := cfg.Source.API.Endpoint
 
 	// Remove trailing slash
 	if len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {

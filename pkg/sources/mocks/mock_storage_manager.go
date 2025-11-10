@@ -43,44 +43,44 @@ func (m *MockStorageManager) EXPECT() *MockStorageManagerMockRecorder {
 }
 
 // Delete mocks base method.
-func (m *MockStorageManager) Delete(ctx context.Context, arg1 *config.Config) error {
+func (m *MockStorageManager) Delete(ctx context.Context, cfg *config.Config) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, arg1)
+	ret := m.ctrl.Call(m, "Delete", ctx, cfg)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Delete indicates an expected call of Delete.
-func (mr *MockStorageManagerMockRecorder) Delete(ctx, arg1 any) *gomock.Call {
+func (mr *MockStorageManagerMockRecorder) Delete(ctx, cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockStorageManager)(nil).Delete), ctx, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockStorageManager)(nil).Delete), ctx, cfg)
 }
 
 // Get mocks base method.
-func (m *MockStorageManager) Get(ctx context.Context, arg1 *config.Config) (*registry.Registry, error) {
+func (m *MockStorageManager) Get(ctx context.Context, cfg *config.Config) (*registry.Registry, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, arg1)
+	ret := m.ctrl.Call(m, "Get", ctx, cfg)
 	ret0, _ := ret[0].(*registry.Registry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Get indicates an expected call of Get.
-func (mr *MockStorageManagerMockRecorder) Get(ctx, arg1 any) *gomock.Call {
+func (mr *MockStorageManagerMockRecorder) Get(ctx, cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockStorageManager)(nil).Get), ctx, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockStorageManager)(nil).Get), ctx, cfg)
 }
 
 // Store mocks base method.
-func (m *MockStorageManager) Store(ctx context.Context, arg1 *config.Config, reg *registry.Registry) error {
+func (m *MockStorageManager) Store(ctx context.Context, cfg *config.Config, reg *registry.Registry) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Store", ctx, arg1, reg)
+	ret := m.ctrl.Call(m, "Store", ctx, cfg, reg)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Store indicates an expected call of Store.
-func (mr *MockStorageManagerMockRecorder) Store(ctx, arg1, reg any) *gomock.Call {
+func (mr *MockStorageManagerMockRecorder) Store(ctx, cfg, reg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Store", reflect.TypeOf((*MockStorageManager)(nil).Store), ctx, arg1, reg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Store", reflect.TypeOf((*MockStorageManager)(nil).Store), ctx, cfg, reg)
 }

@@ -1,3 +1,4 @@
+// Package app provides application lifecycle management for the registry server.
 package app
 
 import (
@@ -7,8 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive/pkg/logger"
+
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 )
 
 // RegistryApp encapsulates all components needed to run the registry API server

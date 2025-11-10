@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stacklok/toolhive/pkg/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -16,7 +17,6 @@ import (
 	v0 "github.com/stacklok/toolhive-registry-server/internal/api/v0"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
-	"github.com/stacklok/toolhive/pkg/registry"
 )
 
 // Removed embedded test registry data - using inline JSON instead

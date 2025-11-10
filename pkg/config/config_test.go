@@ -10,6 +10,7 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		yamlContent string
@@ -157,6 +158,7 @@ filter:
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Create a temporary directory for test files
 			tmpDir := t.TempDir()
 
@@ -194,6 +196,7 @@ filter:
 }
 
 func TestConfigStructure(t *testing.T) {
+	t.Parallel()
 	// Test that the Config struct can be properly marshaled and unmarshaled
 	originalConfig := &Config{
 		Source: SourceConfig{
@@ -242,6 +245,7 @@ filter:
 }
 
 func TestConfigValidate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		config  *Config
@@ -400,6 +404,7 @@ func TestConfigValidate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.config.Validate()
 
 			if tt.wantErr {
@@ -415,6 +420,7 @@ func TestConfigValidate(t *testing.T) {
 }
 
 func TestGetRegistryName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		config   *Config
@@ -443,6 +449,7 @@ func TestGetRegistryName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := tt.config.GetRegistryName()
 			assert.Equal(t, tt.expected, result)
 		})
