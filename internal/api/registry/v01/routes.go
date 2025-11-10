@@ -3,6 +3,7 @@ package v01
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -117,7 +118,7 @@ func (rr *Routes) listServers(w http.ResponseWriter, r *http.Request) {
 // @Router		/registry/v0.1/servers/{serverName}/versions [get]
 func (rr *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 	serverName := chi.URLParam(r, "serverName")
-	if serverName == "" {
+	if strings.TrimSpace(serverName) == "" {
 		common.WriteErrorResponse(w, "Server name is required", http.StatusBadRequest)
 		return
 	}
@@ -147,7 +148,7 @@ func (rr *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 func (rr *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 	serverName := chi.URLParam(r, "serverName")
 	version := chi.URLParam(r, "version")
-	if serverName == "" || version == "" {
+	if strings.TrimSpace(serverName) == "" || strings.TrimSpace(version) == "" {
 		common.WriteErrorResponse(w, "Server name and version are required", http.StatusBadRequest)
 		return
 	}
