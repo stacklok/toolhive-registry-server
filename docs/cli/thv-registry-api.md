@@ -16,7 +16,7 @@ ToolHive Registry API server
 ### Synopsis
 
 ToolHive Registry API server provides REST endpoints for accessing MCP server registry
-data in Kubernetes.
+data.
 
 ```
 thv-registry-api [flags]

@@ -87,15 +87,25 @@ tasks:
     deps: [install-gotestfmt]
     cmds:
       # We have to use ldflags to avoid the LC_DYSYMTAB linker warning.
-      - go test -ldflags=-extldflags=-Wl,-w -race -json ./... | gotestfmt -hide "all"
+      - go test -ldflags=-extldflags=-Wl,-w -race -json $(go list ./... | grep -v '/test-integration') | gotestfmt -hide "all"
+
+  setup-integration-deps:
+    desc: Setup dependencies for integration tests
+    cmds:
+      - go install github.com/onsi/ginkgo/v2/ginkgo@latest
+
+  test-integration:
+    desc: Run integration tests
+    deps: [setup-integration-deps]
+    cmds:
+      - $(go env GOPATH)/bin/ginkgo -v -p ./test-integration/...
 
   test-coverage:
     desc: Run registry API tests with coverage
     deps: [install-gotestfmt]
     cmds:
       # We have to use ldflags to avoid the LC_DYSYMTAB linker warning.
-      - go test -ldflags=-extldflags=-Wl,-w -race -json -coverprofile=coverage.out ./... | gotestfmt -hide "all"
-      - go tool cover -func=coverage.out
+      - go test -ldflags=-extldflags=-Wl,-w -race -json -coverprofile=coverage.out $(go list ./... | grep -v '/test-integration') | gotestfmt -hide "all"      - go tool cover -func=coverage.out
       - echo "Generating HTML coverage report in coverage.html"
       - go tool cover -html=coverage.out -o coverage.html
 

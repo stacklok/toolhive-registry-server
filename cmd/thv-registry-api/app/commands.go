@@ -16,7 +16,7 @@ var rootCmd = &cobra.Command{
 	DisableAutoGenTag: true,
 	Short:             "ToolHive Registry API server",
 	Long: `ToolHive Registry API server provides REST endpoints for accessing MCP server registry
-data in Kubernetes.`,
+data.`,
 	Run: func(cmd *cobra.Command, _ []string) {
 		// If no subcommand is provided, print help
 		if err := cmd.Help(); err != nil {
