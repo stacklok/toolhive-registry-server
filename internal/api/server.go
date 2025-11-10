@@ -1,4 +1,4 @@
-// Package v1 provides the REST API server for MCP Registry access.
+// Package api provides the REST API server for MCP Registry access.
 package api
 
 import (
@@ -7,12 +7,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/stacklok/toolhive/pkg/logger"
 
 	extensionv0 "github.com/stacklok/toolhive-registry-server/internal/api/extension/v0"
 	v01 "github.com/stacklok/toolhive-registry-server/internal/api/registry/v01"
 	v0 "github.com/stacklok/toolhive-registry-server/internal/api/v0"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	"github.com/stacklok/toolhive/pkg/logger"
 )
 
 // ServerOption configures the registry API server

@@ -83,33 +83,33 @@ func (m *MockSourceHandler) EXPECT() *MockSourceHandlerMockRecorder {
 }
 
 // CurrentHash mocks base method.
-func (m *MockSourceHandler) CurrentHash(ctx context.Context, arg1 *config.Config) (string, error) {
+func (m *MockSourceHandler) CurrentHash(ctx context.Context, cfg *config.Config) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CurrentHash", ctx, arg1)
+	ret := m.ctrl.Call(m, "CurrentHash", ctx, cfg)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CurrentHash indicates an expected call of CurrentHash.
-func (mr *MockSourceHandlerMockRecorder) CurrentHash(ctx, arg1 any) *gomock.Call {
+func (mr *MockSourceHandlerMockRecorder) CurrentHash(ctx, cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentHash", reflect.TypeOf((*MockSourceHandler)(nil).CurrentHash), ctx, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentHash", reflect.TypeOf((*MockSourceHandler)(nil).CurrentHash), ctx, cfg)
 }
 
 // FetchRegistry mocks base method.
-func (m *MockSourceHandler) FetchRegistry(ctx context.Context, arg1 *config.Config) (*sources.FetchResult, error) {
+func (m *MockSourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config) (*sources.FetchResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FetchRegistry", ctx, arg1)
+	ret := m.ctrl.Call(m, "FetchRegistry", ctx, cfg)
 	ret0, _ := ret[0].(*sources.FetchResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // FetchRegistry indicates an expected call of FetchRegistry.
-func (mr *MockSourceHandlerMockRecorder) FetchRegistry(ctx, arg1 any) *gomock.Call {
+func (mr *MockSourceHandlerMockRecorder) FetchRegistry(ctx, cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchRegistry", reflect.TypeOf((*MockSourceHandler)(nil).FetchRegistry), ctx, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchRegistry", reflect.TypeOf((*MockSourceHandler)(nil).FetchRegistry), ctx, cfg)
 }
 
 // Validate mocks base method.

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -16,18 +17,17 @@ import (
 	"github.com/stacklok/toolhive-registry-server/pkg/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/pkg/sync"
 	"github.com/stacklok/toolhive-registry-server/pkg/sync/coordinator"
-	"github.com/stacklok/toolhive/pkg/logger"
 )
 
 const (
-	defaultDataDir         = "./data"
-	defaultRegistryFile    = "./data/registry.json"
-	defaultStatusFile      = "./data/status.json"
-	defaultHTTPAddress     = ":8080"
-	defaultRequestTimeout  = 10 * time.Second
-	defaultReadTimeout     = 10 * time.Second
-	defaultWriteTimeout    = 15 * time.Second
-	defaultIdleTimeout     = 60 * time.Second
+	defaultDataDir        = "./data"
+	defaultRegistryFile   = "./data/registry.json"
+	defaultStatusFile     = "./data/status.json"
+	defaultHTTPAddress    = ":8080"
+	defaultRequestTimeout = 10 * time.Second
+	defaultReadTimeout    = 10 * time.Second
+	defaultWriteTimeout   = 15 * time.Second
+	defaultIdleTimeout    = 60 * time.Second
 )
 
 // RegistryAppBuilder builds a RegistryApp using the builder pattern
@@ -44,12 +44,12 @@ type RegistryAppBuilder struct {
 	deploymentProvider   service.DeploymentProvider
 
 	// HTTP server options
-	address            string
-	middlewares        []func(http.Handler) http.Handler
-	requestTimeout     time.Duration
-	readTimeout        time.Duration
-	writeTimeout       time.Duration
-	idleTimeout        time.Duration
+	address        string
+	middlewares    []func(http.Handler) http.Handler
+	requestTimeout time.Duration
+	readTimeout    time.Duration
+	writeTimeout   time.Duration
+	idleTimeout    time.Duration
 
 	// Data directories
 	dataDir      string
@@ -148,10 +148,7 @@ func (b *RegistryAppBuilder) Build(ctx context.Context) (*RegistryApp, error) {
 	}
 
 	// Build HTTP server
-	httpServer, err := b.buildHTTPServer(registryService)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build HTTP server: %w", err)
-	}
+	httpServer := b.buildHTTPServer(registryService)
 
 	// Create application context
 	appCtx, cancel := context.WithCancel(context.Background())
@@ -180,7 +177,7 @@ func (b *RegistryAppBuilder) buildSyncComponents() (coordinator.Coordinator, err
 	// Build storage manager
 	if b.storageManager == nil {
 		// Ensure data directory exists
-		if err := os.MkdirAll(b.dataDir, 0755); err != nil {
+		if err := os.MkdirAll(b.dataDir, 0750); err != nil {
 			return nil, fmt.Errorf("failed to create data directory %s: %w", b.dataDir, err)
 		}
 		b.storageManager = sources.NewFileStorageManager(b.dataDir)
@@ -233,7 +230,7 @@ func (b *RegistryAppBuilder) buildServiceComponents(ctx context.Context) (servic
 }
 
 // buildHTTPServer builds the HTTP server with router and middleware
-func (b *RegistryAppBuilder) buildHTTPServer(svc service.RegistryService) (*http.Server, error) {
+func (b *RegistryAppBuilder) buildHTTPServer(svc service.RegistryService) *http.Server {
 	logger.Info("Initializing HTTP server")
 
 	// Use default middlewares if not provided
@@ -260,5 +257,5 @@ func (b *RegistryAppBuilder) buildHTTPServer(svc service.RegistryService) (*http
 	}
 
 	logger.Infof("HTTP server configured on %s", b.address)
-	return server, nil
+	return server
 }

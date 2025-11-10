@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stacklok/toolhive/pkg/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/git"
-	"github.com/stacklok/toolhive/pkg/registry"
 )
 
 const (
@@ -29,8 +29,8 @@ type MockGitClient struct {
 	mock.Mock
 }
 
-func (m *MockGitClient) Clone(ctx context.Context, config *git.CloneConfig) (*git.RepositoryInfo, error) {
-	args := m.Called(ctx, config)
+func (m *MockGitClient) Clone(ctx context.Context, cfg *git.CloneConfig) (*git.RepositoryInfo, error) {
+	args := m.Called(ctx, cfg)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

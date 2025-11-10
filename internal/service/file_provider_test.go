@@ -5,13 +5,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stacklok/toolhive/pkg/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	sourcesmocks "github.com/stacklok/toolhive-registry-server/pkg/sources/mocks"
-	"github.com/stacklok/toolhive/pkg/registry"
 )
 
 func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
@@ -128,7 +128,7 @@ func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
 func TestFileRegistryDataProvider_GetSource(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+	t.Cleanup(ctrl.Finish)
 
 	mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
 
@@ -223,7 +223,7 @@ func TestNewFileRegistryDataProvider(t *testing.T) {
 func TestFileRegistryDataProvider_GetRegistryName(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+	t.Cleanup(ctrl.Finish)
 
 	mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
 
