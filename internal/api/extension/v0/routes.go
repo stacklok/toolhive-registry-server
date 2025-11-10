@@ -25,16 +25,16 @@ func Router(svc service.RegistryService) http.Handler {
 
 	r := chi.NewRouter()
 
-	r.Put("/servers/{id}", routes.updateServer)
+	r.Put("/servers/{id}", routes.upsertServer)
 	r.Delete("/servers/{id}", routes.deleteServer)
 
 	return r
 }
 
-// updateServer handles PUT /extension/v0/servers/{id}
+// upsertServer handles PUT /extension/v0/servers/{id}
 //
-// @Summary		Update server
-// @Description	Update a server in the registry
+// @Summary		Create or update server
+// @Description	Create or update a server in the registry
 // @Tags		extension
 // @Accept		json
 // @Produce		json
@@ -42,14 +42,14 @@ func Router(svc service.RegistryService) http.Handler {
 // @Failure		400	{object}	map[string]string	"Bad request"
 // @Failure		501	{object}	map[string]string	"Not implemented"
 // @Router		/extension/v0/servers/{id} [put]
-func (rr *Routes) updateServer(w http.ResponseWriter, r *http.Request) {
+func (rr *Routes) upsertServer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if strings.TrimSpace(id) == "" {
 		common.WriteErrorResponse(w, "Server ID is required", http.StatusBadRequest)
 		return
 	}
 
-	common.WriteErrorResponse(w, "Updating servers is not supported", http.StatusNotImplemented)
+	common.WriteErrorResponse(w, "Creating or updating servers is not supported", http.StatusNotImplemented)
 }
 
 // deleteServer handles DELETE /extension/v0/servers/{id}

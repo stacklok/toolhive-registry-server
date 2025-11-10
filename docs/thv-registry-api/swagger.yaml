@@ -687,6 +687,14 @@ paths:
             schema:
               type: object
       responses:
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
         "501":
           content:
             application/json:
@@ -699,7 +707,7 @@ paths:
       tags:
       - extension
     put:
-      description: Update a server in the registry
+      description: Create or update a server in the registry
       parameters:
       - description: Server ID
         in: path
@@ -713,6 +721,14 @@ paths:
             schema:
               type: object
       responses:
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
         "501":
           content:
             application/json:
@@ -721,7 +737,7 @@ paths:
                   type: string
                 type: object
           description: Not implemented
-      summary: Update server
+      summary: Create or update server
       tags:
       - extension
   /health:

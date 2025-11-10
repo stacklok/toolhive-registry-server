@@ -69,7 +69,7 @@ func TestUpdateServer(t *testing.T) {
 				err = json.Unmarshal(rr.Body.Bytes(), &response)
 				require.NoError(t, err)
 				assert.Contains(t, response, "error")
-				assert.Equal(t, "Updating servers is not supported", response["error"])
+				assert.Equal(t, "Creating or updating servers is not supported", response["error"])
 			}
 		})
 	}
