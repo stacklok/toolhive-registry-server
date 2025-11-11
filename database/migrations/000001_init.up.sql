@@ -58,7 +58,7 @@ CREATE TABLE mcp_server (
     repository_id        TEXT,
     repository_subfolder TEXT,
     repository_type      TEXT,
-    UNIQUE (name, version, reg_id)
+    UNIQUE (reg_id, name, version)
 );
 
 -- Set of downloadable artifacts to allow an MCP server to be run locally.
