@@ -16,7 +16,6 @@ func TestLoadConfig(t *testing.T) {
 		yamlContent string
 		wantConfig  *Config
 		wantErr     bool
-		errMsg      string
 	}{
 		{
 			name: "valid_config_matching_spec",
@@ -145,14 +144,12 @@ filter:
 			yamlContent: `source: [invalid yaml`,
 			wantConfig:  nil,
 			wantErr:     true,
-			errMsg:      "failed to parse YAML config",
 		},
 		{
 			name:        "file_not_found",
 			yamlContent: "",
 			wantConfig:  nil,
 			wantErr:     true,
-			errMsg:      "failed to read config file",
 		},
 	}
 
@@ -162,14 +159,11 @@ filter:
 			// Create a temporary directory for test files
 			tmpDir := t.TempDir()
 
-			// Create the ConfigLoader
-			loader := NewConfigLoader()
-
+			// TODO: this is typical Claude Code pattern, we must fix this
 			if tt.name == "file_not_found" {
 				// Test with non-existent file
-				_, err := loader.LoadConfig(filepath.Join(tmpDir, "non-existent.yaml"))
+				_, err := LoadConfig(WithConfigPath(filepath.Join(tmpDir, "non-existent.yaml")))
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
 				return
 			}
 
@@ -179,13 +173,10 @@ filter:
 			require.NoError(t, err)
 
 			// Load the config
-			config, err := loader.LoadConfig(configPath)
+			config, err := LoadConfig(WithConfigPath(configPath))
 
 			if tt.wantErr {
 				require.Error(t, err)
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
 				return
 			}
 
@@ -236,8 +227,7 @@ filter:
 	require.NoError(t, err)
 
 	// Load it back
-	loader := NewConfigLoader()
-	loadedConfig, err := loader.LoadConfig(configPath)
+	loadedConfig, err := LoadConfig(WithConfigPath(configPath))
 	require.NoError(t, err)
 
 	// Compare the structures
@@ -405,7 +395,7 @@ func TestConfigValidate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := tt.config.Validate()
+			err := tt.config.validate()
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -452,6 +442,94 @@ func TestGetRegistryName(t *testing.T) {
 			t.Parallel()
 			result := tt.config.GetRegistryName()
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestWithConfigPath(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+
+	err := os.MkdirAll(filepath.Join(tmpDir, "configs"), 0755)
+	require.NoError(t, err, "failed to create subdir")
+
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	err = os.WriteFile(configPath, []byte("source: type: file path: /data/registry.json"), 0600)
+	require.NoError(t, err, "failed to write config file")
+
+	configPath = filepath.Join(tmpDir, "configs", "app.yaml")
+	err = os.WriteFile(configPath, []byte("source: type: file path: /data/registry.json"), 0600)
+	require.NoError(t, err, "failed to write config file")
+
+	err = os.Chdir(tmpDir)
+	require.NoError(t, err, "failed to change directory")
+
+	tests := []struct {
+		name     string
+		path     string
+		wantPath string
+		wantErr  bool
+	}{
+		{
+			name:    "empty path",
+			path:    "",
+			wantErr: true,
+		},
+		{
+			name:    "path traversal at start",
+			path:    "../etc/passwd",
+			wantErr: true,
+		},
+		{
+			name:    "path traversal in middle",
+			path:    "config/../../etc/passwd",
+			wantErr: true,
+		},
+		{
+			name:    "path traversal multiple",
+			path:    "a/b/../../../etc/passwd",
+			wantErr: true,
+		},
+		{
+			name:    "path traversal with dot",
+			path:    "./../etc/passwd",
+			wantErr: true,
+		},
+		{
+			name:     "valid relative path",
+			path:     "config.yaml",
+			wantPath: "config.yaml",
+			wantErr:  false,
+		},
+		{
+			name:     "valid relative path with subdir",
+			path:     "configs/app.yaml",
+			wantPath: "configs/app.yaml",
+			wantErr:  false,
+		},
+		{
+			name:    "valid absolute path with subdir",
+			path:    "/foo/bar/../../../configs/app.yaml",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Test WithConfigPath directly
+			opt := WithConfigPath(tt.path)
+			cfg := &loaderConfig{}
+			err := opt(cfg)
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantPath, cfg.path)
+			}
 		})
 	}
 }

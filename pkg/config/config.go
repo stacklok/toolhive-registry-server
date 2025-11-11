@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -28,9 +29,38 @@ const (
 	SourceFormatUpstream = "upstream"
 )
 
-// Loader defines the interface for loading configuration
-type Loader interface {
-	LoadConfig(path string) (*Config, error)
+// Option defines the interface for configuration options
+type Option func(*loaderConfig) error
+
+// loaderConfig defines the configuration for loading a configuration
+type loaderConfig struct {
+	path string
+}
+
+// WithConfigPath loads configuration from a YAML file
+func WithConfigPath(path string) Option {
+	return func(cfg *loaderConfig) error {
+		if path == "" {
+			return fmt.Errorf("path is required")
+		}
+
+		// Resolve symlinks to prevent symlink attacks.
+		// Note that this calls filepath.Clean internally.
+		realPath, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return fmt.Errorf("failed to evaluate symlinks: %w", err)
+		}
+
+		// Validate the path to prevent path traversal attacks
+		if !filepath.IsAbs(realPath) {
+			if !filepath.IsLocal(realPath) {
+				return fmt.Errorf("path is not local or contains invalid traversal: %s", path)
+			}
+		}
+
+		cfg.path = realPath
+		return nil
+	}
 }
 
 // Config represents the root configuration structure
@@ -111,19 +141,23 @@ type TagFilterConfig struct {
 	Exclude []string `yaml:"exclude,omitempty"`
 }
 
-// configLoader implements the Loader interface
-type configLoader struct{}
-
-// NewConfigLoader creates a new Loader instance
-func NewConfigLoader() Loader {
-	return &configLoader{}
-}
-
 // LoadConfig loads and parses configuration from a YAML file
-func (*configLoader) LoadConfig(path string) (*Config, error) {
+func LoadConfig(opts ...Option) (*Config, error) {
+	loaderCfg := &loaderConfig{}
+	for _, opt := range opts {
+		if err := opt(loaderCfg); err != nil {
+			return nil, err
+		}
+	}
+
+	// As of now, this is required because there's no other options to load
+	// configuration. Once we add more options, we can remove this check.
+	if loaderCfg.path == "" {
+		return nil, fmt.Errorf("path is required")
+	}
+
 	// Read the entire file into memory
-	//nolint:gosec // Config file path is provided by user, this is expected behavior
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(loaderCfg.path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
@@ -132,6 +166,11 @@ func (*configLoader) LoadConfig(path string) (*Config, error) {
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+	}
+
+	// Validate the config
+	if err := config.validate(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
 	return &config, nil
@@ -146,7 +185,7 @@ func (c *Config) GetRegistryName() string {
 }
 
 // Validate performs validation on the configuration
-func (c *Config) Validate() error {
+func (c *Config) validate() error {
 	if c == nil {
 		return fmt.Errorf("config cannot be nil")
 	}
