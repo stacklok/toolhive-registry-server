@@ -1,11 +1,9 @@
 package integration
 
 import (
-	"encoding/json"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -52,40 +50,27 @@ var _ = Describe("Git Source Integration", Label("git"), func() {
 
 			// Create config file
 			configFile = helpers.WriteConfigYAML(tempDir, "git-registry", "git", map[string]string{
-				"url":         testRepo.CloneURL,
-				"path":        "registry.json",
-				"branch":      "main",
-				"storagePath": storageDir,
+				"repository": testRepo.CloneURL,
+				"path":       "registry.json",
+				"branch":     "main",
 			})
 
-			serverHelper = helpers.NewServerTestHelper(ctx, configFile, 8082, storageDir)
+			var err error
+			serverHelper, err = helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should successfully clone and load registry from Git repository", func() {
-			Skip("Server integration pending - demonstrates test structure")
-
 			// Start server and wait for it to be ready
-			serverHelper.WaitForServerReady(30)
-
-			// Verify data was loaded from Git
-			resp, err := serverHelper.GetServers()
+			err := serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
-				_ = resp.Body.Close()
+				_ = serverHelper.StopServer()
 			}()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			servers, ok := response["servers"].(map[string]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(servers).To(HaveKey("filesystem"))
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(len(helpers.CreateOriginalTestServers()), 10*time.Second)
+			Expect(servers).NotTo(BeEmpty())
 		})
 	})
 
@@ -108,75 +93,54 @@ var _ = Describe("Git Source Integration", Label("git"), func() {
 		})
 
 		It("should sync from a specific branch", func() {
-			Skip("Server integration pending - demonstrates branch testing")
-
 			// Create config pointing to development branch
 			configFile = helpers.WriteConfigYAML(tempDir, "branch-registry", "git", map[string]string{
-				"url":         testRepo.CloneURL,
+				"repository":  testRepo.CloneURL,
 				"path":        "registry.json",
 				"branch":      "development",
 				"storagePath": storageDir,
 			})
 
-			serverHelper = helpers.NewServerTestHelper(ctx, configFile, 8083, storageDir)
-			serverHelper.WaitForServerReady(30)
-
-			// Verify we got the development branch data (2 servers)
-			resp, err := serverHelper.GetServers()
+			var err error
+			serverHelper, err = helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
-				_ = resp.Body.Close()
+				_ = serverHelper.StopServer()
 			}()
 
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			servers, ok := response["servers"].(map[string]interface{})
-			Expect(ok).To(BeTrue())
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(2, 10*time.Second)
+			Expect(servers).NotTo(BeEmpty())
 			Expect(servers).To(HaveLen(2)) // Development has 2 servers
 		})
 
 		It("should sync from a specific tag", func() {
-			Skip("Server integration pending - demonstrates tag testing")
-
 			configFile = helpers.WriteConfigYAML(tempDir, "tag-registry", "git", map[string]string{
-				"url":         testRepo.CloneURL,
+				"repository":  testRepo.CloneURL,
 				"path":        "registry.json",
 				"tag":         "v1.0.0",
 				"storagePath": storageDir,
 			})
 
-			serverHelper = helpers.NewServerTestHelper(ctx, configFile, 8084, storageDir)
-			serverHelper.WaitForServerReady(30)
-
-			// Verify we got the tagged version (1 server)
-			resp, err := serverHelper.GetServers()
+			var err error
+			serverHelper, err = helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
-				_ = resp.Body.Close()
+				_ = serverHelper.StopServer()
 			}()
 
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			servers, ok := response["servers"].(map[string]interface{})
-			Expect(ok).To(BeTrue())
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(1, 10*time.Second)
 			Expect(servers).To(HaveLen(1)) // Tagged version has 1 server
 		})
 	})
 
 	Context("Nested File Paths", func() {
 		It("should load registry from nested directory in repository", func() {
-			Skip("Server integration pending - demonstrates nested path testing")
-
 			testRepo = gitHelper.CreateRepository("nested-path-repo")
 
 			// Commit registry to nested path
@@ -184,67 +148,60 @@ var _ = Describe("Git Source Integration", Label("git"), func() {
 			gitHelper.CommitRegistryData(testRepo, "configs/prod/registry.json", testServers, "Nested registry")
 
 			configFile = helpers.WriteConfigYAML(tempDir, "nested-registry", "git", map[string]string{
-				"url":         testRepo.CloneURL,
+				"repository":  testRepo.CloneURL,
 				"path":        "configs/prod/registry.json",
 				"branch":      "main",
 				"storagePath": storageDir,
 			})
 
-			serverHelper = helpers.NewServerTestHelper(ctx, configFile, 8085, storageDir)
-			serverHelper.WaitForServerReady(30)
-
-			resp, err := serverHelper.GetServers()
+			var err error
+			serverHelper, err = helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
-				_ = resp.Body.Close()
+				_ = serverHelper.StopServer()
 			}()
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(len(helpers.CreateOriginalTestServers()), 10*time.Second)
+			Expect(servers).NotTo(BeEmpty())
 		})
 	})
 
 	Context("Automatic Sync", func() {
 		It("should automatically re-sync when Git repository is updated", func() {
-			Skip("Automatic sync testing - demonstrates periodic sync validation")
-
 			testRepo = gitHelper.CreateRepository("auto-sync-repo")
 			initialServers := helpers.CreateOriginalTestServers()
 			gitHelper.CommitRegistryData(testRepo, "registry.json", initialServers, "Initial commit")
 
 			// Start server with short sync interval
 			configFile = helpers.WriteConfigYAML(tempDir, "auto-sync-registry", "git", map[string]string{
-				"url":          testRepo.CloneURL,
+				"repository":   testRepo.CloneURL,
 				"path":         "registry.json",
 				"branch":       "main",
-				"storagePath":  storageDir,
 				"syncInterval": "5s",
 			})
 
-			serverHelper = helpers.NewServerTestHelper(ctx, configFile, 8086, storageDir)
-			serverHelper.WaitForServerReady(30)
+			var err error
+			serverHelper, err = helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = serverHelper.StopServer()
+			}()
+
+			serverHelper.WaitForServerReady(10 * time.Second)
 
 			// Update the repository
 			updatedServers := helpers.CreateUpdatedTestServers()
 			gitHelper.UpdateRegistryData(testRepo, "registry.json", updatedServers, "Update registry")
 
-			// Wait for automatic re-sync (should happen within sync interval)
-			Eventually(func() int {
-				resp, err := serverHelper.GetServers()
-				if err != nil {
-					return 0
-				}
-				defer func() {
-					_ = resp.Body.Close()
-				}()
-
-				body, _ := io.ReadAll(resp.Body)
-				var response map[string]interface{}
-				_ = json.Unmarshal(body, &response)
-
-				if servers, ok := response["servers"].(map[string]interface{}); ok {
-					return len(servers)
-				}
-				return 0
-			}, 15).Should(Equal(2), "Should detect repository update and re-sync")
+			// Wait for automatic re-sync (sync interval 5s + cache 1s + buffer)
+			servers := serverHelper.WaitForServers(2, 8*time.Second)
+			Expect(servers).NotTo(BeEmpty())
+			Expect(servers).To(HaveLen(2))
 		})
 	})
 })

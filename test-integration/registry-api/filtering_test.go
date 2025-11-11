@@ -2,8 +2,6 @@ package integration
 
 import (
 	"encoding/json"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -123,39 +121,17 @@ var _ = Describe("Registry Filtering", Label("filtering"), func() {
 					NameInclude: []string{"production-*", "dev-*"},
 				})
 
-			serverHelper := helpers.NewServerTestHelper(ctx, configFile, 8095, storageDir)
-			err := serverHelper.StartServer()
+			serverHelper, err := helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
 				_ = serverHelper.StopServer()
 			}()
 
-			serverHelper.WaitForServerReady(30)
-
-			// Wait a bit for the initial sync to complete
-			// The server starts immediately but sync runs in background
-			time.Sleep(2 * time.Second)
-
+			serverHelper.WaitForServerReady(10 * time.Second)
 			// Verify filtering applied - should include only production-server and dev-server
-			resp, err := serverHelper.GetServers()
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Verify the API returns filtered servers
-			servers, ok := response["servers"].([]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(servers).To(HaveLen(2)) // Only production-server and dev-server
+			servers := serverHelper.WaitForServers(2, 10*time.Second)
 
 			serverNames := extractServerNames(servers)
 			Expect(serverNames).To(ContainElement("production-server"))
@@ -176,37 +152,16 @@ var _ = Describe("Registry Filtering", Label("filtering"), func() {
 					NameExclude: []string{"test-*"},
 				})
 
-			serverHelper := helpers.NewServerTestHelper(ctx, configFile, 8096, storageDir)
-			err := serverHelper.StartServer()
+			serverHelper, err := helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
 				_ = serverHelper.StopServer()
 			}()
 
-			serverHelper.WaitForServerReady(30)
-
-			// Wait a bit for the initial sync to complete
-			time.Sleep(2 * time.Second)
-
-			// Verify filtering applied - should exclude test-server-alpha and test-server-beta
-			resp, err := serverHelper.GetServers()
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			servers, ok := response["servers"].([]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(servers).To(HaveLen(3)) // production-server, dev-server, stable-server
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(3, 10*time.Second)
 
 			serverNames := extractServerNames(servers)
 			Expect(serverNames).To(ContainElement("production-server"))
@@ -229,37 +184,16 @@ var _ = Describe("Registry Filtering", Label("filtering"), func() {
 					NameExclude: []string{"test-*", "dev-*"}, // Exclude test and dev servers
 				})
 
-			serverHelper := helpers.NewServerTestHelper(ctx, configFile, 8097, storageDir)
-			err := serverHelper.StartServer()
+			serverHelper, err := helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
 				_ = serverHelper.StopServer()
 			}()
 
-			serverHelper.WaitForServerReady(30)
-
-			// Wait a bit for the initial sync to complete
-			time.Sleep(2 * time.Second)
-
-			// Verify filtering applied - should only include production-server and stable-server
-			resp, err := serverHelper.GetServers()
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			servers, ok := response["servers"].([]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(servers).To(HaveLen(2)) // Only production-server and stable-server
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(2, 10*time.Second)
 
 			serverNames := extractServerNames(servers)
 			Expect(serverNames).To(ContainElement("production-server"))
@@ -283,38 +217,16 @@ var _ = Describe("Registry Filtering", Label("filtering"), func() {
 					TagInclude: []string{"production", "testing"},
 				})
 
-			serverHelper := helpers.NewServerTestHelper(ctx, configFile, 8098, storageDir)
-			err := serverHelper.StartServer()
+			serverHelper, err := helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
 				_ = serverHelper.StopServer()
 			}()
 
-			serverHelper.WaitForServerReady(30)
-
-			// Wait a bit for the initial sync to complete
-			time.Sleep(2 * time.Second)
-
-			// Verify filtering applied - should include servers with production or testing tags
-			resp, err := serverHelper.GetServers()
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Should include production-server, stable-server, test-server-alpha, test-server-beta
-			servers, ok := response["servers"].([]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(servers).To(HaveLen(4))
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(4, 10*time.Second)
 
 			serverNames := extractServerNames(servers)
 			Expect(serverNames).To(ContainElement("production-server"))
@@ -336,37 +248,16 @@ var _ = Describe("Registry Filtering", Label("filtering"), func() {
 					TagExclude: []string{"experimental", "unstable"},
 				})
 
-			serverHelper := helpers.NewServerTestHelper(ctx, configFile, 8099, storageDir)
-			err := serverHelper.StartServer()
+			serverHelper, err := helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
 				_ = serverHelper.StopServer()
 			}()
 
-			serverHelper.WaitForServerReady(30)
-
-			// Wait a bit for the initial sync to complete
-			time.Sleep(2 * time.Second)
-
-			// Verify filtering applied - should exclude test-server-alpha and dev-server
-			resp, err := serverHelper.GetServers()
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			servers, ok := response["servers"].([]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(servers).To(HaveLen(3)) // production-server, test-server-beta, stable-server
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(3, 10*time.Second)
 
 			serverNames := extractServerNames(servers)
 			Expect(serverNames).To(ContainElement("production-server"))
@@ -389,39 +280,16 @@ var _ = Describe("Registry Filtering", Label("filtering"), func() {
 					TagExclude: []string{"experimental"},
 				})
 
-			serverHelper := helpers.NewServerTestHelper(ctx, configFile, 8100, storageDir)
-			err := serverHelper.StartServer()
+			serverHelper, err := helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
 				_ = serverHelper.StopServer()
 			}()
 
-			serverHelper.WaitForServerReady(30)
-
-			// Wait a bit for the initial sync to complete
-			time.Sleep(2 * time.Second)
-
-			// Verify filtering applied
-			resp, err := serverHelper.GetServers()
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Should include production-server, stable-server, test-server-beta
-			// Should exclude test-server-alpha (experimental) and dev-server (no production/testing tag)
-			servers, ok := response["servers"].([]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(servers).To(HaveLen(3))
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(3, 10*time.Second)
 
 			serverNames := extractServerNames(servers)
 			Expect(serverNames).To(ContainElement("production-server"))
@@ -447,38 +315,16 @@ var _ = Describe("Registry Filtering", Label("filtering"), func() {
 					TagExclude:  []string{"experimental"},
 				})
 
-			serverHelper := helpers.NewServerTestHelper(ctx, configFile, 8101, storageDir)
-			err := serverHelper.StartServer()
+			serverHelper, err := helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
 				_ = serverHelper.StopServer()
 			}()
 
-			serverHelper.WaitForServerReady(30)
-
-			// Wait a bit for the initial sync to complete
-			time.Sleep(2 * time.Second)
-
-			// Verify filtering applied
-			resp, err := serverHelper.GetServers()
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Should only include production-server and stable-server
-			servers, ok := response["servers"].([]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(servers).To(HaveLen(2))
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(2, 10*time.Second)
 
 			serverNames := extractServerNames(servers)
 			Expect(serverNames).To(ContainElement("production-server"))
@@ -517,36 +363,16 @@ var _ = Describe("Registry Filtering", Label("filtering"), func() {
 					TagInclude: []string{"nonexistent-tag"},
 				})
 
-			serverHelper := helpers.NewServerTestHelper(ctx, configFile, 8102, storageDir)
-			err := serverHelper.StartServer()
+			serverHelper, err := helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
 				_ = serverHelper.StopServer()
 			}()
 
-			serverHelper.WaitForServerReady(30)
-
-			// Wait a bit for the initial sync to complete
-			time.Sleep(2 * time.Second)
-
-			resp, err := serverHelper.GetServers()
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Should return empty list
-			servers, ok := response["servers"].([]interface{})
-			Expect(ok).To(BeTrue())
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(0, 12*time.Second)
 			Expect(servers).To(BeEmpty())
 		})
 
@@ -563,50 +389,17 @@ var _ = Describe("Registry Filtering", Label("filtering"), func() {
 					NameExclude: []string{"production-*"},
 				})
 
-			serverHelper := helpers.NewServerTestHelper(ctx, configFile, 8103, storageDir)
-			err := serverHelper.StartServer()
+			serverHelper, err := helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
 				_ = serverHelper.StopServer()
 			}()
 
-			serverHelper.WaitForServerReady(30)
-
-			// Wait a bit for the initial sync to complete
-			time.Sleep(2 * time.Second)
-
-			resp, err := serverHelper.GetServers()
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Exclude takes precedence - should return empty list
-			servers, ok := response["servers"].([]interface{})
-			Expect(ok).To(BeTrue())
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(0, 12*time.Second)
 			Expect(servers).To(BeEmpty())
 		})
 	})
 })
-
-// extractServerNames extracts server names from the API response servers list
-func extractServerNames(servers []interface{}) []string {
-	names := make([]string, 0, len(servers))
-	for _, s := range servers {
-		if serverMap, ok := s.(map[string]interface{}); ok {
-			if name, ok := serverMap["name"].(string); ok {
-				names = append(names, name)
-			}
-		}
-	}
-	return names
-}

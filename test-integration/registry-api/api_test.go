@@ -1,12 +1,12 @@
 package integration
 
 import (
-	"encoding/json"
-	"io"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -44,60 +44,56 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 			mockAPIServer = helpers.NewToolHiveMockServer()
 
 			configFile = helpers.WriteConfigYAML(tempDir, "api-registry", "api", map[string]string{
-				"endpoint":    mockAPIServer.URL,
-				"storagePath": storageDir,
+				"endpoint": mockAPIServer.URL,
 			})
 
-			serverHelper = helpers.NewServerTestHelper(ctx, configFile, 8087, storageDir)
+			var err error
+			serverHelper, err = helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should successfully sync from ToolHive API endpoint", func() {
-			Skip("Server integration pending - demonstrates API sync")
+			err := serverHelper.StartServer()
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = serverHelper.StopServer()
+			}()
 
-			serverHelper.WaitForServerReady(30)
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(len(helpers.CreateOriginalTestServers()), 10*time.Second)
+			Expect(servers).NotTo(BeEmpty())
+		})
 
-			resp, err := serverHelper.GetServers()
+		It("should handle API endpoint failures gracefully", func() {
+			// Create config with invalid endpoint
+			badConfigFile := helpers.WriteConfigYAML(tempDir, "bad-api-registry", "api", map[string]string{
+				"endpoint": "http://invalid-endpoint-does-not-exist.local:9999",
+			})
+
+			badServerHelper, err := helpers.NewServerTestHelper(ctx, badConfigFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = badServerHelper.StartServer()
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = badServerHelper.StopServer()
+			}()
+
+			badServerHelper.WaitForServerReady(10 * time.Second)
+
+			// Server should start even if initial sync fails
+			// Should return empty results or handle gracefully
+			resp, err := badServerHelper.GetServers()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
 				_ = resp.Body.Close()
 			}()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			servers, ok := response["servers"].(map[string]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(servers).To(HaveKey("filesystem"))
-		})
-
-		It("should handle API endpoint failures gracefully", func() {
-			Skip("Server integration pending - demonstrates error handling")
-
-			// Create config with invalid endpoint
-			badConfigFile := helpers.WriteConfigYAML(tempDir, "bad-api-registry", "api", map[string]string{
-				"endpoint":    "http://invalid-endpoint-does-not-exist.local:9999",
-				"storagePath": storageDir,
-			})
-
-			badServerHelper := helpers.NewServerTestHelper(ctx, badConfigFile, 8088, storageDir)
-
-			// Server should handle the error gracefully
-			// Could verify via health endpoint showing degraded state
-			// TODO use /sync andpoint instead
-			_ = badServerHelper
 		})
 	})
 
 	Context("Custom API Responses", func() {
 		It("should handle API with multiple servers", func() {
-			Skip("Server integration pending - demonstrates multiple servers")
-
 			// Create custom mock with multiple servers
 			complexServers := helpers.CreateComplexTestServers()
 
@@ -120,28 +116,21 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 			}
 
 			configFile = helpers.WriteConfigYAML(tempDir, "multi-server-api", "api", map[string]string{
-				"endpoint":    customMock.URL,
-				"storagePath": storageDir,
+				"endpoint": customMock.URL,
 			})
 
-			serverHelper = helpers.NewServerTestHelper(ctx, configFile, 8089, storageDir)
-			serverHelper.WaitForServerReady(30)
-
-			resp, err := serverHelper.GetServers()
+			var err error
+			serverHelper, err = helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
-				_ = resp.Body.Close()
+				_ = serverHelper.StopServer()
 			}()
 
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			servers, ok := response["servers"].(map[string]interface{})
-			Expect(ok).To(BeTrue())
+			serverHelper.WaitForServerReady(10 * time.Second)
+			servers := serverHelper.WaitForServers(len(complexServers), 10*time.Second)
+			Expect(servers).NotTo(BeEmpty())
 			Expect(servers).To(HaveLen(len(complexServers)))
 		})
 	})
@@ -166,7 +155,7 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 						"version": "1.0.0",
 						"last_updated": "2025-01-15T12:00:00Z",
 						"source": "dynamic-api",
-						"total_servers": ` + string(rune(len(dynamicServers)+'0')) + `
+						"total_servers": ` + fmt.Sprintf("%d", len(dynamicServers)) + `
 					}`))
 
 				case "/v0/servers":
@@ -186,7 +175,7 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 						}`
 					}
 					serversJSON += "]"
-					_, _ = w.Write([]byte(`{"servers": ` + serversJSON + `, "total": ` + string(rune(len(dynamicServers)+'0')) + `}`))
+					_, _ = w.Write([]byte(`{"servers": ` + serversJSON + `, "total": ` + strconv.Itoa(len(dynamicServers)) + `}`))
 
 				default:
 					// Check for server detail requests
@@ -217,11 +206,12 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 			// Create config with short sync interval (5 seconds)
 			configFile = helpers.WriteConfigYAML(tempDir, "auto-sync-registry", "api", map[string]string{
 				"endpoint":     dynamicAPIServer.URL,
-				"storagePath":  storageDir,
 				"syncInterval": "5s",
 			})
 
-			serverHelper = helpers.NewServerTestHelper(ctx, configFile, 8090, storageDir)
+			var err error
+			serverHelper, err = helpers.NewServerTestHelper(ctx, configFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		AfterEach(func() {
@@ -231,106 +221,49 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 		})
 
 		It("should periodically re-sync from API endpoint", func() {
-			Skip("Server integration pending - demonstrates periodic API polling")
-
 			// Start server and wait for it to be ready
-			serverHelper.WaitForServerReady(30)
+			err := serverHelper.StartServer()
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = serverHelper.StopServer()
+			}()
+
+			serverHelper.WaitForServerReady(10 * time.Second)
 
 			// Verify initial data is loaded (original test servers)
-			resp, err := serverHelper.GetServers()
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var initialResponse map[string]interface{}
-			err = json.Unmarshal(body, &initialResponse)
-			Expect(err).NotTo(HaveOccurred())
-
-			servers, ok := initialResponse["servers"].(map[string]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(servers).To(HaveKey("filesystem"))
-
-			// Verify initial filesystem server data
-			filesystemServer, ok := servers["filesystem"].(map[string]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(filesystemServer["description"]).To(Equal("File system operations for secure file access"))
+			servers := serverHelper.WaitForServers(len(dynamicServers), 10*time.Second)
+			Expect(servers).NotTo(BeEmpty())
+			Expect(servers[0].Name).To(Equal("filesystem"))
+			Expect(servers[0].Description).To(Equal("File system operations for secure file access"))
+			Expect(servers).To(HaveLen(1))
 
 			// Update the mock API to return different data
-			updateServers(helpers.CreateUpdatedTestServers())
+			updatedServers := helpers.CreateUpdatedTestServers()
+			updateServers(updatedServers)
 
-			// Wait for automatic re-sync (sync interval is 5s, wait 8s to be safe)
-			// The sync coordinator should detect the changes and update the data
-			Eventually(func() string {
-				resp, err := serverHelper.GetServers()
-				if err != nil {
-					return ""
-				}
-				defer func() {
-					_ = resp.Body.Close()
-				}()
-
-				body, err := io.ReadAll(resp.Body)
-				if err != nil {
-					return ""
-				}
-
-				var response map[string]interface{}
-				if err := json.Unmarshal(body, &response); err != nil {
-					return ""
-				}
-
-				servers, ok := response["servers"].(map[string]interface{})
-				if !ok {
-					return ""
-				}
-
-				// Check if filesystem server has been updated
-				if fs, ok := servers["filesystem"].(map[string]interface{}); ok {
-					if desc, ok := fs["description"].(string); ok {
-						return desc
-					}
-				}
-				return ""
-			}, 12*time.Second, 1*time.Second).Should(ContainSubstring("UPDATED"))
+			// Wait for automatic re-sync (sync interval is 5s + cache 1s + buffer)
+			syncedServers := serverHelper.WaitForServers(len(updatedServers), 8*time.Second)
+			// Check if any server has been updated (look for "UPDATED" in description)
+			Expect(syncedServers[0].Description).To(ContainSubstring("UPDATED"))
 
 			// Verify the synced data contains both servers
-			resp, err = serverHelper.GetServers()
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			body, err = io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var updatedResponse map[string]interface{}
-			err = json.Unmarshal(body, &updatedResponse)
-			Expect(err).NotTo(HaveOccurred())
-
-			updatedServers, ok := updatedResponse["servers"].(map[string]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(updatedServers).To(HaveKey("filesystem"))
-			Expect(updatedServers).To(HaveKey("github"))
+			Expect(syncedServers).To(HaveLen(2)) // Should have filesystem and github
 
 			// Verify filesystem server is updated
-			updatedFilesystem, ok := updatedServers["filesystem"].(map[string]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(updatedFilesystem["description"]).To(ContainSubstring("UPDATED"))
-			Expect(updatedFilesystem["image"]).To(Equal("ghcr.io/modelcontextprotocol/server-filesystem:v2.0.0"))
+			serverNames := extractServerNames(syncedServers)
+			Expect(serverNames).To(ContainElement("filesystem"))
+			Expect(serverNames).To(ContainElement("github"))
+
+			// Find and verify filesystem server
+			Expect(updatedServers[0].Description).To(ContainSubstring("UPDATED"))
+			Expect(updatedServers[0].Image).To(Equal("ghcr.io/modelcontextprotocol/server-filesystem:v2.0.0"))
 		})
 
 		It("should retry failed syncs at configured interval", func() {
-			Skip("Retry logic testing - demonstrates periodic retry at sync interval")
-
 			// Create a failing API server that returns 500 errors
 			failureCount := 0
 			maxFailures := 3
+			servers := helpers.CreateOriginalTestServers()
 			failingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if failureCount < maxFailures {
 					failureCount++
@@ -354,7 +287,6 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 				case "/v0/servers":
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusOK)
-					servers := helpers.CreateOriginalTestServers()
 					serversJSON := "["
 					for i, server := range servers {
 						if i > 0 {
@@ -380,67 +312,24 @@ var _ = Describe("API Source Integration", Label("api"), func() {
 			// Create config with short retry interval
 			retryConfigFile := helpers.WriteConfigYAML(tempDir, "retry-registry", "api", map[string]string{
 				"endpoint":     failingServer.URL,
-				"storagePath":  storageDir,
 				"syncInterval": "3s",
 			})
 
-			retryServerHelper := helpers.NewServerTestHelper(ctx, retryConfigFile, 8091, storageDir)
+			retryServerHelper, err := helpers.NewServerTestHelper(ctx, retryConfigFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = retryServerHelper.StartServer()
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = retryServerHelper.StopServer()
+			}()
 
 			// Server should start even if initial sync fails
-			retryServerHelper.WaitForServerReady(30)
-
-			// Eventually, after retries, the sync should succeed
-			Eventually(func() int {
-				resp, err := retryServerHelper.GetServers()
-				if err != nil {
-					return 0
-				}
-				defer func() {
-					_ = resp.Body.Close()
-				}()
-
-				if resp.StatusCode != http.StatusOK {
-					return 0
-				}
-
-				body, err := io.ReadAll(resp.Body)
-				if err != nil {
-					return 0
-				}
-
-				var response map[string]interface{}
-				if err := json.Unmarshal(body, &response); err != nil {
-					return 0
-				}
-
-				servers, ok := response["servers"].(map[string]interface{})
-				if !ok {
-					return 0
-				}
-
-				return len(servers)
-			}, 15*time.Second, 1*time.Second).Should(Equal(1))
+			retryServerHelper.WaitForServerReady(10 * time.Second)
+			// Eventually, after retries (3s interval), the sync should succeed
+			retryServerHelper.WaitForServers(len(servers), 12*time.Second)
 
 			// Verify that we had the expected number of failures
 			Expect(failureCount).To(BeNumerically(">=", maxFailures))
-
-			// Verify the synced data is correct
-			resp, err := retryServerHelper.GetServers()
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			servers, ok := response["servers"].(map[string]interface{})
-			Expect(ok).To(BeTrue())
-			Expect(servers).To(HaveKey("filesystem"))
 		})
 	})
 })

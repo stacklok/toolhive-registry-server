@@ -2,10 +2,10 @@ package integration
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -47,13 +47,13 @@ var _ = Describe("File Source Integration", Label("file"), func() {
 
 		// Create config file
 		configFile = helpers.WriteConfigYAML(tempDir, "test-registry", "file", map[string]string{
-			"path":        registryFile,
-			"storagePath": storageDir,
+			"path": registryFile,
 		})
 
 		// Note: Actual server startup would happen here in a real implementation
 		// For now, we're creating the helper to demonstrate the pattern
-		serverHelper = helpers.NewServerTestHelper(ctx, configFile, 8080, storageDir)
+		serverHelper, err = helpers.NewServerTestHelper(ctx, configFile, storageDir)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterEach(func() {
@@ -62,49 +62,47 @@ var _ = Describe("File Source Integration", Label("file"), func() {
 
 	Context("Loading from Local File", func() {
 		It("should successfully load registry data from a file", func() {
-			Skip("Server integration pending - demonstrates test structure")
-
-			// This demonstrates what the test would do:
-			// 1. Start the registry server with file source config
-			// 2. Wait for server to be ready
-			serverHelper.WaitForServerReady(30)
-
-			// 3. Query the API to verify data was loaded
-			resp, err := serverHelper.GetServers()
+			// Start the registry server with file source config
+			err := serverHelper.StartServer()
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
-				_ = resp.Body.Close()
+				_ = serverHelper.StopServer()
 			}()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			// Wait for server to be ready
+			serverHelper.WaitForServerReady(10 * time.Second)
 
-			// 4. Verify the response contains expected servers
-			body, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-
-			var response map[string]interface{}
-			err = json.Unmarshal(body, &response)
-			Expect(err).NotTo(HaveOccurred())
-
-			servers, ok := response["servers"].(map[string]interface{})
-			Expect(ok).To(BeTrue())
+			// Wait for sync to complete and verify data was loaded
+			servers := serverHelper.WaitForServers(len(testServers), 10*time.Second)
+			Expect(servers).NotTo(BeEmpty())
 			Expect(servers).To(HaveLen(len(testServers)))
 		})
 
 		It("should handle missing file gracefully", func() {
-			Skip("Server integration pending - demonstrates test structure")
-
 			// Create config pointing to non-existent file
 			badConfigFile := helpers.WriteConfigYAML(tempDir, "bad-registry", "file", map[string]string{
 				"path":        "/nonexistent/registry.json",
 				"storagePath": storageDir,
 			})
 
-			badServerHelper := helpers.NewServerTestHelper(ctx, badConfigFile, 8081, storageDir)
+			badServerHelper, err := helpers.NewServerTestHelper(ctx, badConfigFile, storageDir)
+			Expect(err).NotTo(HaveOccurred())
+			err = badServerHelper.StartServer()
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = badServerHelper.StopServer()
+			}()
 
-			// Server should fail to start or return error status
-			// This would be verified by checking health endpoint or startup errors
-			_ = badServerHelper // Use variable to avoid compiler error
+			badServerHelper.WaitForServerReady(10 * time.Second)
+
+			// Server should start but return empty results since file doesn't exist
+			resp, err := badServerHelper.GetServers()
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = resp.Body.Close()
+			}()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 		})
 
 		It("should validate against path traversal attacks", func() {
@@ -115,19 +113,6 @@ var _ = Describe("File Source Integration", Label("file"), func() {
 			// - Attempt to load from ../../etc/passwd
 			// - Attempt to load from absolute paths outside allowed directories
 			// - Verify proper path cleaning and validation
-		})
-	})
-
-	Context("File Updates", func() {
-		It("should detect file changes when file watching is enabled", func() {
-			Skip("File watching not yet implemented - future enhancement")
-
-			// This would test:
-			// 1. Start server with file source
-			// 2. Verify initial data loaded
-			// 3. Modify the registry file
-			// 4. Wait for automatic reload
-			// 5. Verify API returns updated data
 		})
 	})
 })

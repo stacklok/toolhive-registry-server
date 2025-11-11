@@ -2,9 +2,14 @@ package helpers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"math/rand"
+	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/onsi/gomega"
@@ -12,6 +17,71 @@ import (
 	registryapp "github.com/stacklok/toolhive-registry-server/pkg/app"
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 )
+
+var (
+	// portAllocator tracks allocated ports to avoid conflicts
+	portAllocator = &PortAllocator{
+		allocatedPorts: make(map[int]bool),
+	}
+)
+
+// PortAllocator manages port allocation for tests
+type PortAllocator struct {
+	mu             sync.Mutex
+	allocatedPorts map[int]bool
+}
+
+// AllocatePort finds and reserves an available port in the range 8000-9000
+func (pa *PortAllocator) AllocatePort() (int, error) {
+	pa.mu.Lock()
+	defer pa.mu.Unlock()
+
+	const (
+		minPort    = 8000
+		maxPort    = 9000
+		maxRetries = 100
+	)
+
+	// Using math/rand is acceptable here as we're only generating random port numbers for testing,
+	// not cryptographic material. This is more efficient than crypto/rand for this purpose.
+	//nolint:gosec // G404: Non-cryptographic random number generation is sufficient for test port allocation
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	for i := 0; i < maxRetries; i++ {
+		port := minPort + rng.Intn(maxPort-minPort+1)
+
+		// Skip if already allocated
+		if pa.allocatedPorts[port] {
+			continue
+		}
+
+		// Check if port is actually available
+		if isPortAvailable(port) {
+			pa.allocatedPorts[port] = true
+			return port, nil
+		}
+	}
+
+	return 0, fmt.Errorf("failed to allocate available port after %d retries", maxRetries)
+}
+
+// ReleasePort releases a previously allocated port
+func (pa *PortAllocator) ReleasePort(port int) {
+	pa.mu.Lock()
+	defer pa.mu.Unlock()
+	delete(pa.allocatedPorts, port)
+}
+
+// isPortAvailable checks if a port is available for binding
+func isPortAvailable(port int) bool {
+	addr := fmt.Sprintf(":%d", port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return false
+	}
+	_ = listener.Close()
+	return true
+}
 
 // ServerTestHelper manages the registry API server lifecycle for testing
 type ServerTestHelper struct {
@@ -24,8 +94,13 @@ type ServerTestHelper struct {
 	port       int
 }
 
-// NewServerTestHelper creates a new server test helper
-func NewServerTestHelper(ctx context.Context, configPath string, port int, dataDir string) *ServerTestHelper {
+// NewServerTestHelper creates a new server test helper with automatic port allocation
+func NewServerTestHelper(ctx context.Context, configPath string, dataDir string) (*ServerTestHelper, error) {
+	port, err := portAllocator.AllocatePort()
+	if err != nil {
+		return nil, fmt.Errorf("failed to allocate port: %w", err)
+	}
+
 	return &ServerTestHelper{
 		ctx:        ctx,
 		configPath: configPath,
@@ -35,7 +110,7 @@ func NewServerTestHelper(ctx context.Context, configPath string, port int, dataD
 		},
 		dataDir: dataDir,
 		port:    port,
-	}
+	}, nil
 }
 
 // StartServer starts the registry API server programmatically
@@ -50,6 +125,7 @@ func (s *ServerTestHelper) StartServer() error {
 	app, err := registryapp.NewRegistryAppBuilder(cfg).
 		WithAddress(fmt.Sprintf(":%d", s.port)).
 		WithDataDirectory(s.dataDir).
+		WithCacheDuration(1 * time.Second).
 		Build(s.ctx)
 	if err != nil {
 		return fmt.Errorf("failed to build app: %w", err)
@@ -69,12 +145,15 @@ func (s *ServerTestHelper) StartServer() error {
 	return nil
 }
 
-// StopServer gracefully stops the registry API server
+// StopServer gracefully stops the registry API server and releases the port
 func (s *ServerTestHelper) StopServer() error {
+	var err error
 	if s.app != nil {
-		return s.app.Stop(5 * time.Second)
+		err = s.app.Stop(5 * time.Second)
 	}
-	return nil
+	// Always release the port, even if stop failed
+	portAllocator.ReleasePort(s.port)
+	return err
 }
 
 // WaitForServerReady waits for the server to be ready to accept requests
@@ -92,6 +171,36 @@ func (s *ServerTestHelper) WaitForServerReady(timeout time.Duration) {
 		}
 		return nil
 	}, timeout, 500*time.Millisecond).Should(gomega.Succeed(), "Server should be ready")
+}
+
+// WaitForServers waits for the server to sync and return the expected number of servers
+func (s *ServerTestHelper) WaitForServers(expectedCount int, timeout time.Duration) []RegistryServer {
+	var servers []RegistryServer
+	gomega.Eventually(func() []RegistryServer {
+		resp, err := s.GetServers()
+		if err != nil {
+			return make([]RegistryServer, 0)
+		}
+		defer func() {
+			_ = resp.Body.Close()
+		}()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return make([]RegistryServer, 0)
+		}
+
+		var response struct {
+			Servers []RegistryServer `json:"servers"`
+		}
+		if err := json.Unmarshal(body, &response); err != nil {
+			return make([]RegistryServer, 0)
+		}
+		servers = response.Servers
+		return servers
+	}, timeout, 500*time.Millisecond).Should(gomega.HaveLen(expectedCount),
+		fmt.Sprintf("Server should have synced %d servers", expectedCount))
+	return servers
 }
 
 // GetServers makes a GET request to /v0/servers
@@ -138,7 +247,13 @@ func WriteConfigYAML(dir, registryName, sourceType string, sourceConfig map[stri
 }
 
 // WriteConfigYAMLWithOptions writes a YAML configuration file with optional filter configuration
-func WriteConfigYAMLWithOptions(dir, registryName, sourceType string, sourceConfig map[string]string, filterOpts *FilterOptions) string {
+//
+//nolint:gocyclo,cyclop
+func WriteConfigYAMLWithOptions(
+	dir, registryName, sourceType string,
+	sourceConfig map[string]string,
+	filterOpts *FilterOptions,
+) string {
 	// Default to toolhive format if not specified
 	format := sourceConfig["format"]
 	if format == "" {
@@ -156,9 +271,9 @@ source:
 	switch sourceType {
 	case "git":
 		configContent += fmt.Sprintf(`  git:
-    url: %s
+    repository: %s
     path: %s
-`, sourceConfig["url"], sourceConfig["path"])
+`, sourceConfig["repository"], sourceConfig["path"])
 		if branch, ok := sourceConfig["branch"]; ok {
 			configContent += fmt.Sprintf(`    branch: %s
 `, branch)
@@ -193,11 +308,10 @@ syncPolicy:
 `
 	}
 
-	// Note: storagePath is handled via WithDataDirectory() in the app builder,
-	// not as a config file field
-
 	// Add filter configuration if provided
-	if filterOpts != nil && (len(filterOpts.NameInclude) > 0 || len(filterOpts.NameExclude) > 0 || len(filterOpts.TagInclude) > 0 || len(filterOpts.TagExclude) > 0) {
+	if filterOpts != nil &&
+		(len(filterOpts.NameInclude) > 0 || len(filterOpts.NameExclude) > 0 ||
+			len(filterOpts.TagInclude) > 0 || len(filterOpts.TagExclude) > 0) {
 		configContent += `
 filter:
 `

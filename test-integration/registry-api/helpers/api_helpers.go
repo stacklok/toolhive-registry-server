@@ -1,3 +1,6 @@
+// Package helpers provides utilities for integration testing the registry API.
+// It includes mock API server builders, test data factories, and helper functions
+// for setting up and verifying test scenarios.
 package helpers
 
 import (

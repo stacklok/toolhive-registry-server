@@ -10,6 +10,8 @@ import (
 	. "github.com/onsi/gomega"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	"github.com/stacklok/toolhive-registry-server/test-integration/registry-api/helpers"
 )
 
 var (
@@ -17,6 +19,9 @@ var (
 	cancel context.CancelFunc
 )
 
+// Integration Tests should not run in parallel
+//
+//nolint:paralleltest
 func TestRegistryAPIIntegration(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Registry API Integration Suite")
@@ -44,4 +49,13 @@ func cleanupTempDir(dir string) {
 	if err := os.RemoveAll(dir); err != nil {
 		By(fmt.Sprintf("Warning: failed to cleanup temp dir %s: %v", dir, err))
 	}
+}
+
+// extractServerNames extracts server names from the API response servers list
+func extractServerNames(servers []helpers.RegistryServer) []string {
+	names := make([]string, 0, len(servers))
+	for _, s := range servers {
+		names = append(names, s.Name)
+	}
+	return names
 }

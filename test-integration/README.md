@@ -142,10 +142,23 @@ defer mockServer.Close()
 ### Server Helper (`helpers/server_helpers.go`)
 
 ```go
-serverHelper := helpers.NewServerTestHelper(ctx, configPath, 8080)
+// Create server helper with auto-allocated port
+serverHelper, err := helpers.NewServerTestHelper(ctx, configPath, storageDir)
+Expect(err).NotTo(HaveOccurred())
+
+// Start server
+err = serverHelper.StartServer()
+Expect(err).NotTo(HaveOccurred())
+defer serverHelper.StopServer()
+
+// Wait for server to be ready
 serverHelper.WaitForServerReady(30 * time.Second)
+
+// Make API requests
 resp, err := serverHelper.GetServers()
 ```
+
+**Note**: The server uses a **1-second cache duration** in tests (vs 30 seconds in production) to ensure tests can quickly observe data changes after sync operations.
 
 ## Writing New Tests
 
@@ -190,32 +203,34 @@ var _ = Describe("My New Feature", Label("feature"), func() {
 
 ### ✅ Completed
 - Test infrastructure and Ginkgo suite setup
-- Test helper utilities for all source types
-- Test file structure with comprehensive examples
+- Test helper utilities for all source types (File, Git, API)
+- Server lifecycle integration (starting/stopping with port allocation)
+- Complete end-to-end test implementations (22 passing tests)
+- Sync coordinator integration tests (periodic sync, retry logic)
+- Cache configuration for responsive test behavior
 - Taskfile integration for running tests
-
-### 🔄 In Progress
-- Server lifecycle integration (starting/stopping actual server)
-- Complete end-to-end test implementations
-- Sync coordinator integration tests
 
 ### 📋 TODO
 - CI/CD integration (GitHub Actions)
 - Test data validation helpers
 - Performance/load testing framework
 - Documentation for custom test scenarios
+- WebSocket/streaming endpoint tests (when implemented)
 
 ## Troubleshooting
 
 ### Port Conflicts
 
-Tests use ports 8080-8099. If you encounter port conflicts:
+Tests use **dynamic port allocation** in the range 8000-9000. Ports are automatically allocated to avoid conflicts. If you still encounter issues:
 ```bash
-# Check for processes using ports
-lsof -i :8080-8099
+# Check for processes using the port range
+lsof -i :8000-9000
 
-# Kill conflicting processes or modify port assignments in tests
+# Kill conflicting processes if needed
+# The test framework will automatically find available ports
 ```
+
+**Note**: Port allocation is managed by `PortAllocator` in `helpers/server_helpers.go` which tracks allocated ports and finds available ones automatically.
 
 ### Git Test Failures
 
