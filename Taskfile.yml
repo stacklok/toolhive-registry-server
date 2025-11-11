@@ -1,5 +1,15 @@
 version: '3'
 
+vars:
+  CONTAINER_RUNTIME:
+    sh: |
+      if command -v podman >/dev/null 2>&1; then
+        echo "podman"
+      else
+        echo "docker"
+      fi
+  REPO: '{{.REPO | default "ghcr.io/stacklok/toolhive-registry-server"}}'
+
 tasks:
   docs:
     desc: Regenerate the registry API documentation
@@ -82,9 +92,28 @@ tasks:
     desc: Build the registry API image with ko
     deps: [install-ko]
     env:
-      KO_DOCKER_REPO: ghcr.io/stacklok/toolhive-registry-server
+      KO_DOCKER_REPO: '{{.REPO}}'
     cmds:
       - ko build --local -B ./cmd/thv-registry-api
+
+  build-image-ubi:
+    desc: Build the registry API image with UBI base image
+    vars:
+      COMMIT:
+        sh: git rev-parse --short HEAD || echo "unknown"
+      BUILD_DATE: '{{dateInZone "2006-01-02T15:04:05Z" (now) "UTC"}}'
+      SHA:  
+        sh: git rev-parse HEAD || echo "unknown"
+    cmds:
+      - >
+        eval "{{.CONTAINER_RUNTIME}} build --load
+        -t {{.REPO}}:{{.SHA}}-ubi
+        --build-arg VERSION={{.SHA}}-ubi
+        --build-arg COMMIT={{.COMMIT}}
+        --build-arg BUILD_DATE={{.BUILD_DATE}}
+        --label name=\"toolhive-registry-api\"
+        --label vendor=\"Stacklok\"
+        --label maintainer=\"Stacklok\" ."
 
   test:
     desc: Run registry API tests
