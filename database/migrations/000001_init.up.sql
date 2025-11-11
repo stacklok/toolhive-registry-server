@@ -13,7 +13,8 @@ CREATE TABLE registry (
     name       TEXT NOT NULL,
     reg_type   registry_type NOT NULL DEFAULT 'LOCAL',
     created_at TIMESTAMPZ DEFAULT NOW(),
-    updated_at TIMESTAMPZ DEFAULT NOW()
+    updated_at TIMESTAMPZ DEFAULT NOW(),
+    UNIQUE(name)
 );
 
 -- Set of states for sync operations.
@@ -36,6 +37,8 @@ CREATE TABLE registry_sync (
     ended_at    TIMESTAMPZ
 );
 
+CREATE INDEX registry_sync_started_at_idx ON registry_sync(reg_id, started_at);
+
 -- Table of MCP servers known to our registry across all sources.
 -- Based on: https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/api/openapi.yaml
 CREATE TABLE mcp_server (
@@ -57,18 +60,6 @@ CREATE TABLE mcp_server (
     UNIQUE (name, version, reg_id)
 );
 
--- constraints:
--- transport URL for stdio should be NULL or not null otherwise.
--- runtime args must be non empty only if runtime hint is provided.
--- No headers for stdio.
-
--- Enum of support MCP transport mechanisms,
-CREATE TYPE transport AS ENUM (
-    'stdio',
-    'streamable-http',
-    'sse'
-);
-
 -- Set of downloadable artifacts to allow an MCP server to be run locally.
 CREATE TABLE mcp_server_package (
     server_id         UUID PRIMARY KEY REFERENCES mcp_server(id) ON DELETE CASCADE,
@@ -81,21 +72,15 @@ CREATE TABLE mcp_server_package (
     package_arguments TEXT[], -- Command line arguments to pass to the package.
     env_vars          TEXT[], -- Name of environment variables needed by MCP server.
     sha256_hash       TEXT, -- SHA256 hash of package file.
-    transport         transport NOT NULL,
+    transport         TEXT NOT NULL, -- expected to be one of [stdio, sse, streamable-http], validated in business logic
     transport_url     TEXT,
     transport_headers TEXT[]
-);
-
--- A subset of `transport` for remote transports only.
-CREATE TYPE remote_transport AS ENUM (
-    'streamable-http',
-    'sse'
 );
 
 -- Used to point to a remote MCP server.
 CREATE TABLE mcp_server_remote (
     server_id         UUID NOT NULL REFERENCES mcp_server(id) ON DELETE CASCADE,
-    transport         remote_transport NOT NULL,
+    transport         TEXT NOT NULL, -- expected to be one of [sse, streamable-http], validated in business logic
     transport_url     TEXT NOT NULL,
     transport_headers TEXT[],
     PRIMARY KEY (server_id, transport, transport_url)
@@ -107,7 +92,7 @@ CREATE TABLE latest_server_version (
     name             TEXT NOT NULL,
     version          TEXT NOT NULL,
     latest_server_id UUID NOT NULL REFERENCES mcp_server(id) ON DELETE CASCADE,
-    PRIMARY KEY (reg_id, name, version)
+    PRIMARY KEY (reg_id, name)
 );
 
 CREATE TYPE icon_theme AS ENUM (
