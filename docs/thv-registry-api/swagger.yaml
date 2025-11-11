@@ -1,122 +1,5 @@
 components:
   schemas:
-    github_com_stacklok_toolhive-registry-server_internal_service.DeployedServer:
-      properties:
-        endpoint_url:
-          type: string
-        image:
-          type: string
-        name:
-          type: string
-        namespace:
-          type: string
-        ready:
-          type: boolean
-        status:
-          type: string
-        transport:
-          type: string
-      type: object
-    internal_api_v0.EnvVarDetail:
-      properties:
-        default:
-          type: string
-        description:
-          type: string
-        name:
-          type: string
-        required:
-          type: boolean
-        secret:
-          type: boolean
-      type: object
-    internal_api_v0.ErrorResponse:
-      properties:
-        error:
-          type: string
-      type: object
-    internal_api_v0.ListServersResponse:
-      properties:
-        servers:
-          items:
-            $ref: '#/components/schemas/internal_api_v0.ServerSummaryResponse'
-          type: array
-          uniqueItems: false
-        total:
-          type: integer
-      type: object
-    internal_api_v0.RegistryInfoResponse:
-      properties:
-        last_updated:
-          type: string
-        source:
-          type: string
-        total_servers:
-          type: integer
-        version:
-          type: string
-      type: object
-    internal_api_v0.ServerDetailResponse:
-      properties:
-        args:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        description:
-          type: string
-        env_vars:
-          items:
-            $ref: '#/components/schemas/internal_api_v0.EnvVarDetail'
-          type: array
-          uniqueItems: false
-        image:
-          type: string
-        metadata:
-          additionalProperties: {}
-          type: object
-        name:
-          type: string
-        permissions:
-          additionalProperties: {}
-          type: object
-        repository_url:
-          type: string
-        status:
-          type: string
-        tags:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        tier:
-          type: string
-        tools:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        transport:
-          type: string
-        volumes:
-          additionalProperties: {}
-          type: object
-      type: object
-    internal_api_v0.ServerSummaryResponse:
-      properties:
-        description:
-          type: string
-        name:
-          type: string
-        status:
-          type: string
-        tier:
-          type: string
-        tools_count:
-          type: integer
-        transport:
-          type: string
-      type: object
     model.Argument:
       properties:
         choices:
@@ -333,6 +216,51 @@ components:
           example: https://api.example.com/mcp
           type: string
       type: object
+    service.DeployedServer:
+      properties:
+        endpoint_url:
+          type: string
+        image:
+          type: string
+        name:
+          type: string
+        namespace:
+          type: string
+        ready:
+          type: boolean
+        status:
+          type: string
+        transport:
+          type: string
+      type: object
+    v0.EnvVarDetail:
+      properties:
+        default:
+          type: string
+        description:
+          type: string
+        name:
+          type: string
+        required:
+          type: boolean
+        secret:
+          type: boolean
+      type: object
+    v0.ErrorResponse:
+      properties:
+        error:
+          type: string
+      type: object
+    v0.ListServersResponse:
+      properties:
+        servers:
+          items:
+            $ref: '#/components/schemas/v0.ServerSummaryResponse'
+          type: array
+          uniqueItems: false
+        total:
+          type: integer
+      type: object
     v0.Metadata:
       properties:
         count:
@@ -353,10 +281,67 @@ components:
           format: date-time
           type: string
       type: object
+    v0.RegistryInfoResponse:
+      properties:
+        last_updated:
+          type: string
+        source:
+          type: string
+        total_servers:
+          type: integer
+        version:
+          type: string
+      type: object
     v0.ResponseMeta:
       properties:
         io.modelcontextprotocol.registry/official:
           $ref: '#/components/schemas/v0.RegistryExtensions'
+      type: object
+    v0.ServerDetailResponse:
+      properties:
+        args:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        description:
+          type: string
+        env_vars:
+          items:
+            $ref: '#/components/schemas/v0.EnvVarDetail'
+          type: array
+          uniqueItems: false
+        image:
+          type: string
+        metadata:
+          additionalProperties: {}
+          type: object
+        name:
+          type: string
+        permissions:
+          additionalProperties: {}
+          type: object
+        repository_url:
+          type: string
+        status:
+          type: string
+        tags:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        tier:
+          type: string
+        tools:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        transport:
+          type: string
+        volumes:
+          additionalProperties: {}
+          type: object
       type: object
     v0.ServerJSON:
       properties:
@@ -432,6 +417,21 @@ components:
         server:
           $ref: '#/components/schemas/v0.ServerJSON'
       type: object
+    v0.ServerSummaryResponse:
+      properties:
+        description:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        tier:
+          type: string
+        tools_count:
+          type: integer
+        transport:
+          type: string
+      type: object
 externalDocs:
   description: ""
   url: ""
@@ -474,19 +474,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.RegistryInfoResponse'
+                $ref: '#/components/schemas/v0.RegistryInfoResponse'
           description: OK
         "400":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Bad Request
         "501":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Not Implemented
       summary: Get registry information
       tags:
@@ -533,19 +533,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ListServersResponse'
+                $ref: '#/components/schemas/v0.ListServersResponse'
           description: OK
         "400":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Bad Request
         "501":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Not Implemented
       summary: List all servers
       tags:
@@ -580,25 +580,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ServerDetailResponse'
+                $ref: '#/components/schemas/v0.ServerDetailResponse'
           description: OK
         "400":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Bad Request
         "404":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Not Found
         "501":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Not Implemented
       summary: Get server by name
       tags:
@@ -618,14 +618,14 @@ paths:
             application/json:
               schema:
                 items:
-                  $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.DeployedServer'
+                  $ref: '#/components/schemas/service.DeployedServer'
                 type: array
           description: OK
         "500":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Internal Server Error
       summary: List deployed servers
       tags:
@@ -653,20 +653,20 @@ paths:
             application/json:
               schema:
                 items:
-                  $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.DeployedServer'
+                  $ref: '#/components/schemas/service.DeployedServer'
                 type: array
           description: OK
         "400":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Bad Request
         "500":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Internal Server Error
       summary: Get deployed servers by registry name
       tags:
@@ -773,7 +773,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Service Unavailable
       summary: Readiness check
       tags:
@@ -954,7 +954,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                $ref: '#/components/schemas/v0.ErrorResponse'
           description: Not Implemented
       summary: Publish MCP server (Not Implemented)
       tags:
