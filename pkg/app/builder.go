@@ -233,39 +233,39 @@ func WithDeploymentProvider(provider service.DeploymentProvider) RegistryAppOpti
 
 // buildSyncComponents builds sync manager, coordinator, and related components
 func buildSyncComponents(
-	cfg *registryAppConfig,
+	b *registryAppConfig,
 ) (coordinator.Coordinator, error) {
 	logger.Info("Initializing sync components")
 
 	// Build source handler factory
-	if cfg.sourceHandlerFactory == nil {
-		cfg.sourceHandlerFactory = sources.NewSourceHandlerFactory()
+	if b.sourceHandlerFactory == nil {
+		b.sourceHandlerFactory = sources.NewSourceHandlerFactory()
 	}
 
 	// Build storage manager
-	if cfg.storageManager == nil {
+	if b.storageManager == nil {
 		// Ensure data directory exists
-		if err := os.MkdirAll(cfg.dataDir, 0750); err != nil {
-			return nil, fmt.Errorf("failed to create data directory %s: %w", cfg.dataDir, err)
+		if err := os.MkdirAll(b.dataDir, 0750); err != nil {
+			return nil, fmt.Errorf("failed to create data directory %s: %w", b.dataDir, err)
 		}
-		cfg.storageManager = sources.NewFileStorageManager(cfg.dataDir)
+		b.storageManager = sources.NewFileStorageManager(b.dataDir)
 	}
 
 	// Build status persistence
-	if cfg.statusPersistence == nil {
-		cfg.statusPersistence = status.NewFileStatusPersistence(cfg.statusFile)
+	if b.statusPersistence == nil {
+		b.statusPersistence = status.NewFileStatusPersistence(b.statusFile)
 	}
 
 	// Build sync manager
-	if cfg.syncManager == nil {
-		cfg.syncManager = pkgsync.NewDefaultSyncManager(
-			cfg.sourceHandlerFactory,
-			cfg.storageManager,
+	if b.syncManager == nil {
+		b.syncManager = pkgsync.NewDefaultSyncManager(
+			b.sourceHandlerFactory,
+			b.storageManager,
 		)
 	}
 
 	// Create coordinator
-	syncCoordinator := coordinator.New(cfg.syncManager, cfg.statusPersistence, cfg.config)
+	syncCoordinator := coordinator.New(b.syncManager, b.statusPersistence, b.config)
 	logger.Info("Sync components initialized successfully")
 
 	return syncCoordinator, nil
@@ -274,24 +274,24 @@ func buildSyncComponents(
 // buildServiceComponents builds registry service and providers
 func buildServiceComponents(
 	ctx context.Context,
-	cfg *registryAppConfig,
+	b *registryAppConfig,
 ) (service.RegistryService, error) {
 	logger.Info("Initializing service components")
 
 	// Build registry provider (reads from synced data via StorageManager)
-	if cfg.registryProvider == nil {
+	if b.registryProvider == nil {
 		// StorageManager was already built in buildSyncComponents
-		factory := service.NewRegistryProviderFactory(cfg.storageManager)
-		provider, err := factory.CreateProvider(cfg.config)
+		factory := service.NewRegistryProviderFactory(b.storageManager)
+		provider, err := factory.CreateProvider(b.config)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create registry provider: %w", err)
 		}
-		cfg.registryProvider = provider
+		b.registryProvider = provider
 		logger.Infof("Created registry data provider using storage manager")
 	}
 
 	// Create service (deployment provider is optional and can be injected via WithDeploymentProvider for testing)
-	svc, err := service.NewService(ctx, cfg.registryProvider, cfg.deploymentProvider)
+	svc, err := service.NewService(ctx, b.registryProvider, b.deploymentProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create registry service: %w", err)
 	}
@@ -305,34 +305,34 @@ func buildServiceComponents(
 //nolint:unparam // we prefer having a similar interface
 func buildHTTPServer(
 	_ context.Context,
-	cfg *registryAppConfig,
+	b *registryAppConfig,
 	svc service.RegistryService,
 ) (*http.Server, error) {
 	logger.Info("Initializing HTTP server")
 
 	// Use default middlewares if not provided
-	if cfg.middlewares == nil {
-		cfg.middlewares = []func(http.Handler) http.Handler{
+	if b.middlewares == nil {
+		b.middlewares = []func(http.Handler) http.Handler{
 			middleware.RequestID,
 			middleware.RealIP,
 			middleware.Recoverer,
-			middleware.Timeout(cfg.requestTimeout),
+			middleware.Timeout(b.requestTimeout),
 			api.LoggingMiddleware,
 		}
 	}
 
 	// Create router with middlewares
-	router := api.NewServer(svc, api.WithMiddlewares(cfg.middlewares...))
+	router := api.NewServer(svc, api.WithMiddlewares(b.middlewares...))
 
 	// Create HTTP server
 	server := &http.Server{
-		Addr:         cfg.address,
+		Addr:         b.address,
 		Handler:      router,
-		ReadTimeout:  cfg.readTimeout,
-		WriteTimeout: cfg.writeTimeout,
-		IdleTimeout:  cfg.idleTimeout,
+		ReadTimeout:  b.readTimeout,
+		WriteTimeout: b.writeTimeout,
+		IdleTimeout:  b.idleTimeout,
 	}
 
-	logger.Infof("HTTP server configured on %s", cfg.address)
+	logger.Infof("HTTP server configured on %s", b.address)
 	return server, nil
 }
