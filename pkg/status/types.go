@@ -2,6 +2,7 @@ package status
 
 import "time"
 
+// SyncPhase represents the current phase of a synchronization operation
 type SyncPhase string
 
 const (
@@ -15,6 +16,7 @@ const (
 	SyncPhaseFailed SyncPhase = "Failed"
 )
 
+// SyncStatus represents the current state of registry synchronization
 type SyncStatus struct {
 	// Phase represents the current synchronization phase
 	Phase SyncPhase `yaml:"phase"`

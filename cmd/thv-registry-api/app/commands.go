@@ -7,8 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/stacklok/toolhive-registry-server/pkg/versions"
 	"github.com/stacklok/toolhive/pkg/logger"
+
+	"github.com/stacklok/toolhive-registry-server/pkg/versions"
 )
 
 var rootCmd = &cobra.Command{

@@ -11,6 +11,7 @@ import (
 )
 
 func TestNewRegistryAppBuilder(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		RegistryName: "test-registry",
 		Source: config.SourceConfig{
@@ -33,6 +34,7 @@ func TestNewRegistryAppBuilder(t *testing.T) {
 }
 
 func TestRegistryAppBuilder_WithAddress(t *testing.T) {
+	t.Parallel()
 	cfg := createValidTestConfig()
 	builder := NewRegistryAppBuilder(cfg).WithAddress(":9090")
 
@@ -40,6 +42,7 @@ func TestRegistryAppBuilder_WithAddress(t *testing.T) {
 }
 
 func TestRegistryAppBuilder_WithDataDirectory(t *testing.T) {
+	t.Parallel()
 	cfg := createValidTestConfig()
 	builder := NewRegistryAppBuilder(cfg).WithDataDirectory("/custom/data")
 
@@ -49,6 +52,7 @@ func TestRegistryAppBuilder_WithDataDirectory(t *testing.T) {
 }
 
 func TestRegistryAppBuilder_Build_InvalidConfig(t *testing.T) {
+	t.Parallel()
 	// Config with no source type
 	cfg := &config.Config{
 		SyncPolicy: &config.SyncPolicyConfig{
@@ -64,6 +68,7 @@ func TestRegistryAppBuilder_Build_InvalidConfig(t *testing.T) {
 }
 
 func TestRegistryAppBuilder_ChainedBuilder(t *testing.T) {
+	t.Parallel()
 	cfg := createValidTestConfig()
 
 	builder := NewRegistryAppBuilder(cfg).

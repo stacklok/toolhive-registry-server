@@ -3,10 +3,10 @@ package sources
 import (
 	"testing"
 
+	"github.com/stacklok/toolhive/pkg/registry"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	"github.com/stacklok/toolhive/pkg/registry"
 )
 
 func TestNewFetchResult(t *testing.T) {

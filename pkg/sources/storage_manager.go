@@ -7,8 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive/pkg/registry"
+
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 )
 
 const (
@@ -21,13 +22,13 @@ const (
 // StorageManager defines the interface for registry data persistence
 type StorageManager interface {
 	// Store saves a Registry instance to persistent storage
-	Store(ctx context.Context, config *config.Config, reg *registry.Registry) error
+	Store(ctx context.Context, cfg *config.Config, reg *registry.Registry) error
 
 	// Get retrieves and parses registry data from persistent storage
-	Get(ctx context.Context, config *config.Config) (*registry.Registry, error)
+	Get(ctx context.Context, cfg *config.Config) (*registry.Registry, error)
 
 	// Delete removes registry data from persistent storage
-	Delete(ctx context.Context, config *config.Config) error
+	Delete(ctx context.Context, cfg *config.Config) error
 }
 
 // FileStorageManager implements StorageManager using local filesystem
@@ -43,9 +44,9 @@ func NewFileStorageManager(basePath string) StorageManager {
 }
 
 // Store saves the registry data to a JSON file
-func (f *FileStorageManager) Store(ctx context.Context, config *config.Config, reg *registry.Registry) error {
+func (f *FileStorageManager) Store(_ context.Context, _ *config.Config, reg *registry.Registry) error {
 	// Create base directory if it doesn't exist
-	if err := os.MkdirAll(f.basePath, 0755); err != nil {
+	if err := os.MkdirAll(f.basePath, 0750); err != nil {
 		return fmt.Errorf("failed to create storage directory: %w", err)
 	}
 
@@ -74,10 +75,11 @@ func (f *FileStorageManager) Store(ctx context.Context, config *config.Config, r
 }
 
 // Get retrieves and parses registry data from the JSON file
-func (f *FileStorageManager) Get(ctx context.Context, config *config.Config) (*registry.Registry, error) {
+func (f *FileStorageManager) Get(_ context.Context, _ *config.Config) (*registry.Registry, error) {
 	filePath := filepath.Join(f.basePath, RegistryFileName)
 
 	// Read file
+	//nolint:gosec // File path is internally managed by StorageManager, not user input
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -96,7 +98,7 @@ func (f *FileStorageManager) Get(ctx context.Context, config *config.Config) (*r
 }
 
 // Delete removes the registry data file
-func (f *FileStorageManager) Delete(ctx context.Context, config *config.Config) error {
+func (f *FileStorageManager) Delete(_ context.Context, _ *config.Config) error {
 	filePath := filepath.Join(f.basePath, RegistryFileName)
 
 	if err := os.Remove(filePath); err != nil {

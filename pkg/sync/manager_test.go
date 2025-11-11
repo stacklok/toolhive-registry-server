@@ -11,12 +11,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/sources"
 	"github.com/stacklok/toolhive-registry-server/pkg/sources/mocks"
 	"github.com/stacklok/toolhive-registry-server/pkg/status"
-	"go.uber.org/mock/gomock"
 )
 
 func TestNewDefaultSyncManager(t *testing.T) {

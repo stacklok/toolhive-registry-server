@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stacklok/toolhive/pkg/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	"github.com/stacklok/toolhive/pkg/registry"
 )
 
 func TestNewDefaultFilterService(t *testing.T) {

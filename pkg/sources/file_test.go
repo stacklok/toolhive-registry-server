@@ -6,9 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 )
 
 func TestNewFileSourceHandler(t *testing.T) {
@@ -72,6 +73,7 @@ func TestFileSourceHandler_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			handler := NewFileSourceHandler()
 			err := handler.Validate(tt.source)
 
@@ -101,6 +103,7 @@ func TestFileSourceHandler_FetchRegistry(t *testing.T) {
 		{
 			name: "successful_fetch_toolhive_format",
 			setupFile: func(t *testing.T) string {
+				t.Helper()
 				tmpDir := t.TempDir()
 				filePath := filepath.Join(tmpDir, "registry.json")
 				registryData := `{
@@ -120,6 +123,7 @@ func TestFileSourceHandler_FetchRegistry(t *testing.T) {
 			},
 			wantErr: false,
 			checkResult: func(t *testing.T, result *FetchResult) {
+				t.Helper()
 				assert.NotNil(t, result)
 				assert.NotNil(t, result.Registry)
 				assert.NotEmpty(t, result.Hash)
@@ -128,7 +132,7 @@ func TestFileSourceHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "file_not_found",
-			setupFile: func(t *testing.T) string {
+			setupFile: func(_ *testing.T) string {
 				return "/nonexistent/path/registry.json"
 			},
 			config: &config.Config{
@@ -143,6 +147,7 @@ func TestFileSourceHandler_FetchRegistry(t *testing.T) {
 		{
 			name: "invalid_json",
 			setupFile: func(t *testing.T) string {
+				t.Helper()
 				tmpDir := t.TempDir()
 				filePath := filepath.Join(tmpDir, "invalid.json")
 				err := os.WriteFile(filePath, []byte("invalid json {"), 0644)
@@ -162,6 +167,7 @@ func TestFileSourceHandler_FetchRegistry(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			filePath := tt.setupFile(t)
 			tt.config.Source.File = &config.FileConfig{
 				Path: filePath,

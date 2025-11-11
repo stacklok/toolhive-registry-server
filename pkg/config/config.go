@@ -1,3 +1,4 @@
+// Package config provides configuration loading and management for the registry server.
 package config
 
 import (
@@ -20,15 +21,15 @@ const (
 )
 
 const (
-	// RegistryFormatToolHive is the native ToolHive registry format
+	// SourceFormatToolHive is the native ToolHive registry format
 	SourceFormatToolHive = "toolhive"
 
-	// RegistryFormatUpstream is the upstream MCP registry format
+	// SourceFormatUpstream is the upstream MCP registry format
 	SourceFormatUpstream = "upstream"
 )
 
-// ConfigLoader defines the interface for loading configuration
-type ConfigLoader interface {
+// Loader defines the interface for loading configuration
+type Loader interface {
 	LoadConfig(path string) (*Config, error)
 }
 
@@ -110,17 +111,18 @@ type TagFilterConfig struct {
 	Exclude []string `yaml:"exclude,omitempty"`
 }
 
-// configLoader implements the ConfigLoader interface
+// configLoader implements the Loader interface
 type configLoader struct{}
 
-// NewConfigLoader creates a new ConfigLoader instance
-func NewConfigLoader() ConfigLoader {
+// NewConfigLoader creates a new Loader instance
+func NewConfigLoader() Loader {
 	return &configLoader{}
 }
 
 // LoadConfig loads and parses configuration from a YAML file
-func (c *configLoader) LoadConfig(path string) (*Config, error) {
+func (*configLoader) LoadConfig(path string) (*Config, error) {
 	// Read the entire file into memory
+	//nolint:gosec // Config file path is provided by user, this is expected behavior
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/stacklok/toolhive/pkg/registry"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	"github.com/stacklok/toolhive/pkg/registry"
 )
 
 // FilterService coordinates name and tag filtering to apply registry filters

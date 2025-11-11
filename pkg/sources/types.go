@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive/pkg/registry"
+
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 )
 
 // SourceDataValidator is an interface for validating registry source configurations
@@ -20,13 +21,13 @@ type SourceDataValidator interface {
 // SourceHandler is an interface with methods to fetch data from external data sources
 type SourceHandler interface {
 	// FetchRegistry retrieves data from the source and returns the result
-	FetchRegistry(ctx context.Context, config *config.Config) (*FetchResult, error)
+	FetchRegistry(ctx context.Context, cfg *config.Config) (*FetchResult, error)
 
 	// Validate validates the source configuration
 	Validate(source *config.SourceConfig) error
 
 	// CurrentHash returns the current hash of the source data without performing a full fetch
-	CurrentHash(ctx context.Context, config *config.Config) (string, error)
+	CurrentHash(ctx context.Context, cfg *config.Config) (string, error)
 }
 
 // FetchResult contains the result of a fetch operation

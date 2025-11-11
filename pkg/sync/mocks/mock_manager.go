@@ -45,38 +45,38 @@ func (m *MockManager) EXPECT() *MockManagerMockRecorder {
 }
 
 // Delete mocks base method.
-func (m *MockManager) Delete(ctx context.Context, arg1 *config.Config) error {
+func (m *MockManager) Delete(ctx context.Context, cfg *config.Config) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, arg1)
+	ret := m.ctrl.Call(m, "Delete", ctx, cfg)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Delete indicates an expected call of Delete.
-func (mr *MockManagerMockRecorder) Delete(ctx, arg1 any) *gomock.Call {
+func (mr *MockManagerMockRecorder) Delete(ctx, cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockManager)(nil).Delete), ctx, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockManager)(nil).Delete), ctx, cfg)
 }
 
 // PerformSync mocks base method.
-func (m *MockManager) PerformSync(ctx context.Context, arg1 *config.Config) (*sync.Result, *sync.Error) {
+func (m *MockManager) PerformSync(ctx context.Context, cfg *config.Config) (*sync.Result, *sync.Error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PerformSync", ctx, arg1)
+	ret := m.ctrl.Call(m, "PerformSync", ctx, cfg)
 	ret0, _ := ret[0].(*sync.Result)
 	ret1, _ := ret[1].(*sync.Error)
 	return ret0, ret1
 }
 
 // PerformSync indicates an expected call of PerformSync.
-func (mr *MockManagerMockRecorder) PerformSync(ctx, arg1 any) *gomock.Call {
+func (mr *MockManagerMockRecorder) PerformSync(ctx, cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PerformSync", reflect.TypeOf((*MockManager)(nil).PerformSync), ctx, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PerformSync", reflect.TypeOf((*MockManager)(nil).PerformSync), ctx, cfg)
 }
 
 // ShouldSync mocks base method.
-func (m *MockManager) ShouldSync(ctx context.Context, arg1 *config.Config, syncStatus *status.SyncStatus, manualSyncRequested bool) (bool, string, *time.Time) {
+func (m *MockManager) ShouldSync(ctx context.Context, cfg *config.Config, syncStatus *status.SyncStatus, manualSyncRequested bool) (bool, string, *time.Time) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ShouldSync", ctx, arg1, syncStatus, manualSyncRequested)
+	ret := m.ctrl.Call(m, "ShouldSync", ctx, cfg, syncStatus, manualSyncRequested)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(*time.Time)
@@ -84,7 +84,7 @@ func (m *MockManager) ShouldSync(ctx context.Context, arg1 *config.Config, syncS
 }
 
 // ShouldSync indicates an expected call of ShouldSync.
-func (mr *MockManagerMockRecorder) ShouldSync(ctx, arg1, syncStatus, manualSyncRequested any) *gomock.Call {
+func (mr *MockManagerMockRecorder) ShouldSync(ctx, cfg, syncStatus, manualSyncRequested any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShouldSync", reflect.TypeOf((*MockManager)(nil).ShouldSync), ctx, arg1, syncStatus, manualSyncRequested)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShouldSync", reflect.TypeOf((*MockManager)(nil).ShouldSync), ctx, cfg, syncStatus, manualSyncRequested)
 }

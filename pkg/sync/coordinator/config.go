@@ -3,8 +3,9 @@ package coordinator
 import (
 	"time"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive/pkg/logger"
+
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 )
 
 // getSyncInterval extracts the sync interval from the policy configuration

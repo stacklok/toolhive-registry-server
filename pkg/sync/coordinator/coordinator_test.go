@@ -6,16 +6,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/status"
 	"github.com/stacklok/toolhive-registry-server/pkg/sync"
 	syncmocks "github.com/stacklok/toolhive-registry-server/pkg/sync/mocks"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestPerformSync_StatusPersistence(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		syncError      *sync.Error
@@ -43,6 +45,7 @@ func TestPerformSync_StatusPersistence(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mockCtrl := gomock.NewController(t)
 			defer mockCtrl.Finish()
 
@@ -117,7 +120,9 @@ func TestPerformSync_StatusPersistence(t *testing.T) {
 }
 
 func TestPerformSync_AlwaysPersists(t *testing.T) {
+	t.Parallel()
 	t.Run("status is persisted even if sync succeeds", func(t *testing.T) {
+		t.Parallel()
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
@@ -147,7 +152,9 @@ func TestPerformSync_AlwaysPersists(t *testing.T) {
 }
 
 func TestPerformSync_SyncingPhasePersistedImmediately(t *testing.T) {
+	t.Parallel()
 	t.Run("Syncing phase is persisted before sync starts", func(t *testing.T) {
+		t.Parallel()
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
@@ -161,7 +168,7 @@ func TestPerformSync_SyncingPhasePersistedImmediately(t *testing.T) {
 		mockSyncMgr := syncmocks.NewMockManager(mockCtrl)
 		mockSyncMgr.EXPECT().
 			PerformSync(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, cfg *config.Config) (*sync.Result, *sync.Error) {
+			DoAndReturn(func(_ context.Context, _ *config.Config) (*sync.Result, *sync.Error) {
 				// Signal that sync has started
 				close(syncStarted)
 
@@ -211,6 +218,7 @@ func TestPerformSync_SyncingPhasePersistedImmediately(t *testing.T) {
 }
 
 func TestPerformSync_PhaseTransitions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		initialPhase  status.SyncPhase
@@ -245,6 +253,7 @@ func TestPerformSync_PhaseTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mockCtrl := gomock.NewController(t)
 			defer mockCtrl.Finish()
 
@@ -259,7 +268,7 @@ func TestPerformSync_PhaseTransitions(t *testing.T) {
 			mockSyncMgr := syncmocks.NewMockManager(mockCtrl)
 			mockSyncMgr.EXPECT().
 				PerformSync(gomock.Any(), gomock.Any()).
-				DoAndReturn(func(ctx context.Context, cfg *config.Config) (*sync.Result, *sync.Error) {
+				DoAndReturn(func(_ context.Context, _ *config.Config) (*sync.Result, *sync.Error) {
 					close(syncStarted)
 					time.Sleep(50 * time.Millisecond) // Simulate work
 					return tt.syncResult, tt.syncError
@@ -301,6 +310,7 @@ func TestPerformSync_PhaseTransitions(t *testing.T) {
 }
 
 func TestUpdateStatusForSkippedSync(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		initialPhase status.SyncPhase
@@ -333,6 +343,7 @@ func TestUpdateStatusForSkippedSync(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			tempDir := t.TempDir()
 			statusFile := filepath.Join(tempDir, "status.json")
 			statusPersistence := status.NewFileStatusPersistence(statusFile)
@@ -365,6 +376,7 @@ func TestUpdateStatusForSkippedSync(t *testing.T) {
 }
 
 func TestGetSyncInterval(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		policy   *config.SyncPolicyConfig
@@ -400,6 +412,7 @@ func TestGetSyncInterval(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := getSyncInterval(tt.policy)
 			assert.Equal(t, tt.expected, result)
 		})

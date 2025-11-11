@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive/pkg/registry"
+
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
 )
 
 // TestRegistryBuilder provides a fluent interface for building test registry data

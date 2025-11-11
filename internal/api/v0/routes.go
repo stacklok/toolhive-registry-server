@@ -8,13 +8,13 @@ import (
 	"reflect"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/stacklok/toolhive/pkg/logger"
+	"github.com/stacklok/toolhive/pkg/registry"
+	"github.com/stacklok/toolhive/pkg/versions"
 	"gopkg.in/yaml.v3"
 
 	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/docs"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	"github.com/stacklok/toolhive/pkg/logger"
-	"github.com/stacklok/toolhive/pkg/registry"
-	"github.com/stacklok/toolhive/pkg/versions"
 )
 
 const (

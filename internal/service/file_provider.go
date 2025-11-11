@@ -5,9 +5,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/stacklok/toolhive/pkg/registry"
+
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/sources"
-	"github.com/stacklok/toolhive/pkg/registry"
 )
 
 // FileRegistryDataProvider implements RegistryDataProvider by delegating to StorageManager.

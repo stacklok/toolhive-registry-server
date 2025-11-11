@@ -1,3 +1,4 @@
+// Package common provides shared HTTP utility functions for API handlers.
 package common
 
 import (

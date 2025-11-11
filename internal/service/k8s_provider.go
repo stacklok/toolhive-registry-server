@@ -5,12 +5,11 @@ import (
 	"context"
 	"fmt"
 
+	thvv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	thvv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 )
 
 // Label constants for deployed server identification

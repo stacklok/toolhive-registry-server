@@ -60,13 +60,13 @@ func CreateTestRepo(t *testing.T, config TestRepoConfig) (string, func()) {
 		// Create parent directory if needed
 		dir := filepath.Dir(filePath)
 		if dir != repoDir {
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := os.MkdirAll(dir, 0750); err != nil {
 				cleanup()
 				t.Fatalf("Failed to create directory %s: %v", dir, err)
 			}
 		}
 
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
 			cleanup()
 			t.Fatalf("Failed to write file %s: %v", filename, err)
 		}
@@ -137,13 +137,13 @@ func CreateTestRepoWithCommits(t *testing.T, commits []TestRepoConfig) (string, 
 			// Create parent directory if needed
 			dir := filepath.Dir(filePath)
 			if dir != repoDir {
-				if err := os.MkdirAll(dir, 0755); err != nil {
+				if err := os.MkdirAll(dir, 0750); err != nil {
 					cleanup()
 					t.Fatalf("Failed to create directory %s: %v", dir, err)
 				}
 			}
 
-			if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
 				cleanup()
 				t.Fatalf("Failed to write file %s: %v", filename, err)
 			}
@@ -172,7 +172,11 @@ func CreateTestRepoWithCommits(t *testing.T, commits []TestRepoConfig) (string, 
 // CreateTestRepoWithBranches creates a test repository with multiple branches
 // The first commit creates the main branch, subsequent commits create additional branches
 // Returns the repository path, branch names, and cleanup function
-func CreateTestRepoWithBranches(t *testing.T, mainCommit TestRepoConfig, branches map[string]TestRepoConfig) (string, []string, func()) {
+//
+//nolint:gocyclo // Test helper function complexity is acceptable
+func CreateTestRepoWithBranches(
+	t *testing.T, mainCommit TestRepoConfig, branches map[string]TestRepoConfig,
+) (string, []string, func()) {
 	t.Helper()
 
 	// Create a temporary directory for the repository
@@ -211,13 +215,13 @@ func CreateTestRepoWithBranches(t *testing.T, mainCommit TestRepoConfig, branche
 		filePath := filepath.Join(repoDir, filename)
 		dir := filepath.Dir(filePath)
 		if dir != repoDir {
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := os.MkdirAll(dir, 0750); err != nil {
 				cleanup()
 				t.Fatalf("Failed to create directory %s: %v", dir, err)
 			}
 		}
 
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
 			cleanup()
 			t.Fatalf("Failed to write file %s: %v", filename, err)
 		}
@@ -263,13 +267,13 @@ func CreateTestRepoWithBranches(t *testing.T, mainCommit TestRepoConfig, branche
 			filePath := filepath.Join(repoDir, filename)
 			dir := filepath.Dir(filePath)
 			if dir != repoDir {
-				if err := os.MkdirAll(dir, 0755); err != nil {
+				if err := os.MkdirAll(dir, 0750); err != nil {
 					cleanup()
 					t.Fatalf("Failed to create directory %s: %v", dir, err)
 				}
 			}
 
-			if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
 				cleanup()
 				t.Fatalf("Failed to write file %s: %v", filename, err)
 			}
