@@ -55,6 +55,9 @@ type RegistryAppBuilder struct {
 	dataDir      string
 	registryFile string
 	statusFile   string
+
+	// Service options
+	cacheDuration time.Duration
 }
 
 // NewRegistryAppBuilder creates a new builder with the given configuration
@@ -125,6 +128,12 @@ func (b *RegistryAppBuilder) WithRegistryProvider(provider service.RegistryDataP
 // WithDeploymentProvider allows injecting a custom deployment provider (for testing)
 func (b *RegistryAppBuilder) WithDeploymentProvider(provider service.DeploymentProvider) *RegistryAppBuilder {
 	b.deploymentProvider = provider
+	return b
+}
+
+// WithCacheDuration sets a custom cache duration for the registry service
+func (b *RegistryAppBuilder) WithCacheDuration(duration time.Duration) *RegistryAppBuilder {
+	b.cacheDuration = duration
 	return b
 }
 
@@ -220,7 +229,11 @@ func (b *RegistryAppBuilder) buildServiceComponents(ctx context.Context) (servic
 	}
 
 	// Create service (deployment provider is optional and can be injected via WithDeploymentProvider for testing)
-	svc, err := service.NewService(ctx, b.registryProvider, b.deploymentProvider)
+	var opts []service.Option
+	if b.cacheDuration > 0 {
+		opts = append(opts, service.WithCacheDuration(b.cacheDuration))
+	}
+	svc, err := service.NewService(ctx, b.registryProvider, b.deploymentProvider, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create registry service: %w", err)
 	}

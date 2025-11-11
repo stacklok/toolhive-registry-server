@@ -39,7 +39,7 @@
 //
 // # Security Considerations
 //
-// This package is designed to be used within a Kubernetes operator environment
+// This package is designed to be used also within a Kubernetes operator environment
 // where Git repositories contain MCP server registry data. Security features include:
 //   - In-memory filesystem operations (no disk access)
 //   - Size limits on cloned repositories (max files and total size)
@@ -48,7 +48,7 @@
 // Future security hardening may include:
 //   - Repository URL validation to prevent SSRF attacks
 //   - Additional resource limits and timeouts
-//   - Secure credential management via Kubernetes secrets for private repos
+//   - Secure credential management for private repos
 //
 // # Implementation Details
 //
