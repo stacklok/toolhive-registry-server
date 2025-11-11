@@ -109,10 +109,14 @@ func TestWithAddress(t *testing.T) {
 		name    string
 		address string
 		want    string
+		wantErr bool
 	}{
-		{name: "valid_address", address: ":9999", want: ":9999"},
-		{name: "valid_address_with_host", address: "127.0.0.1:9999", want: "127.0.0.1:9999"},
-		{name: "valid_address_with_host_and_port", address: "localhost:9999", want: "localhost:9999"},
+		{name: "valid address", address: ":9999", want: ":9999"},
+		{name: "valid address with host", address: "127.0.0.1:9999", want: "127.0.0.1:9999"},
+		{name: "valid address with host and port", address: "localhost:9999", want: "localhost:9999"},
+		{name: "invalid empty address", address: "", want: "", wantErr: true},
+		{name: "invalid empty port", address: ":", want: "", wantErr: true},
+		{name: "invalid address with host and port", address: "localhost:999999", want: "", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -120,6 +124,12 @@ func TestWithAddress(t *testing.T) {
 			cfg := &registryAppConfig{}
 			opt := WithAddress(tt.address)
 			err := opt(cfg)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, cfg.address)
 		})
