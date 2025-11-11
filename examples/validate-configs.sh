@@ -33,7 +33,7 @@ for config in "$SCRIPT_DIR"/config-*.yaml; do
 
     # Run the Go validator
     # Use 'go run' to avoid needing to build the binary first
-    if output=$(cd "$PROJECT_ROOT" && go run examples/validate-config.go "$config" 2>&1); then
+    if output=$(cd "$PROJECT_ROOT" && go run examples/validate-configs.go "$config" 2>&1); then
         echo "$output" | sed 's/^/  /'
         echo
     else
