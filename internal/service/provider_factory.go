@@ -34,9 +34,5 @@ func (f *DefaultRegistryProviderFactory) CreateProvider(cfg *config.Config) (Reg
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid config: %w", err)
-	}
-
 	return NewFileRegistryDataProvider(f.storageManager, cfg), nil
 }

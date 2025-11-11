@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -30,9 +32,12 @@ const (
 	defaultIdleTimeout    = 60 * time.Second
 )
 
-// RegistryAppBuilder builds a RegistryApp using the builder pattern
+// RegistryAppOptions is a function that configures the registry app builder
+type RegistryAppOptions func(*registryAppConfig) error
+
+// registryAppBuilder builds a RegistryApp using the builder pattern
 // It supports dependency injection for testing while providing sensible defaults for production
-type RegistryAppBuilder struct {
+type registryAppConfig struct {
 	config *config.Config
 
 	// Optional component overrides (primarily for testing)
@@ -57,10 +62,8 @@ type RegistryAppBuilder struct {
 	statusFile   string
 }
 
-// NewRegistryAppBuilder creates a new builder with the given configuration
-func NewRegistryAppBuilder(cfg *config.Config) *RegistryAppBuilder {
-	return &RegistryAppBuilder{
-		config:         cfg,
+func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
+	cfg := &registryAppConfig{
 		address:        defaultHTTPAddress,
 		requestTimeout: defaultRequestTimeout,
 		readTimeout:    defaultReadTimeout,
@@ -70,91 +73,50 @@ func NewRegistryAppBuilder(cfg *config.Config) *RegistryAppBuilder {
 		registryFile:   defaultRegistryFile,
 		statusFile:     defaultStatusFile,
 	}
+
+	// Apply options
+	for _, opt := range opts {
+		if err := opt(cfg); err != nil {
+			return nil, err
+		}
+	}
+
+	return cfg, nil
 }
 
-// WithAddress sets the HTTP server address
-func (b *RegistryAppBuilder) WithAddress(addr string) *RegistryAppBuilder {
-	b.address = addr
-	return b
-}
-
-// WithMiddlewares sets custom HTTP middlewares
-func (b *RegistryAppBuilder) WithMiddlewares(mw ...func(http.Handler) http.Handler) *RegistryAppBuilder {
-	b.middlewares = mw
-	return b
-}
-
-// WithDataDirectory sets the data directory for storage and status files
-func (b *RegistryAppBuilder) WithDataDirectory(dir string) *RegistryAppBuilder {
-	b.dataDir = dir
-	b.registryFile = dir + "/registry.json"
-	b.statusFile = dir + "/status.json"
-	return b
-}
-
-// WithSourceHandlerFactory allows injecting a custom source handler factory (for testing)
-func (b *RegistryAppBuilder) WithSourceHandlerFactory(factory sources.SourceHandlerFactory) *RegistryAppBuilder {
-	b.sourceHandlerFactory = factory
-	return b
-}
-
-// WithStorageManager allows injecting a custom storage manager (for testing)
-func (b *RegistryAppBuilder) WithStorageManager(sm sources.StorageManager) *RegistryAppBuilder {
-	b.storageManager = sm
-	return b
-}
-
-// WithStatusPersistence allows injecting custom status persistence (for testing)
-func (b *RegistryAppBuilder) WithStatusPersistence(sp status.StatusPersistence) *RegistryAppBuilder {
-	b.statusPersistence = sp
-	return b
-}
-
-// WithSyncManager allows injecting a custom sync manager (for testing)
-func (b *RegistryAppBuilder) WithSyncManager(sm pkgsync.Manager) *RegistryAppBuilder {
-	b.syncManager = sm
-	return b
-}
-
-// WithRegistryProvider allows injecting a custom registry provider (for testing)
-func (b *RegistryAppBuilder) WithRegistryProvider(provider service.RegistryDataProvider) *RegistryAppBuilder {
-	b.registryProvider = provider
-	return b
-}
-
-// WithDeploymentProvider allows injecting a custom deployment provider (for testing)
-func (b *RegistryAppBuilder) WithDeploymentProvider(provider service.DeploymentProvider) *RegistryAppBuilder {
-	b.deploymentProvider = provider
-	return b
-}
-
-// Build constructs the RegistryApp from the builder configuration
-func (b *RegistryAppBuilder) Build(ctx context.Context) (*RegistryApp, error) {
-	// Validate config
-	if err := b.config.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid configuration: %w", err)
+// NewRegistryApp creates a new builder with the given configuration
+func NewRegistryApp(
+	ctx context.Context,
+	opts ...RegistryAppOptions,
+) (*RegistryApp, error) {
+	cfg, err := baseConfig(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build base configuration: %w", err)
 	}
 
 	// Build sync components
-	syncCoordinator, err := b.buildSyncComponents()
+	syncCoordinator, err := buildSyncComponents(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build sync components: %w", err)
 	}
 
 	// Build service components
-	registryService, err := b.buildServiceComponents(ctx)
+	registryService, err := buildServiceComponents(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build service components: %w", err)
 	}
 
 	// Build HTTP server
-	httpServer := b.buildHTTPServer(registryService)
+	httpServer, err := buildHTTPServer(ctx, cfg, registryService)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build HTTP server: %w", err)
+	}
 
 	// Create application context
-	appCtx, cancel := context.WithCancel(context.Background())
+	appCtx, cancel := context.WithCancel(ctx)
 
 	return &RegistryApp{
-		config: b.config,
+		config: cfg.config,
 		components: &AppComponents{
 			SyncCoordinator: syncCoordinator,
 			RegistryService: registryService,
@@ -165,8 +127,114 @@ func (b *RegistryAppBuilder) Build(ctx context.Context) (*RegistryApp, error) {
 	}, nil
 }
 
+// WithConfig sets the configuration
+func WithConfig(c *config.Config) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.config = c
+		return nil
+	}
+}
+
+// WithAddress sets the HTTP server address
+func WithAddress(addr string) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		if addr == "" {
+			return fmt.Errorf("address cannot be empty")
+		}
+
+		parts := strings.SplitN(addr, ":", 2)
+		host := parts[0]
+		port := parts[1]
+
+		if port == "" {
+			return fmt.Errorf("address is not a valid port: %s", addr)
+		}
+		if host == "localhost" {
+			host = "127.0.0.1"
+		}
+		if host == "" {
+			host = "0.0.0.0"
+		}
+
+		if _, err := netip.ParseAddrPort(host + ":" + port); err != nil {
+			return fmt.Errorf("address is not a valid port: %w", err)
+		}
+
+		cfg.address = addr
+		return nil
+	}
+}
+
+// WithMiddlewares sets custom HTTP middlewares
+func WithMiddlewares(mw ...func(http.Handler) http.Handler) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.middlewares = mw
+		return nil
+	}
+}
+
+// WithDataDirectory sets the data directory for storage and status files
+func WithDataDirectory(dir string) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.dataDir = dir
+		cfg.registryFile = dir + "/registry.json"
+		cfg.statusFile = dir + "/status.json"
+		return nil
+	}
+}
+
+// WithSourceHandlerFactory allows injecting a custom source handler factory (for testing)
+func WithSourceHandlerFactory(factory sources.SourceHandlerFactory) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.sourceHandlerFactory = factory
+		return nil
+	}
+}
+
+// WithStorageManager allows injecting a custom storage manager (for testing)
+func WithStorageManager(sm sources.StorageManager) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.storageManager = sm
+		return nil
+	}
+}
+
+// WithStatusPersistence allows injecting custom status persistence (for testing)
+func WithStatusPersistence(sp status.StatusPersistence) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.statusPersistence = sp
+		return nil
+	}
+}
+
+// WithSyncManager allows injecting a custom sync manager (for testing)
+func WithSyncManager(sm pkgsync.Manager) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.syncManager = sm
+		return nil
+	}
+}
+
+// WithRegistryProvider allows injecting a custom registry provider (for testing)
+func WithRegistryProvider(provider service.RegistryDataProvider) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.registryProvider = provider
+		return nil
+	}
+}
+
+// WithDeploymentProvider allows injecting a custom deployment provider (for testing)
+func WithDeploymentProvider(provider service.DeploymentProvider) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.deploymentProvider = provider
+		return nil
+	}
+}
+
 // buildSyncComponents builds sync manager, coordinator, and related components
-func (b *RegistryAppBuilder) buildSyncComponents() (coordinator.Coordinator, error) {
+func buildSyncComponents(
+	b *registryAppConfig,
+) (coordinator.Coordinator, error) {
 	logger.Info("Initializing sync components")
 
 	// Build source handler factory
@@ -204,7 +272,10 @@ func (b *RegistryAppBuilder) buildSyncComponents() (coordinator.Coordinator, err
 }
 
 // buildServiceComponents builds registry service and providers
-func (b *RegistryAppBuilder) buildServiceComponents(ctx context.Context) (service.RegistryService, error) {
+func buildServiceComponents(
+	ctx context.Context,
+	b *registryAppConfig,
+) (service.RegistryService, error) {
 	logger.Info("Initializing service components")
 
 	// Build registry provider (reads from synced data via StorageManager)
@@ -230,7 +301,13 @@ func (b *RegistryAppBuilder) buildServiceComponents(ctx context.Context) (servic
 }
 
 // buildHTTPServer builds the HTTP server with router and middleware
-func (b *RegistryAppBuilder) buildHTTPServer(svc service.RegistryService) *http.Server {
+//
+//nolint:unparam // we prefer having a similar interface
+func buildHTTPServer(
+	_ context.Context,
+	b *registryAppConfig,
+	svc service.RegistryService,
+) (*http.Server, error) {
 	logger.Info("Initializing HTTP server")
 
 	// Use default middlewares if not provided
@@ -257,5 +334,5 @@ func (b *RegistryAppBuilder) buildHTTPServer(svc service.RegistryService) *http.
 	}
 
 	logger.Infof("HTTP server configured on %s", b.address)
-	return server
+	return server, nil
 }
