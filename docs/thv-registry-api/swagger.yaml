@@ -671,6 +671,75 @@ paths:
       summary: Get deployed servers by registry name
       tags:
       - deployed-servers
+  /extension/v0/servers/{id}:
+    delete:
+      description: Delete a server from the registry
+      parameters:
+      - description: Server ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      summary: Delete server
+      tags:
+      - extension
+    put:
+      description: Create or update a server in the registry
+      parameters:
+      - description: Server ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      summary: Create or update server
+      tags:
+      - extension
   /health:
     get:
       deprecated: true
@@ -823,8 +892,9 @@ paths:
       - servers
   /registry/v0.1/servers/{serverName}/versions/{version}:
     get:
-      description: Returns detailed information about a specific version of an MCP
-        server. Use the special version `latest` to get the latest version.
+      description: |-
+        Returns detailed information about a specific version of an MCP server.
+        Use the special version `latest` to get the latest version.
       parameters:
       - description: URL-encoded server name (e.g., \
         in: path

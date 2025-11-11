@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stacklok/toolhive/pkg/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
-	"github.com/stacklok/toolhive/pkg/registry"
 )
 
 func TestService_GetRegistry(t *testing.T) {

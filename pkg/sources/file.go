@@ -59,7 +59,7 @@ func (h *FileSourceHandler) FetchRegistry(ctx context.Context, registryConfig *c
 }
 
 // fetchFileData reads the file and calculates its hash
-func (h *FileSourceHandler) fetchFileData(ctx context.Context, registryConfig *config.Config) ([]byte, string, error) {
+func (h *FileSourceHandler) fetchFileData(_ context.Context, registryConfig *config.Config) ([]byte, string, error) {
 	// Validate source configuration
 	if err := h.Validate(&registryConfig.Source); err != nil {
 		return nil, "", fmt.Errorf("source validation failed: %w", err)
@@ -68,6 +68,7 @@ func (h *FileSourceHandler) fetchFileData(ctx context.Context, registryConfig *c
 	filePath := registryConfig.Source.File.Path
 
 	// Read the file
+	//nolint:gosec // File path comes from user configuration, this is expected behavior
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {

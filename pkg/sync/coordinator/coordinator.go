@@ -2,14 +2,14 @@ package coordinator
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
+
+	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
 	"github.com/stacklok/toolhive-registry-server/pkg/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/pkg/sync"
-	"github.com/stacklok/toolhive/pkg/logger"
 )
 
 // Coordinator manages background synchronization scheduling and execution
@@ -44,12 +44,12 @@ type DefaultCoordinator struct {
 func New(
 	manager pkgsync.Manager,
 	statusPersistence status.StatusPersistence,
-	config *config.Config,
+	cfg *config.Config,
 ) Coordinator {
 	return &DefaultCoordinator{
 		manager:           manager,
 		statusPersistence: statusPersistence,
-		config:            config,
+		config:            cfg,
 		done:              make(chan struct{}),
 	}
 }
@@ -67,9 +67,7 @@ func (c *DefaultCoordinator) Start(ctx context.Context) error {
 	}()
 
 	// Load or initialize sync status
-	if err := c.loadOrInitializeStatus(coordCtx); err != nil {
-		return fmt.Errorf("failed to initialize sync status: %w", err)
-	}
+	c.loadOrInitializeStatus(coordCtx)
 
 	// Get sync interval from policy
 	interval := getSyncInterval(c.config.SyncPolicy)
@@ -118,7 +116,7 @@ func (c *DefaultCoordinator) GetStatus() *status.SyncStatus {
 }
 
 // loadOrInitializeStatus loads existing status or creates default
-func (c *DefaultCoordinator) loadOrInitializeStatus(ctx context.Context) error {
+func (c *DefaultCoordinator) loadOrInitializeStatus(ctx context.Context) {
 	syncStatus, err := c.statusPersistence.LoadStatus(ctx)
 	if err != nil {
 		logger.Warnf("Failed to load sync status, initializing with defaults: %v", err)
@@ -161,8 +159,6 @@ func (c *DefaultCoordinator) loadOrInitializeStatus(ctx context.Context) error {
 	c.mu.Lock()
 	c.cachedStatus = syncStatus
 	c.mu.Unlock()
-
-	return nil
 }
 
 // withStatus executes a function while holding the status lock

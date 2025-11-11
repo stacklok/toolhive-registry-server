@@ -75,14 +75,14 @@ func (*GitSourceHandler) Validate(source *config.SourceConfig) error {
 }
 
 // FetchRegistry retrieves registry data from the Git repository
-func (h *GitSourceHandler) fetchRegistryData(ctx context.Context, config *config.Config) ([]byte, error) {
+func (h *GitSourceHandler) fetchRegistryData(ctx context.Context, cfg *config.Config) ([]byte, error) {
 
 	// Validate source configuration
-	if err := h.Validate(&config.Source); err != nil {
+	if err := h.Validate(&cfg.Source); err != nil {
 		return nil, fmt.Errorf("source validation failed: %w", err)
 	}
 
-	gitSource := config.Source.Git
+	gitSource := cfg.Source.Git
 	// Prepare clone configuration
 	cloneConfig := &git.CloneConfig{
 		URL:    gitSource.Repository,
@@ -142,15 +142,15 @@ func (h *GitSourceHandler) fetchRegistryData(ctx context.Context, config *config
 }
 
 // FetchRegistry retrieves registry data from the Git repository
-func (h *GitSourceHandler) FetchRegistry(ctx context.Context, config *config.Config) (*FetchResult, error) {
+func (h *GitSourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config) (*FetchResult, error) {
 
-	registryData, err := h.fetchRegistryData(ctx, config)
+	registryData, err := h.fetchRegistryData(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch registry data: %w", err)
 	}
 
 	// Validate and parse registry data
-	reg, err := h.validator.ValidateData(registryData, config.Source.Format)
+	reg, err := h.validator.ValidateData(registryData, cfg.Source.Format)
 	if err != nil {
 		return nil, fmt.Errorf("registry data validation failed: %w", err)
 	}
@@ -159,12 +159,12 @@ func (h *GitSourceHandler) FetchRegistry(ctx context.Context, config *config.Con
 	hash := fmt.Sprintf("%x", sha256.Sum256(registryData))
 
 	// Create and return fetch result with pre-calculated hash
-	return NewFetchResult(reg, hash, config.Source.Format), nil
+	return NewFetchResult(reg, hash, cfg.Source.Format), nil
 }
 
 // CurrentHash returns the current hash of the source data after fetching the registry data
-func (h *GitSourceHandler) CurrentHash(ctx context.Context, config *config.Config) (string, error) {
-	registryData, err := h.fetchRegistryData(ctx, config)
+func (h *GitSourceHandler) CurrentHash(ctx context.Context, cfg *config.Config) (string, error) {
+	registryData, err := h.fetchRegistryData(ctx, cfg)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch registry data: %w", err)
 	}

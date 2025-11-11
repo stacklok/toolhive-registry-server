@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/status"
 	"github.com/stacklok/toolhive/pkg/logger"
+
+	"github.com/stacklok/toolhive-registry-server/pkg/status"
 )
 
 // checkSync performs a sync check and updates status accordingly

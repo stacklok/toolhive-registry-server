@@ -23,6 +23,8 @@ tasks:
 
   install-mock:
     desc: Install the mockgen tool for mock generation
+    status:
+      - which mockgen
     cmds:
       - go install go.uber.org/mock/mockgen@latest
 
@@ -33,6 +35,8 @@ tasks:
 
   install-golangci-lint:
     desc: Install the golangci-lint tool for linting
+    status:
+      - which golangci-lint
     cmds:
       - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 

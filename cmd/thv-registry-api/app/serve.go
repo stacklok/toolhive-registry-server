@@ -10,12 +10,12 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/stacklok/toolhive/pkg/logger"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	registryapp "github.com/stacklok/toolhive-registry-server/pkg/app"
 	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	"github.com/stacklok/toolhive/pkg/logger"
 )
 
 var serveCmd = &cobra.Command{
