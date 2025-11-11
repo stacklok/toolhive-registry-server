@@ -38,6 +38,7 @@ CREATE TABLE registry_sync (
 );
 
 CREATE INDEX registry_sync_started_at_idx ON registry_sync(reg_id, started_at);
+CREATE INDEX registry_sync_end_at_idx ON registry_sync(reg_id, ended_at);
 
 -- Table of MCP servers known to our registry across all sources.
 -- Based on: https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/api/openapi.yaml
