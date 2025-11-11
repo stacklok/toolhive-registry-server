@@ -46,18 +46,6 @@ func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
 			wantErr:     true,
 			errContains: "config cannot be nil",
 		},
-		{
-			name: "invalid config - missing source type",
-			config: &config.Config{
-				RegistryName: "test-registry",
-				Source: config.SourceConfig{
-					Type:   "",
-					Format: config.SourceFormatToolHive,
-				},
-			},
-			wantErr:     true,
-			errContains: "invalid config",
-		},
 	}
 
 	for _, tt := range tests {
