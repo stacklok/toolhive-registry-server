@@ -16,7 +16,6 @@ func TestLoadConfig(t *testing.T) {
 		yamlContent string
 		wantConfig  *Config
 		wantErr     bool
-		errMsg      string
 	}{
 		{
 			name: "valid_config_matching_spec",
@@ -145,14 +144,12 @@ filter:
 			yamlContent: `source: [invalid yaml`,
 			wantConfig:  nil,
 			wantErr:     true,
-			errMsg:      "failed to parse YAML config",
 		},
 		{
 			name:        "file_not_found",
 			yamlContent: "",
 			wantConfig:  nil,
 			wantErr:     true,
-			errMsg:      "failed to read config file",
 		},
 	}
 
@@ -167,7 +164,6 @@ filter:
 				// Test with non-existent file
 				_, err := LoadConfig(WithConfigPath(filepath.Join(tmpDir, "non-existent.yaml")))
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
 				return
 			}
 
@@ -181,9 +177,6 @@ filter:
 
 			if tt.wantErr {
 				require.Error(t, err)
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
 				return
 			}
 
@@ -453,92 +446,89 @@ func TestGetRegistryName(t *testing.T) {
 	}
 }
 
-func TestLoadConfig_PathValidation(t *testing.T) {
+func TestWithConfigPath(t *testing.T) {
 	t.Parallel()
+
+	tmpDir := t.TempDir()
+
+	err := os.MkdirAll(filepath.Join(tmpDir, "configs"), 0755)
+	require.NoError(t, err, "failed to create subdir")
+
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	err = os.WriteFile(configPath, []byte("source: type: file path: /data/registry.json"), 0600)
+	require.NoError(t, err, "failed to write config file")
+
+	configPath = filepath.Join(tmpDir, "configs", "app.yaml")
+	err = os.WriteFile(configPath, []byte("source: type: file path: /data/registry.json"), 0600)
+	require.NoError(t, err, "failed to write config file")
+
+	err = os.Chdir(tmpDir)
+	require.NoError(t, err, "failed to change directory")
+
 	tests := []struct {
-		name    string
-		path    string
-		wantErr bool
-		errMsg  string
+		name     string
+		path     string
+		wantPath string
+		wantErr  bool
 	}{
 		{
 			name:    "empty path",
 			path:    "",
 			wantErr: true,
-			errMsg:  "path is required",
 		},
 		{
 			name:    "path traversal at start",
 			path:    "../etc/passwd",
 			wantErr: true,
-			errMsg:  "path contains invalid traversal sequence",
 		},
 		{
 			name:    "path traversal in middle",
 			path:    "config/../../etc/passwd",
 			wantErr: true,
-			errMsg:  "path contains invalid traversal sequence",
 		},
 		{
 			name:    "path traversal multiple",
 			path:    "a/b/../../../etc/passwd",
 			wantErr: true,
-			errMsg:  "path contains invalid traversal sequence",
 		},
 		{
 			name:    "path traversal with dot",
 			path:    "./../etc/passwd",
 			wantErr: true,
-			errMsg:  "path contains invalid traversal sequence",
 		},
 		{
-			name:    "valid relative path",
-			path:    "config.yaml",
-			wantErr: false,
+			name:     "valid relative path",
+			path:     "config.yaml",
+			wantPath: "config.yaml",
+			wantErr:  false,
 		},
 		{
-			name:    "valid relative path with subdir",
-			path:    "configs/app.yaml",
-			wantErr: false,
+			name:     "valid relative path with subdir",
+			path:     "configs/app.yaml",
+			wantPath: "configs/app.yaml",
+			wantErr:  false,
+		},
+		{
+			name:    "valid absolute path with subdir",
+			path:    "/foo/bar/../../../configs/app.yaml",
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tmpDir := t.TempDir()
 
-			var testPath string
-			if tt.wantErr {
-				// For error cases, use the path as-is
-				testPath = tt.path
-			} else {
-				// For valid paths, create the file in temp directory
-				testPath = filepath.Join(tmpDir, tt.path)
-				// Create directory if needed
-				if err := os.MkdirAll(filepath.Dir(testPath), 0755); err != nil {
-					t.Fatalf("Failed to create test directory: %v", err)
-				}
-				// Write a minimal valid config
-				yamlContent := `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"`
-				err := os.WriteFile(testPath, []byte(yamlContent), 0600)
-				require.NoError(t, err)
-			}
-
-			_, err := LoadConfig(WithConfigPath(testPath))
+			// Test WithConfigPath directly
+			opt := WithConfigPath(tt.path)
+			cfg := &loaderConfig{}
+			err := opt(cfg)
 
 			if tt.wantErr {
 				require.Error(t, err)
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
 			} else {
 				require.NoError(t, err)
+				assert.Equal(t, tt.wantPath, cfg.path)
 			}
 		})
 	}

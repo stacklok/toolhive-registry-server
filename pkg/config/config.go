@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -45,19 +44,21 @@ func WithConfigPath(path string) Option {
 			return fmt.Errorf("path is required")
 		}
 
-		// Normalize the path to prevent path traversal attacks
-		cleaned := filepath.Clean(path)
+		// Resolve symlinks to prevent symlink attacks.
+		// Note that this calls filepath.Clean internally.
+		realPath, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return fmt.Errorf("failed to evaluate symlinks: %w", err)
+		}
 
-		// Check for path traversal attempts by verifying no path component is ".."
-		// This prevents attacks like "../etc/passwd" or "config/../../etc/passwd"
-		parts := strings.Split(cleaned, string(filepath.Separator))
-		for _, part := range parts {
-			if part == ".." {
-				return fmt.Errorf("path contains invalid traversal sequence: %s", path)
+		// Validate the path to prevent path traversal attacks
+		if !filepath.IsAbs(realPath) {
+			if !filepath.IsLocal(realPath) {
+				return fmt.Errorf("path is not local or contains invalid traversal: %s", path)
 			}
 		}
 
-		cfg.path = cleaned
+		cfg.path = realPath
 		return nil
 	}
 }
