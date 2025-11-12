@@ -97,10 +97,12 @@ tasks:
         silent: true
     cmds:
       - cmd: |
-          if test -z "$(deadcode -test ./...)"; then
+          output=$(deadcode -test ./...)
+          if test -z "$output"; then
             echo "✅ No unused code found"
           else
             echo "❌ Unused code found"
+            echo $output
             exit 1
           fi
         silent: true
@@ -114,10 +116,10 @@ tasks:
         silent: true
       - task: install-deadcode
         silent: true
+      - task: deadcode
     cmds:
       - golangci-lint run ./...
       - go vet ./...
-      - deadcode -test ./...
 
   lint-fix:
     desc: Run linting tools, and apply fixes.
@@ -126,9 +128,9 @@ tasks:
         silent: true
       - task: install-deadcode
         silent: true
+      - task: deadcode
     cmds:
       - golangci-lint run --fix ./...
-      - deadcode -test ./...
 
   build:
     desc: Build the registry API binary
