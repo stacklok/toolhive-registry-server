@@ -50,6 +50,11 @@ tasks:
     cmds:
       - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
+  install-deadcode:
+    desc: Install the deadcode tool for checking for unused code
+    cmds:
+      - go install golang.org/x/tools/cmd/deadcode@latest
+
   install-ko:
     desc: Install the ko tool for building container images
     cmds:
@@ -62,24 +67,50 @@ tasks:
       - install-mock
       - install-swagger
       - install-golangci-lint
+      - install-deadcode
       - install-ko
 
   gen:
     desc: Generate mock files using go generate
-    deps: [install-mock]
+    deps: 
+      - task: install-mock
+        silent: true
     cmds:
       - go generate ./...
 
+  deadcode:
+    desc: Run deadcode tool for checking for unused code
+    deps: 
+      - task: install-deadcode
+        silent: true
+    cmds:
+      - cmd: |
+          if test -z "$(deadcode -test ./...)"; then
+            echo "✅ No unused code found"
+          else
+            echo "❌ Unused code found"
+            exit 1
+          fi
+        silent: true
+
   lint:
     desc: Run linting tools
-    deps: [gen, install-golangci-lint]
+    deps: 
+      - task: gen
+        silent: true
+      - task: install-golangci-lint
+        silent: true
+      - task: install-deadcode
+        silent: true
     cmds:
       - golangci-lint run ./...
       - go vet ./...
 
   lint-fix:
     desc: Run linting tools, and apply fixes.
-    deps: [install-golangci-lint]
+    deps: 
+      - task: install-golangci-lint
+        silent: true
     cmds:
       - golangci-lint run --fix ./...
 
@@ -90,7 +121,9 @@ tasks:
 
   build-image:
     desc: Build the registry API image with ko
-    deps: [install-ko]
+    deps: 
+      - task: install-ko
+        silent: true
     env:
       KO_DOCKER_REPO: '{{.REPO}}'
     cmds:
@@ -105,26 +138,30 @@ tasks:
       SHA:  
         sh: git rev-parse HEAD || echo "unknown"
     cmds:
-      - >
-        eval "{{.CONTAINER_RUNTIME}} build --load
-        -t {{.REPO}}:{{.SHA}}-ubi
-        --build-arg VERSION={{.SHA}}-ubi
-        --build-arg COMMIT={{.COMMIT}}
-        --build-arg BUILD_DATE={{.BUILD_DATE}}
-        --label name=\"toolhive-registry-api\"
-        --label vendor=\"Stacklok\"
-        --label maintainer=\"Stacklok\" ."
+      - |
+        {{.CONTAINER_RUNTIME}} build --load \
+        -t {{.REPO}}:{{.SHA}}-ubi \
+        --build-arg VERSION={{.SHA}}-ubi \
+        --build-arg COMMIT={{.COMMIT}} \
+        --build-arg BUILD_DATE={{.BUILD_DATE}} \
+        --label name="toolhive-registry-api" \
+        --label vendor="Stacklok" \
+        --label maintainer="Stacklok" .
 
   test:
     desc: Run registry API tests
-    deps: [install-gotestfmt]
+    deps: 
+      - task: install-gotestfmt
+        silent: true
     cmds:
       # We have to use ldflags to avoid the LC_DYSYMTAB linker warning.
       - go test -ldflags=-extldflags=-Wl,-w -race -json ./... | gotestfmt -hide "all"
 
   test-coverage:
     desc: Run registry API tests with coverage
-    deps: [install-gotestfmt]
+    deps: 
+      - task: install-gotestfmt
+        silent: true
     cmds:
       # We have to use ldflags to avoid the LC_DYSYMTAB linker warning.
       - go test -ldflags=-extldflags=-Wl,-w -race -json -coverprofile=coverage.out ./... | gotestfmt -hide "all"
