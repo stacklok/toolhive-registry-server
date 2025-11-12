@@ -124,6 +124,8 @@ tasks:
   lint-fix:
     desc: Run linting tools, and apply fixes.
     deps:
+      - task: gen
+        silent: true
       - task: install-golangci-lint
         silent: true
       - task: install-deadcode
