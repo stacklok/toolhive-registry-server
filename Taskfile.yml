@@ -114,6 +114,7 @@ tasks:
         silent: true
       - task: install-deadcode
         silent: true
+      - task: deadcode
     cmds:
       - golangci-lint run ./...
       - go vet ./...
@@ -123,6 +124,7 @@ tasks:
     deps:
       - task: install-golangci-lint
         silent: true
+      - task: deadcode
     cmds:
       - golangci-lint run --fix ./...
 
