@@ -114,19 +114,21 @@ tasks:
         silent: true
       - task: install-deadcode
         silent: true
-      - task: deadcode
     cmds:
       - golangci-lint run ./...
       - go vet ./...
+      - deadcode -test ./...
 
   lint-fix:
     desc: Run linting tools, and apply fixes.
     deps:
       - task: install-golangci-lint
         silent: true
-      - task: deadcode
+      - task: install-deadcode
+        silent: true
     cmds:
       - golangci-lint run --fix ./...
+      - deadcode -test ./...
 
   build:
     desc: Build the registry API binary
