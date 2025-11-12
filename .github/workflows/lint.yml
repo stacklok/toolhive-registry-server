@@ -19,13 +19,12 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@0a35821d5c230e903fcfe077583637dea1b27b47 # v9.0.0
-        with:
-          args: --timeout=5m
-
       - name: Install Task
         uses: arduino/setup-task@v2
         with:
           version: 3.44.1
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run linting on project
+        run: |
+          task lint
