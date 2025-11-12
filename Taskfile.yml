@@ -43,6 +43,12 @@ tasks:
     cmds:
       - go install go.uber.org/mock/mockgen@latest
 
+  install-codegen:
+    desc: Install tools needed for code generation
+    deps:
+      - install-mock
+      - install-sqlc
+
   install-gotestfmt:
     desc: Install the gotestfmt tool for test output formatting
     cmds:
@@ -69,19 +75,16 @@ tasks:
     desc: Install the development dependencies
     deps:
       - install-gotestfmt
-      - install-mock
+      - install-codegen
       - install-swagger
       - install-golangci-lint
       - install-deadcode
       - install-ko
-      - install-sqlc
 
   gen:
     desc: Run code generation tasks
     deps:
-      - task: install-mock
-        silent: true
-      - task: install-sqlc
+      - task: install-codegen
         silent: true
     cmds:
       - go generate ./...

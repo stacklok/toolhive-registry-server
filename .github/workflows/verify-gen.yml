@@ -21,8 +21,8 @@ jobs:
         with:
           version: 3.44.1
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install dev-deps
-        run: task install-dev-deps
+      - name: Install codegen tools
+        run: task install-codegen
       - name: Generate code files
         run: task gen
       - name: Check for changes
