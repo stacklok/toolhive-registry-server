@@ -1,0 +1,58 @@
+# Docker Compose configuration example
+#
+# This configuration is designed for use with docker-compose.yml
+# It includes database configuration for the PostgreSQL container
+
+# Registry name/identifier
+registryName: docker-registry
+
+# ==============================================================================
+# DATA SOURCE CONFIGURATION
+# ==============================================================================
+
+source:
+  # Using file source for simplicity in Docker environment
+  # You can change this to git or api as needed
+  type: file
+  format: toolhive
+  file:
+    path: /data/registry.json
+
+# ==============================================================================
+# SYNCHRONIZATION POLICY
+# ==============================================================================
+
+syncPolicy:
+  # Check for updates every 5 minutes
+  interval: "5m"
+
+# ==============================================================================
+# DATABASE CONFIGURATION (Optional)
+# ==============================================================================
+
+database:
+  # Database connection settings
+  # These values match the postgres service in docker-compose.yml
+  host: postgres
+  port: 5432
+  user: registry
+  password: registry_password
+  database: registry
+  sslMode: disable  # SSL disabled for local Docker network
+
+  # Connection pool settings (optional)
+  maxOpenConns: 25
+  maxIdleConns: 5
+  connMaxLifetime: "5m"
+
+# ==============================================================================
+# FILTERING (Optional)
+# ==============================================================================
+
+# Uncomment to enable filtering
+# filter:
+#   names:
+#     include:
+#       - "official/*"
+#     exclude:
+#       - "*/deprecated"
