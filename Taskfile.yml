@@ -26,6 +26,11 @@ tasks:
           --v3.1 --output {{.SWAG_OUTPUT_DIR}} \
           --parseDependencyLevel 1 2>/dev/null
 
+  install-sqlc:
+    desc: Install the sqlc tool for generating database code
+    cmds:
+      - go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+
   install-swagger:
     desc: Install the swag tool for OpenAPI/Swagger generation
     cmds:
@@ -37,6 +42,12 @@ tasks:
       - which mockgen
     cmds:
       - go install go.uber.org/mock/mockgen@latest
+
+  install-codegen:
+    desc: Install tools needed for code generation
+    deps:
+      - install-mock
+      - install-sqlc
 
   install-gotestfmt:
     desc: Install the gotestfmt tool for test output formatting
@@ -64,23 +75,24 @@ tasks:
     desc: Install the development dependencies
     deps:
       - install-gotestfmt
-      - install-mock
+      - install-codegen
       - install-swagger
       - install-golangci-lint
       - install-deadcode
       - install-ko
 
   gen:
-    desc: Generate mock files using go generate
-    deps: 
-      - task: install-mock
+    desc: Run code generation tasks
+    deps:
+      - task: install-codegen
         silent: true
     cmds:
       - go generate ./...
+      - sqlc generate
 
   deadcode:
     desc: Run deadcode tool for checking for unused code
-    deps: 
+    deps:
       - task: install-deadcode
         silent: true
     cmds:
@@ -95,7 +107,7 @@ tasks:
 
   lint:
     desc: Run linting tools
-    deps: 
+    deps:
       - task: gen
         silent: true
       - task: install-golangci-lint
@@ -108,7 +120,7 @@ tasks:
 
   lint-fix:
     desc: Run linting tools, and apply fixes.
-    deps: 
+    deps:
       - task: install-golangci-lint
         silent: true
     cmds:
@@ -121,7 +133,7 @@ tasks:
 
   build-image:
     desc: Build the registry API image with ko
-    deps: 
+    deps:
       - task: install-ko
         silent: true
     env:
@@ -135,7 +147,7 @@ tasks:
       COMMIT:
         sh: git rev-parse --short HEAD || echo "unknown"
       BUILD_DATE: '{{dateInZone "2006-01-02T15:04:05Z" (now) "UTC"}}'
-      SHA:  
+      SHA:
         sh: git rev-parse HEAD || echo "unknown"
     cmds:
       - |
@@ -159,7 +171,7 @@ tasks:
 
   test-coverage:
     desc: Run registry API tests with coverage
-    deps: 
+    deps:
       - task: install-gotestfmt
         silent: true
     cmds:
