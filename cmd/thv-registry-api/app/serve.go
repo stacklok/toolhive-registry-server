@@ -14,8 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	registryapp "github.com/stacklok/toolhive-registry-server/pkg/app"
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
+	registryapp "github.com/stacklok/toolhive-registry-server/internal/app"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
 var serveCmd = &cobra.Command{

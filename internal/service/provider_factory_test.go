@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	sourcesmocks "github.com/stacklok/toolhive-registry-server/pkg/sources/mocks"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
+	sourcesmocks "github.com/stacklok/toolhive-registry-server/internal/sources/mocks"
 )
 
 func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
