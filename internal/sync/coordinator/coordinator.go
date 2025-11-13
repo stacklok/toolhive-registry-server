@@ -8,7 +8,7 @@ import (
 	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
-	status2 "github.com/stacklok/toolhive-registry-server/internal/status"
+	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 )
 
@@ -22,18 +22,18 @@ type Coordinator interface {
 	Stop() error
 
 	// GetStatus returns current sync status (thread-safe)
-	GetStatus() *status2.SyncStatus
+	GetStatus() *status.SyncStatus
 }
 
 // DefaultCoordinator is the default implementation of Coordinator
 type DefaultCoordinator struct {
 	manager           pkgsync.Manager
-	statusPersistence status2.StatusPersistence
+	statusPersistence status.StatusPersistence
 	config            *config.Config
 
 	// Thread-safe status management
 	mu           sync.Mutex
-	cachedStatus *status2.SyncStatus
+	cachedStatus *status.SyncStatus
 
 	// Lifecycle management
 	cancelFunc context.CancelFunc
@@ -43,7 +43,7 @@ type DefaultCoordinator struct {
 // New creates a new coordinator with injected dependencies
 func New(
 	manager pkgsync.Manager,
-	statusPersistence status2.StatusPersistence,
+	statusPersistence status.StatusPersistence,
 	cfg *config.Config,
 ) Coordinator {
 	return &DefaultCoordinator{
@@ -103,7 +103,7 @@ func (c *DefaultCoordinator) Stop() error {
 }
 
 // GetStatus returns current sync status (thread-safe)
-func (c *DefaultCoordinator) GetStatus() *status2.SyncStatus {
+func (c *DefaultCoordinator) GetStatus() *status.SyncStatus {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -120,8 +120,8 @@ func (c *DefaultCoordinator) loadOrInitializeStatus(ctx context.Context) {
 	syncStatus, err := c.statusPersistence.LoadStatus(ctx)
 	if err != nil {
 		logger.Warnf("Failed to load sync status, initializing with defaults: %v", err)
-		syncStatus = &status2.SyncStatus{
-			Phase:   status2.SyncPhaseFailed,
+		syncStatus = &status.SyncStatus{
+			Phase:   status.SyncPhaseFailed,
 			Message: "No previous sync status found",
 		}
 	}
@@ -129,17 +129,17 @@ func (c *DefaultCoordinator) loadOrInitializeStatus(ctx context.Context) {
 	// Check if this is a brand new status (no file existed)
 	if syncStatus.Phase == "" && syncStatus.LastSyncTime == nil {
 		logger.Info("No previous sync status found, initializing with defaults")
-		syncStatus.Phase = status2.SyncPhaseFailed
+		syncStatus.Phase = status.SyncPhaseFailed
 		syncStatus.Message = "No previous sync status found"
 		// Persist the default status immediately
 		if err := c.statusPersistence.SaveStatus(ctx, syncStatus); err != nil {
 			logger.Warnf("Failed to persist default sync status: %v", err)
 		}
-	} else if syncStatus.Phase == status2.SyncPhaseSyncing {
+	} else if syncStatus.Phase == status.SyncPhaseSyncing {
 		// If status was left in Syncing state, it means the previous run was interrupted
 		// Reset it to Failed so the sync will be triggered
 		logger.Warn("Previous sync was interrupted (status=Syncing), resetting to Failed")
-		syncStatus.Phase = status2.SyncPhaseFailed
+		syncStatus.Phase = status.SyncPhaseFailed
 		syncStatus.Message = "Previous sync was interrupted"
 		// Persist the corrected status
 		if err := c.statusPersistence.SaveStatus(ctx, syncStatus); err != nil {
@@ -162,7 +162,7 @@ func (c *DefaultCoordinator) loadOrInitializeStatus(ctx context.Context) {
 }
 
 // withStatus executes a function while holding the status lock
-func (c *DefaultCoordinator) withStatus(fn func(*status2.SyncStatus)) {
+func (c *DefaultCoordinator) withStatus(fn func(*status.SyncStatus)) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	fn(c.cachedStatus)
