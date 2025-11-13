@@ -14,7 +14,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
-	sources2 "github.com/stacklok/toolhive-registry-server/internal/sources"
+	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/sources/mocks"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 )
@@ -22,8 +22,8 @@ import (
 func TestNewDefaultSyncManager(t *testing.T) {
 	t.Parallel()
 
-	sourceHandlerFactory := sources2.NewSourceHandlerFactory()
-	storageManager := sources2.NewFileStorageManager("/tmp/test-storage")
+	sourceHandlerFactory := sources.NewSourceHandlerFactory()
+	storageManager := sources.NewFileStorageManager("/tmp/test-storage")
 
 	syncManager := NewDefaultSyncManager(sourceHandlerFactory, storageManager)
 
@@ -37,7 +37,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 	// Create temp directory and test file
 	tempDir := t.TempDir()
 	testFilePath := filepath.Join(tempDir, "registry.json")
-	testData := sources2.NewTestRegistryBuilder(config.SourceFormatToolHive).WithServer("test-server").BuildJSON()
+	testData := sources.NewTestRegistryBuilder(config.SourceFormatToolHive).WithServer("test-server").BuildJSON()
 	testHash := fmt.Sprintf("%x", sha256.Sum256(testData))
 
 	require.NoError(t, os.WriteFile(testFilePath, testData, 0644))
@@ -131,8 +131,8 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			sourceHandlerFactory := sources2.NewSourceHandlerFactory()
-			storageManager := sources2.NewFileStorageManager("/tmp/test-storage")
+			sourceHandlerFactory := sources.NewSourceHandlerFactory()
+			storageManager := sources.NewFileStorageManager("/tmp/test-storage")
 			syncManager := NewDefaultSyncManager(sourceHandlerFactory, storageManager)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -166,9 +166,9 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 	testFilePath := filepath.Join(tempDir, "registry.json")
 
 	// Create test file with valid registry data (1 server)
-	testData := sources2.NewTestRegistryBuilder(config.SourceFormatToolHive).WithServer("test-server").BuildJSON()
+	testData := sources.NewTestRegistryBuilder(config.SourceFormatToolHive).WithServer("test-server").BuildJSON()
 	require.NoError(t, os.WriteFile(testFilePath, testData, 0644))
-	emptyTestData := sources2.NewTestRegistryBuilder(config.SourceFormatToolHive).BuildJSON()
+	emptyTestData := sources.NewTestRegistryBuilder(config.SourceFormatToolHive).BuildJSON()
 	emptyTestFilePath := filepath.Join(tempDir, "empty-registry.json")
 	require.NoError(t, os.WriteFile(emptyTestFilePath, emptyTestData, 0644))
 
@@ -296,7 +296,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			sourceHandlerFactory := sources2.NewSourceHandlerFactory()
+			sourceHandlerFactory := sources.NewSourceHandlerFactory()
 			mockStorageManager := mocks.NewMockStorageManager(ctrl)
 
 			// Setup expectations for successful syncs

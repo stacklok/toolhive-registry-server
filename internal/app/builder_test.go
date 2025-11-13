@@ -14,7 +14,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
-	sources2 "github.com/stacklok/toolhive-registry-server/internal/sources"
+	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
@@ -169,7 +169,7 @@ func TestWithSourceHandlerFactory(t *testing.T) {
 	t.Parallel()
 	cfg := &registryAppConfig{}
 	// Use nil factory for testing - we're just verifying the field is set
-	var testFactory sources2.SourceHandlerFactory
+	var testFactory sources.SourceHandlerFactory
 
 	opt := WithSourceHandlerFactory(testFactory)
 	err := opt(cfg)
@@ -182,7 +182,7 @@ func TestWithStorageManager(t *testing.T) {
 	t.Parallel()
 	cfg := &registryAppConfig{}
 	// Use nil storage manager for testing - we're just verifying the field is set
-	var testStorageManager sources2.StorageManager
+	var testStorageManager sources.StorageManager
 
 	opt := WithStorageManager(testStorageManager)
 	err := opt(cfg)
@@ -365,7 +365,7 @@ func TestBuildServiceComponents(t *testing.T) {
 			name: "success with nil registryProvider - creates provider and service",
 			config: &registryAppConfig{
 				config:         createValidTestConfig(),
-				storageManager: sources2.NewFileStorageManager(t.TempDir()),
+				storageManager: sources.NewFileStorageManager(t.TempDir()),
 			},
 			setupMocks: func(
 				t *testing.T,
@@ -466,7 +466,7 @@ func TestBuildServiceComponents(t *testing.T) {
 			name: "error when config is nil - factory.CreateProvider fails",
 			config: &registryAppConfig{
 				config:         nil,
-				storageManager: sources2.NewFileStorageManager(t.TempDir()),
+				storageManager: sources.NewFileStorageManager(t.TempDir()),
 			},
 			setupMocks: func(
 				t *testing.T,
@@ -552,12 +552,12 @@ func TestBuildSyncComponents(t *testing.T) {
 					config:               createValidTestConfig(),
 					dataDir:              tempDir,
 					statusFile:           tempDir + "/status.json",
-					sourceHandlerFactory: sources2.NewSourceHandlerFactory(),
-					storageManager:       sources2.NewFileStorageManager(tempDir),
+					sourceHandlerFactory: sources.NewSourceHandlerFactory(),
+					storageManager:       sources.NewFileStorageManager(tempDir),
 					statusPersistence:    status.NewFileStatusPersistence(tempDir + "/status.json"),
 					syncManager: pkgsync.NewDefaultSyncManager(
-						sources2.NewSourceHandlerFactory(),
-						sources2.NewFileStorageManager(tempDir),
+						sources.NewSourceHandlerFactory(),
+						sources.NewFileStorageManager(tempDir),
 					),
 				}
 			}(),
@@ -580,10 +580,10 @@ func TestBuildSyncComponents(t *testing.T) {
 					config:               createValidTestConfig(),
 					dataDir:              tempDir,
 					statusFile:           tempDir + "/status.json",
-					sourceHandlerFactory: sources2.NewSourceHandlerFactory(), // pre-set
-					storageManager:       nil,                                // will be created
-					statusPersistence:    nil,                                // will be created
-					syncManager:          nil,                                // will be created
+					sourceHandlerFactory: sources.NewSourceHandlerFactory(), // pre-set
+					storageManager:       nil,                               // will be created
+					statusPersistence:    nil,                               // will be created
+					syncManager:          nil,                               // will be created
 				}
 			}(),
 			wantErr: false,
