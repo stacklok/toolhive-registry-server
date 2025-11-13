@@ -671,13 +671,148 @@ paths:
       summary: Get deployed servers by registry name
       tags:
       - deployed-servers
-  /extension/v0/servers/{id}:
+  /extension/v0/registries:
+    get:
+      description: List all registries
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      summary: List registries
+      tags:
+      - extension
+  /extension/v0/registries/{registryName}:
+    delete:
+      description: Delete a registry
+      parameters:
+      - description: Registry Name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      summary: Delete registry
+      tags:
+      - extension
+    get:
+      description: Get a registry by name
+      parameters:
+      - description: Registry Name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      summary: Get registry
+      tags:
+      - extension
+    put:
+      description: Create or update a registry
+      parameters:
+      - description: Registry Name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      summary: Create or update registry
+      tags:
+      - extension
+  /extension/v0/registries/{registryName}/servers/{serverName}/versions/{version}:
     delete:
       description: Delete a server from the registry
       parameters:
-      - description: Server ID
+      - description: Registry Name
         in: path
-        name: id
+        name: registryName
+        required: true
+        schema:
+          type: string
+      - description: URL-encoded server name (e.g., \
+        in: path
+        name: serverName
+        required: true
+        schema:
+          type: string
+      - description: URL-encoded version to retrieve (e.g., \
+        in: path
+        name: version
         required: true
         schema:
           type: string
@@ -709,9 +844,21 @@ paths:
     put:
       description: Create or update a server in the registry
       parameters:
-      - description: Server ID
+      - description: Registry Name
         in: path
-        name: id
+        name: registryName
+        required: true
+        schema:
+          type: string
+      - description: URL-encoded server name (e.g., \
+        in: path
+        name: serverName
+        required: true
+        schema:
+          type: string
+      - description: URL-encoded version to retrieve (e.g., \
+        in: path
+        name: version
         required: true
         schema:
           type: string
