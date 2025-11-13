@@ -10,11 +10,12 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/stacklok/toolhive/pkg/registry"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry"
 )
 
 // ToolHiveAPIHandler handles registry data from ToolHive Registry API endpoints
@@ -100,11 +101,17 @@ func (h *ToolHiveAPIHandler) FetchRegistry(ctx context.Context, registryConfig *
 		return nil, fmt.Errorf("failed to convert to ToolHive format: %w", err)
 	}
 
+	// Convert ToolHive Registry to ServerRegistry
+	serverRegistry, err := registry.NewServerRegistryFromToolhive(toolhiveRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert to ServerRegistry: %w", err)
+	}
+
 	// Calculate hash of the raw data for change detection
 	hash := fmt.Sprintf("%x", sha256.Sum256(data))
 
 	// Create and return fetch result
-	return NewFetchResult(toolhiveRegistry, hash, config.SourceFormatToolHive), nil
+	return NewFetchResult(serverRegistry, hash, config.SourceFormatToolHive), nil
 }
 
 // CurrentHash returns the current hash of the API response
@@ -178,14 +185,14 @@ func (h *ToolHiveAPIHandler) convertToToolhiveRegistry(
 	ctx context.Context,
 	baseURL string,
 	response *ListServersResponse,
-) (*registry.Registry, error) {
+) (*toolhivetypes.Registry, error) {
 	logger := log.FromContext(ctx)
 
-	toolhiveRegistry := &registry.Registry{
+	toolhiveRegistry := &toolhivetypes.Registry{
 		Version:       "1.0",
 		LastUpdated:   time.Now().Format(time.RFC3339),
-		Servers:       make(map[string]*registry.ImageMetadata),
-		RemoteServers: make(map[string]*registry.RemoteServerMetadata),
+		Servers:       make(map[string]*toolhivetypes.ImageMetadata),
+		RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
 	}
 
 	// Fetch detailed information for each server in parallel
@@ -199,7 +206,7 @@ func (h *ToolHiveAPIHandler) fetchServerDetailsParallel(
 	ctx context.Context,
 	baseURL string,
 	servers []ServerSummaryResponse,
-	toolhiveRegistry *registry.Registry,
+	toolhiveRegistry *toolhivetypes.Registry,
 	logger logr.Logger,
 ) {
 	// Limit concurrent requests to avoid overwhelming the API
@@ -268,9 +275,9 @@ func (h *ToolHiveAPIHandler) fetchServerDetailsParallel(
 }
 
 // addServerFromSummary adds a server using only summary data (fallback)
-func (*ToolHiveAPIHandler) addServerFromSummary(reg *registry.Registry, summary *ServerSummaryResponse) {
-	imageMetadata := &registry.ImageMetadata{
-		BaseServerMetadata: registry.BaseServerMetadata{
+func (*ToolHiveAPIHandler) addServerFromSummary(reg *toolhivetypes.Registry, summary *ServerSummaryResponse) {
+	imageMetadata := &toolhivetypes.ImageMetadata{
+		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
 			Name:        summary.Name,
 			Description: summary.Description,
 			Tier:        summary.Tier,
@@ -284,9 +291,9 @@ func (*ToolHiveAPIHandler) addServerFromSummary(reg *registry.Registry, summary 
 }
 
 // addServerFromDetail adds a server using full detail data
-func (*ToolHiveAPIHandler) addServerFromDetail(reg *registry.Registry, detail *ServerDetailResponse) {
-	imageMetadata := &registry.ImageMetadata{
-		BaseServerMetadata: registry.BaseServerMetadata{
+func (*ToolHiveAPIHandler) addServerFromDetail(reg *toolhivetypes.Registry, detail *ServerDetailResponse) {
+	imageMetadata := &toolhivetypes.ImageMetadata{
+		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
 			Name:          detail.Name,
 			Description:   detail.Description,
 			Tier:          detail.Tier,
@@ -304,9 +311,9 @@ func (*ToolHiveAPIHandler) addServerFromDetail(reg *registry.Registry, detail *S
 
 	// Add environment variables if present
 	if len(detail.EnvVars) > 0 {
-		imageMetadata.EnvVars = make([]*registry.EnvVar, len(detail.EnvVars))
+		imageMetadata.EnvVars = make([]*toolhivetypes.EnvVar, len(detail.EnvVars))
 		for i, envVar := range detail.EnvVars {
-			imageMetadata.EnvVars[i] = &registry.EnvVar{
+			imageMetadata.EnvVars[i] = &toolhivetypes.EnvVar{
 				Name:        envVar.Name,
 				Description: envVar.Description,
 				Required:    envVar.Required,

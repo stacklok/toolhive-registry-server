@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/stacklok/toolhive/pkg/logger"
-	"github.com/stacklok/toolhive/pkg/registry"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 )
 
 var (
@@ -18,7 +18,7 @@ var (
 
 // serverWithName wraps a ServerMetadata and overrides the name
 type serverWithName struct {
-	registry.ServerMetadata
+	toolhivetypes.ServerMetadata
 	nameOverride string
 }
 
@@ -38,13 +38,13 @@ type RegistryService interface {
 	CheckReadiness(ctx context.Context) error
 
 	// GetRegistry returns the registry data with metadata
-	GetRegistry(ctx context.Context) (*registry.Registry, string, error) // returns registry, source, error
+	GetRegistry(ctx context.Context) (*toolhivetypes.Registry, string, error) // returns registry, source, error
 
 	// ListServers returns all servers in the registry
-	ListServers(ctx context.Context) ([]registry.ServerMetadata, error)
+	ListServers(ctx context.Context) ([]toolhivetypes.ServerMetadata, error)
 
 	// GetServer returns a specific server by name
-	GetServer(ctx context.Context, name string) (registry.ServerMetadata, error)
+	GetServer(ctx context.Context, name string) (toolhivetypes.ServerMetadata, error)
 
 	// ListDeployedServers returns all deployed MCP servers
 	ListDeployedServers(ctx context.Context) ([]*DeployedServer, error)
@@ -58,7 +58,7 @@ type regSvc struct {
 	registryProvider   RegistryDataProvider
 	deploymentProvider DeploymentProvider
 
-	registryData *registry.Registry
+	registryData *toolhivetypes.Registry
 
 	lastFetch     time.Time
 	cacheDuration time.Duration
@@ -160,7 +160,7 @@ func (s *regSvc) CheckReadiness(ctx context.Context) error {
 }
 
 // GetRegistry implements RegistryService.GetRegistry
-func (s *regSvc) GetRegistry(ctx context.Context) (*registry.Registry, string, error) {
+func (s *regSvc) GetRegistry(ctx context.Context) (*toolhivetypes.Registry, string, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
 		logger.Warnf("Failed to refresh data: %v", err)
 	}
@@ -173,10 +173,10 @@ func (s *regSvc) GetRegistry(ctx context.Context) (*registry.Registry, string, e
 
 	if s.registryData == nil {
 		// Return an empty registry if no data is loaded
-		return &registry.Registry{
+		return &toolhivetypes.Registry{
 			Version:     "1.0.0",
 			LastUpdated: time.Now().Format(time.RFC3339),
-			Servers:     make(map[string]*registry.ImageMetadata),
+			Servers:     make(map[string]*toolhivetypes.ImageMetadata),
 		}, source, nil
 	}
 
@@ -184,7 +184,7 @@ func (s *regSvc) GetRegistry(ctx context.Context) (*registry.Registry, string, e
 }
 
 // ListServers implements RegistryService.ListServers
-func (s *regSvc) ListServers(ctx context.Context) ([]registry.ServerMetadata, error) {
+func (s *regSvc) ListServers(ctx context.Context) ([]toolhivetypes.ServerMetadata, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
 		logger.Warnf("Failed to refresh data: %v", err)
 	}
@@ -193,11 +193,11 @@ func (s *regSvc) ListServers(ctx context.Context) ([]registry.ServerMetadata, er
 		return s.getAllServersWithNames(), nil
 	}
 
-	return []registry.ServerMetadata{}, nil
+	return []toolhivetypes.ServerMetadata{}, nil
 }
 
 // GetServer implements RegistryService.GetServer
-func (s *regSvc) GetServer(ctx context.Context, name string) (registry.ServerMetadata, error) {
+func (s *regSvc) GetServer(ctx context.Context, name string) (toolhivetypes.ServerMetadata, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
 		logger.Warnf("Failed to refresh data: %v", err)
 	}
@@ -228,8 +228,8 @@ func (s *regSvc) GetDeployedServer(ctx context.Context, name string) ([]*Deploye
 }
 
 // getAllServersWithNames returns all servers with names properly populated from map keys
-func (s *regSvc) getAllServersWithNames() []registry.ServerMetadata {
-	servers := make([]registry.ServerMetadata, 0, len(s.registryData.Servers)+len(s.registryData.RemoteServers))
+func (s *regSvc) getAllServersWithNames() []toolhivetypes.ServerMetadata {
+	servers := make([]toolhivetypes.ServerMetadata, 0, len(s.registryData.Servers)+len(s.registryData.RemoteServers))
 
 	// Add container servers with names
 	for name, server := range s.registryData.Servers {
@@ -251,7 +251,7 @@ func (s *regSvc) getAllServersWithNames() []registry.ServerMetadata {
 }
 
 // getServerByNameWithName returns a server by name with name properly populated
-func (s *regSvc) getServerByNameWithName(name string) (registry.ServerMetadata, error) {
+func (s *regSvc) getServerByNameWithName(name string) (toolhivetypes.ServerMetadata, error) {
 	// Check container servers first
 	if server, ok := s.registryData.Servers[name]; ok {
 		return &serverWithName{

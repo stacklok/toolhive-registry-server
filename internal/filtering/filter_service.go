@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/stacklok/toolhive/pkg/registry"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
@@ -14,7 +14,7 @@ import (
 // FilterService coordinates name and tag filtering to apply registry filters
 type FilterService interface {
 	// ApplyFilters filters the registry based on filter configuration
-	ApplyFilters(ctx context.Context, reg *registry.Registry, filter *config.FilterConfig) (*registry.Registry, error)
+	ApplyFilters(ctx context.Context, reg *toolhivetypes.Registry, filter *config.FilterConfig) (*toolhivetypes.Registry, error)
 }
 
 // DefaultFilterService implements filtering coordination using name and tag filters
@@ -49,8 +49,8 @@ func NewFilterService(nameFilter NameFilter, tagFilter TagFilter) *DefaultFilter
 // 5. Return the filtered registry
 func (s *DefaultFilterService) ApplyFilters(
 	ctx context.Context,
-	reg *registry.Registry,
-	filter *config.FilterConfig) (*registry.Registry, error) {
+	reg *toolhivetypes.Registry,
+	filter *config.FilterConfig) (*toolhivetypes.Registry, error) {
 	ctxLogger := log.FromContext(ctx)
 
 	// If no filter is specified, return original registry
@@ -64,11 +64,11 @@ func (s *DefaultFilterService) ApplyFilters(
 		"originalRemoteServerCount", len(reg.RemoteServers))
 
 	// Create a new filtered registry with same metadata
-	filteredRegistry := &registry.Registry{
+	filteredRegistry := &toolhivetypes.Registry{
 		Version:       reg.Version,
 		LastUpdated:   reg.LastUpdated,
-		Servers:       make(map[string]*registry.ImageMetadata),
-		RemoteServers: make(map[string]*registry.RemoteServerMetadata),
+		Servers:       make(map[string]*toolhivetypes.ImageMetadata),
+		RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
 		Groups:        reg.Groups, // Groups are not filtered for now
 	}
 

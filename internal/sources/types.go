@@ -5,15 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/stacklok/toolhive/pkg/registry"
+	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	toolhiveregistry "github.com/stacklok/toolhive/pkg/registry"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 
-	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry"
 )
 
 // SourceDataValidator is an interface for validating registry source configurations
 type SourceDataValidator interface {
-	// ValidateData validates raw data and returns a parsed Registry
-	ValidateData(data []byte, format string) (*registry.Registry, error)
+	// ValidateData validates raw data and returns a parsed ServerRegistry
+	ValidateData(data []byte, format string) (*registry.ServerRegistry, error)
 }
 
 //go:generate mockgen -destination=mocks/mock_source_handler.go -package=mocks -source=types.go SourceHandler,SourceHandlerFactory
@@ -32,8 +35,8 @@ type SourceHandler interface {
 
 // FetchResult contains the result of a fetch operation
 type FetchResult struct {
-	// Registry is the parsed registry data (replaces raw Data field)
-	Registry *registry.Registry
+	// Registry is the parsed registry data in unified ServerRegistry format
+	Registry *registry.ServerRegistry
 
 	// Hash is the SHA256 hash of the serialized data for change detection
 	Hash string
@@ -45,10 +48,13 @@ type FetchResult struct {
 	Format string
 }
 
-// NewFetchResult creates a new FetchResult from a Registry instance and pre-calculated hash
+// NewFetchResult creates a new FetchResult from a ServerRegistry instance and pre-calculated hash
 // The hash should be calculated by the source handler to ensure consistency with CurrentHash
-func NewFetchResult(reg *registry.Registry, hash string, format string) *FetchResult {
-	serverCount := len(reg.Servers) + len(reg.RemoteServers)
+func NewFetchResult(reg *registry.ServerRegistry, hash string, format string) *FetchResult {
+	serverCount := 0
+	if reg != nil {
+		serverCount = len(reg.Servers)
+	}
 
 	return &FetchResult{
 		Registry:    reg,
@@ -72,8 +78,8 @@ func NewSourceDataValidator() SourceDataValidator {
 	return &DefaultSourceDataValidator{}
 }
 
-// ValidateData validates raw data and returns a parsed Registry
-func (*DefaultSourceDataValidator) ValidateData(data []byte, format string) (*registry.Registry, error) {
+// ValidateData validates raw data and returns a parsed ServerRegistry
+func (*DefaultSourceDataValidator) ValidateData(data []byte, format string) (*registry.ServerRegistry, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("data cannot be empty")
 	}
@@ -88,68 +94,53 @@ func (*DefaultSourceDataValidator) ValidateData(data []byte, format string) (*re
 	}
 }
 
-// validateToolhiveFormatAndParse validates data against ToolHive registry format and returns parsed Registry
-func validateToolhiveFormatAndParse(data []byte) (*registry.Registry, error) {
-	// Use the existing schema validation from pkg/registry
-	if err := registry.ValidateRegistrySchema(data); err != nil {
+// validateToolhiveFormatAndParse validates data against ToolHive registry format and returns parsed ServerRegistry
+func validateToolhiveFormatAndParse(data []byte) (*registry.ServerRegistry, error) {
+	// Use the existing schema validation from toolhive package
+	if err := toolhiveregistry.ValidateRegistrySchema(data); err != nil {
 		return nil, err
 	}
 
-	// Parse the validated data
-	var reg registry.Registry
-	if err := json.Unmarshal(data, &reg); err != nil {
+	// Parse the validated data as ToolHive Registry
+	var toolhiveReg toolhivetypes.Registry
+	if err := json.Unmarshal(data, &toolhiveReg); err != nil {
 		return nil, fmt.Errorf("failed to parse ToolHive registry format: %w", err)
 	}
 
-	return &reg, nil
+	// Convert to ServerRegistry using constructor
+	serverReg, err := registry.NewServerRegistryFromToolhive(&toolhiveReg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert to ServerRegistry: %w", err)
+	}
+
+	return serverReg, nil
 }
 
-// validateUpstreamFormatAndParse validates data against upstream registry format and returns converted Registry
-func validateUpstreamFormatAndParse(data []byte) (*registry.Registry, error) {
-	// Parse as upstream format to validate structure
-	var upstreamServers []registry.UpstreamServerDetail
-	if err := json.Unmarshal(data, &upstreamServers); err != nil {
+// validateUpstreamFormatAndParse validates data against upstream registry format and returns ServerRegistry
+func validateUpstreamFormatAndParse(data []byte) (*registry.ServerRegistry, error) {
+	// Parse as upstream ServerResponse array to validate structure
+	var responses []upstreamv0.ServerResponse
+	if err := json.Unmarshal(data, &responses); err != nil {
 		return nil, fmt.Errorf("invalid upstream format: %w", err)
 	}
 
 	// Basic validation - ensure we have at least one server and required fields
-	if len(upstreamServers) == 0 {
+	if len(responses) == 0 {
 		return nil, fmt.Errorf("upstream registry must contain at least one server")
 	}
 
-	for i, server := range upstreamServers {
-		if server.Server.Name == "" {
+	// Extract ServerJSON from responses for validation and conversion
+	servers := make([]upstreamv0.ServerJSON, len(responses))
+	for i, response := range responses {
+		servers[i] = response.Server
+		if response.Server.Name == "" {
 			return nil, fmt.Errorf("server at index %d: name is required", i)
 		}
-		if server.Server.Description == "" {
-			return nil, fmt.Errorf("server at index %d (%s): description is required", i, server.Server.Name)
+		if response.Server.Description == "" {
+			return nil, fmt.Errorf("server at index %d (%s): description is required", i, response.Server.Name)
 		}
 	}
 
-	// Convert upstream format to ToolHive Registry format
-	toolhiveRegistry := &registry.Registry{
-		Version:       "1.0",
-		LastUpdated:   "", // Will be set during sync
-		Servers:       make(map[string]*registry.ImageMetadata),
-		RemoteServers: make(map[string]*registry.RemoteServerMetadata),
-	}
-
-	for _, upstreamServer := range upstreamServers {
-		serverMetadata, err := registry.ConvertUpstreamToToolhive(&upstreamServer)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert server %s: %w", upstreamServer.Server.Name, err)
-		}
-
-		// Add to appropriate map based on server type
-		switch server := serverMetadata.(type) {
-		case *registry.ImageMetadata:
-			toolhiveRegistry.Servers[upstreamServer.Server.Name] = server
-		case *registry.RemoteServerMetadata:
-			toolhiveRegistry.RemoteServers[upstreamServer.Server.Name] = server
-		default:
-			return nil, fmt.Errorf("unknown server type for %s", upstreamServer.Server.Name)
-		}
-	}
-
-	return toolhiveRegistry, nil
+	// Wrap in ServerRegistry using constructor
+	return registry.NewServerRegistryFromUpstream(servers), nil
 }
