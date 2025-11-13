@@ -7,8 +7,8 @@ import (
 
 	"github.com/stacklok/toolhive/pkg/registry"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	"github.com/stacklok/toolhive-registry-server/pkg/sources"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/sources"
 )
 
 // FileRegistryDataProvider implements RegistryDataProvider by delegating to StorageManager.

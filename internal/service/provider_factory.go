@@ -4,8 +4,8 @@ package service
 import (
 	"fmt"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	"github.com/stacklok/toolhive-registry-server/pkg/sources"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/sources"
 )
 
 //go:generate mockgen -destination=mocks/mock_provider_factory.go -package=mocks -source=provider_factory.go RegistryProviderFactory

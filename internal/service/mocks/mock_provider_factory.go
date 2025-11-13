@@ -12,8 +12,8 @@ package mocks
 import (
 	reflect "reflect"
 
+	config "github.com/stacklok/toolhive-registry-server/internal/config"
 	service "github.com/stacklok/toolhive-registry-server/internal/service"
-	config "github.com/stacklok/toolhive-registry-server/pkg/config"
 	gomock "go.uber.org/mock/gomock"
 )
 
