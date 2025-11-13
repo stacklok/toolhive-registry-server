@@ -13,8 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	config "github.com/stacklok/toolhive-registry-server/pkg/config"
-	registry "github.com/stacklok/toolhive-registry-server/pkg/registry"
+	config "github.com/stacklok/toolhive-registry-server/internal/config"
+	registry "github.com/stacklok/toolhive-registry-server/internal/registry"
 	gomock "go.uber.org/mock/gomock"
 )
 

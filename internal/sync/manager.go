@@ -10,10 +10,11 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	"github.com/stacklok/toolhive-registry-server/pkg/filtering"
-	"github.com/stacklok/toolhive-registry-server/pkg/registry"
-	"github.com/stacklok/toolhive-registry-server/pkg/status"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/filtering"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
+	"github.com/stacklok/toolhive-registry-server/internal/sources"
+	"github.com/stacklok/toolhive-registry-server/internal/status"
 )
 
 // Result contains the result of a successful sync operation
@@ -127,8 +128,8 @@ type AutomaticSyncChecker interface {
 
 // DefaultSyncManager is the default implementation of Manager
 type DefaultSyncManager struct {
-	sourceHandlerFactory sources2.SourceHandlerFactory
-	storageManager       sources2.StorageManager
+	sourceHandlerFactory sources.SourceHandlerFactory
+	storageManager       sources.StorageManager
 	filterService        filtering.FilterService
 	dataChangeDetector   DataChangeDetector
 	automaticSyncChecker AutomaticSyncChecker
@@ -136,7 +137,7 @@ type DefaultSyncManager struct {
 
 // NewDefaultSyncManager creates a new DefaultSyncManager
 func NewDefaultSyncManager(
-	sourceHandlerFactory sources2.SourceHandlerFactory, storageManager sources2.StorageManager) *DefaultSyncManager {
+	sourceHandlerFactory sources.SourceHandlerFactory, storageManager sources.StorageManager) *DefaultSyncManager {
 	return &DefaultSyncManager{
 		sourceHandlerFactory: sourceHandlerFactory,
 		storageManager:       storageManager,
@@ -293,7 +294,7 @@ func (s *DefaultSyncManager) Delete(ctx context.Context, cfg *config.Config) err
 // fetchAndProcessRegistryData handles source handler creation, validation, fetch, and filtering
 func (s *DefaultSyncManager) fetchAndProcessRegistryData(
 	ctx context.Context,
-	cfg *config.Config) (*sources2.FetchResult, *Error) {
+	cfg *config.Config) (*sources.FetchResult, *Error) {
 	ctxLogger := log.FromContext(ctx)
 
 	// Get source handler
@@ -349,7 +350,7 @@ func (s *DefaultSyncManager) fetchAndProcessRegistryData(
 func (s *DefaultSyncManager) applyFilteringIfConfigured(
 	ctx context.Context,
 	cfg *config.Config,
-	fetchResult *sources2.FetchResult) *Error {
+	fetchResult *sources.FetchResult) *Error {
 	ctxLogger := log.FromContext(ctx)
 
 	if cfg.Filter != nil {
@@ -412,7 +413,7 @@ func (s *DefaultSyncManager) applyFilteringIfConfigured(
 func (s *DefaultSyncManager) storeRegistryData(
 	ctx context.Context,
 	cfg *config.Config,
-	fetchResult *sources2.FetchResult) *Error {
+	fetchResult *sources.FetchResult) *Error {
 	ctxLogger := log.FromContext(ctx)
 
 	if err := s.storageManager.Store(ctx, cfg, fetchResult.Registry); err != nil {

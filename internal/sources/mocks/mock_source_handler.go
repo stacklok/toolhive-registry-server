@@ -13,9 +13,9 @@ import (
 	context "context"
 	reflect "reflect"
 
-	config "github.com/stacklok/toolhive-registry-server/pkg/config"
-	registry "github.com/stacklok/toolhive-registry-server/pkg/registry"
-	sources "github.com/stacklok/toolhive-registry-server/pkg/sources"
+	config "github.com/stacklok/toolhive-registry-server/internal/config"
+	registry "github.com/stacklok/toolhive-registry-server/internal/registry"
+	sources "github.com/stacklok/toolhive-registry-server/internal/sources"
 	gomock "go.uber.org/mock/gomock"
 )
 

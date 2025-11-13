@@ -15,7 +15,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
-	"github.com/stacklok/toolhive-registry-server/pkg/registry"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
 
 // ToolHiveAPIHandler handles registry data from ToolHive Registry API endpoints

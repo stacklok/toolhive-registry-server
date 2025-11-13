@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	"github.com/stacklok/toolhive-registry-server/pkg/registry"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
 
 func TestNewFetchResult(t *testing.T) {

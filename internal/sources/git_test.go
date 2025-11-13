@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	"github.com/stacklok/toolhive-registry-server/pkg/git"
-	"github.com/stacklok/toolhive-registry-server/pkg/registry"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/git"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
 
 const (

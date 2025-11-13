@@ -15,7 +15,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	sources2 "github.com/stacklok/toolhive-registry-server/internal/sources"
+	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
@@ -41,8 +41,8 @@ type registryAppConfig struct {
 	config *config.Config
 
 	// Optional component overrides (primarily for testing)
-	sourceHandlerFactory sources2.SourceHandlerFactory
-	storageManager       sources2.StorageManager
+	sourceHandlerFactory sources.SourceHandlerFactory
+	storageManager       sources.StorageManager
 	statusPersistence    status.StatusPersistence
 	syncManager          pkgsync.Manager
 	registryProvider     service.RegistryDataProvider
@@ -184,7 +184,7 @@ func WithDataDirectory(dir string) RegistryAppOptions {
 }
 
 // WithSourceHandlerFactory allows injecting a custom source handler factory (for testing)
-func WithSourceHandlerFactory(factory sources2.SourceHandlerFactory) RegistryAppOptions {
+func WithSourceHandlerFactory(factory sources.SourceHandlerFactory) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
 		cfg.sourceHandlerFactory = factory
 		return nil
@@ -192,7 +192,7 @@ func WithSourceHandlerFactory(factory sources2.SourceHandlerFactory) RegistryApp
 }
 
 // WithStorageManager allows injecting a custom storage manager (for testing)
-func WithStorageManager(sm sources2.StorageManager) RegistryAppOptions {
+func WithStorageManager(sm sources.StorageManager) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
 		cfg.storageManager = sm
 		return nil
@@ -239,7 +239,7 @@ func buildSyncComponents(
 
 	// Build source handler factory
 	if b.sourceHandlerFactory == nil {
-		b.sourceHandlerFactory = sources2.NewSourceHandlerFactory()
+		b.sourceHandlerFactory = sources.NewSourceHandlerFactory()
 	}
 
 	// Build storage manager
@@ -248,7 +248,7 @@ func buildSyncComponents(
 		if err := os.MkdirAll(b.dataDir, 0750); err != nil {
 			return nil, fmt.Errorf("failed to create data directory %s: %w", b.dataDir, err)
 		}
-		b.storageManager = sources2.NewFileStorageManager(b.dataDir)
+		b.storageManager = sources.NewFileStorageManager(b.dataDir)
 	}
 
 	// Build status persistence
