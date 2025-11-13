@@ -10,10 +10,10 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/stacklok/toolhive-registry-server/internal/config"
-	"github.com/stacklok/toolhive-registry-server/internal/filtering"
-	sources2 "github.com/stacklok/toolhive-registry-server/internal/sources"
-	"github.com/stacklok/toolhive-registry-server/internal/status"
+	"github.com/stacklok/toolhive-registry-server/pkg/config"
+	"github.com/stacklok/toolhive-registry-server/pkg/filtering"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry"
+	"github.com/stacklok/toolhive-registry-server/pkg/status"
 )
 
 // Result contains the result of a successful sync operation
@@ -357,7 +357,19 @@ func (s *DefaultSyncManager) applyFilteringIfConfigured(
 			"hasNameFilters", cfg.Filter.Names != nil,
 			"hasTagFilters", cfg.Filter.Tags != nil)
 
-		filteredRegistry, err := s.filterService.ApplyFilters(ctx, fetchResult.Registry, cfg.Filter)
+		// Convert ServerRegistry to ToolHive format for filtering
+		toolhiveReg, err := fetchResult.Registry.ToToolhive()
+		if err != nil {
+			ctxLogger.Error(err, "Failed to convert to ToolHive format for filtering")
+			return &Error{
+				Err:             err,
+				Message:         fmt.Sprintf("Conversion to ToolHive failed: %v", err),
+				ConditionType:   ConditionSyncSuccessful,
+				ConditionReason: conditionReasonFetchFailed,
+			}
+		}
+
+		filteredToolhiveReg, err := s.filterService.ApplyFilters(ctx, toolhiveReg, cfg.Filter)
 		if err != nil {
 			ctxLogger.Error(err, "Registry filtering failed")
 			return &Error{
@@ -368,10 +380,22 @@ func (s *DefaultSyncManager) applyFilteringIfConfigured(
 			}
 		}
 
+		// Convert filtered ToolHive registry back to ServerRegistry
+		filteredServerReg, err := registry.NewServerRegistryFromToolhive(filteredToolhiveReg)
+		if err != nil {
+			ctxLogger.Error(err, "Failed to convert filtered registry to ServerRegistry")
+			return &Error{
+				Err:             err,
+				Message:         fmt.Sprintf("Conversion to ServerRegistry failed: %v", err),
+				ConditionType:   ConditionSyncSuccessful,
+				ConditionReason: conditionReasonFetchFailed,
+			}
+		}
+
 		// Update fetch result with filtered data
 		originalServerCount := fetchResult.ServerCount
-		fetchResult.Registry = filteredRegistry
-		fetchResult.ServerCount = len(filteredRegistry.Servers) + len(filteredRegistry.RemoteServers)
+		fetchResult.Registry = filteredServerReg
+		fetchResult.ServerCount = len(filteredServerReg.Servers)
 
 		ctxLogger.Info("Registry filtering completed",
 			"originalServerCount", originalServerCount,

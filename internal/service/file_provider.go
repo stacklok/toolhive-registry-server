@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/stacklok/toolhive/pkg/registry"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
@@ -34,9 +34,24 @@ func NewFileRegistryDataProvider(storageManager sources.StorageManager, cfg *con
 // GetRegistryData implements RegistryDataProvider.GetRegistryData.
 // It delegates to the StorageManager to retrieve and parse registry data.
 // This eliminates code duplication and provides a single source of truth for file operations.
-func (p *FileRegistryDataProvider) GetRegistryData(ctx context.Context) (*registry.Registry, error) {
-	// Delegate to storage manager - all file reading logic is centralized there
-	return p.storageManager.Get(ctx, p.config)
+//
+// NOTE: In PR 1, StorageManager returns ServerRegistry but RegistryDataProvider interface
+// still expects toolhive Registry. This method converts at the boundary to maintain
+// backward compatibility until PR 2.
+func (p *FileRegistryDataProvider) GetRegistryData(ctx context.Context) (*toolhivetypes.Registry, error) {
+	// Get ServerRegistry from storage manager (new format)
+	serverReg, err := p.storageManager.Get(ctx, p.config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get registry data: %w", err)
+	}
+
+	// Convert ServerRegistry → ToolHive Registry using ToToolhive() method
+	toolhiveReg, err := serverReg.ToToolhive()
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert to toolhive format: %w", err)
+	}
+
+	return toolhiveReg, nil
 }
 
 // GetSource implements RegistryDataProvider.GetSource.

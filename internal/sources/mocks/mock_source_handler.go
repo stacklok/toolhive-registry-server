@@ -13,9 +13,9 @@ import (
 	context "context"
 	reflect "reflect"
 
-	config "github.com/stacklok/toolhive-registry-server/internal/config"
-	sources "github.com/stacklok/toolhive-registry-server/internal/sources"
-	registry "github.com/stacklok/toolhive/pkg/registry"
+	config "github.com/stacklok/toolhive-registry-server/pkg/config"
+	registry "github.com/stacklok/toolhive-registry-server/pkg/registry"
+	sources "github.com/stacklok/toolhive-registry-server/pkg/sources"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -44,10 +44,10 @@ func (m *MockSourceDataValidator) EXPECT() *MockSourceDataValidatorMockRecorder 
 }
 
 // ValidateData mocks base method.
-func (m *MockSourceDataValidator) ValidateData(data []byte, format string) (*registry.Registry, error) {
+func (m *MockSourceDataValidator) ValidateData(data []byte, format string) (*registry.ServerRegistry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ValidateData", data, format)
-	ret0, _ := ret[0].(*registry.Registry)
+	ret0, _ := ret[0].(*registry.ServerRegistry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

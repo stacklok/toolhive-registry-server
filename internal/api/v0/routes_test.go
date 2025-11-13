@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stacklok/toolhive/pkg/registry"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -233,12 +233,12 @@ const testRegistryJSON = `{
 
 // realisticRegistryProvider implements RegistryDataProvider for testing with our realistic test data
 type realisticRegistryProvider struct {
-	data *registry.Registry
+	data *toolhivetypes.Registry
 }
 
 // newRealisticRegistryProvider creates a provider with our representative test data
 func newRealisticRegistryProvider() (*realisticRegistryProvider, error) {
-	var data registry.Registry
+	var data toolhivetypes.Registry
 	if err := json.Unmarshal([]byte(testRegistryJSON), &data); err != nil {
 		return nil, err
 	}
@@ -249,7 +249,7 @@ func newRealisticRegistryProvider() (*realisticRegistryProvider, error) {
 }
 
 // GetRegistryData implements RegistryDataProvider.GetRegistryData
-func (p *realisticRegistryProvider) GetRegistryData(_ context.Context) (*registry.Registry, error) {
+func (p *realisticRegistryProvider) GetRegistryData(_ context.Context) (*toolhivetypes.Registry, error) {
 	return p.data, nil
 }
 
@@ -321,14 +321,14 @@ func TestRegistryRouter(t *testing.T) {
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	// Set up expectations for all routes
-	mockSvc.EXPECT().GetRegistry(gomock.Any()).Return(&registry.Registry{
+	mockSvc.EXPECT().GetRegistry(gomock.Any()).Return(&toolhivetypes.Registry{
 		Version:     "1.0.0",
 		LastUpdated: time.Now().Format(time.RFC3339),
-		Servers:     make(map[string]*registry.ImageMetadata),
+		Servers:     make(map[string]*toolhivetypes.ImageMetadata),
 	}, "test", nil).AnyTimes()
-	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]registry.ServerMetadata{}, nil).AnyTimes()
-	mockSvc.EXPECT().GetServer(gomock.Any(), "test-server").Return(&registry.ImageMetadata{
-		BaseServerMetadata: registry.BaseServerMetadata{
+	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]toolhivetypes.ServerMetadata{}, nil).AnyTimes()
+	mockSvc.EXPECT().GetServer(gomock.Any(), "test-server").Return(&toolhivetypes.ImageMetadata{
+		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
 			Name: "test-server",
 		},
 	}, nil).AnyTimes()
@@ -402,7 +402,7 @@ func TestListServers_FormatParameter(t *testing.T) {
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	// Expect successful calls for toolhive format only
-	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]registry.ServerMetadata{}, nil).Times(2) // default and explicit toolhive
+	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]toolhivetypes.ServerMetadata{}, nil).Times(2) // default and explicit toolhive
 
 	router := v0.Router(mockSvc)
 
@@ -481,14 +481,14 @@ func TestNewServer(t *testing.T) {
 
 	// Set up expectations for all test routes
 	mockSvc.EXPECT().CheckReadiness(gomock.Any()).Return(nil).AnyTimes()
-	mockSvc.EXPECT().GetRegistry(gomock.Any()).Return(&registry.Registry{
+	mockSvc.EXPECT().GetRegistry(gomock.Any()).Return(&toolhivetypes.Registry{
 		Version:     "1.0.0",
 		LastUpdated: time.Now().Format(time.RFC3339),
-		Servers:     make(map[string]*registry.ImageMetadata),
+		Servers:     make(map[string]*toolhivetypes.ImageMetadata),
 	}, "test", nil).AnyTimes()
-	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]registry.ServerMetadata{}, nil).AnyTimes()
-	mockSvc.EXPECT().GetServer(gomock.Any(), "test").Return(&registry.ImageMetadata{
-		BaseServerMetadata: registry.BaseServerMetadata{
+	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]toolhivetypes.ServerMetadata{}, nil).AnyTimes()
+	mockSvc.EXPECT().GetServer(gomock.Any(), "test").Return(&toolhivetypes.ImageMetadata{
+		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
 			Name: "test",
 		},
 	}, nil).AnyTimes()
@@ -588,12 +588,12 @@ func TestNewServer_WithMiddleware(t *testing.T) {
 
 // fileBasedRegistryProvider implements RegistryDataProvider for testing with embedded registry data
 type fileBasedRegistryProvider struct {
-	data *registry.Registry
+	data *toolhivetypes.Registry
 }
 
 // newFileBasedRegistryProvider creates a new provider with embedded registry data
 func newFileBasedRegistryProvider() (*fileBasedRegistryProvider, error) {
-	var data registry.Registry
+	var data toolhivetypes.Registry
 	if err := json.Unmarshal([]byte(testRegistryJSON), &data); err != nil {
 		return nil, err
 	}
@@ -604,7 +604,7 @@ func newFileBasedRegistryProvider() (*fileBasedRegistryProvider, error) {
 }
 
 // GetRegistryData implements RegistryDataProvider.GetRegistryData
-func (p *fileBasedRegistryProvider) GetRegistryData(_ context.Context) (*registry.Registry, error) {
+func (p *fileBasedRegistryProvider) GetRegistryData(_ context.Context) (*toolhivetypes.Registry, error) {
 	return p.data, nil
 }
 
@@ -619,11 +619,11 @@ func (*fileBasedRegistryProvider) GetRegistryName() string {
 }
 
 // Helper functions for testing the response conversion functions
-func newServerSummaryResponseForTesting(server registry.ServerMetadata) v0.ServerSummaryResponse {
+func newServerSummaryResponseForTesting(server toolhivetypes.ServerMetadata) v0.ServerSummaryResponse {
 	return v0.NewServerSummaryResponseForTesting(server)
 }
 
-func newServerDetailResponseForTesting(server registry.ServerMetadata) v0.ServerDetailResponse {
+func newServerDetailResponseForTesting(server toolhivetypes.ServerMetadata) v0.ServerDetailResponse {
 	return v0.NewServerDetailResponseForTesting(server)
 }
 
@@ -1396,8 +1396,8 @@ func TestHelperFunctions(t *testing.T) {
 	t.Parallel()
 
 	// Test data setup
-	testImageMetadata := &registry.ImageMetadata{
-		BaseServerMetadata: registry.BaseServerMetadata{
+	testImageMetadata := &toolhivetypes.ImageMetadata{
+		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
 			Name:        "test-server",
 			Description: "Test server",
 			Tier:        "Community",
@@ -1408,8 +1408,8 @@ func TestHelperFunctions(t *testing.T) {
 		Image: "test-image:latest",
 	}
 
-	testRemoteMetadata := &registry.RemoteServerMetadata{
-		BaseServerMetadata: registry.BaseServerMetadata{
+	testRemoteMetadata := &toolhivetypes.RemoteServerMetadata{
+		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
 			Name:        "remote-server",
 			Description: "Remote test server",
 			Tier:        "Official",
@@ -1522,7 +1522,7 @@ func TestErrorScenarios(t *testing.T) {
 		t.Parallel()
 		// This test needs its own mock since it calls ListServers (chi routes /servers/ to list endpoint)
 		emptyNameMockSvc := mocks.NewMockRegistryService(ctrl)
-		emptyNameMockSvc.EXPECT().ListServers(gomock.Any()).Return([]registry.ServerMetadata{}, nil)
+		emptyNameMockSvc.EXPECT().ListServers(gomock.Any()).Return([]toolhivetypes.ServerMetadata{}, nil)
 
 		router := v0.Router(emptyNameMockSvc)
 

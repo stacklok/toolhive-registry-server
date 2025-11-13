@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stacklok/toolhive/pkg/registry"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/require"
+
+	"github.com/stacklok/toolhive-registry-server/pkg/registry"
 )
 
 func TestFileStorageManager_StoreAndGet(t *testing.T) {
@@ -20,15 +22,19 @@ func TestFileStorageManager_StoreAndGet(t *testing.T) {
 	require.NotNil(t, manager)
 
 	// Create a test registry
-	testRegistry := &registry.Registry{
+	testRegistry := &toolhivetypes.Registry{
 		Version:     "1.0.0",
 		LastUpdated: "2024-01-01T00:00:00Z",
-		Servers:     make(map[string]*registry.ImageMetadata),
+		Servers:     make(map[string]*toolhivetypes.ImageMetadata),
 	}
+
+	// Convert to ServerRegistry
+	serverRegistry, err := registry.NewServerRegistryFromToolhive(testRegistry)
+	require.NoError(t, err)
 
 	// Store the registry
 	ctx := context.Background()
-	err := manager.Store(ctx, nil, testRegistry)
+	err = manager.Store(ctx, nil, serverRegistry)
 	require.NoError(t, err)
 
 	// Verify file was created
@@ -40,8 +46,8 @@ func TestFileStorageManager_StoreAndGet(t *testing.T) {
 	retrieved, err := manager.Get(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, retrieved)
-	require.Equal(t, testRegistry.Version, retrieved.Version)
-	require.Equal(t, testRegistry.LastUpdated, retrieved.LastUpdated)
+	require.Equal(t, serverRegistry.Version, retrieved.Version)
+	require.Equal(t, serverRegistry.LastUpdated, retrieved.LastUpdated)
 }
 
 func TestFileStorageManager_Delete(t *testing.T) {
@@ -54,12 +60,16 @@ func TestFileStorageManager_Delete(t *testing.T) {
 	require.NotNil(t, manager)
 
 	// Create and store a test registry
-	testRegistry := &registry.Registry{
+	testRegistry := &toolhivetypes.Registry{
 		Version: "1.0.0",
 	}
 
+	// Convert to ServerRegistry
+	serverRegistry, err := registry.NewServerRegistryFromToolhive(testRegistry)
+	require.NoError(t, err)
+
 	ctx := context.Background()
-	err := manager.Store(ctx, nil, testRegistry)
+	err = manager.Store(ctx, nil, serverRegistry)
 	require.NoError(t, err)
 
 	// Delete the registry
@@ -94,9 +104,14 @@ func TestFileStorageManager_Delete_PermissionDenied(t *testing.T) {
 	manager := NewFileStorageManager(tmpDir)
 
 	// Create and store a file
-	testRegistry := &registry.Registry{Version: "1.0.0"}
+	testRegistry := &toolhivetypes.Registry{Version: "1.0.0"}
+
+	// Convert to ServerRegistry
+	serverRegistry, err := registry.NewServerRegistryFromToolhive(testRegistry)
+	require.NoError(t, err)
+
 	ctx := context.Background()
-	err := manager.Store(ctx, nil, testRegistry)
+	err = manager.Store(ctx, nil, serverRegistry)
 	require.NoError(t, err)
 
 	// Make directory read-only to prevent deletion
