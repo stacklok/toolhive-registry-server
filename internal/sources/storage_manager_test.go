@@ -9,7 +9,7 @@ import (
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/registry"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
 
 func TestFileStorageManager_StoreAndGet(t *testing.T) {

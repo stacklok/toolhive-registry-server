@@ -9,8 +9,8 @@ import (
 	toolhiveregistry "github.com/stacklok/toolhive/pkg/registry"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 
-	"github.com/stacklok/toolhive-registry-server/pkg/config"
-	"github.com/stacklok/toolhive-registry-server/pkg/registry"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
 
 // SourceDataValidator is an interface for validating registry source configurations
