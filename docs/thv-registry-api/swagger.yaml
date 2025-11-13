@@ -778,6 +778,194 @@ paths:
       summary: Readiness check
       tags:
       - system
+  /registry/{registryName}/v0.1/publish:
+    post:
+      description: Publish a server to the registry
+      parameters:
+      - description: Registry name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      summary: Publish server
+      tags:
+      - registry
+      - official
+  /registry/{registryName}/v0.1/servers:
+    get:
+      description: Get a list of available servers in the registry
+      parameters:
+      - description: Registry name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      - description: Pagination cursor for retrieving next set of results
+        in: query
+        name: cursor
+        schema:
+          type: string
+      - description: Maximum number of items to return
+        in: query
+        name: limit
+        schema:
+          type: integer
+      - description: Search servers by name (substring match)
+        in: query
+        name: search
+        schema:
+          type: string
+      - description: Filter by version ('latest' for latest version, or an exact version
+          like '1.2.3')
+        in: query
+        name: version
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v0.ServerListResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+      summary: List servers
+      tags:
+      - registry
+      - official
+  /registry/{registryName}/v0.1/servers/{serverName}/versions:
+    get:
+      description: Returns all available versions for a specific MCP server, ordered
+        by publication date (newest first)
+      parameters:
+      - description: Registry name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      - description: URL-encoded server name (e.g., \
+        in: path
+        name: serverName
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v0.ServerListResponse'
+          description: A list of all versions for the server
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Server not found
+      summary: List all versions of an MCP server
+      tags:
+      - registry
+      - official
+  /registry/{registryName}/v0.1/servers/{serverName}/versions/{version}:
+    get:
+      description: |-
+        Returns detailed information about a specific version of an MCP server.
+        Use the special version `latest` to get the latest version.
+      parameters:
+      - description: Registry name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      - description: URL-encoded server name (e.g., \
+        in: path
+        name: serverName
+        required: true
+        schema:
+          type: string
+      - description: URL-encoded version to retrieve (e.g., \
+        in: path
+        name: version
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v0.ServerResponse'
+          description: Detailed server information
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Server or version not found
+      summary: Get specific MCP server version
+      tags:
+      - registry
+      - official
   /registry/v0.1/publish:
     post:
       description: Publish a server to the registry
@@ -889,7 +1077,8 @@ paths:
           description: Server not found
       summary: List all versions of an MCP server
       tags:
-      - servers
+      - registry
+      - official
   /registry/v0.1/servers/{serverName}/versions/{version}:
     get:
       description: |-
@@ -938,7 +1127,8 @@ paths:
           description: Server or version not found
       summary: Get specific MCP server version
       tags:
-      - servers
+      - registry
+      - official
   /v0/publish:
     post:
       deprecated: true

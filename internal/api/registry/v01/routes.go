@@ -32,32 +32,25 @@ func Router(svc service.RegistryService) http.Handler {
 
 	r := chi.NewRouter()
 
-	r.Get("/servers", routes.listServers)
-	r.Route("/servers/{serverName}", func(r chi.Router) {
+	r.Get("/v0.1/servers", routes.listServers)
+	r.Route("/v0.1/servers/{serverName}", func(r chi.Router) {
 		r.Get("/versions", routes.listVersions)
 		r.Get("/versions/{version}", routes.getVersion)
 	})
-	r.Post("/publish", routes.publish)
+	r.Post("/v0.1/publish", routes.publish)
+
+	r.Get("/{registryName}/v0.1/servers", routes.listServersWithRegistryName)
+	r.Route("/{registryName}/v0.1/servers/{serverName}", func(r chi.Router) {
+		r.Get("/versions", routes.listVersionsWithRegistryName)
+		r.Get("/versions/{version}", routes.getVersionWithRegistryName)
+	})
+	r.Post("/{registryName}/v0.1/publish", routes.publishWithRegistryName)
 
 	return r
 }
 
-// listServers handles GET /registry/v0.1/servers
-//
-// @Summary		List servers
-// @Description	Get a list of available servers in the registry
-// @Tags		registry,official
-// @Accept		json
-// @Produce		json
-// @Param		cursor			query	string	false	"Pagination cursor for retrieving next set of results"
-// @Param		limit			query	int		false	"Maximum number of items to return"
-// @Param		search			query	string	false	"Search servers by name (substring match)"
-// @Param		updated_since	query	time	false	"Filter servers updated since timestamp (RFC3339 datetime)"
-// @Param		version			query	string	false	"Filter by version ('latest' for latest version, or an exact version like '1.2.3')"
-// @Success		200		{object}	upstreamv0.ServerListResponse
-// @Failure		400		{object}	map[string]string	"Bad request"
-// @Router		/registry/v0.1/servers [get]
-func (*Routes) listServers(w http.ResponseWriter, r *http.Request) {
+// handleListServers is a shared helper that handles listing servers with an optional registry name.
+func (*Routes) handleListServers(w http.ResponseWriter, r *http.Request, registryName string) {
 	// Parse query parameters
 	query := r.URL.Query()
 
@@ -102,8 +95,70 @@ func (*Routes) listServers(w http.ResponseWriter, r *http.Request) {
 	_ = search
 	_ = updatedSince
 	_ = version
+	_ = registryName
 
 	// Placeholder response - replace with actual implementation
+	common.WriteJSONResponse(w, upstreamv0.ServerListResponse{
+		Servers: []upstreamv0.ServerResponse{},
+		Metadata: upstreamv0.Metadata{
+			Count: 0,
+		},
+	}, http.StatusOK)
+}
+
+// listServers handles GET /registry/v0.1/servers
+//
+// @Summary		List servers
+// @Description	Get a list of available servers in the registry
+// @Tags		registry,official
+// @Accept		json
+// @Produce		json
+// @Param		cursor			query	string	false	"Pagination cursor for retrieving next set of results"
+// @Param		limit			query	int		false	"Maximum number of items to return"
+// @Param		search			query	string	false	"Search servers by name (substring match)"
+// @Param		updated_since	query	time	false	"Filter servers updated since timestamp (RFC3339 datetime)"
+// @Param		version			query	string	false	"Filter by version ('latest' for latest version, or an exact version like '1.2.3')"
+// @Success		200		{object}	upstreamv0.ServerListResponse
+// @Failure		400		{object}	map[string]string	"Bad request"
+// @Router		/registry/v0.1/servers [get]
+func (routes *Routes) listServers(w http.ResponseWriter, r *http.Request) {
+	routes.handleListServers(w, r, "")
+}
+
+// listServersWithRegistryName handles GET /{registryName}/v0.1/servers
+//
+// @Summary		List servers
+// @Description	Get a list of available servers in the registry
+// @Tags		registry,official
+// @Accept		json
+// @Produce		json
+// @Param		registryName	path	string	true	"Registry name"
+// @Param		cursor			query	string	false	"Pagination cursor for retrieving next set of results"
+// @Param		limit			query	int		false	"Maximum number of items to return"
+// @Param		search			query	string	false	"Search servers by name (substring match)"
+// @Param		updated_since	query	time	false	"Filter servers updated since timestamp (RFC3339 datetime)"
+// @Param		version			query	string	false	"Filter by version ('latest' for latest version, or an exact version like '1.2.3')"
+// @Success		200		{object}	upstreamv0.ServerListResponse
+// @Failure		400		{object}	map[string]string	"Bad request"
+// @Router		/registry/{registryName}/v0.1/servers [get]
+func (routes *Routes) listServersWithRegistryName(w http.ResponseWriter, r *http.Request) {
+	registryName := chi.URLParam(r, "registryName")
+	routes.handleListServers(w, r, registryName)
+}
+
+// handleListVersions is a shared helper that handles listing versions with an optional registry name.
+func (*Routes) handleListVersions(w http.ResponseWriter, r *http.Request, registryName string) {
+	serverName := chi.URLParam(r, "serverName")
+	if strings.TrimSpace(serverName) == "" {
+		common.WriteErrorResponse(w, "Server name is required", http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Use registryName and serverName in the actual implementation
+	_ = registryName
+	_ = serverName
+
+	// Return empty version list
 	common.WriteJSONResponse(w, upstreamv0.ServerListResponse{
 		Servers: []upstreamv0.ServerResponse{},
 		Metadata: upstreamv0.Metadata{
@@ -116,7 +171,7 @@ func (*Routes) listServers(w http.ResponseWriter, r *http.Request) {
 //
 // @Summary		List all versions of an MCP server
 // @Description	Returns all available versions for a specific MCP server, ordered by publication date (newest first)
-// @Tags		servers
+// @Tags		registry,official
 // @Accept		json
 // @Produce		json
 // @Param		serverName	path		string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
@@ -124,37 +179,30 @@ func (*Routes) listServers(w http.ResponseWriter, r *http.Request) {
 // @Failure		400		{object}	map[string]string	"Bad request"
 // @Failure		404		{object}	map[string]string	"Server not found"
 // @Router		/registry/v0.1/servers/{serverName}/versions [get]
-func (*Routes) listVersions(w http.ResponseWriter, r *http.Request) {
-	serverName := chi.URLParam(r, "serverName")
-	if strings.TrimSpace(serverName) == "" {
-		common.WriteErrorResponse(w, "Server name is required", http.StatusBadRequest)
-		return
-	}
-
-	// Return empty version list
-	common.WriteJSONResponse(w, upstreamv0.ServerListResponse{
-		Servers: []upstreamv0.ServerResponse{},
-		Metadata: upstreamv0.Metadata{
-			Count: 0,
-		},
-	}, http.StatusOK)
+func (routes *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
+	routes.handleListVersions(w, r, "")
 }
 
-// getVersion handles GET /registry/v0.1/servers/{serverName}/versions/{version}
+// listVersionsWithRegistryName handles GET /{registryName}/v0.1/servers/{serverName}/versions
 //
-// @Summary		Get specific MCP server version
-// @Description	Returns detailed information about a specific version of an MCP server.
-// @Description	Use the special version `latest` to get the latest version.
-// @Tags		servers
+// @Summary		List all versions of an MCP server
+// @Description	Returns all available versions for a specific MCP server, ordered by publication date (newest first)
+// @Tags		registry,official
 // @Accept		json
 // @Produce		json
+// @Param		registryName	path	string	true	"Registry name"
 // @Param		serverName	path		string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
-// @Param		version		path		string	true	"URL-encoded version to retrieve (e.g., \"1.0.0\")"
-// @Success		200		{object}	upstreamv0.ServerResponse	"Detailed server information"
+// @Success		200		{object}	upstreamv0.ServerListResponse	"A list of all versions for the server"
 // @Failure		400		{object}	map[string]string	"Bad request"
-// @Failure		404		{object}	map[string]string	"Server or version not found"
-// @Router		/registry/v0.1/servers/{serverName}/versions/{version} [get]
-func (*Routes) getVersion(w http.ResponseWriter, r *http.Request) {
+// @Failure		404		{object}	map[string]string	"Server not found"
+// @Router		/registry/{registryName}/v0.1/servers/{serverName}/versions [get]
+func (routes *Routes) listVersionsWithRegistryName(w http.ResponseWriter, r *http.Request) {
+	registryName := chi.URLParam(r, "registryName")
+	routes.handleListVersions(w, r, registryName)
+}
+
+// handleGetVersion is a shared helper that handles getting a version with an optional registry name.
+func (*Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, registryName string) {
 	serverName := chi.URLParam(r, "serverName")
 	version := chi.URLParam(r, "version")
 	if strings.TrimSpace(serverName) == "" || strings.TrimSpace(version) == "" {
@@ -162,7 +210,59 @@ func (*Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: Use registryName, serverName, and version in the actual implementation
+	_ = registryName
+	_ = serverName
+	_ = version
+
 	common.WriteJSONResponse(w, upstreamv0.ServerResponse{}, http.StatusOK)
+}
+
+// getVersion handles GET /registry/v0.1/servers/{serverName}/versions/{version}
+//
+// @Summary		Get specific MCP server version
+// @Description	Returns detailed information about a specific version of an MCP server.
+// @Description	Use the special version `latest` to get the latest version.
+// @Tags		registry,official
+// @Accept		json
+// @Produce		json
+// @Param		serverName	path	string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
+// @Param		version		path	string	true	"URL-encoded version to retrieve (e.g., \"1.0.0\")"
+// @Success		200		{object}	upstreamv0.ServerResponse	"Detailed server information"
+// @Failure		400		{object}	map[string]string	"Bad request"
+// @Failure		404		{object}	map[string]string	"Server or version not found"
+// @Router		/registry/v0.1/servers/{serverName}/versions/{version} [get]
+func (routes *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
+	routes.handleGetVersion(w, r, "")
+}
+
+// getVersionWithRegistryName handles GET /{registryName}/v0.1/servers/{serverName}/versions/{version}
+//
+// @Summary		Get specific MCP server version
+// @Description	Returns detailed information about a specific version of an MCP server.
+// @Description	Use the special version `latest` to get the latest version.
+// @Tags		registry,official
+// @Accept		json
+// @Produce		json
+// @Param		registryName	path		string	true	"Registry name"
+// @Param		serverName		path		string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
+// @Param		version			path		string	true	"URL-encoded version to retrieve (e.g., \"1.0.0\")"
+// @Success		200				{object}	upstreamv0.ServerResponse	"Detailed server information"
+// @Failure		400				{object}	map[string]string	"Bad request"
+// @Failure		404				{object}	map[string]string	"Server or version not found"
+// @Router		/registry/{registryName}/v0.1/servers/{serverName}/versions/{version} [get]
+func (routes *Routes) getVersionWithRegistryName(w http.ResponseWriter, r *http.Request) {
+	registryName := chi.URLParam(r, "registryName")
+	routes.handleGetVersion(w, r, registryName)
+}
+
+// handlePublish is a shared helper that handles publishing with an optional registry name.
+func (*Routes) handlePublish(w http.ResponseWriter, r *http.Request, registryName string) {
+	// TODO: Use registryName in the actual implementation
+	_ = registryName
+	_ = r
+
+	common.WriteErrorResponse(w, "Publishing is not supported", http.StatusNotImplemented)
 }
 
 // publish handles POST /registry/v0.1/publish
@@ -174,6 +274,21 @@ func (*Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 // @Produce		json
 // @Failure		501	{object}	map[string]string	"Not implemented"
 // @Router		/registry/v0.1/publish [post]
-func (*Routes) publish(w http.ResponseWriter, _ *http.Request) {
-	common.WriteErrorResponse(w, "Publishing is not supported", http.StatusNotImplemented)
+func (routes *Routes) publish(w http.ResponseWriter, r *http.Request) {
+	routes.handlePublish(w, r, "")
+}
+
+// publishWithRegistryName handles POST /{registryName}/v0.1/publish
+//
+// @Summary		Publish server
+// @Description	Publish a server to the registry
+// @Tags		registry,official
+// @Accept		json
+// @Produce		json
+// @Param		registryName	path		string	true	"Registry name"
+// @Failure		501	{object}	map[string]string	"Not implemented"
+// @Router		/registry/{registryName}/v0.1/publish [post]
+func (routes *Routes) publishWithRegistryName(w http.ResponseWriter, r *http.Request) {
+	registryName := chi.URLParam(r, "registryName")
+	routes.handlePublish(w, r, registryName)
 }
