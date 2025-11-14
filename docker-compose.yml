@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: toolhive-registry-postgres
+    environment:
+      POSTGRES_USER: registry
+      POSTGRES_PASSWORD: registry_password
+      POSTGRES_DB: registry
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations/000001_init.up.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U registry"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - registry-network
+
+  registry-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: toolhive-registry-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./examples/config-docker.yaml:/config.yaml:ro
+      - ./examples/registry-sample.json:/data/registry.json:ro
+      - registry_data:/data
+    command: ["serve", "--config", "/config.yaml", "--address", ":8080"]
+    environment:
+      - LOG_LEVEL=info
+    networks:
+      - registry-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  registry_data:
+    driver: local
+
+networks:
+  registry-network:
+    driver: bridge

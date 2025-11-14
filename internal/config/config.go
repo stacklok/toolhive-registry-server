@@ -71,6 +71,7 @@ type Config struct {
 	Source       SourceConfig      `yaml:"source"`
 	SyncPolicy   *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
 	Filter       *FilterConfig     `yaml:"filter,omitempty"`
+	Database     *DatabaseConfig   `yaml:"database,omitempty"`
 }
 
 // SourceConfig defines the data source configuration
@@ -139,6 +140,36 @@ type NameFilterConfig struct {
 type TagFilterConfig struct {
 	Include []string `yaml:"include,omitempty"`
 	Exclude []string `yaml:"exclude,omitempty"`
+}
+
+// DatabaseConfig defines database connection settings
+type DatabaseConfig struct {
+	// Host is the database server hostname or IP address
+	Host string `yaml:"host"`
+
+	// Port is the database server port
+	Port int `yaml:"port"`
+
+	// User is the database username
+	User string `yaml:"user"`
+
+	// Password is the database password
+	Password string `yaml:"password"`
+
+	// Database is the database name
+	Database string `yaml:"database"`
+
+	// SSLMode is the SSL mode for the connection (disable, require, verify-ca, verify-full)
+	SSLMode string `yaml:"sslMode,omitempty"`
+
+	// MaxOpenConns is the maximum number of open connections to the database
+	MaxOpenConns int `yaml:"maxOpenConns,omitempty"`
+
+	// MaxIdleConns is the maximum number of idle connections in the pool
+	MaxIdleConns int `yaml:"maxIdleConns,omitempty"`
+
+	// ConnMaxLifetime is the maximum lifetime of a connection (e.g., "1h", "30m")
+	ConnMaxLifetime string `yaml:"connMaxLifetime,omitempty"`
 }
 
 // LoadConfig loads and parses configuration from a YAML file

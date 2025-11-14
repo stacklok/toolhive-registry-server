@@ -1,0 +1,25 @@
+{
+  "servers": [
+    {
+      "name": "example-server",
+      "version": "1.0.0",
+      "description": "An example MCP server for testing",
+      "title": "Example Server",
+      "website": "https://example.com",
+      "icons": [],
+      "repository": {
+        "type": "github",
+        "url": "https://github.com/example/server"
+      },
+      "packages": [
+        {
+          "type": "npm",
+          "identifier": "@example/server",
+          "version": "1.0.0",
+          "runtimeHint": "npx",
+          "transport": "stdio"
+        }
+      ]
+    }
+  ]
+}

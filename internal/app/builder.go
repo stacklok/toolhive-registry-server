@@ -14,8 +14,9 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	sources2 "github.com/stacklok/toolhive-registry-server/internal/sources"
+	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
@@ -41,12 +42,13 @@ type registryAppConfig struct {
 	config *config.Config
 
 	// Optional component overrides (primarily for testing)
-	sourceHandlerFactory sources2.SourceHandlerFactory
-	storageManager       sources2.StorageManager
+	sourceHandlerFactory sources.SourceHandlerFactory
+	storageManager       sources.StorageManager
 	statusPersistence    status.StatusPersistence
 	syncManager          pkgsync.Manager
 	registryProvider     service.RegistryDataProvider
 	deploymentProvider   service.DeploymentProvider
+	dbConnection         *db.Connection
 
 	// HTTP server options
 	address        string
@@ -112,6 +114,12 @@ func NewRegistryApp(
 		return nil, fmt.Errorf("failed to build HTTP server: %w", err)
 	}
 
+	// Build database connection (optional)
+	dbConnection, err := buildDatabaseConnection(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build database connection: %w", err)
+	}
+
 	// Create application context
 	appCtx, cancel := context.WithCancel(ctx)
 
@@ -120,6 +128,7 @@ func NewRegistryApp(
 		components: &AppComponents{
 			SyncCoordinator: syncCoordinator,
 			RegistryService: registryService,
+			Database:        dbConnection,
 		},
 		httpServer: httpServer,
 		ctx:        appCtx,
@@ -184,7 +193,7 @@ func WithDataDirectory(dir string) RegistryAppOptions {
 }
 
 // WithSourceHandlerFactory allows injecting a custom source handler factory (for testing)
-func WithSourceHandlerFactory(factory sources2.SourceHandlerFactory) RegistryAppOptions {
+func WithSourceHandlerFactory(factory sources.SourceHandlerFactory) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
 		cfg.sourceHandlerFactory = factory
 		return nil
@@ -192,7 +201,7 @@ func WithSourceHandlerFactory(factory sources2.SourceHandlerFactory) RegistryApp
 }
 
 // WithStorageManager allows injecting a custom storage manager (for testing)
-func WithStorageManager(sm sources2.StorageManager) RegistryAppOptions {
+func WithStorageManager(sm sources.StorageManager) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
 		cfg.storageManager = sm
 		return nil
@@ -239,7 +248,7 @@ func buildSyncComponents(
 
 	// Build source handler factory
 	if b.sourceHandlerFactory == nil {
-		b.sourceHandlerFactory = sources2.NewSourceHandlerFactory()
+		b.sourceHandlerFactory = sources.NewSourceHandlerFactory()
 	}
 
 	// Build storage manager
@@ -248,7 +257,7 @@ func buildSyncComponents(
 		if err := os.MkdirAll(b.dataDir, 0750); err != nil {
 			return nil, fmt.Errorf("failed to create data directory %s: %w", b.dataDir, err)
 		}
-		b.storageManager = sources2.NewFileStorageManager(b.dataDir)
+		b.storageManager = sources.NewFileStorageManager(b.dataDir)
 	}
 
 	// Build status persistence
@@ -335,4 +344,28 @@ func buildHTTPServer(
 
 	logger.Infof("HTTP server configured on %s", b.address)
 	return server, nil
+}
+
+// buildDatabaseConnection builds the database connection if configured
+func buildDatabaseConnection(b *registryAppConfig) (*db.Connection, error) {
+	// Use injected connection if provided (for testing)
+	if b.dbConnection != nil {
+		logger.Info("Using injected database connection")
+		return b.dbConnection, nil
+	}
+
+	// Check if database is configured
+	if b.config.Database == nil {
+		logger.Info("No database configuration provided, skipping database connection")
+		return nil, nil
+	}
+
+	logger.Info("Initializing database connection")
+	conn, err := db.NewConnection(b.config.Database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create database connection: %w", err)
+	}
+
+	logger.Info("Database connection initialized successfully")
+	return conn, nil
 }

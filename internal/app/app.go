@@ -54,6 +54,13 @@ func (app *RegistryApp) Stop(timeout time.Duration) error {
 		logger.Errorf("Failed to stop sync coordinator: %v", err)
 	}
 
+	// Close database connection
+	if app.components.Database != nil {
+		if err := app.components.Database.Close(); err != nil {
+			logger.Errorf("Failed to close database connection: %v", err)
+		}
+	}
+
 	// Cancel the application context
 	if app.cancelFunc != nil {
 		app.cancelFunc()
