@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/stacklok/toolhive/pkg/registry"
+	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	"github.com/modelcontextprotocol/registry/pkg/model"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
@@ -13,8 +15,8 @@ import (
 // TestRegistryBuilder provides a fluent interface for building test registry data
 type TestRegistryBuilder struct {
 	format        string
-	registry      *registry.Registry
-	upstreamData  []registry.UpstreamServerDetail
+	registry      *toolhivetypes.Registry
+	upstreamData  []upstreamv0.ServerResponse
 	serverCounter int
 }
 
@@ -27,14 +29,14 @@ func NewTestRegistryBuilder(format string) *TestRegistryBuilder {
 
 	switch format {
 	case config.SourceFormatToolHive, "":
-		builder.registry = &registry.Registry{
+		builder.registry = &toolhivetypes.Registry{
 			Version:       "1.0.0",
 			LastUpdated:   time.Now().Format(time.RFC3339),
-			Servers:       make(map[string]*registry.ImageMetadata),
-			RemoteServers: make(map[string]*registry.RemoteServerMetadata),
+			Servers:       make(map[string]*toolhivetypes.ImageMetadata),
+			RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
 		}
 	case config.SourceFormatUpstream:
-		builder.upstreamData = []registry.UpstreamServerDetail{}
+		builder.upstreamData = []upstreamv0.ServerResponse{}
 	}
 
 	return builder
@@ -49,8 +51,8 @@ func (b *TestRegistryBuilder) WithServer(name string) *TestRegistryBuilder {
 
 	switch b.format {
 	case config.SourceFormatToolHive, "":
-		b.registry.Servers[name] = &registry.ImageMetadata{
-			BaseServerMetadata: registry.BaseServerMetadata{
+		b.registry.Servers[name] = &toolhivetypes.ImageMetadata{
+			BaseServerMetadata: toolhivetypes.BaseServerMetadata{
 				Name:        name,
 				Description: fmt.Sprintf("Test server description for %s", name),
 				Tier:        "Community",
@@ -61,8 +63,8 @@ func (b *TestRegistryBuilder) WithServer(name string) *TestRegistryBuilder {
 			},
 			Image: "test/image:latest",
 		}
-		b.registry.Servers[name+"-legacy"] = &registry.ImageMetadata{
-			BaseServerMetadata: registry.BaseServerMetadata{
+		b.registry.Servers[name+"-legacy"] = &toolhivetypes.ImageMetadata{
+			BaseServerMetadata: toolhivetypes.BaseServerMetadata{
 				Name:        name + "-legacy",
 				Description: fmt.Sprintf("Test server description for %s", name),
 				Tier:        "Community",
@@ -74,28 +76,36 @@ func (b *TestRegistryBuilder) WithServer(name string) *TestRegistryBuilder {
 			Image: "test/image:latest",
 		}
 	case config.SourceFormatUpstream:
-		b.upstreamData = append(b.upstreamData, registry.UpstreamServerDetail{
-			Server: registry.UpstreamServer{
-				Name:        name,
+		b.upstreamData = append(b.upstreamData, upstreamv0.ServerResponse{
+			Server: upstreamv0.ServerJSON{
+				Schema:      "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+				Name:        "io.test/" + name,
 				Description: fmt.Sprintf("Test server description for %s", name),
-				Packages: []registry.UpstreamPackage{
+				Version:     "1.0.0",
+				Packages: []model.Package{
 					{
-						RegistryName: "docker",
-						Name:         "test/image",
-						Version:      "latest",
+						RegistryType: "oci",
+						Identifier:   "test/image:latest",
+						Transport: model.Transport{
+							Type: "stdio",
+						},
 					},
 				},
 			},
 		})
-		b.upstreamData = append(b.upstreamData, registry.UpstreamServerDetail{
-			Server: registry.UpstreamServer{
-				Name:        name + "-legacy",
-				Description: fmt.Sprintf("Test server description for %s", name),
-				Packages: []registry.UpstreamPackage{
+		b.upstreamData = append(b.upstreamData, upstreamv0.ServerResponse{
+			Server: upstreamv0.ServerJSON{
+				Schema:      "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+				Name:        "io.test/" + name + "-legacy",
+				Description: fmt.Sprintf("Test server description for %s-legacy", name),
+				Version:     "1.0.0",
+				Packages: []model.Package{
 					{
-						RegistryName: "docker",
-						Name:         "test/image",
-						Version:      "latest",
+						RegistryType: "oci",
+						Identifier:   "test/image:latest",
+						Transport: model.Transport{
+							Type: "stdio",
+						},
 					},
 				},
 			},
@@ -118,8 +128,8 @@ func (b *TestRegistryBuilder) WithRemoteServer(url string) *TestRegistryBuilder 
 		url = fmt.Sprintf("https://remote-server-%d.example.com", b.serverCounter-1)
 	}
 
-	b.registry.RemoteServers[name] = &registry.RemoteServerMetadata{
-		BaseServerMetadata: registry.BaseServerMetadata{
+	b.registry.RemoteServers[name] = &toolhivetypes.RemoteServerMetadata{
+		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
 			Name:        name,
 			Description: fmt.Sprintf("Test remote server description for %s", name),
 			Tier:        "Community",
@@ -148,8 +158,8 @@ func (b *TestRegistryBuilder) WithRemoteServerName(name, url string) *TestRegist
 		url = fmt.Sprintf("https://%s.example.com", name)
 	}
 
-	b.registry.RemoteServers[name] = &registry.RemoteServerMetadata{
-		BaseServerMetadata: registry.BaseServerMetadata{
+	b.registry.RemoteServers[name] = &toolhivetypes.RemoteServerMetadata{
+		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
 			Name:        name,
 			Description: fmt.Sprintf("Test remote server description for %s", name),
 			Tier:        "Community",
@@ -184,10 +194,10 @@ func (b *TestRegistryBuilder) Empty() *TestRegistryBuilder {
 	switch b.format {
 	case config.SourceFormatToolHive, "":
 		// Keep the registry structure but clear servers
-		b.registry.Servers = make(map[string]*registry.ImageMetadata)
-		b.registry.RemoteServers = make(map[string]*registry.RemoteServerMetadata)
+		b.registry.Servers = make(map[string]*toolhivetypes.ImageMetadata)
+		b.registry.RemoteServers = make(map[string]*toolhivetypes.RemoteServerMetadata)
 	case config.SourceFormatUpstream:
-		b.upstreamData = []registry.UpstreamServerDetail{}
+		b.upstreamData = []upstreamv0.ServerResponse{}
 	}
 	return b
 }
@@ -231,7 +241,7 @@ func (b *TestRegistryBuilder) BuildPrettyJSON() []byte {
 }
 
 // GetRegistry returns the built registry (for ToolHive format only)
-func (b *TestRegistryBuilder) GetRegistry() *registry.Registry {
+func (b *TestRegistryBuilder) GetRegistry() *toolhivetypes.Registry {
 	if b.format == config.SourceFormatToolHive || b.format == "" {
 		return b.registry
 	}
@@ -239,7 +249,7 @@ func (b *TestRegistryBuilder) GetRegistry() *registry.Registry {
 }
 
 // GetUpstreamData returns the built upstream data (for Upstream format only)
-func (b *TestRegistryBuilder) GetUpstreamData() []registry.UpstreamServerDetail {
+func (b *TestRegistryBuilder) GetUpstreamData() []upstreamv0.ServerResponse {
 	if b.format == config.SourceFormatUpstream {
 		return b.upstreamData
 	}

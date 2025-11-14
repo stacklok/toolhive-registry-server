@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/stacklok/toolhive/pkg/registry"
+	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
@@ -87,13 +88,13 @@ func TestTestRegistryBuilder_WithServer(t *testing.T) {
 			name:         "upstream format with explicit name",
 			format:       config.SourceFormatUpstream,
 			serverName:   "upstream-server",
-			expectedName: "upstream-server",
+			expectedName: "io.test/upstream-server",
 		},
 		{
 			name:         "upstream format with empty name",
 			format:       config.SourceFormatUpstream,
 			serverName:   "",
-			expectedName: "test-server-1",
+			expectedName: "io.test/test-server-1",
 		},
 		{
 			name:         "empty format with server",
@@ -134,9 +135,8 @@ func TestTestRegistryBuilder_WithServer(t *testing.T) {
 				assert.NotEmpty(t, serverDetail.Server.Description)
 				assert.Len(t, serverDetail.Server.Packages, 1)
 				pkg := serverDetail.Server.Packages[0]
-				assert.Equal(t, "docker", pkg.RegistryName)
-				assert.Equal(t, "test/image", pkg.Name)
-				assert.Equal(t, "latest", pkg.Version)
+				assert.Equal(t, "oci", pkg.RegistryType)
+				assert.Equal(t, "test/image:latest", pkg.Identifier)
 				serverDetailLegacy := builder.upstreamData[1]
 				assert.Equal(t, tt.expectedName+"-legacy", serverDetailLegacy.Server.Name)
 			}
@@ -195,7 +195,7 @@ func TestTestRegistryBuilder_WithRemoteServer(t *testing.T) {
 
 			if tt.shouldAdd {
 				assert.Len(t, builder.registry.RemoteServers, 1)
-				var remoteServer *registry.RemoteServerMetadata
+				var remoteServer *toolhivetypes.RemoteServerMetadata
 				for _, server := range builder.registry.RemoteServers {
 					remoteServer = server
 					break
@@ -478,14 +478,14 @@ func TestTestRegistryBuilder_BuildJSON(t *testing.T) {
 			switch tt.format {
 			case config.SourceFormatToolHive, "":
 				// Should be a registry object
-				var registry registry.Registry
+				var registry toolhivetypes.Registry
 				err = json.Unmarshal(jsonData, &registry)
 				assert.NoError(t, err)
 				assert.Equal(t, "1.0.0", registry.Version)
 				assert.Len(t, registry.Servers, 2)
 			case config.SourceFormatUpstream:
-				// Should be an array of server details
-				var upstreamData []registry.UpstreamServerDetail
+				// Should be an array of server responses
+				var upstreamData []upstreamv0.ServerResponse
 				err = json.Unmarshal(jsonData, &upstreamData)
 				assert.NoError(t, err)
 				assert.Len(t, upstreamData, 2)
@@ -510,7 +510,7 @@ func TestTestRegistryBuilder_BuildPrettyJSON(t *testing.T) {
 	assert.Greater(t, len(prettyJSON), len(regularJSON))
 
 	// Both should unmarshal to the same data
-	var prettyData, regularData registry.Registry
+	var prettyData, regularData toolhivetypes.Registry
 	err1 := json.Unmarshal(prettyJSON, &prettyData)
 	err2 := json.Unmarshal(regularJSON, &regularData)
 	assert.NoError(t, err1)

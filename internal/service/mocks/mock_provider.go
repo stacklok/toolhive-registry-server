@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	service "github.com/stacklok/toolhive-registry-server/internal/service"
-	registry "github.com/stacklok/toolhive/pkg/registry"
+	types "github.com/stacklok/toolhive/pkg/registry/types"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -43,10 +43,10 @@ func (m *MockRegistryDataProvider) EXPECT() *MockRegistryDataProviderMockRecorde
 }
 
 // GetRegistryData mocks base method.
-func (m *MockRegistryDataProvider) GetRegistryData(ctx context.Context) (*registry.Registry, error) {
+func (m *MockRegistryDataProvider) GetRegistryData(ctx context.Context) (*types.Registry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRegistryData", ctx)
-	ret0, _ := ret[0].(*registry.Registry)
+	ret0, _ := ret[0].(*types.Registry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
