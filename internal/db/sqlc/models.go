@@ -5,12 +5,10 @@
 package sqlc
 
 import (
-	"database/sql"
 	"database/sql/driver"
 	"fmt"
 
-	"github.com/google/uuid"
-	"github.com/sqlc-dev/pqtype"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type IconTheme string
@@ -142,62 +140,62 @@ func (ns NullSyncStatus) Value() (driver.Value, error) {
 }
 
 type LatestServerVersion struct {
-	RegID          uuid.UUID `json:"reg_id"`
-	Name           string    `json:"name"`
-	Version        string    `json:"version"`
-	LatestServerID uuid.UUID `json:"latest_server_id"`
+	RegID          pgtype.UUID `json:"reg_id"`
+	Name           string      `json:"name"`
+	Version        string      `json:"version"`
+	LatestServerID pgtype.UUID `json:"latest_server_id"`
 }
 
 type McpServer struct {
-	ID                  uuid.UUID             `json:"id"`
-	Name                string                `json:"name"`
-	Version             string                `json:"version"`
-	RegID               uuid.NullUUID         `json:"reg_id"`
-	CreatedAt           interface{}           `json:"created_at"`
-	UpdatedAt           interface{}           `json:"updated_at"`
-	Description         sql.NullString        `json:"description"`
-	Title               sql.NullString        `json:"title"`
-	Website             sql.NullString        `json:"website"`
-	UpstreamMeta        pqtype.NullRawMessage `json:"upstream_meta"`
-	ServerMeta          pqtype.NullRawMessage `json:"server_meta"`
-	RepositoryUrl       sql.NullString        `json:"repository_url"`
-	RepositoryID        sql.NullString        `json:"repository_id"`
-	RepositorySubfolder sql.NullString        `json:"repository_subfolder"`
-	RepositoryType      sql.NullString        `json:"repository_type"`
+	ID                  pgtype.UUID `json:"id"`
+	Name                string      `json:"name"`
+	Version             string      `json:"version"`
+	RegID               pgtype.UUID `json:"reg_id"`
+	CreatedAt           interface{} `json:"created_at"`
+	UpdatedAt           interface{} `json:"updated_at"`
+	Description         pgtype.Text `json:"description"`
+	Title               pgtype.Text `json:"title"`
+	Website             pgtype.Text `json:"website"`
+	UpstreamMeta        []byte      `json:"upstream_meta"`
+	ServerMeta          []byte      `json:"server_meta"`
+	RepositoryUrl       pgtype.Text `json:"repository_url"`
+	RepositoryID        pgtype.Text `json:"repository_id"`
+	RepositorySubfolder pgtype.Text `json:"repository_subfolder"`
+	RepositoryType      pgtype.Text `json:"repository_type"`
 }
 
 type McpServerIcon struct {
-	ServerID  uuid.UUID `json:"server_id"`
-	SourceUri string    `json:"source_uri"`
-	MimeType  string    `json:"mime_type"`
-	Theme     IconTheme `json:"theme"`
+	ServerID  pgtype.UUID `json:"server_id"`
+	SourceUri string      `json:"source_uri"`
+	MimeType  string      `json:"mime_type"`
+	Theme     IconTheme   `json:"theme"`
 }
 
 type McpServerPackage struct {
-	ServerID         uuid.UUID      `json:"server_id"`
-	RegistryType     string         `json:"registry_type"`
-	PkgRegistryUrl   string         `json:"pkg_registry_url"`
-	PkgIdentifier    string         `json:"pkg_identifier"`
-	PkgVersion       string         `json:"pkg_version"`
-	RuntimeHint      sql.NullString `json:"runtime_hint"`
-	RuntimeArguments []string       `json:"runtime_arguments"`
-	PackageArguments []string       `json:"package_arguments"`
-	EnvVars          []string       `json:"env_vars"`
-	Sha256Hash       sql.NullString `json:"sha256_hash"`
-	Transport        string         `json:"transport"`
-	TransportUrl     sql.NullString `json:"transport_url"`
-	TransportHeaders []string       `json:"transport_headers"`
+	ServerID         pgtype.UUID `json:"server_id"`
+	RegistryType     string      `json:"registry_type"`
+	PkgRegistryUrl   string      `json:"pkg_registry_url"`
+	PkgIdentifier    string      `json:"pkg_identifier"`
+	PkgVersion       string      `json:"pkg_version"`
+	RuntimeHint      pgtype.Text `json:"runtime_hint"`
+	RuntimeArguments []string    `json:"runtime_arguments"`
+	PackageArguments []string    `json:"package_arguments"`
+	EnvVars          []string    `json:"env_vars"`
+	Sha256Hash       pgtype.Text `json:"sha256_hash"`
+	Transport        string      `json:"transport"`
+	TransportUrl     pgtype.Text `json:"transport_url"`
+	TransportHeaders []string    `json:"transport_headers"`
 }
 
 type McpServerRemote struct {
-	ServerID         uuid.UUID `json:"server_id"`
-	Transport        string    `json:"transport"`
-	TransportUrl     string    `json:"transport_url"`
-	TransportHeaders []string  `json:"transport_headers"`
+	ServerID         pgtype.UUID `json:"server_id"`
+	Transport        string      `json:"transport"`
+	TransportUrl     string      `json:"transport_url"`
+	TransportHeaders []string    `json:"transport_headers"`
 }
 
 type Registry struct {
-	ID        uuid.UUID    `json:"id"`
+	ID        pgtype.UUID  `json:"id"`
 	Name      string       `json:"name"`
 	RegType   RegistryType `json:"reg_type"`
 	CreatedAt interface{}  `json:"created_at"`
@@ -205,10 +203,10 @@ type Registry struct {
 }
 
 type RegistrySync struct {
-	ID         uuid.UUID      `json:"id"`
-	RegID      uuid.NullUUID  `json:"reg_id"`
-	SyncStatus SyncStatus     `json:"sync_status"`
-	ErrorMsg   sql.NullString `json:"error_msg"`
-	StartedAt  interface{}    `json:"started_at"`
-	EndedAt    interface{}    `json:"ended_at"`
+	ID         pgtype.UUID `json:"id"`
+	RegID      pgtype.UUID `json:"reg_id"`
+	SyncStatus SyncStatus  `json:"sync_status"`
+	ErrorMsg   pgtype.Text `json:"error_msg"`
+	StartedAt  interface{} `json:"started_at"`
+	EndedAt    interface{} `json:"ended_at"`
 }

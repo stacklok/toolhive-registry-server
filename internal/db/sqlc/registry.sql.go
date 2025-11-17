@@ -19,6 +19,6 @@ type InsertRegistryParams struct {
 }
 
 func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) error {
-	_, err := q.db.ExecContext(ctx, insertRegistry, arg.Name, arg.RegType)
+	_, err := q.db.Exec(ctx, insertRegistry, arg.Name, arg.RegType)
 	return err
 }
