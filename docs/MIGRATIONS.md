@@ -60,6 +60,31 @@ task migrate-up CONFIG=config.yaml
 task migrate-down CONFIG=config.yaml NUM_STEPS=1
 ```
 
+## Docker Compose
+
+The docker-compose setup includes an automated migration service. When you run:
+
+```bash
+docker-compose up -d
+```
+
+The migration flow is:
+1. PostgreSQL starts and becomes healthy
+2. `migrate` service runs `migrate up` automatically
+3. After successful migration, the API service starts
+
+To run migrations manually in Docker:
+
+```bash
+# Run migrations
+docker-compose run --rm migrate migrate up --config /config.yaml --yes
+
+# Revert migrations
+docker-compose run --rm migrate migrate down --config /config.yaml --num-steps 1 --yes
+```
+
+**Note:** Migrations are embedded in the binary, so no volume mounts are needed for migration files.
+
 ## Configuration
 
 Migrations require a configuration file with database connection details:

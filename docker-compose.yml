@@ -1,5 +1,17 @@
 version: '3.8'
 
+# ToolHive Registry API Server - Docker Compose Configuration
+#
+# Services:
+# 1. postgres - PostgreSQL 16 database
+# 2. migrate - One-time migration service (runs database migrations)
+# 3. registry-api - Main API server
+#
+# Startup flow:
+# postgres (healthy) → migrate (completes) → registry-api (starts)
+#
+# Migrations are embedded in the binary, no volume mounts needed.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -13,7 +25,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/migrations/000001_init.up.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U registry"]
       interval: 5s
@@ -21,6 +32,23 @@ services:
       retries: 5
     networks:
       - registry-network
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: toolhive-registry-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./examples/config-docker.yaml:/config.yaml:ro
+    command: ["migrate", "up", "--config", "/config.yaml", "--yes"]
+    environment:
+      - LOG_LEVEL=info
+    networks:
+      - registry-network
+    restart: on-failure
 
   registry-api:
     build:
@@ -30,6 +58,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     volumes:

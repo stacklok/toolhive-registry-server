@@ -360,21 +360,38 @@ docker-compose down -v
 
 This will start:
 - PostgreSQL 16 database on port 5432
+- Database migrations (runs once, then exits)
 - ToolHive Registry API server on port 8080
 
+**Startup Flow**:
+1. PostgreSQL starts and becomes healthy
+2. Migration service runs `migrate up` to apply all database migrations
+3. After successful migration, the API service starts
+
 **Configuration**: The docker-compose setup uses `examples/config-docker.yaml` which includes database configuration pointing to the postgres service.
+
+**Database Migrations**: Migrations are embedded in the binary and run automatically via the `migrate` service. To run migrations manually:
+
+```bash
+# Apply migrations
+docker-compose run --rm migrate migrate up --config /config.yaml --yes
+
+# Revert last migration
+docker-compose run --rm migrate migrate down --config /config.yaml --num-steps 1 --yes
+```
 
 **Database Access**:
 ```bash
 # Connect to PostgreSQL
 docker-compose exec postgres psql -U registry -d registry
 
+# View migration history
+docker-compose exec postgres psql -U registry -d registry -c "SELECT * FROM schema_migrations;"
+
 # Or from your host (if psql is installed)
 psql -h localhost -p 5432 -U registry -d registry
 # Password: registry_password
 ```
-
-**Database Schema**: The schema is automatically initialized from `database/migrations/000001_init.up.sql` on first startup.
 
 **Customizing Configuration**:
 1. Edit `examples/config-docker.yaml` to customize registry settings
@@ -386,9 +403,11 @@ psql -h localhost -p 5432 -U registry -d registry
 - `registry_data`: Registry sync data and status
 
 **Troubleshooting**:
-- Check logs: `docker-compose logs registry-api` or `docker-compose logs postgres`
+- Check logs: `docker-compose logs registry-api` or `docker-compose logs postgres` or `docker-compose logs migrate`
 - Verify database health: `docker-compose exec postgres pg_isready -U registry`
+- Check migration status: `docker-compose ps migrate` (should show "Exit 0" after successful migration)
 - Reset everything: `docker-compose down -v && docker-compose up -d`
+- Migration failed: Check `docker-compose logs migrate` for errors, fix the issue, then run `docker-compose up migrate`
 
 **Production Considerations**:
 1. Change default passwords in both `docker-compose.yml` and `config-docker.yaml`
