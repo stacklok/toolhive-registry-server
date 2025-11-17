@@ -533,3 +533,350 @@ func TestWithConfigPath(t *testing.T) {
 		})
 	}
 }
+
+func TestDatabaseConfigGetPassword(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		dbConfig     *DatabaseConfig
+		setupFile    func(t *testing.T) string
+		wantPassword string
+		wantErr      bool
+		errMsg       string
+	}{
+		{
+			name: "password_from_file",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Database: "testdb",
+			},
+			setupFile: func(t *testing.T) string {
+				t.Helper()
+				tmpDir := t.TempDir()
+				passwordFile := filepath.Join(tmpDir, "password.txt")
+				err := os.WriteFile(passwordFile, []byte("mypassword"), 0600)
+				require.NoError(t, err)
+				return passwordFile
+			},
+			wantPassword: "mypassword",
+			wantErr:      false,
+		},
+		{
+			name: "password_from_file_with_whitespace",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Database: "testdb",
+			},
+			setupFile: func(t *testing.T) string {
+				t.Helper()
+				tmpDir := t.TempDir()
+				passwordFile := filepath.Join(tmpDir, "password.txt")
+				err := os.WriteFile(passwordFile, []byte("  mypassword\n\t"), 0600)
+				require.NoError(t, err)
+				return passwordFile
+			},
+			wantPassword: "mypassword",
+			wantErr:      false,
+		},
+		{
+			name: "password_file_not_found",
+			dbConfig: &DatabaseConfig{
+				Host:         "localhost",
+				Port:         5432,
+				User:         "testuser",
+				Database:     "testdb",
+				PasswordFile: "/nonexistent/password.txt",
+			},
+			wantErr: true,
+			errMsg:  "failed to read password from file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup password file if needed
+			if tt.setupFile != nil {
+				tt.dbConfig.PasswordFile = tt.setupFile(t)
+			}
+
+			password, err := tt.dbConfig.GetPassword()
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantPassword, password)
+			}
+		})
+	}
+}
+
+func TestDatabaseConfigGetConnectionString(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		dbConfig    *DatabaseConfig
+		setupFile   func(t *testing.T) string
+		wantConnStr string
+		wantErr     bool
+		errMsg      string
+	}{
+		{
+			name: "valid_connection_string_with_default_sslmode",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Database: "testdb",
+			},
+			setupFile: func(t *testing.T) string {
+				t.Helper()
+				tmpDir := t.TempDir()
+				passwordFile := filepath.Join(tmpDir, "password.txt")
+				err := os.WriteFile(passwordFile, []byte("mypassword"), 0600)
+				require.NoError(t, err)
+				return passwordFile
+			},
+			wantConnStr: "postgres://testuser:mypassword@localhost:5432/testdb?sslmode=require",
+			wantErr:     false,
+		},
+		{
+			name: "valid_connection_string_with_custom_sslmode",
+			dbConfig: &DatabaseConfig{
+				Host:     "db.example.com",
+				Port:     5433,
+				User:     "admin",
+				Database: "production",
+				SSLMode:  "verify-full",
+			},
+			setupFile: func(t *testing.T) string {
+				t.Helper()
+				tmpDir := t.TempDir()
+				passwordFile := filepath.Join(tmpDir, "password.txt")
+				err := os.WriteFile(passwordFile, []byte("securepass"), 0600)
+				require.NoError(t, err)
+				return passwordFile
+			},
+			wantConnStr: "postgres://admin:securepass@db.example.com:5433/production?sslmode=verify-full",
+			wantErr:     false,
+		},
+		{
+			name: "connection_string_with_special_characters_in_password",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Database: "testdb",
+			},
+			setupFile: func(t *testing.T) string {
+				t.Helper()
+				tmpDir := t.TempDir()
+				passwordFile := filepath.Join(tmpDir, "password.txt")
+				err := os.WriteFile(passwordFile, []byte("p@ss&w0rd!#$%"), 0600)
+				require.NoError(t, err)
+				return passwordFile
+			},
+			wantConnStr: "postgres://testuser:p%40ss%26w0rd%21%23%24%25@localhost:5432/testdb?sslmode=require",
+			wantErr:     false,
+		},
+		{
+			name: "connection_string_from_password_file",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Database: "testdb",
+				SSLMode:  "disable",
+			},
+			setupFile: func(t *testing.T) string {
+				t.Helper()
+				tmpDir := t.TempDir()
+				passwordFile := filepath.Join(tmpDir, "password.txt")
+				err := os.WriteFile(passwordFile, []byte("filepassword"), 0600)
+				require.NoError(t, err)
+				return passwordFile
+			},
+			wantConnStr: "postgres://testuser:filepassword@localhost:5432/testdb?sslmode=disable",
+			wantErr:     false,
+		},
+		{
+			name: "error_when_password_file_not_found",
+			dbConfig: &DatabaseConfig{
+				Host:         "localhost",
+				Port:         5432,
+				User:         "testuser",
+				Database:     "testdb",
+				PasswordFile: "/nonexistent/password.txt",
+			},
+			wantErr: true,
+			errMsg:  "failed to read password from file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup password file if needed
+			if tt.setupFile != nil {
+				tt.dbConfig.PasswordFile = tt.setupFile(t)
+			}
+
+			connStr, err := tt.dbConfig.GetConnectionString()
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantConnStr, connStr)
+			}
+		})
+	}
+}
+
+func TestLoadConfigWithDatabase(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		yamlContent string
+		wantConfig  *Config
+		wantErr     bool
+	}{
+		{
+			name: "config_with_database_minimal",
+			yamlContent: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+database:
+  host: localhost
+  port: 5432
+  user: testuser
+  database: testdb`,
+			wantConfig: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+				Database: &DatabaseConfig{
+					Host:     "localhost",
+					Port:     5432,
+					User:     "testuser",
+					Database: "testdb",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "config_with_database_full",
+			yamlContent: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "1h"
+database:
+  host: db.example.com
+  port: 5433
+  user: admin
+  passwordFile: /secrets/db-password
+  database: production
+  sslMode: verify-full
+  maxOpenConns: 25
+  maxIdleConns: 10
+  connMaxLifetime: "1h"`,
+			wantConfig: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "1h",
+				},
+				Database: &DatabaseConfig{
+					Host:            "db.example.com",
+					Port:            5433,
+					User:            "admin",
+					PasswordFile:    "/secrets/db-password",
+					Database:        "production",
+					SSLMode:         "verify-full",
+					MaxOpenConns:    25,
+					MaxIdleConns:    10,
+					ConnMaxLifetime: "1h",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "config_without_database",
+			yamlContent: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"`,
+			wantConfig: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+				Database: nil,
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Create a temporary directory for test files
+			tmpDir := t.TempDir()
+
+			// Create test config file
+			configPath := filepath.Join(tmpDir, "config.yaml")
+			err := os.WriteFile(configPath, []byte(tt.yamlContent), 0600)
+			require.NoError(t, err)
+
+			// Load the config
+			config, err := LoadConfig(WithConfigPath(configPath))
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantConfig, config)
+		})
+	}
+}
