@@ -7,10 +7,35 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const insertRegistry = `-- name: InsertRegistry :exec
-INSERT INTO registry (name, reg_type) VALUES ($1, $2)
+const getRegistry = `-- name: GetRegistry :one
+SELECT id,
+       name,
+       reg_type,
+       created_at,
+       updated_at
+  FROM registry
+ WHERE id = $1
+`
+
+func (q *Queries) GetRegistry(ctx context.Context, id pgtype.UUID) (Registry, error) {
+	row := q.db.QueryRow(ctx, getRegistry, id)
+	var i Registry
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.RegType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertRegistry = `-- name: InsertRegistry :one
+INSERT INTO registry (name, reg_type) VALUES ($1, $2) RETURNING id
 `
 
 type InsertRegistryParams struct {
@@ -18,7 +43,58 @@ type InsertRegistryParams struct {
 	RegType RegistryType `json:"reg_type"`
 }
 
-func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) error {
-	_, err := q.db.Exec(ctx, insertRegistry, arg.Name, arg.RegType)
-	return err
+func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, insertRegistry, arg.Name, arg.RegType)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const listRegistries = `-- name: ListRegistries :many
+SELECT id,
+       name,
+       reg_type,
+       created_at,
+       updated_at
+  FROM registry
+ WHERE ($1::timestamp with time zone IS NULL OR created_at > $1)
+    OR ($2::timestamp with time zone IS NULL AND created_at < $2)
+ ORDER BY
+  -- next page sorting
+  CASE WHEN $1::timestamp with time zone IS NULL THEN created_at END ASC,
+  -- previous page sorting
+  CASE WHEN $2::timestamp with time zone IS NULL THEN created_at END DESC
+ LIMIT $3::bigint
+`
+
+type ListRegistriesParams struct {
+	Next pgtype.Timestamptz `json:"next"`
+	Prev pgtype.Timestamptz `json:"prev"`
+	Size int64              `json:"size"`
+}
+
+func (q *Queries) ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error) {
+	rows, err := q.db.Query(ctx, listRegistries, arg.Next, arg.Prev, arg.Size)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Registry{}
+	for rows.Next() {
+		var i Registry
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.RegType,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

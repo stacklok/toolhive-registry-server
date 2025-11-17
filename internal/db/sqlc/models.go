@@ -147,21 +147,21 @@ type LatestServerVersion struct {
 }
 
 type McpServer struct {
-	ID                  pgtype.UUID `json:"id"`
-	Name                string      `json:"name"`
-	Version             string      `json:"version"`
-	RegID               pgtype.UUID `json:"reg_id"`
-	CreatedAt           interface{} `json:"created_at"`
-	UpdatedAt           interface{} `json:"updated_at"`
-	Description         pgtype.Text `json:"description"`
-	Title               pgtype.Text `json:"title"`
-	Website             pgtype.Text `json:"website"`
-	UpstreamMeta        []byte      `json:"upstream_meta"`
-	ServerMeta          []byte      `json:"server_meta"`
-	RepositoryUrl       pgtype.Text `json:"repository_url"`
-	RepositoryID        pgtype.Text `json:"repository_id"`
-	RepositorySubfolder pgtype.Text `json:"repository_subfolder"`
-	RepositoryType      pgtype.Text `json:"repository_type"`
+	ID                  pgtype.UUID        `json:"id"`
+	Name                string             `json:"name"`
+	Version             string             `json:"version"`
+	RegID               pgtype.UUID        `json:"reg_id"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	Description         pgtype.Text        `json:"description"`
+	Title               pgtype.Text        `json:"title"`
+	Website             pgtype.Text        `json:"website"`
+	UpstreamMeta        []byte             `json:"upstream_meta"`
+	ServerMeta          []byte             `json:"server_meta"`
+	RepositoryUrl       pgtype.Text        `json:"repository_url"`
+	RepositoryID        pgtype.Text        `json:"repository_id"`
+	RepositorySubfolder pgtype.Text        `json:"repository_subfolder"`
+	RepositoryType      pgtype.Text        `json:"repository_type"`
 }
 
 type McpServerIcon struct {
@@ -195,18 +195,18 @@ type McpServerRemote struct {
 }
 
 type Registry struct {
-	ID        pgtype.UUID  `json:"id"`
-	Name      string       `json:"name"`
-	RegType   RegistryType `json:"reg_type"`
-	CreatedAt interface{}  `json:"created_at"`
-	UpdatedAt interface{}  `json:"updated_at"`
+	ID        pgtype.UUID        `json:"id"`
+	Name      string             `json:"name"`
+	RegType   RegistryType       `json:"reg_type"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 type RegistrySync struct {
-	ID         pgtype.UUID `json:"id"`
-	RegID      pgtype.UUID `json:"reg_id"`
-	SyncStatus SyncStatus  `json:"sync_status"`
-	ErrorMsg   pgtype.Text `json:"error_msg"`
-	StartedAt  interface{} `json:"started_at"`
-	EndedAt    interface{} `json:"ended_at"`
+	ID         pgtype.UUID        `json:"id"`
+	RegID      pgtype.UUID        `json:"reg_id"`
+	SyncStatus SyncStatus         `json:"sync_status"`
+	ErrorMsg   pgtype.Text        `json:"error_msg"`
+	StartedAt  pgtype.Timestamptz `json:"started_at"`
+	EndedAt    pgtype.Timestamptz `json:"ended_at"`
 }

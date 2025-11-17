@@ -12,8 +12,8 @@ CREATE TABLE registry (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name       TEXT NOT NULL,
     reg_type   registry_type NOT NULL DEFAULT 'LOCAL',
-    created_at TIMESTAMPZ DEFAULT NOW(),
-    updated_at TIMESTAMPZ DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(name)
 );
 
@@ -33,8 +33,8 @@ CREATE TABLE registry_sync (
     reg_id      UUID REFERENCES registry(id) ON DELETE CASCADE,
     sync_status sync_status NOT NULL DEFAULT 'IN_PROGRESS',
     error_msg   TEXT, -- Populated if sync_status = 'FAILED'
-    started_at  TIMESTAMPZ DEFAULT NOW(),
-    ended_at    TIMESTAMPZ
+    started_at  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    ended_at    TIMESTAMP WITH TIME ZONE
 );
 
 CREATE INDEX registry_sync_started_at_idx ON registry_sync(reg_id, started_at);
@@ -47,8 +47,8 @@ CREATE TABLE mcp_server (
     name          TEXT NOT NULL,
     version       TEXT NOT NULL,
     reg_id        UUID REFERENCES registry(id) ON DELETE CASCADE,
-    created_at    TIMESTAMPZ DEFAULT NOW(),
-    updated_at    TIMESTAMPZ DEFAULT NOW(),
+    created_at    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     description   TEXT,
     title         TEXT,
     website       TEXT,

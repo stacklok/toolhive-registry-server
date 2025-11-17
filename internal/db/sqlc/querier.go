@@ -6,10 +6,24 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
-	InsertRegistry(ctx context.Context, arg InsertRegistryParams) error
+	GetRegistry(ctx context.Context, id pgtype.UUID) (Registry, error)
+	GetRegistrySync(ctx context.Context, id pgtype.UUID) (RegistrySync, error)
+	InsertRegistry(ctx context.Context, arg InsertRegistryParams) (pgtype.UUID, error)
+	InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) error
+	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error)
+	ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error)
+	ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error)
+	UpdateRegistrySync(ctx context.Context, arg UpdateRegistrySyncParams) error
+	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) error
+	UpsertServerIcon(ctx context.Context, arg UpsertServerIconParams) error
+	UpsertServerPackage(ctx context.Context, arg UpsertServerPackageParams) error
+	UpsertServerRemote(ctx context.Context, arg UpsertServerRemoteParams) error
+	UpsertServerVersion(ctx context.Context, arg UpsertServerVersionParams) error
 }
 
 var _ Querier = (*Queries)(nil)
