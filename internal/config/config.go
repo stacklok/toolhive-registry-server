@@ -167,10 +167,10 @@ type DatabaseConfig struct {
 	SSLMode string `yaml:"sslMode,omitempty"`
 
 	// MaxOpenConns is the maximum number of open connections to the database
-	MaxOpenConns int `yaml:"maxOpenConns,omitempty"`
+	MaxOpenConns int32 `yaml:"maxOpenConns,omitempty"`
 
 	// MaxIdleConns is the maximum number of idle connections in the pool
-	MaxIdleConns int `yaml:"maxIdleConns,omitempty"`
+	MaxIdleConns int32 `yaml:"maxIdleConns,omitempty"`
 
 	// ConnMaxLifetime is the maximum lifetime of a connection (e.g., "1h", "30m")
 	ConnMaxLifetime string `yaml:"connMaxLifetime,omitempty"`

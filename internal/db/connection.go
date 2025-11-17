@@ -2,11 +2,11 @@
 package db
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib" // Needs to be imported for Postgres driver
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
@@ -14,16 +14,16 @@ import (
 )
 
 const (
-	defaultMaxOpenConns    = 25
-	defaultMaxIdleConns    = 5
-	defaultConnMaxLifetime = 5 * time.Minute
-	defaultSSLMode         = "require"
-	defaultConnectTimeout  = 10 * time.Second
+	defaultMaxOpenConns    int32 = 25
+	defaultMaxIdleConns    int32 = 5
+	defaultConnMaxLifetime       = 5 * time.Minute
+	defaultSSLMode               = "require"
+	defaultConnectTimeout        = 10 * time.Second
 )
 
 // Connection wraps the database connection and query interface
 type Connection struct {
-	DB      *sql.DB
+	DB      *pgxpool.Pool
 	Queries *sqlc.Queries
 }
 
@@ -78,7 +78,7 @@ func NewConnection(cfg *config.DatabaseConfig) (*Connection, error) {
 		return nil, fmt.Errorf("failed to get database password: %w", err)
 	}
 
-	// Build connection string
+	// Build connection string for pgx
 	// Note: password is not URL-escaped here because pgx driver handles it directly
 	connStr := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s connect_timeout=%d",
@@ -91,22 +91,27 @@ func NewConnection(cfg *config.DatabaseConfig) (*Connection, error) {
 		int(defaultConnectTimeout.Seconds()),
 	)
 
-	// Open database connection using pgx driver
-	sqlDB, err := sql.Open("pgx", connStr)
+	// Parse the connection string
+	poolConfig, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database connection: %w", err)
+		return nil, fmt.Errorf("failed to parse connection string: %w", err)
 	}
 
 	// Configure connection pool
-	sqlDB.SetMaxOpenConns(maxOpenConns)
-	sqlDB.SetMaxIdleConns(maxIdleConns)
-	sqlDB.SetConnMaxLifetime(connMaxLifetime)
+	poolConfig.MaxConns = maxOpenConns
+	poolConfig.MinConns = maxIdleConns
+	poolConfig.MaxConnLifetime = connMaxLifetime
+
+	// Create connection pool
+	ctx := context.Background()
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create database connection pool: %w", err)
+	}
 
 	// Verify connection
-	if err := sqlDB.Ping(); err != nil {
-		if closeErr := sqlDB.Close(); closeErr != nil {
-			logger.Errorf("Failed to close database connection after ping failure: %v", closeErr)
-		}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -114,10 +119,10 @@ func NewConnection(cfg *config.DatabaseConfig) (*Connection, error) {
 		cfg.User, cfg.Host, cfg.Port, cfg.Database)
 
 	// Create sqlc queries
-	queries := sqlc.New(sqlDB)
+	queries := sqlc.New(pool)
 
 	return &Connection{
-		DB:      sqlDB,
+		DB:      pool,
 		Queries: queries,
 	}, nil
 }
@@ -126,7 +131,7 @@ func NewConnection(cfg *config.DatabaseConfig) (*Connection, error) {
 func (c *Connection) Close() error {
 	if c.DB != nil {
 		logger.Info("Closing database connection")
-		return c.DB.Close()
+		c.DB.Close()
 	}
 	return nil
 }
@@ -134,7 +139,8 @@ func (c *Connection) Close() error {
 // Ping verifies the database connection is still alive
 func (c *Connection) Ping() error {
 	if c.DB != nil {
-		return c.DB.Ping()
+		ctx := context.Background()
+		return c.DB.Ping(ctx)
 	}
 	return fmt.Errorf("database connection is nil")
 }
