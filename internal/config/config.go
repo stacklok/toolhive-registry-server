@@ -3,8 +3,10 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -71,6 +73,7 @@ type Config struct {
 	Source       SourceConfig      `yaml:"source"`
 	SyncPolicy   *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
 	Filter       *FilterConfig     `yaml:"filter,omitempty"`
+	Database     *DatabaseConfig   `yaml:"database,omitempty"`
 }
 
 // SourceConfig defines the data source configuration
@@ -139,6 +142,98 @@ type NameFilterConfig struct {
 type TagFilterConfig struct {
 	Include []string `yaml:"include,omitempty"`
 	Exclude []string `yaml:"exclude,omitempty"`
+}
+
+// DatabaseConfig defines database connection settings
+type DatabaseConfig struct {
+	// Host is the database server hostname or IP address
+	Host string `yaml:"host"`
+
+	// Port is the database server port
+	Port int `yaml:"port"`
+
+	// User is the database username
+	User string `yaml:"user"`
+
+	// PasswordFile is the path to a file containing the database password
+	// This is the recommended approach for production deployments
+	// The file should contain only the password with optional trailing whitespace
+	PasswordFile string `yaml:"passwordFile,omitempty"`
+
+	// Database is the database name
+	Database string `yaml:"database"`
+
+	// SSLMode is the SSL mode for the connection (disable, require, verify-ca, verify-full)
+	SSLMode string `yaml:"sslMode,omitempty"`
+
+	// MaxOpenConns is the maximum number of open connections to the database
+	MaxOpenConns int32 `yaml:"maxOpenConns,omitempty"`
+
+	// MaxIdleConns is the maximum number of idle connections in the pool
+	MaxIdleConns int32 `yaml:"maxIdleConns,omitempty"`
+
+	// ConnMaxLifetime is the maximum lifetime of a connection (e.g., "1h", "30m")
+	ConnMaxLifetime string `yaml:"connMaxLifetime,omitempty"`
+}
+
+// GetPassword returns the database password using the following priority:
+// 1. Read from PasswordFile if specified
+// 2. Read from THV_DATABASE_PASSWORD environment variable
+//
+// The password from file will have leading/trailing whitespace trimmed.
+func (d *DatabaseConfig) GetPassword() (string, error) {
+	// Priority 1: Read from file if specified
+	if d.PasswordFile != "" {
+		// Use filepath.Clean to prevent path traversal attacks
+		cleanPath := filepath.Clean(d.PasswordFile)
+
+		data, err := os.ReadFile(cleanPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to read password from file %s: %w", d.PasswordFile, err)
+		}
+
+		// Trim whitespace (including newlines) from file content
+		password := strings.TrimSpace(string(data))
+		return password, nil
+	}
+
+	// Priority 2: Check environment variable
+	if envPassword := os.Getenv("THV_DATABASE_PASSWORD"); envPassword != "" {
+		return envPassword, nil
+	}
+
+	return "", fmt.Errorf(
+		"no database password configured: set passwordFile or THV_DATABASE_PASSWORD environment variable",
+	)
+}
+
+// GetConnectionString builds a PostgreSQL connection string with proper password handling.
+// The password is URL-escaped to handle special characters safely.
+func (d *DatabaseConfig) GetConnectionString() (string, error) {
+	password, err := d.GetPassword()
+	if err != nil {
+		return "", err
+	}
+
+	sslMode := d.SSLMode
+	if sslMode == "" {
+		sslMode = "require"
+	}
+
+	// URL-escape the password to handle special characters
+	escapedPassword := url.QueryEscape(password)
+
+	connString := fmt.Sprintf(
+		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		d.User,
+		escapedPassword,
+		d.Host,
+		d.Port,
+		d.Database,
+		sslMode,
+	)
+
+	return connString, nil
 }
 
 // LoadConfig loads and parses configuration from a YAML file
