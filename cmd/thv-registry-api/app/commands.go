@@ -41,6 +41,7 @@ func NewRootCmd() *cobra.Command {
 	// Add subcommands
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(migrateCmd)
 
 	return rootCmd
 }

@@ -189,6 +189,31 @@ tasks:
       - echo "Generating HTML coverage report in coverage.html"
       - go tool cover -html=coverage.out -o coverage.html
 
+  migrate-up:
+    desc: Run database migrations (requires --config flag)
+    cmds:
+      - |
+        if [ -z "{{.CONFIG}}" ]; then
+          echo "Error: CONFIG variable is required. Usage: task migrate-up CONFIG=path/to/config.yaml"
+          exit 1
+        fi
+        go run ./cmd/thv-registry-api migrate up --config {{.CONFIG}} --yes
+
+  migrate-down:
+    desc: Revert database migrations (requires --config flag)
+    cmds:
+      - |
+        if [ -z "{{.CONFIG}}" ]; then
+          echo "Error: CONFIG variable is required. Usage: task migrate-down CONFIG=path/to/config.yaml [NUM_STEPS=n]"
+          exit 1
+        fi
+        if [ -n "{{.NUM_STEPS}}" ]; then
+          go run ./cmd/thv-registry-api migrate down --config {{.CONFIG}} --num-steps {{.NUM_STEPS}} --yes
+        else
+          echo "Error: NUM_STEPS variable is required for safety. Usage: task migrate-down CONFIG=path/to/config.yaml NUM_STEPS=1"
+          exit 1
+        fi
+
   all:
     desc: Run linting, tests, and build
     deps: [lint, test-coverage, build]

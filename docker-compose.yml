@@ -38,7 +38,7 @@ services:
       - registry_data:/data
     command: ["serve", "--config", "/config.yaml", "--address", ":8080"]
     environment:
-      - LOG_LEVEL=info
+      - LOG_LEVEL=debug
     networks:
       - registry-network
     restart: unless-stopped
