@@ -7,16 +7,16 @@ import (
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhiveregistry "github.com/stacklok/toolhive/pkg/registry"
+	"github.com/stacklok/toolhive/pkg/registry/converters"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
-	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
 
 // SourceDataValidator is an interface for validating registry source configurations
 type SourceDataValidator interface {
-	// ValidateData validates raw data and returns a parsed ServerRegistry
-	ValidateData(data []byte, format string) (*registry.ServerRegistry, error)
+	// ValidateData validates raw data and returns a parsed UpstreamRegistry
+	ValidateData(data []byte, format string) (*toolhivetypes.UpstreamRegistry, error)
 }
 
 //go:generate mockgen -destination=mocks/mock_source_handler.go -package=mocks -source=types.go SourceHandler,SourceHandlerFactory
@@ -35,8 +35,8 @@ type SourceHandler interface {
 
 // FetchResult contains the result of a fetch operation
 type FetchResult struct {
-	// Registry is the parsed registry data in unified ServerRegistry format
-	Registry *registry.ServerRegistry
+	// Registry is the parsed registry data in unified UpstreamRegistry format
+	Registry *toolhivetypes.UpstreamRegistry
 
 	// Hash is the SHA256 hash of the serialized data for change detection
 	Hash string
@@ -48,9 +48,9 @@ type FetchResult struct {
 	Format string
 }
 
-// NewFetchResult creates a new FetchResult from a ServerRegistry instance and pre-calculated hash
+// NewFetchResult creates a new FetchResult from a UpstreamRegistry instance and pre-calculated hash
 // The hash should be calculated by the source handler to ensure consistency with CurrentHash
-func NewFetchResult(reg *registry.ServerRegistry, hash string, format string) *FetchResult {
+func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string, format string) *FetchResult {
 	serverCount := 0
 	if reg != nil {
 		serverCount = len(reg.Servers)
@@ -78,8 +78,8 @@ func NewSourceDataValidator() SourceDataValidator {
 	return &DefaultSourceDataValidator{}
 }
 
-// ValidateData validates raw data and returns a parsed ServerRegistry
-func (*DefaultSourceDataValidator) ValidateData(data []byte, format string) (*registry.ServerRegistry, error) {
+// ValidateData validates raw data and returns a parsed UpstreamRegistry
+func (*DefaultSourceDataValidator) ValidateData(data []byte, format string) (*toolhivetypes.UpstreamRegistry, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("data cannot be empty")
 	}
@@ -94,8 +94,8 @@ func (*DefaultSourceDataValidator) ValidateData(data []byte, format string) (*re
 	}
 }
 
-// validateToolhiveFormatAndParse validates data against ToolHive registry format and returns parsed ServerRegistry
-func validateToolhiveFormatAndParse(data []byte) (*registry.ServerRegistry, error) {
+// validateToolhiveFormatAndParse validates data against ToolHive registry format and returns parsed UpstreamRegistry
+func validateToolhiveFormatAndParse(data []byte) (*toolhivetypes.UpstreamRegistry, error) {
 	// Use the existing schema validation from toolhive package
 	if err := toolhiveregistry.ValidateRegistrySchema(data); err != nil {
 		return nil, err
@@ -107,17 +107,17 @@ func validateToolhiveFormatAndParse(data []byte) (*registry.ServerRegistry, erro
 		return nil, fmt.Errorf("failed to parse ToolHive registry format: %w", err)
 	}
 
-	// Convert to ServerRegistry using constructor
-	serverReg, err := registry.NewServerRegistryFromToolhive(&toolhiveReg)
+	// Convert to UpstreamRegistry using constructor
+	serverReg, err := converters.NewUpstreamRegistryFromToolhiveRegistry(&toolhiveReg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert to ServerRegistry: %w", err)
+		return nil, fmt.Errorf("failed to convert to UpstreamRegistry: %w", err)
 	}
 
 	return serverReg, nil
 }
 
-// validateUpstreamFormatAndParse validates data against upstream registry format and returns ServerRegistry
-func validateUpstreamFormatAndParse(data []byte) (*registry.ServerRegistry, error) {
+// validateUpstreamFormatAndParse validates data against upstream registry format and returns UpstreamRegistry
+func validateUpstreamFormatAndParse(data []byte) (*toolhivetypes.UpstreamRegistry, error) {
 	// Parse as upstream ServerResponse array to validate structure
 	var responses []upstreamv0.ServerResponse
 	if err := json.Unmarshal(data, &responses); err != nil {
@@ -141,6 +141,6 @@ func validateUpstreamFormatAndParse(data []byte) (*registry.ServerRegistry, erro
 		}
 	}
 
-	// Wrap in ServerRegistry using constructor
-	return registry.NewServerRegistryFromUpstream(servers), nil
+	// Wrap in UpstreamRegistry using constructor
+	return converters.NewUpstreamRegistryFromUpstreamServers(servers), nil
 }

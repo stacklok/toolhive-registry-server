@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	config "github.com/stacklok/toolhive-registry-server/internal/config"
-	registry "github.com/stacklok/toolhive-registry-server/internal/registry"
+	types "github.com/stacklok/toolhive/pkg/registry/types"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -57,10 +57,10 @@ func (mr *MockStorageManagerMockRecorder) Delete(ctx, cfg any) *gomock.Call {
 }
 
 // Get mocks base method.
-func (m *MockStorageManager) Get(ctx context.Context, cfg *config.Config) (*registry.ServerRegistry, error) {
+func (m *MockStorageManager) Get(ctx context.Context, cfg *config.Config) (*types.UpstreamRegistry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", ctx, cfg)
-	ret0, _ := ret[0].(*registry.ServerRegistry)
+	ret0, _ := ret[0].(*types.UpstreamRegistry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -72,7 +72,7 @@ func (mr *MockStorageManagerMockRecorder) Get(ctx, cfg any) *gomock.Call {
 }
 
 // Store mocks base method.
-func (m *MockStorageManager) Store(ctx context.Context, cfg *config.Config, reg *registry.ServerRegistry) error {
+func (m *MockStorageManager) Store(ctx context.Context, cfg *config.Config, reg *types.UpstreamRegistry) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Store", ctx, cfg, reg)
 	ret0, _ := ret[0].(error)

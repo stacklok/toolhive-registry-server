@@ -16,7 +16,7 @@ type RegistryDataProvider interface {
 	// GetRegistryData fetches the current registry data.
 	// Returns the registry data and any error encountered.
 	// NOTE: In PR 1, this still returns ToolHive Registry for backward compatibility.
-	// PR 2 will change this to return ServerRegistry.
+	// PR 2 will change this to return UpstreamRegistry.
 	GetRegistryData(ctx context.Context) (*toolhivetypes.Registry, error)
 
 	// GetSource returns a descriptive string about where the registry data comes from.

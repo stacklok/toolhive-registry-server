@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/stacklok/toolhive/pkg/registry/converters"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
@@ -358,8 +359,8 @@ func (s *DefaultSyncManager) applyFilteringIfConfigured(
 			"hasNameFilters", cfg.Filter.Names != nil,
 			"hasTagFilters", cfg.Filter.Tags != nil)
 
-		// Convert ServerRegistry to ToolHive format for filtering
-		toolhiveReg, err := fetchResult.Registry.ToToolhive()
+		// Convert UpstreamRegistry to ToolHive format for filtering
+		toolhiveReg, err := registry.ToToolhive(fetchResult.Registry)
 		if err != nil {
 			ctxLogger.Error(err, "Failed to convert to ToolHive format for filtering")
 			return &Error{
@@ -381,13 +382,13 @@ func (s *DefaultSyncManager) applyFilteringIfConfigured(
 			}
 		}
 
-		// Convert filtered ToolHive registry back to ServerRegistry
-		filteredServerReg, err := registry.NewServerRegistryFromToolhive(filteredToolhiveReg)
+		// Convert filtered ToolHive registry back to UpstreamRegistry
+		filteredServerReg, err := converters.NewUpstreamRegistryFromToolhiveRegistry(filteredToolhiveReg)
 		if err != nil {
-			ctxLogger.Error(err, "Failed to convert filtered registry to ServerRegistry")
+			ctxLogger.Error(err, "Failed to convert filtered registry to UpstreamRegistry")
 			return &Error{
 				Err:             err,
-				Message:         fmt.Sprintf("Conversion to ServerRegistry failed: %v", err),
+				Message:         fmt.Sprintf("Conversion to UpstreamRegistry failed: %v", err),
 				ConditionType:   ConditionSyncSuccessful,
 				ConditionReason: conditionReasonFetchFailed,
 			}

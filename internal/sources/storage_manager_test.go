@@ -6,10 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stacklok/toolhive/pkg/registry/converters"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/require"
-
-	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
 
 func TestFileStorageManager_StoreAndGet(t *testing.T) {
@@ -28,13 +27,13 @@ func TestFileStorageManager_StoreAndGet(t *testing.T) {
 		Servers:     make(map[string]*toolhivetypes.ImageMetadata),
 	}
 
-	// Convert to ServerRegistry
-	serverRegistry, err := registry.NewServerRegistryFromToolhive(testRegistry)
+	// Convert to UpstreamRegistry
+	UpstreamRegistry, err := converters.NewUpstreamRegistryFromToolhiveRegistry(testRegistry)
 	require.NoError(t, err)
 
 	// Store the registry
 	ctx := context.Background()
-	err = manager.Store(ctx, nil, serverRegistry)
+	err = manager.Store(ctx, nil, UpstreamRegistry)
 	require.NoError(t, err)
 
 	// Verify file was created
@@ -46,8 +45,8 @@ func TestFileStorageManager_StoreAndGet(t *testing.T) {
 	retrieved, err := manager.Get(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, retrieved)
-	require.Equal(t, serverRegistry.Version, retrieved.Version)
-	require.Equal(t, serverRegistry.LastUpdated, retrieved.LastUpdated)
+	require.Equal(t, UpstreamRegistry.Version, retrieved.Version)
+	require.Equal(t, UpstreamRegistry.LastUpdated, retrieved.LastUpdated)
 }
 
 func TestFileStorageManager_Delete(t *testing.T) {
@@ -64,12 +63,12 @@ func TestFileStorageManager_Delete(t *testing.T) {
 		Version: "1.0.0",
 	}
 
-	// Convert to ServerRegistry
-	serverRegistry, err := registry.NewServerRegistryFromToolhive(testRegistry)
+	// Convert to UpstreamRegistry
+	UpstreamRegistry, err := converters.NewUpstreamRegistryFromToolhiveRegistry(testRegistry)
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	err = manager.Store(ctx, nil, serverRegistry)
+	err = manager.Store(ctx, nil, UpstreamRegistry)
 	require.NoError(t, err)
 
 	// Delete the registry
@@ -106,12 +105,12 @@ func TestFileStorageManager_Delete_PermissionDenied(t *testing.T) {
 	// Create and store a file
 	testRegistry := &toolhivetypes.Registry{Version: "1.0.0"}
 
-	// Convert to ServerRegistry
-	serverRegistry, err := registry.NewServerRegistryFromToolhive(testRegistry)
+	// Convert to UpstreamRegistry
+	UpstreamRegistry, err := converters.NewUpstreamRegistryFromToolhiveRegistry(testRegistry)
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	err = manager.Store(ctx, nil, serverRegistry)
+	err = manager.Store(ctx, nil, UpstreamRegistry)
 	require.NoError(t, err)
 
 	// Make directory read-only to prevent deletion

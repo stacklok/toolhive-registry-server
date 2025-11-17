@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/stacklok/toolhive/pkg/registry/converters"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
-	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
 
 // ToolHiveAPIHandler handles registry data from ToolHive Registry API endpoints
@@ -101,17 +101,17 @@ func (h *ToolHiveAPIHandler) FetchRegistry(ctx context.Context, registryConfig *
 		return nil, fmt.Errorf("failed to convert to ToolHive format: %w", err)
 	}
 
-	// Convert ToolHive Registry to ServerRegistry
-	serverRegistry, err := registry.NewServerRegistryFromToolhive(toolhiveRegistry)
+	// Convert ToolHive Registry to UpstreamRegistry
+	UpstreamRegistry, err := converters.NewUpstreamRegistryFromToolhiveRegistry(toolhiveRegistry)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert to ServerRegistry: %w", err)
+		return nil, fmt.Errorf("failed to convert to UpstreamRegistry: %w", err)
 	}
 
 	// Calculate hash of the raw data for change detection
 	hash := fmt.Sprintf("%x", sha256.Sum256(data))
 
 	// Create and return fetch result
-	return NewFetchResult(serverRegistry, hash, config.SourceFormatToolHive), nil
+	return NewFetchResult(UpstreamRegistry, hash, config.SourceFormatToolHive), nil
 }
 
 // CurrentHash returns the current hash of the API response

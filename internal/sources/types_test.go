@@ -3,6 +3,7 @@ package sources
 import (
 	"testing"
 
+	"github.com/stacklok/toolhive/pkg/registry/converters"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,8 +62,8 @@ func TestNewFetchResult(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Convert ToolHive Registry to ServerRegistry
-			serverReg, err := registry.NewServerRegistryFromToolhive(tt.registryData)
+			// Convert ToolHive Registry to UpstreamRegistry
+			serverReg, err := converters.NewUpstreamRegistryFromToolhiveRegistry(tt.registryData)
 			require.NoError(t, err, "Failed to convert toolhive registry to server registry")
 
 			result := NewFetchResult(serverReg, tt.hash, tt.format)
@@ -73,7 +74,7 @@ func TestNewFetchResult(t *testing.T) {
 			assert.Equal(t, tt.format, result.Format)
 
 			// Verify registry by converting back
-			convertedBack, err := result.Registry.ToToolhive()
+			convertedBack, err := registry.ToToolhive(result.Registry)
 			require.NoError(t, err, "Failed to convert server registry back to toolhive")
 			assert.Equal(t, len(tt.registryData.Servers), len(convertedBack.Servers))
 			assert.Equal(t, len(tt.registryData.RemoteServers), len(convertedBack.RemoteServers))
@@ -98,8 +99,8 @@ func TestFetchResultHashConsistency(t *testing.T) {
 	hash := "consistent-hash-value"
 	format := config.SourceFormatToolHive
 
-	// Convert to ServerRegistry
-	serverReg, err := registry.NewServerRegistryFromToolhive(registryData)
+	// Convert to UpstreamRegistry
+	serverReg, err := converters.NewUpstreamRegistryFromToolhiveRegistry(registryData)
 	require.NoError(t, err)
 
 	result1 := NewFetchResult(serverReg, hash, format)
@@ -135,10 +136,10 @@ func TestFetchResultHashDifference(t *testing.T) {
 	hash2 := "hash-for-data2"
 	format := config.SourceFormatToolHive
 
-	// Convert to ServerRegistry
-	serverReg1, err := registry.NewServerRegistryFromToolhive(registryData1)
+	// Convert to UpstreamRegistry
+	serverReg1, err := converters.NewUpstreamRegistryFromToolhiveRegistry(registryData1)
 	require.NoError(t, err)
-	serverReg2, err := registry.NewServerRegistryFromToolhive(registryData2)
+	serverReg2, err := converters.NewUpstreamRegistryFromToolhiveRegistry(registryData2)
 	require.NoError(t, err)
 
 	result1 := NewFetchResult(serverReg1, hash1, format)

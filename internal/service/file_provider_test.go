@@ -5,13 +5,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stacklok/toolhive/pkg/registry/converters"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
-	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	sourcesmocks "github.com/stacklok/toolhive-registry-server/internal/sources/mocks"
 )
 
@@ -43,8 +43,8 @@ func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
 					},
 					RemoteServers: map[string]*toolhivetypes.RemoteServerMetadata{},
 				}
-				// Convert to ServerRegistry
-				expectedRegistry, _ := registry.NewServerRegistryFromToolhive(toolhiveRegistry)
+				// Convert to UpstreamRegistry
+				expectedRegistry, _ := converters.NewUpstreamRegistryFromToolhiveRegistry(toolhiveRegistry)
 				m.EXPECT().
 					Get(gomock.Any(), gomock.Any()).
 					Return(expectedRegistry, nil)
@@ -66,8 +66,8 @@ func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
 					Servers:       map[string]*toolhivetypes.ImageMetadata{},
 					RemoteServers: map[string]*toolhivetypes.RemoteServerMetadata{},
 				}
-				// Convert to ServerRegistry
-				expectedRegistry, _ := registry.NewServerRegistryFromToolhive(toolhiveRegistry)
+				// Convert to UpstreamRegistry
+				expectedRegistry, _ := converters.NewUpstreamRegistryFromToolhiveRegistry(toolhiveRegistry)
 				m.EXPECT().
 					Get(gomock.Any(), gomock.Any()).
 					Return(expectedRegistry, nil)
