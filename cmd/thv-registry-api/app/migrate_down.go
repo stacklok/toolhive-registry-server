@@ -46,7 +46,11 @@ func runMigrateDown(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	connString := buildConnectionString(cfg.Database)
+	connString, err := cfg.Database.GetConnectionString()
+	if err != nil {
+		return fmt.Errorf("failed to build connection string: %w", err)
+	}
+
 	m, err := database.NewFromConnectionString(connString)
 	if err != nil {
 		return fmt.Errorf("failed to create migrator: %w", err)

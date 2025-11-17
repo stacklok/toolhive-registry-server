@@ -1,0 +1,69 @@
+# Production configuration example
+#
+# This configuration demonstrates production-ready settings with:
+# - File-based secrets (passwordFile)
+# - SSL enabled
+# - Production-appropriate connection pool settings
+
+# Registry name/identifier
+registryName: production-registry
+
+# ==============================================================================
+# DATA SOURCE CONFIGURATION
+# ==============================================================================
+
+source:
+  # Git source with specific tag for stability
+  type: git
+  format: toolhive
+  git:
+    repository: https://github.com/modelcontextprotocol/servers
+    tag: v1.0.0  # Use specific tag instead of branch for stability
+    path: registry.json
+
+# ==============================================================================
+# SYNCHRONIZATION POLICY
+# ==============================================================================
+
+syncPolicy:
+  # Check for updates every 15 minutes
+  interval: "15m"
+
+# ==============================================================================
+# DATABASE CONFIGURATION
+# ==============================================================================
+
+database:
+  # Database connection settings
+  host: postgres.production.svc.cluster.local
+  port: 5432
+  user: registry_user
+
+  # Password Configuration (Choose ONE method):
+
+  # Method 1: Password from file (RECOMMENDED for Kubernetes/Docker)
+  # This file should be mounted from Kubernetes Secret or Docker Secret
+  passwordFile: /secrets/db/password
+
+  # Method 2: Environment variable (alternative for some environments)
+  # Set THV_DATABASE_PASSWORD environment variable
+  # Uncomment this line to document the env var approach:
+  # Environment: THV_DATABASE_PASSWORD=<your-password>
+
+  database: registry_prod
+  sslMode: require  # SSL required for production
+
+  # Production connection pool settings
+  maxOpenConns: 50
+  maxIdleConns: 10
+  connMaxLifetime: "10m"
+
+# ==============================================================================
+# FILTERING (Optional)
+# ==============================================================================
+
+# Example: Only include official servers
+filter:
+  names:
+    include:
+      - "official/*"

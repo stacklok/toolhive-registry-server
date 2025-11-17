@@ -3,8 +3,10 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -153,8 +155,10 @@ type DatabaseConfig struct {
 	// User is the database username
 	User string `yaml:"user"`
 
-	// Password is the database password
-	Password string `yaml:"password"`
+	// PasswordFile is the path to a file containing the database password
+	// This is the recommended approach for production deployments
+	// The file should contain only the password with optional trailing whitespace
+	PasswordFile string `yaml:"passwordFile,omitempty"`
 
 	// Database is the database name
 	Database string `yaml:"database"`
@@ -170,6 +174,66 @@ type DatabaseConfig struct {
 
 	// ConnMaxLifetime is the maximum lifetime of a connection (e.g., "1h", "30m")
 	ConnMaxLifetime string `yaml:"connMaxLifetime,omitempty"`
+}
+
+// GetPassword returns the database password using the following priority:
+// 1. Read from PasswordFile if specified
+// 2. Read from THV_DATABASE_PASSWORD environment variable
+//
+// The password from file will have leading/trailing whitespace trimmed.
+func (d *DatabaseConfig) GetPassword() (string, error) {
+	// Priority 1: Read from file if specified
+	if d.PasswordFile != "" {
+		// Use filepath.Clean to prevent path traversal attacks
+		cleanPath := filepath.Clean(d.PasswordFile)
+
+		data, err := os.ReadFile(cleanPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to read password from file %s: %w", d.PasswordFile, err)
+		}
+
+		// Trim whitespace (including newlines) from file content
+		password := strings.TrimSpace(string(data))
+		return password, nil
+	}
+
+	// Priority 2: Check environment variable
+	if envPassword := os.Getenv("THV_DATABASE_PASSWORD"); envPassword != "" {
+		return envPassword, nil
+	}
+
+	return "", fmt.Errorf(
+		"no database password configured: set passwordFile or THV_DATABASE_PASSWORD environment variable",
+	)
+}
+
+// GetConnectionString builds a PostgreSQL connection string with proper password handling.
+// The password is URL-escaped to handle special characters safely.
+func (d *DatabaseConfig) GetConnectionString() (string, error) {
+	password, err := d.GetPassword()
+	if err != nil {
+		return "", err
+	}
+
+	sslMode := d.SSLMode
+	if sslMode == "" {
+		sslMode = "require"
+	}
+
+	// URL-escape the password to handle special characters
+	escapedPassword := url.QueryEscape(password)
+
+	connString := fmt.Sprintf(
+		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		d.User,
+		escapedPassword,
+		d.Host,
+		d.Port,
+		d.Database,
+		sslMode,
+	)
+
+	return connString, nil
 }
 
 // LoadConfig loads and parses configuration from a YAML file

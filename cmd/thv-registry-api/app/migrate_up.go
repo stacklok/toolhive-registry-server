@@ -51,7 +51,11 @@ func runMigrateUp(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	connString := buildConnectionString(cfg.Database)
+	connString, err := cfg.Database.GetConnectionString()
+	if err != nil {
+		return fmt.Errorf("failed to build connection string: %w", err)
+	}
+
 	m, err := database.NewFromConnectionString(connString)
 	if err != nil {
 		return fmt.Errorf("failed to create migrator: %w", err)
@@ -155,22 +159,4 @@ func confirm(prompt string) bool {
 
 	response = strings.ToLower(strings.TrimSpace(response))
 	return response == "y" || response == "yes"
-}
-
-// buildConnectionString builds a PostgreSQL connection string from the config
-func buildConnectionString(cfg *config.DatabaseConfig) string {
-	sslMode := cfg.SSLMode
-	if sslMode == "" {
-		sslMode = "require"
-	}
-
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		cfg.User,
-		cfg.Password,
-		cfg.Host,
-		cfg.Port,
-		cfg.Database,
-		sslMode,
-	)
 }

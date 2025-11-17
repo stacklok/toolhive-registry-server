@@ -72,13 +72,20 @@ func NewConnection(cfg *config.DatabaseConfig) (*Connection, error) {
 		connMaxLifetime = duration
 	}
 
+	// Get password using secure priority order (file -> env -> config)
+	password, err := cfg.GetPassword()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database password: %w", err)
+	}
+
 	// Build connection string
+	// Note: password is not URL-escaped here because pgx driver handles it directly
 	connStr := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s connect_timeout=%d",
 		cfg.Host,
 		cfg.Port,
 		cfg.User,
-		cfg.Password,
+		password,
 		cfg.Database,
 		sslMode,
 		int(defaultConnectTimeout.Seconds()),

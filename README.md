@@ -121,7 +121,12 @@ database:
   host: localhost
   port: 5432
   user: registry
-  password: registry_password
+
+  # Password can be provided in two ways (in priority order):
+  # 1. passwordFile: /secrets/db/password (RECOMMENDED for production)
+  # 2. THV_DATABASE_PASSWORD environment variable (good for Docker/CI)
+  # Choose the method that best fits your deployment environment
+
   database: registry
   sslMode: require
   maxOpenConns: 25
@@ -175,7 +180,13 @@ database:
   host: localhost           # Database host
   port: 5432               # Database port
   user: registry           # Database user
-  password: password       # Database password
+
+  # Password configuration (choose ONE method):
+  # Method 1: File-based (RECOMMENDED for production/Kubernetes)
+  passwordFile: /secrets/db/password
+  # Method 2: Environment variable (good for Docker/CI)
+  # Set THV_DATABASE_PASSWORD environment variable
+
   database: registry       # Database name
   sslMode: require        # SSL mode (disable, require, verify-ca, verify-full)
 
@@ -185,7 +196,13 @@ database:
   connMaxLifetime: "5m"   # Connection max lifetime (default: 5m)
 ```
 
-**Database Schema**: The schema is defined in `database/migrations/000001_init.up.sql` and includes tables for:
+**Password Security**: The server supports two secure methods for providing database passwords:
+1. **File-based** (recommended): `passwordFile: /secrets/db/password` - reads from mounted secrets (Kubernetes/Docker Secrets)
+2. **Environment variable**: Set `THV_DATABASE_PASSWORD` environment variable - good for Docker Compose and CI/CD
+
+See [docs/DATABASE_SECURITY.md](docs/DATABASE_SECURITY.md) for detailed security best practices.
+
+**Database Schema**: The schema is managed via migrations. See [docs/MIGRATIONS.md](docs/MIGRATIONS.md) for details. The schema includes tables for:
 - Registry definitions and sync tracking
 - MCP server metadata
 - Server packages and remotes

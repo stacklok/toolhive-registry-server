@@ -36,7 +36,17 @@ database:
   host: postgres
   port: 5432
   user: registry
-  password: registry_password
+
+  # Password Configuration (Choose ONE method):
+
+  # Method 1: Environment variable (set in docker-compose.yml)
+  # THV_DATABASE_PASSWORD=registry_password
+  # This is used by default in the docker-compose setup
+
+  # Method 2: Password from file (alternative for production)
+  # Uncomment to read password from a file (e.g., Docker/Kubernetes secret)
+  # passwordFile: /secrets/db/password
+
   database: registry
   sslMode: disable  # SSL disabled for local Docker network
 

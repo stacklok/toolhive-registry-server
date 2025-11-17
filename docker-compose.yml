@@ -46,6 +46,7 @@ services:
     command: ["migrate", "up", "--config", "/config.yaml", "--yes"]
     environment:
       - LOG_LEVEL=info
+      - THV_DATABASE_PASSWORD=registry_password
     networks:
       - registry-network
     restart: on-failure
@@ -69,6 +70,7 @@ services:
     command: ["serve", "--config", "/config.yaml", "--address", ":8080"]
     environment:
       - LOG_LEVEL=debug
+      - THV_DATABASE_PASSWORD=registry_password
     networks:
       - registry-network
     restart: unless-stopped
