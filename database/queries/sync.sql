@@ -8,7 +8,7 @@ SELECT id,
 FROM registry_sync
 WHERE id = sqlc.arg(id);
 
--- name: InsertRegistrySync :exec
+-- name: InsertRegistrySync :one
 INSERT INTO registry_sync (
     reg_id,
     sync_status,
@@ -19,7 +19,7 @@ INSERT INTO registry_sync (
     sqlc.arg(sync_status),
     sqlc.narg(error_msg),
     CURRENT_TIMESTAMP
-);
+) RETURNING id;
 
 -- name: UpdateRegistrySync :exec
 UPDATE registry_sync SET
