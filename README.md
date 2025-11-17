@@ -116,6 +116,18 @@ syncPolicy:
   # Sync interval (e.g., "30m", "1h", "24h")
   interval: "30m"
 
+# Optional: Database configuration
+database:
+  host: localhost
+  port: 5432
+  user: registry
+  password: registry_password
+  database: registry
+  sslMode: require
+  maxOpenConns: 25
+  maxIdleConns: 5
+  connMaxLifetime: "5m"
+
 # Optional: Server filtering
 filter:
   names:
@@ -153,6 +165,33 @@ The server supports three data source types:
    - Example: [config-file.yaml](examples/config-file.yaml)
 
 For complete configuration examples and advanced options, see [examples/README.md](examples/README.md).
+
+### Database Configuration
+
+The server supports optional PostgreSQL database integration using the [pgx](https://github.com/jackc/pgx) driver. The database connection is configured in the YAML file:
+
+```yaml
+database:
+  host: localhost           # Database host
+  port: 5432               # Database port
+  user: registry           # Database user
+  password: password       # Database password
+  database: registry       # Database name
+  sslMode: require        # SSL mode (disable, require, verify-ca, verify-full)
+
+  # Optional connection pool settings
+  maxOpenConns: 25        # Maximum open connections (default: 25)
+  maxIdleConns: 5         # Maximum idle connections (default: 5)
+  connMaxLifetime: "5m"   # Connection max lifetime (default: 5m)
+```
+
+**Database Schema**: The schema is defined in `database/migrations/000001_init.up.sql` and includes tables for:
+- Registry definitions and sync tracking
+- MCP server metadata
+- Server packages and remotes
+- Server icons
+
+**Note**: The database connection is optional. The server will work without a database configured, using file-based storage only.
 
 ## Development
 
@@ -192,6 +231,10 @@ cmd/thv-registry-api/
 └── main.go              # Application entry point
 
 pkg/
+├── app/                 # Application lifecycle management
+│   ├── app.go               # Application entry point
+│   ├── builder.go           # Builder pattern for app construction
+│   └── components.go        # Application components
 ├── config/              # Configuration loading and validation
 ├── sources/             # Data source handlers
 │   ├── git.go               # Git repository source
@@ -204,6 +247,16 @@ pkg/
 └── status/              # Sync status tracking
     └── persistence.go       # Status file persistence
 
+internal/
+├── db/                  # Database layer
+│   ├── connection/          # PostgreSQL connection with pgx driver
+│   │   └── connection.go    # Database connection management
+│   ├── db.go                # sqlc-generated base types
+│   ├── models.go            # sqlc-generated models
+│   ├── querier.go           # sqlc-generated query interface
+│   └── *.sql.go             # sqlc-generated queries
+
+database/migrations/     # Database schema migrations
 examples/                # Example configurations
 ```
 
@@ -283,6 +336,69 @@ data:
 ```
 
 ### Docker
+
+#### Running with Docker Compose
+
+The easiest way to run the registry server with PostgreSQL is using Docker Compose:
+
+```bash
+# Start the services (PostgreSQL + Registry API)
+docker-compose up -d
+
+# Check service status
+docker-compose ps
+
+# View logs
+docker-compose logs -f
+
+# Stop the services
+docker-compose down
+
+# Stop and remove volumes (warning: deletes all data)
+docker-compose down -v
+```
+
+This will start:
+- PostgreSQL 16 database on port 5432
+- ToolHive Registry API server on port 8080
+
+**Configuration**: The docker-compose setup uses `examples/config-docker.yaml` which includes database configuration pointing to the postgres service.
+
+**Database Access**:
+```bash
+# Connect to PostgreSQL
+docker-compose exec postgres psql -U registry -d registry
+
+# Or from your host (if psql is installed)
+psql -h localhost -p 5432 -U registry -d registry
+# Password: registry_password
+```
+
+**Database Schema**: The schema is automatically initialized from `database/migrations/000001_init.up.sql` on first startup.
+
+**Customizing Configuration**:
+1. Edit `examples/config-docker.yaml` to customize registry settings
+2. Edit `docker-compose.yml` to change database credentials
+3. Mount your own registry data by updating the volume in `docker-compose.yml`
+
+**Volumes**: Docker Compose creates two persistent volumes:
+- `postgres_data`: PostgreSQL data
+- `registry_data`: Registry sync data and status
+
+**Troubleshooting**:
+- Check logs: `docker-compose logs registry-api` or `docker-compose logs postgres`
+- Verify database health: `docker-compose exec postgres pg_isready -U registry`
+- Reset everything: `docker-compose down -v && docker-compose up -d`
+
+**Production Considerations**:
+1. Change default passwords in both `docker-compose.yml` and `config-docker.yaml`
+2. Enable SSL: Set `sslMode: require` in database config
+3. Use secrets management instead of plain text passwords
+4. Configure PostgreSQL backups
+5. Add resource limits to services
+6. Set up monitoring and health checks
+
+#### Running with Docker Standalone
 
 ```bash
 # Build the image
