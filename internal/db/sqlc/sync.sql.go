@@ -36,7 +36,7 @@ func (q *Queries) GetRegistrySync(ctx context.Context, id pgtype.UUID) (Registry
 	return i, err
 }
 
-const insertRegistrySync = `-- name: InsertRegistrySync :exec
+const insertRegistrySync = `-- name: InsertRegistrySync :one
 INSERT INTO registry_sync (
     reg_id,
     sync_status,
@@ -47,7 +47,7 @@ INSERT INTO registry_sync (
     $2,
     $3,
     CURRENT_TIMESTAMP
-)
+) RETURNING id
 `
 
 type InsertRegistrySyncParams struct {
@@ -56,9 +56,11 @@ type InsertRegistrySyncParams struct {
 	ErrorMsg   pgtype.Text `json:"error_msg"`
 }
 
-func (q *Queries) InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) error {
-	_, err := q.db.Exec(ctx, insertRegistrySync, arg.RegID, arg.SyncStatus, arg.ErrorMsg)
-	return err
+func (q *Queries) InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, insertRegistrySync, arg.RegID, arg.SyncStatus, arg.ErrorMsg)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const updateRegistrySync = `-- name: UpdateRegistrySync :exec

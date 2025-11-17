@@ -14,7 +14,7 @@ type Querier interface {
 	GetRegistry(ctx context.Context, id pgtype.UUID) (Registry, error)
 	GetRegistrySync(ctx context.Context, id pgtype.UUID) (RegistrySync, error)
 	InsertRegistry(ctx context.Context, arg InsertRegistryParams) (pgtype.UUID, error)
-	InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) error
+	InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (pgtype.UUID, error)
 	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error)
 	ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error)
 	ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error)
