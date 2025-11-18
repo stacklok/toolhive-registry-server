@@ -1,5 +1,5 @@
-# Build the binary
-FROM golang as builder
+# This Dockerfile is intended for docker-compose only.
+FROM index.docker.io/library/golang@sha256:f60eaa87c79e604967c84d18fd3b151b3ee3f033bcdade4f3494e38411e60963 AS builder
 
 USER root
 
@@ -25,14 +25,23 @@ RUN CGO_ENABLED=0 LDFLAGS="-s -w \
 -X github.com/stacklok/toolhive/pkg/versions.Commit=${COMMIT} \
 -X github.com/stacklok/toolhive/pkg/versions.BuildDate=${BUILD_DATE} \
 -X github.com/stacklok/toolhive/pkg/versions.BuildType=release" \
-GOOS=linux GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o main ./cmd/thv-registry-api/main.go
+GOOS=linux go build -ldflags "${LDFLAGS}" -o main ./cmd/thv-registry-api/main.go
 
 # Use minimal base image to package the binary
-FROM --platform=linux/amd64 registry.access.redhat.com/ubi10/ubi-minimal:10.1-1763362715
+FROM index.docker.io/library/alpine@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412
 
 COPY --from=builder /workspace/main /
+COPY docker/entrypoint.sh /entrypoint.sh
 COPY LICENSE /licenses/LICENSE
+
+# Create working directory and data directory with proper permissions
+# Make entrypoint script executable
+RUN mkdir -p /app/data && \
+    chown -R 1001:1001 /app && \
+    chmod +x /entrypoint.sh
+
+WORKDIR /app
 
 USER 1001
 
-ENTRYPOINT ["/main"]
+ENTRYPOINT ["/entrypoint.sh"]

@@ -39,6 +39,18 @@ syncPolicy:
   # Sync interval (valid duration: 1m, 5m, 30m, 1h, 24h, etc.)
   interval: "30m"
 
+# Optional: PostgreSQL database configuration
+# Uncomment to store registry data in a database instead of local files
+# database:
+#   host: localhost
+#   port: 5432
+#   user: thv_user
+#   # Use passwordFile for production (recommended)
+#   passwordFile: /run/secrets/db_password
+#   # Or set THV_DATABASE_PASSWORD environment variable
+#   database: toolhive_registry
+#   sslMode: require
+
 # Optional: Filter configuration to include/exclude specific servers
 # filter:
 #   # Name-based filtering

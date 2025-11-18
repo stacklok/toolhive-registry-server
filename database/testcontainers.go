@@ -54,9 +54,11 @@ func SetupTestDB(t *testing.T) (*pgx.Conn, func()) {
 	err = MigrateUp(ctx, db)
 	require.NoError(t, err)
 
-	err = MigrateDown(ctx, db)
+	// Test full migration rollback (migrate down by all steps)
+	err = MigrateDown(ctx, db, 1)
 	require.NoError(t, err)
 
+	// Reapply migrations
 	err = MigrateUp(ctx, db)
 	require.NoError(t, err)
 

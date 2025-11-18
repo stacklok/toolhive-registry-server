@@ -75,6 +75,28 @@ The server starts on port 8080 by default. Use `--address :PORT` to customize.
 
 For detailed configuration options and examples, see the [examples/README.md](examples/README.md).
 
+### Available Commands
+
+The `thv-registry-api` CLI provides the following commands:
+
+```bash
+# Start the API server
+thv-registry-api serve --config config.yaml [--address :8080]
+
+# Run database migrations
+thv-registry-api migrate up --config config.yaml [--yes]
+thv-registry-api migrate down --config config.yaml --num-steps N [--yes]
+
+# Display version information
+thv-registry-api version [--format json]
+
+# Show help
+thv-registry-api --help
+thv-registry-api <command> --help
+```
+
+See the [Database Migrations](#database-migrations) section for more details on using migration commands.
+
 ## API Endpoints
 
 The server implements the standard MCP Registry API:
@@ -228,6 +250,92 @@ Tune these values based on your workload:
 - Resource-constrained environments: Decrease pool sizes
 - Long-running services: Set shorter `connMaxLifetime` (e.g., "1h")
 
+#### Database Migrations
+
+The server includes built-in database migration commands to manage the database schema.
+
+**Running migrations with CLI:**
+
+```bash
+# Apply all pending migrations
+thv-registry-api migrate up --config examples/config-database-dev.yaml
+
+# Apply migrations non-interactively (useful for CI/CD)
+thv-registry-api migrate up --config config.yaml --yes
+
+# Revert last migration (requires --num-steps for safety)
+thv-registry-api migrate down --config config.yaml --num-steps 1
+
+# View migration help
+thv-registry-api migrate --help
+```
+
+**Running migrations with Task:**
+
+```bash
+# Apply migrations (development)
+export THV_DATABASE_PASSWORD="devpassword"
+task migrate-up CONFIG=examples/config-database-dev.yaml
+
+# Revert migrations (specify number of steps for safety)
+task migrate-down CONFIG=examples/config-database-dev.yaml NUM_STEPS=1
+```
+
+**Migration workflow:**
+
+1. **Configure database**: Create a config file with database settings (see [examples/config-database-dev.yaml](examples/config-database-dev.yaml))
+2. **Set password**: Either set `THV_DATABASE_PASSWORD` env var or use `passwordFile` in config
+3. **Run migrations**: Use `migrate up` to apply schema changes
+4. **Start server**: Run `serve` command with the same config file
+
+**Example: Local development setup**
+
+```bash
+# 1. Start PostgreSQL (example with Docker)
+docker run -d --name postgres \
+  -e POSTGRES_USER=thv_user \
+  -e POSTGRES_PASSWORD=devpassword \
+  -e POSTGRES_DB=toolhive_registry \
+  -p 5432:5432 \
+  postgres:16
+
+# 2. Set password environment variable
+export THV_DATABASE_PASSWORD="devpassword"
+
+# 3. Run migrations
+task migrate-up CONFIG=examples/config-database-dev.yaml
+
+# 4. Start the server
+thv-registry-api serve --config examples/config-database-dev.yaml
+```
+
+**Example: Production deployment**
+
+```bash
+# 1. Create password file
+echo "your-secure-password" > /run/secrets/db_password
+chmod 400 /run/secrets/db_password
+
+# 2. Run migrations (using passwordFile from config)
+thv-registry-api migrate up \
+  --config examples/config-database-prod.yaml \
+  --yes
+
+# 3. Start the server
+thv-registry-api serve --config examples/config-database-prod.yaml
+```
+
+**Safety features:**
+
+- `migrate down` requires `--num-steps` flag to prevent accidental full rollback
+- Interactive confirmation prompts (bypass with `--yes` flag)
+- Strong warnings displayed for destructive operations
+- Configuration validation before connecting to database
+
+For complete examples, see:
+- [examples/config-database-dev.yaml](examples/config-database-dev.yaml) - Development configuration
+- [examples/config-database-prod.yaml](examples/config-database-prod.yaml) - Production configuration
+
 #### Example Kubernetes Deployment with Database
 
 ```yaml
@@ -265,6 +373,40 @@ data:
       maxOpenConns: 25
       maxIdleConns: 5
       connMaxLifetime: "5m"
+---
+# Run migrations as a Kubernetes Job before deploying the server
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: registry-migrate
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: migrate
+        image: ghcr.io/stacklok/toolhive/thv-registry-api:latest
+        args:
+        - migrate
+        - up
+        - --config=/etc/registry/config.yaml
+        - --yes
+        volumeMounts:
+        - name: config
+          mountPath: /etc/registry
+        - name: db-password
+          mountPath: /secrets
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: registry-api-config
+      - name: db-password
+        secret:
+          secretName: registry-db-password
+          items:
+          - key: password
+            path: db-password
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -319,6 +461,10 @@ task gen
 
 # Build container image
 task build-image
+
+# Database migrations
+task migrate-up CONFIG=examples/config-database-dev.yaml
+task migrate-down CONFIG=examples/config-database-dev.yaml NUM_STEPS=1
 ```
 
 ### Project Structure
@@ -441,6 +587,90 @@ docker run -v $(pwd)/examples:/config \
   -v /path/to/registry.json:/data/registry.json \
   ghcr.io/stacklok/toolhive/thv-registry-api:latest \
   serve --config /config/config-file.yaml
+
+# Run with database password from environment variable
+docker run -v $(pwd)/examples:/config \
+  -e THV_DATABASE_PASSWORD=your-password \
+  ghcr.io/stacklok/toolhive/thv-registry-api:latest \
+  serve --config /config/config-database-dev.yaml
+```
+
+### Docker Compose
+
+A complete Docker Compose setup is provided in the repository root that includes PostgreSQL, automatic migrations, and the API server.
+
+**Quick start:**
+
+```bash
+# Start all services (PostgreSQL + migrations + API)
+docker-compose up
+
+# Run in detached mode
+docker-compose up -d
+
+# View logs
+docker-compose logs -f registry-api
+
+# Stop all services
+docker-compose down
+
+# Stop and remove volumes (WARNING: deletes database data)
+docker-compose down -v
+```
+
+**Architecture:**
+
+The docker-compose.yaml includes three services:
+1. **postgres** - PostgreSQL 18 database server
+2. **migrate** - One-time migration service (runs schema migrations)
+3. **registry-api** - Main API server
+
+**Service startup flow:**
+```
+postgres (healthy) → migrate (completes) → registry-api (starts)
+```
+
+**Configuration:**
+
+- Config file: `examples/config-docker.yaml`
+- Sample data: `examples/registry-sample.json`
+- Database password: Set via `THV_DATABASE_PASSWORD` environment variable in docker-compose.yaml
+
+The setup demonstrates:
+- Database-backed registry storage
+- Automatic schema migrations on startup
+- File-based data source (for demo purposes)
+- Proper service dependencies and health checks
+
+**Accessing the API:**
+
+Once running, the API is available at http://localhost:8080
+
+```bash
+# List all servers
+curl http://localhost:8080/api/v0/servers
+
+# Get specific server
+curl http://localhost:8080/api/v0/servers/example%2Ffilesystem
+```
+
+**Customization:**
+
+To use your own registry data:
+1. Edit `examples/registry-sample.json` with your MCP servers
+2. Or change the source configuration in `examples/config-docker.yaml`
+3. Restart: `docker-compose restart registry-api`
+
+**Database access:**
+
+To connect to the PostgreSQL database directly:
+
+```bash
+# Using psql
+docker exec -it toolhive-registry-postgres psql -U registry -d registry
+
+# Using environment variables from compose
+PGPASSWORD=registry_password psql -h localhost -U registry -d registry
 ```
 
 ## Integration with ToolHive

@@ -1,0 +1,90 @@
+# Example configuration for production deployment with PostgreSQL database
+#
+# This configuration demonstrates production-ready PostgreSQL setup with:
+#   - Password stored in a secure file (not environment variables)
+#   - SSL enabled with full certificate verification
+#   - Optimized connection pool settings
+#   - Appropriate sync intervals
+#
+# Security Considerations:
+#   - Store password in a file with restricted permissions (chmod 600)
+#   - Mount password file from secrets management system (e.g., Kubernetes Secret)
+#   - Use SSL/TLS with certificate verification (sslMode: verify-full)
+#   - Regularly rotate database credentials
+#
+# Prerequisites:
+#   1. PostgreSQL server with SSL/TLS enabled
+#   2. Database created with proper permissions
+#   3. Password file created at /run/secrets/db_password (or similar secure location)
+#   4. SSL certificates configured if using verify-ca or verify-full
+#
+# Usage:
+#   # Run migrations
+#   thv-registry-api migrate up --config examples/config-database-prod.yaml
+#
+#   # Start server
+#   thv-registry-api serve --config examples/config-database-prod.yaml
+
+# Registry name/identifier
+registryName: production-registry
+
+# Data source configuration
+source:
+  type: git
+  format: toolhive
+  git:
+    repository: https://github.com/stacklok/toolhive.git
+    # Use a specific tag for production stability
+    tag: v1.0.0
+    path: pkg/registry/data/registry.json
+
+# Automatic synchronization policy
+syncPolicy:
+  # Less frequent syncs for production to reduce load
+  interval: "1h"
+
+# PostgreSQL database configuration for production
+database:
+  # Production database server
+  # Can be a managed service (e.g., RDS, Cloud SQL) or self-hosted
+  host: db.production.example.com
+  port: 5432
+
+  # Database credentials
+  user: thv_production_user
+
+  # Password stored in secure file (RECOMMENDED for production)
+  # File should contain only the password (trailing whitespace is trimmed)
+  # Permissions should be 600 (readable only by the application user)
+  # Common locations:
+  #   - Docker secrets: /run/secrets/db_password
+  #   - Kubernetes secrets: /var/run/secrets/db_password
+  #   - Custom mount: /etc/thv-registry/secrets/db_password
+  passwordFile: /run/secrets/db_password
+
+  # Database name
+  database: toolhive_registry
+
+  # SSL mode for production (use verify-full for maximum security)
+  # Options:
+  #   - require: Require SSL but don't verify certificates
+  #   - verify-ca: Verify server certificate against CA
+  #   - verify-full: Verify certificate and hostname (RECOMMENDED)
+  sslMode: verify-full
+
+  # Connection pool settings optimized for production
+  # Adjust based on your workload and database capacity
+  maxOpenConns: 25
+  maxIdleConns: 5
+  connMaxLifetime: "1h"
+
+# Optional: Production filtering to ensure only stable servers
+filter:
+  tags:
+    include:
+      - "production"
+      - "stable"
+    exclude:
+      - "experimental"
+      - "beta"
+      - "alpha"

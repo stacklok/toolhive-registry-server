@@ -1,0 +1,53 @@
+# Example configuration for local development with PostgreSQL database
+#
+# This configuration is optimized for local development with a PostgreSQL database.
+# It uses environment variables for the password and disables SSL for simplicity.
+#
+# Prerequisites:
+#   1. PostgreSQL running locally (or via docker-compose)
+#   2. Database created: createdb toolhive_registry
+#   3. User created with password
+#   4. Environment variable set: export THV_DATABASE_PASSWORD="your-password"
+#
+# Usage:
+#   export THV_DATABASE_PASSWORD="devpassword"
+#   thv-registry-api migrate up --config examples/config-database-dev.yaml
+#   thv-registry-api serve --config examples/config-database-dev.yaml
+
+# Registry name/identifier
+registryName: dev-registry
+
+# Data source configuration
+source:
+  type: git
+  format: toolhive
+  git:
+    repository: https://github.com/stacklok/toolhive.git
+    branch: main
+    path: pkg/registry/data/registry.json
+
+# Automatic synchronization policy
+syncPolicy:
+  # More frequent syncs for development
+  interval: "5m"
+
+# PostgreSQL database configuration for development
+database:
+  # Local PostgreSQL instance
+  host: localhost
+  port: 5432
+
+  # Database credentials
+  user: thv_user
+  # Password from environment variable: THV_DATABASE_PASSWORD
+
+  # Database name
+  database: toolhive_registry
+
+  # Disable SSL for local development (NOT for production!)
+  sslMode: disable
+
+  # Connection pool settings
+  maxOpenConns: 10
+  maxIdleConns: 2
+  connMaxLifetime: "30m"
