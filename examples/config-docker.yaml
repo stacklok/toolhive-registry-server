@@ -1,0 +1,63 @@
+# Docker Compose configuration for ToolHive Registry API
+#
+# This configuration is designed for use with docker-compose.yaml in the repository root.
+# It demonstrates database-backed registry with PostgreSQL.
+#
+# Prerequisites:
+#   - Docker and Docker Compose installed
+#   - THV_DATABASE_PASSWORD environment variable set in docker-compose.yaml
+#
+# Usage:
+#   docker-compose up
+#
+# The docker-compose setup includes:
+#   1. postgres - PostgreSQL 18 database server
+#   2. migrate - One-time migration service (runs schema migrations)
+#   3. registry-api - Main API server
+#
+# Database password is provided via THV_DATABASE_PASSWORD environment variable
+# set in the docker-compose.yaml file for both migrate and registry-api services.
+
+# Registry name/identifier
+registryName: docker-registry
+
+# Data source configuration
+source:
+  # Use file source for docker-compose demo
+  # The sample registry file is mounted at /registry-sample.json
+  type: file
+  format: upstream
+  file:
+    path: /registry-sample.json
+
+# Automatic synchronization policy
+syncPolicy:
+  # Check for file changes every 5 minutes
+  interval: "5m"
+
+# PostgreSQL database configuration
+# The password is provided via THV_DATABASE_PASSWORD environment variable
+# This is set in docker-compose.yaml for both the migrate and registry-api services
+database:
+  # Use service name from docker-compose as hostname
+  host: postgres
+
+  # PostgreSQL default port
+  port: 5432
+
+  # Database credentials (must match POSTGRES_USER in docker-compose.yaml)
+  user: registry
+
+  # Password is read from THV_DATABASE_PASSWORD environment variable
+  # Do not set passwordFile in Docker Compose - use environment variables instead
+
+  # Database name (must match POSTGRES_DB in docker-compose.yaml)
+  database: registry
+
+  # Disable SSL for local Docker network (NOT for production!)
+  sslMode: disable
+
+  # Connection pool settings optimized for local development
+  maxOpenConns: 10
+  maxIdleConns: 2
+  connMaxLifetime: "30m"

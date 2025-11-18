@@ -1,0 +1,84 @@
+# ToolHive Registry API Server - Docker Compose Configuration
+#
+# Services:
+# 1. postgres - PostgreSQL 18 database
+# 2. migrate - One-time migration service (runs database migrations)
+# 3. registry-api - Main API server
+#
+# Startup flow:
+# postgres (healthy) → migrate (completes) → registry-api (starts)
+#
+# Migrations are embedded in the binary, no volume mounts needed.
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: toolhive-registry-postgres
+    environment:
+      POSTGRES_USER: registry
+      POSTGRES_PASSWORD: registry_password
+      POSTGRES_DB: registry
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U registry"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - registry-network
+
+  migrate:
+    build:
+      context: .
+      dockerfile: ./docker/dockerfile-compose
+    container_name: toolhive-registry-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./examples/config-docker.yaml:/config.yaml:ro
+    command: ["migrate", "up", "--config", "/config.yaml", "--yes"]
+    environment:
+      - LOG_LEVEL=info
+      - THV_DATABASE_PASSWORD=registry_password
+    networks:
+      - registry-network
+    restart: on-failure
+
+  registry-api:
+    build:
+      context: .
+      dockerfile: ./docker/dockerfile-compose
+    container_name: toolhive-registry-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./examples/config-docker.yaml:/config.yaml:ro
+      - ./examples/registry-sample.json:/registry-sample.json:ro
+      - registry_data:/app/data
+    command: ["serve", "--config", "/config.yaml", "--address", ":8080"]
+    environment:
+      - LOG_LEVEL=debug
+      - THV_DATABASE_PASSWORD=registry_password
+    networks:
+      - registry-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  registry_data:
+    driver: local
+
+networks:
+  registry-network:
+    driver: bridge

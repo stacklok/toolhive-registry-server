@@ -32,6 +32,18 @@ syncPolicy:
   # For local files, you can use shorter intervals
   interval: "5m"
 
+# Optional: PostgreSQL database configuration
+# Uncomment to store registry data in a database instead of local files
+# For development, you can use environment variable for password:
+#   export THV_DATABASE_PASSWORD="devpassword"
+# database:
+#   host: localhost
+#   port: 5432
+#   user: thv_user
+#   database: toolhive_registry
+#   # For development, disable SSL (NOT for production!)
+#   sslMode: disable
+
 # Optional: Filter configuration to include/exclude specific servers
 # filter:
 #   # Name-based filtering

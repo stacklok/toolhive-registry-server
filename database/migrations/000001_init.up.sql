@@ -8,7 +8,7 @@ CREATE TYPE registry_type AS ENUM (
 );
 
 -- Table of registries which we sync against.
-CREATE TABLE registry (
+CREATE TABLE IF NOT EXISTS registry (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name       TEXT NOT NULL,
     reg_type   registry_type NOT NULL DEFAULT 'LOCAL',
@@ -28,7 +28,7 @@ CREATE TYPE sync_status AS ENUM (
 
 -- Table of sync operations against remote registries.
 -- It is intended that this will be cleaned up on a recurring schedule.
-CREATE TABLE registry_sync (
+CREATE TABLE IF NOT EXISTS registry_sync (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     reg_id      UUID REFERENCES registry(id) ON DELETE CASCADE,
     sync_status sync_status NOT NULL DEFAULT 'IN_PROGRESS',
@@ -37,12 +37,12 @@ CREATE TABLE registry_sync (
     ended_at    TIMESTAMP WITH TIME ZONE
 );
 
-CREATE INDEX registry_sync_started_at_idx ON registry_sync(reg_id, started_at);
-CREATE INDEX registry_sync_end_at_idx ON registry_sync(reg_id, ended_at);
+CREATE INDEX IF NOT EXISTS registry_sync_started_at_idx ON registry_sync(reg_id, started_at);
+CREATE INDEX IF NOT EXISTS registry_sync_end_at_idx ON registry_sync(reg_id, ended_at);
 
 -- Table of MCP servers known to our registry across all sources.
 -- Based on: https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/api/openapi.yaml
-CREATE TABLE mcp_server (
+CREATE TABLE IF NOT EXISTS mcp_server (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name          TEXT NOT NULL,
     version       TEXT NOT NULL,
@@ -62,7 +62,7 @@ CREATE TABLE mcp_server (
 );
 
 -- Set of downloadable artifacts to allow an MCP server to be run locally.
-CREATE TABLE mcp_server_package (
+CREATE TABLE IF NOT EXISTS mcp_server_package (
     server_id         UUID PRIMARY KEY REFERENCES mcp_server(id) ON DELETE CASCADE,
     registry_type     TEXT NOT NULL, -- Type of upstream registry [npm, docker, nuget, etc].
     pkg_registry_url  TEXT NOT NULL, -- Registry to download this package from. May or may not be the same as the MCP registry.
@@ -79,7 +79,7 @@ CREATE TABLE mcp_server_package (
 );
 
 -- Used to point to a remote MCP server.
-CREATE TABLE mcp_server_remote (
+CREATE TABLE IF NOT EXISTS mcp_server_remote (
     server_id         UUID NOT NULL REFERENCES mcp_server(id) ON DELETE CASCADE,
     transport         TEXT NOT NULL, -- expected to be one of [sse, streamable-http], validated in business logic
     transport_url     TEXT NOT NULL,
@@ -88,7 +88,7 @@ CREATE TABLE mcp_server_remote (
 );
 
 -- Used to point to the latest version of a server in a registry.
-CREATE TABLE latest_server_version (
+CREATE TABLE IF NOT EXISTS latest_server_version (
     reg_id           UUID NOT NULL REFERENCES registry(id) ON DELETE CASCADE,
     name             TEXT NOT NULL,
     version          TEXT NOT NULL,
@@ -102,7 +102,7 @@ CREATE TYPE icon_theme AS ENUM (
 );
 
 -- The set of icons associated with an MCP server.
-CREATE TABLE mcp_server_icon (
+CREATE TABLE IF NOT EXISTS mcp_server_icon (
     server_id  UUID NOT NULL REFERENCES mcp_server (id) ON DELETE CASCADE,
     source_uri TEXT NOT NULL,
     mime_type  TEXT,

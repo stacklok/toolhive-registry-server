@@ -38,6 +38,18 @@ syncPolicy:
   # Less frequent for upstream API to be respectful of external services
   interval: "1h"
 
+# Optional: PostgreSQL database configuration
+# Uncomment to store registry data in a database instead of local files
+# database:
+#   host: localhost
+#   port: 5432
+#   user: thv_user
+#   # Use passwordFile for production (recommended)
+#   passwordFile: /run/secrets/db_password
+#   # Or set THV_DATABASE_PASSWORD environment variable
+#   database: toolhive_registry
+#   sslMode: require
+
 # Optional: Filter configuration to include/exclude specific servers
 # This is especially useful when syncing from upstream to curate
 # a subset of servers for your organization

@@ -152,12 +152,66 @@ filter:
       - "unmaintained"        # Exclude unmaintained servers
 
 # ==============================================================================
+# DATABASE CONFIGURATION (Optional)
+# ==============================================================================
+
+# PostgreSQL database configuration
+# When configured, the application will store synced registry data in the database
+# instead of local JSON files. This enables:
+#   - Centralized data storage for multiple instances
+#   - Better performance for large registries
+#   - SQL query capabilities
+#   - Transactional updates
+
+database:
+  # Database server hostname or IP address (Required)
+  host: localhost
+
+  # Database server port (Required)
+  port: 5432
+
+  # Database username (Required)
+  user: thv_user
+
+  # Password file path (Recommended for production)
+  # The file should contain only the password (trailing whitespace is trimmed)
+  # This is more secure than environment variables or inline passwords
+  passwordFile: /run/secrets/db_password
+
+  # Alternative: Use THV_DATABASE_PASSWORD environment variable
+  # If passwordFile is not set, the application will check this env var
+  # export THV_DATABASE_PASSWORD="your-password-here"
+
+  # Database name (Required)
+  database: toolhive_registry
+
+  # SSL mode (Optional, defaults to "require")
+  # Options: disable, require, verify-ca, verify-full
+  # Production should use "verify-full" for maximum security
+  sslMode: require
+
+  # Connection pool settings (Optional)
+  # Maximum number of open connections to the database
+  maxOpenConns: 25
+
+  # Maximum number of idle connections in the pool
+  maxIdleConns: 5
+
+  # Maximum lifetime of a connection (e.g., "1h", "30m")
+  # Helps with database connection rotation and load balancing
+  connMaxLifetime: "1h"
+
+# ==============================================================================
 # NOTES
 # ==============================================================================
 
 # Storage Locations:
-#   - Registry data: ./data/registry.json
-#   - Sync status: ./data/status.json
+#   Without database:
+#     - Registry data: ./data/registry.json
+#     - Sync status: ./data/status.json
+#   With database:
+#     - Registry data: PostgreSQL database
+#     - Sync status: PostgreSQL database
 #
 # The storage location is currently hardcoded but will be configurable
 # via CLI flags in a future release.
@@ -166,6 +220,7 @@ filter:
 #   - File: No authentication required
 #   - Git: Uses default git credential helper (SSH keys, .netrc, etc.)
 #   - API: Currently no authentication (will be added in future)
+#   - Database: Uses passwordFile (recommended) or THV_DATABASE_PASSWORD env var
 
 # Error Handling:
 #   - Failed syncs are retried at the next configured sync interval
