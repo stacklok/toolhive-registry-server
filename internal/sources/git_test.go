@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stacklok/toolhive/pkg/registry"
+	"github.com/stacklok/toolhive/pkg/registry/converters"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -65,12 +66,12 @@ type MockSourceDataValidator struct {
 	mock.Mock
 }
 
-func (m *MockSourceDataValidator) ValidateData(data []byte, format string) (*registry.Registry, error) {
+func (m *MockSourceDataValidator) ValidateData(data []byte, format string) (*toolhivetypes.UpstreamRegistry, error) {
 	args := m.Called(data, format)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*registry.Registry), args.Error(1)
+	return args.Get(0).(*toolhivetypes.UpstreamRegistry), args.Error(1)
 }
 
 func TestNewGitSourceHandler(t *testing.T) {
@@ -281,11 +282,14 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 					RemoteURL: testGitRepoURL,
 				}
 				testData := []byte(`{"version": "1.0.0"}`)
-				testRegistry := &registry.Registry{
+				testRegistry := &toolhivetypes.Registry{
 					Version:       "1.0.0",
-					Servers:       make(map[string]*registry.ImageMetadata),
-					RemoteServers: make(map[string]*registry.RemoteServerMetadata),
+					Servers:       make(map[string]*toolhivetypes.ImageMetadata),
+					RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
 				}
+
+				// Convert to UpstreamRegistry
+				UpstreamRegistry, _ := converters.NewUpstreamRegistryFromToolhiveRegistry(testRegistry)
 
 				gitClient.On("Clone", mock.Anything, mock.MatchedBy(func(config *git.CloneConfig) bool {
 					return config.URL == testGitRepoURL && config.Branch == testBranch
@@ -294,7 +298,7 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 				gitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
 				gitClient.On("Cleanup", repoInfo).Return(nil)
 
-				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return(testRegistry, nil)
+				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return(UpstreamRegistry, nil)
 			},
 			expectError: false,
 		},
@@ -316,11 +320,14 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 					RemoteURL: testGitRepoURL,
 				}
 				testData := []byte(`{"version": "1.0.0"}`)
-				testRegistry := &registry.Registry{
+				testRegistry := &toolhivetypes.Registry{
 					Version:       "1.0.0",
-					Servers:       make(map[string]*registry.ImageMetadata),
-					RemoteServers: make(map[string]*registry.RemoteServerMetadata),
+					Servers:       make(map[string]*toolhivetypes.ImageMetadata),
+					RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
 				}
+
+				// Convert to UpstreamRegistry
+				UpstreamRegistry, _ := converters.NewUpstreamRegistryFromToolhiveRegistry(testRegistry)
 
 				gitClient.On("Clone", mock.Anything, mock.MatchedBy(func(config *git.CloneConfig) bool {
 					return config.URL == testGitRepoURL && config.Tag == testTag
@@ -329,7 +336,7 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 				gitClient.On("GetFileContent", repoInfo, testFilePath).Return(testData, nil)
 				gitClient.On("Cleanup", repoInfo).Return(nil)
 
-				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return(testRegistry, nil)
+				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return(UpstreamRegistry, nil)
 			},
 			expectError: false,
 		},
@@ -414,7 +421,7 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 				gitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
 				gitClient.On("Cleanup", repoInfo).Return(nil)
 
-				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return(nil, errors.New("invalid data"))
+				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return((*toolhivetypes.UpstreamRegistry)(nil), errors.New("invalid data"))
 			},
 			expectError:   true,
 			errorContains: "registry data validation failed",
@@ -636,17 +643,21 @@ func TestGitSourceHandler_CleanupFailure(t *testing.T) {
 		RemoteURL: testGitRepoURL,
 	}
 	testData := []byte(`{"version": "1.0.0"}`)
-	testRegistry := &registry.Registry{
+	testRegistry := &toolhivetypes.Registry{
 		Version:       "1.0.0",
-		Servers:       make(map[string]*registry.ImageMetadata),
-		RemoteServers: make(map[string]*registry.RemoteServerMetadata),
+		Servers:       make(map[string]*toolhivetypes.ImageMetadata),
+		RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
 	}
+
+	// Convert to UpstreamRegistry
+	UpstreamRegistry, err := converters.NewUpstreamRegistryFromToolhiveRegistry(testRegistry)
+	require.NoError(t, err)
 
 	mockGitClient.On("Clone", mock.Anything, mock.Anything).Return(repoInfo, nil)
 	mockGitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
 	mockGitClient.On("Cleanup", repoInfo).Return(errors.New("cleanup failed")) // Cleanup fails
 
-	mockValidator.On("ValidateData", testData, config.SourceFormatToolHive).Return(testRegistry, nil)
+	mockValidator.On("ValidateData", testData, config.SourceFormatToolHive).Return(UpstreamRegistry, nil)
 
 	handler := &GitSourceHandler{
 		gitClient: mockGitClient,

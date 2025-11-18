@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stacklok/toolhive/pkg/logger"
-	"github.com/stacklok/toolhive/pkg/registry"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stacklok/toolhive/pkg/versions"
 	"gopkg.in/yaml.v3"
 
@@ -335,7 +335,7 @@ func (rr *Routes) listDeployedServers(w http.ResponseWriter, r *http.Request) {
 }
 
 // newServerSummaryResponse creates a ServerSummaryResponse from server metadata
-func newServerSummaryResponse(server registry.ServerMetadata) ServerSummaryResponse {
+func newServerSummaryResponse(server toolhivetypes.ServerMetadata) ServerSummaryResponse {
 	return ServerSummaryResponse{
 		Name:        server.GetName(),
 		Description: server.GetDescription(),
@@ -347,7 +347,7 @@ func newServerSummaryResponse(server registry.ServerMetadata) ServerSummaryRespo
 }
 
 // newServerDetailResponse creates a ServerDetailResponse from server metadata with all available fields
-func newServerDetailResponse(server registry.ServerMetadata) ServerDetailResponse {
+func newServerDetailResponse(server toolhivetypes.ServerMetadata) ServerDetailResponse {
 	response := ServerDetailResponse{
 		Name:          server.GetName(),
 		Description:   server.GetDescription(),
@@ -367,7 +367,7 @@ func newServerDetailResponse(server registry.ServerMetadata) ServerDetailRespons
 }
 
 // populateEnvVars converts and populates environment variables in the response
-func populateEnvVars(response *ServerDetailResponse, server registry.ServerMetadata) {
+func populateEnvVars(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
 	envVars := server.GetEnvVars()
 	if envVars == nil {
 		return
@@ -388,7 +388,7 @@ func populateEnvVars(response *ServerDetailResponse, server registry.ServerMetad
 }
 
 // populateMetadata converts and populates metadata in the response
-func populateMetadata(response *ServerDetailResponse, server registry.ServerMetadata) {
+func populateMetadata(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
 	// Convert metadata from *Metadata to map[string]interface{}
 	if metadata := server.GetMetadata(); metadata != nil {
 		response.Metadata = map[string]interface{}{
@@ -410,7 +410,7 @@ func populateMetadata(response *ServerDetailResponse, server registry.ServerMeta
 }
 
 // populateServerTypeSpecificFields populates fields specific to container or remote servers
-func populateServerTypeSpecificFields(response *ServerDetailResponse, server registry.ServerMetadata) {
+func populateServerTypeSpecificFields(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
 	if !server.IsRemote() {
 		populateContainerServerFields(response, server)
 	} else {
@@ -419,12 +419,12 @@ func populateServerTypeSpecificFields(response *ServerDetailResponse, server reg
 }
 
 // populateContainerServerFields populates fields specific to container servers (ImageMetadata)
-func populateContainerServerFields(response *ServerDetailResponse, server registry.ServerMetadata) {
+func populateContainerServerFields(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
 	// The server might be wrapped in a serverWithName struct from the service layer
 	actualServer := extractEmbeddedServerMetadata(server)
 
 	// Type assert to access ImageMetadata-specific fields
-	imgMetadata, ok := actualServer.(*registry.ImageMetadata)
+	imgMetadata, ok := actualServer.(*toolhivetypes.ImageMetadata)
 	if !ok {
 		return
 	}
@@ -453,11 +453,11 @@ func populateContainerServerFields(response *ServerDetailResponse, server regist
 }
 
 // populateRemoteServerFields populates fields specific to remote servers
-func populateRemoteServerFields(response *ServerDetailResponse, server registry.ServerMetadata) {
+func populateRemoteServerFields(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
 	// The server might be wrapped in a serverWithName struct from the service layer
 	actualServer := extractEmbeddedServerMetadata(server)
 
-	remoteMetadata, ok := actualServer.(*registry.RemoteServerMetadata)
+	remoteMetadata, ok := actualServer.(*toolhivetypes.RemoteServerMetadata)
 	if !ok {
 		return
 	}
@@ -474,7 +474,7 @@ func populateRemoteServerFields(response *ServerDetailResponse, server registry.
 }
 
 // extractEmbeddedServerMetadata extracts the embedded ServerMetadata from serverWithName wrapper
-func extractEmbeddedServerMetadata(server registry.ServerMetadata) registry.ServerMetadata {
+func extractEmbeddedServerMetadata(server toolhivetypes.ServerMetadata) toolhivetypes.ServerMetadata {
 	// Use reflection to check if this is a struct with an embedded ServerMetadata field
 	v := reflect.ValueOf(server)
 	if v.Kind() == reflect.Ptr {
@@ -489,7 +489,7 @@ func extractEmbeddedServerMetadata(server registry.ServerMetadata) registry.Serv
 
 			// Check if it's an embedded field (Anonymous) that implements ServerMetadata
 			if fieldType.Anonymous && field.CanInterface() {
-				if serverMetadata, ok := field.Interface().(registry.ServerMetadata); ok {
+				if serverMetadata, ok := field.Interface().(toolhivetypes.ServerMetadata); ok {
 					return serverMetadata
 				}
 			}
@@ -671,12 +671,12 @@ func serveOpenAPIYAML(w http.ResponseWriter, _ *http.Request) {
 
 // NewServerSummaryResponseForTesting creates a ServerSummaryResponse for testing
 // Deprecated: Use API v0.1 instead
-func NewServerSummaryResponseForTesting(server registry.ServerMetadata) ServerSummaryResponse {
+func NewServerSummaryResponseForTesting(server toolhivetypes.ServerMetadata) ServerSummaryResponse {
 	return newServerSummaryResponse(server)
 }
 
 // NewServerDetailResponseForTesting creates a ServerDetailResponse for testing
 // Deprecated: Use API v0.1 instead
-func NewServerDetailResponseForTesting(server registry.ServerMetadata) ServerDetailResponse {
+func NewServerDetailResponseForTesting(server toolhivetypes.ServerMetadata) ServerDetailResponse {
 	return newServerDetailResponse(server)
 }

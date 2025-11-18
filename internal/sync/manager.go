@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/stacklok/toolhive/pkg/registry/converters"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/filtering"
-	sources2 "github.com/stacklok/toolhive-registry-server/internal/sources"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
+	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 )
 
@@ -127,8 +129,8 @@ type AutomaticSyncChecker interface {
 
 // DefaultSyncManager is the default implementation of Manager
 type DefaultSyncManager struct {
-	sourceHandlerFactory sources2.SourceHandlerFactory
-	storageManager       sources2.StorageManager
+	sourceHandlerFactory sources.SourceHandlerFactory
+	storageManager       sources.StorageManager
 	filterService        filtering.FilterService
 	dataChangeDetector   DataChangeDetector
 	automaticSyncChecker AutomaticSyncChecker
@@ -136,7 +138,7 @@ type DefaultSyncManager struct {
 
 // NewDefaultSyncManager creates a new DefaultSyncManager
 func NewDefaultSyncManager(
-	sourceHandlerFactory sources2.SourceHandlerFactory, storageManager sources2.StorageManager) *DefaultSyncManager {
+	sourceHandlerFactory sources.SourceHandlerFactory, storageManager sources.StorageManager) *DefaultSyncManager {
 	return &DefaultSyncManager{
 		sourceHandlerFactory: sourceHandlerFactory,
 		storageManager:       storageManager,
@@ -293,7 +295,7 @@ func (s *DefaultSyncManager) Delete(ctx context.Context, cfg *config.Config) err
 // fetchAndProcessRegistryData handles source handler creation, validation, fetch, and filtering
 func (s *DefaultSyncManager) fetchAndProcessRegistryData(
 	ctx context.Context,
-	cfg *config.Config) (*sources2.FetchResult, *Error) {
+	cfg *config.Config) (*sources.FetchResult, *Error) {
 	ctxLogger := log.FromContext(ctx)
 
 	// Get source handler
@@ -349,7 +351,7 @@ func (s *DefaultSyncManager) fetchAndProcessRegistryData(
 func (s *DefaultSyncManager) applyFilteringIfConfigured(
 	ctx context.Context,
 	cfg *config.Config,
-	fetchResult *sources2.FetchResult) *Error {
+	fetchResult *sources.FetchResult) *Error {
 	ctxLogger := log.FromContext(ctx)
 
 	if cfg.Filter != nil {
@@ -357,7 +359,19 @@ func (s *DefaultSyncManager) applyFilteringIfConfigured(
 			"hasNameFilters", cfg.Filter.Names != nil,
 			"hasTagFilters", cfg.Filter.Tags != nil)
 
-		filteredRegistry, err := s.filterService.ApplyFilters(ctx, fetchResult.Registry, cfg.Filter)
+		// Convert UpstreamRegistry to ToolHive format for filtering
+		toolhiveReg, err := registry.ToToolhive(fetchResult.Registry)
+		if err != nil {
+			ctxLogger.Error(err, "Failed to convert to ToolHive format for filtering")
+			return &Error{
+				Err:             err,
+				Message:         fmt.Sprintf("Conversion to ToolHive failed: %v", err),
+				ConditionType:   ConditionSyncSuccessful,
+				ConditionReason: conditionReasonFetchFailed,
+			}
+		}
+
+		filteredToolhiveReg, err := s.filterService.ApplyFilters(ctx, toolhiveReg, cfg.Filter)
 		if err != nil {
 			ctxLogger.Error(err, "Registry filtering failed")
 			return &Error{
@@ -368,10 +382,22 @@ func (s *DefaultSyncManager) applyFilteringIfConfigured(
 			}
 		}
 
+		// Convert filtered ToolHive registry back to UpstreamRegistry
+		filteredServerReg, err := converters.NewUpstreamRegistryFromToolhiveRegistry(filteredToolhiveReg)
+		if err != nil {
+			ctxLogger.Error(err, "Failed to convert filtered registry to UpstreamRegistry")
+			return &Error{
+				Err:             err,
+				Message:         fmt.Sprintf("Conversion to UpstreamRegistry failed: %v", err),
+				ConditionType:   ConditionSyncSuccessful,
+				ConditionReason: conditionReasonFetchFailed,
+			}
+		}
+
 		// Update fetch result with filtered data
 		originalServerCount := fetchResult.ServerCount
-		fetchResult.Registry = filteredRegistry
-		fetchResult.ServerCount = len(filteredRegistry.Servers) + len(filteredRegistry.RemoteServers)
+		fetchResult.Registry = filteredServerReg
+		fetchResult.ServerCount = len(filteredServerReg.Servers)
 
 		ctxLogger.Info("Registry filtering completed",
 			"originalServerCount", originalServerCount,
@@ -388,7 +414,7 @@ func (s *DefaultSyncManager) applyFilteringIfConfigured(
 func (s *DefaultSyncManager) storeRegistryData(
 	ctx context.Context,
 	cfg *config.Config,
-	fetchResult *sources2.FetchResult) *Error {
+	fetchResult *sources.FetchResult) *Error {
 	ctxLogger := log.FromContext(ctx)
 
 	if err := s.storageManager.Store(ctx, cfg, fetchResult.Registry); err != nil {
