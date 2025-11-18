@@ -25,7 +25,7 @@ RUN CGO_ENABLED=0 LDFLAGS="-s -w \
 -X github.com/stacklok/toolhive/pkg/versions.Commit=${COMMIT} \
 -X github.com/stacklok/toolhive/pkg/versions.BuildDate=${BUILD_DATE} \
 -X github.com/stacklok/toolhive/pkg/versions.BuildType=release" \
-GOOS=linux GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o main ./cmd/thv-registry-api/main.go
+GOOS=linux go build -ldflags "${LDFLAGS}" -o main ./cmd/thv-registry-api/main.go
 
 # Use minimal base image to package the binary
 FROM registry.access.redhat.com/ubi10/ubi-minimal:10.1-1763362715
