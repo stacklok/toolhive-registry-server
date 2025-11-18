@@ -2,13 +2,12 @@
 #
 # Services:
 # 1. postgres - PostgreSQL 18 database
-# 2. migrate - One-time migration service (runs database migrations)
-# 3. registry-api - Main API server
+# 2. registry-api - Main API server (runs migrations on startup)
 #
 # Startup flow:
-# postgres (healthy) → migrate (completes) → registry-api (starts)
+# postgres (healthy) → registry-api (runs migrations then starts)
 #
-# Migrations are embedded in the binary, no volume mounts needed.
+# Migrations are embedded in the binary and run automatically on startup.
 
 services:
   postgres:
@@ -31,24 +30,6 @@ services:
     networks:
       - registry-network
 
-  migrate:
-    build:
-      context: .
-      dockerfile: ./docker/dockerfile-compose
-    container_name: toolhive-registry-migrate
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - ./examples/config-docker.yaml:/config.yaml:ro
-    command: ["migrate", "up", "--config", "/config.yaml", "--yes"]
-    environment:
-      - LOG_LEVEL=info
-      - THV_DATABASE_PASSWORD=registry_password
-    networks:
-      - registry-network
-    restart: on-failure
-
   registry-api:
     build:
       context: .
@@ -57,8 +38,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
     ports:
       - "8080:8080"
     volumes:
