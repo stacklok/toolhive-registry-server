@@ -124,6 +124,18 @@ filter:
   tags:
     include: ["production"]
     exclude: ["experimental"]
+
+# Optional: Database configuration
+database:
+  host: localhost
+  port: 5432
+  user: registry
+  passwordFile: /secrets/db-password  # Recommended for production
+  database: registry
+  sslMode: require
+  maxOpenConns: 25
+  maxIdleConns: 5
+  connMaxLifetime: "5m"
 ```
 
 ### Command-line Flags
@@ -153,6 +165,137 @@ The server supports three data source types:
    - Example: [config-file.yaml](examples/config-file.yaml)
 
 For complete configuration examples and advanced options, see [examples/README.md](examples/README.md).
+
+### Database Configuration
+
+The server optionally supports PostgreSQL database connectivity for storing registry state and metadata.
+
+#### Configuration Fields
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `host` | string | Yes | - | Database server hostname or IP address |
+| `port` | int | Yes | - | Database server port |
+| `user` | string | Yes | - | Database username |
+| `passwordFile` | string | No* | - | Path to file containing the database password |
+| `database` | string | Yes | - | Database name |
+| `sslMode` | string | No | `require` | SSL mode (`disable`, `require`, `verify-ca`, `verify-full`) |
+| `maxOpenConns` | int | No | `25` | Maximum number of open connections to the database |
+| `maxIdleConns` | int | No | `5` | Maximum number of idle connections in the pool |
+| `connMaxLifetime` | string | No | `5m` | Maximum lifetime of a connection (e.g., "1h", "30m") |
+
+\* Password configuration is required but has multiple sources (see Password Security below)
+
+#### Password Security
+
+The server supports secure password management with the following priority order:
+
+1. **Password File** (Recommended for production):
+   - Set `passwordFile` to the path of a file containing only the password
+   - The file content will have leading/trailing whitespace trimmed
+   - Ideal for Kubernetes secrets mounted as files
+   - Example:
+     ```yaml
+     database:
+       passwordFile: /secrets/db-password
+     ```
+
+2. **Environment Variable**:
+   - Set `THV_DATABASE_PASSWORD` environment variable
+   - Used if `passwordFile` is not specified
+   - Example:
+     ```bash
+     export THV_DATABASE_PASSWORD="your-secure-password"
+     thv-registry-api serve --config config.yaml
+     ```
+
+**Security Best Practices:**
+- Never commit passwords directly in configuration files
+- Use password files with restricted permissions (e.g., `chmod 400`)
+- In Kubernetes, mount passwords from Secrets
+- Rotate passwords regularly
+
+#### Connection Pooling
+
+The server uses connection pooling for efficient database resource management:
+
+- **MaxOpenConns**: Limits concurrent database connections to prevent overwhelming the database
+- **MaxIdleConns**: Maintains idle connections for faster query execution
+- **ConnMaxLifetime**: Automatically closes and recreates connections to prevent connection leaks
+
+Tune these values based on your workload:
+- High-traffic scenarios: Increase `maxOpenConns` and `maxIdleConns`
+- Resource-constrained environments: Decrease pool sizes
+- Long-running services: Set shorter `connMaxLifetime` (e.g., "1h")
+
+#### Example Kubernetes Deployment with Database
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-db-password
+type: Opaque
+stringData:
+  password: your-secure-password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-api-config
+data:
+  config.yaml: |
+    registryName: my-registry
+    source:
+      type: git
+      format: toolhive
+      git:
+        repository: https://github.com/stacklok/toolhive.git
+        branch: main
+        path: pkg/registry/data/registry.json
+    syncPolicy:
+      interval: "15m"
+    database:
+      host: postgres.default.svc.cluster.local
+      port: 5432
+      user: registry
+      passwordFile: /secrets/db-password
+      database: registry
+      sslMode: require
+      maxOpenConns: 25
+      maxIdleConns: 5
+      connMaxLifetime: "5m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry-api
+spec:
+  template:
+    spec:
+      containers:
+      - name: registry-api
+        image: ghcr.io/stacklok/toolhive/thv-registry-api:latest
+        args:
+        - serve
+        - --config=/etc/registry/config.yaml
+        volumeMounts:
+        - name: config
+          mountPath: /etc/registry
+        - name: db-password
+          mountPath: /secrets
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: registry-api-config
+      - name: db-password
+        secret:
+          secretName: registry-db-password
+          items:
+          - key: password
+            path: db-password
+```
 
 ## Development
 
