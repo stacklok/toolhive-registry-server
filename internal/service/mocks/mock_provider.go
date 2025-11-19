@@ -43,10 +43,10 @@ func (m *MockRegistryDataProvider) EXPECT() *MockRegistryDataProviderMockRecorde
 }
 
 // GetRegistryData mocks base method.
-func (m *MockRegistryDataProvider) GetRegistryData(ctx context.Context) (*registry.Registry, error) {
+func (m *MockRegistryDataProvider) GetRegistryData(ctx context.Context) (*registry.UpstreamRegistry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRegistryData", ctx)
-	ret0, _ := ret[0].(*registry.Registry)
+	ret0, _ := ret[0].(*registry.UpstreamRegistry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

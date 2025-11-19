@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/stacklok/toolhive/pkg/logger"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 )
@@ -16,20 +17,6 @@ var (
 	ErrServerNotFound = errors.New("server not found")
 )
 
-// serverWithName wraps a ServerMetadata and overrides the name
-type serverWithName struct {
-	toolhivetypes.ServerMetadata
-	nameOverride string
-}
-
-// GetName returns the overridden name if provided, otherwise the original name
-func (s *serverWithName) GetName() string {
-	if s.nameOverride != "" {
-		return s.nameOverride
-	}
-	return s.ServerMetadata.GetName()
-}
-
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service
 
 // RegistryService defines the interface for registry operations
@@ -38,13 +25,13 @@ type RegistryService interface {
 	CheckReadiness(ctx context.Context) error
 
 	// GetRegistry returns the registry data with metadata
-	GetRegistry(ctx context.Context) (*toolhivetypes.Registry, string, error) // returns registry, source, error
+	GetRegistry(ctx context.Context) (*toolhivetypes.UpstreamRegistry, string, error) // returns registry, source, error
 
 	// ListServers returns all servers in the registry
-	ListServers(ctx context.Context) ([]toolhivetypes.ServerMetadata, error)
+	ListServers(ctx context.Context) ([]upstreamv0.ServerJSON, error)
 
 	// GetServer returns a specific server by name
-	GetServer(ctx context.Context, name string) (toolhivetypes.ServerMetadata, error)
+	GetServer(ctx context.Context, name string) (upstreamv0.ServerJSON, error)
 
 	// ListDeployedServers returns all deployed MCP servers
 	ListDeployedServers(ctx context.Context) ([]*DeployedServer, error)
@@ -58,7 +45,7 @@ type regSvc struct {
 	registryProvider   RegistryDataProvider
 	deploymentProvider DeploymentProvider
 
-	registryData *toolhivetypes.Registry
+	registryData *toolhivetypes.UpstreamRegistry
 
 	lastFetch     time.Time
 	cacheDuration time.Duration
@@ -122,7 +109,7 @@ func (s *regSvc) loadRegistryData(ctx context.Context) error {
 	s.lastFetch = time.Now()
 
 	// Count total servers (both container and remote)
-	totalServers := len(data.Servers) + len(data.RemoteServers)
+	totalServers := len(data.Servers)
 	logger.Infof("Loaded registry data: %d servers", totalServers)
 	return nil
 }
@@ -160,7 +147,7 @@ func (s *regSvc) CheckReadiness(ctx context.Context) error {
 }
 
 // GetRegistry implements RegistryService.GetRegistry
-func (s *regSvc) GetRegistry(ctx context.Context) (*toolhivetypes.Registry, string, error) {
+func (s *regSvc) GetRegistry(ctx context.Context) (*toolhivetypes.UpstreamRegistry, string, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
 		logger.Warnf("Failed to refresh data: %v", err)
 	}
@@ -173,10 +160,10 @@ func (s *regSvc) GetRegistry(ctx context.Context) (*toolhivetypes.Registry, stri
 
 	if s.registryData == nil {
 		// Return an empty registry if no data is loaded
-		return &toolhivetypes.Registry{
+		return &toolhivetypes.UpstreamRegistry{
 			Version:     "1.0.0",
 			LastUpdated: time.Now().Format(time.RFC3339),
-			Servers:     make(map[string]*toolhivetypes.ImageMetadata),
+			Servers:     make([]upstreamv0.ServerJSON, 0),
 		}, source, nil
 	}
 
@@ -184,29 +171,29 @@ func (s *regSvc) GetRegistry(ctx context.Context) (*toolhivetypes.Registry, stri
 }
 
 // ListServers implements RegistryService.ListServers
-func (s *regSvc) ListServers(ctx context.Context) ([]toolhivetypes.ServerMetadata, error) {
+func (s *regSvc) ListServers(ctx context.Context) ([]upstreamv0.ServerJSON, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
 		logger.Warnf("Failed to refresh data: %v", err)
 	}
 
 	if s.registryData != nil {
-		return s.getAllServersWithNames(), nil
+		return s.registryData.Servers, nil
 	}
 
-	return []toolhivetypes.ServerMetadata{}, nil
+	return []upstreamv0.ServerJSON{}, nil
 }
 
 // GetServer implements RegistryService.GetServer
-func (s *regSvc) GetServer(ctx context.Context, name string) (toolhivetypes.ServerMetadata, error) {
+func (s *regSvc) GetServer(ctx context.Context, name string) (upstreamv0.ServerJSON, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
 		logger.Warnf("Failed to refresh data: %v", err)
 	}
 
 	if s.registryData != nil {
-		return s.getServerByNameWithName(name)
+		return s.getServerByName(name)
 	}
 
-	return nil, ErrServerNotFound
+	return upstreamv0.ServerJSON{}, ErrServerNotFound
 }
 
 // ListDeployedServers implements RegistryService.ListDeployedServers
@@ -227,46 +214,14 @@ func (s *regSvc) GetDeployedServer(ctx context.Context, name string) ([]*Deploye
 	return s.deploymentProvider.GetDeployedServer(ctx, name)
 }
 
-// getAllServersWithNames returns all servers with names properly populated from map keys
-func (s *regSvc) getAllServersWithNames() []toolhivetypes.ServerMetadata {
-	servers := make([]toolhivetypes.ServerMetadata, 0, len(s.registryData.Servers)+len(s.registryData.RemoteServers))
-
-	// Add container servers with names
-	for name, server := range s.registryData.Servers {
-		servers = append(servers, &serverWithName{
-			ServerMetadata: server,
-			nameOverride:   name,
-		})
-	}
-
-	// Add remote servers with names
-	for name, server := range s.registryData.RemoteServers {
-		servers = append(servers, &serverWithName{
-			ServerMetadata: server,
-			nameOverride:   name,
-		})
-	}
-
-	return servers
-}
-
 // getServerByNameWithName returns a server by name with name properly populated
-func (s *regSvc) getServerByNameWithName(name string) (toolhivetypes.ServerMetadata, error) {
+func (s *regSvc) getServerByName(name string) (upstreamv0.ServerJSON, error) {
 	// Check container servers first
-	if server, ok := s.registryData.Servers[name]; ok {
-		return &serverWithName{
-			ServerMetadata: server,
-			nameOverride:   name,
-		}, nil
+	for _, server := range s.registryData.Servers {
+		if server.Name == name {
+			return server, nil
+		}
 	}
 
-	// Check remote servers
-	if server, ok := s.registryData.RemoteServers[name]; ok {
-		return &serverWithName{
-			ServerMetadata: server,
-			nameOverride:   name,
-		}, nil
-	}
-
-	return nil, ErrServerNotFound
+	return upstreamv0.ServerJSON{}, ErrServerNotFound
 }

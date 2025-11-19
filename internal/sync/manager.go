@@ -8,12 +8,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/stacklok/toolhive/pkg/registry/converters"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/filtering"
-	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 )
@@ -359,36 +357,13 @@ func (s *DefaultSyncManager) applyFilteringIfConfigured(
 			"hasNameFilters", cfg.Filter.Names != nil,
 			"hasTagFilters", cfg.Filter.Tags != nil)
 
-		// Convert UpstreamRegistry to ToolHive format for filtering
-		toolhiveReg, err := registry.ToToolhive(fetchResult.Registry)
-		if err != nil {
-			ctxLogger.Error(err, "Failed to convert to ToolHive format for filtering")
-			return &Error{
-				Err:             err,
-				Message:         fmt.Sprintf("Conversion to ToolHive failed: %v", err),
-				ConditionType:   ConditionSyncSuccessful,
-				ConditionReason: conditionReasonFetchFailed,
-			}
-		}
-
-		filteredToolhiveReg, err := s.filterService.ApplyFilters(ctx, toolhiveReg, cfg.Filter)
+		// Apply filtering to UpstreamRegistry
+		filteredServerReg, err := s.filterService.ApplyFilters(ctx, fetchResult.Registry, cfg.Filter)
 		if err != nil {
 			ctxLogger.Error(err, "Registry filtering failed")
 			return &Error{
 				Err:             err,
 				Message:         fmt.Sprintf("Filtering failed: %v", err),
-				ConditionType:   ConditionSyncSuccessful,
-				ConditionReason: conditionReasonFetchFailed,
-			}
-		}
-
-		// Convert filtered ToolHive registry back to UpstreamRegistry
-		filteredServerReg, err := converters.NewUpstreamRegistryFromToolhiveRegistry(filteredToolhiveReg)
-		if err != nil {
-			ctxLogger.Error(err, "Failed to convert filtered registry to UpstreamRegistry")
-			return &Error{
-				Err:             err,
-				Message:         fmt.Sprintf("Conversion to UpstreamRegistry failed: %v", err),
 				ConditionType:   ConditionSyncSuccessful,
 				ConditionReason: conditionReasonFetchFailed,
 			}

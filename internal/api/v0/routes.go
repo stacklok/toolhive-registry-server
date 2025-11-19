@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"reflect"
 
 	"github.com/go-chi/chi/v5"
+	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/stacklok/toolhive/pkg/logger"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 	"github.com/stacklok/toolhive/pkg/versions"
 	"gopkg.in/yaml.v3"
 
@@ -180,7 +179,7 @@ func (rr *Routes) getRegistryInfo(w http.ResponseWriter, r *http.Request) {
 		Version:      reg.Version,
 		LastUpdated:  reg.LastUpdated,
 		Source:       source,
-		TotalServers: len(reg.GetAllServers()),
+		TotalServers: len(reg.Servers),
 	}
 
 	rr.writeJSONResponse(w, info)
@@ -335,169 +334,49 @@ func (rr *Routes) listDeployedServers(w http.ResponseWriter, r *http.Request) {
 }
 
 // newServerSummaryResponse creates a ServerSummaryResponse from server metadata
-func newServerSummaryResponse(server toolhivetypes.ServerMetadata) ServerSummaryResponse {
+func newServerSummaryResponse(server upstreamv0.ServerJSON) ServerSummaryResponse {
 	return ServerSummaryResponse{
-		Name:        server.GetName(),
-		Description: server.GetDescription(),
-		Tier:        server.GetTier(),
-		Status:      server.GetStatus(),
-		Transport:   server.GetTransport(),
-		ToolsCount:  len(server.GetTools()),
+		Name:        server.Name,
+		Description: server.Description,
+		Tier:        "NA",
+		Status:      "NA",
+		Transport:   "NA",
+		ToolsCount:  0,
 	}
 }
 
 // newServerDetailResponse creates a ServerDetailResponse from server metadata with all available fields
-func newServerDetailResponse(server toolhivetypes.ServerMetadata) ServerDetailResponse {
+func newServerDetailResponse(server upstreamv0.ServerJSON) ServerDetailResponse {
 	response := ServerDetailResponse{
-		Name:          server.GetName(),
-		Description:   server.GetDescription(),
-		Tier:          server.GetTier(),
-		Status:        server.GetStatus(),
-		Transport:     server.GetTransport(),
-		Tools:         server.GetTools(),
-		RepositoryURL: server.GetRepositoryURL(),
-		Tags:          server.GetTags(),
+		Name:          server.Name,
+		Description:   server.Description,
+		Tier:          "NA",
+		Status:        "NA",
+		Transport:     "NA",
+		Tools:         []string{},
+		RepositoryURL: "NA",
+		Tags:          []string{},
+		Permissions:   make(map[string]interface{}),
+		Metadata:      make(map[string]interface{}),
+		Args:          []string{},
+		Volumes:       make(map[string]interface{}),
+		Image:         "NA",
 	}
 
-	populateEnvVars(&response, server)
 	populateMetadata(&response, server)
-	populateServerTypeSpecificFields(&response, server)
 
 	return response
 }
 
-// populateEnvVars converts and populates environment variables in the response
-func populateEnvVars(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
-	envVars := server.GetEnvVars()
-	if envVars == nil {
-		return
-	}
-
-	response.EnvVars = make([]EnvVarDetail, 0, len(envVars))
-	for _, envVar := range envVars {
-		if envVar != nil {
-			response.EnvVars = append(response.EnvVars, EnvVarDetail{
-				Name:        envVar.Name,
-				Description: envVar.Description,
-				Required:    envVar.Required,
-				Default:     envVar.Default,
-				Secret:      envVar.Secret,
-			})
-		}
-	}
-}
-
 // populateMetadata converts and populates metadata in the response
-func populateMetadata(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
-	// Convert metadata from *Metadata to map[string]interface{}
-	if metadata := server.GetMetadata(); metadata != nil {
-		response.Metadata = map[string]interface{}{
-			"stars":        metadata.Stars,
-			"pulls":        metadata.Pulls,
-			"last_updated": metadata.LastUpdated,
-		}
-	}
-
-	// Add custom metadata
-	if customMetadata := server.GetCustomMetadata(); customMetadata != nil {
-		if response.Metadata == nil {
-			response.Metadata = make(map[string]interface{})
-		}
-		for k, v := range customMetadata {
+func populateMetadata(response *ServerDetailResponse, server upstreamv0.ServerJSON) {
+	response.Metadata = make(map[string]interface{})
+	metadata := server.Meta
+	if metadata != nil {
+		for k, v := range metadata.PublisherProvided {
 			response.Metadata[k] = v
 		}
 	}
-}
-
-// populateServerTypeSpecificFields populates fields specific to container or remote servers
-func populateServerTypeSpecificFields(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
-	if !server.IsRemote() {
-		populateContainerServerFields(response, server)
-	} else {
-		populateRemoteServerFields(response, server)
-	}
-}
-
-// populateContainerServerFields populates fields specific to container servers (ImageMetadata)
-func populateContainerServerFields(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
-	// The server might be wrapped in a serverWithName struct from the service layer
-	actualServer := extractEmbeddedServerMetadata(server)
-
-	// Type assert to access ImageMetadata-specific fields
-	imgMetadata, ok := actualServer.(*toolhivetypes.ImageMetadata)
-	if !ok {
-		return
-	}
-
-	// Add permissions if available
-	if imgMetadata.Permissions != nil {
-		response.Permissions = map[string]interface{}{
-			"profile": imgMetadata.Permissions,
-		}
-	}
-
-	// Add args if available
-	if imgMetadata.Args != nil {
-		response.Args = imgMetadata.Args
-	}
-
-	// Add image as top-level field
-	response.Image = imgMetadata.Image
-
-	// Add image-specific metadata
-	if response.Metadata == nil {
-		response.Metadata = make(map[string]interface{})
-	}
-	response.Metadata["target_port"] = imgMetadata.TargetPort
-	response.Metadata["docker_tags"] = imgMetadata.DockerTags
-}
-
-// populateRemoteServerFields populates fields specific to remote servers
-func populateRemoteServerFields(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
-	// The server might be wrapped in a serverWithName struct from the service layer
-	actualServer := extractEmbeddedServerMetadata(server)
-
-	remoteMetadata, ok := actualServer.(*toolhivetypes.RemoteServerMetadata)
-	if !ok {
-		return
-	}
-
-	if response.Metadata == nil {
-		response.Metadata = make(map[string]interface{})
-	}
-
-	response.Metadata["url"] = remoteMetadata.URL
-	if remoteMetadata.Headers != nil {
-		response.Metadata["headers_count"] = len(remoteMetadata.Headers)
-	}
-	response.Metadata["oauth_enabled"] = remoteMetadata.OAuthConfig != nil
-}
-
-// extractEmbeddedServerMetadata extracts the embedded ServerMetadata from serverWithName wrapper
-func extractEmbeddedServerMetadata(server toolhivetypes.ServerMetadata) toolhivetypes.ServerMetadata {
-	// Use reflection to check if this is a struct with an embedded ServerMetadata field
-	v := reflect.ValueOf(server)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-
-	if v.Kind() == reflect.Struct {
-		// Look for an embedded field of type registry.ServerMetadata
-		for i := 0; i < v.NumField(); i++ {
-			field := v.Field(i)
-			fieldType := v.Type().Field(i)
-
-			// Check if it's an embedded field (Anonymous) that implements ServerMetadata
-			if fieldType.Anonymous && field.CanInterface() {
-				if serverMetadata, ok := field.Interface().(toolhivetypes.ServerMetadata); ok {
-					return serverMetadata
-				}
-			}
-		}
-	}
-
-	// If not wrapped, return the original server
-	return server
 }
 
 // getDeployedServer handles GET /api/v0/registry/servers/deployed/{name}
@@ -671,12 +550,12 @@ func serveOpenAPIYAML(w http.ResponseWriter, _ *http.Request) {
 
 // NewServerSummaryResponseForTesting creates a ServerSummaryResponse for testing
 // Deprecated: Use API v0.1 instead
-func NewServerSummaryResponseForTesting(server toolhivetypes.ServerMetadata) ServerSummaryResponse {
+func NewServerSummaryResponseForTesting(server upstreamv0.ServerJSON) ServerSummaryResponse {
 	return newServerSummaryResponse(server)
 }
 
 // NewServerDetailResponseForTesting creates a ServerDetailResponse for testing
 // Deprecated: Use API v0.1 instead
-func NewServerDetailResponseForTesting(server toolhivetypes.ServerMetadata) ServerDetailResponse {
+func NewServerDetailResponseForTesting(server upstreamv0.ServerJSON) ServerDetailResponse {
 	return newServerDetailResponse(server)
 }

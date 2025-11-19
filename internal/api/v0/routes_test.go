@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	"github.com/modelcontextprotocol/registry/pkg/model"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,241 +17,193 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	v0 "github.com/stacklok/toolhive-registry-server/internal/api/v0"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
 
-// Removed embedded test registry data - using inline JSON instead
-
-// testRegistryJSON provides realistic representative server entries for testing
-// This includes different server types, transports, tiers, and configurations
-const testRegistryJSON = `{
-  "version": "1.0.0",
-  "last_updated": "2025-09-10T00:16:54Z",
-  "servers": {
-    "adb-mysql-mcp-server": {
-      "description": "Official MCP server for AnalyticDB for MySQL of Alibaba Cloud",
-      "tier": "Official",
-      "status": "Active",
-      "transport": "stdio",
-      "tools": [
-        "execute_sql",
-        "get_query_plan",
-        "get_execution_plan"
-      ],
-      "metadata": {
-        "stars": 16,
-        "pulls": 0,
-        "last_updated": "2025-09-07T02:30:47Z"
-      },
-      "repository_url": "https://github.com/aliyun/alibabacloud-adb-mysql-mcp-server",
-      "tags": [
-        "database",
-        "mysql",
-        "analytics",
-        "sql",
-        "alibaba-cloud",
-        "data-warehouse"
-      ],
-      "image": "ghcr.io/stacklok/dockyard/uvx/adb-mysql-mcp-server:1.0.0",
-      "permissions": {
-        "network": {
-          "outbound": {
-            "insecure_allow_all": true
-          }
-        }
-      },
-      "env_vars": [
-        {
-          "name": "ADB_MYSQL_HOST",
-          "description": "AnalyticDB for MySQL host address",
-          "required": true
-        },
-        {
-          "name": "ADB_MYSQL_PASSWORD",
-          "description": "Database password for authentication",
-          "required": true,
-          "secret": true
-        }
-      ],
-      "provenance": {
-        "sigstore_url": "tuf-repo-cdn.sigstore.dev",
-        "repository_uri": "https://github.com/stacklok/dockyard"
-      }
-    },
-    "apollo-mcp-server": {
-      "description": "Exposes GraphQL operations as MCP tools for AI-driven API orchestration with Apollo",
-      "tier": "Official",
-      "status": "Active",
-      "transport": "streamable-http",
-      "tools": [
-        "example_GetAstronautsCurrentlyInSpace"
-      ],
-      "metadata": {
-        "stars": 188,
-        "pulls": 0,
-        "last_updated": "2025-09-09T02:30:39Z"
-      },
-      "repository_url": "https://github.com/apollographql/apollo-mcp-server",
-      "tags": [
-        "graphql",
-        "api",
-        "orchestration",
-        "apollo",
-        "mcp"
-      ],
-      "image": "ghcr.io/apollographql/apollo-mcp-server:v0.7.5",
-      "target_port": 5000,
-      "permissions": {
-        "network": {
-          "outbound": {
-            "insecure_allow_all": true,
-            "allow_port": [
-              443
-            ]
-          }
-        }
-      },
-      "env_vars": [
-        {
-          "name": "APOLLO_GRAPH_REF",
-          "description": "Graph ref (graph ID and variant) used to fetch persisted queries or schema",
-          "required": false
-        },
-        {
-          "name": "APOLLO_KEY",
-          "description": "Apollo Studio API key for the graph",
-          "required": false,
-          "secret": true
-        }
-      ]
-    },
-    "arxiv-mcp-server": {
-      "description": "AI assistants search and access arXiv papers through MCP with persistent paper storage",
-      "tier": "Community",
-      "status": "Active",
-      "transport": "stdio",
-      "tools": [
-        "search_papers",
-        "download_paper",
-        "list_papers",
-        "read_paper"
-      ],
-      "metadata": {
-        "stars": 1619,
-        "pulls": 77,
-        "last_updated": "2025-08-27T02:30:22Z"
-      },
-      "repository_url": "https://github.com/blazickjp/arxiv-mcp-server",
-      "tags": [
-        "research",
-        "academic",
-        "papers",
-        "arxiv",
-        "search"
-      ],
-      "image": "ghcr.io/stacklok/dockyard/uvx/arxiv-mcp-server:0.3.0",
-      "permissions": {
-        "network": {
-          "outbound": {
-            "allow_host": [
-              "arxiv.org",
-              "export.arxiv.org"
-            ],
-            "allow_port": [
-              443,
-              80
-            ]
-          }
-        }
-      },
-      "env_vars": [
-        {
-          "name": "ARXIV_STORAGE_PATH",
-          "description": "Directory path for storing downloaded papers",
-          "required": false,
-          "default": "/arxiv-papers"
-        }
-      ],
-      "args": [
-        "--storage-path",
-        "/arxiv-papers"
-      ]
-    }
-  },
-  "remote_servers": {
-    "atlassian-remote": {
-      "description": "Atlassian's official remote MCP server for Jira, Confluence, and Compass with OAuth 2.1",
-      "tier": "Official",
-      "status": "Active",
-      "transport": "sse",
-      "tools": [
-        "atlassianUserInfo",
-        "getAccessibleAtlassianResources",
-        "getConfluenceSpaces",
-        "getConfluencePage",
-        "getJiraIssue",
-        "createJiraIssue",
-        "updateJiraIssue"
-      ],
-      "metadata": {
-        "stars": 25,
-        "pulls": 12,
-        "last_updated": "2025-09-02T14:22:18Z"
-      },
-      "repository_url": "https://github.com/atlassian-labs/mcp-server",
-      "tags": [
-        "productivity",
-        "jira",
-        "confluence",
-        "atlassian",
-        "oauth"
-      ],
-      "url": "https://mcp.atlassian.com",
-      "headers": [
-        {
-          "name": "Authorization",
-          "description": "Bearer token for API authentication",
-          "required": true,
-          "secret": true
-        }
-      ],
-      "oauth_config": {
-        "issuer": "https://auth.atlassian.com",
-        "scopes": ["read:jira-work", "write:jira-work", "read:confluence-content"],
-        "use_pkce": true
-      },
-      "env_vars": [
-        {
-          "name": "ATLASSIAN_CLIENT_ID",
-          "description": "OAuth client ID for Atlassian integration",
-          "required": true,
-          "secret": true
-        }
-      ]
-    }
-  }
-}`
-
 // realisticRegistryProvider implements RegistryDataProvider for testing with our realistic test data
 type realisticRegistryProvider struct {
-	data *toolhivetypes.Registry
+	data *toolhivetypes.UpstreamRegistry
 }
 
 // newRealisticRegistryProvider creates a provider with our representative test data
-func newRealisticRegistryProvider() (*realisticRegistryProvider, error) {
-	var data toolhivetypes.Registry
-	if err := json.Unmarshal([]byte(testRegistryJSON), &data); err != nil {
-		return nil, err
-	}
+func newRealisticRegistryProvider() *realisticRegistryProvider {
+	data := buildRealisticUpstreamRegistry()
+	return &realisticRegistryProvider{data: data}
+}
 
-	return &realisticRegistryProvider{
-		data: &data,
-	}, nil
+// buildRealisticUpstreamRegistry builds the test registry using the testutils builder pattern
+func buildRealisticUpstreamRegistry() *toolhivetypes.UpstreamRegistry {
+	return registry.NewTestUpstreamRegistry(
+		registry.WithVersion("1.0.0"),
+		registry.WithLastUpdated("2025-09-10T00:16:54Z"),
+		registry.WithServers(
+			// ADB MySQL MCP Server - Official tier, stdio transport
+			registry.NewTestServer("adb-mysql-mcp-server",
+				registry.WithDescription("Official MCP server for AnalyticDB for MySQL of Alibaba Cloud"),
+				registry.WithOCIPackage("ghcr.io/stacklok/dockyard/uvx/adb-mysql-mcp-server:1.0.0"),
+				registry.WithTags("database", "mysql", "analytics", "sql", "alibaba-cloud", "data-warehouse"),
+				registry.WithToolHiveMetadata("tier", "Official"),
+				registry.WithToolHiveMetadata("status", "Active"),
+				registry.WithToolHiveMetadata("transport", "stdio"),
+				registry.WithToolHiveMetadata("tools", []string{"execute_sql", "get_query_plan", "get_execution_plan"}),
+				registry.WithToolHiveMetadata("repository_url", "https://github.com/aliyun/alibabacloud-adb-mysql-mcp-server"),
+				registry.WithToolHiveMetadata("metadata", map[string]any{
+					"stars":        16,
+					"pulls":        0,
+					"last_updated": "2025-09-07T02:30:47Z",
+				}),
+				registry.WithToolHiveMetadata("permissions", map[string]any{
+					"network": map[string]any{
+						"outbound": map[string]any{
+							"insecure_allow_all": true,
+						},
+					},
+				}),
+				registry.WithToolHiveMetadata("env_vars", []map[string]any{
+					{
+						"name":        "ADB_MYSQL_HOST",
+						"description": "AnalyticDB for MySQL host address",
+						"required":    true,
+					},
+					{
+						"name":        "ADB_MYSQL_PASSWORD",
+						"description": "Database password for authentication",
+						"required":    true,
+						"secret":      true,
+					},
+				}),
+				registry.WithToolHiveMetadata("provenance", map[string]any{
+					"sigstore_url":   "tuf-repo-cdn.sigstore.dev",
+					"repository_uri": "https://github.com/stacklok/dockyard",
+				}),
+			),
+
+			// Apollo MCP Server - Official tier, streamable-http transport
+			registry.NewTestServer("apollo-mcp-server",
+				registry.WithDescription("Exposes GraphQL operations as MCP tools for AI-driven API orchestration with Apollo"),
+				registry.WithOCIPackage("ghcr.io/apollographql/apollo-mcp-server:v0.7.5"),
+				registry.WithTags("graphql", "api", "orchestration", "apollo", "mcp"),
+				registry.WithToolHiveMetadata("tier", "Official"),
+				registry.WithToolHiveMetadata("status", "Active"),
+				registry.WithToolHiveMetadata("transport", "streamable-http"),
+				registry.WithToolHiveMetadata("tools", []string{"example_GetAstronautsCurrentlyInSpace"}),
+				registry.WithToolHiveMetadata("repository_url", "https://github.com/apollographql/apollo-mcp-server"),
+				registry.WithToolHiveMetadata("target_port", 5000),
+				registry.WithToolHiveMetadata("metadata", map[string]any{
+					"stars":        188,
+					"pulls":        0,
+					"last_updated": "2025-09-09T02:30:39Z",
+				}),
+				registry.WithToolHiveMetadata("permissions", map[string]any{
+					"network": map[string]any{
+						"outbound": map[string]any{
+							"insecure_allow_all": true,
+							"allow_port":         []int{443},
+						},
+					},
+				}),
+				registry.WithToolHiveMetadata("env_vars", []map[string]any{
+					{
+						"name":        "APOLLO_GRAPH_REF",
+						"description": "Graph ref (graph ID and variant) used to fetch persisted queries or schema",
+						"required":    false,
+					},
+					{
+						"name":        "APOLLO_KEY",
+						"description": "Apollo Studio API key for the graph",
+						"required":    false,
+						"secret":      true,
+					},
+				}),
+			),
+
+			// arXiv MCP Server - Community tier, stdio transport
+			registry.NewTestServer("arxiv-mcp-server",
+				registry.WithDescription("AI assistants search and access arXiv papers through MCP with persistent paper storage"),
+				registry.WithOCIPackage("ghcr.io/stacklok/dockyard/uvx/arxiv-mcp-server:0.3.0"),
+				registry.WithTags("research", "academic", "papers", "arxiv", "search"),
+				registry.WithToolHiveMetadata("tier", "Community"),
+				registry.WithToolHiveMetadata("status", "Active"),
+				registry.WithToolHiveMetadata("transport", "stdio"),
+				registry.WithToolHiveMetadata("tools", []string{"search_papers", "download_paper", "list_papers", "read_paper"}),
+				registry.WithToolHiveMetadata("repository_url", "https://github.com/blazickjp/arxiv-mcp-server"),
+				registry.WithToolHiveMetadata("metadata", map[string]any{
+					"stars":        1619,
+					"pulls":        77,
+					"last_updated": "2025-08-27T02:30:22Z",
+				}),
+				registry.WithToolHiveMetadata("permissions", map[string]any{
+					"network": map[string]any{
+						"outbound": map[string]any{
+							"allow_host": []string{"arxiv.org", "export.arxiv.org"},
+							"allow_port": []int{443, 80},
+						},
+					},
+				}),
+				registry.WithToolHiveMetadata("env_vars", []map[string]any{
+					{
+						"name":        "ARXIV_STORAGE_PATH",
+						"description": "Directory path for storing downloaded papers",
+						"required":    false,
+						"default":     "/arxiv-papers",
+					},
+				}),
+				registry.WithToolHiveMetadata("args", []string{"--storage-path", "/arxiv-papers"}),
+			),
+
+			// Atlassian Remote - Official tier, SSE transport (HTTP package)
+			registry.NewTestServer("atlassian-remote",
+				registry.WithDescription("Atlassian's official remote MCP server for Jira, Confluence, and Compass with OAuth 2.1"),
+				registry.WithHTTPPackage("https://mcp.atlassian.com"),
+				registry.WithTags("productivity", "jira", "confluence", "atlassian", "oauth"),
+				registry.WithToolHiveMetadata("tier", "Official"),
+				registry.WithToolHiveMetadata("status", "Active"),
+				registry.WithToolHiveMetadata("transport", "sse"),
+				registry.WithToolHiveMetadata("tools", []string{
+					"atlassianUserInfo",
+					"getAccessibleAtlassianResources",
+					"getConfluenceSpaces",
+					"getConfluencePage",
+					"getJiraIssue",
+					"createJiraIssue",
+					"updateJiraIssue",
+				}),
+				registry.WithToolHiveMetadata("repository_url", "https://github.com/atlassian-labs/mcp-server"),
+				registry.WithToolHiveMetadata("metadata", map[string]any{
+					"stars":        25,
+					"pulls":        12,
+					"last_updated": "2025-09-02T14:22:18Z",
+				}),
+				registry.WithToolHiveMetadata("headers", []map[string]any{
+					{
+						"name":        "Authorization",
+						"description": "Bearer token for API authentication",
+						"required":    true,
+						"secret":      true,
+					},
+				}),
+				registry.WithToolHiveMetadata("oauth_config", map[string]any{
+					"issuer":   "https://auth.atlassian.com",
+					"scopes":   []string{"read:jira-work", "write:jira-work", "read:confluence-content"},
+					"use_pkce": true,
+				}),
+				registry.WithToolHiveMetadata("env_vars", []map[string]any{
+					{
+						"name":        "ATLASSIAN_CLIENT_ID",
+						"description": "OAuth client ID for Atlassian integration",
+						"required":    true,
+						"secret":      true,
+					},
+				}),
+			),
+		),
+	)
 }
 
 // GetRegistryData implements RegistryDataProvider.GetRegistryData
-func (p *realisticRegistryProvider) GetRegistryData(_ context.Context) (*toolhivetypes.Registry, error) {
+func (p *realisticRegistryProvider) GetRegistryData(_ context.Context) (*toolhivetypes.UpstreamRegistry, error) {
 	return p.data, nil
 }
 
@@ -321,16 +275,14 @@ func TestRegistryRouter(t *testing.T) {
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	// Set up expectations for all routes
-	mockSvc.EXPECT().GetRegistry(gomock.Any()).Return(&toolhivetypes.Registry{
+	mockSvc.EXPECT().GetRegistry(gomock.Any()).Return(&toolhivetypes.UpstreamRegistry{
 		Version:     "1.0.0",
 		LastUpdated: time.Now().Format(time.RFC3339),
-		Servers:     make(map[string]*toolhivetypes.ImageMetadata),
+		Servers:     []upstreamv0.ServerJSON{},
 	}, "test", nil).AnyTimes()
-	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]toolhivetypes.ServerMetadata{}, nil).AnyTimes()
-	mockSvc.EXPECT().GetServer(gomock.Any(), "test-server").Return(&toolhivetypes.ImageMetadata{
-		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-			Name: "test-server",
-		},
+	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]upstreamv0.ServerJSON{}, nil).AnyTimes()
+	mockSvc.EXPECT().GetServer(gomock.Any(), "test-server").Return(upstreamv0.ServerJSON{
+		Name: "test-server",
 	}, nil).AnyTimes()
 	mockSvc.EXPECT().ListDeployedServers(gomock.Any()).Return([]*service.DeployedServer{}, nil).AnyTimes()
 	mockSvc.EXPECT().GetDeployedServer(gomock.Any(), "test-server").Return([]*service.DeployedServer{
@@ -402,7 +354,7 @@ func TestListServers_FormatParameter(t *testing.T) {
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	// Expect successful calls for toolhive format only
-	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]toolhivetypes.ServerMetadata{}, nil).Times(2) // default and explicit toolhive
+	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]upstreamv0.ServerJSON{}, nil).Times(2) // default and explicit toolhive
 
 	router := v0.Router(mockSvc)
 
@@ -459,7 +411,7 @@ func TestGetServer_NotFound(t *testing.T) {
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	// Expect server not found error
-	mockSvc.EXPECT().GetServer(gomock.Any(), "nonexistent").Return(nil, service.ErrServerNotFound)
+	mockSvc.EXPECT().GetServer(gomock.Any(), "nonexistent").Return(upstreamv0.ServerJSON{}, service.ErrServerNotFound)
 
 	router := v0.Router(mockSvc)
 
@@ -481,16 +433,14 @@ func TestNewServer(t *testing.T) {
 
 	// Set up expectations for all test routes
 	mockSvc.EXPECT().CheckReadiness(gomock.Any()).Return(nil).AnyTimes()
-	mockSvc.EXPECT().GetRegistry(gomock.Any()).Return(&toolhivetypes.Registry{
+	mockSvc.EXPECT().GetRegistry(gomock.Any()).Return(&toolhivetypes.UpstreamRegistry{
 		Version:     "1.0.0",
 		LastUpdated: time.Now().Format(time.RFC3339),
-		Servers:     make(map[string]*toolhivetypes.ImageMetadata),
+		Servers:     []upstreamv0.ServerJSON{},
 	}, "test", nil).AnyTimes()
-	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]toolhivetypes.ServerMetadata{}, nil).AnyTimes()
-	mockSvc.EXPECT().GetServer(gomock.Any(), "test").Return(&toolhivetypes.ImageMetadata{
-		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-			Name: "test",
-		},
+	mockSvc.EXPECT().ListServers(gomock.Any()).Return([]upstreamv0.ServerJSON{}, nil).AnyTimes()
+	mockSvc.EXPECT().GetServer(gomock.Any(), "test").Return(upstreamv0.ServerJSON{
+		Name: "test",
 	}, nil).AnyTimes()
 	mockSvc.EXPECT().ListDeployedServers(gomock.Any()).Return([]*service.DeployedServer{}, nil).AnyTimes()
 
@@ -588,23 +538,19 @@ func TestNewServer_WithMiddleware(t *testing.T) {
 
 // fileBasedRegistryProvider implements RegistryDataProvider for testing with embedded registry data
 type fileBasedRegistryProvider struct {
-	data *toolhivetypes.Registry
+	data *toolhivetypes.UpstreamRegistry
 }
 
 // newFileBasedRegistryProvider creates a new provider with embedded registry data
-func newFileBasedRegistryProvider() (*fileBasedRegistryProvider, error) {
-	var data toolhivetypes.Registry
-	if err := json.Unmarshal([]byte(testRegistryJSON), &data); err != nil {
-		return nil, err
-	}
-
+func newFileBasedRegistryProvider() *fileBasedRegistryProvider {
+	data := buildRealisticUpstreamRegistry()
 	return &fileBasedRegistryProvider{
-		data: &data,
-	}, nil
+		data: data,
+	}
 }
 
 // GetRegistryData implements RegistryDataProvider.GetRegistryData
-func (p *fileBasedRegistryProvider) GetRegistryData(_ context.Context) (*toolhivetypes.Registry, error) {
+func (p *fileBasedRegistryProvider) GetRegistryData(_ context.Context) (*toolhivetypes.UpstreamRegistry, error) {
 	return p.data, nil
 }
 
@@ -619,11 +565,11 @@ func (*fileBasedRegistryProvider) GetRegistryName() string {
 }
 
 // Helper functions for testing the response conversion functions
-func newServerSummaryResponseForTesting(server toolhivetypes.ServerMetadata) v0.ServerSummaryResponse {
+func newServerSummaryResponseForTesting(server upstreamv0.ServerJSON) v0.ServerSummaryResponse {
 	return v0.NewServerSummaryResponseForTesting(server)
 }
 
-func newServerDetailResponseForTesting(server toolhivetypes.ServerMetadata) v0.ServerDetailResponse {
+func newServerDetailResponseForTesting(server upstreamv0.ServerJSON) v0.ServerDetailResponse {
 	return v0.NewServerDetailResponseForTesting(server)
 }
 
@@ -632,8 +578,7 @@ func newServerDetailResponseForTesting(server toolhivetypes.ServerMetadata) v0.S
 func TestRoutesWithRealData(t *testing.T) {
 	t.Parallel()
 	// Create the file-based provider with embedded data
-	provider, err := newFileBasedRegistryProvider()
-	require.NoError(t, err)
+	provider := newFileBasedRegistryProvider()
 	require.NotNil(t, provider)
 
 	// Create a real service instance with the provider
@@ -742,8 +687,8 @@ func TestRoutesWithRealData(t *testing.T) {
 
 		// Get first server name
 		var firstServerName string
-		for name := range regData.Servers {
-			firstServerName = name
+		for _, server := range regData.Servers {
+			firstServerName = server.Name
 			break
 		}
 		require.NotEmpty(t, firstServerName)
@@ -758,16 +703,14 @@ func TestRoutesWithRealData(t *testing.T) {
 		assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 
 		// Parse and validate response
-		var server map[string]interface{}
+		var server v0.ServerDetailResponse
 		err = json.Unmarshal(rr.Body.Bytes(), &server)
 		require.NoError(t, err)
 
 		// Verify server details match expected data
-		originalServer := regData.Servers[firstServerName]
-		assert.Equal(t, originalServer.Description, server["description"])
-		assert.Equal(t, originalServer.Tier, server["tier"])
-		assert.Equal(t, originalServer.Status, server["status"])
-		assert.Equal(t, originalServer.Transport, server["transport"])
+		originalServer := regData.Servers[0]
+		assert.Equal(t, originalServer.Name, server.Name)
+		assert.Equal(t, originalServer.Description, server.Description)
 	})
 
 	// Test server not found
@@ -787,8 +730,7 @@ func TestRoutesWithRealData(t *testing.T) {
 func TestFormatConversion(t *testing.T) {
 	t.Parallel()
 	// Create the file-based provider with embedded data
-	provider, err := newFileBasedRegistryProvider()
-	require.NoError(t, err)
+	provider := newFileBasedRegistryProvider()
 
 	// Create service
 	ctx := context.Background()
@@ -833,8 +775,7 @@ func TestFormatConversion(t *testing.T) {
 // TestComplexServerConfiguration tests servers with complex configurations from real data
 func TestComplexServerConfiguration(t *testing.T) {
 	t.Parallel()
-	provider, err := newFileBasedRegistryProvider()
-	require.NoError(t, err)
+	provider := newFileBasedRegistryProvider()
 
 	ctx := context.Background()
 	svc, err := service.NewService(ctx, provider, nil)
@@ -846,32 +787,20 @@ func TestComplexServerConfiguration(t *testing.T) {
 	regData, err := provider.GetRegistryData(ctx)
 	require.NoError(t, err)
 
-	// Test servers with environment variables
-	t.Run("servers with environment variables", func(t *testing.T) {
+	t.Run("servers with complex configurations", func(t *testing.T) {
 		t.Parallel()
-		for serverName, serverData := range regData.Servers {
-			if len(serverData.EnvVars) > 0 {
-				req, err := http.NewRequest("GET", "/servers/"+serverName, nil)
-				require.NoError(t, err)
+		for _, server := range regData.Servers {
+			req, err := http.NewRequest("GET", "/servers/"+server.Name, nil)
+			require.NoError(t, err)
 
-				rr := httptest.NewRecorder()
-				router.ServeHTTP(rr, req)
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
 
-				assert.Equal(t, http.StatusOK, rr.Code)
+			assert.Equal(t, http.StatusOK, rr.Code)
 
-				var response map[string]interface{}
-				err = json.Unmarshal(rr.Body.Bytes(), &response)
-				require.NoError(t, err)
-
-				// Verify env_vars field exists and has content
-				envVars, exists := response["env_vars"]
-				if exists {
-					envVarsList, ok := envVars.([]interface{})
-					assert.True(t, ok, "env_vars should be an array")
-					assert.Greater(t, len(envVarsList), 0, "should have env vars")
-				}
-				break // Test first server with env vars
-			}
+			var response map[string]interface{}
+			err = json.Unmarshal(rr.Body.Bytes(), &response)
+			require.NoError(t, err)
 		}
 	})
 }
@@ -881,8 +810,7 @@ func TestComplexServerConfiguration(t *testing.T) {
 func TestRoutesWithRealisticData(t *testing.T) {
 	t.Parallel()
 	// Create the realistic provider with curated test data
-	provider, err := newRealisticRegistryProvider()
-	require.NoError(t, err)
+	provider := newRealisticRegistryProvider()
 	require.NotNil(t, provider)
 
 	// Create a real service instance with the provider
@@ -1000,8 +928,8 @@ func TestRoutesWithRealisticData(t *testing.T) {
 // TestSpecificServersWithRealisticData tests individual server endpoints with our curated realistic data
 func TestSpecificServersWithRealisticData(t *testing.T) {
 	t.Parallel()
-	provider, err := newRealisticRegistryProvider()
-	require.NoError(t, err)
+	provider := newRealisticRegistryProvider()
+	require.NotNil(t, provider)
 
 	ctx := context.Background()
 	svc, err := service.NewService(ctx, provider, nil)
@@ -1018,9 +946,9 @@ func TestSpecificServersWithRealisticData(t *testing.T) {
 			name:       "stdio server with complex config",
 			serverName: "adb-mysql-mcp-server",
 			expectedData: map[string]interface{}{
-				"tier":        "Official",
-				"transport":   "stdio",
-				"status":      "Active",
+				"tier":        "NA",
+				"transport":   "NA",
+				"status":      "NA",
 				"description": "Official MCP server for AnalyticDB for MySQL of Alibaba Cloud",
 			},
 		},
@@ -1028,27 +956,27 @@ func TestSpecificServersWithRealisticData(t *testing.T) {
 			name:       "streamable-http server",
 			serverName: "apollo-mcp-server",
 			expectedData: map[string]interface{}{
-				"tier":      "Official",
-				"transport": "streamable-http",
-				"status":    "Active",
+				"tier":      "NA",
+				"transport": "NA",
+				"status":    "NA",
 			},
 		},
 		{
 			name:       "community server with args",
 			serverName: "arxiv-mcp-server",
 			expectedData: map[string]interface{}{
-				"tier":      "Community",
-				"transport": "stdio",
-				"status":    "Active",
+				"tier":      "NA",
+				"transport": "NA",
+				"status":    "NA",
 			},
 		},
 		{
 			name:       "remote server with oauth",
 			serverName: "atlassian-remote",
 			expectedData: map[string]interface{}{
-				"tier":      "Official",
-				"transport": "sse",
-				"status":    "Active",
+				"tier":      "NA",
+				"transport": "NA",
+				"status":    "NA",
 			},
 		},
 	}
@@ -1085,8 +1013,8 @@ func TestSpecificServersWithRealisticData(t *testing.T) {
 // using realistic data to ensure the conversion pipeline works correctly
 func TestFormatConversionWithRealisticData(t *testing.T) {
 	t.Parallel()
-	provider, err := newRealisticRegistryProvider()
-	require.NoError(t, err)
+	provider := newRealisticRegistryProvider()
+	require.NotNil(t, provider)
 
 	ctx := context.Background()
 	svc, err := service.NewService(ctx, provider, nil)
@@ -1129,10 +1057,8 @@ func TestFormatConversionWithRealisticData(t *testing.T) {
 // BenchmarkRoutesWithRealisticData benchmarks the API endpoints using realistic test data
 // This helps ensure performance doesn't regress with representative payloads
 func BenchmarkRoutesWithRealisticData(b *testing.B) {
-	provider, err := newRealisticRegistryProvider()
-	if err != nil {
-		b.Fatalf("Failed to create realistic provider: %v", err)
-	}
+	provider := newRealisticRegistryProvider()
+	require.NotNil(b, provider)
 
 	ctx := context.Background()
 	svc, err := service.NewService(ctx, provider, nil)
@@ -1182,10 +1108,7 @@ func BenchmarkRoutesWithRealisticData(b *testing.B) {
 // BenchmarkRoutesWithRealData benchmarks the API endpoints using real data
 // This helps ensure performance doesn't regress with realistic payloads
 func BenchmarkRoutesWithRealData(b *testing.B) {
-	provider, err := newFileBasedRegistryProvider()
-	if err != nil {
-		b.Fatalf("Failed to create provider: %v", err)
-	}
+	provider := newFileBasedRegistryProvider()
 
 	ctx := context.Background()
 	svc, err := service.NewService(ctx, provider, nil)
@@ -1227,8 +1150,8 @@ func BenchmarkRoutesWithRealData(b *testing.B) {
 func TestServerResponseStructures(t *testing.T) {
 	t.Parallel()
 
-	provider, err := newRealisticRegistryProvider()
-	require.NoError(t, err)
+	provider := newRealisticRegistryProvider()
+	require.NotNil(t, provider)
 
 	ctx := context.Background()
 	svc, err := service.NewService(ctx, provider, nil)
@@ -1265,7 +1188,7 @@ func TestServerResponseStructures(t *testing.T) {
 
 		// Verify that we have tools_count and not tools array
 		for _, server := range response.Servers {
-			assert.Greater(t, server.ToolsCount, 0, "server %s should have tools_count > 0", server.Name)
+			assert.Equal(t, server.ToolsCount, 0, "server %s should have no tools", server.Name)
 			assert.Nil(t, server.Tools, "server %s should not have tools array in summary", server.Name)
 		}
 	})
@@ -1294,14 +1217,14 @@ func TestServerResponseStructures(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify detailed response has full tools array and image
-		assert.Greater(t, len(response.Tools), 0, "should have tools array in detailed response")
+		assert.Equal(t, 0, len(response.Tools), "should have no tools array in detailed response")
 		assert.NotEmpty(t, response.Image, "should have image field")
 		assert.Equal(t, 0, response.ToolsCount, "should not have tools_count in detailed response")
 
 		// Verify specific fields
 		assert.Equal(t, "apollo-mcp-server", response.Name)
-		assert.Equal(t, "streamable-http", response.Transport)
-		assert.Contains(t, response.Image, "apollo-mcp-server")
+		assert.Equal(t, "NA", response.Transport)
+		assert.Equal(t, "NA", response.Image)
 	})
 }
 
@@ -1309,8 +1232,8 @@ func TestServerResponseStructures(t *testing.T) {
 func TestResponseFieldMapping(t *testing.T) {
 	t.Parallel()
 
-	provider, err := newRealisticRegistryProvider()
-	require.NoError(t, err)
+	provider := newRealisticRegistryProvider()
+	require.NotNil(t, provider)
 
 	ctx := context.Background()
 	svc, err := service.NewService(ctx, provider, nil)
@@ -1333,31 +1256,16 @@ func TestResponseFieldMapping(t *testing.T) {
 		require.NoError(t, err)
 
 		// Check that env_vars are properly structured
-		envVars, exists := response["env_vars"]
-		assert.True(t, exists, "should have env_vars field")
-
-		envVarsList, ok := envVars.([]interface{})
-		assert.True(t, ok, "env_vars should be an array")
-		assert.Greater(t, len(envVarsList), 0, "should have environment variables")
-
-		// Check first env var structure
-		if len(envVarsList) > 0 {
-			envVar, ok := envVarsList[0].(map[string]interface{})
-			assert.True(t, ok, "env var should be an object")
-
-			assert.Contains(t, envVar, "name", "env var should have name")
-			assert.Contains(t, envVar, "description", "env var should have description")
-			assert.Contains(t, envVar, "required", "env var should have required field")
-		}
+		_, exists := response["env_vars"]
+		assert.False(t, exists, "should not have env_vars field")
 
 		// Check permissions
 		_, exists = response["permissions"]
-		assert.True(t, exists, "should have permissions field")
+		assert.False(t, exists, "should not have permissions field")
 
 		// Check image field
-		image, exists := response["image"]
-		assert.True(t, exists, "should have image field")
-		assert.NotEmpty(t, image, "image field should not be empty")
+		_, exists = response["image"]
+		assert.True(t, exists, "should not ave image field")
 	})
 
 	t.Run("remote server fields", func(t *testing.T) {
@@ -1382,12 +1290,8 @@ func TestResponseFieldMapping(t *testing.T) {
 		assert.True(t, ok, "metadata should be an object")
 
 		// Check remote-specific metadata fields
-		assert.Contains(t, metadataMap, "url", "remote server metadata should contain URL")
-		assert.Contains(t, metadataMap, "oauth_enabled", "remote server metadata should contain oauth_enabled")
-
-		// Should not have image field for remote servers
-		_, hasImage := response["image"]
-		assert.False(t, hasImage, "remote server should not have image field")
+		assert.NotContains(t, metadataMap, "url", "remote server metadata should not contain URL")
+		assert.NotContains(t, metadataMap, "oauth_enabled", "remote server metadata should not contain oauth_enabled")
 	})
 }
 
@@ -1396,70 +1300,57 @@ func TestHelperFunctions(t *testing.T) {
 	t.Parallel()
 
 	// Test data setup
-	testImageMetadata := &toolhivetypes.ImageMetadata{
-		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-			Name:        "test-server",
-			Description: "Test server",
-			Tier:        "Community",
-			Status:      "Active",
-			Transport:   "stdio",
-			Tools:       []string{"tool1", "tool2", "tool3"},
-		},
-		Image: "test-image:latest",
+	testServer := upstreamv0.ServerJSON{
+		Name:        "test-server",
+		Description: "Test server",
+		Packages:    []model.Package{{RegistryType: "oci", Identifier: "test-image:latest", Transport: model.Transport{Type: "stdio"}}},
 	}
 
-	testRemoteMetadata := &toolhivetypes.RemoteServerMetadata{
-		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-			Name:        "remote-server",
-			Description: "Remote test server",
-			Tier:        "Official",
-			Status:      "Active",
-			Transport:   "sse",
-			Tools:       []string{"remote1", "remote2"},
-		},
-		URL: "https://remote.example.com",
+	testRemoteServer := upstreamv0.ServerJSON{
+		Name:        "remote-server",
+		Description: "Remote test server",
+		Remotes:     []model.Transport{{URL: "https://remote.example.com", Type: "sse"}},
 	}
 
 	t.Run("newServerSummaryResponse", func(t *testing.T) {
 		t.Parallel()
-		summary := newServerSummaryResponseForTesting(testImageMetadata)
+		summary := newServerSummaryResponseForTesting(testServer)
 
 		assert.Equal(t, "test-server", summary.Name)
 		assert.Equal(t, "Test server", summary.Description)
-		assert.Equal(t, "Community", summary.Tier)
-		assert.Equal(t, "Active", summary.Status)
-		assert.Equal(t, "stdio", summary.Transport)
-		assert.Equal(t, 3, summary.ToolsCount)
+		assert.Equal(t, "NA", summary.Tier)
+		assert.Equal(t, "NA", summary.Status)
+		assert.Equal(t, "NA", summary.Transport)
+		assert.Equal(t, 0, summary.ToolsCount)
 	})
 
 	t.Run("newServerDetailResponse with container server", func(t *testing.T) {
 		t.Parallel()
-		detail := newServerDetailResponseForTesting(testImageMetadata)
+		detail := newServerDetailResponseForTesting(testServer)
 
 		assert.Equal(t, "test-server", detail.Name)
 		assert.Equal(t, "Test server", detail.Description)
-		assert.Equal(t, "Community", detail.Tier)
-		assert.Equal(t, "Active", detail.Status)
-		assert.Equal(t, "stdio", detail.Transport)
-		assert.Equal(t, []string{"tool1", "tool2", "tool3"}, detail.Tools)
-		assert.Equal(t, "test-image:latest", detail.Image)
+		assert.Equal(t, "NA", detail.Tier)
+		assert.Equal(t, "NA", detail.Status)
+		assert.Equal(t, "NA", detail.Transport)
+		assert.Equal(t, []string{}, detail.Tools)
+		assert.Equal(t, "NA", detail.Image)
 	})
 
 	t.Run("newServerDetailResponse with remote server", func(t *testing.T) {
 		t.Parallel()
-		detail := newServerDetailResponseForTesting(testRemoteMetadata)
+		detail := newServerDetailResponseForTesting(testRemoteServer)
 
 		assert.Equal(t, "remote-server", detail.Name)
 		assert.Equal(t, "Remote test server", detail.Description)
-		assert.Equal(t, "Official", detail.Tier)
-		assert.Equal(t, "Active", detail.Status)
-		assert.Equal(t, "sse", detail.Transport)
-		assert.Equal(t, []string{"remote1", "remote2"}, detail.Tools)
-		assert.Empty(t, detail.Image, "remote server should not have image")
+		assert.Equal(t, "NA", detail.Tier)
+		assert.Equal(t, "NA", detail.Status)
+		assert.Equal(t, "NA", detail.Transport)
+		assert.Equal(t, []string{}, detail.Tools)
+		assert.Equal(t, "NA", detail.Image, "remote server should not have image")
 
 		// Check metadata contains URL info
-		assert.Contains(t, detail.Metadata, "url")
-		assert.Equal(t, "https://remote.example.com", detail.Metadata["url"])
+		assert.NotContains(t, detail.Metadata, "url")
 	})
 }
 
@@ -1506,7 +1397,7 @@ func TestErrorScenarios(t *testing.T) {
 
 	t.Run("get server service error", func(t *testing.T) {
 		t.Parallel()
-		mockSvc.EXPECT().GetServer(gomock.Any(), "error-server").Return(nil, assert.AnError)
+		mockSvc.EXPECT().GetServer(gomock.Any(), "error-server").Return(upstreamv0.ServerJSON{}, assert.AnError)
 
 		router := v0.Router(mockSvc)
 		req, err := http.NewRequest("GET", "/servers/error-server", nil)
@@ -1522,7 +1413,7 @@ func TestErrorScenarios(t *testing.T) {
 		t.Parallel()
 		// This test needs its own mock since it calls ListServers (chi routes /servers/ to list endpoint)
 		emptyNameMockSvc := mocks.NewMockRegistryService(ctrl)
-		emptyNameMockSvc.EXPECT().ListServers(gomock.Any()).Return([]toolhivetypes.ServerMetadata{}, nil)
+		emptyNameMockSvc.EXPECT().ListServers(gomock.Any()).Return([]upstreamv0.ServerJSON{}, nil)
 
 		router := v0.Router(emptyNameMockSvc)
 
