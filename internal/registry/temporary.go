@@ -9,7 +9,7 @@ import (
 	"fmt"
 
 	"github.com/stacklok/toolhive/pkg/registry/converters"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 )
 
 // ToToolhive converts UpstreamRegistry back to ToolHive Registry format.
