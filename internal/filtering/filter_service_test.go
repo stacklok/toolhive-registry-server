@@ -2,14 +2,64 @@ package filtering
 
 import (
 	"context"
+	"strings"
 	"testing"
 
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	"github.com/modelcontextprotocol/registry/pkg/model"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
+
+// Helper to create upstream server with ToolHive tags
+func newTestServer(name string, tags []string, packageType string, identifier string) upstreamv0.ServerJSON {
+	tagInterfaces := make([]interface{}, len(tags))
+	for i, tag := range tags {
+		tagInterfaces[i] = tag
+	}
+
+	return upstreamv0.ServerJSON{
+		Schema:      "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+		Name:        "io.test/" + name,
+		Description: name + " server",
+		Version:     "1.0.0",
+		Packages: []model.Package{
+			{
+				RegistryType: packageType,
+				Identifier:   identifier,
+				Transport:    model.Transport{Type: "stdio"},
+			},
+		},
+		Meta: &upstreamv0.ServerMeta{
+			PublisherProvided: map[string]any{
+				"provider": map[string]any{
+					"metadata": map[string]any{
+						"tags": tagInterfaces,
+					},
+				},
+			},
+		},
+	}
+}
+
+// Helper to assert servers contain expected names
+func assertContainsServerNames(t *testing.T, servers []upstreamv0.ServerJSON, expectedNames []string) {
+	t.Helper()
+	assert.Len(t, servers, len(expectedNames), "Server count mismatch")
+	for _, expectedName := range expectedNames {
+		found := false
+		for _, server := range servers {
+			if strings.Contains(server.Name, expectedName) {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "Expected server %s in results", expectedName)
+	}
+}
 
 func TestNewDefaultFilterService(t *testing.T) {
 	t.Parallel()
@@ -38,28 +88,13 @@ func TestDefaultFilterService_ApplyFilters_NoFilter(t *testing.T) {
 	service := NewDefaultFilterService()
 	ctx := context.Background()
 
-	// Create test config
-	// Create test registry
-	originalRegistry := &toolhivetypes.Registry{
+	// Create test registry with both container and remote servers
+	originalRegistry := &toolhivetypes.UpstreamRegistry{
 		Version:     "1.0.0",
 		LastUpdated: "2023-01-01T00:00:00Z",
-		Servers: map[string]*toolhivetypes.ImageMetadata{
-			"postgres": {
-				BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-					Name: "postgres",
-					Tags: []string{"database", "sql"},
-				},
-				Image: "postgres:latest",
-			},
-		},
-		RemoteServers: map[string]*toolhivetypes.RemoteServerMetadata{
-			"web-api": {
-				BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-					Name: "web-api",
-					Tags: []string{"web", "api"},
-				},
-				URL: "https://example.com",
-			},
+		Servers: []upstreamv0.ServerJSON{
+			newTestServer("postgres", []string{"database", "sql"}, "oci", "postgres:latest"),
+			newTestServer("web-api", []string{"web", "api"}, "http", "https://example.com"),
 		},
 	}
 
@@ -76,32 +111,28 @@ func TestDefaultFilterService_ApplyFilters_NameFiltering(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name                      string
-		nameInclude               []string
-		nameExclude               []string
-		expectedServerNames       []string
-		expectedRemoteServerNames []string
+		name          string
+		nameInclude   []string
+		nameExclude   []string
+		expectedNames []string // Unified: all server names that should be in result
 	}{
 		{
-			name:                      "include postgres pattern",
-			nameInclude:               []string{"postgres-*"},
-			nameExclude:               []string{},
-			expectedServerNames:       []string{"postgres-server"},
-			expectedRemoteServerNames: []string{},
+			name:          "include postgres pattern",
+			nameInclude:   []string{"*/postgres-*"},
+			nameExclude:   []string{},
+			expectedNames: []string{"postgres-server"},
 		},
 		{
-			name:                      "exclude experimental pattern",
-			nameInclude:               []string{},
-			nameExclude:               []string{"*-experimental"},
-			expectedServerNames:       []string{"postgres-server", "mysql-server"},
-			expectedRemoteServerNames: []string{"web-api"},
+			name:          "exclude experimental pattern",
+			nameInclude:   []string{},
+			nameExclude:   []string{"*/*-experimental"},
+			expectedNames: []string{"postgres-server", "mysql-server", "web-api"},
 		},
 		{
-			name:                      "include with exclude precedence",
-			nameInclude:               []string{"*-server"},
-			nameExclude:               []string{"*-experimental"},
-			expectedServerNames:       []string{"postgres-server", "mysql-server"},
-			expectedRemoteServerNames: []string{},
+			name:          "include with exclude precedence",
+			nameInclude:   []string{"*/*-server"},
+			nameExclude:   []string{"*/*-experimental"},
+			expectedNames: []string{"postgres-server", "mysql-server"},
 		},
 	}
 
@@ -109,48 +140,16 @@ func TestDefaultFilterService_ApplyFilters_NameFiltering(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Create test registry
-			originalRegistry := &toolhivetypes.Registry{
+			// Create test registry with both container and remote servers
+			originalRegistry := &toolhivetypes.UpstreamRegistry{
 				Version:     "1.0.0",
 				LastUpdated: "2023-01-01T00:00:00Z",
-				Servers: map[string]*toolhivetypes.ImageMetadata{
-					"postgres-server": {
-						BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-							Name: "postgres-server",
-							Tags: []string{"database"},
-						},
-						Image: "postgres:latest",
-					},
-					"mysql-server": {
-						BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-							Name: "mysql-server",
-							Tags: []string{"database"},
-						},
-						Image: "mysql:latest",
-					},
-					"redis-experimental": {
-						BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-							Name: "redis-experimental",
-							Tags: []string{"cache"},
-						},
-						Image: "redis:latest",
-					},
-				},
-				RemoteServers: map[string]*toolhivetypes.RemoteServerMetadata{
-					"web-api": {
-						BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-							Name: "web-api",
-							Tags: []string{"web"},
-						},
-						URL: "https://example.com",
-					},
-					"admin-experimental": {
-						BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-							Name: "admin-experimental",
-							Tags: []string{"admin"},
-						},
-						URL: "https://admin.example.com",
-					},
+				Servers: []upstreamv0.ServerJSON{
+					newTestServer("postgres-server", []string{"database"}, "oci", "postgres:latest"),
+					newTestServer("mysql-server", []string{"database"}, "oci", "mysql:latest"),
+					newTestServer("redis-experimental", []string{"cache"}, "oci", "redis:latest"),
+					newTestServer("web-api", []string{"web"}, "http", "https://example.com"),
+					newTestServer("admin-experimental", []string{"admin"}, "http", "https://admin.example.com"),
 				},
 			}
 
@@ -167,17 +166,8 @@ func TestDefaultFilterService_ApplyFilters_NameFiltering(t *testing.T) {
 			assert.Equal(t, originalRegistry.Version, result.Version)
 			assert.Equal(t, originalRegistry.LastUpdated, result.LastUpdated)
 
-			// Check filtered servers
-			assert.Len(t, result.Servers, len(tt.expectedServerNames))
-			for _, expectedName := range tt.expectedServerNames {
-				assert.Contains(t, result.Servers, expectedName)
-			}
-
-			// Check filtered remote servers
-			assert.Len(t, result.RemoteServers, len(tt.expectedRemoteServerNames))
-			for _, expectedName := range tt.expectedRemoteServerNames {
-				assert.Contains(t, result.RemoteServers, expectedName)
-			}
+			// Check filtered servers using helper
+			assertContainsServerNames(t, result.Servers, tt.expectedNames)
 		})
 	}
 }
@@ -189,32 +179,28 @@ func TestDefaultFilterService_ApplyFilters_TagFiltering(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name                      string
-		tagInclude                []string
-		tagExclude                []string
-		expectedServerNames       []string
-		expectedRemoteServerNames []string
+		name          string
+		tagInclude    []string
+		tagExclude    []string
+		expectedNames []string // Unified: all server names that should be in result
 	}{
 		{
-			name:                      "include database tags",
-			tagInclude:                []string{"database"},
-			tagExclude:                []string{},
-			expectedServerNames:       []string{"postgres-server", "mysql-server"},
-			expectedRemoteServerNames: []string{},
+			name:          "include database tags",
+			tagInclude:    []string{"database"},
+			tagExclude:    []string{},
+			expectedNames: []string{"postgres-server", "mysql-server"},
 		},
 		{
-			name:                      "exclude deprecated tags",
-			tagInclude:                []string{},
-			tagExclude:                []string{"deprecated"},
-			expectedServerNames:       []string{"postgres-server", "redis-server"},
-			expectedRemoteServerNames: []string{"web-api"},
+			name:          "exclude deprecated tags",
+			tagInclude:    []string{},
+			tagExclude:    []string{"deprecated"},
+			expectedNames: []string{"postgres-server", "redis-server", "web-api"},
 		},
 		{
-			name:                      "include with exclude precedence",
-			tagInclude:                []string{"database"},
-			tagExclude:                []string{"deprecated"},
-			expectedServerNames:       []string{"postgres-server"},
-			expectedRemoteServerNames: []string{},
+			name:          "include with exclude precedence",
+			tagInclude:    []string{"database"},
+			tagExclude:    []string{"deprecated"},
+			expectedNames: []string{"postgres-server"},
 		},
 	}
 
@@ -222,48 +208,16 @@ func TestDefaultFilterService_ApplyFilters_TagFiltering(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Create test registry
-			originalRegistry := &toolhivetypes.Registry{
+			// Create test registry with servers having different tags
+			originalRegistry := &toolhivetypes.UpstreamRegistry{
 				Version:     "1.0.0",
 				LastUpdated: "2023-01-01T00:00:00Z",
-				Servers: map[string]*toolhivetypes.ImageMetadata{
-					"postgres-server": {
-						BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-							Name: "postgres-server",
-							Tags: []string{"database", "sql"},
-						},
-						Image: "postgres:latest",
-					},
-					"mysql-server": {
-						BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-							Name: "mysql-server",
-							Tags: []string{"database", "deprecated"},
-						},
-						Image: "mysql:latest",
-					},
-					"redis-server": {
-						BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-							Name: "redis-server",
-							Tags: []string{"cache"},
-						},
-						Image: "redis:latest",
-					},
-				},
-				RemoteServers: map[string]*toolhivetypes.RemoteServerMetadata{
-					"web-api": {
-						BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-							Name: "web-api",
-							Tags: []string{"web", "api"},
-						},
-						URL: "https://example.com",
-					},
-					"legacy-api": {
-						BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-							Name: "legacy-api",
-							Tags: []string{"web", "deprecated"},
-						},
-						URL: "https://legacy.example.com",
-					},
+				Servers: []upstreamv0.ServerJSON{
+					newTestServer("postgres-server", []string{"database", "sql"}, "oci", "postgres:latest"),
+					newTestServer("mysql-server", []string{"database", "deprecated"}, "oci", "mysql:latest"),
+					newTestServer("redis-server", []string{"cache"}, "oci", "redis:latest"),
+					newTestServer("web-api", []string{"web", "api"}, "http", "https://example.com"),
+					newTestServer("legacy-api", []string{"web", "deprecated"}, "http", "https://legacy.example.com"),
 				},
 			}
 
@@ -278,17 +232,8 @@ func TestDefaultFilterService_ApplyFilters_TagFiltering(t *testing.T) {
 
 			require.NoError(t, err)
 
-			// Check filtered servers
-			assert.Len(t, result.Servers, len(tt.expectedServerNames))
-			for _, expectedName := range tt.expectedServerNames {
-				assert.Contains(t, result.Servers, expectedName)
-			}
-
-			// Check filtered remote servers
-			assert.Len(t, result.RemoteServers, len(tt.expectedRemoteServerNames))
-			for _, expectedName := range tt.expectedRemoteServerNames {
-				assert.Contains(t, result.RemoteServers, expectedName)
-			}
+			// Check filtered servers using helper
+			assertContainsServerNames(t, result.Servers, tt.expectedNames)
 		})
 	}
 }
@@ -300,47 +245,21 @@ func TestDefaultFilterService_ApplyFilters_CombinedFiltering(t *testing.T) {
 	ctx := context.Background()
 
 	// Create test registry
-	originalRegistry := &toolhivetypes.Registry{
+	originalRegistry := &toolhivetypes.UpstreamRegistry{
 		Version:     "1.0.0",
 		LastUpdated: "2023-01-01T00:00:00Z",
-		Servers: map[string]*toolhivetypes.ImageMetadata{
-			"postgres-server": {
-				BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-					Name: "postgres-server",
-					Tags: []string{"database", "sql"},
-				},
-				Image: "postgres:latest",
-			},
-			"postgres-experimental": {
-				BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-					Name: "postgres-experimental",
-					Tags: []string{"database", "experimental"},
-				},
-				Image: "postgres:experimental",
-			},
-			"web-server": {
-				BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-					Name: "web-server",
-					Tags: []string{"web", "api"},
-				},
-				Image: "nginx:latest",
-			},
-		},
-		RemoteServers: map[string]*toolhivetypes.RemoteServerMetadata{
-			"database-api": {
-				BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-					Name: "database-api",
-					Tags: []string{"database", "api"},
-				},
-				URL: "https://db.example.com",
-			},
+		Servers: []upstreamv0.ServerJSON{
+			newTestServer("postgres-server", []string{"database", "sql"}, "oci", "postgres:latest"),
+			newTestServer("postgres-experimental", []string{"database", "experimental"}, "oci", "postgres:experimental"),
+			newTestServer("web-server", []string{"web", "api"}, "oci", "nginx:latest"),
+			newTestServer("database-api", []string{"database", "api"}, "http", "https://db.example.com"),
 		},
 	}
 
 	filter := &config.FilterConfig{
 		Names: &config.NameFilterConfig{
-			Include: []string{"postgres-*", "*-api"},
-			Exclude: []string{"*-experimental"},
+			Include: []string{"*/postgres-*", "*/*-api"},
+			Exclude: []string{"*/*-experimental"},
 		},
 		Tags: &config.TagFilterConfig{
 			Include: []string{"database"},
@@ -358,11 +277,7 @@ func TestDefaultFilterService_ApplyFilters_CombinedFiltering(t *testing.T) {
 	// Should exclude:
 	// - postgres-experimental: excluded by *-experimental pattern (exclude takes precedence)
 	// - web-server: matches no name patterns
-	assert.Len(t, result.Servers, 1)
-	assert.Contains(t, result.Servers, "postgres-server")
-
-	assert.Len(t, result.RemoteServers, 1)
-	assert.Contains(t, result.RemoteServers, "database-api")
+	assertContainsServerNames(t, result.Servers, []string{"postgres-server", "database-api"})
 }
 
 func TestDefaultFilterService_ApplyFilters_EmptyRegistry(t *testing.T) {
@@ -372,16 +287,15 @@ func TestDefaultFilterService_ApplyFilters_EmptyRegistry(t *testing.T) {
 	ctx := context.Background()
 
 	// Create empty registry
-	originalRegistry := &toolhivetypes.Registry{
-		Version:       "1.0.0",
-		LastUpdated:   "2023-01-01T00:00:00Z",
-		Servers:       make(map[string]*toolhivetypes.ImageMetadata),
-		RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
+	originalRegistry := &toolhivetypes.UpstreamRegistry{
+		Version:     "1.0.0",
+		LastUpdated: "2023-01-01T00:00:00Z",
+		Servers:     []upstreamv0.ServerJSON{},
 	}
 
 	filter := &config.FilterConfig{
 		Names: &config.NameFilterConfig{
-			Include: []string{"postgres-*"},
+			Include: []string{"*/postgres-*"},
 		},
 	}
 
@@ -389,7 +303,6 @@ func TestDefaultFilterService_ApplyFilters_EmptyRegistry(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Len(t, result.Servers, 0)
-	assert.Len(t, result.RemoteServers, 0)
 	assert.Equal(t, originalRegistry.Version, result.Version)
 	assert.Equal(t, originalRegistry.LastUpdated, result.LastUpdated)
 }
@@ -400,32 +313,27 @@ func TestDefaultFilterService_ApplyFilters_PreservesMetadata(t *testing.T) {
 	service := NewDefaultFilterService()
 	ctx := context.Background()
 
-	// Create registry with groups
-	groups := []*toolhivetypes.Group{
-		{
-			Name:        "test-group",
-			Description: "Test group",
+	// Create registry with specific metadata values
+	originalRegistry := &toolhivetypes.UpstreamRegistry{
+		Version:     "2.5.3",
+		LastUpdated: "2023-12-15T14:30:00Z",
+		Servers: []upstreamv0.ServerJSON{
+			newTestServer("test-server", []string{"test"}, "oci", "test:latest"),
 		},
-	}
-
-	originalRegistry := &toolhivetypes.Registry{
-		Version:       "1.0.0",
-		LastUpdated:   "2023-01-01T00:00:00Z",
-		Servers:       make(map[string]*toolhivetypes.ImageMetadata),
-		RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
-		Groups:        groups,
 	}
 
 	filter := &config.FilterConfig{
 		Names: &config.NameFilterConfig{
-			Include: []string{"*"},
+			Include: []string{"*/*"},
 		},
 	}
 
 	result, err := service.ApplyFilters(ctx, originalRegistry, filter)
 
 	require.NoError(t, err)
+	// Verify metadata is preserved exactly
 	assert.Equal(t, originalRegistry.Version, result.Version)
 	assert.Equal(t, originalRegistry.LastUpdated, result.LastUpdated)
-	assert.Equal(t, originalRegistry.Groups, result.Groups)
+	// Verify server is included (wildcard match)
+	assert.Len(t, result.Servers, 1)
 }

@@ -5,16 +5,22 @@ import (
 	"fmt"
 	"strings"
 
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
 
 // FilterService coordinates name and tag filtering to apply registry filters
 type FilterService interface {
 	// ApplyFilters filters the registry based on filter configuration
-	ApplyFilters(ctx context.Context, reg *toolhivetypes.Registry, filter *config.FilterConfig) (*toolhivetypes.Registry, error)
+	ApplyFilters(
+		ctx context.Context,
+		reg *toolhivetypes.UpstreamRegistry,
+		filter *config.FilterConfig,
+	) (*toolhivetypes.UpstreamRegistry, error)
 }
 
 // DefaultFilterService implements filtering coordination using name and tag filters
@@ -49,8 +55,8 @@ func NewFilterService(nameFilter NameFilter, tagFilter TagFilter) *DefaultFilter
 // 5. Return the filtered registry
 func (s *DefaultFilterService) ApplyFilters(
 	ctx context.Context,
-	reg *toolhivetypes.Registry,
-	filter *config.FilterConfig) (*toolhivetypes.Registry, error) {
+	reg *toolhivetypes.UpstreamRegistry,
+	filter *config.FilterConfig) (*toolhivetypes.UpstreamRegistry, error) {
 	ctxLogger := log.FromContext(ctx)
 
 	// If no filter is specified, return original registry
@@ -60,16 +66,13 @@ func (s *DefaultFilterService) ApplyFilters(
 	}
 
 	ctxLogger.Info("Applying registry filters",
-		"originalServerCount", len(reg.Servers),
-		"originalRemoteServerCount", len(reg.RemoteServers))
+		"originalServerCount", len(reg.Servers))
 
 	// Create a new filtered registry with same metadata
-	filteredRegistry := &toolhivetypes.Registry{
-		Version:       reg.Version,
-		LastUpdated:   reg.LastUpdated,
-		Servers:       make(map[string]*toolhivetypes.ImageMetadata),
-		RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
-		Groups:        reg.Groups, // Groups are not filtered for now
+	filteredRegistry := &toolhivetypes.UpstreamRegistry{
+		Version:     reg.Version,
+		LastUpdated: reg.LastUpdated,
+		Servers:     make([]upstreamv0.ServerJSON, 0),
 	}
 
 	// Extract filter criteria
@@ -87,53 +90,29 @@ func (s *DefaultFilterService) ApplyFilters(
 	excludedCount := 0
 
 	// Filter container servers
-	for serverName, serverMetadata := range reg.Servers {
+	for _, server := range reg.Servers {
+		serverName := server.Name
+		tags := registry.ExtractTags(&server)
 		included, reason := s.shouldIncludeServerWithReason(
 			serverName,
-			serverMetadata.Tags,
+			tags,
 			nameInclude,
 			nameExclude,
 			tagInclude,
 			tagExclude,
 		)
 		if included {
-			filteredRegistry.Servers[serverName] = serverMetadata
+			filteredRegistry.Servers = append(filteredRegistry.Servers, server)
 			includedCount++
 			ctxLogger.Info("Including container server",
 				"name", serverName,
-				"tags", serverMetadata.Tags,
+				"tags", tags,
 				"reason", reason)
 		} else {
 			excludedCount++
 			ctxLogger.Info("Excluding container server",
 				"name", serverName,
-				"tags", serverMetadata.Tags,
-				"reason", reason)
-		}
-	}
-
-	// Filter remote servers
-	for serverName, serverMetadata := range reg.RemoteServers {
-		included, reason := s.shouldIncludeServerWithReason(
-			serverName,
-			serverMetadata.Tags,
-			nameInclude,
-			nameExclude,
-			tagInclude,
-			tagExclude,
-		)
-		if included {
-			filteredRegistry.RemoteServers[serverName] = serverMetadata
-			includedCount++
-			ctxLogger.Info("Including remote server",
-				"name", serverName,
-				"tags", serverMetadata.Tags,
-				"reason", reason)
-		} else {
-			excludedCount++
-			ctxLogger.Info("Excluding remote server",
-				"name", serverName,
-				"tags", serverMetadata.Tags,
+				"tags", tags,
 				"reason", reason)
 		}
 	}
@@ -141,8 +120,7 @@ func (s *DefaultFilterService) ApplyFilters(
 	ctxLogger.Info("Registry filtering completed",
 		"includedServers", includedCount,
 		"excludedServers", excludedCount,
-		"filteredServerCount", len(filteredRegistry.Servers),
-		"filteredRemoteServerCount", len(filteredRegistry.RemoteServers))
+		"filteredServerCount", len(filteredRegistry.Servers))
 
 	return filteredRegistry, nil
 }
