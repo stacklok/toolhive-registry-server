@@ -5,16 +5,16 @@ import (
 
 	upstream "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/stacklok/toolhive/pkg/registry/converters"
-	regtypes "github.com/stacklok/toolhive/pkg/registry/types"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestExtractTags(t *testing.T) {
 	t.Parallel()
 
-	serverFromToolhive, _ := converters.ImageMetadataToServerJSON("test-server", &regtypes.ImageMetadata{
+	serverFromToolhive, _ := converters.ImageMetadataToServerJSON("test-server", &toolhivetypes.ImageMetadata{
 		Image: "test/image:latest",
-		BaseServerMetadata: regtypes.BaseServerMetadata{
+		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
 			Name:        "test-server",
 			Description: "Test server description",
 			Tier:        "Community",

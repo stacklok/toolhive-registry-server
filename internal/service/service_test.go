@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
@@ -22,32 +24,28 @@ func TestService_GetRegistry(t *testing.T) {
 		setupMocks     func(*mocks.MockRegistryDataProvider)
 		expectedError  string
 		expectedSource string
-		validateResult func(*testing.T, *toolhivetypes.Registry)
+		validateResult func(*testing.T, *toolhivetypes.UpstreamRegistry)
 	}{
 		{
 			name: "successful registry fetch",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers: map[string]*toolhivetypes.ImageMetadata{
-						"test-server": {
-							BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-								Name:        "test-server",
-								Description: "A test server",
-							},
-							Image: "test:latest",
-						},
-					},
-				}, nil)
+				testRegistry := registry.NewTestUpstreamRegistry(
+					registry.WithServers(
+						registry.NewTestServer("test-server",
+							registry.WithDescription("A test server"),
+							registry.WithOCIPackage("test:latest"),
+						),
+					),
+				)
+				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
 				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
 			},
 			expectedSource: "file:/path/to/registry.json",
-			validateResult: func(t *testing.T, r *toolhivetypes.Registry) {
+			validateResult: func(t *testing.T, r *toolhivetypes.UpstreamRegistry) {
 				t.Helper()
 				assert.Equal(t, "1.0.0", r.Version)
 				assert.Len(t, r.Servers, 1)
-				assert.Contains(t, r.Servers, "test-server")
+				assert.Equal(t, "test-server", r.Servers[0].Name)
 			},
 		},
 		{
@@ -57,7 +55,7 @@ func TestService_GetRegistry(t *testing.T) {
 				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
 			},
 			expectedSource: "file:/path/to/registry.json",
-			validateResult: func(t *testing.T, r *toolhivetypes.Registry) {
+			validateResult: func(t *testing.T, r *toolhivetypes.UpstreamRegistry) {
 				t.Helper()
 				// Should return empty registry on error
 				assert.NotNil(t, r)
@@ -79,8 +77,7 @@ func TestService_GetRegistry(t *testing.T) {
 			svc, err := service.NewService(context.Background(), mockProvider, nil)
 			require.NoError(t, err)
 
-			registry, source, err := svc.GetRegistry(context.Background())
-
+			upstreamRegistry, source, err := svc.GetRegistry(context.Background())
 			if tt.expectedError != "" {
 				assert.EqualError(t, err, tt.expectedError)
 			} else {
@@ -89,7 +86,7 @@ func TestService_GetRegistry(t *testing.T) {
 
 			assert.Equal(t, tt.expectedSource, source)
 			if tt.validateResult != nil {
-				tt.validateResult(t, registry)
+				tt.validateResult(t, upstreamRegistry)
 			}
 		})
 	}
@@ -105,11 +102,8 @@ func TestService_CheckReadiness(t *testing.T) {
 		{
 			name: "ready with successful data load",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers:     make(map[string]*toolhivetypes.ImageMetadata),
-				}, nil).Times(1) // Only during NewService, CheckReadiness uses cached data
+				testRegistry := registry.NewTestUpstreamRegistry()
+				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).Times(1) // Only during NewService, CheckReadiness uses cached data
 			},
 			expectedError: "",
 		},
@@ -151,47 +145,35 @@ func TestService_ListServers(t *testing.T) {
 		name            string
 		setupMocks      func(*mocks.MockRegistryDataProvider)
 		expectedCount   int
-		validateServers func(*testing.T, []toolhivetypes.ServerMetadata)
+		validateServers func(*testing.T, []upstreamv0.ServerJSON)
 	}{
 		{
 			name: "list servers from registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers: map[string]*toolhivetypes.ImageMetadata{
-						"server1": {
-							BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-								Name:        "server1",
-								Description: "Server 1",
-							},
-							Image: "server1:latest",
-						},
-						"server2": {
-							BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-								Name:        "server2",
-								Description: "Server 2",
-							},
-							Image: "server2:latest",
-						},
-					},
-					RemoteServers: map[string]*toolhivetypes.RemoteServerMetadata{
-						"remote1": {
-							BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-								Name:        "remote1",
-								Description: "Remote server 1",
-							},
-							URL: "https://example.com/remote1",
-						},
-					},
-				}, nil).AnyTimes()
+				testRegistry := registry.NewTestUpstreamRegistry(
+					registry.WithServers(
+						registry.NewTestServer("server1",
+							registry.WithDescription("Server 1"),
+							registry.WithOCIPackage("server1:latest"),
+						),
+						registry.NewTestServer("server2",
+							registry.WithDescription("Server 2"),
+							registry.WithOCIPackage("server2:latest"),
+						),
+						registry.NewTestServer("remote1",
+							registry.WithDescription("Remote server 1"),
+							registry.WithHTTPPackage("https://example.com/remote1"),
+						),
+					),
+				)
+				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 			},
 			expectedCount: 3,
-			validateServers: func(t *testing.T, servers []toolhivetypes.ServerMetadata) {
+			validateServers: func(t *testing.T, servers []upstreamv0.ServerJSON) {
 				t.Helper()
 				names := make([]string, len(servers))
 				for i, s := range servers {
-					names[i] = s.GetName()
+					names[i] = s.Name
 				}
 				assert.Contains(t, names, "server1")
 				assert.Contains(t, names, "server2")
@@ -201,11 +183,8 @@ func TestService_ListServers(t *testing.T) {
 		{
 			name: "empty registry returns empty list",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers:     make(map[string]*toolhivetypes.ImageMetadata),
-				}, nil).AnyTimes()
+				testRegistry := registry.NewTestUpstreamRegistry()
+				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 			},
 			expectedCount: 0,
 		},
@@ -241,41 +220,34 @@ func TestService_GetServer(t *testing.T) {
 		serverName     string
 		setupMocks     func(*mocks.MockRegistryDataProvider)
 		expectedError  string
-		validateServer func(*testing.T, toolhivetypes.ServerMetadata)
+		validateServer func(*testing.T, upstreamv0.ServerJSON)
 	}{
 		{
 			name:       "get existing server",
 			serverName: "test-server",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers: map[string]*toolhivetypes.ImageMetadata{
-						"test-server": {
-							BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-								Name:        "test-server",
-								Description: "A test server",
-							},
-							Image: "test:latest",
-						},
-					},
-				}, nil).AnyTimes()
+				testRegistry := registry.NewTestUpstreamRegistry(
+					registry.WithServers(
+						registry.NewTestServer("test-server",
+							registry.WithDescription("A test server"),
+							registry.WithOCIPackage("test:latest"),
+						),
+					),
+				)
+				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 			},
-			validateServer: func(t *testing.T, s toolhivetypes.ServerMetadata) {
+			validateServer: func(t *testing.T, s upstreamv0.ServerJSON) {
 				t.Helper()
-				assert.Equal(t, "test-server", s.GetName())
-				assert.Equal(t, "A test server", s.GetDescription())
+				assert.Equal(t, "test-server", s.Name)
+				assert.Equal(t, "A test server", s.Description)
 			},
 		},
 		{
 			name:       "server not found",
 			serverName: "nonexistent",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers:     make(map[string]*toolhivetypes.ImageMetadata),
-				}, nil).AnyTimes()
+				testRegistry := registry.NewTestUpstreamRegistry()
+				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 			},
 			expectedError: "server not found",
 		},
@@ -297,10 +269,10 @@ func TestService_GetServer(t *testing.T) {
 
 			if tt.expectedError != "" {
 				assert.EqualError(t, err, tt.expectedError)
-				assert.Nil(t, server)
+				assert.Empty(t, server.Name)
 			} else {
 				assert.NoError(t, err)
-				assert.NotNil(t, server)
+				assert.NotEmpty(t, server.Name)
 				if tt.validateServer != nil {
 					tt.validateServer(t, server)
 				}
@@ -321,9 +293,8 @@ func TestService_ListDeployedServers(t *testing.T) {
 		{
 			name: "list deployed servers",
 			setupMocks: func(reg *mocks.MockRegistryDataProvider, dep *mocks.MockDeploymentProvider) {
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version: "1.0.0",
-				}, nil)
+				testRegistry := registry.NewTestUpstreamRegistry()
+				reg.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
 				dep.EXPECT().ListDeployedServers(gomock.Any()).Return([]*service.DeployedServer{
 					{
 						Name:      "deployed1",
@@ -347,9 +318,8 @@ func TestService_ListDeployedServers(t *testing.T) {
 		{
 			name: "no deployment provider returns empty list",
 			setupMocks: func(reg *mocks.MockRegistryDataProvider, _ *mocks.MockDeploymentProvider) {
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version: "1.0.0",
-				}, nil)
+				testRegistry := registry.NewTestUpstreamRegistry()
+				reg.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
 			},
 			useDeployment: false,
 			expectedCount: 0,
@@ -357,9 +327,8 @@ func TestService_ListDeployedServers(t *testing.T) {
 		{
 			name: "deployment provider error",
 			setupMocks: func(reg *mocks.MockRegistryDataProvider, dep *mocks.MockDeploymentProvider) {
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version: "1.0.0",
-				}, nil)
+				testRegistry := registry.NewTestUpstreamRegistry()
+				reg.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
 				dep.EXPECT().ListDeployedServers(gomock.Any()).Return(nil, errors.New("k8s api error"))
 			},
 			useDeployment: true,
@@ -415,9 +384,8 @@ func TestService_GetDeployedServer(t *testing.T) {
 			name:       "get deployed server",
 			serverName: "deployed1",
 			setupMocks: func(reg *mocks.MockRegistryDataProvider, dep *mocks.MockDeploymentProvider) {
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version: "1.0.0",
-				}, nil)
+				testRegistry := registry.NewTestUpstreamRegistry()
+				reg.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
 				dep.EXPECT().GetDeployedServer(gomock.Any(), "deployed1").Return([]*service.DeployedServer{
 					{
 						Name:      "deployed1",
@@ -442,9 +410,8 @@ func TestService_GetDeployedServer(t *testing.T) {
 			name:       "no deployment provider",
 			serverName: "any",
 			setupMocks: func(reg *mocks.MockRegistryDataProvider, _ *mocks.MockDeploymentProvider) {
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version: "1.0.0",
-				}, nil)
+				testRegistry := registry.NewTestUpstreamRegistry()
+				reg.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
 			},
 			useDeployment: false,
 			validateServers: func(t *testing.T, servers []*service.DeployedServer) {
@@ -456,9 +423,8 @@ func TestService_GetDeployedServer(t *testing.T) {
 			name:       "server not found",
 			serverName: "nonexistent",
 			setupMocks: func(reg *mocks.MockRegistryDataProvider, dep *mocks.MockDeploymentProvider) {
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version: "1.0.0",
-				}, nil)
+				testRegistry := registry.NewTestUpstreamRegistry()
+				reg.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
 				dep.EXPECT().GetDeployedServer(gomock.Any(), "nonexistent").Return([]*service.DeployedServer{}, nil)
 			},
 			useDeployment: true,
@@ -519,11 +485,8 @@ func TestService_WithCacheDuration(t *testing.T) {
 			cacheDuration: 100 * time.Millisecond,
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				// Should be called twice: once during NewService, once after cache expires
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers:     make(map[string]*toolhivetypes.ImageMetadata),
-				}, nil).Times(2)
+				testRegistry := registry.NewTestUpstreamRegistry()
+				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).Times(2)
 				m.EXPECT().GetSource().Return("test-source").AnyTimes()
 			},
 			callCount: 2,

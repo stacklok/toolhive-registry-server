@@ -13,8 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
+	v0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	service "github.com/stacklok/toolhive-registry-server/internal/service"
-	registry "github.com/stacklok/toolhive/pkg/registry/registry"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -72,10 +72,10 @@ func (mr *MockRegistryServiceMockRecorder) GetDeployedServer(ctx, name any) *gom
 }
 
 // GetRegistry mocks base method.
-func (m *MockRegistryService) GetRegistry(ctx context.Context) (*registry.Registry, string, error) {
+func (m *MockRegistryService) GetRegistry(ctx context.Context) (*types.UpstreamRegistry, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRegistry", ctx)
-	ret0, _ := ret[0].(*registry.Registry)
+	ret0, _ := ret[0].(*types.UpstreamRegistry)
 	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -88,10 +88,10 @@ func (mr *MockRegistryServiceMockRecorder) GetRegistry(ctx any) *gomock.Call {
 }
 
 // GetServer mocks base method.
-func (m *MockRegistryService) GetServer(ctx context.Context, name string) (registry.ServerMetadata, error) {
+func (m *MockRegistryService) GetServer(ctx context.Context, name string) (v0.ServerJSON, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetServer", ctx, name)
-	ret0, _ := ret[0].(registry.ServerMetadata)
+	ret0, _ := ret[0].(v0.ServerJSON)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -118,10 +118,10 @@ func (mr *MockRegistryServiceMockRecorder) ListDeployedServers(ctx any) *gomock.
 }
 
 // ListServers mocks base method.
-func (m *MockRegistryService) ListServers(ctx context.Context) ([]registry.ServerMetadata, error) {
+func (m *MockRegistryService) ListServers(ctx context.Context) ([]v0.ServerJSON, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListServers", ctx)
-	ret0, _ := ret[0].([]registry.ServerMetadata)
+	ret0, _ := ret[0].([]v0.ServerJSON)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

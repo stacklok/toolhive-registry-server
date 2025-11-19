@@ -3,10 +3,8 @@ package sources
 import (
 	"testing"
 
-	"github.com/stacklok/toolhive/pkg/registry/converters"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
@@ -16,45 +14,47 @@ func TestNewFetchResult(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		registryData *toolhivetypes.Registry
-		hash         string
-		format       string
+		name                string
+		registryData        *toolhivetypes.UpstreamRegistry
+		hash                string
+		format              string
+		expectedServerCount int
 	}{
 		{
-			name: "empty registry",
-			registryData: &toolhivetypes.Registry{
-				Version:       "1.0.0",
-				Servers:       make(map[string]*toolhivetypes.ImageMetadata),
-				RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
-			},
-			hash:   "abcd1234",
-			format: config.SourceFormatToolHive,
+			name:                "empty registry",
+			registryData:        registry.NewTestUpstreamRegistry(),
+			hash:                "abcd1234",
+			format:              config.SourceFormatToolHive,
+			expectedServerCount: 0,
 		},
 		{
-			name: "registry with servers",
-			registryData: &toolhivetypes.Registry{
-				Version: "1.0.0",
-				Servers: map[string]*toolhivetypes.ImageMetadata{
-					"server1": {},
-					"server2": {},
-				},
-				RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
-			},
-			hash:   "efgh5678",
-			format: config.SourceFormatToolHive,
+			name: "registry with OCI servers",
+			registryData: registry.NewTestUpstreamRegistry(
+				registry.WithServers(
+					registry.NewTestServer("server1",
+						registry.WithOCIPackage("image1:latest"),
+					),
+					registry.NewTestServer("server2",
+						registry.WithOCIPackage("image2:latest"),
+					),
+				),
+			),
+			hash:                "efgh5678",
+			format:              config.SourceFormatToolHive,
+			expectedServerCount: 2,
 		},
 		{
-			name: "registry with remote servers",
-			registryData: &toolhivetypes.Registry{
-				Version: "1.0.0",
-				Servers: make(map[string]*toolhivetypes.ImageMetadata),
-				RemoteServers: map[string]*toolhivetypes.RemoteServerMetadata{
-					"remote1": {},
-				},
-			},
-			hash:   "ijkl9012",
-			format: config.SourceFormatUpstream,
+			name: "registry with HTTP server",
+			registryData: registry.NewTestUpstreamRegistry(
+				registry.WithServers(
+					registry.NewTestServer("remote1",
+						registry.WithHTTPPackage("https://example.com"),
+					),
+				),
+			),
+			hash:                "ijkl9012",
+			format:              config.SourceFormatUpstream,
+			expectedServerCount: 1,
 		},
 	}
 
@@ -62,22 +62,12 @@ func TestNewFetchResult(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Convert ToolHive Registry to UpstreamRegistry
-			serverReg, err := converters.NewUpstreamRegistryFromToolhiveRegistry(tt.registryData)
-			require.NoError(t, err, "Failed to convert toolhive registry to server registry")
+			result := NewFetchResult(tt.registryData, tt.hash, tt.format)
 
-			result := NewFetchResult(serverReg, tt.hash, tt.format)
-
-			expectedServerCount := len(tt.registryData.Servers) + len(tt.registryData.RemoteServers)
-			assert.Equal(t, expectedServerCount, result.ServerCount)
+			assert.Equal(t, tt.expectedServerCount, result.ServerCount)
 			assert.Equal(t, tt.hash, result.Hash)
 			assert.Equal(t, tt.format, result.Format)
-
-			// Verify registry by converting back
-			convertedBack, err := registry.ToToolhive(result.Registry)
-			require.NoError(t, err, "Failed to convert server registry back to toolhive")
-			assert.Equal(t, len(tt.registryData.Servers), len(convertedBack.Servers))
-			assert.Equal(t, len(tt.registryData.RemoteServers), len(convertedBack.RemoteServers))
+			assert.Equal(t, tt.registryData, result.Registry)
 		})
 	}
 }
@@ -85,26 +75,20 @@ func TestNewFetchResult(t *testing.T) {
 func TestFetchResultHashConsistency(t *testing.T) {
 	t.Parallel()
 
-	registryData := &toolhivetypes.Registry{
-		Version: "1.0.0",
-		Servers: map[string]*toolhivetypes.ImageMetadata{
-			"server1": {},
-			"server2": {},
-			"server3": {},
-			"server4": {},
-			"server5": {},
-		},
-		RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
-	}
+	registryData := registry.NewTestUpstreamRegistry(
+		registry.WithServers(
+			registry.NewTestServer("server1", registry.WithOCIPackage("image1:latest")),
+			registry.NewTestServer("server2", registry.WithOCIPackage("image2:latest")),
+			registry.NewTestServer("server3", registry.WithOCIPackage("image3:latest")),
+			registry.NewTestServer("server4", registry.WithOCIPackage("image4:latest")),
+			registry.NewTestServer("server5", registry.WithOCIPackage("image5:latest")),
+		),
+	)
 	hash := "consistent-hash-value"
 	format := config.SourceFormatToolHive
 
-	// Convert to UpstreamRegistry
-	serverReg, err := converters.NewUpstreamRegistryFromToolhiveRegistry(registryData)
-	require.NoError(t, err)
-
-	result1 := NewFetchResult(serverReg, hash, format)
-	result2 := NewFetchResult(serverReg, hash, format)
+	result1 := NewFetchResult(registryData, hash, format)
+	result2 := NewFetchResult(registryData, hash, format)
 
 	// Same data should produce same results
 	assert.Equal(t, result1.Hash, result2.Hash)
@@ -116,34 +100,28 @@ func TestFetchResultHashConsistency(t *testing.T) {
 func TestFetchResultHashDifference(t *testing.T) {
 	t.Parallel()
 
-	registryData1 := &toolhivetypes.Registry{
-		Version: "1.0.0",
-		Servers: map[string]*toolhivetypes.ImageMetadata{
-			"server1": {},
-		},
-		RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
-	}
+	registryData1 := registry.NewTestUpstreamRegistry(
+		registry.WithServers(
+			registry.NewTestServer("server1",
+				registry.WithOCIPackage("image1:latest"),
+			),
+		),
+	)
 
-	registryData2 := &toolhivetypes.Registry{
-		Version: "1.0.0",
-		Servers: map[string]*toolhivetypes.ImageMetadata{
-			"server2": {},
-		},
-		RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
-	}
+	registryData2 := registry.NewTestUpstreamRegistry(
+		registry.WithServers(
+			registry.NewTestServer("server2",
+				registry.WithOCIPackage("image2:latest"),
+			),
+		),
+	)
 
 	hash1 := "hash-for-data1"
 	hash2 := "hash-for-data2"
 	format := config.SourceFormatToolHive
 
-	// Convert to UpstreamRegistry
-	serverReg1, err := converters.NewUpstreamRegistryFromToolhiveRegistry(registryData1)
-	require.NoError(t, err)
-	serverReg2, err := converters.NewUpstreamRegistryFromToolhiveRegistry(registryData2)
-	require.NoError(t, err)
-
-	result1 := NewFetchResult(serverReg1, hash1, format)
-	result2 := NewFetchResult(serverReg2, hash2, format)
+	result1 := NewFetchResult(registryData1, hash1, format)
+	result2 := NewFetchResult(registryData2, hash2, format)
 
 	// Different data should produce different hashes
 	assert.NotEqual(t, result1.Hash, result2.Hash)

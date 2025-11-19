@@ -6,44 +6,12 @@ import (
 	"testing"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
-	"github.com/modelcontextprotocol/registry/pkg/model"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
-
-// Helper to create upstream server with ToolHive tags
-func newTestServer(name string, tags []string, packageType string, identifier string) upstreamv0.ServerJSON {
-	tagInterfaces := make([]interface{}, len(tags))
-	for i, tag := range tags {
-		tagInterfaces[i] = tag
-	}
-
-	return upstreamv0.ServerJSON{
-		Schema:      "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-		Name:        "io.test/" + name,
-		Description: name + " server",
-		Version:     "1.0.0",
-		Packages: []model.Package{
-			{
-				RegistryType: packageType,
-				Identifier:   identifier,
-				Transport:    model.Transport{Type: "stdio"},
-			},
-		},
-		Meta: &upstreamv0.ServerMeta{
-			PublisherProvided: map[string]any{
-				"provider": map[string]any{
-					"metadata": map[string]any{
-						"tags": tagInterfaces,
-					},
-				},
-			},
-		},
-	}
-}
 
 // Helper to assert servers contain expected names
 func assertContainsServerNames(t *testing.T, servers []upstreamv0.ServerJSON, expectedNames []string) {
@@ -89,14 +57,22 @@ func TestDefaultFilterService_ApplyFilters_NoFilter(t *testing.T) {
 	ctx := context.Background()
 
 	// Create test registry with both container and remote servers
-	originalRegistry := &toolhivetypes.UpstreamRegistry{
-		Version:     "1.0.0",
-		LastUpdated: "2023-01-01T00:00:00Z",
-		Servers: []upstreamv0.ServerJSON{
-			newTestServer("postgres", []string{"database", "sql"}, "oci", "postgres:latest"),
-			newTestServer("web-api", []string{"web", "api"}, "http", "https://example.com"),
-		},
-	}
+	originalRegistry := registry.NewTestUpstreamRegistry(
+		registry.WithServers(
+			registry.NewTestServer("postgres",
+				registry.WithNamespace("io.test/"),
+				registry.WithTags("database", "sql"),
+				registry.WithOCIPackage("postgres:latest"),
+				registry.WithServerVersion("1.0.0"),
+			),
+			registry.NewTestServer("web-api",
+				registry.WithNamespace("io.test/"),
+				registry.WithTags("web", "api"),
+				registry.WithHTTPPackage("https://example.com"),
+				registry.WithMetadata("test", "test"),
+			),
+		),
+	)
 
 	// Apply no filter
 	result, err := service.ApplyFilters(ctx, originalRegistry, nil)
@@ -141,17 +117,35 @@ func TestDefaultFilterService_ApplyFilters_NameFiltering(t *testing.T) {
 			t.Parallel()
 
 			// Create test registry with both container and remote servers
-			originalRegistry := &toolhivetypes.UpstreamRegistry{
-				Version:     "1.0.0",
-				LastUpdated: "2023-01-01T00:00:00Z",
-				Servers: []upstreamv0.ServerJSON{
-					newTestServer("postgres-server", []string{"database"}, "oci", "postgres:latest"),
-					newTestServer("mysql-server", []string{"database"}, "oci", "mysql:latest"),
-					newTestServer("redis-experimental", []string{"cache"}, "oci", "redis:latest"),
-					newTestServer("web-api", []string{"web"}, "http", "https://example.com"),
-					newTestServer("admin-experimental", []string{"admin"}, "http", "https://admin.example.com"),
-				},
-			}
+			originalRegistry := registry.NewTestUpstreamRegistry(
+				registry.WithServers(
+					registry.NewTestServer("postgres-server",
+						registry.WithNamespace("io.test/"),
+						registry.WithTags("database"),
+						registry.WithOCIPackage("postgres:latest"),
+					),
+					registry.NewTestServer("mysql-server",
+						registry.WithNamespace("io.test/"),
+						registry.WithTags("database"),
+						registry.WithOCIPackage("mysql:latest"),
+					),
+					registry.NewTestServer("redis-experimental",
+						registry.WithNamespace("io.test/"),
+						registry.WithTags("cache"),
+						registry.WithOCIPackage("redis:latest"),
+					),
+					registry.NewTestServer("web-api",
+						registry.WithNamespace("io.test/"),
+						registry.WithTags("web"),
+						registry.WithHTTPPackage("https://example.com"),
+					),
+					registry.NewTestServer("admin-experimental",
+						registry.WithNamespace("io.test/"),
+						registry.WithTags("admin"),
+						registry.WithHTTPPackage("https://admin.example.com"),
+					),
+				),
+			)
 
 			filter := &config.FilterConfig{
 				Names: &config.NameFilterConfig{
@@ -209,17 +203,35 @@ func TestDefaultFilterService_ApplyFilters_TagFiltering(t *testing.T) {
 			t.Parallel()
 
 			// Create test registry with servers having different tags
-			originalRegistry := &toolhivetypes.UpstreamRegistry{
-				Version:     "1.0.0",
-				LastUpdated: "2023-01-01T00:00:00Z",
-				Servers: []upstreamv0.ServerJSON{
-					newTestServer("postgres-server", []string{"database", "sql"}, "oci", "postgres:latest"),
-					newTestServer("mysql-server", []string{"database", "deprecated"}, "oci", "mysql:latest"),
-					newTestServer("redis-server", []string{"cache"}, "oci", "redis:latest"),
-					newTestServer("web-api", []string{"web", "api"}, "http", "https://example.com"),
-					newTestServer("legacy-api", []string{"web", "deprecated"}, "http", "https://legacy.example.com"),
-				},
-			}
+			originalRegistry := registry.NewTestUpstreamRegistry(
+				registry.WithServers(
+					registry.NewTestServer("postgres-server",
+						registry.WithNamespace("io.test/"),
+						registry.WithTags("database", "sql"),
+						registry.WithOCIPackage("postgres:latest"),
+					),
+					registry.NewTestServer("mysql-server",
+						registry.WithNamespace("io.test/"),
+						registry.WithTags("database", "deprecated"),
+						registry.WithOCIPackage("mysql:latest"),
+					),
+					registry.NewTestServer("redis-server",
+						registry.WithNamespace("io.test/"),
+						registry.WithTags("cache"),
+						registry.WithOCIPackage("redis:latest"),
+					),
+					registry.NewTestServer("web-api",
+						registry.WithNamespace("io.test/"),
+						registry.WithTags("web", "api"),
+						registry.WithHTTPPackage("https://example.com"),
+					),
+					registry.NewTestServer("legacy-api",
+						registry.WithNamespace("io.test/"),
+						registry.WithTags("web", "deprecated"),
+						registry.WithHTTPPackage("https://legacy.example.com"),
+					),
+				),
+			)
 
 			filter := &config.FilterConfig{
 				Tags: &config.TagFilterConfig{
@@ -245,16 +257,30 @@ func TestDefaultFilterService_ApplyFilters_CombinedFiltering(t *testing.T) {
 	ctx := context.Background()
 
 	// Create test registry
-	originalRegistry := &toolhivetypes.UpstreamRegistry{
-		Version:     "1.0.0",
-		LastUpdated: "2023-01-01T00:00:00Z",
-		Servers: []upstreamv0.ServerJSON{
-			newTestServer("postgres-server", []string{"database", "sql"}, "oci", "postgres:latest"),
-			newTestServer("postgres-experimental", []string{"database", "experimental"}, "oci", "postgres:experimental"),
-			newTestServer("web-server", []string{"web", "api"}, "oci", "nginx:latest"),
-			newTestServer("database-api", []string{"database", "api"}, "http", "https://db.example.com"),
-		},
-	}
+	originalRegistry := registry.NewTestUpstreamRegistry(
+		registry.WithServers(
+			registry.NewTestServer("postgres-server",
+				registry.WithNamespace("io.test/"),
+				registry.WithTags("database", "sql"),
+				registry.WithOCIPackage("postgres:latest"),
+			),
+			registry.NewTestServer("postgres-experimental",
+				registry.WithNamespace("io.test/"),
+				registry.WithTags("database", "experimental"),
+				registry.WithOCIPackage("postgres:experimental"),
+			),
+			registry.NewTestServer("web-server",
+				registry.WithNamespace("io.test/"),
+				registry.WithTags("web", "api"),
+				registry.WithOCIPackage("nginx:latest"),
+			),
+			registry.NewTestServer("database-api",
+				registry.WithNamespace("io.test/"),
+				registry.WithTags("database", "api"),
+				registry.WithHTTPPackage("https://db.example.com"),
+			),
+		),
+	)
 
 	filter := &config.FilterConfig{
 		Names: &config.NameFilterConfig{
@@ -287,11 +313,7 @@ func TestDefaultFilterService_ApplyFilters_EmptyRegistry(t *testing.T) {
 	ctx := context.Background()
 
 	// Create empty registry
-	originalRegistry := &toolhivetypes.UpstreamRegistry{
-		Version:     "1.0.0",
-		LastUpdated: "2023-01-01T00:00:00Z",
-		Servers:     []upstreamv0.ServerJSON{},
-	}
+	originalRegistry := registry.NewTestUpstreamRegistry()
 
 	filter := &config.FilterConfig{
 		Names: &config.NameFilterConfig{
@@ -314,13 +336,17 @@ func TestDefaultFilterService_ApplyFilters_PreservesMetadata(t *testing.T) {
 	ctx := context.Background()
 
 	// Create registry with specific metadata values
-	originalRegistry := &toolhivetypes.UpstreamRegistry{
-		Version:     "2.5.3",
-		LastUpdated: "2023-12-15T14:30:00Z",
-		Servers: []upstreamv0.ServerJSON{
-			newTestServer("test-server", []string{"test"}, "oci", "test:latest"),
-		},
-	}
+	originalRegistry := registry.NewTestUpstreamRegistry(
+		registry.WithVersion("2.5.3"),
+		registry.WithLastUpdated("2023-12-15T14:30:00Z"),
+		registry.WithServers(
+			registry.NewTestServer("test-server",
+				registry.WithNamespace("io.test/"),
+				registry.WithTags("test"),
+				registry.WithOCIPackage("test:latest"),
+			),
+		),
+	)
 
 	filter := &config.FilterConfig{
 		Names: &config.NameFilterConfig{
