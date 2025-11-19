@@ -85,7 +85,7 @@ jobs:
           TREE_STATE: ${{ needs.compute-build-flags.outputs.tree-state }}
         run: |
           # Build a test binary using the same env vars as GoReleaser
-          go build -ldflags "-s -w -X github.com/stacklok/toolhive-registry-server/pkg/versions.Version=${VERSION} -X github.com/stacklok/toolhive-registry-server/pkg/versions.Commit=${COMMIT} -X github.com/stacklok/toolhive-registry-server/pkg/versions.BuildDate=$(date -Iseconds) -X github.com/stacklok/toolhive-registry-server/pkg/versions.BuildType=release" -o ./thv-test ./cmd/thv-registry-api
+          go build -ldflags "-s -w -X github.com/stacklok/toolhive-registry-server/internal/versions.Version=${VERSION} -X github.com/stacklok/toolhive-registry-server/internal/versions.Commit=${COMMIT} -X github.com/stacklok/toolhive-registry-server/internal/versions.BuildDate=$(date -Iseconds) -X github.com/stacklok/toolhive-registry-server/internal/versions.BuildType=release" -o ./thv-test ./cmd/thv-registry-api
 
           # Get version from binary
           BINARY_VERSION=$(./thv-test version --format json | jq -r '.version')

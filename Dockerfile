@@ -21,11 +21,11 @@ COPY . .
 
 # Build
 RUN CGO_ENABLED=0 LDFLAGS="-s -w \
--X github.com/stacklok/toolhive/pkg/versions.Version=${VERSION} \
--X github.com/stacklok/toolhive/pkg/versions.Commit=${COMMIT} \
--X github.com/stacklok/toolhive/pkg/versions.BuildDate=${BUILD_DATE} \
--X github.com/stacklok/toolhive/pkg/versions.BuildType=release" \
-go build -ldflags "${LDFLAGS}" -o main ./cmd/thv-registry-api/main.go
+-X github.com/stacklok/toolhive-registry-server/internal/versions.Version=${VERSION} \
+-X github.com/stacklok/toolhive-registry-server/internal/versions.Commit=${COMMIT} \
+-X github.com/stacklok/toolhive-registry-server/internal/versions.BuildDate=${BUILD_DATE} \
+-X github.com/stacklok/toolhive-registry-server/internal/versions.BuildType=release" \
+GOOS=linux GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o main ./cmd/thv-registry-api/main.go
 
 # Use minimal base image to package the binary
 FROM registry.access.redhat.com/ubi10/ubi-minimal:10.1-1763362715
