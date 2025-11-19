@@ -3,7 +3,7 @@ SELECT r.reg_type as registry_type,
        s.id,
        s.name,
        s.version,
-       l.latest_server_id IS NOT NULL AS is_latest,
+       (l.latest_server_id IS NOT NULL)::boolean AS is_latest,
        s.created_at,
        s.updated_at,
        s.description,
@@ -18,15 +18,16 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
- WHERE (sqlc.narg(next)::timestamp with time zone IS NULL OR sqlc.narg(next) > s.created_at)
+ WHERE (sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next))
+    OR (sqlc.narg(prev)::timestamp with time zone IS NULL AND s.created_at < sqlc.narg(prev))
  ORDER BY
  -- next page sorting
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.reg_type END ASC,
+ CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN r.reg_type END ASC,
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.name END ASC,
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.created_at END ASC,
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.version END ASC, -- acts as tie breaker
  -- previous page sorting
- CASE WHEN sqlc.narg(prev)::timestamp with time zone IS NULL THEN s.reg_type END DESC,
+ CASE WHEN sqlc.narg(prev)::timestamp with time zone IS NULL THEN r.reg_type END DESC,
  CASE WHEN sqlc.narg(prev)::timestamp with time zone IS NULL THEN s.name END DESC,
  CASE WHEN sqlc.narg(prev)::timestamp with time zone IS NULL THEN s.created_at END DESC,
  CASE WHEN sqlc.narg(prev)::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
@@ -77,12 +78,14 @@ SELECT s.id,
        s.repository_type
   FROM mcp_server s
  WHERE s.name = sqlc.arg(name)
+   AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next))
+       OR (sqlc.narg(prev)::timestamp with time zone IS NULL AND s.created_at < sqlc.narg(prev)))
  ORDER BY
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.created_at END ASC,
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
  LIMIT sqlc.arg(size)::bigint;
 
--- name: UpsertServerVersion :exec
+-- name: UpsertServerVersion :one
 INSERT INTO mcp_server (
     name,
     version,
@@ -124,9 +127,10 @@ INSERT INTO mcp_server (
     repository_url = sqlc.narg(repository_url),
     repository_id = sqlc.narg(repository_id),
     repository_subfolder = sqlc.narg(repository_subfolder),
-    repository_type = sqlc.narg(repository_type);
+    repository_type = sqlc.narg(repository_type)
+RETURNING id;
 
--- name: UpsertLatestServerVersion :exec
+-- name: UpsertLatestServerVersion :one
 INSERT INTO latest_server_version (
     reg_id,
     name,
@@ -140,7 +144,8 @@ INSERT INTO latest_server_version (
 ) ON CONFLICT (reg_id, name)
   DO UPDATE SET
     version = sqlc.arg(version),
-    latest_server_id = sqlc.arg(server_id);
+    latest_server_id = sqlc.arg(server_id)
+RETURNING latest_server_id;
 
 -- name: UpsertServerPackage :exec
 INSERT INTO mcp_server_package (

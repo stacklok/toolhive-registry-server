@@ -28,15 +28,18 @@ SELECT s.id,
        s.repository_type
   FROM mcp_server s
  WHERE s.name = $1
+   AND (($2::timestamp with time zone IS NULL OR s.created_at > $2)
+       OR ($3::timestamp with time zone IS NULL AND s.created_at < $3))
  ORDER BY
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.created_at END ASC,
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
- LIMIT $3::bigint
+ LIMIT $4::bigint
 `
 
 type ListServerVersionsParams struct {
 	Name string             `json:"name"`
 	Next pgtype.Timestamptz `json:"next"`
+	Prev pgtype.Timestamptz `json:"prev"`
 	Size int64              `json:"size"`
 }
 
@@ -58,7 +61,12 @@ type ListServerVersionsRow struct {
 }
 
 func (q *Queries) ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error) {
-	rows, err := q.db.Query(ctx, listServerVersions, arg.Name, arg.Next, arg.Size)
+	rows, err := q.db.Query(ctx, listServerVersions,
+		arg.Name,
+		arg.Next,
+		arg.Prev,
+		arg.Size,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +105,7 @@ SELECT r.reg_type as registry_type,
        s.id,
        s.name,
        s.version,
-       l.latest_server_id IS NOT NULL AS is_latest,
+       (l.latest_server_id IS NOT NULL)::boolean AS is_latest,
        s.created_at,
        s.updated_at,
        s.description,
@@ -112,15 +120,16 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
- WHERE ($1::timestamp with time zone IS NULL OR $1 > s.created_at)
+ WHERE ($1::timestamp with time zone IS NULL OR s.created_at > $1)
+    OR ($2::timestamp with time zone IS NULL AND s.created_at < $2)
  ORDER BY
  -- next page sorting
- CASE WHEN $1::timestamp with time zone IS NULL THEN s.reg_type END ASC,
+ CASE WHEN $1::timestamp with time zone IS NULL THEN r.reg_type END ASC,
  CASE WHEN $1::timestamp with time zone IS NULL THEN s.name END ASC,
  CASE WHEN $1::timestamp with time zone IS NULL THEN s.created_at END ASC,
  CASE WHEN $1::timestamp with time zone IS NULL THEN s.version END ASC, -- acts as tie breaker
  -- previous page sorting
- CASE WHEN $2::timestamp with time zone IS NULL THEN s.reg_type END DESC,
+ CASE WHEN $2::timestamp with time zone IS NULL THEN r.reg_type END DESC,
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.name END DESC,
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.created_at END DESC,
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
@@ -138,7 +147,7 @@ type ListServersRow struct {
 	ID                  pgtype.UUID        `json:"id"`
 	Name                string             `json:"name"`
 	Version             string             `json:"version"`
-	IsLatest            interface{}        `json:"is_latest"`
+	IsLatest            bool               `json:"is_latest"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
 	Description         pgtype.Text        `json:"description"`
@@ -189,7 +198,7 @@ func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]Lis
 	return items, nil
 }
 
-const upsertLatestServerVersion = `-- name: UpsertLatestServerVersion :exec
+const upsertLatestServerVersion = `-- name: UpsertLatestServerVersion :one
 INSERT INTO latest_server_version (
     reg_id,
     name,
@@ -204,6 +213,7 @@ INSERT INTO latest_server_version (
   DO UPDATE SET
     version = $3,
     latest_server_id = $4
+RETURNING latest_server_id
 `
 
 type UpsertLatestServerVersionParams struct {
@@ -213,14 +223,16 @@ type UpsertLatestServerVersionParams struct {
 	ServerID pgtype.UUID `json:"server_id"`
 }
 
-func (q *Queries) UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) error {
-	_, err := q.db.Exec(ctx, upsertLatestServerVersion,
+func (q *Queries) UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, upsertLatestServerVersion,
 		arg.RegID,
 		arg.Name,
 		arg.Version,
 		arg.ServerID,
 	)
-	return err
+	var latest_server_id pgtype.UUID
+	err := row.Scan(&latest_server_id)
+	return latest_server_id, err
 }
 
 const upsertServerIcon = `-- name: UpsertServerIcon :exec
@@ -356,7 +368,7 @@ func (q *Queries) UpsertServerRemote(ctx context.Context, arg UpsertServerRemote
 	return err
 }
 
-const upsertServerVersion = `-- name: UpsertServerVersion :exec
+const upsertServerVersion = `-- name: UpsertServerVersion :one
 INSERT INTO mcp_server (
     name,
     version,
@@ -399,6 +411,7 @@ INSERT INTO mcp_server (
     repository_id = $10,
     repository_subfolder = $11,
     repository_type = $12
+RETURNING id
 `
 
 type UpsertServerVersionParams struct {
@@ -416,8 +429,8 @@ type UpsertServerVersionParams struct {
 	RepositoryType      pgtype.Text `json:"repository_type"`
 }
 
-func (q *Queries) UpsertServerVersion(ctx context.Context, arg UpsertServerVersionParams) error {
-	_, err := q.db.Exec(ctx, upsertServerVersion,
+func (q *Queries) UpsertServerVersion(ctx context.Context, arg UpsertServerVersionParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, upsertServerVersion,
 		arg.Name,
 		arg.Version,
 		arg.RegID,
@@ -431,5 +444,7 @@ func (q *Queries) UpsertServerVersion(ctx context.Context, arg UpsertServerVersi
 		arg.RepositorySubfolder,
 		arg.RepositoryType,
 	)
-	return err
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }

@@ -19,11 +19,11 @@ type Querier interface {
 	ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error)
 	ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error)
 	UpdateRegistrySync(ctx context.Context, arg UpdateRegistrySyncParams) error
-	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) error
+	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (pgtype.UUID, error)
 	UpsertServerIcon(ctx context.Context, arg UpsertServerIconParams) error
 	UpsertServerPackage(ctx context.Context, arg UpsertServerPackageParams) error
 	UpsertServerRemote(ctx context.Context, arg UpsertServerRemoteParams) error
-	UpsertServerVersion(ctx context.Context, arg UpsertServerVersionParams) error
+	UpsertServerVersion(ctx context.Context, arg UpsertServerVersionParams) (pgtype.UUID, error)
 }
 
 var _ Querier = (*Queries)(nil)
