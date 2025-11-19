@@ -14,7 +14,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	github.com/spf13/viper v1.21.0
-	github.com/stacklok/toolhive v0.6.6-0.20251118224617-bb76dc33d258
+	github.com/stacklok/toolhive v0.6.6
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc4
 	github.com/testcontainers/testcontainers-go v0.40.0
