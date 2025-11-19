@@ -23,11 +23,11 @@ var (
 	dbPass = "testpass"
 )
 
-// SetupTestDB creates a Postgres container using testcontainers and runs migrations
-func SetupTestDB(t *testing.T) (*pgx.Conn, func()) {
+// SetupTestDBContaienr creates a Postgres container using testcontainers and returns a connection to the database
+//
+//nolint:revive
+func SetupTestDBContaienr(t *testing.T, ctx context.Context) (*pgx.Conn, func()) {
 	t.Helper()
-
-	ctx := context.Background()
 
 	// Start Postgres container
 	postgresContainer, err := postgres.Run(
@@ -50,22 +50,24 @@ func SetupTestDB(t *testing.T) (*pgx.Conn, func()) {
 	db, err = pgx.Connect(ctx, connStr)
 	require.NoError(t, err)
 
-	// Run migrations
-	err = MigrateUp(ctx, db)
-	require.NoError(t, err)
+	return db, func() { tc.CleanupContainer(t, postgresContainer) }
+}
 
-	// Test full migration rollback (migrate down by all steps)
-	err = MigrateDown(ctx, db, 1)
-	require.NoError(t, err)
+// SetupTestDB creates a Postgres container using testcontainers and runs all migrations
+func SetupTestDB(t *testing.T) (*pgx.Conn, func()) {
+	t.Helper()
 
-	// Reapply migrations
-	err = MigrateUp(ctx, db)
+	ctx := context.Background()
+	db, containerCleanupFunc := SetupTestDBContaienr(t, ctx)
+
+	// Apply migrations
+	err := MigrateUp(ctx, db)
 	require.NoError(t, err)
 
 	cleanupFunc := func() {
 		//nolint:gosec
 		_ = db.Close(ctx)
-		tc.CleanupContainer(t, postgresContainer)
+		containerCleanupFunc()
 	}
 
 	return db, cleanupFunc
