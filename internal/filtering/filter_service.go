@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"

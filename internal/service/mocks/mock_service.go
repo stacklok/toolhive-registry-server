@@ -15,6 +15,7 @@ import (
 
 	v0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	service "github.com/stacklok/toolhive-registry-server/internal/service"
+	registry "github.com/stacklok/toolhive/pkg/registry/registry"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -72,10 +73,10 @@ func (mr *MockRegistryServiceMockRecorder) GetDeployedServer(ctx, name any) *gom
 }
 
 // GetRegistry mocks base method.
-func (m *MockRegistryService) GetRegistry(ctx context.Context) (*types.UpstreamRegistry, string, error) {
+func (m *MockRegistryService) GetRegistry(ctx context.Context) (*registry.UpstreamRegistry, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRegistry", ctx)
-	ret0, _ := ret[0].(*types.UpstreamRegistry)
+	ret0, _ := ret[0].(*registry.UpstreamRegistry)
 	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
