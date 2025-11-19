@@ -157,9 +157,11 @@ tasks:
       BUILD_DATE: '{{dateInZone "2006-01-02T15:04:05Z" (now) "UTC"}}'
       SHA:
         sh: git rev-parse HEAD || echo "unknown"
+      PLATFORM:
+        sh: echo "${PLATFORM:-linux/$(go env GOARCH)}" 
     cmds:
       - |
-        {{.CONTAINER_RUNTIME}} build --load \
+        {{.CONTAINER_RUNTIME}} build --platform={{.PLATFORM}} --load \
         -t {{.REPO}}:{{.SHA}}-ubi \
         --build-arg VERSION={{.SHA}}-ubi \
         --build-arg COMMIT={{.COMMIT}} \

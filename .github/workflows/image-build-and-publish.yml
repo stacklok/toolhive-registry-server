@@ -90,7 +90,7 @@ jobs:
       - name: Build and Push UBI Image to GHCR
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.ubi-meta.outputs.tags }}
           build-args: |
