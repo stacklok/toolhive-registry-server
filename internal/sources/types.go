@@ -8,7 +8,7 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhiveregistry "github.com/stacklok/toolhive/pkg/registry"
 	"github.com/stacklok/toolhive/pkg/registry/converters"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )

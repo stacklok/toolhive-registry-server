@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/stacklok/toolhive/pkg/logger"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 )
 
 var (

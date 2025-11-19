@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stacklok/toolhive/pkg/logger"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 	"github.com/stacklok/toolhive/pkg/versions"
 	"gopkg.in/yaml.v3"
 

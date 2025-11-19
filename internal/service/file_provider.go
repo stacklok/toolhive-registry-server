@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/types"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
