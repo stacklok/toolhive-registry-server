@@ -100,7 +100,7 @@ var _ = Describe("APISourceHandler", func() {
 		})
 	})
 
-	Describe("Format Detection", func() {
+	Describe("Upstream Format Validation", func() {
 		Context("Upstream Format", func() {
 			BeforeEach(func() {
 				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +160,7 @@ openapi: 3.1.0
 
 				_, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("format detection failed"))
+				Expect(err.Error()).To(ContainSubstring("upstream format validation failed"))
 			})
 		})
 	})

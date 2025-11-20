@@ -36,8 +36,8 @@ func (*APISourceHandler) Validate(source *config.SourceConfig) error {
 			config.SourceTypeAPI, source.Type)
 	}
 
-	if source.Format != config.SourceFormatUpstream {
-		return fmt.Errorf("unsupported format: expected %s, got %s",
+	if source.Format != "" && source.Format != config.SourceFormatUpstream {
+		return fmt.Errorf("unsupported format: expected %s or empty, got %s",
 			config.SourceFormatUpstream, source.Format)
 	}
 
