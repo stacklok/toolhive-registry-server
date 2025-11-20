@@ -19,8 +19,7 @@ source:
   # Source type: git, or api
   type: api
 
-  # Data format: toolhive (native) or upstream (MCP registry format)
-  # Use 'upstream' for the official MCP registry format
+  # Data format: only 'upstream' is supported for API sources
   format: upstream
 
   # API endpoint configuration
