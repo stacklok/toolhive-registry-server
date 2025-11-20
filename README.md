@@ -69,9 +69,10 @@ The server starts on port 8080 by default. Use `--address :PORT` to customize.
 
 **What happens when the server starts:**
 1. Loads configuration from the specified YAML file
-2. Immediately fetches registry data from the configured source
-3. Starts background sync coordinator for automatic updates
-4. Serves MCP Registry API endpoints on the configured address
+2. Runs database migrations automatically (if database is configured)
+3. Immediately fetches registry data from the configured source
+4. Starts background sync coordinator for automatic updates
+5. Serves MCP Registry API endpoints on the configured address
 
 For detailed configuration options and examples, see the [examples/README.md](examples/README.md).
 
@@ -198,8 +199,10 @@ The server optionally supports PostgreSQL database connectivity for storing regi
 |-------|------|----------|---------|-------------|
 | `host` | string | Yes | - | Database server hostname or IP address |
 | `port` | int | Yes | - | Database server port |
-| `user` | string | Yes | - | Database username |
+| `user` | string | Yes | - | Database username for normal operations |
 | `passwordFile` | string | No* | - | Path to file containing the database password |
+| `migrationUser` | string | No | `user` | Database username for running migrations (should have elevated privileges) |
+| `migrationPasswordFile` | string | No | `passwordFile` | Path to file containing the migration user's password |
 | `database` | string | Yes | - | Database name |
 | `sslMode` | string | No | `require` | SSL mode (`disable`, `require`, `verify-ca`, `verify-full`) |
 | `maxOpenConns` | int | No | `25` | Maximum number of open connections to the database |
@@ -210,7 +213,9 @@ The server optionally supports PostgreSQL database connectivity for storing regi
 
 #### Password Security
 
-The server supports secure password management with the following priority order:
+The server supports secure password management with separate credentials for normal operations and migrations.
+
+**Normal Operations Password (for `user`):**
 
 1. **Password File** (Recommended for production):
    - Set `passwordFile` to the path of a file containing only the password
@@ -231,7 +236,29 @@ The server supports secure password management with the following priority order
      thv-registry-api serve --config config.yaml
      ```
 
+**Migration User Password (for `migrationUser`):**
+
+1. **Migration Password File**:
+   - Set `migrationPasswordFile` to the path of a file containing the migration user's password
+   - Falls back to `passwordFile` if not specified
+   - Example:
+     ```yaml
+     database:
+       migrationUser: db_migrator
+       migrationPasswordFile: /secrets/db-migration-password
+     ```
+
+2. **Environment Variable**:
+   - Set `THV_DATABASE_MIGRATION_PASSWORD` environment variable
+   - Falls back to `THV_DATABASE_PASSWORD` if not specified
+   - Example:
+     ```bash
+     export THV_DATABASE_MIGRATION_PASSWORD="migration-user-password"
+     thv-registry-api serve --config config.yaml
+     ```
+
 **Security Best Practices:**
+- Use separate users for migrations (with elevated privileges) and normal operations (read-only or limited)
 - Never commit passwords directly in configuration files
 - Use password files with restricted permissions (e.g., `chmod 400`)
 - In Kubernetes, mount passwords from Secrets
@@ -252,9 +279,20 @@ Tune these values based on your workload:
 
 #### Database Migrations
 
-The server includes built-in database migration commands to manage the database schema.
+The server includes built-in database migration support to manage the database schema.
 
-**Running migrations with CLI:**
+**Automatic migrations on startup:**
+
+When you start the server with `serve`, database migrations run automatically if database configuration is present in your config file. This ensures your database schema is always up to date.
+
+```bash
+# Migrations run automatically when database is configured
+thv-registry-api serve --config examples/config-database-dev.yaml
+```
+
+**Manual migration commands (optional):**
+
+You can also run migrations manually using the CLI commands:
 
 ```bash
 # Apply all pending migrations
@@ -285,8 +323,7 @@ task migrate-down CONFIG=examples/config-database-dev.yaml NUM_STEPS=1
 
 1. **Configure database**: Create a config file with database settings (see [examples/config-database-dev.yaml](examples/config-database-dev.yaml))
 2. **Set password**: Either set `THV_DATABASE_PASSWORD` env var or use `passwordFile` in config
-3. **Run migrations**: Use `migrate up` to apply schema changes
-4. **Start server**: Run `serve` command with the same config file
+3. **Start server**: Run `serve` command - migrations will run automatically
 
 **Example: Local development setup**
 
@@ -302,10 +339,7 @@ docker run -d --name postgres \
 # 2. Set password environment variable
 export THV_DATABASE_PASSWORD="devpassword"
 
-# 3. Run migrations
-task migrate-up CONFIG=examples/config-database-dev.yaml
-
-# 4. Start the server
+# 3. Start the server (migrations run automatically)
 thv-registry-api serve --config examples/config-database-dev.yaml
 ```
 
@@ -316,12 +350,7 @@ thv-registry-api serve --config examples/config-database-dev.yaml
 echo "your-secure-password" > /run/secrets/db_password
 chmod 400 /run/secrets/db_password
 
-# 2. Run migrations (using passwordFile from config)
-thv-registry-api migrate up \
-  --config examples/config-database-prod.yaml \
-  --yes
-
-# 3. Start the server
+# 2. Start the server (migrations run automatically)
 thv-registry-api serve --config examples/config-database-prod.yaml
 ```
 
@@ -597,12 +626,12 @@ docker run -v $(pwd)/examples:/config \
 
 ### Docker Compose
 
-A complete Docker Compose setup is provided in the repository root that includes PostgreSQL, automatic migrations, and the API server.
+A complete Docker Compose setup is provided in the repository root that includes PostgreSQL and the API server with automatic migrations.
 
 **Quick start:**
 
 ```bash
-# Start all services (PostgreSQL + migrations + API)
+# Start all services (PostgreSQL + API with automatic migrations)
 docker-compose up
 
 # Run in detached mode
@@ -620,14 +649,13 @@ docker-compose down -v
 
 **Architecture:**
 
-The docker-compose.yaml includes three services:
+The docker-compose.yaml includes two services:
 1. **postgres** - PostgreSQL 18 database server
-2. **migrate** - One-time migration service (runs schema migrations)
-3. **registry-api** - Main API server
+2. **registry-api** - Main API server (runs migrations automatically on startup)
 
 **Service startup flow:**
 ```
-postgres (healthy) → migrate (completes) → registry-api (starts)
+postgres (healthy) → registry-api (runs migrations, then starts)
 ```
 
 **Configuration:**

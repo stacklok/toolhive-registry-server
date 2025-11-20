@@ -19,11 +19,10 @@
 #   4. SSL certificates configured if using verify-ca or verify-full
 #
 # Usage:
-#   # Run migrations
-#   thv-registry-api migrate up --config examples/config-database-prod.yaml
-#
-#   # Start server
+#   # Start server (migrations run automatically)
 #   thv-registry-api serve --config examples/config-database-prod.yaml
+#
+# Note: Database migrations run automatically when the server starts
 
 # Registry name/identifier
 registryName: production-registry

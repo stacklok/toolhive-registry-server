@@ -43,10 +43,10 @@ func runMigrateDown(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("database configuration is required")
 	}
 
-	// Get connection string
-	connString, err := cfg.Database.GetConnectionString()
+	// Get migration connection string (uses migration user if configured)
+	connString, err := cfg.Database.GetMigrationConnectionString()
 	if err != nil {
-		return fmt.Errorf("failed to get database connection string: %w", err)
+		return fmt.Errorf("failed to get migration connection string: %w", err)
 	}
 
 	// Prompt user for confirmation if not using --yes flag
@@ -103,8 +103,9 @@ func parseMigrateDownFlags(cmd *cobra.Command) (uint, bool, string, error) {
 }
 
 func confirmMigrationDown(numSteps uint, dbCfg *config.DatabaseConfig) bool {
-	logger.Warnf("WARNING: This will revert %d migration(s) from database: %s@%s:%d/%s",
-		numSteps, dbCfg.User, dbCfg.Host, dbCfg.Port, dbCfg.Database)
+	migrationUser := dbCfg.GetMigrationUser()
+	logger.Warnf("WARNING: This will revert %d migration(s) from database: %s@%s:%d/%s (as user: %s)",
+		numSteps, migrationUser, dbCfg.Host, dbCfg.Port, dbCfg.Database, migrationUser)
 	logger.Warnf("WARNING: This operation may result in DATA LOSS")
 	fmt.Print("Are you sure you want to continue? Type 'yes' to proceed: ")
 	var response string
