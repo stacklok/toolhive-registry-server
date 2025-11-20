@@ -31,6 +31,9 @@ syncPolicy:
   # More frequent syncs for development
   interval: "5m"
 
+# Storage configuration - use database for development
+storage: database
+
 # PostgreSQL database configuration for development
 database:
   # Local PostgreSQL instance

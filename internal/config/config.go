@@ -23,6 +23,17 @@ const (
 	SourceTypeFile = "file"
 )
 
+// StorageType is an enum of supported storage backends for registry data.
+type StorageType string
+
+const (
+	// StorageTypeDatabase stores registry data in PostgreSQL database
+	StorageTypeDatabase StorageType = "database"
+
+	// StorageTypeFile stores registry data in local JSON files
+	StorageTypeFile StorageType = "file"
+)
+
 const (
 	// SourceFormatToolHive is the native ToolHive registry format
 	SourceFormatToolHive = "toolhive"
@@ -74,6 +85,11 @@ type Config struct {
 	SyncPolicy   *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
 	Filter       *FilterConfig     `yaml:"filter,omitempty"`
 	Database     *DatabaseConfig   `yaml:"database,omitempty"`
+	// Storage specifies where registry data should be stored
+	// Options: "database" or "file"
+	// When set to "database", the Database configuration must be provided
+	// Defaults to "file" if not specified
+	Storage StorageType `yaml:"storage,omitempty"`
 }
 
 // SourceConfig defines the data source configuration
@@ -279,6 +295,14 @@ func (c *Config) GetRegistryName() string {
 	return c.RegistryName
 }
 
+// GetStorage returns the storage type, using "file" as the default if not specified
+func (c *Config) GetStorage() StorageType {
+	if c.Storage == "" {
+		return StorageTypeFile
+	}
+	return c.Storage
+}
+
 // Validate performs validation on the configuration
 func (c *Config) validate() error {
 	if c == nil {
@@ -304,7 +328,8 @@ func (c *Config) validate() error {
 		return fmt.Errorf("syncPolicy.interval must be a valid duration (e.g., '30m', '1h'): %w", err)
 	}
 
-	return nil
+	// Validate storage configuration
+	return c.validateStorageConfig()
 }
 
 // validateSourceConfigByType validates the source configuration by the source type
@@ -340,6 +365,39 @@ func (c *Config) validateSourceConfigByType() error {
 
 	default:
 		return fmt.Errorf("unsupported source type: %s", c.Source.Type)
+	}
+
+	return nil
+}
+
+// validateStorageConfig validates the storage configuration
+func (c *Config) validateStorageConfig() error {
+	storageType := c.GetStorage()
+
+	// Validate storage type
+	if storageType != StorageTypeDatabase && storageType != StorageTypeFile {
+		return fmt.Errorf("storage must be either %q or %q, got %q", StorageTypeDatabase, StorageTypeFile, storageType)
+	}
+
+	// If database storage is configured, database config must be provided
+	if storageType == StorageTypeDatabase {
+		if c.Database == nil {
+			return fmt.Errorf("database configuration is required when storage is set to %q", StorageTypeDatabase)
+		}
+
+		// Validate required database fields
+		if c.Database.Host == "" {
+			return fmt.Errorf("database.host is required when storage is %q", StorageTypeDatabase)
+		}
+		if c.Database.Port == 0 {
+			return fmt.Errorf("database.port is required when storage is %q", StorageTypeDatabase)
+		}
+		if c.Database.User == "" {
+			return fmt.Errorf("database.user is required when storage is %q", StorageTypeDatabase)
+		}
+		if c.Database.Database == "" {
+			return fmt.Errorf("database.database is required when storage is %q", StorageTypeDatabase)
+		}
 	}
 
 	return nil

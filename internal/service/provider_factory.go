@@ -36,5 +36,16 @@ func (f *defaultRegistryProviderFactory) CreateProvider(cfg *config.Config) (Reg
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
-	return NewFileRegistryDataProvider(f.storageManager, cfg), nil
+	storageType := cfg.GetStorage()
+
+	switch storageType {
+	case config.StorageTypeFile:
+		return NewFileRegistryDataProvider(f.storageManager, cfg), nil
+	case config.StorageTypeDatabase:
+		// Database provider is not yet implemented
+		// When implemented, this will create a database-backed provider
+		return nil, fmt.Errorf("database storage is not yet implemented")
+	default:
+		return nil, fmt.Errorf("unsupported storage type: %s", storageType)
+	}
 }

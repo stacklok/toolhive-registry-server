@@ -43,6 +43,9 @@ syncPolicy:
   # Less frequent syncs for production to reduce load
   interval: "1h"
 
+# Storage configuration - use database for production deployments
+storage: database
+
 # PostgreSQL database configuration for production
 database:
   # Production database server

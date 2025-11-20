@@ -152,12 +152,23 @@ filter:
       - "unmaintained"        # Exclude unmaintained servers
 
 # ==============================================================================
-# DATABASE CONFIGURATION (Optional)
+# STORAGE CONFIGURATION (Optional)
+# ==============================================================================
+
+# Storage type for registry data
+# Options:
+#   - file: Store data in local JSON files (default)
+#   - database: Store data in PostgreSQL database
+# Defaults to "file" if not specified
+storage: file
+
+# ==============================================================================
+# DATABASE CONFIGURATION (Required when storage: database)
 # ==============================================================================
 
 # PostgreSQL database configuration
-# When configured, the application will store synced registry data in the database
-# instead of local JSON files. This enables:
+# When storage is set to "database", this configuration is REQUIRED
+# Database storage enables:
 #   - Centralized data storage for multiple instances
 #   - Better performance for large registries
 #   - SQL query capabilities

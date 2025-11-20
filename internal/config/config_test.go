@@ -404,6 +404,166 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: true,
 			errMsg:  "unsupported source type",
 		},
+		{
+			name: "valid_config_with_file_storage",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+				Storage: "file",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid_config_with_database_storage",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+				Storage: "database",
+				Database: &DatabaseConfig{
+					Host:     "localhost",
+					Port:     5432,
+					User:     "testuser",
+					Database: "testdb",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid_storage_type",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+				Storage: "invalid",
+			},
+			wantErr: true,
+			errMsg:  "storage must be either",
+		},
+		{
+			name: "database_storage_without_database_config",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+				Storage: "database",
+			},
+			wantErr: true,
+			errMsg:  "database configuration is required when storage is set to \"database\"",
+		},
+		{
+			name: "database_storage_missing_host",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+				Storage: "database",
+				Database: &DatabaseConfig{
+					Port:     5432,
+					User:     "testuser",
+					Database: "testdb",
+				},
+			},
+			wantErr: true,
+			errMsg:  "database.host is required",
+		},
+		{
+			name: "database_storage_missing_port",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+				Storage: "database",
+				Database: &DatabaseConfig{
+					Host:     "localhost",
+					User:     "testuser",
+					Database: "testdb",
+				},
+			},
+			wantErr: true,
+			errMsg:  "database.port is required",
+		},
+		{
+			name: "database_storage_missing_user",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+				Storage: "database",
+				Database: &DatabaseConfig{
+					Host:     "localhost",
+					Port:     5432,
+					Database: "testdb",
+				},
+			},
+			wantErr: true,
+			errMsg:  "database.user is required",
+		},
+		{
+			name: "database_storage_missing_database",
+			config: &Config{
+				Source: SourceConfig{
+					Type: "file",
+					File: &FileConfig{
+						Path: "/data/registry.json",
+					},
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "30m",
+				},
+				Storage: "database",
+				Database: &DatabaseConfig{
+					Host: "localhost",
+					Port: 5432,
+					User: "testuser",
+				},
+			},
+			wantErr: true,
+			errMsg:  "database.database is required",
+		},
 	}
 
 	for _, tt := range tests {
@@ -455,6 +615,50 @@ func TestGetRegistryName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			result := tt.config.GetRegistryName()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestGetStorage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		config   *Config
+		expected string
+	}{
+		{
+			name: "with_file_storage",
+			config: &Config{
+				Storage: "file",
+			},
+			expected: "file",
+		},
+		{
+			name: "with_database_storage",
+			config: &Config{
+				Storage: "database",
+			},
+			expected: "database",
+		},
+		{
+			name:     "without_storage",
+			config:   &Config{},
+			expected: "file",
+		},
+		{
+			name: "empty_storage",
+			config: &Config{
+				Storage: "",
+			},
+			expected: "file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := tt.config.GetStorage()
 			assert.Equal(t, tt.expected, result)
 		})
 	}
