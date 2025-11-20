@@ -4,7 +4,6 @@ package v0
 import (
 	"encoding/json"
 	"net/http"
-	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stacklok/toolhive/pkg/logger"
@@ -18,9 +17,26 @@ import (
 var (
 	// cachedOpenAPIYAML stores the cached YAML representation of the OpenAPI spec
 	cachedOpenAPIYAML []byte
-	// openAPIOnce ensures the OpenAPI spec is only parsed once
-	openAPIOnce sync.Once
 )
+
+func init() {
+	// Initialize the OpenAPI YAML at package load time to prevent race conditions
+	// Parse the JSON OpenAPI spec
+	var openAPISpec map[string]any
+	if err := json.Unmarshal([]byte(docs.SwaggerInfo.ReadDoc()), &openAPISpec); err != nil {
+		logger.Errorf("Failed to parse OpenAPI specification during initialization: %v", err)
+		return
+	}
+
+	// Convert to YAML
+	yamlData, err := yaml.Marshal(openAPISpec)
+	if err != nil {
+		logger.Errorf("Failed to convert OpenAPI specification to YAML during initialization: %v", err)
+		return
+	}
+
+	cachedOpenAPIYAML = yamlData
+}
 
 // RegistryInfoResponse represents the registry information response
 // Deprecated: Use API v0.1 instead
@@ -216,29 +232,9 @@ func (*Routes) writeErrorResponse(w http.ResponseWriter, message string, statusC
 // @Router			/api/v0/registry/openapi.yaml [get]
 // @Deprecated
 func serveOpenAPIYAML(w http.ResponseWriter, _ *http.Request) {
-	// Initialize the cached OpenAPI YAML once to prevent race conditions
-	var initErr error
-	openAPIOnce.Do(func() {
-		// Parse the JSON OpenAPI spec
-		var openAPISpec map[string]interface{}
-		if err := json.Unmarshal([]byte(docs.SwaggerInfo.ReadDoc()), &openAPISpec); err != nil {
-			initErr = err
-			return
-		}
-
-		// Convert to YAML
-		yamlData, err := yaml.Marshal(openAPISpec)
-		if err != nil {
-			initErr = err
-			return
-		}
-
-		cachedOpenAPIYAML = yamlData
-	})
-
-	// Check if initialization failed
-	if initErr != nil {
-		http.Error(w, "Failed to generate OpenAPI specification", http.StatusInternalServerError)
+	// Check if initialization failed (cachedOpenAPIYAML would be empty)
+	if len(cachedOpenAPIYAML) == 0 {
+		http.Error(w, "OpenAPI specification not available", http.StatusInternalServerError)
 		return
 	}
 
