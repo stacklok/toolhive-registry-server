@@ -20,19 +20,19 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 )
 
-func TestNewDefaultSyncManager(t *testing.T) {
+func TestNewFileSyncManager(t *testing.T) {
 	t.Parallel()
 
 	sourceHandlerFactory := sources.NewSourceHandlerFactory()
 	storageManager := sources.NewFileStorageManager("/tmp/test-storage")
 
-	syncManager := NewDefaultSyncManager(sourceHandlerFactory, storageManager)
+	syncManager := NewFileSyncManager(sourceHandlerFactory, storageManager)
 
 	assert.NotNil(t, syncManager)
-	assert.IsType(t, &DefaultSyncManager{}, syncManager)
+	assert.IsType(t, &FileSyncManager{}, syncManager)
 }
 
-func TestDefaultSyncManager_ShouldSync(t *testing.T) {
+func TestFileSyncManager_ShouldSync(t *testing.T) {
 	t.Parallel()
 
 	// Create temp directory and test file
@@ -137,7 +137,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 
 			sourceHandlerFactory := sources.NewSourceHandlerFactory()
 			storageManager := sources.NewFileStorageManager("/tmp/test-storage")
-			syncManager := NewDefaultSyncManager(sourceHandlerFactory, storageManager)
+			syncManager := NewFileSyncManager(sourceHandlerFactory, storageManager)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -162,7 +162,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 	}
 }
 
-func TestDefaultSyncManager_PerformSync(t *testing.T) {
+func TestFileSyncManager_PerformSync(t *testing.T) {
 	t.Parallel()
 
 	// Create temp directory and test files for different scenarios
@@ -313,7 +313,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 					Times(1)
 			}
 
-			syncManager := NewDefaultSyncManager(sourceHandlerFactory, mockStorageManager)
+			syncManager := NewFileSyncManager(sourceHandlerFactory, mockStorageManager)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()

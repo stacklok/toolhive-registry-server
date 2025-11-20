@@ -250,7 +250,7 @@ func buildSyncComponents(
 
 	// Build sync manager
 	if b.syncManager == nil {
-		b.syncManager = pkgsync.NewDefaultSyncManager(
+		b.syncManager = pkgsync.NewFileSyncManager(
 			b.sourceHandlerFactory,
 			b.storageManager,
 		)

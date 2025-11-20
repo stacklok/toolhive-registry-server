@@ -77,6 +77,6 @@
 //
 // The package follows Go best practices by using interfaces for testability
 // and dependency injection, while providing concrete struct implementations
-// (DefaultSyncManager, DefaultDataChangeDetector, DefaultAutomaticSyncChecker)
+// (FileSyncManager, DefaultDataChangeDetector, DefaultAutomaticSyncChecker)
 // for actual functionality.
 package sync

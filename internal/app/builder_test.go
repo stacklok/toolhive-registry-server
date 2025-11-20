@@ -538,7 +538,7 @@ func TestBuildSyncComponents(t *testing.T) {
 					sourceHandlerFactory: sources.NewSourceHandlerFactory(),
 					storageManager:       sources.NewFileStorageManager(tempDir),
 					statusPersistence:    status.NewFileStatusPersistence(tempDir + "/status.json"),
-					syncManager: pkgsync.NewDefaultSyncManager(
+					syncManager: pkgsync.NewFileSyncManager(
 						sources.NewSourceHandlerFactory(),
 						sources.NewFileStorageManager(tempDir),
 					),
