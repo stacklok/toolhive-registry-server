@@ -39,6 +39,7 @@ const (
 func init() {
 	serveCmd.Flags().String("address", ":8080", "Address to listen on")
 	serveCmd.Flags().String("config", "", "Path to configuration file (YAML format, required)")
+	serveCmd.Flags().String("auth-mode", "anonymous", "Authentication mode: 'anonymous' or 'oauth'")
 
 	err := viper.BindPFlag("address", serveCmd.Flags().Lookup("address"))
 	if err != nil {
@@ -47,6 +48,10 @@ func init() {
 	err = viper.BindPFlag("config", serveCmd.Flags().Lookup("config"))
 	if err != nil {
 		logger.Fatalf("Failed to bind config flag: %v", err)
+	}
+	err = viper.BindPFlag("auth.mode", serveCmd.Flags().Lookup("auth-mode"))
+	if err != nil {
+		logger.Fatalf("Failed to bind auth-mode flag: %v", err)
 	}
 
 	// Mark config as required
@@ -68,6 +73,15 @@ func runServe(_ *cobra.Command, _ []string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	// Apply CLI flag overrides
+	authMode := viper.GetString("auth.mode")
+	if authMode != "" {
+		if cfg.Auth == nil {
+			cfg.Auth = &config.AuthConfig{}
+		}
+		cfg.Auth.Mode = config.AuthMode(authMode)
 	}
 
 	logger.Infof("Loaded configuration from %s (registry: %s, source: %s)",
