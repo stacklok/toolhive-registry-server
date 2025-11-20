@@ -56,7 +56,9 @@ func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
 					File:   &config.FileConfig{Path: "/data/registry.json"},
 				},
 				SyncPolicy: &config.SyncPolicyConfig{Interval: "30m"},
-				Storage:    "file",
+				FileStorage: &config.FileStorageConfig{
+					BaseDir: "/custom/data",
+				},
 			},
 			wantErr: false,
 			checkType: func(t *testing.T, provider RegistryDataProvider) {
@@ -74,7 +76,6 @@ func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
 					File:   &config.FileConfig{Path: "/data/registry.json"},
 				},
 				SyncPolicy: &config.SyncPolicyConfig{Interval: "30m"},
-				Storage:    "database",
 				Database: &config.DatabaseConfig{
 					Host:     "localhost",
 					Port:     5432,
@@ -84,21 +85,6 @@ func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
 			},
 			wantErr:     true,
 			errContains: "database storage is not yet implemented",
-		},
-		{
-			name: "unsupported storage type",
-			config: &config.Config{
-				RegistryName: "test-registry",
-				Source: config.SourceConfig{
-					Type:   config.SourceTypeFile,
-					Format: config.SourceFormatToolHive,
-					File:   &config.FileConfig{Path: "/data/registry.json"},
-				},
-				SyncPolicy: &config.SyncPolicyConfig{Interval: "30m"},
-				Storage:    "invalid",
-			},
-			wantErr:     true,
-			errContains: "unsupported storage type",
 		},
 	}
 

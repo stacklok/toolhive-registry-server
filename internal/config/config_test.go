@@ -416,7 +416,9 @@ func TestConfigValidate(t *testing.T) {
 				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
-				Storage: "file",
+				FileStorage: &FileStorageConfig{
+					BaseDir: "/custom/data",
+				},
 			},
 			wantErr: false,
 		},
@@ -432,7 +434,6 @@ func TestConfigValidate(t *testing.T) {
 				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
-				Storage: "database",
 				Database: &DatabaseConfig{
 					Host:     "localhost",
 					Port:     5432,
@@ -443,7 +444,7 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid_storage_type",
+			name: "both_file_storage_and_database_configured",
 			config: &Config{
 				Source: SourceConfig{
 					Type: "file",
@@ -454,27 +455,18 @@ func TestConfigValidate(t *testing.T) {
 				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
-				Storage: "invalid",
+				FileStorage: &FileStorageConfig{
+					BaseDir: "/custom/data",
+				},
+				Database: &DatabaseConfig{
+					Host:     "localhost",
+					Port:     5432,
+					User:     "testuser",
+					Database: "testdb",
+				},
 			},
 			wantErr: true,
-			errMsg:  "storage must be either",
-		},
-		{
-			name: "database_storage_without_database_config",
-			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
-					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
-				},
-				Storage: "database",
-			},
-			wantErr: true,
-			errMsg:  "database configuration is required when storage is set to \"database\"",
+			errMsg:  "cannot configure both database and fileStorage",
 		},
 		{
 			name: "database_storage_missing_host",
@@ -488,7 +480,6 @@ func TestConfigValidate(t *testing.T) {
 				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
-				Storage: "database",
 				Database: &DatabaseConfig{
 					Port:     5432,
 					User:     "testuser",
@@ -510,7 +501,6 @@ func TestConfigValidate(t *testing.T) {
 				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
-				Storage: "database",
 				Database: &DatabaseConfig{
 					Host:     "localhost",
 					User:     "testuser",
@@ -532,7 +522,6 @@ func TestConfigValidate(t *testing.T) {
 				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
-				Storage: "database",
 				Database: &DatabaseConfig{
 					Host:     "localhost",
 					Port:     5432,
@@ -554,7 +543,6 @@ func TestConfigValidate(t *testing.T) {
 				SyncPolicy: &SyncPolicyConfig{
 					Interval: "30m",
 				},
-				Storage: "database",
 				Database: &DatabaseConfig{
 					Host: "localhost",
 					Port: 5432,
@@ -620,7 +608,7 @@ func TestGetRegistryName(t *testing.T) {
 	}
 }
 
-func TestGetStorage(t *testing.T) {
+func TestGetStorageType(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -630,35 +618,95 @@ func TestGetStorage(t *testing.T) {
 		{
 			name: "with_file_storage",
 			config: &Config{
-				Storage: "file",
+				FileStorage: &FileStorageConfig{
+					BaseDir: "/custom/data",
+				},
 			},
 			expected: StorageTypeFile,
 		},
 		{
 			name: "with_database_storage",
 			config: &Config{
-				Storage: "database",
+				Database: &DatabaseConfig{
+					Host:     "localhost",
+					Port:     5432,
+					User:     "testuser",
+					Database: "testdb",
+				},
 			},
 			expected: StorageTypeDatabase,
 		},
 		{
-			name:     "without_storage",
+			name:     "without_storage_defaults_to_file",
 			config:   &Config{},
 			expected: StorageTypeFile,
 		},
 		{
-			name: "empty_storage",
+			name: "database_takes_precedence",
 			config: &Config{
-				Storage: "",
+				Database: &DatabaseConfig{
+					Host:     "localhost",
+					Port:     5432,
+					User:     "testuser",
+					Database: "testdb",
+				},
 			},
-			expected: StorageTypeFile,
+			expected: StorageTypeDatabase,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := tt.config.GetStorage()
+			result := tt.config.GetStorageType()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestGetFileStorageBaseDir(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		config   *Config
+		expected string
+	}{
+		{
+			name: "with_custom_base_dir",
+			config: &Config{
+				FileStorage: &FileStorageConfig{
+					BaseDir: "/custom/data",
+				},
+			},
+			expected: "/custom/data",
+		},
+		{
+			name: "with_empty_base_dir",
+			config: &Config{
+				FileStorage: &FileStorageConfig{
+					BaseDir: "",
+				},
+			},
+			expected: "./data",
+		},
+		{
+			name:     "without_file_storage_config",
+			config:   &Config{},
+			expected: "./data",
+		},
+		{
+			name: "nil_file_storage",
+			config: &Config{
+				FileStorage: nil,
+			},
+			expected: "./data",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := tt.config.GetFileStorageBaseDir()
 			assert.Equal(t, tt.expected, result)
 		})
 	}

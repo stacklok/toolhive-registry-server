@@ -36,7 +36,7 @@ func (f *defaultRegistryProviderFactory) CreateProvider(cfg *config.Config) (Reg
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
-	storageType := cfg.GetStorage()
+	storageType := cfg.GetStorageType()
 
 	switch storageType {
 	case config.StorageTypeFile:

@@ -34,6 +34,13 @@ const (
 	StorageTypeFile StorageType = "file"
 )
 
+// FileStorageConfig defines file storage settings
+type FileStorageConfig struct {
+	// BaseDir is the base directory for file storage
+	// Defaults to "./data" if not specified
+	BaseDir string `yaml:"baseDir,omitempty"`
+}
+
 const (
 	// SourceFormatToolHive is the native ToolHive registry format
 	SourceFormatToolHive = "toolhive"
@@ -80,16 +87,12 @@ func WithConfigPath(path string) Option {
 type Config struct {
 	// RegistryName is the name/identifier for this registry instance
 	// Defaults to "default" if not specified
-	RegistryName string            `yaml:"registryName,omitempty"`
-	Source       SourceConfig      `yaml:"source"`
-	SyncPolicy   *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
-	Filter       *FilterConfig     `yaml:"filter,omitempty"`
-	Database     *DatabaseConfig   `yaml:"database,omitempty"`
-	// Storage specifies where registry data should be stored
-	// Options: "database" or "file"
-	// When set to "database", the Database configuration must be provided
-	// Defaults to "file" if not specified
-	Storage StorageType `yaml:"storage,omitempty"`
+	RegistryName string             `yaml:"registryName,omitempty"`
+	Source       SourceConfig       `yaml:"source"`
+	SyncPolicy   *SyncPolicyConfig  `yaml:"syncPolicy,omitempty"`
+	Filter       *FilterConfig      `yaml:"filter,omitempty"`
+	Database     *DatabaseConfig    `yaml:"database,omitempty"`
+	FileStorage  *FileStorageConfig `yaml:"fileStorage,omitempty"`
 }
 
 // SourceConfig defines the data source configuration
@@ -295,12 +298,23 @@ func (c *Config) GetRegistryName() string {
 	return c.RegistryName
 }
 
-// GetStorage returns the storage type, using "file" as the default if not specified
-func (c *Config) GetStorage() StorageType {
-	if c.Storage == "" {
-		return StorageTypeFile
+// GetStorageType determines the storage type based on configuration
+// Returns StorageTypeDatabase if database is configured
+// Returns StorageTypeFile if file storage is configured or neither is configured (default)
+func (c *Config) GetStorageType() StorageType {
+	if c.Database != nil {
+		return StorageTypeDatabase
 	}
-	return c.Storage
+	return StorageTypeFile
+}
+
+// GetFileStorageBaseDir returns the base directory for file storage
+// Returns "./data" as the default if not specified
+func (c *Config) GetFileStorageBaseDir() string {
+	if c.FileStorage != nil && c.FileStorage.BaseDir != "" {
+		return c.FileStorage.BaseDir
+	}
+	return "./data"
 }
 
 // Validate performs validation on the configuration
@@ -372,33 +386,28 @@ func (c *Config) validateSourceConfigByType() error {
 
 // validateStorageConfig validates the storage configuration
 func (c *Config) validateStorageConfig() error {
-	storageType := c.GetStorage()
-
-	// Validate storage type
-	if storageType != StorageTypeDatabase && storageType != StorageTypeFile {
-		return fmt.Errorf("storage must be either %q or %q, got %q", StorageTypeDatabase, StorageTypeFile, storageType)
+	// Error if both database and file storage are configured
+	if c.Database != nil && c.FileStorage != nil {
+		return fmt.Errorf("cannot configure both database and fileStorage - only one storage backend is allowed")
 	}
 
-	// If database storage is configured, database config must be provided
-	if storageType == StorageTypeDatabase {
-		if c.Database == nil {
-			return fmt.Errorf("database configuration is required when storage is set to %q", StorageTypeDatabase)
-		}
-
-		// Validate required database fields
+	// If database is configured, validate required fields
+	if c.Database != nil {
 		if c.Database.Host == "" {
-			return fmt.Errorf("database.host is required when storage is %q", StorageTypeDatabase)
+			return fmt.Errorf("database.host is required when database is configured")
 		}
 		if c.Database.Port == 0 {
-			return fmt.Errorf("database.port is required when storage is %q", StorageTypeDatabase)
+			return fmt.Errorf("database.port is required when database is configured")
 		}
 		if c.Database.User == "" {
-			return fmt.Errorf("database.user is required when storage is %q", StorageTypeDatabase)
+			return fmt.Errorf("database.user is required when database is configured")
 		}
 		if c.Database.Database == "" {
-			return fmt.Errorf("database.database is required when storage is %q", StorageTypeDatabase)
+			return fmt.Errorf("database.database is required when database is configured")
 		}
 	}
+
+	// File storage validation is minimal - baseDir is optional with default
 
 	return nil
 }
