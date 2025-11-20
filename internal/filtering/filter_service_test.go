@@ -70,6 +70,7 @@ func TestDefaultFilterService_ApplyFilters_NoFilter(t *testing.T) {
 				registry.WithTags("web", "api"),
 				registry.WithHTTPPackage("https://example.com"),
 				registry.WithMetadata("test", "test"),
+				registry.WithToolHiveMetadata("tier", "Official"),
 			),
 		),
 	)
