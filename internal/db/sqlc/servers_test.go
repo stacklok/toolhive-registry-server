@@ -2,6 +2,7 @@ package sqlc
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -1153,6 +1154,431 @@ func TestUpsertServerRemote(t *testing.T) {
 
 			serverID := tc.setupFunc(t, queries, regID)
 			tc.scenarioFunc(t, queries, serverID)
+		})
+	}
+}
+
+func TestListServerPackages(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		setupFunc    func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID
+		scenarioFunc func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID)
+	}{
+		{
+			name: "no server packages",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+				serverID, err := queries.UpsertServerVersion(
+					context.Background(),
+					UpsertServerVersionParams{
+						Name:    "test-server",
+						Version: "1.0.0",
+						RegID:   regID,
+					},
+				)
+				require.NoError(t, err)
+				return []pgtype.UUID{serverID}
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+				packages, err := queries.ListServerPackages(
+					context.Background(),
+					serverIDs,
+				)
+				require.NoError(t, err)
+				require.Empty(t, packages)
+			},
+		},
+		{
+			name: "list single server package",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+				serverID, err := queries.UpsertServerVersion(
+					context.Background(),
+					UpsertServerVersionParams{
+						Name:    "test-server",
+						Version: "1.0.0",
+						RegID:   regID,
+					},
+				)
+				require.NoError(t, err)
+
+				err = queries.UpsertServerPackage(
+					context.Background(),
+					UpsertServerPackageParams{
+						ServerID:       serverID,
+						RegistryType:   "npm",
+						PkgRegistryUrl: "https://registry.npmjs.org",
+						PkgIdentifier:  "@test/package",
+						PkgVersion:     "1.0.0",
+						Transport:      "stdio",
+					},
+				)
+				require.NoError(t, err)
+
+				return []pgtype.UUID{serverID}
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+				packages, err := queries.ListServerPackages(
+					context.Background(),
+					serverIDs,
+				)
+				require.NoError(t, err)
+				require.Len(t, packages, 1)
+				require.Equal(t, serverIDs[0], packages[0].ServerID)
+				require.Equal(t, "npm", packages[0].RegistryType)
+				require.Equal(t, "@test/package", packages[0].PkgIdentifier)
+				require.Equal(t, "1.0.0", packages[0].PkgVersion)
+			},
+		},
+		{
+			name: "list multiple server packages for multiple servers",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+				var serverIDs []pgtype.UUID
+				for i, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
+					serverID, err := queries.UpsertServerVersion(
+						context.Background(),
+						UpsertServerVersionParams{
+							Name:    fmt.Sprintf("test-server-%d", i+1),
+							Version: version,
+							RegID:   regID,
+						},
+					)
+					require.NoError(t, err)
+					serverIDs = append(serverIDs, serverID)
+
+					err = queries.UpsertServerPackage(
+						context.Background(),
+						UpsertServerPackageParams{
+							ServerID:       serverID,
+							RegistryType:   "npm",
+							PkgRegistryUrl: "https://registry.npmjs.org",
+							PkgIdentifier:  "@test/package",
+							PkgVersion:     version,
+							Transport:      "stdio",
+						},
+					)
+					require.NoError(t, err)
+				}
+
+				return serverIDs
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+				packages, err := queries.ListServerPackages(
+					context.Background(),
+					serverIDs,
+				)
+				require.NoError(t, err)
+				require.Len(t, packages, 3)
+				// Verify ordering by version DESC
+				require.Equal(t, "3.0.0", packages[0].PkgVersion)
+				require.Equal(t, "2.0.0", packages[1].PkgVersion)
+				require.Equal(t, "1.0.0", packages[2].PkgVersion)
+			},
+		},
+		{
+			name: "list server packages for multiple servers",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+				var serverIDs []pgtype.UUID
+				for i, name := range []string{"server-1", "server-2"} {
+					serverID, err := queries.UpsertServerVersion(
+						context.Background(),
+						UpsertServerVersionParams{
+							Name:    name,
+							Version: "1.0.0",
+							RegID:   regID,
+						},
+					)
+					require.NoError(t, err)
+					serverIDs = append(serverIDs, serverID)
+
+					err = queries.UpsertServerPackage(
+						context.Background(),
+						UpsertServerPackageParams{
+							ServerID:       serverID,
+							RegistryType:   "npm",
+							PkgRegistryUrl: "https://registry.npmjs.org",
+							PkgIdentifier:  fmt.Sprintf("@test/package-%d", i+1),
+							PkgVersion:     "1.0.0",
+							Transport:      "stdio",
+						},
+					)
+					require.NoError(t, err)
+				}
+
+				return serverIDs
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+				packages, err := queries.ListServerPackages(
+					context.Background(),
+					serverIDs,
+				)
+				require.NoError(t, err)
+				require.Len(t, packages, 2)
+				// Verify both servers are included
+				serverIDMap := make(map[pgtype.UUID]bool)
+				for _, pkg := range packages {
+					serverIDMap[pkg.ServerID] = true
+				}
+				require.True(t, serverIDMap[serverIDs[0]])
+				require.True(t, serverIDMap[serverIDs[1]])
+			},
+		},
+		{
+			name: "list server packages with non-existent server IDs",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) []pgtype.UUID {
+				return []pgtype.UUID{
+					{Bytes: uuid.New(), Valid: true},
+					{Bytes: uuid.New(), Valid: true},
+				}
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+				packages, err := queries.ListServerPackages(
+					context.Background(),
+					serverIDs,
+				)
+				require.NoError(t, err)
+				require.Empty(t, packages)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			db, cleanupFunc := database.SetupTestDB(t)
+			t.Cleanup(cleanupFunc)
+			queries := New(db)
+			require.NotNil(t, queries)
+
+			regID := setupRegistry(t, queries)
+			require.NotNil(t, regID)
+
+			serverIDs := tc.setupFunc(t, queries, regID)
+			tc.scenarioFunc(t, queries, serverIDs)
+		})
+	}
+}
+
+func TestListServerRemotes(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		setupFunc    func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID
+		scenarioFunc func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID)
+	}{
+		{
+			name: "no server remotes",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+				serverID, err := queries.UpsertServerVersion(
+					context.Background(),
+					UpsertServerVersionParams{
+						Name:    "test-server",
+						Version: "1.0.0",
+						RegID:   regID,
+					},
+				)
+				require.NoError(t, err)
+				return []pgtype.UUID{serverID}
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+				remotes, err := queries.ListServerRemotes(
+					context.Background(),
+					serverIDs,
+				)
+				require.NoError(t, err)
+				require.Empty(t, remotes)
+			},
+		},
+		{
+			name: "list single server remote",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+				serverID, err := queries.UpsertServerVersion(
+					context.Background(),
+					UpsertServerVersionParams{
+						Name:    "test-server",
+						Version: "1.0.0",
+						RegID:   regID,
+					},
+				)
+				require.NoError(t, err)
+
+				err = queries.UpsertServerRemote(
+					context.Background(),
+					UpsertServerRemoteParams{
+						ServerID:     serverID,
+						Transport:    "sse",
+						TransportUrl: pgtype.Text{String: "https://example.com/sse", Valid: true},
+					},
+				)
+				require.NoError(t, err)
+
+				return []pgtype.UUID{serverID}
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+				remotes, err := queries.ListServerRemotes(
+					context.Background(),
+					serverIDs,
+				)
+				require.NoError(t, err)
+				require.Len(t, remotes, 1)
+				require.Equal(t, serverIDs[0], remotes[0].ServerID)
+				require.Equal(t, "sse", remotes[0].Transport)
+				require.Equal(t, "https://example.com/sse", remotes[0].TransportUrl)
+			},
+		},
+		{
+			name: "list multiple server remotes for single server",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+				serverID, err := queries.UpsertServerVersion(
+					context.Background(),
+					UpsertServerVersionParams{
+						Name:    "test-server",
+						Version: "1.0.0",
+						RegID:   regID,
+					},
+				)
+				require.NoError(t, err)
+
+				remotes := []struct {
+					transport string
+					url       string
+				}{
+					{"sse", "https://example.com/sse1"},
+					{"sse", "https://example.com/sse2"},
+					{"http", "https://example.com/http"},
+				}
+
+				for _, remote := range remotes {
+					err = queries.UpsertServerRemote(
+						context.Background(),
+						UpsertServerRemoteParams{
+							ServerID:     serverID,
+							Transport:    remote.transport,
+							TransportUrl: pgtype.Text{String: remote.url, Valid: true},
+						},
+					)
+					require.NoError(t, err)
+				}
+
+				return []pgtype.UUID{serverID}
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+				remotes, err := queries.ListServerRemotes(
+					context.Background(),
+					serverIDs,
+				)
+				require.NoError(t, err)
+				require.Len(t, remotes, 3)
+				require.Equal(t, serverIDs[0], remotes[0].ServerID)
+				// Verify ordering by transport, then transport_url
+				require.Equal(t, "http", remotes[0].Transport)
+				require.Equal(t, "sse", remotes[1].Transport)
+				require.Equal(t, "sse", remotes[2].Transport)
+				require.Equal(t, "https://example.com/http", remotes[0].TransportUrl)
+				require.Equal(t, "https://example.com/sse1", remotes[1].TransportUrl)
+				require.Equal(t, "https://example.com/sse2", remotes[2].TransportUrl)
+			},
+		},
+		{
+			name: "list server remotes for multiple servers",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+				var serverIDs []pgtype.UUID
+				for i, name := range []string{"server-1", "server-2"} {
+					serverID, err := queries.UpsertServerVersion(
+						context.Background(),
+						UpsertServerVersionParams{
+							Name:    name,
+							Version: "1.0.0",
+							RegID:   regID,
+						},
+					)
+					require.NoError(t, err)
+					serverIDs = append(serverIDs, serverID)
+
+					err = queries.UpsertServerRemote(
+						context.Background(),
+						UpsertServerRemoteParams{
+							ServerID:     serverID,
+							Transport:    "sse",
+							TransportUrl: pgtype.Text{String: fmt.Sprintf("https://example.com/sse-%d", i+1), Valid: true},
+						},
+					)
+					require.NoError(t, err)
+				}
+
+				return serverIDs
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+				remotes, err := queries.ListServerRemotes(
+					context.Background(),
+					serverIDs,
+				)
+				require.NoError(t, err)
+				require.Len(t, remotes, 2)
+				// Verify both servers are included
+				serverIDMap := make(map[pgtype.UUID]bool)
+				for _, remote := range remotes {
+					serverIDMap[remote.ServerID] = true
+				}
+				require.True(t, serverIDMap[serverIDs[0]])
+				require.True(t, serverIDMap[serverIDs[1]])
+			},
+		},
+		{
+			name: "list server remotes with non-existent server IDs",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) []pgtype.UUID {
+				return []pgtype.UUID{
+					{Bytes: uuid.New(), Valid: true},
+					{Bytes: uuid.New(), Valid: true},
+				}
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+				remotes, err := queries.ListServerRemotes(
+					context.Background(),
+					serverIDs,
+				)
+				require.NoError(t, err)
+				require.Empty(t, remotes)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			db, cleanupFunc := database.SetupTestDB(t)
+			t.Cleanup(cleanupFunc)
+			queries := New(db)
+			require.NotNil(t, queries)
+
+			regID := setupRegistry(t, queries)
+			require.NotNil(t, regID)
+
+			serverIDs := tc.setupFunc(t, queries, regID)
+			tc.scenarioFunc(t, queries, serverIDs)
 		})
 	}
 }

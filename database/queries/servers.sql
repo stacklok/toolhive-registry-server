@@ -33,7 +33,7 @@ SELECT r.reg_type as registry_type,
  CASE WHEN sqlc.narg(prev)::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
  LIMIT sqlc.arg(size)::bigint;
 
- -- name: ListServerPackages :many
+-- name: ListServerPackages :many
 SELECT p.server_id,
        p.registry_type,
        p.pkg_registry_url,
@@ -49,16 +49,16 @@ SELECT p.server_id,
        p.transport_headers
   FROM mcp_server_package p
   JOIN mcp_server s ON p.server_id = s.id
- WHERE s.id IN (sqlc.slice(server_ids)::UUID[])
+ WHERE s.id = ANY(sqlc.slice(server_ids)::UUID[])
  ORDER BY p.pkg_version DESC;
 
- -- name: ListServerRemotes :many
+-- name: ListServerRemotes :many
 SELECT r.server_id,
        r.transport,
        r.transport_url,
        r.transport_headers
   FROM mcp_server_remote r
- WHERE r.server_id IN (sqlc.slice(server_ids)::UUID[])
+ WHERE r.server_id = ANY(sqlc.slice(server_ids)::UUID[])
  ORDER BY r.transport, r.transport_url;
 
 -- name: ListServerVersions :many

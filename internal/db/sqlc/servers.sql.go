@@ -11,6 +11,95 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const listServerPackages = `-- name: ListServerPackages :many
+SELECT p.server_id,
+       p.registry_type,
+       p.pkg_registry_url,
+       p.pkg_identifier,
+       p.pkg_version,
+       p.runtime_hint,
+       p.runtime_arguments,
+       p.package_arguments,
+       p.env_vars,
+       p.sha256_hash,
+       p.transport,
+       p.transport_url,
+       p.transport_headers
+  FROM mcp_server_package p
+  JOIN mcp_server s ON p.server_id = s.id
+ WHERE s.id = ANY($1::UUID[])
+ ORDER BY p.pkg_version DESC
+`
+
+func (q *Queries) ListServerPackages(ctx context.Context, serverIds []pgtype.UUID) ([]McpServerPackage, error) {
+	rows, err := q.db.Query(ctx, listServerPackages, serverIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []McpServerPackage{}
+	for rows.Next() {
+		var i McpServerPackage
+		if err := rows.Scan(
+			&i.ServerID,
+			&i.RegistryType,
+			&i.PkgRegistryUrl,
+			&i.PkgIdentifier,
+			&i.PkgVersion,
+			&i.RuntimeHint,
+			&i.RuntimeArguments,
+			&i.PackageArguments,
+			&i.EnvVars,
+			&i.Sha256Hash,
+			&i.Transport,
+			&i.TransportUrl,
+			&i.TransportHeaders,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listServerRemotes = `-- name: ListServerRemotes :many
+SELECT r.server_id,
+       r.transport,
+       r.transport_url,
+       r.transport_headers
+  FROM mcp_server_remote r
+ WHERE r.server_id = ANY($1::UUID[])
+ ORDER BY r.transport, r.transport_url
+`
+
+func (q *Queries) ListServerRemotes(ctx context.Context, serverIds []pgtype.UUID) ([]McpServerRemote, error) {
+	rows, err := q.db.Query(ctx, listServerRemotes, serverIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []McpServerRemote{}
+	for rows.Next() {
+		var i McpServerRemote
+		if err := rows.Scan(
+			&i.ServerID,
+			&i.Transport,
+			&i.TransportUrl,
+			&i.TransportHeaders,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listServerVersions = `-- name: ListServerVersions :many
 SELECT s.id,
        s.name,
