@@ -22,6 +22,8 @@ The server requires a configuration file (--config) that specifies:
 - Sync policy and filtering rules
 - All other operational settings
 
+If database configuration is present, migrations will run automatically on startup.
+
 See examples/ directory for sample configurations.
 
 ```
