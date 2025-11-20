@@ -901,6 +901,7 @@ syncPolicy:
   interval: "30m"`,
 			wantErr: false,
 			check: func(t *testing.T, cfg *Config) {
+				t.Helper()
 				// Source should be parsed correctly
 				assert.Equal(t, "file", cfg.Source.Type)
 				assert.Equal(t, "/data/registry.json", cfg.Source.File.Path)
@@ -925,6 +926,7 @@ auth:
       issuerUrl: https://dev-12345.okta.com`,
 			wantErr: false,
 			check: func(t *testing.T, cfg *Config) {
+				t.Helper()
 				require.NotNil(t, cfg.Auth)
 				assert.Equal(t, AuthModeOAuth, cfg.Auth.Mode)
 				assert.Len(t, cfg.Auth.Providers, 2)
@@ -944,6 +946,7 @@ auth:
   mode: anonymous`,
 			wantErr: false,
 			check: func(t *testing.T, cfg *Config) {
+				t.Helper()
 				require.NotNil(t, cfg.Auth)
 				assert.Equal(t, AuthModeAnonymous, cfg.Auth.Mode)
 			},

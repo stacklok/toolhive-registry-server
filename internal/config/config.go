@@ -162,6 +162,10 @@ type AuthConfig struct {
 	// Defaults to "anonymous" if not specified
 	Mode AuthMode `yaml:"mode,omitempty"`
 
+	// ResourceURL is the URL identifying this protected resource (RFC 9728)
+	// Used in the /.well-known/oauth-protected-resource endpoint
+	ResourceURL string `yaml:"resourceUrl,omitempty"`
+
 	// ProtectedPaths defines path patterns that require authentication
 	// Example: ["/api/v0/servers", "/api/v0/servers/*"]
 	// If empty when Mode is oauth, all paths are protected
@@ -170,6 +174,14 @@ type AuthConfig struct {
 	// Providers defines the OAuth/OIDC providers for authentication
 	// Multiple providers can be configured (e.g., Kubernetes + external IDP)
 	Providers []OAuthProviderConfig `yaml:"providers,omitempty"`
+
+	// ScopesSupported defines the OAuth scopes supported by this resource (RFC 9728)
+	// Defaults to ["mcp-registry:read", "mcp-registry:write"] if not specified
+	ScopesSupported []string `yaml:"scopesSupported,omitempty"`
+
+	// Realm is the protection space identifier for WWW-Authenticate header (RFC 7235)
+	// Defaults to "mcp-registry" if not specified
+	Realm string `yaml:"realm,omitempty"`
 }
 
 // OAuthProviderConfig defines configuration for an OAuth/OIDC provider
@@ -387,12 +399,23 @@ func (c *Config) validate() error {
 		return fmt.Errorf("config cannot be nil")
 	}
 
-	// Validate source configuration
+	if err := c.validateSource(); err != nil {
+		return err
+	}
+
+	if err := c.validateSyncPolicy(); err != nil {
+		return err
+	}
+
+	return c.validateAuth()
+}
+
+// validateSource validates the source configuration
+func (c *Config) validateSource() error {
 	if c.Source.Type == "" {
 		return fmt.Errorf("source.type is required")
 	}
 
-	// Validate source-specific settings
 	switch c.Source.Type {
 	case SourceTypeGit:
 		if c.Source.Git == nil {
@@ -422,17 +445,24 @@ func (c *Config) validate() error {
 		return fmt.Errorf("unsupported source type: %s", c.Source.Type)
 	}
 
-	// Validate sync policy
+	return nil
+}
+
+// validateSyncPolicy validates the sync policy configuration
+func (c *Config) validateSyncPolicy() error {
 	if c.SyncPolicy == nil || c.SyncPolicy.Interval == "" {
 		return fmt.Errorf("syncPolicy.interval is required")
 	}
 
-	// Try to parse the interval to ensure it's valid
 	if _, err := time.ParseDuration(c.SyncPolicy.Interval); err != nil {
 		return fmt.Errorf("syncPolicy.interval must be a valid duration (e.g., '30m', '1h'): %w", err)
 	}
 
-	// Validate auth configuration if present
+	return nil
+}
+
+// validateAuth validates the auth configuration if present
+func (c *Config) validateAuth() error {
 	if c.Auth != nil {
 		if err := c.Auth.Validate(); err != nil {
 			return err
