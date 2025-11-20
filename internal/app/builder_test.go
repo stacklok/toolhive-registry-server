@@ -243,6 +243,20 @@ func TestWithDeploymentProvider(t *testing.T) {
 	assert.Equal(t, testDeploymentProvider, cfg.deploymentProvider)
 }
 
+func TestAuthMiddlewareConfig(t *testing.T) {
+	t.Parallel()
+	testMiddleware := func(next http.Handler) http.Handler { return next }
+	testHandler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
+
+	cfg := &registryAppConfig{
+		authMiddleware:  testMiddleware,
+		authInfoHandler: testHandler,
+	}
+
+	assert.NotNil(t, cfg.authMiddleware)
+	assert.NotNil(t, cfg.authInfoHandler)
+}
+
 func TestBuildHTTPServer(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -321,6 +335,9 @@ func TestBuildHTTPServer(t *testing.T) {
 			mockSvc := mocks.NewMockRegistryService(ctrl)
 			tt.setupMock(mockSvc)
 
+			// Set auth middleware in config for tests
+			tt.config.authMiddleware = func(next http.Handler) http.Handler { return next }
+			tt.config.authInfoHandler = nil
 			server, err := buildHTTPServer(ctx, tt.config, mockSvc)
 
 			require.NoError(t, err)
@@ -332,11 +349,12 @@ func TestBuildHTTPServer(t *testing.T) {
 			assert.NotNil(t, server.Handler)
 
 			// Verify middlewares were set
+			// Note: auth middleware is always appended, so counts are +1
 			if tt.expectDefaults {
 				assert.NotNil(t, tt.config.middlewares)
 				assert.Greater(t, len(tt.config.middlewares), 0, "default middlewares should be set")
 			} else {
-				assert.Equal(t, 1, len(tt.config.middlewares), "custom middlewares should be preserved")
+				assert.Equal(t, 2, len(tt.config.middlewares), "custom middlewares should be preserved plus auth middleware")
 			}
 		})
 	}

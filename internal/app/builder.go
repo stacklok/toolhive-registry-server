@@ -13,6 +13,7 @@ import (
 	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
@@ -31,6 +32,9 @@ const (
 	defaultWriteTimeout   = 15 * time.Second
 	defaultIdleTimeout    = 60 * time.Second
 )
+
+// defaultPublicPaths are paths that never require authentication
+var defaultPublicPaths = []string{"/health", "/docs", "/swagger", "/.well-known"}
 
 // RegistryAppOptions is a function that configures the registry app builder
 type RegistryAppOptions func(*registryAppConfig) error
@@ -60,6 +64,10 @@ type registryAppConfig struct {
 	dataDir      string
 	registryFile string
 	statusFile   string
+
+	// Auth components
+	authMiddleware  func(http.Handler) http.Handler
+	authInfoHandler http.Handler
 }
 
 func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
@@ -104,6 +112,15 @@ func NewRegistryApp(
 	registryService, err := buildServiceComponents(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build service components: %w", err)
+	}
+
+	// Build auth middleware (if not injected)
+	if cfg.authMiddleware == nil {
+		var authErr error
+		cfg.authMiddleware, cfg.authInfoHandler, authErr = auth.NewAuthMiddleware(ctx, cfg.config.Auth)
+		if authErr != nil {
+			return nil, fmt.Errorf("failed to build auth middleware: %w", authErr)
+		}
 	}
 
 	// Build HTTP server
@@ -321,8 +338,16 @@ func buildHTTPServer(
 		}
 	}
 
+	// Create selective auth middleware that only applies to protected paths
+	var protectedPaths []string
+	if b.config != nil && b.config.Auth != nil {
+		protectedPaths = b.config.Auth.ProtectedPaths
+	}
+	selectiveAuthMiddleware := createSelectiveAuthMiddleware(b.authMiddleware, protectedPaths)
+	b.middlewares = append(b.middlewares, selectiveAuthMiddleware)
+
 	// Create router with middlewares
-	router := api.NewServer(svc, api.WithMiddlewares(b.middlewares...))
+	router := api.NewServer(svc, api.WithMiddlewares(b.middlewares...), api.WithAuthInfoHandler(b.authInfoHandler))
 
 	// Create HTTP server
 	server := &http.Server{
@@ -335,4 +360,20 @@ func buildHTTPServer(
 
 	logger.Infof("HTTP server configured on %s", b.address)
 	return server, nil
+}
+
+// createSelectiveAuthMiddleware wraps auth middleware to only apply to protected paths
+func createSelectiveAuthMiddleware(
+	authMw func(http.Handler) http.Handler,
+	protectedPaths []string,
+) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if auth.IsProtectedPath(r.URL.Path, protectedPaths, defaultPublicPaths) {
+				authMw(next).ServeHTTP(w, r)
+			} else {
+				next.ServeHTTP(w, r)
+			}
+		})
+	}
 }

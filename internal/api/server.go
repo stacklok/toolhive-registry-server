@@ -20,13 +20,21 @@ type ServerOption func(*serverConfig)
 
 // serverConfig holds the server configuration
 type serverConfig struct {
-	middlewares []func(http.Handler) http.Handler
+	middlewares     []func(http.Handler) http.Handler
+	authInfoHandler http.Handler
 }
 
 // WithMiddlewares adds middleware to the server
 func WithMiddlewares(mw ...func(http.Handler) http.Handler) ServerOption {
 	return func(cfg *serverConfig) {
 		cfg.middlewares = append(cfg.middlewares, mw...)
+	}
+}
+
+// WithAuthInfoHandler sets the auth info handler to be mounted at /.well-known/oauth-protected-resource
+func WithAuthInfoHandler(handler http.Handler) ServerOption {
+	return func(cfg *serverConfig) {
+		cfg.authInfoHandler = handler
 	}
 }
 
@@ -54,6 +62,11 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 
 	// Mount OpenAPI endpoint
 	r.Get("/openapi.json", openAPIHandler)
+
+	// Mount auth info handler at well-known endpoint (if configured)
+	if cfg.authInfoHandler != nil {
+		r.Handle("/.well-known/oauth-protected-resource", cfg.authInfoHandler)
+	}
 
 	// Mount MCP Registry API v0 compatible routes
 	r.Mount("/registry", v01.Router(svc))
