@@ -36,16 +36,33 @@ func (q *Queries) GetRegistry(ctx context.Context, id uuid.UUID) (Registry, erro
 }
 
 const insertRegistry = `-- name: InsertRegistry :one
-INSERT INTO registry (name, reg_type) VALUES ($1, $2) RETURNING id
+INSERT INTO registry (
+    name,
+    reg_type,
+    created_at,
+    updated_at
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4
+) RETURNING id
 `
 
 type InsertRegistryParams struct {
-	Name    string       `json:"name"`
-	RegType RegistryType `json:"reg_type"`
+	Name      string       `json:"name"`
+	RegType   RegistryType `json:"reg_type"`
+	CreatedAt *time.Time   `json:"created_at"`
+	UpdatedAt *time.Time   `json:"updated_at"`
 }
 
 func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, insertRegistry, arg.Name, arg.RegType)
+	row := q.db.QueryRow(ctx, insertRegistry,
+		arg.Name,
+		arg.RegType,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
@@ -59,12 +76,14 @@ SELECT id,
        updated_at
   FROM registry
  WHERE ($1::timestamp with time zone IS NULL OR created_at > $1)
-    OR ($2::timestamp with time zone IS NULL AND created_at < $2)
+   AND ($2::timestamp with time zone IS NULL OR created_at < $2)
  ORDER BY
   -- next page sorting
   CASE WHEN $1::timestamp with time zone IS NULL THEN created_at END ASC,
+  CASE WHEN $1::timestamp with time zone IS NULL THEN name END ASC,
   -- previous page sorting
-  CASE WHEN $2::timestamp with time zone IS NULL THEN created_at END DESC
+  CASE WHEN $2::timestamp with time zone IS NULL THEN created_at END DESC,
+  CASE WHEN $2::timestamp with time zone IS NULL THEN name END DESC
  LIMIT $3::bigint
 `
 

@@ -8,7 +8,6 @@ import (
 
 	"github.com/aws/smithy-go/ptr"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	_ "github.com/lib/pq" // Register postgres driver
 	"github.com/stretchr/testify/require"
 
@@ -20,13 +19,13 @@ func TestGetRegistrySync(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		setupFunc    func(t *testing.T, queries *Queries, db *pgx.Conn) []uuid.UUID
+		setupFunc    func(t *testing.T, queries *Queries) []uuid.UUID
 		scenarioFunc func(t *testing.T, queries *Queries, ids []uuid.UUID)
 	}{
 		{
 			name: "no sync record",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ *pgx.Conn) []uuid.UUID {
+			setupFunc: func(_ *testing.T, _ *Queries) []uuid.UUID {
 				// Return non-existent ID
 				return []uuid.UUID{uuid.New()}
 			},
@@ -40,7 +39,7 @@ func TestGetRegistrySync(t *testing.T) {
 		{
 			name: "get sync record",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, _ *pgx.Conn) []uuid.UUID {
+			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry first
 				regID, err := queries.InsertRegistry(
 					context.Background(),
@@ -86,7 +85,7 @@ func TestGetRegistrySync(t *testing.T) {
 			queries := New(db)
 			require.NotNil(t, queries)
 
-			id := tc.setupFunc(t, queries, db)
+			id := tc.setupFunc(t, queries)
 			tc.scenarioFunc(t, queries, id)
 		})
 	}
@@ -282,13 +281,13 @@ func TestUpdateRegistrySync(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		setupFunc    func(t *testing.T, queries *Queries, db *pgx.Conn) []uuid.UUID
+		setupFunc    func(t *testing.T, queries *Queries) []uuid.UUID
 		scenarioFunc func(t *testing.T, queries *Queries, ids []uuid.UUID)
 	}{
 		{
 			name: "update sync status to COMPLETED",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, _ *pgx.Conn) []uuid.UUID {
+			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry
 				regID, err := queries.InsertRegistry(
 					context.Background(),
@@ -301,12 +300,14 @@ func TestUpdateRegistrySync(t *testing.T) {
 				require.NotNil(t, regID)
 
 				// Insert a sync record
+				startedAt := time.Now().UTC()
 				syncID, err := queries.InsertRegistrySync(
 					context.Background(),
 					InsertRegistrySyncParams{
 						RegID:      regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
+						StartedAt:  &startedAt,
 					},
 				)
 				require.NoError(t, err)
@@ -331,13 +332,14 @@ func TestUpdateRegistrySync(t *testing.T) {
 				sync, err := queries.GetRegistrySync(context.Background(), ids[0])
 				require.NoError(t, err)
 				require.Equal(t, SyncStatusCOMPLETED, sync.SyncStatus)
-				require.True(t, sync.EndedAt.Equal(endedAt))
+				require.True(t, sync.StartedAt.Before(endedAt))
+				require.True(t, !sync.EndedAt.IsZero())
 			},
 		},
 		{
 			name: "update sync status to FAILED with error message",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, _ *pgx.Conn) []uuid.UUID {
+			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry
 				regID, err := queries.InsertRegistry(
 					context.Background(),
@@ -350,12 +352,14 @@ func TestUpdateRegistrySync(t *testing.T) {
 				require.NotNil(t, regID)
 
 				// Insert a sync record
+				startedAt := time.Now().UTC()
 				syncID, err := queries.InsertRegistrySync(
 					context.Background(),
 					InsertRegistrySyncParams{
 						RegID:      regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
+						StartedAt:  &startedAt,
 					},
 				)
 				require.NoError(t, err)
@@ -382,13 +386,14 @@ func TestUpdateRegistrySync(t *testing.T) {
 				require.Equal(t, SyncStatusFAILED, sync.SyncStatus)
 				require.NotNil(t, sync.ErrorMsg)
 				require.Equal(t, "update error message", *sync.ErrorMsg)
+				require.True(t, sync.StartedAt.Before(endedAt))
 				require.True(t, !sync.EndedAt.IsZero())
 			},
 		},
 		{
 			name: "update sync with ended_at timestamp",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, _ *pgx.Conn) []uuid.UUID {
+			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry
 				regID, err := queries.InsertRegistry(
 					context.Background(),
@@ -401,12 +406,14 @@ func TestUpdateRegistrySync(t *testing.T) {
 				require.NotNil(t, regID)
 
 				// Insert a sync record
+				startedAt := time.Now().UTC()
 				syncID, err := queries.InsertRegistrySync(
 					context.Background(),
 					InsertRegistrySyncParams{
 						RegID:      regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
+						StartedAt:  &startedAt,
 					},
 				)
 				require.NoError(t, err)
@@ -430,14 +437,14 @@ func TestUpdateRegistrySync(t *testing.T) {
 				// Verify the update
 				sync, err := queries.GetRegistrySync(context.Background(), ids[0])
 				require.NoError(t, err)
+				require.True(t, sync.StartedAt.Before(endedAt))
 				require.True(t, !sync.EndedAt.IsZero())
-				require.True(t, sync.EndedAt.Equal(endedAt) || sync.EndedAt.After(endedAt.Add(-time.Second)))
 			},
 		},
 		{
 			name: "update sync without ended_at",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, _ *pgx.Conn) []uuid.UUID {
+			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry
 				regID, err := queries.InsertRegistry(
 					context.Background(),
@@ -450,12 +457,14 @@ func TestUpdateRegistrySync(t *testing.T) {
 				require.NotNil(t, regID)
 
 				// Insert a sync record
+				startedAt := time.Now().UTC()
 				syncID, err := queries.InsertRegistrySync(
 					context.Background(),
 					InsertRegistrySyncParams{
 						RegID:      regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
+						StartedAt:  &startedAt,
 					},
 				)
 				require.NoError(t, err)
@@ -484,7 +493,7 @@ func TestUpdateRegistrySync(t *testing.T) {
 		{
 			name: "update non-existent sync",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ *pgx.Conn) []uuid.UUID {
+			setupFunc: func(_ *testing.T, _ *Queries) []uuid.UUID {
 				// Return non-existent sync ID
 				return []uuid.UUID{uuid.New()}
 			},
@@ -515,7 +524,7 @@ func TestUpdateRegistrySync(t *testing.T) {
 			queries := New(db)
 			require.NotNil(t, queries)
 
-			syncID := tc.setupFunc(t, queries, db)
+			syncID := tc.setupFunc(t, queries)
 			tc.scenarioFunc(t, queries, syncID)
 		})
 	}

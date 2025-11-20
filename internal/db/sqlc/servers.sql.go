@@ -119,7 +119,7 @@ SELECT s.id,
   FROM mcp_server s
  WHERE s.name = $1
    AND (($2::timestamp with time zone IS NULL OR s.created_at > $2)
-       OR ($3::timestamp with time zone IS NULL AND s.created_at < $3))
+    AND ($3::timestamp with time zone IS NULL OR s.created_at < $3))
  ORDER BY
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.created_at END ASC,
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
@@ -211,7 +211,7 @@ SELECT r.reg_type as registry_type,
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
  WHERE ($1::timestamp with time zone IS NULL OR s.created_at > $1)
-    OR ($2::timestamp with time zone IS NULL AND s.created_at < $2)
+   AND ($2::timestamp with time zone IS NULL OR s.created_at < $2)
  ORDER BY
  -- next page sorting
  CASE WHEN $1::timestamp with time zone IS NULL THEN r.reg_type END ASC,
@@ -478,8 +478,6 @@ INSERT INTO mcp_server (
     $1,
     $2,
     $3,
-    CURRENT_TIMESTAMP,
-    CURRENT_TIMESTAMP,
     $4,
     $5,
     $6,
@@ -488,35 +486,39 @@ INSERT INTO mcp_server (
     $9,
     $10,
     $11,
-    $12
+    $12,
+    $13,
+    $14
 ) ON CONFLICT (reg_id, name, version)
   DO UPDATE SET
-    updated_at = CURRENT_TIMESTAMP,
-    description = $4,
-    title = $5,
-    website = $6,
-    upstream_meta = $7,
-    server_meta = $8,
-    repository_url = $9,
-    repository_id = $10,
-    repository_subfolder = $11,
-    repository_type = $12
+    updated_at = $5,
+    description = $6,
+    title = $7,
+    website = $8,
+    upstream_meta = $9,
+    server_meta = $10,
+    repository_url = $11,
+    repository_id = $12,
+    repository_subfolder = $13,
+    repository_type = $14
 RETURNING id
 `
 
 type UpsertServerVersionParams struct {
-	Name                string    `json:"name"`
-	Version             string    `json:"version"`
-	RegID               uuid.UUID `json:"reg_id"`
-	Description         *string   `json:"description"`
-	Title               *string   `json:"title"`
-	Website             *string   `json:"website"`
-	UpstreamMeta        []byte    `json:"upstream_meta"`
-	ServerMeta          []byte    `json:"server_meta"`
-	RepositoryUrl       *string   `json:"repository_url"`
-	RepositoryID        *string   `json:"repository_id"`
-	RepositorySubfolder *string   `json:"repository_subfolder"`
-	RepositoryType      *string   `json:"repository_type"`
+	Name                string     `json:"name"`
+	Version             string     `json:"version"`
+	RegID               uuid.UUID  `json:"reg_id"`
+	CreatedAt           *time.Time `json:"created_at"`
+	UpdatedAt           *time.Time `json:"updated_at"`
+	Description         *string    `json:"description"`
+	Title               *string    `json:"title"`
+	Website             *string    `json:"website"`
+	UpstreamMeta        []byte     `json:"upstream_meta"`
+	ServerMeta          []byte     `json:"server_meta"`
+	RepositoryUrl       *string    `json:"repository_url"`
+	RepositoryID        *string    `json:"repository_id"`
+	RepositorySubfolder *string    `json:"repository_subfolder"`
+	RepositoryType      *string    `json:"repository_type"`
 }
 
 func (q *Queries) UpsertServerVersion(ctx context.Context, arg UpsertServerVersionParams) (uuid.UUID, error) {
@@ -524,6 +526,8 @@ func (q *Queries) UpsertServerVersion(ctx context.Context, arg UpsertServerVersi
 		arg.Name,
 		arg.Version,
 		arg.RegID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
 		arg.Description,
 		arg.Title,
 		arg.Website,

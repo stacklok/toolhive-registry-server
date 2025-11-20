@@ -42,12 +42,14 @@ func TestUpsertServerVersion(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC()
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -59,6 +61,7 @@ func TestUpsertServerVersion(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC()
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -74,6 +77,8 @@ func TestUpsertServerVersion(t *testing.T) {
 						RepositoryID:        ptr.String("repo-id"),
 						RepositorySubfolder: ptr.String("subfolder"),
 						RepositoryType:      ptr.String("git"),
+						CreatedAt:           &createdAt,
+						UpdatedAt:           &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -83,18 +88,22 @@ func TestUpsertServerVersion(t *testing.T) {
 			name: "update existing server version",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC()
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				updatedAt := time.Now().UTC()
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -103,6 +112,7 @@ func TestUpsertServerVersion(t *testing.T) {
 						RegID:       regID,
 						Description: ptr.String("Updated description"),
 						Title:       ptr.String("Updated Title"),
+						UpdatedAt:   &updatedAt,
 					},
 				)
 				require.NoError(t, err)
@@ -114,13 +124,16 @@ func TestUpsertServerVersion(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
+				createdAt := time.Now().UTC()
 				regID := uuid.New()
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.Error(t, err)
@@ -134,6 +147,7 @@ func TestUpsertServerVersion(t *testing.T) {
 
 			db, cleanupFunc := database.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
+
 			queries := New(db)
 			require.NotNil(t, queries)
 
@@ -177,12 +191,15 @@ func TestListServerVersions(t *testing.T) {
 			name: "list single server version",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) string {
+				createdAt := time.Now().UTC()
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -208,13 +225,17 @@ func TestListServerVersions(t *testing.T) {
 			name: "list multiple server versions",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) string {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
 						UpsertServerVersionParams{
-							Name:    "test-server",
-							Version: version,
-							RegID:   regID,
+							Name:      "test-server",
+							Version:   version,
+							RegID:     regID,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -239,13 +260,17 @@ func TestListServerVersions(t *testing.T) {
 			name: "list server versions with pagination",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) string {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
 						UpsertServerVersionParams{
-							Name:    "test-server",
-							Version: version,
-							RegID:   regID,
+							Name:      "test-server",
+							Version:   version,
+							RegID:     regID,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -264,15 +289,12 @@ func TestListServerVersions(t *testing.T) {
 				)
 				require.NoError(t, err)
 				require.Len(t, versions, 3)
+				assert.Equal(t, "1.0.0", versions[0].Version)
+				assert.Equal(t, "2.0.0", versions[1].Version)
+				assert.Equal(t, "3.0.0", versions[2].Version)
 
 				// Get next page
-				nextTime := versions[0].CreatedAt.UTC()
-				for _, version := range versions {
-					if nextTime.Before(version.CreatedAt.UTC()) {
-						nextTime = version.CreatedAt.UTC()
-					}
-				}
-				nextTime = nextTime.Add(-100 * time.Microsecond)
+				nextTime := versions[1].CreatedAt.UTC()
 
 				nextVersions, err := queries.ListServerVersions(
 					context.Background(),
@@ -284,19 +306,24 @@ func TestListServerVersions(t *testing.T) {
 				)
 				require.NoError(t, err)
 				assert.Len(t, nextVersions, 1)
+				assert.Equal(t, "3.0.0", nextVersions[0].Version)
 			},
 		},
 		{
 			name: "list server versions with limit",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) string {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
 						UpsertServerVersionParams{
-							Name:    "test-server",
-							Version: version,
-							RegID:   regID,
+							Name:      "test-server",
+							Version:   version,
+							RegID:     regID,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -324,6 +351,7 @@ func TestListServerVersions(t *testing.T) {
 
 			db, cleanupFunc := database.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
+
 			queries := New(db)
 			require.NotNil(t, queries)
 
@@ -364,12 +392,15 @@ func TestListServers(t *testing.T) {
 			name: "list single server",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC()
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -393,13 +424,17 @@ func TestListServers(t *testing.T) {
 			name: "list multiple servers",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC()
 				for _, version := range []string{"1.0.0", "2.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
 						UpsertServerVersionParams{
-							Name:    "test-server-%d",
-							Version: version,
-							RegID:   regID,
+							Name:      "test-server",
+							Version:   version,
+							RegID:     regID,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -421,13 +456,17 @@ func TestListServers(t *testing.T) {
 			name: "list servers with pagination next",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
 						UpsertServerVersionParams{
-							Name:    "test-server",
-							Version: version,
-							RegID:   regID,
+							Name:      "test-server",
+							Version:   version,
+							RegID:     regID,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -454,13 +493,17 @@ func TestListServers(t *testing.T) {
 			name: "list servers with pagination prev",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
 						UpsertServerVersionParams{
-							Name:    "test-server",
-							Version: version,
-							RegID:   regID,
+							Name:      "test-server",
+							Version:   version,
+							RegID:     regID,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -487,12 +530,15 @@ func TestListServers(t *testing.T) {
 			name: "list servers with is_latest flag",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC()
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -532,13 +578,17 @@ func TestListServers(t *testing.T) {
 			name: "list servers with limit",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
 						UpsertServerVersionParams{
-							Name:    "test-server",
-							Version: version,
-							RegID:   regID,
+							Name:      "test-server",
+							Version:   version,
+							RegID:     regID,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -564,6 +614,7 @@ func TestListServers(t *testing.T) {
 
 			db, cleanupFunc := database.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
+
 			queries := New(db)
 			require.NotNil(t, queries)
 
@@ -588,12 +639,15 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 			name: "insert latest server version",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -621,13 +675,17 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				var serverIDs []uuid.UUID
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
 					serverID, err := queries.UpsertServerVersion(
 						context.Background(),
 						UpsertServerVersionParams{
-							Name:    "test-server",
-							Version: version,
-							RegID:   regID,
+							Name:      "test-server",
+							Version:   version,
+							RegID:     regID,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -716,6 +774,7 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 
 			db, cleanupFunc := database.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
+
 			queries := New(db)
 			require.NotNil(t, queries)
 
@@ -740,12 +799,15 @@ func TestUpsertServerIcon(t *testing.T) {
 			name: "insert server icon",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -770,12 +832,15 @@ func TestUpsertServerIcon(t *testing.T) {
 			name: "insert server icon with dark theme",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -800,12 +865,15 @@ func TestUpsertServerIcon(t *testing.T) {
 			name: "update existing server icon",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -867,6 +935,7 @@ func TestUpsertServerIcon(t *testing.T) {
 
 			db, cleanupFunc := database.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
+
 			queries := New(db)
 			require.NotNil(t, queries)
 
@@ -891,12 +960,15 @@ func TestUpsertServerPackage(t *testing.T) {
 			name: "insert server package with minimal fields",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -923,12 +995,15 @@ func TestUpsertServerPackage(t *testing.T) {
 			name: "insert server package with all fields",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -988,6 +1063,7 @@ func TestUpsertServerPackage(t *testing.T) {
 
 			db, cleanupFunc := database.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
+
 			queries := New(db)
 			require.NotNil(t, queries)
 
@@ -1012,12 +1088,15 @@ func TestUpsertServerRemote(t *testing.T) {
 			name: "insert server remote with minimal fields",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -1041,12 +1120,15 @@ func TestUpsertServerRemote(t *testing.T) {
 			name: "insert server remote with all fields",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -1071,12 +1153,15 @@ func TestUpsertServerRemote(t *testing.T) {
 			name: "update existing server remote",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -1137,6 +1222,7 @@ func TestUpsertServerRemote(t *testing.T) {
 
 			db, cleanupFunc := database.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
+
 			queries := New(db)
 			require.NotNil(t, queries)
 
@@ -1161,15 +1247,19 @@ func TestListServerPackages(t *testing.T) {
 			name: "no server packages",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
+				require.NotNil(t, serverID)
 				return []uuid.UUID{serverID}
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -1186,12 +1276,15 @@ func TestListServerPackages(t *testing.T) {
 			name: "list single server package",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -1230,13 +1323,17 @@ func TestListServerPackages(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				var serverIDs []uuid.UUID
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
 					serverID, err := queries.UpsertServerVersion(
 						context.Background(),
 						UpsertServerVersionParams{
-							Name:    fmt.Sprintf("test-server-%d", i+1),
-							Version: version,
-							RegID:   regID,
+							Name:      fmt.Sprintf("test-server-%d", i+1),
+							Version:   version,
+							RegID:     regID,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -1277,13 +1374,17 @@ func TestListServerPackages(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				var serverIDs []uuid.UUID
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i, name := range []string{"server-1", "server-2"} {
+					createdAt = createdAt.Add(1 * time.Second)
 					serverID, err := queries.UpsertServerVersion(
 						context.Background(),
 						UpsertServerVersionParams{
-							Name:    name,
-							Version: "1.0.0",
-							RegID:   regID,
+							Name:      name,
+							Version:   "1.0.0",
+							RegID:     regID,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -1349,6 +1450,7 @@ func TestListServerPackages(t *testing.T) {
 
 			db, cleanupFunc := database.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
+
 			queries := New(db)
 			require.NotNil(t, queries)
 
@@ -1373,12 +1475,15 @@ func TestListServerRemotes(t *testing.T) {
 			name: "no server remotes",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -1398,12 +1503,15 @@ func TestListServerRemotes(t *testing.T) {
 			name: "list single server remote",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -1437,12 +1545,15 @@ func TestListServerRemotes(t *testing.T) {
 			name: "list multiple server remotes for single server",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
+				createdAt := time.Now().UTC()
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
-						Name:    "test-server",
-						Version: "1.0.0",
-						RegID:   regID,
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -1493,13 +1604,17 @@ func TestListServerRemotes(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				var serverIDs []uuid.UUID
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i, name := range []string{"server-1", "server-2"} {
+					createdAt = createdAt.Add(1 * time.Second)
 					serverID, err := queries.UpsertServerVersion(
 						context.Background(),
 						UpsertServerVersionParams{
-							Name:    name,
-							Version: "1.0.0",
-							RegID:   regID,
+							Name:      name,
+							Version:   "1.0.0",
+							RegID:     regID,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -1562,6 +1677,7 @@ func TestListServerRemotes(t *testing.T) {
 
 			db, cleanupFunc := database.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
+
 			queries := New(db)
 			require.NotNil(t, queries)
 

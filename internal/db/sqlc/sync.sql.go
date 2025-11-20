@@ -47,7 +47,7 @@ INSERT INTO registry_sync (
     $1,
     $2,
     $3,
-    CURRENT_TIMESTAMP
+    $4
 ) RETURNING id
 `
 
@@ -55,10 +55,16 @@ type InsertRegistrySyncParams struct {
 	RegID      uuid.UUID  `json:"reg_id"`
 	SyncStatus SyncStatus `json:"sync_status"`
 	ErrorMsg   *string    `json:"error_msg"`
+	StartedAt  *time.Time `json:"started_at"`
 }
 
 func (q *Queries) InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, insertRegistrySync, arg.RegID, arg.SyncStatus, arg.ErrorMsg)
+	row := q.db.QueryRow(ctx, insertRegistrySync,
+		arg.RegID,
+		arg.SyncStatus,
+		arg.ErrorMsg,
+		arg.StartedAt,
+	)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
