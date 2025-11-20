@@ -74,6 +74,7 @@ type Config struct {
 	SyncPolicy   *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
 	Filter       *FilterConfig     `yaml:"filter,omitempty"`
 	Database     *DatabaseConfig   `yaml:"database,omitempty"`
+	Auth         *AuthConfig       `yaml:"auth,omitempty"`
 }
 
 // SourceConfig defines the data source configuration
@@ -142,6 +143,107 @@ type NameFilterConfig struct {
 type TagFilterConfig struct {
 	Include []string `yaml:"include,omitempty"`
 	Exclude []string `yaml:"exclude,omitempty"`
+}
+
+// AuthMode represents the authentication mode
+type AuthMode string
+
+const (
+	// AuthModeAnonymous allows unauthenticated access
+	AuthModeAnonymous AuthMode = "anonymous"
+
+	// AuthModeOAuth requires OAuth/OIDC authentication
+	AuthModeOAuth AuthMode = "oauth"
+)
+
+// AuthConfig defines authentication configuration for the registry server
+type AuthConfig struct {
+	// Mode specifies the authentication mode (anonymous or oauth)
+	// Defaults to "anonymous" if not specified
+	Mode AuthMode `yaml:"mode,omitempty"`
+
+	// ProtectedPaths defines path patterns that require authentication
+	// Example: ["/api/v0/servers", "/api/v0/servers/*"]
+	// If empty when Mode is oauth, all paths are protected
+	ProtectedPaths []string `yaml:"protectedPaths,omitempty"`
+
+	// Providers defines the OAuth/OIDC providers for authentication
+	// Multiple providers can be configured (e.g., Kubernetes + external IDP)
+	Providers []OAuthProviderConfig `yaml:"providers,omitempty"`
+}
+
+// OAuthProviderConfig defines configuration for an OAuth/OIDC provider
+type OAuthProviderConfig struct {
+	// Name is a unique identifier for this provider (e.g., "kubernetes", "keycloak")
+	Name string `yaml:"name"`
+
+	// IssuerURL is the OIDC issuer URL (e.g., https://accounts.google.com)
+	// The JWKS URL will be discovered automatically from .well-known/openid-configuration
+	IssuerURL string `yaml:"issuerUrl"`
+
+	// Audience is the expected audience claim in the token
+	// For Kubernetes, this is typically the API server URL
+	Audience string `yaml:"audience,omitempty"`
+
+	// ClientID is the OAuth client ID for token introspection (optional)
+	ClientID string `yaml:"clientId,omitempty"`
+
+	// ClientSecretFile is the path to a file containing the client secret
+	// The file should contain only the secret with optional trailing whitespace
+	ClientSecretFile string `yaml:"clientSecretFile,omitempty"`
+
+	// CACertPath is the path to a CA certificate bundle for verifying the provider's TLS certificate
+	// Required for Kubernetes in-cluster authentication or self-signed certificates
+	CACertPath string `yaml:"caCertPath,omitempty"`
+}
+
+// GetClientSecret returns the client secret by reading from the file specified in ClientSecretFile.
+// Returns empty string if ClientSecretFile is not configured.
+// Returns an error if the file cannot be read.
+func (p *OAuthProviderConfig) GetClientSecret() (string, error) {
+	if p.ClientSecretFile == "" {
+		return "", nil
+	}
+
+	// Use filepath.Clean to prevent path traversal attacks
+	cleanPath := filepath.Clean(p.ClientSecretFile)
+
+	data, err := os.ReadFile(cleanPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read client secret from file %s: %w", p.ClientSecretFile, err)
+	}
+
+	// Trim whitespace (including newlines) from file content
+	return strings.TrimSpace(string(data)), nil
+}
+
+// Validate performs validation on the auth configuration
+func (a *AuthConfig) Validate() error {
+	// Validate mode - empty defaults to anonymous
+	switch a.Mode {
+	case AuthModeAnonymous, "":
+		// Anonymous mode doesn't require providers
+		return nil
+	case AuthModeOAuth:
+		// OAuth mode requires at least one provider
+		if len(a.Providers) == 0 {
+			return fmt.Errorf("auth.providers is required when mode is oauth")
+		}
+	default:
+		return fmt.Errorf("invalid auth.mode: %s (must be 'anonymous' or 'oauth')", a.Mode)
+	}
+
+	// Validate each provider
+	for i, provider := range a.Providers {
+		if provider.Name == "" {
+			return fmt.Errorf("auth.providers[%d].name is required", i)
+		}
+		if provider.IssuerURL == "" {
+			return fmt.Errorf("auth.providers[%d].issuerUrl is required", i)
+		}
+	}
+
+	return nil
 }
 
 // DatabaseConfig defines database connection settings
@@ -328,6 +430,13 @@ func (c *Config) validate() error {
 	// Try to parse the interval to ensure it's valid
 	if _, err := time.ParseDuration(c.SyncPolicy.Interval); err != nil {
 		return fmt.Errorf("syncPolicy.interval must be a valid duration (e.g., '30m', '1h'): %w", err)
+	}
+
+	// Validate auth configuration if present
+	if c.Auth != nil {
+		if err := c.Auth.Validate(); err != nil {
+			return err
+		}
 	}
 
 	return nil

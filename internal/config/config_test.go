@@ -880,3 +880,177 @@ syncPolicy:
 		})
 	}
 }
+
+func TestAuthConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr bool
+		errMsg  string
+		check   func(t *testing.T, cfg *Config)
+	}{
+		{
+			name: "auth defaults to anonymous",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"`,
+			wantErr: false,
+			check: func(t *testing.T, cfg *Config) {
+				// Source should be parsed correctly
+				assert.Equal(t, "file", cfg.Source.Type)
+				assert.Equal(t, "/data/registry.json", cfg.Source.File.Path)
+				// Auth should be nil (defaults to anonymous behavior)
+				assert.Nil(t, cfg.Auth)
+			},
+		},
+		{
+			name: "oauth with k8s and okta providers",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+auth:
+  mode: oauth
+  providers:
+    - name: kubernetes
+      issuerUrl: https://kubernetes.default.svc.cluster.local
+    - name: okta
+      issuerUrl: https://dev-12345.okta.com`,
+			wantErr: false,
+			check: func(t *testing.T, cfg *Config) {
+				require.NotNil(t, cfg.Auth)
+				assert.Equal(t, AuthModeOAuth, cfg.Auth.Mode)
+				assert.Len(t, cfg.Auth.Providers, 2)
+				assert.Equal(t, "https://kubernetes.default.svc.cluster.local", cfg.Auth.Providers[0].IssuerURL)
+				assert.Equal(t, "https://dev-12345.okta.com", cfg.Auth.Providers[1].IssuerURL)
+			},
+		},
+		{
+			name: "explicit anonymous mode",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+auth:
+  mode: anonymous`,
+			wantErr: false,
+			check: func(t *testing.T, cfg *Config) {
+				require.NotNil(t, cfg.Auth)
+				assert.Equal(t, AuthModeAnonymous, cfg.Auth.Mode)
+			},
+		},
+		{
+			name: "oauth requires providers",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+auth:
+  mode: oauth`,
+			wantErr: true,
+			errMsg:  "providers",
+		},
+		{
+			name: "provider requires issuerUrl",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+auth:
+  mode: oauth
+  providers:
+    - name: kubernetes`,
+			wantErr: true,
+			errMsg:  "issuerUrl",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			configPath := filepath.Join(tmpDir, "config.yaml")
+			err := os.WriteFile(configPath, []byte(tt.yaml), 0600)
+			require.NoError(t, err)
+
+			cfg, err := LoadConfig(WithConfigPath(configPath))
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			if tt.check != nil {
+				tt.check(t, cfg)
+			}
+		})
+	}
+}
+
+func TestGetClientSecret(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reads secret from file", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		secretFile := filepath.Join(tmpDir, "secret.txt")
+		err := os.WriteFile(secretFile, []byte("  my-secret-value\n"), 0600)
+		require.NoError(t, err)
+
+		provider := &OAuthProviderConfig{
+			Name:             "test",
+			IssuerURL:        "https://example.com",
+			ClientSecretFile: secretFile,
+		}
+
+		secret, err := provider.GetClientSecret()
+		require.NoError(t, err)
+		assert.Equal(t, "my-secret-value", secret)
+	})
+
+	t.Run("returns empty for no file configured", func(t *testing.T) {
+		t.Parallel()
+
+		provider := &OAuthProviderConfig{
+			Name:      "test",
+			IssuerURL: "https://example.com",
+		}
+
+		secret, err := provider.GetClientSecret()
+		require.NoError(t, err)
+		assert.Equal(t, "", secret)
+	})
+
+	t.Run("returns error for missing file", func(t *testing.T) {
+		t.Parallel()
+
+		provider := &OAuthProviderConfig{
+			Name:             "test",
+			IssuerURL:        "https://example.com",
+			ClientSecretFile: "/nonexistent/secret.txt",
+		}
+
+		_, err := provider.GetClientSecret()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to read client secret")
+	})
+}
