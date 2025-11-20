@@ -58,7 +58,6 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 	// Mount MCP Registry API v0 compatible routes
 	r.Mount("/registry", v01.Router(svc))
 	r.Mount("/extension/v0", extensionv0.Router(svc))
-	r.Mount("/v0", v0.Router(svc))
 
 	return r
 }

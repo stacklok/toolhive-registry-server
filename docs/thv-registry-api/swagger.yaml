@@ -1,5 +1,6 @@
 components:
   schemas:
+<<<<<<< Updated upstream
     internal_api_v0.EnvVarDetail:
       properties:
         default:
@@ -13,20 +14,12 @@ components:
         secret:
           type: boolean
       type: object
+=======
+>>>>>>> Stashed changes
     internal_api_v0.ErrorResponse:
       properties:
         error:
           type: string
-      type: object
-    internal_api_v0.ListServersResponse:
-      properties:
-        servers:
-          items:
-            $ref: '#/components/schemas/internal_api_v0.ServerSummaryResponse'
-          type: array
-          uniqueItems: false
-        total:
-          type: integer
       type: object
     internal_api_v0.RegistryInfoResponse:
       properties:
@@ -37,67 +30,6 @@ components:
         total_servers:
           type: integer
         version:
-          type: string
-      type: object
-    internal_api_v0.ServerDetailResponse:
-      properties:
-        args:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        description:
-          type: string
-        env_vars:
-          items:
-            $ref: '#/components/schemas/internal_api_v0.EnvVarDetail'
-          type: array
-          uniqueItems: false
-        image:
-          type: string
-        metadata:
-          additionalProperties: {}
-          type: object
-        name:
-          type: string
-        permissions:
-          additionalProperties: {}
-          type: object
-        repository_url:
-          type: string
-        status:
-          type: string
-        tags:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        tier:
-          type: string
-        tools:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        transport:
-          type: string
-        volumes:
-          additionalProperties: {}
-          type: object
-      type: object
-    internal_api_v0.ServerSummaryResponse:
-      properties:
-        description:
-          type: string
-        name:
-          type: string
-        status:
-          type: string
-        tier:
-          type: string
-        tools_count:
-          type: integer
-        transport:
           type: string
       type: object
     model.Argument:
@@ -492,6 +424,7 @@ paths:
       summary: Get OpenAPI specification
       tags:
       - system
+<<<<<<< Updated upstream
   /api/v0/registry/servers:
     get:
       deprecated: true
@@ -586,6 +519,8 @@ paths:
       summary: Get server by name
       tags:
       - servers
+=======
+>>>>>>> Stashed changes
   /extension/v0/registries:
     get:
       description: List all registries
@@ -1191,26 +1126,6 @@ paths:
       tags:
       - registry
       - official
-  /v0/publish:
-    post:
-      deprecated: true
-      description: Publish a new MCP server to the registry or update an existing
-        one
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "501":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
-          description: Not Implemented
-      summary: Publish MCP server (Not Implemented)
-      tags:
-      - servers
   /version:
     get:
       deprecated: true

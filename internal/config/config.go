@@ -307,6 +307,9 @@ func (c *Config) validate() error {
 		if c.Source.API.Endpoint == "" {
 			return fmt.Errorf("source.api.endpoint is required")
 		}
+		if c.Source.Format != "" && c.Source.Format != SourceFormatUpstream {
+			return fmt.Errorf("source.format must be either empty or %s when type is api, got %s", SourceFormatUpstream, c.Source.Format)
+		}
 
 	case SourceTypeFile:
 		if c.Source.File == nil {
