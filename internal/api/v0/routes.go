@@ -122,13 +122,6 @@ func Router(svc service.RegistryService) http.Handler {
 	// Server endpoints
 	r.Route("/servers", func(r chi.Router) {
 		r.Get("/", routes.listServers)
-
-		// Deployed servers sub-routes (must come before {name} to avoid conflicts)
-		r.Route("/deployed", func(r chi.Router) {
-			r.Get("/", routes.listDeployedServers)
-			r.Get("/{name}", routes.getDeployedServer)
-		})
-
 		r.Get("/{name}", routes.getServer)
 	})
 
@@ -311,28 +304,6 @@ func (rr *Routes) publishServer(w http.ResponseWriter, _ *http.Request) {
 	rr.writeErrorResponse(w, "Publishing is not supported by this registry implementation", http.StatusNotImplemented)
 }
 
-// listDeployedServers handles GET /api/v0/registry/servers/deployed
-//
-// @Summary		List deployed servers
-// @Description	Get a list of all currently deployed MCP servers
-// @Tags			deployed-servers
-// @Accept			json
-// @Produce		json
-// @Success		200	{array}		service.DeployedServer
-// @Failure		500	{object}	ErrorResponse
-// @Router			/api/v0/registry/servers/deployed [get]
-// @Deprecated
-func (rr *Routes) listDeployedServers(w http.ResponseWriter, r *http.Request) {
-	servers, err := rr.service.ListDeployedServers(r.Context())
-	if err != nil {
-		logger.Errorf("Failed to list deployed servers: %v", err)
-		rr.writeErrorResponse(w, "Failed to list deployed servers", http.StatusInternalServerError)
-		return
-	}
-
-	rr.writeJSONResponse(w, servers)
-}
-
 // newServerSummaryResponse creates a ServerSummaryResponse from server metadata
 func newServerSummaryResponse(server upstreamv0.ServerJSON) ServerSummaryResponse {
 	return ServerSummaryResponse{
@@ -377,36 +348,6 @@ func populateMetadata(response *ServerDetailResponse, server upstreamv0.ServerJS
 			response.Metadata[k] = v
 		}
 	}
-}
-
-// getDeployedServer handles GET /api/v0/registry/servers/deployed/{name}
-//
-// @Summary		Get deployed servers by registry name
-// @Description	Get all deployed MCP servers that match the specified server registry name
-// @Tags			deployed-servers
-// @Accept			json
-// @Produce		json
-// @Param			name	path		string	true	"Server registry name"
-// @Success		200		{array}		service.DeployedServer
-// @Failure		400		{object}	ErrorResponse
-// @Failure		500		{object}	ErrorResponse
-// @Router			/api/v0/registry/servers/deployed/{name} [get]
-// @Deprecated
-func (rr *Routes) getDeployedServer(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
-	if name == "" {
-		rr.writeErrorResponse(w, "Server name is required", http.StatusBadRequest)
-		return
-	}
-
-	servers, err := rr.service.GetDeployedServer(r.Context(), name)
-	if err != nil {
-		logger.Errorf("Failed to get deployed servers for %s: %v", name, err)
-		rr.writeErrorResponse(w, "Failed to get deployed servers", http.StatusInternalServerError)
-		return
-	}
-
-	rr.writeJSONResponse(w, servers)
 }
 
 // HealthRouter creates a router for health check endpoints

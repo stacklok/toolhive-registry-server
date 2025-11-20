@@ -19,6 +19,7 @@ import (
 	v0 "github.com/stacklok/toolhive-registry-server/internal/api/v0"
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
 
@@ -284,14 +285,6 @@ func TestRegistryRouter(t *testing.T) {
 	mockSvc.EXPECT().GetServer(gomock.Any(), "test-server").Return(upstreamv0.ServerJSON{
 		Name: "test-server",
 	}, nil).AnyTimes()
-	mockSvc.EXPECT().ListDeployedServers(gomock.Any()).Return([]*service.DeployedServer{}, nil).AnyTimes()
-	mockSvc.EXPECT().GetDeployedServer(gomock.Any(), "test-server").Return([]*service.DeployedServer{
-		{
-			Name:      "test-server",
-			Namespace: "default",
-			Status:    "running",
-		},
-	}, nil).AnyTimes()
 
 	router := v0.Router(mockSvc)
 
@@ -316,18 +309,6 @@ func TestRegistryRouter(t *testing.T) {
 		{
 			name:       "get server",
 			path:       "/servers/test-server",
-			method:     "GET",
-			wantStatus: http.StatusOK,
-		},
-		{
-			name:       "list deployed servers",
-			path:       "/servers/deployed",
-			method:     "GET",
-			wantStatus: http.StatusOK,
-		},
-		{
-			name:       "get deployed server",
-			path:       "/servers/deployed/test-server",
 			method:     "GET",
 			wantStatus: http.StatusOK,
 		},
@@ -442,7 +423,6 @@ func TestNewServer(t *testing.T) {
 	mockSvc.EXPECT().GetServer(gomock.Any(), "test").Return(upstreamv0.ServerJSON{
 		Name: "test",
 	}, nil).AnyTimes()
-	mockSvc.EXPECT().ListDeployedServers(gomock.Any()).Return([]*service.DeployedServer{}, nil).AnyTimes()
 
 	// Create server with mock service (no options needed for basic testing)
 	router := api.NewServer(mockSvc)
@@ -461,7 +441,6 @@ func TestNewServer(t *testing.T) {
 		{"/v0/info", "GET", http.StatusOK},
 		{"/v0/servers", "GET", http.StatusOK},
 		{"/v0/servers/test", "GET", http.StatusOK},
-		{"/v0/servers/deployed", "GET", http.StatusOK},
 		{"/notfound", "GET", http.StatusNotFound},
 	}
 
@@ -583,7 +562,7 @@ func TestRoutesWithRealData(t *testing.T) {
 
 	// Create a real service instance with the provider
 	ctx := context.Background()
-	svc, err := service.NewService(ctx, provider, nil)
+	svc, err := inmemory.New(ctx, provider)
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 
@@ -734,7 +713,7 @@ func TestFormatConversion(t *testing.T) {
 
 	// Create service
 	ctx := context.Background()
-	svc, err := service.NewService(ctx, provider, nil)
+	svc, err := inmemory.New(ctx, provider)
 	require.NoError(t, err)
 
 	// Create router
@@ -778,7 +757,7 @@ func TestComplexServerConfiguration(t *testing.T) {
 	provider := newFileBasedRegistryProvider()
 
 	ctx := context.Background()
-	svc, err := service.NewService(ctx, provider, nil)
+	svc, err := inmemory.New(ctx, provider)
 	require.NoError(t, err)
 
 	router := v0.Router(svc)
@@ -815,7 +794,7 @@ func TestRoutesWithRealisticData(t *testing.T) {
 
 	// Create a real service instance with the provider
 	ctx := context.Background()
-	svc, err := service.NewService(ctx, provider, nil)
+	svc, err := inmemory.New(ctx, provider)
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 
@@ -932,7 +911,7 @@ func TestSpecificServersWithRealisticData(t *testing.T) {
 	require.NotNil(t, provider)
 
 	ctx := context.Background()
-	svc, err := service.NewService(ctx, provider, nil)
+	svc, err := inmemory.New(ctx, provider)
 	require.NoError(t, err)
 
 	router := v0.Router(svc)
@@ -1017,7 +996,7 @@ func TestFormatConversionWithRealisticData(t *testing.T) {
 	require.NotNil(t, provider)
 
 	ctx := context.Background()
-	svc, err := service.NewService(ctx, provider, nil)
+	svc, err := inmemory.New(ctx, provider)
 	require.NoError(t, err)
 
 	router := v0.Router(svc)
@@ -1061,7 +1040,7 @@ func BenchmarkRoutesWithRealisticData(b *testing.B) {
 	require.NotNil(b, provider)
 
 	ctx := context.Background()
-	svc, err := service.NewService(ctx, provider, nil)
+	svc, err := inmemory.New(ctx, provider)
 	if err != nil {
 		b.Fatalf("Failed to create service: %v", err)
 	}
@@ -1111,7 +1090,7 @@ func BenchmarkRoutesWithRealData(b *testing.B) {
 	provider := newFileBasedRegistryProvider()
 
 	ctx := context.Background()
-	svc, err := service.NewService(ctx, provider, nil)
+	svc, err := inmemory.New(ctx, provider)
 	if err != nil {
 		b.Fatalf("Failed to create service: %v", err)
 	}
@@ -1154,7 +1133,7 @@ func TestServerResponseStructures(t *testing.T) {
 	require.NotNil(t, provider)
 
 	ctx := context.Background()
-	svc, err := service.NewService(ctx, provider, nil)
+	svc, err := inmemory.New(ctx, provider)
 	require.NoError(t, err)
 
 	router := v0.Router(svc)
@@ -1236,7 +1215,7 @@ func TestResponseFieldMapping(t *testing.T) {
 	require.NotNil(t, provider)
 
 	ctx := context.Background()
-	svc, err := service.NewService(ctx, provider, nil)
+	svc, err := inmemory.New(ctx, provider)
 	require.NoError(t, err)
 
 	router := v0.Router(svc)

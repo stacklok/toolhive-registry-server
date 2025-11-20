@@ -14,7 +14,6 @@ import (
 	reflect "reflect"
 
 	v0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
-	service "github.com/stacklok/toolhive-registry-server/internal/service"
 	registry "github.com/stacklok/toolhive/pkg/registry/registry"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -57,21 +56,6 @@ func (mr *MockRegistryServiceMockRecorder) CheckReadiness(ctx any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckReadiness", reflect.TypeOf((*MockRegistryService)(nil).CheckReadiness), ctx)
 }
 
-// GetDeployedServer mocks base method.
-func (m *MockRegistryService) GetDeployedServer(ctx context.Context, name string) ([]*service.DeployedServer, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetDeployedServer", ctx, name)
-	ret0, _ := ret[0].([]*service.DeployedServer)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetDeployedServer indicates an expected call of GetDeployedServer.
-func (mr *MockRegistryServiceMockRecorder) GetDeployedServer(ctx, name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDeployedServer", reflect.TypeOf((*MockRegistryService)(nil).GetDeployedServer), ctx, name)
-}
-
 // GetRegistry mocks base method.
 func (m *MockRegistryService) GetRegistry(ctx context.Context) (*registry.UpstreamRegistry, string, error) {
 	m.ctrl.T.Helper()
@@ -101,21 +85,6 @@ func (m *MockRegistryService) GetServer(ctx context.Context, name string) (v0.Se
 func (mr *MockRegistryServiceMockRecorder) GetServer(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetServer", reflect.TypeOf((*MockRegistryService)(nil).GetServer), ctx, name)
-}
-
-// ListDeployedServers mocks base method.
-func (m *MockRegistryService) ListDeployedServers(ctx context.Context) ([]*service.DeployedServer, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListDeployedServers", ctx)
-	ret0, _ := ret[0].([]*service.DeployedServer)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListDeployedServers indicates an expected call of ListDeployedServers.
-func (mr *MockRegistryServiceMockRecorder) ListDeployedServers(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDeployedServers", reflect.TypeOf((*MockRegistryService)(nil).ListDeployedServers), ctx)
 }
 
 // ListServers mocks base method.
