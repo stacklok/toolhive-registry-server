@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	_ "github.com/lib/pq" // Register postgres driver
 	"github.com/stretchr/testify/require"
 
@@ -29,11 +28,14 @@ func TestInsertRegistry(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
 				id, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeFILE,
+						Name:      "test-registry",
+						RegType:   RegistryTypeFILE,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -46,11 +48,14 @@ func TestInsertRegistry(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
 				id, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeLOCAL,
+						Name:      "test-registry",
+						RegType:   RegistryTypeLOCAL,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -63,11 +68,14 @@ func TestInsertRegistry(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
 				id, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeREMOTE,
+						Name:      "test-registry",
+						RegType:   RegistryTypeREMOTE,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -80,11 +88,14 @@ func TestInsertRegistry(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
 				id, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeFILE,
+						Name:      "test-registry",
+						RegType:   RegistryTypeFILE,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -95,11 +106,14 @@ func TestInsertRegistry(t *testing.T) {
 			name: "insert registry with duplicate name",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
 				id, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeLOCAL,
+						Name:      "test-registry",
+						RegType:   RegistryTypeLOCAL,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -107,11 +121,14 @@ func TestInsertRegistry(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
 				id, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeLOCAL,
+						Name:      "test-registry",
+						RegType:   RegistryTypeLOCAL,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.Error(t, err)
@@ -160,11 +177,14 @@ func TestListRegistries(t *testing.T) {
 			name: "one registry",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
 				id, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeREMOTE,
+						Name:      "test-registry",
+						RegType:   RegistryTypeREMOTE,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -186,12 +206,16 @@ func TestListRegistries(t *testing.T) {
 			name: "multiple registries",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i := range 2 {
+					createdAt = createdAt.Add(1 * time.Second)
 					id, err := queries.InsertRegistry(
 						context.Background(),
 						InsertRegistryParams{
-							Name:    fmt.Sprintf("test-registry-%d", i),
-							RegType: RegistryTypeREMOTE,
+							Name:      fmt.Sprintf("test-registry-%d", i),
+							RegType:   RegistryTypeREMOTE,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -216,12 +240,16 @@ func TestListRegistries(t *testing.T) {
 			name: "list registries with next page",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i := range 2 {
+					createdAt = createdAt.Add(1 * time.Second)
 					id, err := queries.InsertRegistry(
 						context.Background(),
 						InsertRegistryParams{
-							Name:    fmt.Sprintf("test-registry-%d", i),
-							RegType: RegistryTypeREMOTE,
+							Name:      fmt.Sprintf("test-registry-%d", i),
+							RegType:   RegistryTypeREMOTE,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -233,10 +261,7 @@ func TestListRegistries(t *testing.T) {
 				nextTime := time.Now().UTC().Add(-10 * time.Minute)
 				registries, err := queries.ListRegistries(context.Background(), ListRegistriesParams{
 					Size: 10,
-					Next: pgtype.Timestamptz{
-						Time:  nextTime,
-						Valid: true,
-					},
+					Next: &nextTime,
 				})
 				require.NoError(t, err)
 				require.NotEmpty(t, registries)
@@ -246,21 +271,25 @@ func TestListRegistries(t *testing.T) {
 				require.Equal(t, "test-registry-0", registries[1].Name)
 				require.Equal(t, RegistryTypeREMOTE, registries[1].RegType)
 
-				require.True(t, registries[0].CreatedAt.Time.After(registries[1].CreatedAt.Time))
-				require.True(t, registries[0].CreatedAt.Time.After(nextTime))
-				require.True(t, registries[1].CreatedAt.Time.After(nextTime))
+				require.True(t, registries[0].CreatedAt.After(*registries[1].CreatedAt))
+				require.True(t, registries[0].CreatedAt.After(nextTime))
+				require.True(t, registries[1].CreatedAt.After(nextTime))
 			},
 		},
 		{
 			name: "list registries with prev page",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i := range 2 {
+					createdAt = createdAt.Add(1 * time.Second)
 					id, err := queries.InsertRegistry(
 						context.Background(),
 						InsertRegistryParams{
-							Name:    fmt.Sprintf("test-registry-%d", i),
-							RegType: RegistryTypeREMOTE,
+							Name:      fmt.Sprintf("test-registry-%d", i),
+							RegType:   RegistryTypeREMOTE,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -272,10 +301,7 @@ func TestListRegistries(t *testing.T) {
 				prevTime := time.Now().UTC().Add(10 * time.Minute)
 				registries, err := queries.ListRegistries(context.Background(), ListRegistriesParams{
 					Size: 10,
-					Prev: pgtype.Timestamptz{
-						Time:  prevTime,
-						Valid: true,
-					},
+					Prev: &prevTime,
 				})
 				require.NoError(t, err)
 				require.NotEmpty(t, registries)
@@ -285,21 +311,25 @@ func TestListRegistries(t *testing.T) {
 				require.Equal(t, "test-registry-1", registries[1].Name)
 				require.Equal(t, RegistryTypeREMOTE, registries[1].RegType)
 
-				require.True(t, registries[0].CreatedAt.Time.Before(registries[1].CreatedAt.Time))
-				require.True(t, registries[0].CreatedAt.Time.Before(prevTime))
-				require.True(t, registries[1].CreatedAt.Time.Before(prevTime))
+				require.True(t, registries[0].CreatedAt.Before(*registries[1].CreatedAt))
+				require.True(t, registries[0].CreatedAt.Before(prevTime))
+				require.True(t, registries[1].CreatedAt.Before(prevTime))
 			},
 		},
 		{
 			name: "list registries with limit",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i := range 2 {
+					createdAt = createdAt.Add(1 * time.Second)
 					id, err := queries.InsertRegistry(
 						context.Background(),
 						InsertRegistryParams{
-							Name:    fmt.Sprintf("test-registry-%d", i),
-							RegType: RegistryTypeREMOTE,
+							Name:      fmt.Sprintf("test-registry-%d", i),
+							RegType:   RegistryTypeREMOTE,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -326,6 +356,7 @@ func TestListRegistries(t *testing.T) {
 
 			db, cleanupFunc := database.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
+
 			queries := New(db)
 			require.NotNil(t, queries)
 
@@ -340,18 +371,18 @@ func TestGetRegistry(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		setupFunc    func(t *testing.T, queries *Queries) []pgtype.UUID
-		scenarioFunc func(t *testing.T, queries *Queries, id pgtype.UUID)
+		setupFunc    func(t *testing.T, queries *Queries) []uuid.UUID
+		scenarioFunc func(t *testing.T, queries *Queries, id uuid.UUID)
 	}{
 		{
 			name: "no registry",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries) []pgtype.UUID {
+			setupFunc: func(_ *testing.T, _ *Queries) []uuid.UUID {
 				// Return non-existent ID
-				return []pgtype.UUID{{Bytes: uuid.New(), Valid: true}}
+				return []uuid.UUID{uuid.New()}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, id pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, id uuid.UUID) {
 				_, err := queries.GetRegistry(context.Background(), id)
 				require.Error(t, err)
 				require.ErrorIs(t, err, sql.ErrNoRows)
@@ -360,17 +391,20 @@ func TestGetRegistry(t *testing.T) {
 		{
 			name: "get registry",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries) []pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
+				createdAt := time.Now().UTC()
 				id, err := queries.InsertRegistry(context.Background(), InsertRegistryParams{
-					Name:    "test-registry",
-					RegType: RegistryTypeREMOTE,
+					Name:      "test-registry",
+					RegType:   RegistryTypeREMOTE,
+					CreatedAt: &createdAt,
+					UpdatedAt: &createdAt,
 				})
 				require.NoError(t, err)
 				require.NotNil(t, id)
-				return []pgtype.UUID{id}
+				return []uuid.UUID{id}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, id pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, id uuid.UUID) {
 				registry, err := queries.GetRegistry(context.Background(), id)
 				require.NoError(t, err)
 				require.NotNil(t, registry)
@@ -386,6 +420,7 @@ func TestGetRegistry(t *testing.T) {
 
 			db, cleanupFunc := database.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
+
 			queries := New(db)
 			require.NotNil(t, queries)
 

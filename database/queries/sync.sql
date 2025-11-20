@@ -18,7 +18,7 @@ INSERT INTO registry_sync (
     sqlc.arg(reg_id),
     sqlc.arg(sync_status),
     sqlc.narg(error_msg),
-    CURRENT_TIMESTAMP
+    sqlc.arg(started_at)
 ) RETURNING id;
 
 -- name: UpdateRegistrySync :exec

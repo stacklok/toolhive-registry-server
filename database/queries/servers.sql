@@ -19,7 +19,7 @@ SELECT r.reg_type as registry_type,
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
  WHERE (sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next))
-    OR (sqlc.narg(prev)::timestamp with time zone IS NULL AND s.created_at < sqlc.narg(prev))
+   AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR s.created_at < sqlc.narg(prev))
  ORDER BY
  -- next page sorting
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN r.reg_type END ASC,
@@ -79,7 +79,7 @@ SELECT s.id,
   FROM mcp_server s
  WHERE s.name = sqlc.arg(name)
    AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next))
-       OR (sqlc.narg(prev)::timestamp with time zone IS NULL AND s.created_at < sqlc.narg(prev)))
+    AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR s.created_at < sqlc.narg(prev)))
  ORDER BY
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.created_at END ASC,
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
@@ -105,8 +105,8 @@ INSERT INTO mcp_server (
     sqlc.arg(name),
     sqlc.arg(version),
     sqlc.arg(reg_id),
-    CURRENT_TIMESTAMP,
-    CURRENT_TIMESTAMP,
+    sqlc.arg(created_at),
+    sqlc.arg(updated_at),
     sqlc.narg(description),
     sqlc.narg(title),
     sqlc.narg(website),
@@ -118,7 +118,7 @@ INSERT INTO mcp_server (
     sqlc.narg(repository_type)
 ) ON CONFLICT (reg_id, name, version)
   DO UPDATE SET
-    updated_at = CURRENT_TIMESTAMP,
+    updated_at = sqlc.arg(updated_at),
     description = sqlc.narg(description),
     title = sqlc.narg(title),
     website = sqlc.narg(website),
