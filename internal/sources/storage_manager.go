@@ -31,20 +31,20 @@ type StorageManager interface {
 	Delete(ctx context.Context, cfg *config.Config) error
 }
 
-// FileStorageManager implements StorageManager using local filesystem
-type FileStorageManager struct {
+// fileStorageManager implements StorageManager using local filesystem
+type fileStorageManager struct {
 	basePath string
 }
 
 // NewFileStorageManager creates a new file-based storage manager
 func NewFileStorageManager(basePath string) StorageManager {
-	return &FileStorageManager{
+	return &fileStorageManager{
 		basePath: basePath,
 	}
 }
 
 // Store saves the registry data to a JSON file
-func (f *FileStorageManager) Store(_ context.Context, _ *config.Config, reg *toolhivetypes.UpstreamRegistry) error {
+func (f *fileStorageManager) Store(_ context.Context, _ *config.Config, reg *toolhivetypes.UpstreamRegistry) error {
 	// Create base directory if it doesn't exist
 	if err := os.MkdirAll(f.basePath, 0750); err != nil {
 		return fmt.Errorf("failed to create storage directory: %w", err)
@@ -75,7 +75,7 @@ func (f *FileStorageManager) Store(_ context.Context, _ *config.Config, reg *too
 }
 
 // Get retrieves and parses registry data from the JSON file
-func (f *FileStorageManager) Get(_ context.Context, _ *config.Config) (*toolhivetypes.UpstreamRegistry, error) {
+func (f *fileStorageManager) Get(_ context.Context, _ *config.Config) (*toolhivetypes.UpstreamRegistry, error) {
 	filePath := filepath.Join(f.basePath, RegistryFileName)
 
 	// Read file
@@ -98,7 +98,7 @@ func (f *FileStorageManager) Get(_ context.Context, _ *config.Config) (*toolhive
 }
 
 // Delete removes the registry data file
-func (f *FileStorageManager) Delete(_ context.Context, _ *config.Config) error {
+func (f *fileStorageManager) Delete(_ context.Context, _ *config.Config) error {
 	filePath := filepath.Join(f.basePath, RegistryFileName)
 
 	if err := os.Remove(filePath); err != nil {

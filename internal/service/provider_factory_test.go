@@ -35,7 +35,7 @@ func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
 			wantErr: false,
 			checkType: func(t *testing.T, provider RegistryDataProvider) {
 				t.Helper()
-				assert.IsType(t, &FileRegistryDataProvider{}, provider)
+				assert.IsType(t, &fileRegistryDataProvider{}, provider)
 				assert.Equal(t, "file:/data/registry.json", provider.GetSource())
 				assert.Equal(t, "test-file-registry", provider.GetRegistryName())
 			},
@@ -85,10 +85,9 @@ func TestNewRegistryProviderFactory(t *testing.T) {
 	factory := NewRegistryProviderFactory(mockStorageManager)
 
 	require.NotNil(t, factory)
-	assert.IsType(t, &DefaultRegistryProviderFactory{}, factory)
 
 	// Verify that the factory has the storage manager injected
-	concreteFactory, ok := factory.(*DefaultRegistryProviderFactory)
+	concreteFactory, ok := factory.(*defaultRegistryProviderFactory)
 	require.True(t, ok)
 	assert.NotNil(t, concreteFactory.storageManager)
 }

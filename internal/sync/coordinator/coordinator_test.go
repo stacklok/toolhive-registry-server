@@ -78,7 +78,7 @@ func TestPerformSync_StatusPersistence(t *testing.T) {
 				RegistryName: "test-registry",
 			}
 
-			coord := &DefaultCoordinator{
+			coord := &defaultCoordinator{
 				manager:           mockSyncMgr,
 				statusPersistence: statusPersistence,
 				config:            cfg,
@@ -137,7 +137,7 @@ func TestPerformSync_AlwaysPersists(t *testing.T) {
 		statusPersistence := status.NewFileStatusPersistence(statusFile)
 		cfg := &config.Config{RegistryName: "test"}
 
-		coord := &DefaultCoordinator{
+		coord := &defaultCoordinator{
 			manager:           mockSyncMgr,
 			statusPersistence: statusPersistence,
 			config:            cfg,
@@ -182,7 +182,7 @@ func TestPerformSync_SyncingPhasePersistedImmediately(t *testing.T) {
 			})
 
 		cfg := &config.Config{RegistryName: "test"}
-		coord := &DefaultCoordinator{
+		coord := &defaultCoordinator{
 			manager:           mockSyncMgr,
 			statusPersistence: statusPersistence,
 			config:            cfg,
@@ -275,7 +275,7 @@ func TestPerformSync_PhaseTransitions(t *testing.T) {
 				})
 
 			cfg := &config.Config{RegistryName: "test"}
-			coord := &DefaultCoordinator{
+			coord := &defaultCoordinator{
 				manager:           mockSyncMgr,
 				statusPersistence: statusPersistence,
 				config:            cfg,
@@ -348,7 +348,7 @@ func TestUpdateStatusForSkippedSync(t *testing.T) {
 			statusFile := filepath.Join(tempDir, "status.json")
 			statusPersistence := status.NewFileStatusPersistence(statusFile)
 
-			coord := &DefaultCoordinator{
+			coord := &defaultCoordinator{
 				statusPersistence: statusPersistence,
 				cachedStatus: &status.SyncStatus{
 					Phase:   tt.initialPhase,

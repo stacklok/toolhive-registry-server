@@ -10,19 +10,19 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
 )
 
-// APISourceHandler handles registry data from API endpoints
+// apiSourceHandler handles registry data from API endpoints
 // It validates the Upstream format and delegates to the appropriate handler
-type APISourceHandler struct {
+type apiSourceHandler struct {
 	httpClient      httpclient.Client
 	validator       SourceDataValidator
-	upstreamHandler *UpstreamAPIHandler
+	upstreamHandler *upstreamAPIHandler
 }
 
 // NewAPISourceHandler creates a new API source handler
-func NewAPISourceHandler() *APISourceHandler {
+func NewAPISourceHandler() SourceHandler {
 	httpClient := httpclient.NewDefaultClient(0) // Use default timeout
 
-	return &APISourceHandler{
+	return &apiSourceHandler{
 		httpClient:      httpClient,
 		validator:       NewSourceDataValidator(),
 		upstreamHandler: NewUpstreamAPIHandler(httpClient),
@@ -30,7 +30,7 @@ func NewAPISourceHandler() *APISourceHandler {
 }
 
 // Validate validates the API source configuration
-func (*APISourceHandler) Validate(source *config.SourceConfig) error {
+func (*apiSourceHandler) Validate(source *config.SourceConfig) error {
 	if source.Type != config.SourceTypeAPI {
 		return fmt.Errorf("invalid source type: expected %s, got %s",
 			config.SourceTypeAPI, source.Type)
@@ -55,7 +55,7 @@ func (*APISourceHandler) Validate(source *config.SourceConfig) error {
 
 // FetchRegistry retrieves registry data from the API endpoint
 // It validates the Upstream format and delegates to the appropriate handler
-func (h *APISourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config) (*FetchResult, error) {
+func (h *apiSourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config) (*FetchResult, error) {
 	logger := log.FromContext(ctx)
 
 	// Validate source configuration
@@ -76,7 +76,7 @@ func (h *APISourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config
 }
 
 // CurrentHash returns the current hash of the API response
-func (h *APISourceHandler) CurrentHash(ctx context.Context, cfg *config.Config) (string, error) {
+func (h *apiSourceHandler) CurrentHash(ctx context.Context, cfg *config.Config) (string, error) {
 	// Validate source configuration
 	if err := h.Validate(&cfg.Source); err != nil {
 		return "", fmt.Errorf("source validation failed: %w", err)
@@ -93,10 +93,10 @@ func (h *APISourceHandler) CurrentHash(ctx context.Context, cfg *config.Config) 
 }
 
 // validateUstreamFormat validates the Upstream format and returns the appropriate handler
-func (h *APISourceHandler) validateUstreamFormat(
+func (h *apiSourceHandler) validateUstreamFormat(
 	ctx context.Context,
 	cfg *config.Config,
-) (*UpstreamAPIHandler, error) {
+) (*upstreamAPIHandler, error) {
 	logger := log.FromContext(ctx)
 	endpoint := h.getBaseURL(cfg)
 
@@ -112,7 +112,7 @@ func (h *APISourceHandler) validateUstreamFormat(
 }
 
 // getBaseURL extracts and normalizes the base URL
-func (*APISourceHandler) getBaseURL(cfg *config.Config) string {
+func (*apiSourceHandler) getBaseURL(cfg *config.Config) string {
 	baseURL := cfg.Source.API.Endpoint
 
 	// Remove trailing slash

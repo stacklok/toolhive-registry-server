@@ -29,7 +29,7 @@ func TestNewDefaultSyncManager(t *testing.T) {
 	syncManager := NewDefaultSyncManager(sourceHandlerFactory, storageManager)
 
 	assert.NotNil(t, syncManager)
-	assert.IsType(t, &DefaultSyncManager{}, syncManager)
+	assert.IsType(t, &defaultSyncManager{}, syncManager)
 }
 
 func TestDefaultSyncManager_ShouldSync(t *testing.T) {

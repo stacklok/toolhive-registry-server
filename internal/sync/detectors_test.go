@@ -107,7 +107,7 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 			t.Parallel()
 
 			sourceHandlerFactory := sources.NewSourceHandlerFactory()
-			detector := &DefaultDataChangeDetector{
+			detector := &defaultDataChangeDetector{
 				sourceHandlerFactory: sourceHandlerFactory,
 			}
 
@@ -235,7 +235,7 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			checker := &DefaultAutomaticSyncChecker{}
+			checker := &defaultAutomaticSyncChecker{}
 			syncNeeded, nextSyncTime, err := checker.IsIntervalSyncNeeded(tt.config, tt.status)
 
 			assert.Equal(t, tt.expectedSyncNeeded, syncNeeded, "Sync needed result should match expected")

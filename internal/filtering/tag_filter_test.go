@@ -11,7 +11,6 @@ func TestNewDefaultTagFilter(t *testing.T) {
 
 	filter := NewDefaultTagFilter()
 	assert.NotNil(t, filter)
-	assert.IsType(t, &DefaultTagFilter{}, filter)
 }
 
 func TestDefaultTagFilter_ShouldInclude(t *testing.T) {

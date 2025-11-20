@@ -23,23 +23,23 @@ type FilterService interface {
 	) (*toolhivetypes.UpstreamRegistry, error)
 }
 
-// DefaultFilterService implements filtering coordination using name and tag filters
-type DefaultFilterService struct {
+// defaultFilterService implements filtering coordination using name and tag filters
+type defaultFilterService struct {
 	nameFilter NameFilter
 	tagFilter  TagFilter
 }
 
-// NewDefaultFilterService creates a new DefaultFilterService with default filter implementations
-func NewDefaultFilterService() *DefaultFilterService {
-	return &DefaultFilterService{
+// NewDefaultFilterService creates a new defaultFilterService with default filter implementations
+func NewDefaultFilterService() FilterService {
+	return &defaultFilterService{
 		nameFilter: NewDefaultNameFilter(),
 		tagFilter:  NewDefaultTagFilter(),
 	}
 }
 
-// NewFilterService creates a new DefaultFilterService with custom filter implementations
-func NewFilterService(nameFilter NameFilter, tagFilter TagFilter) *DefaultFilterService {
-	return &DefaultFilterService{
+// NewFilterService creates a new defaultFilterService with custom filter implementations
+func NewFilterService(nameFilter NameFilter, tagFilter TagFilter) FilterService {
+	return &defaultFilterService{
 		nameFilter: nameFilter,
 		tagFilter:  tagFilter,
 	}
@@ -53,7 +53,7 @@ func NewFilterService(nameFilter NameFilter, tagFilter TagFilter) *DefaultFilter
 // 3. For each server (both container and remote), apply name and tag filtering
 // 4. Only include servers that pass both name and tag filters
 // 5. Return the filtered registry
-func (s *DefaultFilterService) ApplyFilters(
+func (s *defaultFilterService) ApplyFilters(
 	ctx context.Context,
 	reg *toolhivetypes.UpstreamRegistry,
 	filter *config.FilterConfig) (*toolhivetypes.UpstreamRegistry, error) {
@@ -127,7 +127,7 @@ func (s *DefaultFilterService) ApplyFilters(
 
 // shouldIncludeServerWithReason determines if a server should be included and provides detailed reasoning
 // Both name and tag filters must pass for a server to be included
-func (s *DefaultFilterService) shouldIncludeServerWithReason(
+func (s *defaultFilterService) shouldIncludeServerWithReason(
 	serverName string,
 	serverTags []string,
 	nameInclude, nameExclude, tagInclude, tagExclude []string) (bool, string) {

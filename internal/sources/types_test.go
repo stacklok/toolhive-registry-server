@@ -134,7 +134,6 @@ func TestNewSourceDataValidator(t *testing.T) {
 
 	validator := NewSourceDataValidator()
 	assert.NotNil(t, validator)
-	assert.IsType(t, &DefaultSourceDataValidator{}, validator)
 }
 
 func TestDefaultSourceDataValidator_ValidateData(t *testing.T) {
