@@ -662,11 +662,14 @@ postgres (healthy) → registry-api (runs migrations, then starts)
 
 - Config file: `examples/config-docker.yaml`
 - Sample data: `examples/registry-sample.json`
-- Database password: Set via `THV_DATABASE_PASSWORD` environment variable in docker-compose.yaml
+- Database passwords: Set via environment variables in docker-compose.yaml
+  - `THV_DATABASE_PASSWORD`: Application user password
+  - `THV_DATABASE_MIGRATION_PASSWORD`: Migration user password
 
 The setup demonstrates:
-- Database-backed registry storage
-- Automatic schema migrations on startup
+- Database-backed registry storage with separate users for migrations and operations
+- Automatic schema migrations on startup using elevated privileges
+- Normal operations using limited database privileges (principle of least privilege)
 - File-based data source (for demo purposes)
 - Proper service dependencies and health checks
 
@@ -691,14 +694,23 @@ To use your own registry data:
 
 **Database access:**
 
+The Docker Compose setup creates three database users:
+- `registry`: Superuser (for administration)
+- `db_migrator`: Migration user with schema modification privileges
+- `db_app`: Application user with limited data access privileges
+
 To connect to the PostgreSQL database directly:
 
 ```bash
-# Using psql
+# As superuser (for administration)
 docker exec -it toolhive-registry-postgres psql -U registry -d registry
 
-# Using environment variables from compose
+# As application user
+docker exec -it toolhive-registry-postgres psql -U db_app -d registry
+
+# From host machine
 PGPASSWORD=registry_password psql -h localhost -U registry -d registry
+PGPASSWORD=app_password psql -h localhost -U db_app -d registry
 ```
 
 ## Integration with ToolHive
