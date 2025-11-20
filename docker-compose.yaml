@@ -1,11 +1,15 @@
 # ToolHive Registry API Server - Docker Compose Configuration
 #
 # Services:
-# 1. postgres - PostgreSQL 18 database
+# 1. postgres - PostgreSQL 18 database with separate users for migrations and operations
 # 2. registry-api - Main API server (runs migrations on startup)
 #
 # Startup flow:
-# postgres (healthy) → registry-api (runs migrations then starts)
+# postgres (healthy) → registry-api (runs migrations as db_migrator, then operates as db_app)
+#
+# Database Users:
+# - db_migrator: Migration user with elevated privileges (CREATE, ALTER, DROP)
+# - db_app: Application user with limited privileges (SELECT, INSERT, UPDATE, DELETE)
 #
 # Migrations are embedded in the binary and run automatically on startup.
 
@@ -22,6 +26,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres-init.sh:/docker-entrypoint-initdb.d/init.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U registry"]
       interval: 5s
@@ -47,7 +52,8 @@ services:
     command: ["serve", "--config", "/config.yaml", "--address", ":8080"]
     environment:
       - LOG_LEVEL=debug
-      - THV_DATABASE_PASSWORD=registry_password
+      - THV_DATABASE_PASSWORD=app_password              # Application user password
+      - THV_DATABASE_MIGRATION_PASSWORD=migration_password  # Migration user password
     networks:
       - registry-network
     restart: unless-stopped
