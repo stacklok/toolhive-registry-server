@@ -177,7 +177,7 @@ tasks:
         silent: true
     cmds:
       # We have to use ldflags to avoid the LC_DYSYMTAB linker warning.
-- go test -ldflags=-extldflags=-Wl,-w -race -json ./... | gotestfmt -hide "all"
+      - go test -ldflags=-extldflags=-Wl,-w -race -json ./... | gotestfmt -hide "all"
 
   test-coverage:
     desc: Run registry API tests with coverage
