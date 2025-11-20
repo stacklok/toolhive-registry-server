@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
+	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
 )
 
 // Coordinator manages background synchronization scheduling and execution for multiple registries
@@ -20,12 +22,6 @@ type Coordinator interface {
 
 	// Stop gracefully stops the coordinator and all registry sync loops
 	Stop() error
-
-	// GetStatus returns current sync status for a specific registry (thread-safe)
-	GetStatus(registryName string) *status.SyncStatus
-
-	// GetAllStatus returns sync status for all registries (thread-safe)
-	GetAllStatus() map[string]*status.SyncStatus
 }
 
 // registrySync manages sync state for a single registry
@@ -37,34 +33,33 @@ type registrySync struct {
 
 // defaultCoordinator is the default implementation of Coordinator
 type defaultCoordinator struct {
-	manager           pkgsync.Manager
-	statusPersistence status.StatusPersistence
-	config            *config.Config
+	manager pkgsync.Manager
+	config  *config.Config
 
 	// Thread-safe status management (per-registry)
-	mu             sync.RWMutex
-	cachedStatuses map[string]*status.SyncStatus
+	mu sync.RWMutex
 
 	// Lifecycle management
 	registrySyncs map[string]*registrySync
 	cancelFunc    context.CancelFunc
 	done          chan struct{}
 	wg            sync.WaitGroup
+
+	statusSvc state.RegistryStateService
 }
 
 // New creates a new coordinator with injected dependencies
 func New(
 	manager pkgsync.Manager,
-	statusPersistence status.StatusPersistence,
+	statusSvc state.RegistryStateService,
 	cfg *config.Config,
 ) Coordinator {
 	return &defaultCoordinator{
-		manager:           manager,
-		statusPersistence: statusPersistence,
-		config:            cfg,
-		cachedStatuses:    make(map[string]*status.SyncStatus),
-		registrySyncs:     make(map[string]*registrySync),
-		done:              make(chan struct{}),
+		manager:       manager,
+		statusSvc:     statusSvc,
+		config:        cfg,
+		registrySyncs: make(map[string]*registrySync),
+		done:          make(chan struct{}),
 	}
 }
 
@@ -81,11 +76,12 @@ func (c *defaultCoordinator) Start(ctx context.Context) error {
 	}()
 
 	// Load or initialize sync status for all registries
-	c.loadOrInitializeAllStatus(coordCtx)
+	if err := c.statusSvc.Initialize(ctx, c.config.Registries); err != nil {
+		return fmt.Errorf("failed to initialize registry sync status: %w", err)
+	}
 
 	// Start sync loop for each registry (skip managed registries)
-	for i := range c.config.Registries {
-		regCfg := &c.config.Registries[i]
+	for _, regCfg := range c.config.Registries {
 
 		// Skip managed registries - they don't sync from external sources
 		if regCfg.GetType() == config.SourceTypeManaged {
@@ -93,7 +89,7 @@ func (c *defaultCoordinator) Start(ctx context.Context) error {
 			continue
 		}
 
-		c.startRegistrySync(coordCtx, regCfg)
+		c.startRegistrySync(coordCtx, &regCfg)
 	}
 
 	// Wait for context cancellation
@@ -114,112 +110,6 @@ func (c *defaultCoordinator) Stop() error {
 		<-c.done
 	}
 	return nil
-}
-
-// GetStatus returns current sync status for a specific registry (thread-safe)
-func (c *defaultCoordinator) GetStatus(registryName string) *status.SyncStatus {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	// Return a copy to prevent external modification
-	syncStatus, exists := c.cachedStatuses[registryName]
-	if !exists || syncStatus == nil {
-		return nil
-	}
-	statusCopy := *syncStatus
-	return &statusCopy
-}
-
-// GetAllStatus returns sync status for all registries (thread-safe)
-func (c *defaultCoordinator) GetAllStatus() map[string]*status.SyncStatus {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	// Return a deep copy to prevent external modification
-	result := make(map[string]*status.SyncStatus)
-	for name, syncStatus := range c.cachedStatuses {
-		if syncStatus != nil {
-			statusCopy := *syncStatus
-			result[name] = &statusCopy
-		}
-	}
-	return result
-}
-
-// loadOrInitializeAllStatus loads existing status or creates defaults for all registries
-func (c *defaultCoordinator) loadOrInitializeAllStatus(ctx context.Context) {
-	for i := range c.config.Registries {
-		regCfg := &c.config.Registries[i]
-		c.loadOrInitializeRegistryStatus(ctx, regCfg)
-	}
-}
-
-// loadOrInitializeRegistryStatus loads existing status or creates default for a specific registry
-func (c *defaultCoordinator) loadOrInitializeRegistryStatus(ctx context.Context, regCfg *config.RegistryConfig) {
-	registryName := regCfg.Name
-	isManaged := regCfg.GetType() == config.SourceTypeManaged
-
-	syncStatus, err := c.statusPersistence.LoadStatus(ctx, registryName)
-	if err != nil {
-		logger.Warnf("Registry '%s': Failed to load sync status, initializing with defaults: %v", registryName, err)
-
-		// Managed registries get a different default status
-		if isManaged {
-			syncStatus = &status.SyncStatus{
-				Phase:   status.SyncPhaseComplete,
-				Message: "Managed registry (data managed via API)",
-			}
-		} else {
-			syncStatus = &status.SyncStatus{
-				Phase:   status.SyncPhaseFailed,
-				Message: "No previous sync status found",
-			}
-		}
-	}
-
-	// Check if this is a brand new status (no file existed)
-	if syncStatus.Phase == "" && syncStatus.LastSyncTime == nil {
-		logger.Infof("Registry '%s': No previous sync status found, initializing with defaults", registryName)
-
-		// Managed registries get a different default status
-		if isManaged {
-			syncStatus.Phase = status.SyncPhaseComplete
-			syncStatus.Message = "Managed registry (data managed via API)"
-		} else {
-			syncStatus.Phase = status.SyncPhaseFailed
-			syncStatus.Message = "No previous sync status found"
-		}
-
-		// Persist the default status immediately
-		if err := c.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
-			logger.Warnf("Registry '%s': Failed to persist default sync status: %v", registryName, err)
-		}
-	} else if !isManaged && syncStatus.Phase == status.SyncPhaseSyncing {
-		// If status was left in Syncing state (only for non-managed registries),
-		// it means the previous run was interrupted. Reset it to Failed so the sync will be triggered
-		logger.Warnf("Registry '%s': Previous sync was interrupted (status=Syncing), resetting to Failed", registryName)
-		syncStatus.Phase = status.SyncPhaseFailed
-		syncStatus.Message = "Previous sync was interrupted"
-		// Persist the corrected status
-		if err := c.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
-			logger.Warnf("Registry '%s': Failed to persist corrected sync status: %v", registryName, err)
-		}
-	}
-
-	// Log the loaded/initialized status
-	if isManaged {
-		logger.Infof("Registry '%s': Managed registry - data managed via API", registryName)
-	} else if syncStatus.LastSyncTime != nil {
-		logger.Infof("Registry '%s': Loaded sync status: phase=%s, last sync at %s, %d servers",
-			registryName, syncStatus.Phase, syncStatus.LastSyncTime.Format(time.RFC3339), syncStatus.ServerCount)
-	} else {
-		logger.Infof("Registry '%s': Sync status: phase=%s, no previous sync", registryName, syncStatus.Phase)
-	}
-
-	// Store in cached status
-	c.mu.Lock()
-	c.cachedStatuses[registryName] = syncStatus
-	c.mu.Unlock()
 }
 
 // startRegistrySync starts a sync loop for a specific registry
@@ -278,11 +168,74 @@ func (c *defaultCoordinator) runRegistrySync(ctx context.Context, regCfg *config
 	}
 }
 
-// withRegistryStatus executes a function while holding the status lock for a specific registry
-func (c *defaultCoordinator) withRegistryStatus(registryName string, fn func(*status.SyncStatus)) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if syncStatus, exists := c.cachedStatuses[registryName]; exists {
-		fn(syncStatus)
+// checkRegistrySync performs a sync check and updates status accordingly for a specific registry
+func (c *defaultCoordinator) checkRegistrySync(ctx context.Context, regCfg *config.RegistryConfig, _ string) {
+	registryName := regCfg.Name
+	var attemptCount int
+
+	// Check if we should sync, and set the status as an atomic operation.
+	// If we are not ready to sync, then do nothing.
+	// The lock is logically cleared by updating the status on completion (or error).
+	statusUpdated, err := c.statusSvc.UpdateStatusAtomically(
+		ctx,
+		registryName,
+		func(syncStatus *status.SyncStatus) bool {
+			// TODO: Maybe `ShouldSync` should live here, not manager?
+			reason := c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
+			if reason.ShouldSync() {
+				syncStatus.Phase = status.SyncPhaseSyncing
+				syncStatus.Message = "Sync in progress"
+				now := time.Now()
+				syncStatus.LastAttempt = &now
+				syncStatus.AttemptCount++
+				attemptCount = syncStatus.AttemptCount
+			}
+			return reason.ShouldSync()
+		},
+	)
+	if err != nil {
+		logger.Warnf("error while checking sync status of registry %s: %v", regCfg.Name, err)
+	}
+
+	// Registry is either not ready for a sync, or sync is in progress already.
+	if !statusUpdated {
+		return
+	}
+
+	// Set up the final status update in a defer block to ensure that we always
+	// clean up the status of the sync at the end of this function.
+	// Set a default error here in case the function is killed by an unexpected error.
+	syncStatus := &status.SyncStatus{
+		Phase:   status.SyncPhaseFailed,
+		Message: fmt.Sprintf("Unexpected failure while syncing registry %s", registryName),
+	}
+	defer func() {
+		if err := c.statusSvc.UpdateSyncStatus(ctx, registryName, syncStatus); err != nil {
+			logger.Errorf("error while updating status of registry %s: %v", registryName, err)
+		}
+	}()
+
+	logger.Infof("Registry '%s': Starting sync operation (attempt %d)", registryName, attemptCount)
+	// Perform sync (outside lock - this can take a long time)
+	result, syncErr := c.manager.PerformSync(ctx, regCfg)
+
+	// Update status based on result
+	now := time.Now()
+	if syncErr != nil {
+		syncStatus.Phase = status.SyncPhaseFailed
+		syncStatus.Message = syncErr.Message
+		logger.Errorf("Registry '%s': Sync failed: %v", registryName, err)
+	} else {
+		syncStatus.Phase = status.SyncPhaseComplete
+		syncStatus.Message = "Sync completed successfully"
+		syncStatus.LastSyncTime = &now
+		syncStatus.LastSyncHash = result.Hash
+		syncStatus.ServerCount = result.ServerCount
+		syncStatus.AttemptCount = 0
+		hashPreview := result.Hash
+		if len(hashPreview) > 8 {
+			hashPreview = hashPreview[:8]
+		}
+		logger.Infof("Registry '%s': Sync completed successfully: %d servers, hash=%s", registryName, result.ServerCount, hashPreview)
 	}
 }
