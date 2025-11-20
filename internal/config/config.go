@@ -280,6 +280,8 @@ func (c *Config) GetRegistryName() string {
 }
 
 // Validate performs validation on the configuration
+//
+//nolint:gocyclo
 func (c *Config) validate() error {
 	if c == nil {
 		return fmt.Errorf("config cannot be nil")
