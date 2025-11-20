@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/smithy-go/ptr"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	_ "github.com/lib/pq" // Register postgres driver
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,7 +16,7 @@ import (
 )
 
 //nolint:thelper // We want to see these lines in the test output
-func setupRegistry(t *testing.T, queries *Queries) pgtype.UUID {
+func setupRegistry(t *testing.T, queries *Queries) uuid.UUID {
 	regID, err := queries.InsertRegistry(
 		context.Background(),
 		InsertRegistryParams{
@@ -33,15 +33,15 @@ func TestUpsertServerVersion(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		setupFunc    func(t *testing.T, queries *Queries, regID pgtype.UUID)
-		scenarioFunc func(t *testing.T, queries *Queries, regID pgtype.UUID)
+		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID)
+		scenarioFunc func(t *testing.T, queries *Queries, regID uuid.UUID)
 	}{
 		{
 			name: "insert server version with minimal fields",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) {},
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -56,24 +56,24 @@ func TestUpsertServerVersion(t *testing.T) {
 		{
 			name: "insert server version with all fields",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) {},
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
 						Name:                "test-server",
 						Version:             "1.0.0",
 						RegID:               regID,
-						Description:         pgtype.Text{String: "Test description", Valid: true},
-						Title:               pgtype.Text{String: "Test Title", Valid: true},
-						Website:             pgtype.Text{String: "https://example.com", Valid: true},
+						Description:         ptr.String("Test description"),
+						Title:               ptr.String("Test Title"),
+						Website:             ptr.String("https://example.com"),
 						UpstreamMeta:        []byte(`{"key": "value"}`),
 						ServerMeta:          []byte(`{"meta": "data"}`),
-						RepositoryUrl:       pgtype.Text{String: "https://github.com/test/repo", Valid: true},
-						RepositoryID:        pgtype.Text{String: "repo-id", Valid: true},
-						RepositorySubfolder: pgtype.Text{String: "subfolder", Valid: true},
-						RepositoryType:      pgtype.Text{String: "git", Valid: true},
+						RepositoryUrl:       ptr.String("https://github.com/test/repo"),
+						RepositoryID:        ptr.String("repo-id"),
+						RepositorySubfolder: ptr.String("subfolder"),
+						RepositoryType:      ptr.String("git"),
 					},
 				)
 				require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestUpsertServerVersion(t *testing.T) {
 		{
 			name: "update existing server version",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -94,15 +94,15 @@ func TestUpsertServerVersion(t *testing.T) {
 				require.NoError(t, err)
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
 						Name:        "test-server",
 						Version:     "1.0.0",
 						RegID:       regID,
-						Description: pgtype.Text{String: "Updated description", Valid: true},
-						Title:       pgtype.Text{String: "Updated Title", Valid: true},
+						Description: ptr.String("Updated description"),
+						Title:       ptr.String("Updated Title"),
 					},
 				)
 				require.NoError(t, err)
@@ -111,10 +111,10 @@ func TestUpsertServerVersion(t *testing.T) {
 		{
 			name: "insert server version with invalid reg_id",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) {},
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, _ pgtype.UUID) {
-				regID := pgtype.UUID{Bytes: uuid.New(), Valid: true}
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
+				regID := uuid.New()
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -151,13 +151,13 @@ func TestListServerVersions(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		setupFunc    func(t *testing.T, queries *Queries, regID pgtype.UUID) string
+		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID) string
 		scenarioFunc func(t *testing.T, queries *Queries, serverName string)
 	}{
 		{
 			name: "no server versions",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) string {
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) string {
 				return "non-existent-server"
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -176,7 +176,7 @@ func TestListServerVersions(t *testing.T) {
 		{
 			name: "list single server version",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) string {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) string {
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -207,7 +207,7 @@ func TestListServerVersions(t *testing.T) {
 		{
 			name: "list multiple server versions",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) string {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) string {
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
@@ -238,7 +238,7 @@ func TestListServerVersions(t *testing.T) {
 		{
 			name: "list server versions with pagination",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) string {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) string {
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
@@ -266,10 +266,10 @@ func TestListServerVersions(t *testing.T) {
 				require.Len(t, versions, 3)
 
 				// Get next page
-				nextTime := versions[0].CreatedAt.Time.UTC()
+				nextTime := versions[0].CreatedAt.UTC()
 				for _, version := range versions {
-					if nextTime.Before(version.CreatedAt.Time.UTC()) {
-						nextTime = version.CreatedAt.Time.UTC()
+					if nextTime.Before(version.CreatedAt.UTC()) {
+						nextTime = version.CreatedAt.UTC()
 					}
 				}
 				nextTime = nextTime.Add(-100 * time.Microsecond)
@@ -278,10 +278,7 @@ func TestListServerVersions(t *testing.T) {
 					context.Background(),
 					ListServerVersionsParams{
 						Name: serverName,
-						Next: pgtype.Timestamptz{
-							Time:  nextTime,
-							Valid: true,
-						},
+						Next: &nextTime,
 						Size: 10,
 					},
 				)
@@ -292,7 +289,7 @@ func TestListServerVersions(t *testing.T) {
 		{
 			name: "list server versions with limit",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) string {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) string {
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
@@ -344,13 +341,13 @@ func TestListServers(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		setupFunc    func(t *testing.T, queries *Queries, regID pgtype.UUID)
+		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID)
 		scenarioFunc func(t *testing.T, queries *Queries)
 	}{
 		{
 			name: "no servers",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) {},
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				servers, err := queries.ListServers(
@@ -366,7 +363,7 @@ func TestListServers(t *testing.T) {
 		{
 			name: "list single server",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -395,7 +392,7 @@ func TestListServers(t *testing.T) {
 		{
 			name: "list multiple servers",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
@@ -423,7 +420,7 @@ func TestListServers(t *testing.T) {
 		{
 			name: "list servers with pagination next",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
@@ -442,24 +439,21 @@ func TestListServers(t *testing.T) {
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Next: pgtype.Timestamptz{
-							Time:  nextTime,
-							Valid: true,
-						},
+						Next: &nextTime,
 						Size: 10,
 					},
 				)
 				require.NoError(t, err)
 				require.NotEmpty(t, servers)
 				for _, server := range servers {
-					require.True(t, server.CreatedAt.Time.After(nextTime))
+					require.True(t, server.CreatedAt.After(nextTime))
 				}
 			},
 		},
 		{
 			name: "list servers with pagination prev",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
@@ -478,24 +472,21 @@ func TestListServers(t *testing.T) {
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Prev: pgtype.Timestamptz{
-							Time:  prevTime,
-							Valid: true,
-						},
+						Prev: &prevTime,
 						Size: 10,
 					},
 				)
 				require.NoError(t, err)
 				require.NotEmpty(t, servers)
 				for _, server := range servers {
-					require.True(t, server.CreatedAt.Time.Before(prevTime))
+					require.True(t, server.CreatedAt.Before(prevTime))
 				}
 			},
 		},
 		{
 			name: "list servers with is_latest flag",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				_, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -540,7 +531,7 @@ func TestListServers(t *testing.T) {
 		{
 			name: "list servers with limit",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					_, err := queries.UpsertServerVersion(
 						context.Background(),
@@ -590,13 +581,13 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		setupFunc    func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID
-		scenarioFunc func(t *testing.T, queries *Queries, regID pgtype.UUID, ids []pgtype.UUID)
+		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID
+		scenarioFunc func(t *testing.T, queries *Queries, regID uuid.UUID, ids []uuid.UUID)
 	}{
 		{
 			name: "insert latest server version",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -607,10 +598,10 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				)
 				require.NoError(t, err)
 				require.NotNil(t, serverID)
-				return []pgtype.UUID{serverID}
+				return []uuid.UUID{serverID}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID, ids []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID, ids []uuid.UUID) {
 				serverID, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
@@ -628,8 +619,8 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 		{
 			name: "update existing latest server version",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
-				var serverIDs []pgtype.UUID
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
+				var serverIDs []uuid.UUID
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					serverID, err := queries.UpsertServerVersion(
 						context.Background(),
@@ -661,7 +652,7 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				return serverIDs
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID, ids []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID, ids []uuid.UUID) {
 				latestServerID, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
@@ -679,12 +670,12 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 		{
 			name: "upsert latest server version with invalid reg_id",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) []pgtype.UUID {
-				return []pgtype.UUID{{Bytes: uuid.New(), Valid: true}}
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) []uuid.UUID {
+				return []uuid.UUID{uuid.New()}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, _ pgtype.UUID, ids []pgtype.UUID) {
-				regID := pgtype.UUID{Bytes: uuid.New(), Valid: true}
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, ids []uuid.UUID) {
+				regID := uuid.New()
 				_, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
@@ -700,11 +691,11 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 		{
 			name: "upsert latest server version with invalid server_id",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) []pgtype.UUID {
-				return []pgtype.UUID{{Bytes: uuid.New(), Valid: true}}
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) []uuid.UUID {
+				return []uuid.UUID{uuid.New()}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID, ids []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID, ids []uuid.UUID) {
 				_, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
@@ -742,13 +733,13 @@ func TestUpsertServerIcon(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		setupFunc    func(t *testing.T, queries *Queries, regID pgtype.UUID) pgtype.UUID
-		scenarioFunc func(t *testing.T, queries *Queries, serverID pgtype.UUID)
+		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID
+		scenarioFunc func(t *testing.T, queries *Queries, serverID uuid.UUID)
 	}{
 		{
 			name: "insert server icon",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -762,7 +753,7 @@ func TestUpsertServerIcon(t *testing.T) {
 				return serverID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
 				err := queries.UpsertServerIcon(
 					context.Background(),
 					UpsertServerIconParams{
@@ -778,7 +769,7 @@ func TestUpsertServerIcon(t *testing.T) {
 		{
 			name: "insert server icon with dark theme",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -792,7 +783,7 @@ func TestUpsertServerIcon(t *testing.T) {
 				return serverID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
 				err := queries.UpsertServerIcon(
 					context.Background(),
 					UpsertServerIconParams{
@@ -808,7 +799,7 @@ func TestUpsertServerIcon(t *testing.T) {
 		{
 			name: "update existing server icon",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -835,7 +826,7 @@ func TestUpsertServerIcon(t *testing.T) {
 				return serverID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
 				err := queries.UpsertServerIcon(
 					context.Background(),
 					UpsertServerIconParams{
@@ -851,11 +842,11 @@ func TestUpsertServerIcon(t *testing.T) {
 		{
 			name: "upsert server icon with invalid server_id",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) pgtype.UUID {
-				return pgtype.UUID{Bytes: uuid.New(), Valid: true}
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) uuid.UUID {
+				return uuid.New()
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
 				err := queries.UpsertServerIcon(
 					context.Background(),
 					UpsertServerIconParams{
@@ -893,13 +884,13 @@ func TestUpsertServerPackage(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		setupFunc    func(t *testing.T, queries *Queries, regID pgtype.UUID) pgtype.UUID
-		scenarioFunc func(t *testing.T, queries *Queries, serverID pgtype.UUID)
+		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID
+		scenarioFunc func(t *testing.T, queries *Queries, serverID uuid.UUID)
 	}{
 		{
 			name: "insert server package with minimal fields",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -913,7 +904,7 @@ func TestUpsertServerPackage(t *testing.T) {
 				return serverID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
 				err := queries.UpsertServerPackage(
 					context.Background(),
 					UpsertServerPackageParams{
@@ -931,7 +922,7 @@ func TestUpsertServerPackage(t *testing.T) {
 		{
 			name: "insert server package with all fields",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -945,7 +936,7 @@ func TestUpsertServerPackage(t *testing.T) {
 				return serverID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
 				err := queries.UpsertServerPackage(
 					context.Background(),
 					UpsertServerPackageParams{
@@ -954,13 +945,13 @@ func TestUpsertServerPackage(t *testing.T) {
 						PkgRegistryUrl:   "https://registry.npmjs.org",
 						PkgIdentifier:    "@test/package",
 						PkgVersion:       "1.0.0",
-						RuntimeHint:      pgtype.Text{String: "npx", Valid: true},
+						RuntimeHint:      ptr.String("npx"),
 						RuntimeArguments: []string{"--yes"},
 						PackageArguments: []string{"--arg", "value"},
 						EnvVars:          []string{"NODE_ENV", "API_KEY"},
-						Sha256Hash:       pgtype.Text{String: "abc123", Valid: true},
+						Sha256Hash:       ptr.String("abc123"),
 						Transport:        "stdio",
-						TransportUrl:     pgtype.Text{String: "https://example.com", Valid: true},
+						TransportUrl:     ptr.String("https://example.com"),
 						TransportHeaders: []string{"Authorization: Bearer token"},
 					},
 				)
@@ -970,11 +961,11 @@ func TestUpsertServerPackage(t *testing.T) {
 		{
 			name: "insert server package with invalid server_id",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) pgtype.UUID {
-				return pgtype.UUID{Bytes: uuid.New(), Valid: true}
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) uuid.UUID {
+				return uuid.New()
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
 				err := queries.UpsertServerPackage(
 					context.Background(),
 					UpsertServerPackageParams{
@@ -1014,13 +1005,13 @@ func TestUpsertServerRemote(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		setupFunc    func(t *testing.T, queries *Queries, regID pgtype.UUID) pgtype.UUID
-		scenarioFunc func(t *testing.T, queries *Queries, serverID pgtype.UUID)
+		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID
+		scenarioFunc func(t *testing.T, queries *Queries, serverID uuid.UUID)
 	}{
 		{
 			name: "insert server remote with minimal fields",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -1034,13 +1025,13 @@ func TestUpsertServerRemote(t *testing.T) {
 				return serverID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
 				err := queries.UpsertServerRemote(
 					context.Background(),
 					UpsertServerRemoteParams{
 						ServerID:     serverID,
 						Transport:    "sse",
-						TransportUrl: pgtype.Text{String: "https://example.com/sse", Valid: true},
+						TransportUrl: ptr.String("https://example.com/sse"),
 					},
 				)
 				require.NoError(t, err)
@@ -1049,7 +1040,7 @@ func TestUpsertServerRemote(t *testing.T) {
 		{
 			name: "insert server remote with all fields",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -1063,13 +1054,13 @@ func TestUpsertServerRemote(t *testing.T) {
 				return serverID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
 				err := queries.UpsertServerRemote(
 					context.Background(),
 					UpsertServerRemoteParams{
 						ServerID:         serverID,
 						Transport:        "sse",
-						TransportUrl:     pgtype.Text{String: "https://example.com/sse", Valid: true},
+						TransportUrl:     ptr.String("https://example.com/sse"),
 						TransportHeaders: []string{"Authorization: Bearer token", "X-Custom: value"},
 					},
 				)
@@ -1079,7 +1070,7 @@ func TestUpsertServerRemote(t *testing.T) {
 		{
 			name: "update existing server remote",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -1097,7 +1088,7 @@ func TestUpsertServerRemote(t *testing.T) {
 					UpsertServerRemoteParams{
 						ServerID:         serverID,
 						Transport:        "sse",
-						TransportUrl:     pgtype.Text{String: "https://example.com/sse", Valid: true},
+						TransportUrl:     ptr.String("https://example.com/sse"),
 						TransportHeaders: []string{"Old-Header: old"},
 					},
 				)
@@ -1106,13 +1097,13 @@ func TestUpsertServerRemote(t *testing.T) {
 				return serverID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
 				err := queries.UpsertServerRemote(
 					context.Background(),
 					UpsertServerRemoteParams{
 						ServerID:         serverID,
 						Transport:        "sse",
-						TransportUrl:     pgtype.Text{String: "https://example.com/sse", Valid: true},
+						TransportUrl:     ptr.String("https://example.com/sse"),
 						TransportHeaders: []string{"New-Header: new"},
 					},
 				)
@@ -1122,17 +1113,17 @@ func TestUpsertServerRemote(t *testing.T) {
 		{
 			name: "upsert server remote with invalid server_id",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) pgtype.UUID {
-				return pgtype.UUID{Bytes: uuid.New(), Valid: true}
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) uuid.UUID {
+				return uuid.New()
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
 				err := queries.UpsertServerRemote(
 					context.Background(),
 					UpsertServerRemoteParams{
 						ServerID:     serverID,
 						Transport:    "sse",
-						TransportUrl: pgtype.Text{String: "https://example.com/sse", Valid: true},
+						TransportUrl: ptr.String("https://example.com/sse"),
 					},
 				)
 				require.Error(t, err)
@@ -1163,13 +1154,13 @@ func TestListServerPackages(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		setupFunc    func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID
-		scenarioFunc func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID)
+		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID
+		scenarioFunc func(t *testing.T, queries *Queries, serverIDs []uuid.UUID)
 	}{
 		{
 			name: "no server packages",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -1179,10 +1170,10 @@ func TestListServerPackages(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
-				return []pgtype.UUID{serverID}
+				return []uuid.UUID{serverID}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
 				packages, err := queries.ListServerPackages(
 					context.Background(),
 					serverIDs,
@@ -1194,7 +1185,7 @@ func TestListServerPackages(t *testing.T) {
 		{
 			name: "list single server package",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -1218,10 +1209,10 @@ func TestListServerPackages(t *testing.T) {
 				)
 				require.NoError(t, err)
 
-				return []pgtype.UUID{serverID}
+				return []uuid.UUID{serverID}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
 				packages, err := queries.ListServerPackages(
 					context.Background(),
 					serverIDs,
@@ -1237,8 +1228,8 @@ func TestListServerPackages(t *testing.T) {
 		{
 			name: "list multiple server packages for multiple servers",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
-				var serverIDs []pgtype.UUID
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
+				var serverIDs []uuid.UUID
 				for i, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					serverID, err := queries.UpsertServerVersion(
 						context.Background(),
@@ -1268,7 +1259,7 @@ func TestListServerPackages(t *testing.T) {
 				return serverIDs
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
 				packages, err := queries.ListServerPackages(
 					context.Background(),
 					serverIDs,
@@ -1284,8 +1275,8 @@ func TestListServerPackages(t *testing.T) {
 		{
 			name: "list server packages for multiple servers",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
-				var serverIDs []pgtype.UUID
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
+				var serverIDs []uuid.UUID
 				for i, name := range []string{"server-1", "server-2"} {
 					serverID, err := queries.UpsertServerVersion(
 						context.Background(),
@@ -1315,7 +1306,7 @@ func TestListServerPackages(t *testing.T) {
 				return serverIDs
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
 				packages, err := queries.ListServerPackages(
 					context.Background(),
 					serverIDs,
@@ -1323,7 +1314,7 @@ func TestListServerPackages(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, packages, 2)
 				// Verify both servers are included
-				serverIDMap := make(map[pgtype.UUID]bool)
+				serverIDMap := make(map[uuid.UUID]bool)
 				for _, pkg := range packages {
 					serverIDMap[pkg.ServerID] = true
 				}
@@ -1334,14 +1325,14 @@ func TestListServerPackages(t *testing.T) {
 		{
 			name: "list server packages with non-existent server IDs",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) []pgtype.UUID {
-				return []pgtype.UUID{
-					{Bytes: uuid.New(), Valid: true},
-					{Bytes: uuid.New(), Valid: true},
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) []uuid.UUID {
+				return []uuid.UUID{
+					uuid.New(),
+					uuid.New(),
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
 				packages, err := queries.ListServerPackages(
 					context.Background(),
 					serverIDs,
@@ -1375,13 +1366,13 @@ func TestListServerRemotes(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		setupFunc    func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID
-		scenarioFunc func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID)
+		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID
+		scenarioFunc func(t *testing.T, queries *Queries, serverIDs []uuid.UUID)
 	}{
 		{
 			name: "no server remotes",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -1391,10 +1382,10 @@ func TestListServerRemotes(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
-				return []pgtype.UUID{serverID}
+				return []uuid.UUID{serverID}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
 				remotes, err := queries.ListServerRemotes(
 					context.Background(),
 					serverIDs,
@@ -1406,7 +1397,7 @@ func TestListServerRemotes(t *testing.T) {
 		{
 			name: "list single server remote",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -1422,15 +1413,15 @@ func TestListServerRemotes(t *testing.T) {
 					UpsertServerRemoteParams{
 						ServerID:     serverID,
 						Transport:    "sse",
-						TransportUrl: pgtype.Text{String: "https://example.com/sse", Valid: true},
+						TransportUrl: ptr.String("https://example.com/sse"),
 					},
 				)
 				require.NoError(t, err)
 
-				return []pgtype.UUID{serverID}
+				return []uuid.UUID{serverID}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
 				remotes, err := queries.ListServerRemotes(
 					context.Background(),
 					serverIDs,
@@ -1445,7 +1436,7 @@ func TestListServerRemotes(t *testing.T) {
 		{
 			name: "list multiple server remotes for single server",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				serverID, err := queries.UpsertServerVersion(
 					context.Background(),
 					UpsertServerVersionParams{
@@ -1471,16 +1462,16 @@ func TestListServerRemotes(t *testing.T) {
 						UpsertServerRemoteParams{
 							ServerID:     serverID,
 							Transport:    remote.transport,
-							TransportUrl: pgtype.Text{String: remote.url, Valid: true},
+							TransportUrl: ptr.String(remote.url),
 						},
 					)
 					require.NoError(t, err)
 				}
 
-				return []pgtype.UUID{serverID}
+				return []uuid.UUID{serverID}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
 				remotes, err := queries.ListServerRemotes(
 					context.Background(),
 					serverIDs,
@@ -1500,8 +1491,8 @@ func TestListServerRemotes(t *testing.T) {
 		{
 			name: "list server remotes for multiple servers",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID pgtype.UUID) []pgtype.UUID {
-				var serverIDs []pgtype.UUID
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
+				var serverIDs []uuid.UUID
 				for i, name := range []string{"server-1", "server-2"} {
 					serverID, err := queries.UpsertServerVersion(
 						context.Background(),
@@ -1519,7 +1510,7 @@ func TestListServerRemotes(t *testing.T) {
 						UpsertServerRemoteParams{
 							ServerID:     serverID,
 							Transport:    "sse",
-							TransportUrl: pgtype.Text{String: fmt.Sprintf("https://example.com/sse-%d", i+1), Valid: true},
+							TransportUrl: ptr.String(fmt.Sprintf("https://example.com/sse-%d", i+1)),
 						},
 					)
 					require.NoError(t, err)
@@ -1528,7 +1519,7 @@ func TestListServerRemotes(t *testing.T) {
 				return serverIDs
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
 				remotes, err := queries.ListServerRemotes(
 					context.Background(),
 					serverIDs,
@@ -1536,7 +1527,7 @@ func TestListServerRemotes(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, remotes, 2)
 				// Verify both servers are included
-				serverIDMap := make(map[pgtype.UUID]bool)
+				serverIDMap := make(map[uuid.UUID]bool)
 				for _, remote := range remotes {
 					serverIDMap[remote.ServerID] = true
 				}
@@ -1547,14 +1538,14 @@ func TestListServerRemotes(t *testing.T) {
 		{
 			name: "list server remotes with non-existent server IDs",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *Queries, _ pgtype.UUID) []pgtype.UUID {
-				return []pgtype.UUID{
-					{Bytes: uuid.New(), Valid: true},
-					{Bytes: uuid.New(), Valid: true},
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) []uuid.UUID {
+				return []uuid.UUID{
+					uuid.New(),
+					uuid.New(),
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []pgtype.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
 				remotes, err := queries.ListServerRemotes(
 					context.Background(),
 					serverIDs,

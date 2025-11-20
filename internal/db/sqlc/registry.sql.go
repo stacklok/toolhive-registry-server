@@ -7,8 +7,9 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
 const getRegistry = `-- name: GetRegistry :one
@@ -21,7 +22,7 @@ SELECT id,
  WHERE id = $1
 `
 
-func (q *Queries) GetRegistry(ctx context.Context, id pgtype.UUID) (Registry, error) {
+func (q *Queries) GetRegistry(ctx context.Context, id uuid.UUID) (Registry, error) {
 	row := q.db.QueryRow(ctx, getRegistry, id)
 	var i Registry
 	err := row.Scan(
@@ -43,9 +44,9 @@ type InsertRegistryParams struct {
 	RegType RegistryType `json:"reg_type"`
 }
 
-func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) (pgtype.UUID, error) {
+func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertRegistry, arg.Name, arg.RegType)
-	var id pgtype.UUID
+	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
 }
@@ -68,9 +69,9 @@ SELECT id,
 `
 
 type ListRegistriesParams struct {
-	Next pgtype.Timestamptz `json:"next"`
-	Prev pgtype.Timestamptz `json:"prev"`
-	Size int64              `json:"size"`
+	Next *time.Time `json:"next"`
+	Prev *time.Time `json:"prev"`
+	Size int64      `json:"size"`
 }
 
 func (q *Queries) ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error) {

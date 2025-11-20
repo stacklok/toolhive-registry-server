@@ -7,8 +7,9 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
 const getRegistrySync = `-- name: GetRegistrySync :one
@@ -22,7 +23,7 @@ FROM registry_sync
 WHERE id = $1
 `
 
-func (q *Queries) GetRegistrySync(ctx context.Context, id pgtype.UUID) (RegistrySync, error) {
+func (q *Queries) GetRegistrySync(ctx context.Context, id uuid.UUID) (RegistrySync, error) {
 	row := q.db.QueryRow(ctx, getRegistrySync, id)
 	var i RegistrySync
 	err := row.Scan(
@@ -51,14 +52,14 @@ INSERT INTO registry_sync (
 `
 
 type InsertRegistrySyncParams struct {
-	RegID      pgtype.UUID `json:"reg_id"`
-	SyncStatus SyncStatus  `json:"sync_status"`
-	ErrorMsg   pgtype.Text `json:"error_msg"`
+	RegID      uuid.UUID  `json:"reg_id"`
+	SyncStatus SyncStatus `json:"sync_status"`
+	ErrorMsg   *string    `json:"error_msg"`
 }
 
-func (q *Queries) InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (pgtype.UUID, error) {
+func (q *Queries) InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertRegistrySync, arg.RegID, arg.SyncStatus, arg.ErrorMsg)
-	var id pgtype.UUID
+	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
 }
@@ -72,10 +73,10 @@ WHERE id = $4
 `
 
 type UpdateRegistrySyncParams struct {
-	SyncStatus SyncStatus         `json:"sync_status"`
-	ErrorMsg   pgtype.Text        `json:"error_msg"`
-	EndedAt    pgtype.Timestamptz `json:"ended_at"`
-	ID         pgtype.UUID        `json:"id"`
+	SyncStatus SyncStatus `json:"sync_status"`
+	ErrorMsg   *string    `json:"error_msg"`
+	EndedAt    *time.Time `json:"ended_at"`
+	ID         uuid.UUID  `json:"id"`
 }
 
 func (q *Queries) UpdateRegistrySync(ctx context.Context, arg UpdateRegistrySyncParams) error {
