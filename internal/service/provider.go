@@ -25,14 +25,3 @@ type RegistryDataProvider interface {
 	// This name is used for business logic such as finding related Kubernetes resources.
 	GetRegistryName() string
 }
-
-// DeploymentProvider abstracts access to deployed MCP servers.
-type DeploymentProvider interface {
-	// ListDeployedServers returns all currently deployed MCP servers.
-	// Returns an empty slice if no servers are deployed
-	ListDeployedServers(ctx context.Context) ([]*DeployedServer, error)
-
-	// GetDeployedServer returns all deployed servers matching the server registry name.
-	// Returns an empty slice if no servers are found.
-	GetDeployedServer(ctx context.Context, name string) ([]*DeployedServer, error)
-}

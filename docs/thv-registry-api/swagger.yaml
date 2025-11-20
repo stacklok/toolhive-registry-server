@@ -1,22 +1,5 @@
 components:
   schemas:
-    github_com_stacklok_toolhive-registry-server_internal_service.DeployedServer:
-      properties:
-        endpoint_url:
-          type: string
-        image:
-          type: string
-        name:
-          type: string
-        namespace:
-          type: string
-        ready:
-          type: boolean
-        status:
-          type: string
-        transport:
-          type: string
-      type: object
     internal_api_v0.EnvVarDetail:
       properties:
         default:
@@ -603,74 +586,6 @@ paths:
       summary: Get server by name
       tags:
       - servers
-  /api/v0/registry/servers/deployed:
-    get:
-      deprecated: true
-      description: Get a list of all currently deployed MCP servers
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.DeployedServer'
-                type: array
-          description: OK
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
-          description: Internal Server Error
-      summary: List deployed servers
-      tags:
-      - deployed-servers
-  /api/v0/registry/servers/deployed/{name}:
-    get:
-      deprecated: true
-      description: Get all deployed MCP servers that match the specified server registry
-        name
-      parameters:
-      - description: Server registry name
-        in: path
-        name: name
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.DeployedServer'
-                type: array
-          description: OK
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
-          description: Bad Request
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
-          description: Internal Server Error
-      summary: Get deployed servers by registry name
-      tags:
-      - deployed-servers
   /extension/v0/registries:
     get:
       description: List all registries
