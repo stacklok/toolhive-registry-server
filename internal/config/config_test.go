@@ -625,33 +625,33 @@ func TestGetStorage(t *testing.T) {
 	tests := []struct {
 		name     string
 		config   *Config
-		expected string
+		expected StorageType
 	}{
 		{
 			name: "with_file_storage",
 			config: &Config{
 				Storage: "file",
 			},
-			expected: "file",
+			expected: StorageTypeFile,
 		},
 		{
 			name: "with_database_storage",
 			config: &Config{
 				Storage: "database",
 			},
-			expected: "database",
+			expected: StorageTypeDatabase,
 		},
 		{
 			name:     "without_storage",
 			config:   &Config{},
-			expected: "file",
+			expected: StorageTypeFile,
 		},
 		{
 			name: "empty_storage",
 			config: &Config{
 				Storage: "",
 			},
-			expected: "file",
+			expected: StorageTypeFile,
 		},
 	}
 
