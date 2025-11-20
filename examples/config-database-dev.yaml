@@ -11,8 +11,9 @@
 #
 # Usage:
 #   export THV_DATABASE_PASSWORD="devpassword"
-#   thv-registry-api migrate up --config examples/config-database-dev.yaml
 #   thv-registry-api serve --config examples/config-database-dev.yaml
+#
+# Note: Database migrations run automatically when the server starts
 
 # Registry name/identifier
 registryName: dev-registry

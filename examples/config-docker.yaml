@@ -12,11 +12,10 @@
 #
 # The docker-compose setup includes:
 #   1. postgres - PostgreSQL 18 database server
-#   2. migrate - One-time migration service (runs schema migrations)
-#   3. registry-api - Main API server
+#   2. registry-api - Main API server (runs migrations automatically on startup)
 #
 # Database password is provided via THV_DATABASE_PASSWORD environment variable
-# set in the docker-compose.yaml file for both migrate and registry-api services.
+# set in the docker-compose.yaml file for the registry-api service.
 
 # Registry name/identifier
 registryName: docker-registry
@@ -37,7 +36,8 @@ syncPolicy:
 
 # PostgreSQL database configuration
 # The password is provided via THV_DATABASE_PASSWORD environment variable
-# This is set in docker-compose.yaml for both the migrate and registry-api services
+# This is set in docker-compose.yaml for the registry-api service
+# Migrations run automatically when the server starts
 database:
   # Use service name from docker-compose as hostname
   host: postgres
