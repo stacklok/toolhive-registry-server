@@ -1,4 +1,4 @@
-package service_test
+package inmemory_test
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
-	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
 
@@ -74,7 +74,7 @@ func TestService_GetRegistry(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := service.NewService(context.Background(), mockProvider, nil)
+			svc, err := inmemory.New(context.Background(), mockProvider)
 			require.NoError(t, err)
 
 			upstreamRegistry, source, err := svc.GetRegistry(context.Background())
@@ -125,7 +125,7 @@ func TestService_CheckReadiness(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := service.NewService(context.Background(), mockProvider, nil)
+			svc, err := inmemory.New(context.Background(), mockProvider)
 			require.NoError(t, err)
 
 			err = svc.CheckReadiness(context.Background())
@@ -199,7 +199,7 @@ func TestService_ListServers(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := service.NewService(context.Background(), mockProvider, nil)
+			svc, err := inmemory.New(context.Background(), mockProvider)
 			require.NoError(t, err)
 
 			servers, err := svc.ListServers(context.Background())
@@ -262,7 +262,7 @@ func TestService_GetServer(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := service.NewService(context.Background(), mockProvider, nil)
+			svc, err := inmemory.New(context.Background(), mockProvider)
 			require.NoError(t, err)
 
 			server, err := svc.GetServer(context.Background(), tt.serverName)
@@ -275,197 +275,6 @@ func TestService_GetServer(t *testing.T) {
 				assert.NotEmpty(t, server.Name)
 				if tt.validateServer != nil {
 					tt.validateServer(t, server)
-				}
-			}
-		})
-	}
-}
-
-func TestService_ListDeployedServers(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name          string
-		setupMocks    func(*mocks.MockRegistryDataProvider, *mocks.MockDeploymentProvider)
-		useDeployment bool
-		expectedCount int
-		expectedError string
-	}{
-		{
-			name: "list deployed servers",
-			setupMocks: func(reg *mocks.MockRegistryDataProvider, dep *mocks.MockDeploymentProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry()
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
-				dep.EXPECT().ListDeployedServers(gomock.Any()).Return([]*service.DeployedServer{
-					{
-						Name:      "deployed1",
-						Namespace: "default",
-						Status:    "Running",
-						Image:     "server:latest",
-						Ready:     true,
-					},
-					{
-						Name:      "deployed2",
-						Namespace: "test",
-						Status:    "Running",
-						Image:     "server2:latest",
-						Ready:     true,
-					},
-				}, nil)
-			},
-			useDeployment: true,
-			expectedCount: 2,
-		},
-		{
-			name: "no deployment provider returns empty list",
-			setupMocks: func(reg *mocks.MockRegistryDataProvider, _ *mocks.MockDeploymentProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry()
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
-			},
-			useDeployment: false,
-			expectedCount: 0,
-		},
-		{
-			name: "deployment provider error",
-			setupMocks: func(reg *mocks.MockRegistryDataProvider, dep *mocks.MockDeploymentProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry()
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
-				dep.EXPECT().ListDeployedServers(gomock.Any()).Return(nil, errors.New("k8s api error"))
-			},
-			useDeployment: true,
-			expectedError: "k8s api error",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
-			mockRegProvider := mocks.NewMockRegistryDataProvider(ctrl)
-			var mockDepProvider *mocks.MockDeploymentProvider
-			if tt.useDeployment {
-				mockDepProvider = mocks.NewMockDeploymentProvider(ctrl)
-			}
-
-			tt.setupMocks(mockRegProvider, mockDepProvider)
-
-			var depProvider service.DeploymentProvider
-			if tt.useDeployment {
-				depProvider = mockDepProvider
-			}
-
-			svc, err := service.NewService(context.Background(), mockRegProvider, depProvider)
-			require.NoError(t, err)
-
-			servers, err := svc.ListDeployedServers(context.Background())
-
-			if tt.expectedError != "" {
-				assert.EqualError(t, err, tt.expectedError)
-			} else {
-				assert.NoError(t, err)
-				assert.Len(t, servers, tt.expectedCount)
-			}
-		})
-	}
-}
-
-func TestService_GetDeployedServer(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name            string
-		serverName      string
-		setupMocks      func(*mocks.MockRegistryDataProvider, *mocks.MockDeploymentProvider)
-		useDeployment   bool
-		expectedError   string
-		validateServers func(*testing.T, []*service.DeployedServer)
-	}{
-		{
-			name:       "get deployed server",
-			serverName: "deployed1",
-			setupMocks: func(reg *mocks.MockRegistryDataProvider, dep *mocks.MockDeploymentProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry()
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
-				dep.EXPECT().GetDeployedServer(gomock.Any(), "deployed1").Return([]*service.DeployedServer{
-					{
-						Name:      "deployed1",
-						Namespace: "default",
-						Status:    "Running",
-						Image:     "server:latest",
-						Ready:     true,
-					},
-				}, nil)
-			},
-			useDeployment: true,
-			validateServers: func(t *testing.T, servers []*service.DeployedServer) {
-				t.Helper()
-				require.Len(t, servers, 1)
-				s := servers[0]
-				assert.Equal(t, "deployed1", s.Name)
-				assert.Equal(t, "default", s.Namespace)
-				assert.True(t, s.Ready)
-			},
-		},
-		{
-			name:       "no deployment provider",
-			serverName: "any",
-			setupMocks: func(reg *mocks.MockRegistryDataProvider, _ *mocks.MockDeploymentProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry()
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
-			},
-			useDeployment: false,
-			validateServers: func(t *testing.T, servers []*service.DeployedServer) {
-				t.Helper()
-				assert.Len(t, servers, 0)
-			},
-		},
-		{
-			name:       "server not found",
-			serverName: "nonexistent",
-			setupMocks: func(reg *mocks.MockRegistryDataProvider, dep *mocks.MockDeploymentProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry()
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
-				dep.EXPECT().GetDeployedServer(gomock.Any(), "nonexistent").Return([]*service.DeployedServer{}, nil)
-			},
-			useDeployment: true,
-			validateServers: func(t *testing.T, servers []*service.DeployedServer) {
-				t.Helper()
-				assert.Len(t, servers, 0)
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
-			mockRegProvider := mocks.NewMockRegistryDataProvider(ctrl)
-			var mockDepProvider *mocks.MockDeploymentProvider
-			if tt.useDeployment {
-				mockDepProvider = mocks.NewMockDeploymentProvider(ctrl)
-			}
-
-			tt.setupMocks(mockRegProvider, mockDepProvider)
-
-			var depProvider service.DeploymentProvider
-			if tt.useDeployment {
-				depProvider = mockDepProvider
-			}
-
-			svc, err := service.NewService(context.Background(), mockRegProvider, depProvider)
-			require.NoError(t, err)
-
-			servers, err := svc.GetDeployedServer(context.Background(), tt.serverName)
-
-			if tt.expectedError != "" {
-				assert.EqualError(t, err, tt.expectedError)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, servers)
-				if tt.validateServers != nil {
-					tt.validateServers(t, servers)
 				}
 			}
 		})
@@ -502,15 +311,14 @@ func TestService_WithCacheDuration(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := service.NewService(
+			svc, err := inmemory.New(
 				context.Background(),
 				mockProvider,
-				nil,
-				service.WithCacheDuration(tt.cacheDuration),
+				inmemory.WithCacheDuration(tt.cacheDuration),
 			)
 			require.NoError(t, err)
 
-			// First call - should use cached data from NewService
+			// First call - should use cached data from New
 			_, _, err = svc.GetRegistry(context.Background())
 			assert.NoError(t, err)
 

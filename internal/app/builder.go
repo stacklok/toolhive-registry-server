@@ -15,6 +15,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
@@ -46,7 +47,6 @@ type registryAppConfig struct {
 	statusPersistence    status.StatusPersistence
 	syncManager          pkgsync.Manager
 	registryProvider     service.RegistryDataProvider
-	deploymentProvider   service.DeploymentProvider
 
 	// HTTP server options
 	address        string
@@ -223,14 +223,6 @@ func WithRegistryProvider(provider service.RegistryDataProvider) RegistryAppOpti
 	}
 }
 
-// WithDeploymentProvider allows injecting a custom deployment provider (for testing)
-func WithDeploymentProvider(provider service.DeploymentProvider) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.deploymentProvider = provider
-		return nil
-	}
-}
-
 // buildSyncComponents builds sync manager, coordinator, and related components
 func buildSyncComponents(
 	b *registryAppConfig,
@@ -291,7 +283,7 @@ func buildServiceComponents(
 	}
 
 	// Create service (deployment provider is optional and can be injected via WithDeploymentProvider for testing)
-	svc, err := service.NewService(ctx, b.registryProvider, b.deploymentProvider)
+	svc, err := inmemory.New(ctx, b.registryProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create registry service: %w", err)
 	}
