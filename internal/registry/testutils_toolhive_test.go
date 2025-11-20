@@ -4,764 +4,263 @@ import (
 	"encoding/json"
 	"testing"
 
-	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stretchr/testify/require"
 )
 
-func TestNewTestRegistryBuilder(t *testing.T) {
+func TestNewTestToolHiveRegistry(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name           string
-		format         string
-		expectedFormat string
-	}{
-		{
-			name:           "toolhive format",
-			format:         config.SourceFormatToolHive,
-			expectedFormat: config.SourceFormatToolHive,
-		},
-		{
-			name:           "upstream format",
-			format:         config.SourceFormatUpstream,
-			expectedFormat: config.SourceFormatUpstream,
-		},
-		{
-			name:           "empty format defaults to toolhive",
-			format:         "",
-			expectedFormat: "",
-		},
-	}
+	t.Run("creates empty registry with defaults", func(t *testing.T) {
+		t.Parallel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+		reg := NewTestToolHiveRegistry()
 
-			builder := NewTestRegistryBuilder(tt.format)
+		assert.NotNil(t, reg)
+		assert.Equal(t, "1.0.0", reg.Version)
+		assert.NotEmpty(t, reg.LastUpdated)
+		assert.NotNil(t, reg.Servers)
+		assert.NotNil(t, reg.RemoteServers)
+		assert.Empty(t, reg.Servers)
+		assert.Empty(t, reg.RemoteServers)
+	})
 
-			assert.NotNil(t, builder)
-			assert.Equal(t, tt.expectedFormat, builder.format)
-			assert.Equal(t, 1, builder.serverCounter)
+	t.Run("applies version option", func(t *testing.T) {
+		t.Parallel()
 
-			switch tt.format {
-			case config.SourceFormatToolHive, "":
-				assert.NotNil(t, builder.registry)
-				assert.Equal(t, "1.0.0", builder.registry.Version)
-				assert.NotEmpty(t, builder.registry.LastUpdated)
-				assert.NotNil(t, builder.registry.Servers)
-				assert.NotNil(t, builder.registry.RemoteServers)
-				assert.Nil(t, builder.upstreamData)
-			case config.SourceFormatUpstream:
-				assert.NotNil(t, builder.upstreamData)
-				assert.Empty(t, builder.upstreamData)
-				assert.Nil(t, builder.registry)
-			}
+		reg := NewTestToolHiveRegistry(
+			WithToolHiveVersion("2.0.0"),
+		)
+
+		assert.Equal(t, "2.0.0", reg.Version)
+	})
+
+	t.Run("applies last updated option", func(t *testing.T) {
+		t.Parallel()
+
+		timestamp := "2023-01-01T00:00:00Z"
+		reg := NewTestToolHiveRegistry(
+			WithToolHiveLastUpdated(timestamp),
+		)
+
+		assert.Equal(t, timestamp, reg.LastUpdated)
+	})
+
+	t.Run("applies multiple options", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewTestToolHiveRegistry(
+			WithToolHiveVersion("3.0.0"),
+			WithToolHiveLastUpdated("2024-01-01T00:00:00Z"),
+			WithImageServer("server1", "image1:latest"),
+			WithRemoteServerURL("remote1", "https://example.com"),
+		)
+
+		assert.Equal(t, "3.0.0", reg.Version)
+		assert.Equal(t, "2024-01-01T00:00:00Z", reg.LastUpdated)
+		assert.Len(t, reg.Servers, 1)
+		assert.Len(t, reg.RemoteServers, 1)
+	})
+}
+
+func TestWithImageServer(t *testing.T) {
+	t.Parallel()
+
+	t.Run("adds image server with defaults", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewTestToolHiveRegistry(
+			WithImageServer("test-server", "test/image:latest"),
+		)
+
+		require.Len(t, reg.Servers, 1)
+		server, exists := reg.Servers["test-server"]
+		require.True(t, exists)
+		assert.Equal(t, "test-server", server.Name)
+		assert.Equal(t, "test/image:latest", server.Image)
+		assert.Equal(t, "Test server description for test-server", server.Description)
+		assert.Equal(t, "Community", server.Tier)
+		assert.Equal(t, "Active", server.Status)
+		assert.Equal(t, "stdio", server.Transport)
+		assert.Equal(t, []string{"test_tool"}, server.Tools)
+		assert.Equal(t, []string{"database"}, server.Tags)
+	})
+
+	t.Run("applies image server options", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewTestToolHiveRegistry(
+			WithImageServer("custom-server", "custom/image:v1.0",
+				WithImageDescription("Custom description"),
+				WithImageTier("Enterprise"),
+				WithImageStatus("Beta"),
+				WithImageTransport("http"),
+				WithImageTools("tool1", "tool2"),
+				WithImageTags("tag1", "tag2", "tag3"),
+			),
+		)
+
+		require.Len(t, reg.Servers, 1)
+		server := reg.Servers["custom-server"]
+		assert.Equal(t, "Custom description", server.Description)
+		assert.Equal(t, "Enterprise", server.Tier)
+		assert.Equal(t, "Beta", server.Status)
+		assert.Equal(t, "http", server.Transport)
+		assert.Equal(t, []string{"tool1", "tool2"}, server.Tools)
+		assert.Equal(t, []string{"tag1", "tag2", "tag3"}, server.Tags)
+	})
+
+	t.Run("adds multiple image servers", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewTestToolHiveRegistry(
+			WithImageServer("server1", "image1:latest"),
+			WithImageServer("server2", "image2:latest"),
+			WithImageServer("server3", "image3:latest"),
+		)
+
+		assert.Len(t, reg.Servers, 3)
+		assert.Contains(t, reg.Servers, "server1")
+		assert.Contains(t, reg.Servers, "server2")
+		assert.Contains(t, reg.Servers, "server3")
+	})
+}
+
+func TestWithRemoteServerURL(t *testing.T) {
+	t.Parallel()
+
+	t.Run("adds remote server with defaults", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewTestToolHiveRegistry(
+			WithRemoteServerURL("remote-server", "https://example.com"),
+		)
+
+		require.Len(t, reg.RemoteServers, 1)
+		server, exists := reg.RemoteServers["remote-server"]
+		require.True(t, exists)
+		assert.Equal(t, "remote-server", server.Name)
+		assert.Equal(t, "https://example.com", server.URL)
+		assert.Equal(t, "Test remote server description for remote-server", server.Description)
+		assert.Equal(t, "Community", server.Tier)
+		assert.Equal(t, "Active", server.Status)
+		assert.Equal(t, "sse", server.Transport)
+		assert.Equal(t, []string{"remote_tool"}, server.Tools)
+	})
+
+	t.Run("applies remote server options", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewTestToolHiveRegistry(
+			WithRemoteServerURL("custom-remote", "https://custom.example.com",
+				WithRemoteDescription("Custom remote description"),
+				WithRemoteTier("Professional"),
+				WithRemoteStatus("Stable"),
+				WithRemoteTransport("websocket"),
+				WithRemoteTools("remote_tool1", "remote_tool2"),
+				WithRemoteTags("remote", "http"),
+			),
+		)
+
+		require.Len(t, reg.RemoteServers, 1)
+		server := reg.RemoteServers["custom-remote"]
+		assert.Equal(t, "Custom remote description", server.Description)
+		assert.Equal(t, "Professional", server.Tier)
+		assert.Equal(t, "Stable", server.Status)
+		assert.Equal(t, "websocket", server.Transport)
+		assert.Equal(t, []string{"remote_tool1", "remote_tool2"}, server.Tools)
+		assert.Equal(t, []string{"remote", "http"}, server.Tags)
+	})
+
+	t.Run("adds multiple remote servers", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewTestToolHiveRegistry(
+			WithRemoteServerURL("remote1", "https://remote1.example.com"),
+			WithRemoteServerURL("remote2", "https://remote2.example.com"),
+		)
+
+		assert.Len(t, reg.RemoteServers, 2)
+		assert.Contains(t, reg.RemoteServers, "remote1")
+		assert.Contains(t, reg.RemoteServers, "remote2")
+	})
+}
+
+func TestToolHiveRegistryToJSON(t *testing.T) {
+	t.Parallel()
+
+	t.Run("converts empty registry to JSON", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewTestToolHiveRegistry()
+		jsonData := ToolHiveRegistryToJSON(reg)
+
+		assert.NotEmpty(t, jsonData)
+
+		// Verify it's valid JSON
+		var parsed toolhivetypes.Registry
+		err := json.Unmarshal(jsonData, &parsed)
+		require.NoError(t, err)
+		assert.Equal(t, "1.0.0", parsed.Version)
+	})
+
+	t.Run("converts registry with servers to JSON", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewTestToolHiveRegistry(
+			WithImageServer("server1", "image1:latest"),
+			WithImageServer("server2", "image2:latest"),
+			WithRemoteServerURL("remote1", "https://remote1.example.com"),
+		)
+		jsonData := ToolHiveRegistryToJSON(reg)
+
+		var parsed toolhivetypes.Registry
+		err := json.Unmarshal(jsonData, &parsed)
+		require.NoError(t, err)
+		assert.Len(t, parsed.Servers, 2)
+		assert.Len(t, parsed.RemoteServers, 1)
+	})
+
+	t.Run("panics on marshal error", func(t *testing.T) {
+		t.Parallel()
+
+		// Normal usage should not panic
+		reg := NewTestToolHiveRegistry()
+		assert.NotPanics(t, func() {
+			ToolHiveRegistryToJSON(reg)
 		})
-	}
+	})
 }
 
-func TestTestRegistryBuilder_WithServer(t *testing.T) {
+func TestToolHiveRegistryToPrettyJSON(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name         string
-		format       string
-		serverName   string
-		expectedName string
-	}{
-		{
-			name:         "toolhive format with explicit name",
-			format:       config.SourceFormatToolHive,
-			serverName:   "my-server",
-			expectedName: "my-server",
-		},
-		{
-			name:         "toolhive format with empty name",
-			format:       config.SourceFormatToolHive,
-			serverName:   "",
-			expectedName: "test-server-1",
-		},
-		{
-			name:         "upstream format with explicit name",
-			format:       config.SourceFormatUpstream,
-			serverName:   "upstream-server",
-			expectedName: "io.test/upstream-server",
-		},
-		{
-			name:         "upstream format with empty name",
-			format:       config.SourceFormatUpstream,
-			serverName:   "",
-			expectedName: "io.test/test-server-1",
-		},
-		{
-			name:         "empty format with server",
-			format:       "",
-			serverName:   "test-server",
-			expectedName: "test-server",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			builder := NewTestRegistryBuilder(tt.format)
-			result := builder.WithServer(tt.serverName)
-
-			// Should return the same builder for chaining
-			assert.Equal(t, builder, result)
-
-			switch tt.format {
-			case config.SourceFormatToolHive, "":
-				assert.Len(t, builder.registry.Servers, 2)
-				server, exists := builder.registry.Servers[tt.expectedName]
-				assert.True(t, exists)
-				assert.Equal(t, tt.expectedName, server.Name)
-				assert.NotEmpty(t, server.Description)
-				assert.Equal(t, "Community", server.Tier)
-				assert.Equal(t, "Active", server.Status)
-				assert.Equal(t, "stdio", server.Transport)
-				assert.Equal(t, []string{"test_tool"}, server.Tools)
-				assert.Equal(t, "test/image:latest", server.Image)
-				_, exists = builder.registry.Servers[tt.expectedName+"-legacy"]
-				assert.True(t, exists)
-			case config.SourceFormatUpstream:
-				assert.Len(t, builder.upstreamData, 2)
-				serverDetail := builder.upstreamData[0]
-				assert.Equal(t, tt.expectedName, serverDetail.Server.Name)
-				assert.NotEmpty(t, serverDetail.Server.Description)
-				assert.Len(t, serverDetail.Server.Packages, 1)
-				pkg := serverDetail.Server.Packages[0]
-				assert.Equal(t, "oci", pkg.RegistryType)
-				assert.Equal(t, "test/image:latest", pkg.Identifier)
-				serverDetailLegacy := builder.upstreamData[1]
-				assert.Equal(t, tt.expectedName+"-legacy", serverDetailLegacy.Server.Name)
-			}
-		})
-	}
-}
-
-func TestTestRegistryBuilder_WithRemoteServer(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name        string
-		format      string
-		url         string
-		expectedURL string
-		shouldAdd   bool
-	}{
-		{
-			name:        "toolhive format with explicit URL",
-			format:      config.SourceFormatToolHive,
-			url:         "https://example.com",
-			expectedURL: "https://example.com",
-			shouldAdd:   true,
-		},
-		{
-			name:        "toolhive format with empty URL",
-			format:      config.SourceFormatToolHive,
-			url:         "",
-			expectedURL: "https://remote-server-1.example.com",
-			shouldAdd:   true,
-		},
-		{
-			name:        "empty format with URL",
-			format:      "",
-			url:         "https://test.com",
-			expectedURL: "https://test.com",
-			shouldAdd:   true,
-		},
-		{
-			name:      "upstream format should not add remote server",
-			format:    config.SourceFormatUpstream,
-			url:       "https://example.com",
-			shouldAdd: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			builder := NewTestRegistryBuilder(tt.format)
-			result := builder.WithRemoteServer(tt.url)
-
-			// Should return the same builder for chaining
-			assert.Equal(t, builder, result)
-
-			if tt.shouldAdd {
-				assert.Len(t, builder.registry.RemoteServers, 1)
-				var remoteServer *toolhivetypes.RemoteServerMetadata
-				for _, server := range builder.registry.RemoteServers {
-					remoteServer = server
-					break
-				}
-				assert.NotNil(t, remoteServer)
-				assert.Equal(t, tt.expectedURL, remoteServer.URL)
-				assert.NotEmpty(t, remoteServer.Name)
-				assert.NotEmpty(t, remoteServer.Description)
-				assert.Equal(t, "Community", remoteServer.Tier)
-				assert.Equal(t, "Active", remoteServer.Status)
-				assert.Equal(t, "sse", remoteServer.Transport)
-				assert.Equal(t, []string{"remote_tool"}, remoteServer.Tools)
-			} else {
-				// For upstream format or formats that don't support remote servers
-				if builder.registry != nil {
-					assert.Empty(t, builder.registry.RemoteServers)
-				}
-			}
-		})
-	}
-}
-
-func TestTestRegistryBuilder_WithRemoteServerName(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name        string
-		format      string
-		serverName  string
-		url         string
-		expectedURL string
-		shouldAdd   bool
-	}{
-		{
-			name:        "toolhive format with name and explicit URL",
-			format:      config.SourceFormatToolHive,
-			serverName:  "my-remote",
-			url:         "https://example.com",
-			expectedURL: "https://example.com",
-			shouldAdd:   true,
-		},
-		{
-			name:        "toolhive format with name and empty URL",
-			format:      config.SourceFormatToolHive,
-			serverName:  "my-remote",
-			url:         "",
-			expectedURL: "https://my-remote.example.com",
-			shouldAdd:   true,
-		},
-		{
-			name:       "upstream format should not add remote server",
-			format:     config.SourceFormatUpstream,
-			serverName: "my-remote",
-			url:        "https://example.com",
-			shouldAdd:  false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			builder := NewTestRegistryBuilder(tt.format)
-			result := builder.WithRemoteServerName(tt.serverName, tt.url)
-
-			// Should return the same builder for chaining
-			assert.Equal(t, builder, result)
-
-			if tt.shouldAdd {
-				assert.Len(t, builder.registry.RemoteServers, 1)
-				remoteServer, exists := builder.registry.RemoteServers[tt.serverName]
-				assert.True(t, exists)
-				assert.Equal(t, tt.expectedURL, remoteServer.URL)
-				assert.Equal(t, tt.serverName, remoteServer.Name)
-			} else {
-				if builder.registry != nil {
-					assert.Empty(t, builder.registry.RemoteServers)
-				}
-			}
-		})
-	}
-}
-
-func TestTestRegistryBuilder_WithVersion(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name         string
-		format       string
-		version      string
-		shouldUpdate bool
-	}{
-		{
-			name:         "toolhive format should update version",
-			format:       config.SourceFormatToolHive,
-			version:      "2.0.0",
-			shouldUpdate: true,
-		},
-		{
-			name:         "empty format should update version",
-			format:       "",
-			version:      "3.0.0",
-			shouldUpdate: true,
-		},
-		{
-			name:         "upstream format should not update version",
-			format:       config.SourceFormatUpstream,
-			version:      "2.0.0",
-			shouldUpdate: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			builder := NewTestRegistryBuilder(tt.format)
-			result := builder.WithVersion(tt.version)
-
-			// Should return the same builder for chaining
-			assert.Equal(t, builder, result)
-
-			if tt.shouldUpdate {
-				assert.Equal(t, tt.version, builder.registry.Version)
-			} else {
-				// Upstream format doesn't have registry structure
-				if builder.registry != nil {
-					assert.NotEqual(t, tt.version, builder.registry.Version)
-				}
-			}
-		})
-	}
-}
-
-func TestTestRegistryBuilder_WithLastUpdated(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name         string
-		format       string
-		timestamp    string
-		shouldUpdate bool
-	}{
-		{
-			name:         "toolhive format should update timestamp",
-			format:       config.SourceFormatToolHive,
-			timestamp:    "2023-01-01T00:00:00Z",
-			shouldUpdate: true,
-		},
-		{
-			name:         "empty format should update timestamp",
-			format:       "",
-			timestamp:    "2023-01-01T00:00:00Z",
-			shouldUpdate: true,
-		},
-		{
-			name:         "upstream format should not update timestamp",
-			format:       config.SourceFormatUpstream,
-			timestamp:    "2023-01-01T00:00:00Z",
-			shouldUpdate: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			builder := NewTestRegistryBuilder(tt.format)
-			originalTimestamp := ""
-			if builder.registry != nil {
-				originalTimestamp = builder.registry.LastUpdated
-			}
-
-			result := builder.WithLastUpdated(tt.timestamp)
-
-			// Should return the same builder for chaining
-			assert.Equal(t, builder, result)
-
-			if tt.shouldUpdate {
-				assert.Equal(t, tt.timestamp, builder.registry.LastUpdated)
-			} else {
-				// Upstream format doesn't have registry structure
-				if builder.registry != nil {
-					assert.Equal(t, originalTimestamp, builder.registry.LastUpdated)
-				}
-			}
-		})
-	}
-}
-
-func TestTestRegistryBuilder_Empty(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name   string
-		format string
-	}{
-		{
-			name:   "toolhive format",
-			format: config.SourceFormatToolHive,
-		},
-		{
-			name:   "upstream format",
-			format: config.SourceFormatUpstream,
-		},
-		{
-			name:   "empty format",
-			format: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			builder := NewTestRegistryBuilder(tt.format)
-
-			// Add some servers first
-			builder.WithServer("test1").WithServer("test2")
-			if tt.format != config.SourceFormatUpstream {
-				builder.WithRemoteServer("https://example.com")
-			}
-
-			result := builder.Empty()
-
-			// Should return the same builder for chaining
-			assert.Equal(t, builder, result)
-
-			switch tt.format {
-			case config.SourceFormatToolHive, "":
-				assert.Empty(t, builder.registry.Servers)
-				assert.Empty(t, builder.registry.RemoteServers)
-				// Other fields should remain
-				assert.Equal(t, "1.0.0", builder.registry.Version)
-				assert.NotEmpty(t, builder.registry.LastUpdated)
-			case config.SourceFormatUpstream:
-				assert.Empty(t, builder.upstreamData)
-			}
-		})
-	}
-}
-
-func TestTestRegistryBuilder_BuildJSON(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name   string
-		format string
-	}{
-		{
-			name:   "toolhive format",
-			format: config.SourceFormatToolHive,
-		},
-		{
-			name:   "upstream format",
-			format: config.SourceFormatUpstream,
-		},
-		{
-			name:   "empty format",
-			format: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			builder := NewTestRegistryBuilder(tt.format)
-			builder.WithServer("test-server")
-
-			jsonData := builder.BuildJSON()
-
-			assert.NotEmpty(t, jsonData)
-
-			// Verify it's valid JSON
-			var parsed interface{}
-			err := json.Unmarshal(jsonData, &parsed)
-			assert.NoError(t, err)
-
-			switch tt.format {
-			case config.SourceFormatToolHive, "":
-				// Should be a registry object
-				var registry toolhivetypes.Registry
-				err = json.Unmarshal(jsonData, &registry)
-				assert.NoError(t, err)
-				assert.Equal(t, "1.0.0", registry.Version)
-				assert.Len(t, registry.Servers, 2)
-			case config.SourceFormatUpstream:
-				// Should be an array of server responses
-				var upstreamData []upstreamv0.ServerResponse
-				err = json.Unmarshal(jsonData, &upstreamData)
-				assert.NoError(t, err)
-				assert.Len(t, upstreamData, 2)
-			}
-		})
-	}
-}
-
-func TestTestRegistryBuilder_BuildPrettyJSON(t *testing.T) {
-	t.Parallel()
-
-	builder := NewTestRegistryBuilder(config.SourceFormatToolHive)
-	builder.WithServer("test-server")
-
-	prettyJSON := builder.BuildPrettyJSON()
-	regularJSON := builder.BuildJSON()
-
-	assert.NotEmpty(t, prettyJSON)
-	assert.NotEqual(t, regularJSON, prettyJSON)
-
-	// Pretty JSON should be longer due to indentation
-	assert.Greater(t, len(prettyJSON), len(regularJSON))
-
-	// Both should unmarshal to the same data
-	var prettyData, regularData toolhivetypes.Registry
-	err1 := json.Unmarshal(prettyJSON, &prettyData)
-	err2 := json.Unmarshal(regularJSON, &regularData)
-	assert.NoError(t, err1)
-	assert.NoError(t, err2)
-	assert.Equal(t, regularData, prettyData)
-}
-
-func TestTestRegistryBuilder_GetRegistry(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name         string
-		format       string
-		shouldReturn bool
-	}{
-		{
-			name:         "toolhive format should return registry",
-			format:       config.SourceFormatToolHive,
-			shouldReturn: true,
-		},
-		{
-			name:         "empty format should return registry",
-			format:       "",
-			shouldReturn: true,
-		},
-		{
-			name:         "upstream format should return nil",
-			format:       config.SourceFormatUpstream,
-			shouldReturn: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			builder := NewTestRegistryBuilder(tt.format)
-			builder.WithServer("test-server")
-
-			registry := builder.GetRegistry()
-
-			if tt.shouldReturn {
-				assert.NotNil(t, registry)
-				assert.Equal(t, "1.0.0", registry.Version)
-				assert.Len(t, registry.Servers, 2)
-			} else {
-				assert.Nil(t, registry)
-			}
-		})
-	}
-}
-
-func TestTestRegistryBuilder_GetUpstreamData(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name         string
-		format       string
-		shouldReturn bool
-	}{
-		{
-			name:         "upstream format should return data",
-			format:       config.SourceFormatUpstream,
-			shouldReturn: true,
-		},
-		{
-			name:         "toolhive format should return nil",
-			format:       config.SourceFormatToolHive,
-			shouldReturn: false,
-		},
-		{
-			name:         "empty format should return nil",
-			format:       "",
-			shouldReturn: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			builder := NewTestRegistryBuilder(tt.format)
-			builder.WithServer("test-server")
-
-			upstreamData := builder.GetUpstreamData()
-
-			if tt.shouldReturn {
-				assert.NotNil(t, upstreamData)
-				assert.Len(t, upstreamData, 2)
-			} else {
-				assert.Nil(t, upstreamData)
-			}
-		})
-	}
-}
-
-func TestTestRegistryBuilder_ServerCount(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name               string
-		format             string
-		serversToAdd       int
-		remoteServersToAdd int
-		expectedCount      int
-	}{
-		{
-			name:               "toolhive format with container servers",
-			format:             config.SourceFormatToolHive,
-			serversToAdd:       2,
-			remoteServersToAdd: 0,
-			expectedCount:      4,
-		},
-		{
-			name:               "toolhive format with mixed servers",
-			format:             config.SourceFormatToolHive,
-			serversToAdd:       2,
-			remoteServersToAdd: 1,
-			expectedCount:      5,
-		},
-		{
-			name:               "upstream format with servers",
-			format:             config.SourceFormatUpstream,
-			serversToAdd:       3,
-			remoteServersToAdd: 0, // Remote servers not supported in upstream
-			expectedCount:      6,
-		},
-		{
-			name:               "empty format with servers",
-			format:             "",
-			serversToAdd:       1,
-			remoteServersToAdd: 1,
-			expectedCount:      3,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			builder := NewTestRegistryBuilder(tt.format)
-
-			// Add container servers
-			for i := 0; i < tt.serversToAdd; i++ {
-				builder.WithServer("")
-			}
-
-			// Add remote servers (only for supported formats)
-			if tt.format != config.SourceFormatUpstream {
-				for i := 0; i < tt.remoteServersToAdd; i++ {
-					builder.WithRemoteServer("")
-				}
-			}
-
-			count := builder.ServerCount()
-			assert.Equal(t, tt.expectedCount, count)
-		})
-	}
-}
-
-func TestTestRegistryBuilder_ContainerServerCount(t *testing.T) {
-	t.Parallel()
-
-	builder := NewTestRegistryBuilder(config.SourceFormatToolHive)
-	builder.WithServer("server1").WithServer("server2").WithRemoteServer("https://example.com")
-
-	containerCount := builder.ContainerServerCount()
-	assert.Equal(t, 4, containerCount)
-
-	remoteCount := builder.RemoteServerCount()
-	assert.Equal(t, 1, remoteCount)
-
-	totalCount := builder.ServerCount()
-	assert.Equal(t, 5, totalCount)
-}
-
-func TestTestRegistryBuilder_RemoteServerCount(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name               string
-		format             string
-		remoteServersToAdd int
-		expectedCount      int
-	}{
-		{
-			name:               "toolhive format with remote servers",
-			format:             config.SourceFormatToolHive,
-			remoteServersToAdd: 2,
-			expectedCount:      2,
-		},
-		{
-			name:               "empty format with remote servers",
-			format:             "",
-			remoteServersToAdd: 1,
-			expectedCount:      1,
-		},
-		{
-			name:               "upstream format should return 0",
-			format:             config.SourceFormatUpstream,
-			remoteServersToAdd: 0, // Remote servers not supported
-			expectedCount:      0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			builder := NewTestRegistryBuilder(tt.format)
-
-			// Add remote servers (only for supported formats)
-			if tt.format != config.SourceFormatUpstream {
-				for i := 0; i < tt.remoteServersToAdd; i++ {
-					builder.WithRemoteServer("")
-				}
-			}
-
-			count := builder.RemoteServerCount()
-			assert.Equal(t, tt.expectedCount, count)
-		})
-	}
-}
-
-func TestTestRegistryBuilder_ChainedCalls(t *testing.T) {
-	t.Parallel()
-
-	// Test method chaining works correctly
-	builder := NewTestRegistryBuilder(config.SourceFormatToolHive)
-
-	result := builder.
-		WithVersion("2.0.0").
-		WithLastUpdated("2023-01-01T00:00:00Z").
-		WithServer("server1").
-		WithServer("server2").
-		WithRemoteServer("https://remote1.example.com").
-		WithRemoteServerName("remote2", "https://remote2.example.com")
-
-	// Should return the same builder
-	assert.Equal(t, builder, result)
-
-	// Verify all operations were applied
-	assert.Equal(t, "2.0.0", builder.registry.Version)
-	assert.Equal(t, "2023-01-01T00:00:00Z", builder.registry.LastUpdated)
-	assert.Len(t, builder.registry.Servers, 4)
-	assert.Len(t, builder.registry.RemoteServers, 2)
-
-	// Verify server count
-	assert.Equal(t, 6, builder.ServerCount())
-	assert.Equal(t, 4, builder.ContainerServerCount())
-	assert.Equal(t, 2, builder.RemoteServerCount())
+	t.Run("converts registry to pretty JSON", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewTestToolHiveRegistry(
+			WithImageServer("server1", "image1:latest"),
+		)
+
+		prettyJSON := ToolHiveRegistryToPrettyJSON(reg)
+		regularJSON := ToolHiveRegistryToJSON(reg)
+
+		assert.NotEmpty(t, prettyJSON)
+		assert.NotEqual(t, regularJSON, prettyJSON)
+
+		// Pretty JSON should be longer due to indentation
+		assert.Greater(t, len(prettyJSON), len(regularJSON))
+
+		// Both should unmarshal to the same data
+		var prettyData, regularData toolhivetypes.Registry
+		err1 := json.Unmarshal(prettyJSON, &prettyData)
+		err2 := json.Unmarshal(regularJSON, &regularData)
+		require.NoError(t, err1)
+		require.NoError(t, err2)
+		assert.Equal(t, regularData.Version, prettyData.Version)
+		assert.Len(t, prettyData.Servers, len(regularData.Servers))
+	})
 }
 
 func TestInvalidJSON(t *testing.T) {
@@ -777,85 +276,72 @@ func TestInvalidJSON(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestEmptyJSON(t *testing.T) {
+func TestEmptyToolHiveJSON(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name         string
-		format       string
-		expectedJSON string
-	}{
-		{
-			name:         "toolhive format",
-			format:       config.SourceFormatToolHive,
-			expectedJSON: "{}",
-		},
-		{
-			name:         "upstream format",
-			format:       config.SourceFormatUpstream,
-			expectedJSON: "[]",
-		},
-		{
-			name:         "empty format",
-			format:       "",
-			expectedJSON: "{}",
-		},
-		{
-			name:         "unknown format",
-			format:       "unknown",
-			expectedJSON: "{}",
-		},
-	}
+	emptyJSON := EmptyToolHiveJSON()
+	assert.Equal(t, []byte("{}"), emptyJSON)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			emptyJSON := EmptyJSON(tt.format)
-			assert.Equal(t, []byte(tt.expectedJSON), emptyJSON)
-
-			// Verify it's valid JSON
-			var parsed interface{}
-			err := json.Unmarshal(emptyJSON, &parsed)
-			assert.NoError(t, err)
-		})
-	}
+	// Verify it's valid JSON
+	var parsed interface{}
+	err := json.Unmarshal(emptyJSON, &parsed)
+	assert.NoError(t, err)
 }
 
-func TestTestRegistryBuilder_WithServerName(t *testing.T) {
+func TestComplexRegistryScenario(t *testing.T) {
 	t.Parallel()
 
-	// Test WithServerName is an alias for WithServer
-	builder := NewTestRegistryBuilder(config.SourceFormatToolHive)
+	// Create a complex registry with all features
+	reg := NewTestToolHiveRegistry(
+		WithToolHiveVersion("2.5.0"),
+		WithToolHiveLastUpdated("2024-12-01T10:00:00Z"),
+		WithImageServer("postgres-server", "postgres:16",
+			WithImageDescription("PostgreSQL database server"),
+			WithImageTier("Enterprise"),
+			WithImageTools("sql_query", "db_backup"),
+			WithImageTags("database", "sql"),
+		),
+		WithImageServer("redis-server", "redis:7",
+			WithImageDescription("Redis cache server"),
+			WithImageTier("Community"),
+			WithImageTools("cache_get", "cache_set"),
+			WithImageTags("cache", "nosql"),
+		),
+		WithRemoteServerURL("api-server", "https://api.example.com",
+			WithRemoteDescription("External API server"),
+			WithRemoteTier("Professional"),
+			WithRemoteTools("fetch_data", "send_data"),
+			WithRemoteTags("api", "rest"),
+		),
+	)
 
-	result1 := builder.WithServerName("test-server")
-	result2 := builder.WithServer("test-server-2")
+	// Verify structure
+	assert.Equal(t, "2.5.0", reg.Version)
+	assert.Equal(t, "2024-12-01T10:00:00Z", reg.LastUpdated)
+	assert.Len(t, reg.Servers, 2)
+	assert.Len(t, reg.RemoteServers, 1)
 
-	// Both should return the same builder
-	assert.Equal(t, builder, result1)
-	assert.Equal(t, builder, result2)
+	// Verify specific servers
+	postgres := reg.Servers["postgres-server"]
+	assert.Equal(t, "PostgreSQL database server", postgres.Description)
+	assert.Equal(t, "Enterprise", postgres.Tier)
+	assert.Equal(t, []string{"sql_query", "db_backup"}, postgres.Tools)
+	assert.Equal(t, []string{"database", "sql"}, postgres.Tags)
 
-	// Should have 4 servers
-	assert.Len(t, builder.registry.Servers, 4)
-	assert.Contains(t, builder.registry.Servers, "test-server")
-	assert.Contains(t, builder.registry.Servers, "test-server-2")
-	assert.Contains(t, builder.registry.Servers, "test-server-legacy")
-	assert.Contains(t, builder.registry.Servers, "test-server-2-legacy")
-}
+	redis := reg.Servers["redis-server"]
+	assert.Equal(t, "Redis cache server", redis.Description)
+	assert.Equal(t, "Community", redis.Tier)
 
-func TestTestRegistryBuilder_PanicOnMarshalError(t *testing.T) {
-	t.Parallel()
+	apiServer := reg.RemoteServers["api-server"]
+	assert.Equal(t, "External API server", apiServer.Description)
+	assert.Equal(t, "Professional", apiServer.Tier)
 
-	// This is harder to test since we need to cause a marshal error
-	// For now, just verify the methods don't panic with normal usage
-	builder := NewTestRegistryBuilder(config.SourceFormatToolHive)
-	builder.WithServer("test")
-
-	assert.NotPanics(t, func() {
-		builder.BuildJSON()
-	})
-
-	assert.NotPanics(t, func() {
-		builder.BuildPrettyJSON()
-	})
+	// Verify JSON serialization works
+	jsonData := ToolHiveRegistryToJSON(reg)
+	var parsed toolhivetypes.Registry
+	err := json.Unmarshal(jsonData, &parsed)
+	require.NoError(t, err)
+	assert.Equal(t, reg.Version, parsed.Version)
+	assert.Len(t, parsed.Servers, 2)
+	assert.Len(t, parsed.RemoteServers, 1)
 }

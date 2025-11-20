@@ -5,53 +5,53 @@ import (
 	"fmt"
 	"time"
 
-	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
-	"github.com/modelcontextprotocol/registry/pkg/model"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
-
-	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
-// TestRegistryBuilder provides a fluent interface for building test registry data
-type TestRegistryBuilder struct {
-	format        string
-	registry      *toolhivetypes.Registry
-	upstreamData  []upstreamv0.ServerResponse
-	serverCounter int
+// ToolHiveRegistryOption is a function that configures a ToolHive Registry for testing
+type ToolHiveRegistryOption func(*toolhivetypes.Registry)
+
+// ImageServerOption is a function that configures an ImageMetadata (OCI server) for testing
+type ImageServerOption func(*toolhivetypes.ImageMetadata)
+
+// RemoteServerOption is a function that configures a RemoteServerMetadata for testing
+type RemoteServerOption func(*toolhivetypes.RemoteServerMetadata)
+
+// NewTestToolHiveRegistry creates a new ToolHive Registry for testing with default values
+// and applies any provided options
+func NewTestToolHiveRegistry(opts ...ToolHiveRegistryOption) *toolhivetypes.Registry {
+	reg := &toolhivetypes.Registry{
+		Version:       "1.0.0",
+		LastUpdated:   time.Now().Format(time.RFC3339),
+		Servers:       make(map[string]*toolhivetypes.ImageMetadata),
+		RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
+	}
+
+	for _, opt := range opts {
+		opt(reg)
+	}
+
+	return reg
 }
 
-// NewTestRegistryBuilder creates a new test registry builder for the specified format
-func NewTestRegistryBuilder(format string) *TestRegistryBuilder {
-	builder := &TestRegistryBuilder{
-		format:        format,
-		serverCounter: 1,
+// WithToolHiveVersion sets the registry version
+func WithToolHiveVersion(version string) ToolHiveRegistryOption {
+	return func(reg *toolhivetypes.Registry) {
+		reg.Version = version
 	}
-
-	switch format {
-	case config.SourceFormatToolHive, "":
-		builder.registry = &toolhivetypes.Registry{
-			Version:       "1.0.0",
-			LastUpdated:   time.Now().Format(time.RFC3339),
-			Servers:       make(map[string]*toolhivetypes.ImageMetadata),
-			RemoteServers: make(map[string]*toolhivetypes.RemoteServerMetadata),
-		}
-	case config.SourceFormatUpstream:
-		builder.upstreamData = []upstreamv0.ServerResponse{}
-	}
-
-	return builder
 }
 
-// WithServer adds a container server with the given name and default valid values
-func (b *TestRegistryBuilder) WithServer(name string) *TestRegistryBuilder {
-	if name == "" {
-		name = fmt.Sprintf("test-server-%d", b.serverCounter)
-		b.serverCounter++
+// WithToolHiveLastUpdated sets the registry last updated timestamp
+func WithToolHiveLastUpdated(timestamp string) ToolHiveRegistryOption {
+	return func(reg *toolhivetypes.Registry) {
+		reg.LastUpdated = timestamp
 	}
+}
 
-	switch b.format {
-	case config.SourceFormatToolHive, "":
-		b.registry.Servers[name] = &toolhivetypes.ImageMetadata{
+// WithImageServer adds an OCI/container image server to the registry
+func WithImageServer(name, image string, opts ...ImageServerOption) ToolHiveRegistryOption {
+	return func(reg *toolhivetypes.Registry) {
+		server := &toolhivetypes.ImageMetadata{
 			BaseServerMetadata: toolhivetypes.BaseServerMetadata{
 				Name:        name,
 				Description: fmt.Sprintf("Test server description for %s", name),
@@ -61,244 +61,156 @@ func (b *TestRegistryBuilder) WithServer(name string) *TestRegistryBuilder {
 				Tools:       []string{"test_tool"},
 				Tags:        []string{"database"},
 			},
-			Image: "test/image:latest",
+			Image: image,
 		}
-		b.registry.Servers[name+"-legacy"] = &toolhivetypes.ImageMetadata{
+
+		for _, opt := range opts {
+			opt(server)
+		}
+
+		reg.Servers[name] = server
+	}
+}
+
+// WithRemoteServerURL adds a remote (HTTP/SSE) server to the registry
+func WithRemoteServerURL(name, url string, opts ...RemoteServerOption) ToolHiveRegistryOption {
+	return func(reg *toolhivetypes.Registry) {
+		server := &toolhivetypes.RemoteServerMetadata{
 			BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-				Name:        name + "-legacy",
-				Description: fmt.Sprintf("Test server description for %s", name),
+				Name:        name,
+				Description: fmt.Sprintf("Test remote server description for %s", name),
 				Tier:        "Community",
 				Status:      "Active",
-				Transport:   "stdio",
-				Tools:       []string{"test_tool"},
-				Tags:        []string{"database", "deprecated"},
+				Transport:   "sse",
+				Tools:       []string{"remote_tool"},
 			},
-			Image: "test/image:latest",
+			URL: url,
 		}
-	case config.SourceFormatUpstream:
-		b.upstreamData = append(b.upstreamData, upstreamv0.ServerResponse{
-			Server: upstreamv0.ServerJSON{
-				Schema:      "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-				Name:        "io.test/" + name,
-				Description: fmt.Sprintf("Test server description for %s", name),
-				Version:     "1.0.0",
-				Packages: []model.Package{
-					{
-						RegistryType: "oci",
-						Identifier:   "test/image:latest",
-						Transport: model.Transport{
-							Type: "stdio",
-						},
-					},
-				},
-			},
-		})
-		b.upstreamData = append(b.upstreamData, upstreamv0.ServerResponse{
-			Server: upstreamv0.ServerJSON{
-				Schema:      "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-				Name:        "io.test/" + name + "-legacy",
-				Description: fmt.Sprintf("Test server description for %s-legacy", name),
-				Version:     "1.0.0",
-				Packages: []model.Package{
-					{
-						RegistryType: "oci",
-						Identifier:   "test/image:latest",
-						Transport: model.Transport{
-							Type: "stdio",
-						},
-					},
-				},
-			},
-		})
-	}
 
-	return b
+		for _, opt := range opts {
+			opt(server)
+		}
+
+		reg.RemoteServers[name] = server
+	}
 }
 
-// WithRemoteServer adds a remote server with the given URL (only for ToolHive format)
-func (b *TestRegistryBuilder) WithRemoteServer(url string) *TestRegistryBuilder {
-	if b.format != config.SourceFormatToolHive && b.format != "" {
-		return b // Only supported for ToolHive format
+// ImageServerOption helpers
+
+// WithImageDescription sets the server description
+func WithImageDescription(description string) ImageServerOption {
+	return func(server *toolhivetypes.ImageMetadata) {
+		server.Description = description
 	}
-
-	name := fmt.Sprintf("remote-server-%d", b.serverCounter)
-	b.serverCounter++
-
-	if url == "" {
-		url = fmt.Sprintf("https://remote-server-%d.example.com", b.serverCounter-1)
-	}
-
-	b.registry.RemoteServers[name] = &toolhivetypes.RemoteServerMetadata{
-		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-			Name:        name,
-			Description: fmt.Sprintf("Test remote server description for %s", name),
-			Tier:        "Community",
-			Status:      "Active",
-			Transport:   "sse",
-			Tools:       []string{"remote_tool"},
-		},
-		URL: url,
-	}
-
-	return b
 }
 
-// WithServerName adds a server with a specific name
-func (b *TestRegistryBuilder) WithServerName(name string) *TestRegistryBuilder {
-	return b.WithServer(name)
+// WithImageTier sets the server tier
+func WithImageTier(tier string) ImageServerOption {
+	return func(server *toolhivetypes.ImageMetadata) {
+		server.Tier = tier
+	}
 }
 
-// WithRemoteServerName adds a remote server with a specific name and URL
-func (b *TestRegistryBuilder) WithRemoteServerName(name, url string) *TestRegistryBuilder {
-	if b.format != config.SourceFormatToolHive && b.format != "" {
-		return b // Only supported for ToolHive format
+// WithImageStatus sets the server status
+func WithImageStatus(status string) ImageServerOption {
+	return func(server *toolhivetypes.ImageMetadata) {
+		server.Status = status
 	}
-
-	if url == "" {
-		url = fmt.Sprintf("https://%s.example.com", name)
-	}
-
-	b.registry.RemoteServers[name] = &toolhivetypes.RemoteServerMetadata{
-		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-			Name:        name,
-			Description: fmt.Sprintf("Test remote server description for %s", name),
-			Tier:        "Community",
-			Status:      "Active",
-			Transport:   "sse",
-			Tools:       []string{"remote_tool"},
-		},
-		URL: url,
-	}
-
-	return b
 }
 
-// WithVersion sets a custom version (ToolHive format only)
-func (b *TestRegistryBuilder) WithVersion(version string) *TestRegistryBuilder {
-	if b.format == config.SourceFormatToolHive || b.format == "" {
-		b.registry.Version = version
+// WithImageTransport sets the server transport
+func WithImageTransport(transport string) ImageServerOption {
+	return func(server *toolhivetypes.ImageMetadata) {
+		server.Transport = transport
 	}
-	return b
 }
 
-// WithLastUpdated sets a custom last updated timestamp (ToolHive format only)
-func (b *TestRegistryBuilder) WithLastUpdated(timestamp string) *TestRegistryBuilder {
-	if b.format == config.SourceFormatToolHive || b.format == "" {
-		b.registry.LastUpdated = timestamp
+// WithImageTools sets the server tools
+func WithImageTools(tools ...string) ImageServerOption {
+	return func(server *toolhivetypes.ImageMetadata) {
+		server.Tools = tools
 	}
-	return b
 }
 
-// Empty creates an empty registry with minimal required fields
-func (b *TestRegistryBuilder) Empty() *TestRegistryBuilder {
-	switch b.format {
-	case config.SourceFormatToolHive, "":
-		// Keep the registry structure but clear servers
-		b.registry.Servers = make(map[string]*toolhivetypes.ImageMetadata)
-		b.registry.RemoteServers = make(map[string]*toolhivetypes.RemoteServerMetadata)
-	case config.SourceFormatUpstream:
-		b.upstreamData = []upstreamv0.ServerResponse{}
+// WithImageTags sets the server tags
+func WithImageTags(tags ...string) ImageServerOption {
+	return func(server *toolhivetypes.ImageMetadata) {
+		server.Tags = tags
 	}
-	return b
 }
 
-// BuildJSON returns the JSON representation of the built registry
-func (b *TestRegistryBuilder) BuildJSON() []byte {
-	var data []byte
-	var err error
+// RemoteServerOption helpers
 
-	switch b.format {
-	case config.SourceFormatToolHive, "":
-		data, err = json.Marshal(b.registry)
-	case config.SourceFormatUpstream:
-		data, err = json.Marshal(b.upstreamData)
+// WithRemoteDescription sets the remote server description
+func WithRemoteDescription(description string) RemoteServerOption {
+	return func(server *toolhivetypes.RemoteServerMetadata) {
+		server.Description = description
 	}
+}
 
+// WithRemoteTier sets the remote server tier
+func WithRemoteTier(tier string) RemoteServerOption {
+	return func(server *toolhivetypes.RemoteServerMetadata) {
+		server.Tier = tier
+	}
+}
+
+// WithRemoteStatus sets the remote server status
+func WithRemoteStatus(status string) RemoteServerOption {
+	return func(server *toolhivetypes.RemoteServerMetadata) {
+		server.Status = status
+	}
+}
+
+// WithRemoteTransport sets the remote server transport
+func WithRemoteTransport(transport string) RemoteServerOption {
+	return func(server *toolhivetypes.RemoteServerMetadata) {
+		server.Transport = transport
+	}
+}
+
+// WithRemoteTools sets the remote server tools
+func WithRemoteTools(tools ...string) RemoteServerOption {
+	return func(server *toolhivetypes.RemoteServerMetadata) {
+		server.Tools = tools
+	}
+}
+
+// WithRemoteTags sets the remote server tags
+func WithRemoteTags(tags ...string) RemoteServerOption {
+	return func(server *toolhivetypes.RemoteServerMetadata) {
+		server.Tags = tags
+	}
+}
+
+// Helper functions for JSON generation
+
+// ToolHiveRegistryToJSON converts a ToolHive Registry to JSON bytes
+func ToolHiveRegistryToJSON(reg *toolhivetypes.Registry) []byte {
+	data, err := json.Marshal(reg)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to marshal test data: %v", err))
+		panic(fmt.Sprintf("Failed to marshal ToolHive registry: %v", err))
 	}
-
 	return data
 }
 
-// BuildPrettyJSON returns the JSON representation with indentation for readability
-func (b *TestRegistryBuilder) BuildPrettyJSON() []byte {
-	var data []byte
-	var err error
-
-	switch b.format {
-	case config.SourceFormatToolHive, "":
-		data, err = json.MarshalIndent(b.registry, "", "  ")
-	case config.SourceFormatUpstream:
-		data, err = json.MarshalIndent(b.upstreamData, "", "  ")
-	}
-
+// ToolHiveRegistryToPrettyJSON converts a ToolHive Registry to pretty-printed JSON bytes
+func ToolHiveRegistryToPrettyJSON(reg *toolhivetypes.Registry) []byte {
+	data, err := json.MarshalIndent(reg, "", "  ")
 	if err != nil {
-		panic(fmt.Sprintf("Failed to marshal test data: %v", err))
+		panic(fmt.Sprintf("Failed to marshal ToolHive registry: %v", err))
 	}
-
 	return data
 }
 
-// GetRegistry returns the built registry (for ToolHive format only)
-func (b *TestRegistryBuilder) GetRegistry() *toolhivetypes.Registry {
-	if b.format == config.SourceFormatToolHive || b.format == "" {
-		return b.registry
-	}
-	return nil
-}
-
-// GetUpstreamData returns the built upstream data (for Upstream format only)
-func (b *TestRegistryBuilder) GetUpstreamData() []upstreamv0.ServerResponse {
-	if b.format == config.SourceFormatUpstream {
-		return b.upstreamData
-	}
-	return nil
-}
-
-// ServerCount returns the number of servers (both container and remote for ToolHive format)
-func (b *TestRegistryBuilder) ServerCount() int {
-	switch b.format {
-	case config.SourceFormatToolHive, "":
-		return len(b.registry.Servers) + len(b.registry.RemoteServers)
-	case config.SourceFormatUpstream:
-		return len(b.upstreamData)
-	}
-	return 0
-}
-
-// ContainerServerCount returns the number of container servers only
-func (b *TestRegistryBuilder) ContainerServerCount() int {
-	switch b.format {
-	case config.SourceFormatToolHive, "":
-		return len(b.registry.Servers)
-	case config.SourceFormatUpstream:
-		return len(b.upstreamData)
-	}
-	return 0
-}
-
-// RemoteServerCount returns the number of remote servers only (ToolHive format only)
-func (b *TestRegistryBuilder) RemoteServerCount() int {
-	if b.format == config.SourceFormatToolHive || b.format == "" {
-		return len(b.registry.RemoteServers)
-	}
-	return 0
-}
+// Helper functions for common test scenarios
 
 // InvalidJSON returns intentionally malformed JSON for testing error cases
 func InvalidJSON() []byte {
 	return []byte("invalid json")
 }
 
-// EmptyJSON returns empty JSON object/array based on format
-func EmptyJSON(format string) []byte {
-	switch format {
-	case config.SourceFormatToolHive, "":
-		return []byte("{}")
-	case config.SourceFormatUpstream:
-		return []byte("[]")
-	default:
-		return []byte("{}")
-	}
+// EmptyToolHiveJSON returns an empty ToolHive registry JSON object
+func EmptyToolHiveJSON() []byte {
+	return []byte("{}")
 }

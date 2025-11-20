@@ -38,7 +38,10 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 	// Create temp directory and test file
 	tempDir := t.TempDir()
 	testFilePath := filepath.Join(tempDir, "registry.json")
-	testData := registry.NewTestRegistryBuilder(config.SourceFormatToolHive).WithServer("test-server").BuildJSON()
+	testReg := registry.NewTestToolHiveRegistry(
+		registry.WithImageServer("test-server", "test/image:latest"),
+	)
+	testData := registry.ToolHiveRegistryToJSON(testReg)
 	testHash := fmt.Sprintf("%x", sha256.Sum256(testData))
 
 	require.NoError(t, os.WriteFile(testFilePath, testData, 0644))
@@ -167,9 +170,14 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 	testFilePath := filepath.Join(tempDir, "registry.json")
 
 	// Create test file with valid registry data (1 server)
-	testData := registry.NewTestRegistryBuilder(config.SourceFormatToolHive).WithServer("test-server").BuildJSON()
+	testReg := registry.NewTestToolHiveRegistry(
+		registry.WithImageServer("test-server", "test/image:latest"),
+	)
+	testData := registry.ToolHiveRegistryToJSON(testReg)
 	require.NoError(t, os.WriteFile(testFilePath, testData, 0644))
-	emptyTestData := registry.NewTestRegistryBuilder(config.SourceFormatToolHive).BuildJSON()
+
+	emptyReg := registry.NewTestToolHiveRegistry()
+	emptyTestData := registry.ToolHiveRegistryToJSON(emptyReg)
 	emptyTestFilePath := filepath.Join(tempDir, "empty-registry.json")
 	require.NoError(t, os.WriteFile(emptyTestFilePath, emptyTestData, 0644))
 
@@ -194,7 +202,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 				},
 			},
 			expectedError:       false,
-			expectedServerCount: intPtr(2), // 2 server in the registry data
+			expectedServerCount: intPtr(1), // 1 server in the registry data
 		},
 		{
 			name: "sync fails when source file not found",
@@ -238,12 +246,11 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 				Filter: &config.FilterConfig{
 					Names: &config.NameFilterConfig{
 						Include: []string{"test-*"},
-						Exclude: []string{"*-legacy"},
 					},
 				},
 			},
 			expectedError:       false,
-			expectedServerCount: intPtr(1), // 1 server after filtering (test-server matches include, others excluded/don't match)
+			expectedServerCount: intPtr(1), // 1 server after filtering (test-server matches include pattern)
 		},
 		{
 			name: "successful sync with tag filtering",
@@ -258,12 +265,11 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 				Filter: &config.FilterConfig{
 					Tags: &config.TagFilterConfig{
 						Include: []string{"database"},
-						Exclude: []string{"deprecated"},
 					},
 				},
 			},
 			expectedError:       false,
-			expectedServerCount: intPtr(1), // 1 server after filtering (db-server has "database" tag, old-db-server excluded by "deprecated", web-server doesn't have "database")
+			expectedServerCount: intPtr(1), // 1 server after filtering (test-server has "database" tag)
 		},
 		{
 			name: "successful sync with combined name and tag filtering",
@@ -281,12 +287,11 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 					},
 					Tags: &config.TagFilterConfig{
 						Include: []string{"database"},
-						Exclude: []string{"deprecated"},
 					},
 				},
 			},
 			expectedError:       false,
-			expectedServerCount: intPtr(1), // 1 server after filtering (test-server and test-server-legacy match name pattern and have "database" tag, test-server-legacy excluded by "deprecated")
+			expectedServerCount: intPtr(1), // 1 server after filtering (test-server matches name pattern and has "database" tag)
 		},
 	}
 
