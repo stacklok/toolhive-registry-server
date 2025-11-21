@@ -83,47 +83,47 @@ func (m *MockSourceHandler) EXPECT() *MockSourceHandlerMockRecorder {
 }
 
 // CurrentHash mocks base method.
-func (m *MockSourceHandler) CurrentHash(ctx context.Context, cfg *config.Config) (string, error) {
+func (m *MockSourceHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CurrentHash", ctx, cfg)
+	ret := m.ctrl.Call(m, "CurrentHash", ctx, regCfg)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CurrentHash indicates an expected call of CurrentHash.
-func (mr *MockSourceHandlerMockRecorder) CurrentHash(ctx, cfg any) *gomock.Call {
+func (mr *MockSourceHandlerMockRecorder) CurrentHash(ctx, regCfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentHash", reflect.TypeOf((*MockSourceHandler)(nil).CurrentHash), ctx, cfg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentHash", reflect.TypeOf((*MockSourceHandler)(nil).CurrentHash), ctx, regCfg)
 }
 
 // FetchRegistry mocks base method.
-func (m *MockSourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config) (*sources.FetchResult, error) {
+func (m *MockSourceHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*sources.FetchResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FetchRegistry", ctx, cfg)
+	ret := m.ctrl.Call(m, "FetchRegistry", ctx, regCfg)
 	ret0, _ := ret[0].(*sources.FetchResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // FetchRegistry indicates an expected call of FetchRegistry.
-func (mr *MockSourceHandlerMockRecorder) FetchRegistry(ctx, cfg any) *gomock.Call {
+func (mr *MockSourceHandlerMockRecorder) FetchRegistry(ctx, regCfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchRegistry", reflect.TypeOf((*MockSourceHandler)(nil).FetchRegistry), ctx, cfg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchRegistry", reflect.TypeOf((*MockSourceHandler)(nil).FetchRegistry), ctx, regCfg)
 }
 
 // Validate mocks base method.
-func (m *MockSourceHandler) Validate(source *config.SourceConfig) error {
+func (m *MockSourceHandler) Validate(regCfg *config.RegistryConfig) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Validate", source)
+	ret := m.ctrl.Call(m, "Validate", regCfg)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Validate indicates an expected call of Validate.
-func (mr *MockSourceHandlerMockRecorder) Validate(source any) *gomock.Call {
+func (mr *MockSourceHandlerMockRecorder) Validate(regCfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Validate", reflect.TypeOf((*MockSourceHandler)(nil).Validate), source)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Validate", reflect.TypeOf((*MockSourceHandler)(nil).Validate), regCfg)
 }
 
 // MockSourceHandlerFactory is a mock of SourceHandlerFactory interface.
@@ -151,16 +151,16 @@ func (m *MockSourceHandlerFactory) EXPECT() *MockSourceHandlerFactoryMockRecorde
 }
 
 // CreateHandler mocks base method.
-func (m *MockSourceHandlerFactory) CreateHandler(sourceType string) (sources.SourceHandler, error) {
+func (m *MockSourceHandlerFactory) CreateHandler(regCfg *config.RegistryConfig) (sources.SourceHandler, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateHandler", sourceType)
+	ret := m.ctrl.Call(m, "CreateHandler", regCfg)
 	ret0, _ := ret[0].(sources.SourceHandler)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateHandler indicates an expected call of CreateHandler.
-func (mr *MockSourceHandlerFactoryMockRecorder) CreateHandler(sourceType any) *gomock.Call {
+func (mr *MockSourceHandlerFactoryMockRecorder) CreateHandler(regCfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateHandler", reflect.TypeOf((*MockSourceHandlerFactory)(nil).CreateHandler), sourceType)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateHandler", reflect.TypeOf((*MockSourceHandlerFactory)(nil).CreateHandler), regCfg)
 }

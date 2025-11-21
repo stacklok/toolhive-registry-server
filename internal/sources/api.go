@@ -29,24 +29,22 @@ func NewAPISourceHandler() SourceHandler {
 	}
 }
 
-// Validate validates the API source configuration
-func (*apiSourceHandler) Validate(source *config.SourceConfig) error {
-	if source.Type != config.SourceTypeAPI {
-		return fmt.Errorf("invalid source type: expected %s, got %s",
-			config.SourceTypeAPI, source.Type)
+// Validate validates the API registry configuration
+func (*apiSourceHandler) Validate(regCfg *config.RegistryConfig) error {
+	if regCfg == nil {
+		return fmt.Errorf("registry configuration cannot be nil")
 	}
 
-	if source.Format != "" && source.Format != config.SourceFormatUpstream {
+	if regCfg.Format != "" && regCfg.Format != config.SourceFormatUpstream {
 		return fmt.Errorf("unsupported format: expected %s or empty, got %s",
-			config.SourceFormatUpstream, source.Format)
+			config.SourceFormatUpstream, regCfg.Format)
 	}
 
-	if source.API == nil {
-		return fmt.Errorf("api configuration is required for source type %s",
-			config.SourceTypeAPI)
+	if regCfg.API == nil {
+		return fmt.Errorf("api configuration is required")
 	}
 
-	if source.API.Endpoint == "" {
+	if regCfg.API.Endpoint == "" {
 		return fmt.Errorf("api endpoint cannot be empty")
 	}
 
@@ -55,16 +53,16 @@ func (*apiSourceHandler) Validate(source *config.SourceConfig) error {
 
 // FetchRegistry retrieves registry data from the API endpoint
 // It validates the Upstream format and delegates to the appropriate handler
-func (h *apiSourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config) (*FetchResult, error) {
+func (h *apiSourceHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
 	logger := log.FromContext(ctx)
 
-	// Validate source configuration
-	if err := h.Validate(&cfg.Source); err != nil {
-		return nil, fmt.Errorf("source validation failed: %w", err)
+	// Validate registry configuration
+	if err := h.Validate(regCfg); err != nil {
+		return nil, fmt.Errorf("registry validation failed: %w", err)
 	}
 
 	// Validate Upstream format and get appropriate handler
-	handler, err := h.validateUstreamFormat(ctx, cfg)
+	handler, err := h.validateUstreamFormat(ctx, regCfg)
 	if err != nil {
 		return nil, fmt.Errorf("upstream format validation failed: %w", err)
 	}
@@ -72,33 +70,33 @@ func (h *apiSourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config
 	logger.Info("Validated Upstream format, delegating to handler")
 
 	// Delegate to the appropriate handler
-	return handler.FetchRegistry(ctx, cfg)
+	return handler.FetchRegistry(ctx, regCfg)
 }
 
 // CurrentHash returns the current hash of the API response
-func (h *apiSourceHandler) CurrentHash(ctx context.Context, cfg *config.Config) (string, error) {
-	// Validate source configuration
-	if err := h.Validate(&cfg.Source); err != nil {
-		return "", fmt.Errorf("source validation failed: %w", err)
+func (h *apiSourceHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
+	// Validate registry configuration
+	if err := h.Validate(regCfg); err != nil {
+		return "", fmt.Errorf("registry validation failed: %w", err)
 	}
 
 	// Validate Upstream format and get appropriate handler
-	handler, err := h.validateUstreamFormat(ctx, cfg)
+	handler, err := h.validateUstreamFormat(ctx, regCfg)
 	if err != nil {
 		return "", fmt.Errorf("upstream format validation failed: %w", err)
 	}
 
 	// Delegate to the appropriate handler
-	return handler.CurrentHash(ctx, cfg)
+	return handler.CurrentHash(ctx, regCfg)
 }
 
 // validateUstreamFormat validates the Upstream format and returns the appropriate handler
 func (h *apiSourceHandler) validateUstreamFormat(
 	ctx context.Context,
-	cfg *config.Config,
+	regCfg *config.RegistryConfig,
 ) (*upstreamAPIHandler, error) {
 	logger := log.FromContext(ctx)
-	endpoint := h.getBaseURL(cfg)
+	endpoint := h.getBaseURL(regCfg)
 
 	// Try upstream format (/openapi.yaml)
 	upstreamErr := h.upstreamHandler.Validate(ctx, endpoint)
@@ -112,8 +110,8 @@ func (h *apiSourceHandler) validateUstreamFormat(
 }
 
 // getBaseURL extracts and normalizes the base URL
-func (*apiSourceHandler) getBaseURL(cfg *config.Config) string {
-	baseURL := cfg.Source.API.Endpoint
+func (*apiSourceHandler) getBaseURL(regCfg *config.RegistryConfig) string {
+	baseURL := regCfg.API.Endpoint
 
 	// Remove trailing slash
 	if len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {

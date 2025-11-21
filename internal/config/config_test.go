@@ -20,30 +20,32 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{
 			name: "valid_config_matching_spec",
-			yamlContent: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"
-filter:
-  tags:
-    include: ["database", "production"]
-    exclude: ["experimental", "deprecated", "beta"]`,
+			yamlContent: `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
+    filter:
+      tags:
+        include: ["database", "production"]
+        exclude: ["experimental", "deprecated", "beta"]`,
 			wantConfig: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
-					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
-				},
-				Filter: &FilterConfig{
-					Tags: &TagFilterConfig{
-						Include: []string{"database", "production"},
-						Exclude: []string{"experimental", "deprecated", "beta"},
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+						Filter: &FilterConfig{
+							Tags: &TagFilterConfig{
+								Include: []string{"database", "production"},
+								Exclude: []string{"experimental", "deprecated", "beta"},
+							},
+						},
 					},
 				},
 			},
@@ -51,30 +53,32 @@ filter:
 		},
 		{
 			name: "minimal_config",
-			yamlContent: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "1h"
-filter:
-  tags:
-    include: []
-    exclude: []`,
+			yamlContent: `registries:
+  - name: minimal-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "1h"
+    filter:
+      tags:
+        include: []
+        exclude: []`,
 			wantConfig: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
-					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "1h",
-				},
-				Filter: &FilterConfig{
-					Tags: &TagFilterConfig{
-						Include: []string{},
-						Exclude: []string{},
+				Registries: []RegistryConfig{
+					{
+						Name: "minimal-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "1h",
+						},
+						Filter: &FilterConfig{
+							Tags: &TagFilterConfig{
+								Include: []string{},
+								Exclude: []string{},
+							},
+						},
 					},
 				},
 			},
@@ -82,29 +86,31 @@ filter:
 		},
 		{
 			name: "config_with_only_include_tags",
-			yamlContent: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "15m"
-filter:
-  tags:
-    include: ["api", "backend", "frontend"]`,
+			yamlContent: `registries:
+  - name: include-tags-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "15m"
+    filter:
+      tags:
+        include: ["api", "backend", "frontend"]`,
 			wantConfig: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
-					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "15m",
-				},
-				Filter: &FilterConfig{
-					Tags: &TagFilterConfig{
-						Include: []string{"api", "backend", "frontend"},
-						Exclude: nil,
+				Registries: []RegistryConfig{
+					{
+						Name: "include-tags-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "15m",
+						},
+						Filter: &FilterConfig{
+							Tags: &TagFilterConfig{
+								Include: []string{"api", "backend", "frontend"},
+								Exclude: nil,
+							},
+						},
 					},
 				},
 			},
@@ -112,29 +118,31 @@ filter:
 		},
 		{
 			name: "config_with_only_exclude_tags",
-			yamlContent: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "5m"
-filter:
-  tags:
-    exclude: ["test", "debug", "experimental"]`,
+			yamlContent: `registries:
+  - name: exclude-tags-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "5m"
+    filter:
+      tags:
+        exclude: ["test", "debug", "experimental"]`,
 			wantConfig: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
-					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "5m",
-				},
-				Filter: &FilterConfig{
-					Tags: &TagFilterConfig{
-						Include: nil,
-						Exclude: []string{"test", "debug", "experimental"},
+				Registries: []RegistryConfig{
+					{
+						Name: "exclude-tags-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "5m",
+						},
+						Filter: &FilterConfig{
+							Tags: &TagFilterConfig{
+								Include: nil,
+								Exclude: []string{"test", "debug", "experimental"},
+							},
+						},
 					},
 				},
 			},
@@ -142,7 +150,7 @@ filter:
 		},
 		{
 			name:        "invalid_yaml",
-			yamlContent: `source: [invalid yaml`,
+			yamlContent: `registries: [invalid yaml`,
 			wantConfig:  nil,
 			wantErr:     true,
 		},
@@ -189,19 +197,21 @@ func TestConfigStructure(t *testing.T) {
 	t.Parallel()
 	// Test that the Config struct can be properly marshaled and unmarshaled
 	originalConfig := &Config{
-		Source: SourceConfig{
-			Type: "file",
-			File: &FileConfig{
-				Path: "/data/registry.json",
-			},
-		},
-		SyncPolicy: &SyncPolicyConfig{
-			Interval: "45m",
-		},
-		Filter: &FilterConfig{
-			Tags: &TagFilterConfig{
-				Include: []string{"prod", "stable"},
-				Exclude: []string{"beta", "alpha"},
+		Registries: []RegistryConfig{
+			{
+				Name: "test-registry",
+				File: &FileConfig{
+					Path: "/data/registry.json",
+				},
+				SyncPolicy: &SyncPolicyConfig{
+					Interval: "45m",
+				},
+				Filter: &FilterConfig{
+					Tags: &TagFilterConfig{
+						Include: []string{"prod", "stable"},
+						Exclude: []string{"beta", "alpha"},
+					},
+				},
 			},
 		},
 	}
@@ -211,16 +221,16 @@ func TestConfigStructure(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "test-config.yaml")
 
 	// Write the config using YAML
-	yamlContent := `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "45m"
-filter:
-  tags:
-    include: ["prod", "stable"]
-    exclude: ["beta", "alpha"]`
+	yamlContent := `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "45m"
+    filter:
+      tags:
+        include: ["prod", "stable"]
+        exclude: ["beta", "alpha"]`
 
 	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
 	require.NoError(t, err)
@@ -244,70 +254,80 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid_config",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
 					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
 				},
 			},
 			wantErr: false,
 		},
 		{
-			name: "missing_source_type",
+			name: "missing_registry_name",
 			config: &Config{
-				Source: SourceConfig{
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
 					},
 				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
-				},
 			},
 			wantErr: true,
-			errMsg:  "source.type is required",
+			errMsg:  "name is required",
 		},
 		{
-			name: "missing_file_when_type_is_file",
+			name: "missing_file_when_no_source_configured",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
 				},
 			},
 			wantErr: true,
-			errMsg:  "source.file is required",
+			errMsg:  "one of git, api, or file configuration must be specified",
 		},
 		{
 			name: "missing_file_path",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
 				},
 			},
 			wantErr: true,
-			errMsg:  "source.file.path is required",
+			errMsg:  "file.path is required",
 		},
 		{
 			name: "missing_sync_interval",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{},
 					},
 				},
-				SyncPolicy: &SyncPolicyConfig{},
 			},
 			wantErr: true,
 			errMsg:  "syncPolicy.interval is required",
@@ -315,14 +335,16 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "invalid_sync_interval",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "invalid",
+						},
 					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "invalid",
 				},
 			},
 			wantErr: true,
@@ -335,71 +357,110 @@ func TestConfigValidate(t *testing.T) {
 			errMsg:  "config cannot be nil",
 		},
 		{
+			name: "empty_registries",
+			config: &Config{
+				Registries: []RegistryConfig{},
+			},
+			wantErr: true,
+			errMsg:  "at least one registry must be configured",
+		},
+		{
 			name: "valid_file_source",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/tmp/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/tmp/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
 					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
 				},
 			},
 			wantErr: false,
 		},
 		{
-			name: "missing_file_config",
+			name: "duplicate_registry_names",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
-				},
-			},
-			wantErr: true,
-			errMsg:  "source.file is required",
-		},
-		{
-			name: "invalid_format_when_type_is_api",
-			config: &Config{
-				Source: SourceConfig{
-					Type:   "api",
-					Format: "toolhive",
-					API: &APIConfig{
-						Endpoint: "http://example.com",
+				Registries: []RegistryConfig{
+					{
+						Name: "duplicate",
+						File: &FileConfig{
+							Path: "/tmp/registry1.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+					{
+						Name: "duplicate",
+						File: &FileConfig{
+							Path: "/tmp/registry2.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
 					},
 				},
 			},
 			wantErr: true,
-			errMsg:  "source.format must be either empty or upstream",
+			errMsg:  "duplicate registry name",
 		},
 		{
-			name: "unsupported_source_type",
+			name: "invalid_format_when_using_api",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "unknown",
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
+				Registries: []RegistryConfig{
+					{
+						Name:   "api-registry",
+						Format: "toolhive",
+						API: &APIConfig{
+							Endpoint: "http://example.com",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
 				},
 			},
 			wantErr: true,
-			errMsg:  "unsupported source type",
+			errMsg:  "format must be either empty or upstream",
+		},
+		{
+			name: "multiple_source_types_specified",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "multi-source",
+						File: &FileConfig{
+							Path: "/tmp/registry.json",
+						},
+						Git: &GitConfig{
+							Repository: "https://github.com/example/repo.git",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "only one of git, api, or file configuration may be specified",
 		},
 		{
 			name: "valid_config_with_file_storage",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
 					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
 				},
 				FileStorage: &FileStorageConfig{
 					BaseDir: "/custom/data",
@@ -410,14 +471,16 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid_config_with_database_storage",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
 					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -1011,26 +1074,28 @@ func TestLoadConfigWithDatabase(t *testing.T) {
 	}{
 		{
 			name: "config_with_database_minimal",
-			yamlContent: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"
+			yamlContent: `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
 database:
   host: localhost
   port: 5432
   user: testuser
   database: testdb`,
 			wantConfig: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
 					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -1043,12 +1108,12 @@ database:
 		},
 		{
 			name: "config_with_database_full",
-			yamlContent: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "1h"
+			yamlContent: `registries:
+  - name: production-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "1h"
 database:
   host: db.example.com
   port: 5433
@@ -1060,14 +1125,16 @@ database:
   maxIdleConns: 10
   connMaxLifetime: "1h"`,
 			wantConfig: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "production-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "1h",
+						},
 					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "1h",
 				},
 				Database: &DatabaseConfig{
 					Host:            "db.example.com",
@@ -1085,21 +1152,23 @@ database:
 		},
 		{
 			name: "config_without_database",
-			yamlContent: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"`,
+			yamlContent: `registries:
+  - name: simple-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"`,
 			wantConfig: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "simple-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
 					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
 				},
 				Database: nil,
 			},

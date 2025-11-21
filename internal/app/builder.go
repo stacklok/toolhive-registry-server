@@ -245,9 +245,9 @@ func buildSyncComponents(
 		b.storageManager = sources.NewFileStorageManager(baseDir)
 	}
 
-	// Build status persistence
+	// Build status persistence (now uses dataDir as base path for per-registry status files)
 	if b.statusPersistence == nil {
-		b.statusPersistence = status.NewFileStatusPersistence(b.statusFile)
+		b.statusPersistence = status.NewFileStatusPersistence(b.dataDir)
 	}
 
 	// Build sync manager

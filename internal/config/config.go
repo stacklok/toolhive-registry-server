@@ -88,21 +88,30 @@ type Config struct {
 	// RegistryName is the name/identifier for this registry instance
 	// Defaults to "default" if not specified
 	RegistryName string             `yaml:"registryName,omitempty"`
-	Source       SourceConfig       `yaml:"source"`
-	SyncPolicy   *SyncPolicyConfig  `yaml:"syncPolicy,omitempty"`
-	Filter       *FilterConfig      `yaml:"filter,omitempty"`
+	Registries   []RegistryConfig   `yaml:"registries"`
 	Database     *DatabaseConfig    `yaml:"database,omitempty"`
 	FileStorage  *FileStorageConfig `yaml:"fileStorage,omitempty"`
 	Auth         *AuthConfig        `yaml:"auth,omitempty"`
 }
 
-// SourceConfig defines the data source configuration
-type SourceConfig struct {
-	Type   string      `yaml:"type"`
-	Format string      `yaml:"format"`
-	Git    *GitConfig  `yaml:"git,omitempty"`
-	API    *APIConfig  `yaml:"api,omitempty"`
-	File   *FileConfig `yaml:"file,omitempty"`
+// RegistryConfig defines a single registry data source configuration
+type RegistryConfig struct {
+	// Name is the identifier for this registry
+	Name string `yaml:"name"`
+
+	// Format specifies the data format (toolhive or upstream)
+	Format string `yaml:"format"`
+
+	// Type-specific configurations (only one should be set)
+	Git  *GitConfig  `yaml:"git,omitempty"`
+	API  *APIConfig  `yaml:"api,omitempty"`
+	File *FileConfig `yaml:"file,omitempty"`
+
+	// Per-registry sync policy
+	SyncPolicy *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
+
+	// Per-registry filtering rules
+	Filter *FilterConfig `yaml:"filter,omitempty"`
 }
 
 // GitConfig defines Git source settings
@@ -473,72 +482,136 @@ func (c *Config) validate() error {
 		return fmt.Errorf("config cannot be nil")
 	}
 
-	if err := c.validateSource(); err != nil {
-		return err
+	// Validate at least one registry is configured
+	if len(c.Registries) == 0 {
+		return fmt.Errorf("at least one registry must be configured")
 	}
 
-	return c.validateAuth()
-}
+	// Validate each registry configuration
+	registryNames := make(map[string]bool)
+	for i, reg := range c.Registries {
+		// Validate registry name
+		if reg.Name == "" {
+			return fmt.Errorf("registry[%d]: name is required", i)
+		}
 
-// validateSource validates the source configuration
-func (c *Config) validateSource() error {
-	if c.Source.Type == "" {
-		return fmt.Errorf("source.type is required")
-	}
+		// Check for duplicate registry names
+		if registryNames[reg.Name] {
+			return fmt.Errorf("registry[%d]: duplicate registry name '%s'", i, reg.Name)
+		}
+		registryNames[reg.Name] = true
 
-	if err := c.validateSourceConfigByType(); err != nil {
-		return err
-	}
-
-	// Validate sync policy
-	if c.SyncPolicy == nil || c.SyncPolicy.Interval == "" {
-		return fmt.Errorf("syncPolicy.interval is required")
-	}
-
-	// Try to parse the interval to ensure it's valid
-	if _, err := time.ParseDuration(c.SyncPolicy.Interval); err != nil {
-		return fmt.Errorf("syncPolicy.interval must be a valid duration (e.g., '30m', '1h'): %w", err)
+		// Validate registry-specific configuration
+		if err := c.validateRegistryConfig(&reg, i); err != nil {
+			return err
+		}
 	}
 
 	// Validate storage configuration
-	return c.validateStorageConfig()
-}
-
-// validateSourceConfigByType validates the source configuration by the source type
-func (c *Config) validateSourceConfigByType() error {
-	// Validate source-specific settings
-	switch c.Source.Type {
-	case SourceTypeGit:
-		if c.Source.Git == nil {
-			return fmt.Errorf("source.git is required when type is git")
-		}
-		if c.Source.Git.Repository == "" {
-			return fmt.Errorf("source.git.repository is required")
-		}
-
-	case SourceTypeAPI:
-		if c.Source.API == nil {
-			return fmt.Errorf("source.api is required when type is api")
-		}
-		if c.Source.API.Endpoint == "" {
-			return fmt.Errorf("source.api.endpoint is required")
-		}
-		if c.Source.Format != "" && c.Source.Format != SourceFormatUpstream {
-			return fmt.Errorf("source.format must be either empty or %s when type is api, got %s", SourceFormatUpstream, c.Source.Format)
-		}
-
-	case SourceTypeFile:
-		if c.Source.File == nil {
-			return fmt.Errorf("source.file is required when type is file")
-		}
-		if c.Source.File.Path == "" {
-			return fmt.Errorf("source.file.path is required")
-		}
-
-	default:
-		return fmt.Errorf("unsupported source type: %s", c.Source.Type)
+	if err := c.validateStorageConfig(); err != nil {
+		return err
 	}
 
+	// Validate auth configuration if present
+	return c.validateAuth()
+}
+
+// validateRegistryConfig validates a single registry configuration
+func (*Config) validateRegistryConfig(reg *RegistryConfig, index int) error {
+	prefix := fmt.Sprintf("registry[%d] (%s)", index, reg.Name)
+
+	// Validate sync policy
+	if err := validateSyncPolicy(reg.SyncPolicy, prefix); err != nil {
+		return err
+	}
+
+	// Validate exactly one source type is configured
+	if err := validateSourceTypeCount(reg, prefix); err != nil {
+		return err
+	}
+
+	// Validate type-specific settings
+	return validateSourceSpecificConfig(reg, prefix)
+}
+
+// validateSyncPolicy validates the sync policy configuration
+func validateSyncPolicy(policy *SyncPolicyConfig, prefix string) error {
+	if policy == nil || policy.Interval == "" {
+		return fmt.Errorf("%s: syncPolicy.interval is required", prefix)
+	}
+
+	// Try to parse the interval to ensure it's valid
+	if _, err := time.ParseDuration(policy.Interval); err != nil {
+		return fmt.Errorf("%s: syncPolicy.interval must be a valid duration (e.g., '30m', '1h'): %w", prefix, err)
+	}
+
+	return nil
+}
+
+// validateSourceTypeCount ensures exactly one source type is configured
+func validateSourceTypeCount(reg *RegistryConfig, prefix string) error {
+	configCount := 0
+	if reg.Git != nil {
+		configCount++
+	}
+	if reg.API != nil {
+		configCount++
+	}
+	if reg.File != nil {
+		configCount++
+	}
+
+	if configCount == 0 {
+		return fmt.Errorf("%s: one of git, api, or file configuration must be specified", prefix)
+	}
+	if configCount > 1 {
+		return fmt.Errorf("%s: only one of git, api, or file configuration may be specified", prefix)
+	}
+
+	return nil
+}
+
+// validateSourceSpecificConfig validates the configuration for each source type
+func validateSourceSpecificConfig(reg *RegistryConfig, prefix string) error {
+	if reg.Git != nil {
+		return validateGitConfig(reg.Git, prefix)
+	}
+
+	if reg.API != nil {
+		return validateAPIConfig(reg.API, reg.Format, prefix)
+	}
+
+	if reg.File != nil {
+		return validateFileConfig(reg.File, prefix)
+	}
+
+	return nil
+}
+
+// validateGitConfig validates Git-specific configuration
+func validateGitConfig(git *GitConfig, prefix string) error {
+	if git.Repository == "" {
+		return fmt.Errorf("%s: git.repository is required", prefix)
+	}
+	return nil
+}
+
+// validateAPIConfig validates API-specific configuration
+func validateAPIConfig(api *APIConfig, format string, prefix string) error {
+	if api.Endpoint == "" {
+		return fmt.Errorf("%s: api.endpoint is required", prefix)
+	}
+	if format != "" && format != SourceFormatUpstream {
+		return fmt.Errorf("%s: format must be either empty or %s when using api, got %s", prefix, SourceFormatUpstream, format)
+	}
+	return nil
+}
+
+// validateFileConfig validates File-specific configuration
+func validateFileConfig(file *FileConfig, prefix string) error {
+	if file.Path == "" {
+		return fmt.Errorf("%s: file.path is required", prefix)
+	}
 	return nil
 }
 
@@ -606,4 +679,18 @@ func readSecretFromFile(filePath string) (string, error) {
 	}
 
 	return strings.TrimSpace(string(data)), nil
+}
+
+// GetType returns the inferred type of the registry config based on which field is present
+func (r *RegistryConfig) GetType() string {
+	if r.Git != nil {
+		return SourceTypeGit
+	}
+	if r.API != nil {
+		return SourceTypeAPI
+	}
+	if r.File != nil {
+		return SourceTypeFile
+	}
+	return ""
 }

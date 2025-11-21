@@ -14,9 +14,9 @@ type defaultDataChangeDetector struct {
 	sourceHandlerFactory sources.SourceHandlerFactory
 }
 
-// IsDataChanged checks if source data has changed by comparing hashes
+// IsDataChanged checks if source data has changed by comparing hashes for a specific registry
 func (d *defaultDataChangeDetector) IsDataChanged(
-	ctx context.Context, cfg *config.Config, syncStatus *status.SyncStatus,
+	ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus,
 ) (bool, error) {
 	// Check for hash in syncStatus first, then fallback
 	var lastSyncHash string
@@ -30,13 +30,13 @@ func (d *defaultDataChangeDetector) IsDataChanged(
 	}
 
 	// Get source handler
-	sourceHandler, err := d.sourceHandlerFactory.CreateHandler(cfg.Source.Type)
+	sourceHandler, err := d.sourceHandlerFactory.CreateHandler(regCfg)
 	if err != nil {
 		return true, err
 	}
 
 	// Get current hash from source
-	currentHash, err := sourceHandler.CurrentHash(ctx, cfg)
+	currentHash, err := sourceHandler.CurrentHash(ctx, regCfg)
 	if err != nil {
 		return true, err
 	}
@@ -48,18 +48,18 @@ func (d *defaultDataChangeDetector) IsDataChanged(
 // defaultAutomaticSyncChecker implements AutomaticSyncChecker
 type defaultAutomaticSyncChecker struct{}
 
-// IsIntervalSyncNeeded checks if sync is needed based on time interval
+// IsIntervalSyncNeeded checks if sync is needed based on time interval for a specific registry
 // Returns: (syncNeeded, nextSyncTime, error)
 // nextSyncTime is a future time when the next sync should occur, or zero time if no policy configured
 func (*defaultAutomaticSyncChecker) IsIntervalSyncNeeded(
-	cfg *config.Config, syncStatus *status.SyncStatus,
+	regCfg *config.RegistryConfig, syncStatus *status.SyncStatus,
 ) (bool, time.Time, error) {
-	if cfg.SyncPolicy == nil || cfg.SyncPolicy.Interval == "" {
+	if regCfg.SyncPolicy == nil || regCfg.SyncPolicy.Interval == "" {
 		return false, time.Time{}, nil
 	}
 
 	// Parse the sync interval
-	interval, err := time.ParseDuration(cfg.SyncPolicy.Interval)
+	interval, err := time.ParseDuration(regCfg.SyncPolicy.Interval)
 	if err != nil {
 		return false, time.Time{}, err
 	}

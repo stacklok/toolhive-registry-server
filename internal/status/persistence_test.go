@@ -10,16 +10,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testRegistryName = "test-registry"
+
 func TestFileStatusPersistence_SaveAndLoad(t *testing.T) {
 	t.Parallel()
 
 	// Create temporary directory for test
 	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, StatusFileName)
 
-	persistence := NewFileStatusPersistence(filePath)
+	persistence := NewFileStatusPersistence(tmpDir)
 	require.NotNil(t, persistence)
 
+	registryName := testRegistryName
 	// Create a test status
 	now := time.Now()
 	testStatus := &SyncStatus{
@@ -34,15 +36,16 @@ func TestFileStatusPersistence_SaveAndLoad(t *testing.T) {
 
 	// Save the status
 	ctx := context.Background()
-	err := persistence.SaveStatus(ctx, testStatus)
+	err := persistence.SaveStatus(ctx, registryName, testStatus)
 	require.NoError(t, err)
 
 	// Verify file was created
-	_, err = os.Stat(filePath)
+	expectedPath := filepath.Join(tmpDir, registryName, StatusFileName)
+	_, err = os.Stat(expectedPath)
 	require.NoError(t, err)
 
 	// Load the status back
-	loaded, err := persistence.LoadStatus(ctx)
+	loaded, err := persistence.LoadStatus(ctx, registryName)
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
 	require.Equal(t, testStatus.Phase, loaded.Phase)
@@ -57,14 +60,15 @@ func TestFileStatusPersistence_LoadNonExistent(t *testing.T) {
 
 	// Create temporary directory for test
 	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, StatusFileName)
 
-	persistence := NewFileStatusPersistence(filePath)
+	persistence := NewFileStatusPersistence(tmpDir)
 	require.NotNil(t, persistence)
+
+	registryName := testRegistryName
 
 	// Load non-existent status should return empty status
 	ctx := context.Background()
-	loaded, err := persistence.LoadStatus(ctx)
+	loaded, err := persistence.LoadStatus(ctx, registryName)
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
 	require.Equal(t, SyncPhase(""), loaded.Phase)
@@ -76,11 +80,11 @@ func TestFileStatusPersistence_UpdateStatus(t *testing.T) {
 
 	// Create temporary directory for test
 	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, StatusFileName)
 
-	persistence := NewFileStatusPersistence(filePath)
+	persistence := NewFileStatusPersistence(tmpDir)
 	require.NotNil(t, persistence)
 
+	registryName := testRegistryName
 	ctx := context.Background()
 
 	// Save initial status
@@ -91,7 +95,7 @@ func TestFileStatusPersistence_UpdateStatus(t *testing.T) {
 		LastAttempt:  &now1,
 		AttemptCount: 1,
 	}
-	err := persistence.SaveStatus(ctx, initialStatus)
+	err := persistence.SaveStatus(ctx, registryName, initialStatus)
 	require.NoError(t, err)
 
 	// Update status
@@ -105,11 +109,11 @@ func TestFileStatusPersistence_UpdateStatus(t *testing.T) {
 		LastSyncHash: "xyz789",
 		ServerCount:  10,
 	}
-	err = persistence.SaveStatus(ctx, updatedStatus)
+	err = persistence.SaveStatus(ctx, registryName, updatedStatus)
 	require.NoError(t, err)
 
 	// Load and verify it was updated
-	loaded, err := persistence.LoadStatus(ctx)
+	loaded, err := persistence.LoadStatus(ctx, registryName)
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
 	require.Equal(t, SyncPhaseComplete, loaded.Phase)
@@ -124,11 +128,11 @@ func TestFileStatusPersistence_AtomicWrite(t *testing.T) {
 
 	// Create temporary directory for test
 	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, StatusFileName)
 
-	persistence := NewFileStatusPersistence(filePath)
+	persistence := NewFileStatusPersistence(tmpDir)
 	require.NotNil(t, persistence)
 
+	registryName := testRegistryName
 	ctx := context.Background()
 
 	// Save status
@@ -137,11 +141,12 @@ func TestFileStatusPersistence_AtomicWrite(t *testing.T) {
 		Phase:       SyncPhaseComplete,
 		LastAttempt: &now,
 	}
-	err := persistence.SaveStatus(ctx, testStatus)
+	err := persistence.SaveStatus(ctx, registryName, testStatus)
 	require.NoError(t, err)
 
 	// Verify temporary file was cleaned up
-	tempPath := filePath + ".tmp"
+	statusPath := filepath.Join(tmpDir, registryName, StatusFileName)
+	tempPath := statusPath + ".tmp"
 	_, err = os.Stat(tempPath)
 	require.True(t, os.IsNotExist(err), "Temporary file should not exist after save")
 }
