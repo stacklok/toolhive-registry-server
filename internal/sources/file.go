@@ -9,20 +9,20 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
-// FileSourceHandler handles registry data from local files
-type FileSourceHandler struct {
+// fileSourceHandler handles registry data from local files
+type fileSourceHandler struct {
 	validator SourceDataValidator
 }
 
 // NewFileSourceHandler creates a new file source handler
-func NewFileSourceHandler() *FileSourceHandler {
-	return &FileSourceHandler{
+func NewFileSourceHandler() SourceHandler {
+	return &fileSourceHandler{
 		validator: NewSourceDataValidator(),
 	}
 }
 
 // Validate validates the file source configuration
-func (*FileSourceHandler) Validate(source *config.SourceConfig) error {
+func (*fileSourceHandler) Validate(source *config.SourceConfig) error {
 	if source.Type != config.SourceTypeFile {
 		return fmt.Errorf("invalid source type: expected %s, got %s",
 			config.SourceTypeFile, source.Type)
@@ -41,7 +41,7 @@ func (*FileSourceHandler) Validate(source *config.SourceConfig) error {
 }
 
 // FetchRegistry retrieves registry data from the local file
-func (h *FileSourceHandler) FetchRegistry(ctx context.Context, registryConfig *config.Config) (*FetchResult, error) {
+func (h *fileSourceHandler) FetchRegistry(ctx context.Context, registryConfig *config.Config) (*FetchResult, error) {
 	// Fetch file data
 	data, hash, err := h.fetchFileData(ctx, registryConfig)
 	if err != nil {
@@ -59,7 +59,7 @@ func (h *FileSourceHandler) FetchRegistry(ctx context.Context, registryConfig *c
 }
 
 // fetchFileData reads the file and calculates its hash
-func (h *FileSourceHandler) fetchFileData(_ context.Context, registryConfig *config.Config) ([]byte, string, error) {
+func (h *fileSourceHandler) fetchFileData(_ context.Context, registryConfig *config.Config) ([]byte, string, error) {
 	// Validate source configuration
 	if err := h.Validate(&registryConfig.Source); err != nil {
 		return nil, "", fmt.Errorf("source validation failed: %w", err)
@@ -84,7 +84,7 @@ func (h *FileSourceHandler) fetchFileData(_ context.Context, registryConfig *con
 }
 
 // CurrentHash returns the current hash of the file without performing a full parse
-func (h *FileSourceHandler) CurrentHash(ctx context.Context, registryConfig *config.Config) (string, error) {
+func (h *fileSourceHandler) CurrentHash(ctx context.Context, registryConfig *config.Config) (string, error) {
 	// For file sources, we read and hash the file
 	// This is nearly as expensive as a full fetch, but maintains the interface
 	_, hash, err := h.fetchFileData(ctx, registryConfig)

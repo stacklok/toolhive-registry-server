@@ -11,17 +11,17 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
 )
 
-// UpstreamAPIHandler handles registry data from upstream MCP Registry API endpoints
+// upstreamAPIHandler handles registry data from upstream MCP Registry API endpoints
 // API Format: /v0/servers (paginated list), /v0/servers/{name}/versions, /openapi.yaml
 // Phase 2 implementation - currently validates format but does not fetch data
-type UpstreamAPIHandler struct {
+type upstreamAPIHandler struct {
 	httpClient httpclient.Client
 	validator  SourceDataValidator
 }
 
 // NewUpstreamAPIHandler creates a new upstream MCP Registry API handler
-func NewUpstreamAPIHandler(httpClient httpclient.Client) *UpstreamAPIHandler {
-	return &UpstreamAPIHandler{
+func NewUpstreamAPIHandler(httpClient httpclient.Client) *upstreamAPIHandler {
+	return &upstreamAPIHandler{
 		httpClient: httpClient,
 		validator:  NewSourceDataValidator(),
 	}
@@ -29,7 +29,7 @@ func NewUpstreamAPIHandler(httpClient httpclient.Client) *UpstreamAPIHandler {
 
 // Validate validates that the endpoint is an upstream MCP Registry
 // by checking /openapi.yaml for expected version and description
-func (h *UpstreamAPIHandler) Validate(ctx context.Context, endpoint string) error {
+func (h *upstreamAPIHandler) Validate(ctx context.Context, endpoint string) error {
 	openapiURL := endpoint + "/openapi.yaml"
 
 	data, err := h.httpClient.Get(ctx, openapiURL)
@@ -74,13 +74,13 @@ func (h *UpstreamAPIHandler) Validate(ctx context.Context, endpoint string) erro
 
 // FetchRegistry retrieves registry data from the upstream MCP Registry API endpoint
 // Phase 2: Not yet implemented - will support pagination and format conversion
-func (*UpstreamAPIHandler) FetchRegistry(_ context.Context, _ *config.Config) (*FetchResult, error) {
+func (*upstreamAPIHandler) FetchRegistry(_ context.Context, _ *config.Config) (*FetchResult, error) {
 	return nil, fmt.Errorf("upstream MCP Registry API support not yet implemented (Phase 2)")
 }
 
 // CurrentHash returns the current hash of the API response
 // Phase 2: Not yet implemented
-func (*UpstreamAPIHandler) CurrentHash(_ context.Context, _ *config.Config) (string, error) {
+func (*upstreamAPIHandler) CurrentHash(_ context.Context, _ *config.Config) (string, error) {
 	return "", fmt.Errorf("upstream MCP Registry API support not yet implemented (Phase 2)")
 }
 

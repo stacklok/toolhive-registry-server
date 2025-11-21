@@ -75,7 +75,7 @@ func TestDefaultSyncManager_isSyncNeededForState(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			manager := &DefaultSyncManager{}
+			manager := &defaultSyncManager{}
 			result := manager.isSyncNeededForState(tt.syncStatus)
 
 			assert.Equal(t, tt.expected, result, tt.description)
@@ -136,7 +136,7 @@ func TestConditionReasonConstants(t *testing.T) {
 func TestDefaultSyncManager_isSyncNeededForState_EdgeCases(t *testing.T) {
 	t.Parallel()
 
-	manager := &DefaultSyncManager{}
+	manager := &defaultSyncManager{}
 
 	t.Run("handles nil registry", func(t *testing.T) {
 		t.Parallel()
@@ -218,7 +218,7 @@ func TestDefaultSyncManager_isSyncNeededForState_Integration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			manager := &DefaultSyncManager{}
+			manager := &defaultSyncManager{}
 			result := manager.isSyncNeededForState(tt.setupSyncStatus())
 
 			assert.Equal(t, tt.expectedSync, result, tt.description)

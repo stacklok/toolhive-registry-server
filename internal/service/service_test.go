@@ -1,562 +1,535 @@
 package service_test
 
 import (
-	"context"
-	"errors"
 	"testing"
 	"time"
 
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	"github.com/aws/smithy-go/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
 
-func TestService_GetRegistry(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name           string
-		setupMocks     func(*mocks.MockRegistryDataProvider)
-		expectedError  string
-		expectedSource string
-		validateResult func(*testing.T, *toolhivetypes.Registry)
-	}{
-		{
-			name: "successful registry fetch",
-			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers: map[string]*toolhivetypes.ImageMetadata{
-						"test-server": {
-							BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-								Name:        "test-server",
-								Description: "A test server",
-							},
-							Image: "test:latest",
-						},
-					},
-				}, nil)
-				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
-			},
-			expectedSource: "file:/path/to/registry.json",
-			validateResult: func(t *testing.T, r *toolhivetypes.Registry) {
-				t.Helper()
-				assert.Equal(t, "1.0.0", r.Version)
-				assert.Len(t, r.Servers, 1)
-				assert.Contains(t, r.Servers, "test-server")
-			},
-		},
-		{
-			name: "provider returns error",
-			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(nil, errors.New("file not found")).Times(2) // Once during NewService, once during GetRegistry
-				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
-			},
-			expectedSource: "file:/path/to/registry.json",
-			validateResult: func(t *testing.T, r *toolhivetypes.Registry) {
-				t.Helper()
-				// Should return empty registry on error
-				assert.NotNil(t, r)
-				assert.Equal(t, "1.0.0", r.Version)
-				assert.Empty(t, r.Servers)
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
-			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
-			tt.setupMocks(mockProvider)
-
-			svc, err := service.NewService(context.Background(), mockProvider, nil)
-			require.NoError(t, err)
-
-			registry, source, err := svc.GetRegistry(context.Background())
-
-			if tt.expectedError != "" {
-				assert.EqualError(t, err, tt.expectedError)
-			} else {
-				assert.NoError(t, err)
-			}
-
-			assert.Equal(t, tt.expectedSource, source)
-			if tt.validateResult != nil {
-				tt.validateResult(t, registry)
-			}
-		})
-	}
-}
-
-func TestService_CheckReadiness(t *testing.T) {
+func TestWithCursor(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
-		setupMocks    func(*mocks.MockRegistryDataProvider)
-		expectedError string
+		cursor        string
+		expectedValue string
 	}{
 		{
-			name: "ready with successful data load",
-			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers:     make(map[string]*toolhivetypes.ImageMetadata),
-				}, nil).Times(1) // Only during NewService, CheckReadiness uses cached data
-			},
-			expectedError: "",
+			name:          "valid cursor",
+			cursor:        "cursor123",
+			expectedValue: "cursor123",
 		},
 		{
-			name: "not ready when provider fails",
-			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(nil, errors.New("connection failed")).Times(2)
-			},
-			expectedError: "registry data not available: failed to get registry data: connection failed",
+			name:          "empty cursor",
+			cursor:        "",
+			expectedValue: "",
+		},
+		{
+			name:          "cursor with special characters",
+			cursor:        "cursor-abc_123",
+			expectedValue: "cursor-abc_123",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
+			opt := service.WithCursor(tt.cursor)
+			opts := &service.ListServersOptions{}
 
-			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
-			tt.setupMocks(mockProvider)
+			err := opt(opts)
 
-			svc, err := service.NewService(context.Background(), mockProvider, nil)
-			require.NoError(t, err)
-
-			err = svc.CheckReadiness(context.Background())
-
-			if tt.expectedError != "" {
-				assert.EqualError(t, err, tt.expectedError)
-			} else {
-				assert.NoError(t, err)
+			if tt.expectedValue == "" {
+				require.Error(t, err)
+				return
 			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedValue, opts.Cursor)
 		})
 	}
 }
 
-func TestService_ListServers(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name            string
-		setupMocks      func(*mocks.MockRegistryDataProvider)
-		expectedCount   int
-		validateServers func(*testing.T, []toolhivetypes.ServerMetadata)
-	}{
-		{
-			name: "list servers from registry",
-			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers: map[string]*toolhivetypes.ImageMetadata{
-						"server1": {
-							BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-								Name:        "server1",
-								Description: "Server 1",
-							},
-							Image: "server1:latest",
-						},
-						"server2": {
-							BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-								Name:        "server2",
-								Description: "Server 2",
-							},
-							Image: "server2:latest",
-						},
-					},
-					RemoteServers: map[string]*toolhivetypes.RemoteServerMetadata{
-						"remote1": {
-							BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-								Name:        "remote1",
-								Description: "Remote server 1",
-							},
-							URL: "https://example.com/remote1",
-						},
-					},
-				}, nil).AnyTimes()
-			},
-			expectedCount: 3,
-			validateServers: func(t *testing.T, servers []toolhivetypes.ServerMetadata) {
-				t.Helper()
-				names := make([]string, len(servers))
-				for i, s := range servers {
-					names[i] = s.GetName()
-				}
-				assert.Contains(t, names, "server1")
-				assert.Contains(t, names, "server2")
-				assert.Contains(t, names, "remote1")
-			},
-		},
-		{
-			name: "empty registry returns empty list",
-			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers:     make(map[string]*toolhivetypes.ImageMetadata),
-				}, nil).AnyTimes()
-			},
-			expectedCount: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
-			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
-			tt.setupMocks(mockProvider)
-
-			svc, err := service.NewService(context.Background(), mockProvider, nil)
-			require.NoError(t, err)
-
-			servers, err := svc.ListServers(context.Background())
-			assert.NoError(t, err)
-			assert.Len(t, servers, tt.expectedCount)
-
-			if tt.validateServers != nil {
-				tt.validateServers(t, servers)
-			}
-		})
-	}
-}
-
-func TestService_GetServer(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name           string
-		serverName     string
-		setupMocks     func(*mocks.MockRegistryDataProvider)
-		expectedError  string
-		validateServer func(*testing.T, toolhivetypes.ServerMetadata)
-	}{
-		{
-			name:       "get existing server",
-			serverName: "test-server",
-			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers: map[string]*toolhivetypes.ImageMetadata{
-						"test-server": {
-							BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-								Name:        "test-server",
-								Description: "A test server",
-							},
-							Image: "test:latest",
-						},
-					},
-				}, nil).AnyTimes()
-			},
-			validateServer: func(t *testing.T, s toolhivetypes.ServerMetadata) {
-				t.Helper()
-				assert.Equal(t, "test-server", s.GetName())
-				assert.Equal(t, "A test server", s.GetDescription())
-			},
-		},
-		{
-			name:       "server not found",
-			serverName: "nonexistent",
-			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers:     make(map[string]*toolhivetypes.ImageMetadata),
-				}, nil).AnyTimes()
-			},
-			expectedError: "server not found",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
-			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
-			tt.setupMocks(mockProvider)
-
-			svc, err := service.NewService(context.Background(), mockProvider, nil)
-			require.NoError(t, err)
-
-			server, err := svc.GetServer(context.Background(), tt.serverName)
-
-			if tt.expectedError != "" {
-				assert.EqualError(t, err, tt.expectedError)
-				assert.Nil(t, server)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, server)
-				if tt.validateServer != nil {
-					tt.validateServer(t, server)
-				}
-			}
-		})
-	}
-}
-
-func TestService_ListDeployedServers(t *testing.T) {
+func TestWithSearch(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
-		setupMocks    func(*mocks.MockRegistryDataProvider, *mocks.MockDeploymentProvider)
-		useDeployment bool
-		expectedCount int
-		expectedError string
+		search        string
+		expectedValue string
 	}{
 		{
-			name: "list deployed servers",
-			setupMocks: func(reg *mocks.MockRegistryDataProvider, dep *mocks.MockDeploymentProvider) {
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version: "1.0.0",
-				}, nil)
-				dep.EXPECT().ListDeployedServers(gomock.Any()).Return([]*service.DeployedServer{
-					{
-						Name:      "deployed1",
-						Namespace: "default",
-						Status:    "Running",
-						Image:     "server:latest",
-						Ready:     true,
-					},
-					{
-						Name:      "deployed2",
-						Namespace: "test",
-						Status:    "Running",
-						Image:     "server2:latest",
-						Ready:     true,
-					},
-				}, nil)
-			},
-			useDeployment: true,
-			expectedCount: 2,
+			name:          "valid search",
+			search:        "test server",
+			expectedValue: "test server",
 		},
 		{
-			name: "no deployment provider returns empty list",
-			setupMocks: func(reg *mocks.MockRegistryDataProvider, _ *mocks.MockDeploymentProvider) {
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version: "1.0.0",
-				}, nil)
-			},
-			useDeployment: false,
-			expectedCount: 0,
+			name:          "empty search",
+			search:        "",
+			expectedValue: "",
 		},
 		{
-			name: "deployment provider error",
-			setupMocks: func(reg *mocks.MockRegistryDataProvider, dep *mocks.MockDeploymentProvider) {
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version: "1.0.0",
-				}, nil)
-				dep.EXPECT().ListDeployedServers(gomock.Any()).Return(nil, errors.New("k8s api error"))
-			},
-			useDeployment: true,
-			expectedError: "k8s api error",
+			name:          "search with multiple words",
+			search:        "mcp server registry",
+			expectedValue: "mcp server registry",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
+			opt := service.WithSearch(tt.search)
+			opts := &service.ListServersOptions{}
 
-			mockRegProvider := mocks.NewMockRegistryDataProvider(ctrl)
-			var mockDepProvider *mocks.MockDeploymentProvider
-			if tt.useDeployment {
-				mockDepProvider = mocks.NewMockDeploymentProvider(ctrl)
+			err := opt(opts)
+
+			if tt.expectedValue == "" {
+				require.Error(t, err)
+				return
 			}
-
-			tt.setupMocks(mockRegProvider, mockDepProvider)
-
-			var depProvider service.DeploymentProvider
-			if tt.useDeployment {
-				depProvider = mockDepProvider
-			}
-
-			svc, err := service.NewService(context.Background(), mockRegProvider, depProvider)
 			require.NoError(t, err)
-
-			servers, err := svc.ListDeployedServers(context.Background())
-
-			if tt.expectedError != "" {
-				assert.EqualError(t, err, tt.expectedError)
-			} else {
-				assert.NoError(t, err)
-				assert.Len(t, servers, tt.expectedCount)
-			}
+			assert.Equal(t, tt.expectedValue, opts.Search)
 		})
 	}
 }
 
-func TestService_GetDeployedServer(t *testing.T) {
+func TestWithUpdatedSince(t *testing.T) {
 	t.Parallel()
+	validTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	zeroTime := time.Time{}
+
 	tests := []struct {
-		name            string
-		serverName      string
-		setupMocks      func(*mocks.MockRegistryDataProvider, *mocks.MockDeploymentProvider)
-		useDeployment   bool
-		expectedError   string
-		validateServers func(*testing.T, []*service.DeployedServer)
+		name          string
+		updatedSince  time.Time
+		expectedValue time.Time
 	}{
 		{
-			name:       "get deployed server",
-			serverName: "deployed1",
-			setupMocks: func(reg *mocks.MockRegistryDataProvider, dep *mocks.MockDeploymentProvider) {
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version: "1.0.0",
-				}, nil)
-				dep.EXPECT().GetDeployedServer(gomock.Any(), "deployed1").Return([]*service.DeployedServer{
-					{
-						Name:      "deployed1",
-						Namespace: "default",
-						Status:    "Running",
-						Image:     "server:latest",
-						Ready:     true,
-					},
-				}, nil)
-			},
-			useDeployment: true,
-			validateServers: func(t *testing.T, servers []*service.DeployedServer) {
-				t.Helper()
-				require.Len(t, servers, 1)
-				s := servers[0]
-				assert.Equal(t, "deployed1", s.Name)
-				assert.Equal(t, "default", s.Namespace)
-				assert.True(t, s.Ready)
-			},
+			name:          "valid time",
+			updatedSince:  validTime,
+			expectedValue: validTime,
 		},
 		{
-			name:       "no deployment provider",
-			serverName: "any",
-			setupMocks: func(reg *mocks.MockRegistryDataProvider, _ *mocks.MockDeploymentProvider) {
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version: "1.0.0",
-				}, nil)
-			},
-			useDeployment: false,
-			validateServers: func(t *testing.T, servers []*service.DeployedServer) {
-				t.Helper()
-				assert.Len(t, servers, 0)
-			},
+			name:          "zero time",
+			updatedSince:  zeroTime,
+			expectedValue: zeroTime,
 		},
 		{
-			name:       "server not found",
-			serverName: "nonexistent",
-			setupMocks: func(reg *mocks.MockRegistryDataProvider, dep *mocks.MockDeploymentProvider) {
-				reg.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version: "1.0.0",
-				}, nil)
-				dep.EXPECT().GetDeployedServer(gomock.Any(), "nonexistent").Return([]*service.DeployedServer{}, nil)
-			},
-			useDeployment: true,
-			validateServers: func(t *testing.T, servers []*service.DeployedServer) {
-				t.Helper()
-				assert.Len(t, servers, 0)
-			},
+			name:          "time in the past",
+			updatedSince:  time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			expectedValue: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:          "time in the future",
+			updatedSince:  time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC),
+			expectedValue: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
+			opt := service.WithUpdatedSince(tt.updatedSince)
+			opts := &service.ListServersOptions{}
 
-			mockRegProvider := mocks.NewMockRegistryDataProvider(ctrl)
-			var mockDepProvider *mocks.MockDeploymentProvider
-			if tt.useDeployment {
-				mockDepProvider = mocks.NewMockDeploymentProvider(ctrl)
+			err := opt(opts)
+
+			if tt.expectedValue.IsZero() {
+				require.Error(t, err)
+				return
 			}
 
-			tt.setupMocks(mockRegProvider, mockDepProvider)
-
-			var depProvider service.DeploymentProvider
-			if tt.useDeployment {
-				depProvider = mockDepProvider
-			}
-
-			svc, err := service.NewService(context.Background(), mockRegProvider, depProvider)
 			require.NoError(t, err)
-
-			servers, err := svc.GetDeployedServer(context.Background(), tt.serverName)
-
-			if tt.expectedError != "" {
-				assert.EqualError(t, err, tt.expectedError)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, servers)
-				if tt.validateServers != nil {
-					tt.validateServers(t, servers)
-				}
-			}
+			assert.Equal(t, tt.expectedValue, opts.UpdatedSince)
 		})
 	}
 }
 
-func TestService_WithCacheDuration(t *testing.T) {
+func TestWithRegistryName(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
-		cacheDuration time.Duration
-		setupMocks    func(*mocks.MockRegistryDataProvider)
-		callCount     int
+		registryName  string
+		expectedValue string
 	}{
 		{
-			name:          "custom cache duration",
-			cacheDuration: 100 * time.Millisecond,
-			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				// Should be called twice: once during NewService, once after cache expires
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.Registry{
-					Version:     "1.0.0",
-					LastUpdated: time.Now().Format(time.RFC3339),
-					Servers:     make(map[string]*toolhivetypes.ImageMetadata),
-				}, nil).Times(2)
-				m.EXPECT().GetSource().Return("test-source").AnyTimes()
-			},
-			callCount: 2,
+			name:          "valid registry name",
+			registryName:  "my-registry",
+			expectedValue: "my-registry",
+		},
+		{
+			name:          "empty registry name",
+			registryName:  "",
+			expectedValue: "",
+		},
+		{
+			name:          "registry name with underscores",
+			registryName:  "my_registry_v1",
+			expectedValue: "my_registry_v1",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
+			opt := service.WithRegistryName(tt.registryName)
+			opts := &service.ListServersOptions{}
 
-			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
-			tt.setupMocks(mockProvider)
+			err := opt(opts)
 
-			svc, err := service.NewService(
-				context.Background(),
-				mockProvider,
-				nil,
-				service.WithCacheDuration(tt.cacheDuration),
-			)
+			if tt.expectedValue == "" {
+				require.Error(t, err)
+				return
+			}
+
 			require.NoError(t, err)
+			assert.Equal(t, tt.expectedValue, opts.RegistryName)
+		})
+	}
+}
 
-			// First call - should use cached data from NewService
-			_, _, err = svc.GetRegistry(context.Background())
-			assert.NoError(t, err)
+func TestWithNext(t *testing.T) {
+	t.Parallel()
+	validTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	zeroTime := time.Time{}
 
-			// Wait for cache to expire
-			time.Sleep(tt.cacheDuration + 10*time.Millisecond)
+	tests := []struct {
+		name          string
+		next          time.Time
+		expectedValue *time.Time
+	}{
+		{
+			name:          "valid time",
+			next:          validTime,
+			expectedValue: &validTime,
+		},
+		{
+			name:          "zero time",
+			next:          zeroTime,
+			expectedValue: nil,
+		},
+		{
+			name:          "time with nanoseconds",
+			next:          time.Date(2024, 1, 15, 10, 30, 45, 123456789, time.UTC),
+			expectedValue: ptr.Time(time.Date(2024, 1, 15, 10, 30, 45, 123456789, time.UTC)),
+		},
+	}
 
-			// Second call - should fetch new data
-			_, _, err = svc.GetRegistry(context.Background())
-			assert.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opt := service.WithNext(tt.next)
+			opts := &service.ListServerVersionsOptions{}
+
+			err := opt(opts)
+
+			if tt.expectedValue == nil {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, *tt.expectedValue, *opts.Next)
+		})
+	}
+}
+
+func TestWithPrev(t *testing.T) {
+	t.Parallel()
+	validTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	zeroTime := time.Time{}
+
+	tests := []struct {
+		name          string
+		prev          time.Time
+		expectedValue *time.Time
+	}{
+		{
+			name:          "valid time",
+			prev:          validTime,
+			expectedValue: &validTime,
+		},
+		{
+			name:          "zero time",
+			prev:          zeroTime,
+			expectedValue: nil,
+		},
+		{
+			name:          "time in the past",
+			prev:          time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			expectedValue: ptr.Time(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opt := service.WithPrev(tt.prev)
+			opts := &service.ListServerVersionsOptions{}
+
+			err := opt(opts)
+
+			if tt.expectedValue == nil {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, *tt.expectedValue, *opts.Prev)
+		})
+	}
+}
+
+func TestWithVersion(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		version       string
+		optionType    string // "ListServersOptions" or "GetServerVersionOptions"
+		expectedValue string
+	}{
+		{
+			name:          "valid version for ListServersOptions",
+			version:       "1.0.0",
+			optionType:    "ListServersOptions",
+			expectedValue: "1.0.0",
+		},
+		{
+			name:          "valid version for GetServerVersionOptions",
+			version:       "2.3.4",
+			optionType:    "GetServerVersionOptions",
+			expectedValue: "2.3.4",
+		},
+		{
+			name:          "empty version for ListServersOptions",
+			version:       "",
+			optionType:    "ListServersOptions",
+			expectedValue: "",
+		},
+		{
+			name:          "empty version for GetServerVersionOptions",
+			version:       "",
+			optionType:    "GetServerVersionOptions",
+			expectedValue: "",
+		},
+		{
+			name:          "version with pre-release for ListServersOptions",
+			version:       "1.0.0-alpha.1",
+			optionType:    "ListServersOptions",
+			expectedValue: "1.0.0-alpha.1",
+		},
+		{
+			name:          "version with build metadata for GetServerVersionOptions",
+			version:       "1.0.0+build.123",
+			optionType:    "GetServerVersionOptions",
+			expectedValue: "1.0.0+build.123",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			switch tt.optionType {
+			case "ListServersOptions":
+				opt := service.WithVersion[service.ListServersOptions](tt.version)
+				opts := &service.ListServersOptions{}
+				err := opt(opts)
+
+				if tt.expectedValue == "" {
+					require.Error(t, err)
+					return
+				}
+
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedValue, opts.Version)
+			case "GetServerVersionOptions":
+				opt := service.WithVersion[service.GetServerVersionOptions](tt.version)
+				opts := &service.GetServerVersionOptions{}
+				err := opt(opts)
+
+				if tt.expectedValue == "" {
+					require.Error(t, err)
+					return
+				}
+
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedValue, opts.Version)
+			}
+		})
+	}
+}
+
+func TestWithName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		serverName    string
+		optionType    string // "ListServerVersionsOptions" or "GetServerVersionOptions"
+		expectedValue string
+	}{
+		{
+			name:          "valid name for ListServerVersionsOptions",
+			serverName:    "my-server",
+			optionType:    "ListServerVersionsOptions",
+			expectedValue: "my-server",
+		},
+		{
+			name:          "valid name for GetServerVersionOptions",
+			serverName:    "test-server",
+			optionType:    "GetServerVersionOptions",
+			expectedValue: "test-server",
+		},
+		{
+			name:          "empty name for ListServerVersionsOptions",
+			serverName:    "",
+			optionType:    "ListServerVersionsOptions",
+			expectedValue: "",
+		},
+		{
+			name:          "empty name for GetServerVersionOptions",
+			serverName:    "",
+			optionType:    "GetServerVersionOptions",
+			expectedValue: "",
+		},
+		{
+			name:          "name with underscores for ListServerVersionsOptions",
+			serverName:    "my_server_v1",
+			optionType:    "ListServerVersionsOptions",
+			expectedValue: "my_server_v1",
+		},
+		{
+			name:          "name with hyphens for GetServerVersionOptions",
+			serverName:    "my-server-v2",
+			optionType:    "GetServerVersionOptions",
+			expectedValue: "my-server-v2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			switch tt.optionType {
+			case "ListServerVersionsOptions":
+				opt := service.WithName[service.ListServerVersionsOptions](tt.serverName)
+				opts := &service.ListServerVersionsOptions{}
+				err := opt(opts)
+
+				if tt.expectedValue == "" {
+					require.Error(t, err)
+					return
+				}
+
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedValue, opts.Name)
+			case "GetServerVersionOptions":
+				opt := service.WithName[service.GetServerVersionOptions](tt.serverName)
+				opts := &service.GetServerVersionOptions{}
+				err := opt(opts)
+
+				if tt.expectedValue == "" {
+					require.Error(t, err)
+					return
+				}
+
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedValue, opts.Name)
+			}
+		})
+	}
+}
+
+func TestWithLimit(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		limit         int
+		optionType    string // "ListServersOptions" or "ListServerVersionsOptions"
+		expectedValue int
+	}{
+		{
+			name:          "valid limit for ListServersOptions",
+			limit:         10,
+			optionType:    "ListServersOptions",
+			expectedValue: 10,
+		},
+		{
+			name:          "valid limit for ListServerVersionsOptions",
+			limit:         20,
+			optionType:    "ListServerVersionsOptions",
+			expectedValue: 20,
+		},
+		{
+			name:          "zero limit for ListServersOptions",
+			limit:         0,
+			optionType:    "ListServersOptions",
+			expectedValue: 0,
+		},
+		{
+			name:          "zero limit for ListServerVersionsOptions",
+			limit:         0,
+			optionType:    "ListServerVersionsOptions",
+			expectedValue: 0,
+		},
+		{
+			name:          "negative limit for ListServersOptions",
+			limit:         -5,
+			optionType:    "ListServersOptions",
+			expectedValue: 0,
+		},
+		{
+			name:          "negative limit for ListServerVersionsOptions",
+			limit:         -10,
+			optionType:    "ListServerVersionsOptions",
+			expectedValue: 0,
+		},
+		{
+			name:          "large limit for ListServersOptions",
+			limit:         1000,
+			optionType:    "ListServersOptions",
+			expectedValue: 1000,
+		},
+		{
+			name:          "limit of 1 for ListServerVersionsOptions",
+			limit:         1,
+			optionType:    "ListServerVersionsOptions",
+			expectedValue: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			switch tt.optionType {
+			case "ListServersOptions":
+				opt := service.WithLimit[service.ListServersOptions](tt.limit)
+				opts := &service.ListServersOptions{}
+				err := opt(opts)
+
+				if tt.expectedValue == 0 {
+					require.Error(t, err)
+					return
+				}
+
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedValue, opts.Limit)
+			case "ListServerVersionsOptions":
+				opt := service.WithLimit[service.ListServerVersionsOptions](tt.limit)
+				opts := &service.ListServerVersionsOptions{}
+				err := opt(opts)
+
+				if tt.expectedValue == 0 {
+					require.Error(t, err)
+					return
+				}
+
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedValue, opts.Limit)
+			}
 		})
 	}
 }

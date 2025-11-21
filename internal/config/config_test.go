@@ -378,6 +378,20 @@ func TestConfigValidate(t *testing.T) {
 			errMsg:  "source.file.path is required",
 		},
 		{
+			name: "invalid_format_when_type_is_api",
+			config: &Config{
+				Source: SourceConfig{
+					Type:   "api",
+					Format: "toolhive",
+					API: &APIConfig{
+						Endpoint: "http://example.com",
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "source.format must be either empty or upstream",
+		},
+		{
 			name: "unsupported_source_type",
 			config: &Config{
 				Source: SourceConfig{

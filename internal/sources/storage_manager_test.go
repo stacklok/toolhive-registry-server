@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stacklok/toolhive/pkg/registry/converters"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 	"github.com/stretchr/testify/require"
+
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
 
 func TestFileStorageManager_StoreAndGet(t *testing.T) {
@@ -20,20 +20,15 @@ func TestFileStorageManager_StoreAndGet(t *testing.T) {
 	manager := NewFileStorageManager(tmpDir)
 	require.NotNil(t, manager)
 
-	// Create a test registry
-	testRegistry := &toolhivetypes.Registry{
-		Version:     "1.0.0",
-		LastUpdated: "2024-01-01T00:00:00Z",
-		Servers:     make(map[string]*toolhivetypes.ImageMetadata),
-	}
-
-	// Convert to UpstreamRegistry
-	UpstreamRegistry, err := converters.NewUpstreamRegistryFromToolhiveRegistry(testRegistry)
-	require.NoError(t, err)
+	// Create UpstreamRegistry directly
+	UpstreamRegistry := registry.NewTestUpstreamRegistry(
+		registry.WithVersion("1.0.0"),
+		registry.WithLastUpdated("2024-01-01T00:00:00Z"),
+	)
 
 	// Store the registry
 	ctx := context.Background()
-	err = manager.Store(ctx, nil, UpstreamRegistry)
+	err := manager.Store(ctx, nil, UpstreamRegistry)
 	require.NoError(t, err)
 
 	// Verify file was created
@@ -58,17 +53,13 @@ func TestFileStorageManager_Delete(t *testing.T) {
 	manager := NewFileStorageManager(tmpDir)
 	require.NotNil(t, manager)
 
-	// Create and store a test registry
-	testRegistry := &toolhivetypes.Registry{
-		Version: "1.0.0",
-	}
-
-	// Convert to UpstreamRegistry
-	UpstreamRegistry, err := converters.NewUpstreamRegistryFromToolhiveRegistry(testRegistry)
-	require.NoError(t, err)
+	// Create UpstreamRegistry directly
+	UpstreamRegistry := registry.NewTestUpstreamRegistry(
+		registry.WithVersion("1.0.0"),
+	)
 
 	ctx := context.Background()
-	err = manager.Store(ctx, nil, UpstreamRegistry)
+	err := manager.Store(ctx, nil, UpstreamRegistry)
 	require.NoError(t, err)
 
 	// Delete the registry
@@ -102,15 +93,13 @@ func TestFileStorageManager_Delete_PermissionDenied(t *testing.T) {
 	tmpDir := t.TempDir()
 	manager := NewFileStorageManager(tmpDir)
 
-	// Create and store a file
-	testRegistry := &toolhivetypes.Registry{Version: "1.0.0"}
-
-	// Convert to UpstreamRegistry
-	UpstreamRegistry, err := converters.NewUpstreamRegistryFromToolhiveRegistry(testRegistry)
-	require.NoError(t, err)
+	// Create UpstreamRegistry directly
+	UpstreamRegistry := registry.NewTestUpstreamRegistry(
+		registry.WithVersion("1.0.0"),
+	)
 
 	ctx := context.Background()
-	err = manager.Store(ctx, nil, UpstreamRegistry)
+	err := manager.Store(ctx, nil, UpstreamRegistry)
 	require.NoError(t, err)
 
 	// Make directory read-only to prevent deletion

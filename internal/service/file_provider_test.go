@@ -5,13 +5,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stacklok/toolhive/pkg/registry/converters"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	sourcesmocks "github.com/stacklok/toolhive-registry-server/internal/sources/mocks"
 )
 
@@ -24,56 +24,47 @@ func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
 		setupMock   func(*sourcesmocks.MockStorageManager)
 		wantErr     bool
 		errContains string
-		validate    func(*testing.T, *toolhivetypes.Registry)
+		validate    func(*testing.T, *toolhivetypes.UpstreamRegistry)
 	}{
 		{
 			name: "successful retrieval",
 			setupMock: func(m *sourcesmocks.MockStorageManager) {
-				toolhiveRegistry := &toolhivetypes.Registry{
-					Version:     "1.0",
-					LastUpdated: "2024-01-01T00:00:00Z",
-					Servers: map[string]*toolhivetypes.ImageMetadata{
-						"test-server": {
-							BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-								Name:        "test-server",
-								Description: "A test server",
-							},
-							Image: "test:latest",
-						},
-					},
-					RemoteServers: map[string]*toolhivetypes.RemoteServerMetadata{},
-				}
-				// Convert to UpstreamRegistry
-				expectedRegistry, _ := converters.NewUpstreamRegistryFromToolhiveRegistry(toolhiveRegistry)
+				expectedRegistry := registry.NewTestUpstreamRegistry(
+					registry.WithVersion("1.0"),
+					registry.WithLastUpdated("2024-01-01T00:00:00Z"),
+					registry.WithServers(
+						registry.NewTestServer("test-server",
+							registry.WithDescription("A test server"),
+							registry.WithOCIPackage("test:latest"),
+						),
+					),
+				)
 				m.EXPECT().
 					Get(gomock.Any(), gomock.Any()).
 					Return(expectedRegistry, nil)
 			},
 			wantErr: false,
-			validate: func(t *testing.T, reg *toolhivetypes.Registry) {
+			validate: func(t *testing.T, reg *toolhivetypes.UpstreamRegistry) {
 				t.Helper()
 				assert.Equal(t, "1.0", reg.Version)
 				assert.Equal(t, "2024-01-01T00:00:00Z", reg.LastUpdated)
 				assert.Len(t, reg.Servers, 1)
-				assert.Contains(t, reg.Servers, "test-server")
+				assert.Equal(t, "test-server", reg.Servers[0].Name)
 			},
 		},
 		{
 			name: "empty registry",
 			setupMock: func(m *sourcesmocks.MockStorageManager) {
-				toolhiveRegistry := &toolhivetypes.Registry{
-					Version:       "1.0",
-					Servers:       map[string]*toolhivetypes.ImageMetadata{},
-					RemoteServers: map[string]*toolhivetypes.RemoteServerMetadata{},
-				}
-				// Convert to UpstreamRegistry
-				expectedRegistry, _ := converters.NewUpstreamRegistryFromToolhiveRegistry(toolhiveRegistry)
+				expectedRegistry := registry.NewTestUpstreamRegistry(
+					registry.WithVersion("1.0"),
+					registry.WithLastUpdated("2024-01-01T00:00:00Z"),
+				)
 				m.EXPECT().
 					Get(gomock.Any(), gomock.Any()).
 					Return(expectedRegistry, nil)
 			},
 			wantErr: false,
-			validate: func(t *testing.T, reg *toolhivetypes.Registry) {
+			validate: func(t *testing.T, reg *toolhivetypes.UpstreamRegistry) {
 				t.Helper()
 				assert.Equal(t, "1.0", reg.Version)
 				assert.Len(t, reg.Servers, 0)

@@ -290,6 +290,25 @@ func (c *Config) validate() error {
 		return fmt.Errorf("source.type is required")
 	}
 
+	if err := c.validateSourceConfigByType(); err != nil {
+		return err
+	}
+
+	// Validate sync policy
+	if c.SyncPolicy == nil || c.SyncPolicy.Interval == "" {
+		return fmt.Errorf("syncPolicy.interval is required")
+	}
+
+	// Try to parse the interval to ensure it's valid
+	if _, err := time.ParseDuration(c.SyncPolicy.Interval); err != nil {
+		return fmt.Errorf("syncPolicy.interval must be a valid duration (e.g., '30m', '1h'): %w", err)
+	}
+
+	return nil
+}
+
+// validateSourceConfigByType validates the source configuration by the source type
+func (c *Config) validateSourceConfigByType() error {
 	// Validate source-specific settings
 	switch c.Source.Type {
 	case SourceTypeGit:
@@ -307,6 +326,9 @@ func (c *Config) validate() error {
 		if c.Source.API.Endpoint == "" {
 			return fmt.Errorf("source.api.endpoint is required")
 		}
+		if c.Source.Format != "" && c.Source.Format != SourceFormatUpstream {
+			return fmt.Errorf("source.format must be either empty or %s when type is api, got %s", SourceFormatUpstream, c.Source.Format)
+		}
 
 	case SourceTypeFile:
 		if c.Source.File == nil {
@@ -318,16 +340,6 @@ func (c *Config) validate() error {
 
 	default:
 		return fmt.Errorf("unsupported source type: %s", c.Source.Type)
-	}
-
-	// Validate sync policy
-	if c.SyncPolicy == nil || c.SyncPolicy.Interval == "" {
-		return fmt.Errorf("syncPolicy.interval is required")
-	}
-
-	// Try to parse the interval to ensure it's valid
-	if _, err := time.ParseDuration(c.SyncPolicy.Interval); err != nil {
-		return fmt.Errorf("syncPolicy.interval must be a valid duration (e.g., '30m', '1h'): %w", err)
 	}
 
 	return nil

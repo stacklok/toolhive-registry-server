@@ -230,19 +230,6 @@ func TestWithRegistryProvider(t *testing.T) {
 	assert.Equal(t, testRegistryProvider, cfg.registryProvider)
 }
 
-func TestWithDeploymentProvider(t *testing.T) {
-	t.Parallel()
-	cfg := &registryAppConfig{}
-	// Use nil deployment provider for testing - we're just verifying the field is set
-	var testDeploymentProvider service.DeploymentProvider
-
-	opt := WithDeploymentProvider(testDeploymentProvider)
-	err := opt(cfg)
-
-	require.NoError(t, err)
-	assert.Equal(t, testDeploymentProvider, cfg.deploymentProvider)
-}
-
 func TestBuildHTTPServer(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -352,7 +339,7 @@ func TestBuildServiceComponents(t *testing.T) {
 		setupMocks func(
 			*testing.T,
 			*gomock.Controller,
-		) (*mocks.MockRegistryDataProvider, *mocks.MockDeploymentProvider)
+		) *mocks.MockRegistryDataProvider
 		wantErr bool
 		verify  func(
 			*testing.T,
@@ -370,9 +357,9 @@ func TestBuildServiceComponents(t *testing.T) {
 			setupMocks: func(
 				t *testing.T,
 				_ *gomock.Controller,
-			) (*mocks.MockRegistryDataProvider, *mocks.MockDeploymentProvider) {
+			) *mocks.MockRegistryDataProvider {
 				t.Helper()
-				return nil, nil
+				return nil
 			},
 			wantErr: false,
 			//nolint:thelper // we want to see these lines
@@ -403,14 +390,14 @@ func TestBuildServiceComponents(t *testing.T) {
 			setupMocks: func(
 				t *testing.T,
 				ctrl *gomock.Controller,
-			) (*mocks.MockRegistryDataProvider, *mocks.MockDeploymentProvider) {
+			) *mocks.MockRegistryDataProvider {
 				t.Helper()
 				mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 				// service.NewService calls GetRegistryData during initialization
 				mockProvider.EXPECT().GetRegistryData(gomock.Any()).
 					Return(nil, fmt.Errorf("registry file not found")).
 					AnyTimes()
-				return mockProvider, nil
+				return mockProvider
 			},
 			wantErr: false,
 			//nolint:thelper // we want to see these lines
@@ -436,15 +423,14 @@ func TestBuildServiceComponents(t *testing.T) {
 			setupMocks: func(
 				t *testing.T,
 				ctrl *gomock.Controller,
-			) (*mocks.MockRegistryDataProvider, *mocks.MockDeploymentProvider) {
+			) *mocks.MockRegistryDataProvider {
 				t.Helper()
 				mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 				// service.NewService calls GetRegistryData during initialization
 				mockProvider.EXPECT().GetRegistryData(gomock.Any()).
 					Return(nil, fmt.Errorf("registry file not found")).
 					AnyTimes()
-				mockDeployment := mocks.NewMockDeploymentProvider(ctrl)
-				return mockProvider, mockDeployment
+				return mockProvider
 			},
 			wantErr: false,
 			//nolint:thelper // we want to see these lines
@@ -471,9 +457,9 @@ func TestBuildServiceComponents(t *testing.T) {
 			setupMocks: func(
 				t *testing.T,
 				_ *gomock.Controller,
-			) (*mocks.MockRegistryDataProvider, *mocks.MockDeploymentProvider) {
+			) *mocks.MockRegistryDataProvider {
 				t.Helper()
-				return nil, nil
+				return nil
 			},
 			wantErr: true,
 		},
@@ -485,12 +471,9 @@ func TestBuildServiceComponents(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockRegProvider, mockDeploymentProvider := tt.setupMocks(t, ctrl)
+			mockRegProvider := tt.setupMocks(t, ctrl)
 			if mockRegProvider != nil {
 				tt.config.registryProvider = mockRegProvider
-			}
-			if mockDeploymentProvider != nil {
-				tt.config.deploymentProvider = mockDeploymentProvider
 			}
 
 			// Store original provider to check if it was set

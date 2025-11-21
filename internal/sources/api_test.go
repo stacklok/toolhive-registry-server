@@ -14,9 +14,7 @@ import (
 )
 
 const (
-	toolhiveInfoPath    = "/v0/info"
-	toolhiveServersPath = "/v0/servers"
-	openapiPath         = "/openapi.yaml"
+	openapiPath = "/openapi.yaml"
 )
 
 func TestAPISources(t *testing.T) {
@@ -27,7 +25,7 @@ func TestAPISources(t *testing.T) {
 
 var _ = Describe("APISourceHandler", func() {
 	var (
-		handler    *sources.APISourceHandler
+		handler    sources.SourceHandler
 		ctx        context.Context
 		mockServer *httptest.Server
 	)
@@ -52,6 +50,17 @@ var _ = Describe("APISourceHandler", func() {
 			err := handler.Validate(source)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("invalid source type"))
+		})
+
+		It("should reject non-Upstream format", func() {
+			source := &config.SourceConfig{
+				Type:   config.SourceTypeAPI,
+				Format: config.SourceFormatToolHive,
+			}
+
+			err := handler.Validate(source)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("unsupported format:"))
 		})
 
 		It("should reject missing API configuration", func() {
@@ -91,49 +100,11 @@ var _ = Describe("APISourceHandler", func() {
 		})
 	})
 
-	Describe("Format Detection", func() {
-		Context("ToolHive Format", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					switch r.URL.Path {
-					case toolhiveInfoPath:
-						w.Header().Set("Content-Type", "application/json")
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`{"version":"1.0.0","last_updated":"2025-01-14T00:00:00Z","source":"file:/data/registry.json","total_servers":5}`))
-					case toolhiveServersPath:
-						w.Header().Set("Content-Type", "application/json")
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`{"servers":[],"total":0}`))
-					default:
-						w.WriteHeader(http.StatusNotFound)
-					}
-				}))
-			})
-
-			It("should detect and validate ToolHive format", func() {
-				registryConfig := &config.Config{
-					Source: config.SourceConfig{
-						Type: config.SourceTypeAPI,
-						API: &config.APIConfig{
-							Endpoint: mockServer.URL,
-						},
-					},
-				}
-				result, err := handler.FetchRegistry(ctx, registryConfig)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(result).NotTo(BeNil())
-				Expect(result.Format).To(Equal(config.SourceFormatToolHive))
-			})
-		})
-
+	Describe("Upstream Format Validation", func() {
 		Context("Upstream Format", func() {
 			BeforeEach(func() {
 				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					switch r.URL.Path {
-					case toolhiveInfoPath:
-						// Return 404 for /v0/info (upstream doesn't have this)
-						w.WriteHeader(http.StatusNotFound)
-						_, _ = w.Write([]byte(`{"detail":"Endpoint not found"}`))
 					case openapiPath:
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
@@ -189,7 +160,7 @@ openapi: 3.1.0
 
 				_, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("format detection failed"))
+				Expect(err.Error()).To(ContainSubstring("upstream format validation failed"))
 			})
 		})
 	})

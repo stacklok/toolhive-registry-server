@@ -10,32 +10,35 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
 )
 
-// APISourceHandler handles registry data from API endpoints
-// It detects the format (ToolHive vs Upstream) and delegates to the appropriate handler
-type APISourceHandler struct {
+// apiSourceHandler handles registry data from API endpoints
+// It validates the Upstream format and delegates to the appropriate handler
+type apiSourceHandler struct {
 	httpClient      httpclient.Client
 	validator       SourceDataValidator
-	toolhiveHandler *ToolHiveAPIHandler
-	upstreamHandler *UpstreamAPIHandler
+	upstreamHandler *upstreamAPIHandler
 }
 
 // NewAPISourceHandler creates a new API source handler
-func NewAPISourceHandler() *APISourceHandler {
+func NewAPISourceHandler() SourceHandler {
 	httpClient := httpclient.NewDefaultClient(0) // Use default timeout
 
-	return &APISourceHandler{
+	return &apiSourceHandler{
 		httpClient:      httpClient,
 		validator:       NewSourceDataValidator(),
-		toolhiveHandler: NewToolHiveAPIHandler(httpClient),
 		upstreamHandler: NewUpstreamAPIHandler(httpClient),
 	}
 }
 
 // Validate validates the API source configuration
-func (*APISourceHandler) Validate(source *config.SourceConfig) error {
+func (*apiSourceHandler) Validate(source *config.SourceConfig) error {
 	if source.Type != config.SourceTypeAPI {
 		return fmt.Errorf("invalid source type: expected %s, got %s",
 			config.SourceTypeAPI, source.Type)
+	}
+
+	if source.Format != "" && source.Format != config.SourceFormatUpstream {
+		return fmt.Errorf("unsupported format: expected %s or empty, got %s",
+			config.SourceFormatUpstream, source.Format)
 	}
 
 	if source.API == nil {
@@ -51,8 +54,8 @@ func (*APISourceHandler) Validate(source *config.SourceConfig) error {
 }
 
 // FetchRegistry retrieves registry data from the API endpoint
-// It auto-detects the format and delegates to the appropriate handler
-func (h *APISourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config) (*FetchResult, error) {
+// It validates the Upstream format and delegates to the appropriate handler
+func (h *apiSourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config) (*FetchResult, error) {
 	logger := log.FromContext(ctx)
 
 	// Validate source configuration
@@ -60,72 +63,56 @@ func (h *APISourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config
 		return nil, fmt.Errorf("source validation failed: %w", err)
 	}
 
-	// Detect format and get appropriate handler
-	handler, format, err := h.detectFormatAndGetHandler(ctx, cfg)
+	// Validate Upstream format and get appropriate handler
+	handler, err := h.validateUstreamFormat(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("format detection failed: %w", err)
+		return nil, fmt.Errorf("upstream format validation failed: %w", err)
 	}
 
-	logger.Info("Detected API format, delegating to handler",
-		"format", format)
+	logger.Info("Validated Upstream format, delegating to handler")
 
 	// Delegate to the appropriate handler
 	return handler.FetchRegistry(ctx, cfg)
 }
 
 // CurrentHash returns the current hash of the API response
-func (h *APISourceHandler) CurrentHash(ctx context.Context, cfg *config.Config) (string, error) {
+func (h *apiSourceHandler) CurrentHash(ctx context.Context, cfg *config.Config) (string, error) {
 	// Validate source configuration
 	if err := h.Validate(&cfg.Source); err != nil {
 		return "", fmt.Errorf("source validation failed: %w", err)
 	}
 
-	// Detect format and get appropriate handler
-	handler, _, err := h.detectFormatAndGetHandler(ctx, cfg)
+	// Validate Upstream format and get appropriate handler
+	handler, err := h.validateUstreamFormat(ctx, cfg)
 	if err != nil {
-		return "", fmt.Errorf("format detection failed: %w", err)
+		return "", fmt.Errorf("upstream format validation failed: %w", err)
 	}
 
 	// Delegate to the appropriate handler
 	return handler.CurrentHash(ctx, cfg)
 }
 
-// apiFormatHandler is an internal interface for format-specific handlers
-type apiFormatHandler interface {
-	Validate(ctx context.Context, endpoint string) error
-	FetchRegistry(ctx context.Context, cfg *config.Config) (*FetchResult, error)
-	CurrentHash(ctx context.Context, cfg *config.Config) (string, error)
-}
-
-// detectFormatAndGetHandler detects the API format and returns the appropriate handler
-func (h *APISourceHandler) detectFormatAndGetHandler(
+// validateUstreamFormat validates the Upstream format and returns the appropriate handler
+func (h *apiSourceHandler) validateUstreamFormat(
 	ctx context.Context,
 	cfg *config.Config,
-) (apiFormatHandler, string, error) {
+) (*upstreamAPIHandler, error) {
 	logger := log.FromContext(ctx)
 	endpoint := h.getBaseURL(cfg)
-
-	// Try ToolHive format first (/v0/info)
-	toolhiveErr := h.toolhiveHandler.Validate(ctx, endpoint)
-	if toolhiveErr == nil {
-		logger.Info("Validated as ToolHive format")
-		return h.toolhiveHandler, "toolhive", nil
-	}
-	logger.V(1).Info("ToolHive format validation failed", "error", toolhiveErr.Error())
 
 	// Try upstream format (/openapi.yaml)
 	upstreamErr := h.upstreamHandler.Validate(ctx, endpoint)
 	if upstreamErr == nil {
 		logger.Info("Validated as upstream MCP Registry format")
-		return h.upstreamHandler, "upstream", nil
+		return h.upstreamHandler, nil
 	}
 	logger.V(1).Info("Upstream format validation failed", "error", upstreamErr.Error())
 
-	return nil, "", fmt.Errorf("unable to detect valid API format (tried toolhive and upstream)")
+	return nil, fmt.Errorf("unable to validate Upstream format")
 }
 
 // getBaseURL extracts and normalizes the base URL
-func (*APISourceHandler) getBaseURL(cfg *config.Config) string {
+func (*apiSourceHandler) getBaseURL(cfg *config.Config) string {
 	baseURL := cfg.Source.API.Endpoint
 
 	// Remove trailing slash

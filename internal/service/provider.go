@@ -15,9 +15,7 @@ import (
 type RegistryDataProvider interface {
 	// GetRegistryData fetches the current registry data.
 	// Returns the registry data and any error encountered.
-	// NOTE: In PR 1, this still returns ToolHive Registry for backward compatibility.
-	// PR 2 will change this to return UpstreamRegistry.
-	GetRegistryData(ctx context.Context) (*toolhivetypes.Registry, error)
+	GetRegistryData(ctx context.Context) (*toolhivetypes.UpstreamRegistry, error)
 
 	// GetSource returns a descriptive string about where the registry data comes from.
 	// Examples: "file:/path/to/registry.json", "remote:https://example.com/registry"
@@ -26,15 +24,4 @@ type RegistryDataProvider interface {
 	// GetRegistryName returns the registry name/identifier for this provider.
 	// This name is used for business logic such as finding related Kubernetes resources.
 	GetRegistryName() string
-}
-
-// DeploymentProvider abstracts access to deployed MCP servers.
-type DeploymentProvider interface {
-	// ListDeployedServers returns all currently deployed MCP servers.
-	// Returns an empty slice if no servers are deployed
-	ListDeployedServers(ctx context.Context) ([]*DeployedServer, error)
-
-	// GetDeployedServer returns all deployed servers matching the server registry name.
-	// Returns an empty slice if no servers are found.
-	GetDeployedServer(ctx context.Context, name string) ([]*DeployedServer, error)
 }

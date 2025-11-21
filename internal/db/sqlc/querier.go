@@ -7,23 +7,26 @@ package sqlc
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
 type Querier interface {
-	GetRegistry(ctx context.Context, id pgtype.UUID) (Registry, error)
-	GetRegistrySync(ctx context.Context, id pgtype.UUID) (RegistrySync, error)
-	InsertRegistry(ctx context.Context, arg InsertRegistryParams) (pgtype.UUID, error)
-	InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (pgtype.UUID, error)
+	GetRegistry(ctx context.Context, id uuid.UUID) (Registry, error)
+	GetRegistrySync(ctx context.Context, id uuid.UUID) (RegistrySync, error)
+	GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error)
+	InsertRegistry(ctx context.Context, arg InsertRegistryParams) (uuid.UUID, error)
+	InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (uuid.UUID, error)
 	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error)
+	ListServerPackages(ctx context.Context, serverIds []uuid.UUID) ([]McpServerPackage, error)
+	ListServerRemotes(ctx context.Context, serverIds []uuid.UUID) ([]McpServerRemote, error)
 	ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error)
 	ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error)
 	UpdateRegistrySync(ctx context.Context, arg UpdateRegistrySyncParams) error
-	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (pgtype.UUID, error)
+	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (uuid.UUID, error)
 	UpsertServerIcon(ctx context.Context, arg UpsertServerIconParams) error
 	UpsertServerPackage(ctx context.Context, arg UpsertServerPackageParams) error
 	UpsertServerRemote(ctx context.Context, arg UpsertServerRemoteParams) error
-	UpsertServerVersion(ctx context.Context, arg UpsertServerVersionParams) (pgtype.UUID, error)
+	UpsertServerVersion(ctx context.Context, arg UpsertServerVersionParams) (uuid.UUID, error)
 }
 
 var _ Querier = (*Queries)(nil)

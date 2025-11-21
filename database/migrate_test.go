@@ -13,7 +13,7 @@ func TestMigrations(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	db, cleanupFunc := SetupTestDBContaienr(t, ctx)
+	db, cleanupFunc := SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
 
 	connString := db.Config().ConnString()

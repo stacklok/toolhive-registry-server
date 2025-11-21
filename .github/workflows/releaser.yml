@@ -40,7 +40,7 @@ jobs:
       tree-state: ${{ steps.ldflags.outputs.tree-state }}
     steps:
       - id: checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
         with:
           fetch-depth: 0
       - id: ldflags
@@ -61,12 +61,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
         with:
           fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -85,7 +85,7 @@ jobs:
           TREE_STATE: ${{ needs.compute-build-flags.outputs.tree-state }}
         run: |
           # Build a test binary using the same env vars as GoReleaser
-          go build -ldflags "-s -w -X github.com/stacklok/toolhive-registry-server/pkg/versions.Version=${VERSION} -X github.com/stacklok/toolhive-registry-server/pkg/versions.Commit=${COMMIT} -X github.com/stacklok/toolhive-registry-server/pkg/versions.BuildDate=$(date -Iseconds) -X github.com/stacklok/toolhive-registry-server/pkg/versions.BuildType=release" -o ./thv-test ./cmd/thv-registry-api
+          go build -ldflags "-s -w -X github.com/stacklok/toolhive-registry-server/internal/versions.Version=${VERSION} -X github.com/stacklok/toolhive-registry-server/internal/versions.Commit=${COMMIT} -X github.com/stacklok/toolhive-registry-server/internal/versions.BuildDate=$(date -Iseconds) -X github.com/stacklok/toolhive-registry-server/internal/versions.BuildType=release" -o ./thv-test ./cmd/thv-registry-api
 
           # Get version from binary
           BINARY_VERSION=$(./thv-test version --format json | jq -r '.version')

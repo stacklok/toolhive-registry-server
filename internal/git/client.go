@@ -26,16 +26,16 @@ type Client interface {
 	Cleanup(ctx context.Context, repoInfo *RepositoryInfo) error
 }
 
-// DefaultGitClient implements GitClient using go-git
-type DefaultGitClient struct{}
+// defaultGitClient implements GitClient using go-git
+type defaultGitClient struct{}
 
-// NewDefaultGitClient creates a new DefaultGitClient
-func NewDefaultGitClient() *DefaultGitClient {
-	return &DefaultGitClient{}
+// NewDefaultGitClient creates a new defaultGitClient
+func NewDefaultGitClient() Client {
+	return &defaultGitClient{}
 }
 
 // Clone clones a repository with the given configuration
-func (c *DefaultGitClient) Clone(ctx context.Context, config *CloneConfig) (*RepositoryInfo, error) {
+func (c *defaultGitClient) Clone(ctx context.Context, config *CloneConfig) (*RepositoryInfo, error) {
 	// Prepare clone options (no authentication for initial version)
 	cloneOptions := &git.CloneOptions{
 		URL: config.URL,
@@ -112,7 +112,7 @@ func (c *DefaultGitClient) Clone(ctx context.Context, config *CloneConfig) (*Rep
 }
 
 // GetFileContent retrieves the content of a file from the repository
-func (*DefaultGitClient) GetFileContent(repoInfo *RepositoryInfo, path string) ([]byte, error) {
+func (*defaultGitClient) GetFileContent(repoInfo *RepositoryInfo, path string) ([]byte, error) {
 	if repoInfo == nil || repoInfo.Repository == nil {
 		return nil, fmt.Errorf("repository is nil")
 	}
@@ -151,7 +151,7 @@ func (*DefaultGitClient) GetFileContent(repoInfo *RepositoryInfo, path string) (
 }
 
 // Cleanup removes local repository directory
-func (*DefaultGitClient) Cleanup(ctx context.Context, repoInfo *RepositoryInfo) error {
+func (*defaultGitClient) Cleanup(ctx context.Context, repoInfo *RepositoryInfo) error {
 	logger := log.FromContext(ctx)
 	if repoInfo == nil || repoInfo.Repository == nil {
 		return fmt.Errorf("repository is nil")
@@ -187,7 +187,7 @@ func (*DefaultGitClient) Cleanup(ctx context.Context, repoInfo *RepositoryInfo) 
 }
 
 // updateRepositoryInfo updates the repository info with current state
-func (*DefaultGitClient) updateRepositoryInfo(repoInfo *RepositoryInfo) error {
+func (*defaultGitClient) updateRepositoryInfo(repoInfo *RepositoryInfo) error {
 	if repoInfo == nil || repoInfo.Repository == nil {
 		return fmt.Errorf("repository is nil")
 	}

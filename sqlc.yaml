@@ -13,3 +13,42 @@ sql:
         emit_exact_table_names: false
         emit_empty_slices: true
         sql_package: "pgx/v5"
+        overrides:
+          # UUID types
+          - db_type: "uuid"
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+
+          # Time types
+          - db_type: "pg_catalog.timestamp"
+            go_type: "time.Time"
+          - db_type: "pg_catalog.timestamp"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
+          - db_type: "pg_catalog.timestamptz"
+            go_type: "time.Time"
+          - db_type: "pg_catalog.timestamptz"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
+
+          # Text types
+          - db_type: "text"
+            go_type:
+              type: "string"
+          - db_type: "text"
+            nullable: true
+            go_type:
+              type: "string"
+              pointer: true

@@ -9,13 +9,13 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 )
 
-// DefaultDataChangeDetector implements DataChangeDetector
-type DefaultDataChangeDetector struct {
+// defaultDataChangeDetector implements DataChangeDetector
+type defaultDataChangeDetector struct {
 	sourceHandlerFactory sources.SourceHandlerFactory
 }
 
 // IsDataChanged checks if source data has changed by comparing hashes
-func (d *DefaultDataChangeDetector) IsDataChanged(
+func (d *defaultDataChangeDetector) IsDataChanged(
 	ctx context.Context, cfg *config.Config, syncStatus *status.SyncStatus,
 ) (bool, error) {
 	// Check for hash in syncStatus first, then fallback
@@ -45,13 +45,13 @@ func (d *DefaultDataChangeDetector) IsDataChanged(
 	return currentHash != lastSyncHash, nil
 }
 
-// DefaultAutomaticSyncChecker implements AutomaticSyncChecker
-type DefaultAutomaticSyncChecker struct{}
+// defaultAutomaticSyncChecker implements AutomaticSyncChecker
+type defaultAutomaticSyncChecker struct{}
 
 // IsIntervalSyncNeeded checks if sync is needed based on time interval
 // Returns: (syncNeeded, nextSyncTime, error)
 // nextSyncTime is a future time when the next sync should occur, or zero time if no policy configured
-func (*DefaultAutomaticSyncChecker) IsIntervalSyncNeeded(
+func (*defaultAutomaticSyncChecker) IsIntervalSyncNeeded(
 	cfg *config.Config, syncStatus *status.SyncStatus,
 ) (bool, time.Time, error) {
 	if cfg.SyncPolicy == nil || cfg.SyncPolicy.Interval == "" {

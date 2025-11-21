@@ -23,10 +23,10 @@ var (
 	dbPass = "testpass"
 )
 
-// SetupTestDBContaienr creates a Postgres container using testcontainers and returns a connection to the database
+// SetupTestDBContainer creates a Postgres container using testcontainers and returns a connection to the database
 //
 //nolint:revive
-func SetupTestDBContaienr(t *testing.T, ctx context.Context) (*pgx.Conn, func()) {
+func SetupTestDBContainer(t *testing.T, ctx context.Context) (*pgx.Conn, func()) {
 	t.Helper()
 
 	// Start Postgres container
@@ -58,7 +58,7 @@ func SetupTestDB(t *testing.T) (*pgx.Conn, func()) {
 	t.Helper()
 
 	ctx := context.Background()
-	db, containerCleanupFunc := SetupTestDBContaienr(t, ctx)
+	db, containerCleanupFunc := SetupTestDBContainer(t, ctx)
 
 	// Apply migrations
 	err := MigrateUp(ctx, db)

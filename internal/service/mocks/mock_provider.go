@@ -13,7 +13,6 @@ import (
 	context "context"
 	reflect "reflect"
 
-	service "github.com/stacklok/toolhive-registry-server/internal/service"
 	registry "github.com/stacklok/toolhive/pkg/registry/registry"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -43,10 +42,10 @@ func (m *MockRegistryDataProvider) EXPECT() *MockRegistryDataProviderMockRecorde
 }
 
 // GetRegistryData mocks base method.
-func (m *MockRegistryDataProvider) GetRegistryData(ctx context.Context) (*registry.Registry, error) {
+func (m *MockRegistryDataProvider) GetRegistryData(ctx context.Context) (*registry.UpstreamRegistry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRegistryData", ctx)
-	ret0, _ := ret[0].(*registry.Registry)
+	ret0, _ := ret[0].(*registry.UpstreamRegistry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -83,58 +82,4 @@ func (m *MockRegistryDataProvider) GetSource() string {
 func (mr *MockRegistryDataProviderMockRecorder) GetSource() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSource", reflect.TypeOf((*MockRegistryDataProvider)(nil).GetSource))
-}
-
-// MockDeploymentProvider is a mock of DeploymentProvider interface.
-type MockDeploymentProvider struct {
-	ctrl     *gomock.Controller
-	recorder *MockDeploymentProviderMockRecorder
-	isgomock struct{}
-}
-
-// MockDeploymentProviderMockRecorder is the mock recorder for MockDeploymentProvider.
-type MockDeploymentProviderMockRecorder struct {
-	mock *MockDeploymentProvider
-}
-
-// NewMockDeploymentProvider creates a new mock instance.
-func NewMockDeploymentProvider(ctrl *gomock.Controller) *MockDeploymentProvider {
-	mock := &MockDeploymentProvider{ctrl: ctrl}
-	mock.recorder = &MockDeploymentProviderMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockDeploymentProvider) EXPECT() *MockDeploymentProviderMockRecorder {
-	return m.recorder
-}
-
-// GetDeployedServer mocks base method.
-func (m *MockDeploymentProvider) GetDeployedServer(ctx context.Context, name string) ([]*service.DeployedServer, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetDeployedServer", ctx, name)
-	ret0, _ := ret[0].([]*service.DeployedServer)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetDeployedServer indicates an expected call of GetDeployedServer.
-func (mr *MockDeploymentProviderMockRecorder) GetDeployedServer(ctx, name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDeployedServer", reflect.TypeOf((*MockDeploymentProvider)(nil).GetDeployedServer), ctx, name)
-}
-
-// ListDeployedServers mocks base method.
-func (m *MockDeploymentProvider) ListDeployedServers(ctx context.Context) ([]*service.DeployedServer, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListDeployedServers", ctx)
-	ret0, _ := ret[0].([]*service.DeployedServer)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListDeployedServers indicates an expected call of ListDeployedServers.
-func (mr *MockDeploymentProviderMockRecorder) ListDeployedServers(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDeployedServers", reflect.TypeOf((*MockDeploymentProvider)(nil).ListDeployedServers), ctx)
 }

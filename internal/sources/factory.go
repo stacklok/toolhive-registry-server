@@ -6,16 +6,18 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
-// DefaultSourceHandlerFactory is the default implementation of SourceHandlerFactory
-type DefaultSourceHandlerFactory struct{}
+// defaultSourceHandlerFactory is the default implementation of SourceHandlerFactory
+type defaultSourceHandlerFactory struct{}
+
+var _ SourceHandlerFactory = (*defaultSourceHandlerFactory)(nil)
 
 // NewSourceHandlerFactory creates a new source handler factory
 func NewSourceHandlerFactory() SourceHandlerFactory {
-	return &DefaultSourceHandlerFactory{}
+	return &defaultSourceHandlerFactory{}
 }
 
 // CreateHandler creates a source handler for the given source type
-func (*DefaultSourceHandlerFactory) CreateHandler(sourceType string) (SourceHandler, error) {
+func (*defaultSourceHandlerFactory) CreateHandler(sourceType string) (SourceHandler, error) {
 	switch sourceType {
 	case config.SourceTypeGit:
 		return NewGitSourceHandler(), nil

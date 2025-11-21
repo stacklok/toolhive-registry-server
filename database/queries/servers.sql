@@ -19,7 +19,7 @@ SELECT r.reg_type as registry_type,
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
  WHERE (sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next))
-    OR (sqlc.narg(prev)::timestamp with time zone IS NULL AND s.created_at < sqlc.narg(prev))
+   AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR s.created_at < sqlc.narg(prev))
  ORDER BY
  -- next page sorting
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN r.reg_type END ASC,
@@ -33,7 +33,58 @@ SELECT r.reg_type as registry_type,
  CASE WHEN sqlc.narg(prev)::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
  LIMIT sqlc.arg(size)::bigint;
 
- -- name: ListServerPackages :many
+-- name: ListServerVersions :many
+SELECT r.reg_type as registry_type,
+       s.id,
+       s.name,
+       s.version,
+       (l.latest_server_id IS NOT NULL)::boolean AS is_latest,
+       s.created_at,
+       s.updated_at,
+       s.description,
+       s.title,
+       s.website,
+       s.upstream_meta,
+       s.server_meta,
+       s.repository_url,
+       s.repository_id,
+       s.repository_subfolder,
+       s.repository_type
+  FROM mcp_server s
+  JOIN registry r ON s.reg_id = r.id
+  LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
+ WHERE s.name = sqlc.arg(name)
+   AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next))
+    AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR s.created_at < sqlc.narg(prev)))
+ ORDER BY
+ CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.created_at END ASC,
+ CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
+ LIMIT sqlc.arg(size)::bigint;
+
+-- name: GetServerVersion :one
+SELECT r.reg_type as registry_type,
+       s.id,
+       s.name,
+       s.version,
+       (l.latest_server_id IS NOT NULL)::boolean AS is_latest,
+       s.created_at,
+       s.updated_at,
+       s.description,
+       s.title,
+       s.website,
+       s.upstream_meta,
+       s.server_meta,
+       s.repository_url,
+       s.repository_id,
+       s.repository_subfolder,
+       s.repository_type
+  FROM mcp_server s
+  JOIN registry r ON s.reg_id = r.id
+  LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
+ WHERE s.name = sqlc.arg(name)
+   AND s.version = sqlc.arg(version);
+
+-- name: ListServerPackages :many
 SELECT p.server_id,
        p.registry_type,
        p.pkg_registry_url,
@@ -49,41 +100,17 @@ SELECT p.server_id,
        p.transport_headers
   FROM mcp_server_package p
   JOIN mcp_server s ON p.server_id = s.id
- WHERE s.id IN (sqlc.slice(server_ids)::UUID[])
+ WHERE s.id = ANY(sqlc.slice(server_ids)::UUID[])
  ORDER BY p.pkg_version DESC;
 
- -- name: ListServerRemotes :many
+-- name: ListServerRemotes :many
 SELECT r.server_id,
        r.transport,
        r.transport_url,
        r.transport_headers
   FROM mcp_server_remote r
- WHERE r.server_id IN (sqlc.slice(server_ids)::UUID[])
+ WHERE r.server_id = ANY(sqlc.slice(server_ids)::UUID[])
  ORDER BY r.transport, r.transport_url;
-
--- name: ListServerVersions :many
-SELECT s.id,
-       s.name,
-       s.version,
-       s.created_at,
-       s.updated_at,
-       s.description,
-       s.title,
-       s.website,
-       s.upstream_meta,
-       s.server_meta,
-       s.repository_url,
-       s.repository_id,
-       s.repository_subfolder,
-       s.repository_type
-  FROM mcp_server s
- WHERE s.name = sqlc.arg(name)
-   AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next))
-       OR (sqlc.narg(prev)::timestamp with time zone IS NULL AND s.created_at < sqlc.narg(prev)))
- ORDER BY
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.created_at END ASC,
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
- LIMIT sqlc.arg(size)::bigint;
 
 -- name: UpsertServerVersion :one
 INSERT INTO mcp_server (
@@ -105,8 +132,8 @@ INSERT INTO mcp_server (
     sqlc.arg(name),
     sqlc.arg(version),
     sqlc.arg(reg_id),
-    CURRENT_TIMESTAMP,
-    CURRENT_TIMESTAMP,
+    sqlc.arg(created_at),
+    sqlc.arg(updated_at),
     sqlc.narg(description),
     sqlc.narg(title),
     sqlc.narg(website),
@@ -118,7 +145,7 @@ INSERT INTO mcp_server (
     sqlc.narg(repository_type)
 ) ON CONFLICT (reg_id, name, version)
   DO UPDATE SET
-    updated_at = CURRENT_TIMESTAMP,
+    updated_at = sqlc.arg(updated_at),
     description = sqlc.narg(description),
     title = sqlc.narg(title),
     website = sqlc.narg(website),

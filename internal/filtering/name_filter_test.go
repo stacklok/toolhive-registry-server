@@ -11,7 +11,6 @@ func TestNewDefaultNameFilter(t *testing.T) {
 
 	filter := NewDefaultNameFilter()
 	assert.NotNil(t, filter)
-	assert.IsType(t, &DefaultNameFilter{}, filter)
 }
 
 func TestDefaultNameFilter_ShouldInclude(t *testing.T) {

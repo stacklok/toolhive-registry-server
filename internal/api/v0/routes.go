@@ -3,13 +3,10 @@ package v0
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
-	"reflect"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stacklok/toolhive/pkg/logger"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 	"github.com/stacklok/toolhive/pkg/versions"
 	"gopkg.in/yaml.v3"
 
@@ -17,16 +14,29 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
-const (
-	// FormatToolhive is the toolhive format for registry responses
-	// Deprecated: Use API v0.1 instead
-	FormatToolhive = "toolhive"
-	// FormatUpstream is the upstream MCP registry format
-	// Deprecated: Use API v0.1 instead
-	FormatUpstream = "upstream"
+var (
+	// cachedOpenAPIYAML stores the cached YAML representation of the OpenAPI spec
+	cachedOpenAPIYAML []byte
 )
 
-// Response models for API consistency
+func init() {
+	// Initialize the OpenAPI YAML at package load time to prevent race conditions
+	// Parse the JSON OpenAPI spec
+	var openAPISpec map[string]any
+	if err := json.Unmarshal([]byte(docs.SwaggerInfo.ReadDoc()), &openAPISpec); err != nil {
+		logger.Errorf("Failed to parse OpenAPI specification during initialization: %v", err)
+		return
+	}
+
+	// Convert to YAML
+	yamlData, err := yaml.Marshal(openAPISpec)
+	if err != nil {
+		logger.Errorf("Failed to convert OpenAPI specification to YAML during initialization: %v", err)
+		return
+	}
+
+	cachedOpenAPIYAML = yamlData
+}
 
 // RegistryInfoResponse represents the registry information response
 // Deprecated: Use API v0.1 instead
@@ -35,53 +45,6 @@ type RegistryInfoResponse struct {
 	LastUpdated  string `json:"last_updated"`
 	Source       string `json:"source"`
 	TotalServers int    `json:"total_servers"`
-}
-
-// ServerSummaryResponse represents a server in list API responses (summary view)
-// Deprecated: Use API v0.1 instead
-type ServerSummaryResponse struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Tier        string `json:"tier"`
-	Status      string `json:"status"`
-	Transport   string `json:"transport"`
-	ToolsCount  int    `json:"tools_count"`
-}
-
-// EnvVarDetail represents detailed environment variable information
-// Deprecated: Use API v0.1 instead
-type EnvVarDetail struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Required    bool   `json:"required"`
-	Default     string `json:"default,omitempty"`
-	Secret      bool   `json:"secret,omitempty"`
-}
-
-// ServerDetailResponse represents a server in detail API responses (full view)
-// Deprecated: Use API v0.1 instead
-type ServerDetailResponse struct {
-	Name          string                 `json:"name"`
-	Description   string                 `json:"description"`
-	Tier          string                 `json:"tier"`
-	Status        string                 `json:"status"`
-	Transport     string                 `json:"transport"`
-	Tools         []string               `json:"tools"`
-	EnvVars       []EnvVarDetail         `json:"env_vars,omitempty"`
-	Permissions   map[string]interface{} `json:"permissions,omitempty"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
-	RepositoryURL string                 `json:"repository_url,omitempty"`
-	Tags          []string               `json:"tags,omitempty"`
-	Args          []string               `json:"args,omitempty"`
-	Volumes       map[string]interface{} `json:"volumes,omitempty"`
-	Image         string                 `json:"image,omitempty"`
-}
-
-// ListServersResponse represents the servers list response
-// Deprecated: Use API v0.1 instead
-type ListServersResponse struct {
-	Servers []ServerSummaryResponse `json:"servers"`
-	Total   int                     `json:"total"`
 }
 
 // ErrorResponse represents a standardized error response
@@ -111,27 +74,11 @@ func Router(svc service.RegistryService) http.Handler {
 
 	r := chi.NewRouter()
 
-	// MCP Registry API v0 compatible endpoints
-	r.Post("/publish", routes.publishServer)
-
 	// Registry metadata
 	r.Get("/info", routes.getRegistryInfo)
 
 	// OpenAPI specification
 	r.Get("/openapi.yaml", serveOpenAPIYAML)
-
-	// Server endpoints
-	r.Route("/servers", func(r chi.Router) {
-		r.Get("/", routes.listServers)
-
-		// Deployed servers sub-routes (must come before {name} to avoid conflicts)
-		r.Route("/deployed", func(r chi.Router) {
-			r.Get("/", routes.listDeployedServers)
-			r.Get("/{name}", routes.getDeployedServer)
-		})
-
-		r.Get("/{name}", routes.getServer)
-	})
 
 	return r
 }
@@ -150,24 +97,6 @@ func Router(svc service.RegistryService) http.Handler {
 // @Router			/api/v0/registry/info [get]
 // @Deprecated
 func (rr *Routes) getRegistryInfo(w http.ResponseWriter, r *http.Request) {
-	// Get format parameter (default to toolhive for now)
-	format := r.URL.Query().Get("format")
-	if format == "" {
-		format = FormatToolhive
-	}
-
-	// Support both toolhive and upstream formats
-	if format != FormatToolhive && format != FormatUpstream {
-		rr.writeErrorResponse(w, "Unsupported format. Supported formats: 'toolhive', 'upstream'", http.StatusBadRequest)
-		return
-	}
-
-	// Upstream format not implemented yet
-	if format == FormatUpstream {
-		rr.writeErrorResponse(w, "Upstream format not yet implemented", http.StatusNotImplemented)
-		return
-	}
-
 	reg, source, err := rr.service.GetRegistry(r.Context())
 	if err != nil {
 		logger.Errorf("Failed to get registry: %v", err)
@@ -175,359 +104,14 @@ func (rr *Routes) getRegistryInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create toolhive format response
 	info := RegistryInfoResponse{
 		Version:      reg.Version,
 		LastUpdated:  reg.LastUpdated,
 		Source:       source,
-		TotalServers: len(reg.GetAllServers()),
+		TotalServers: len(reg.Servers),
 	}
 
 	rr.writeJSONResponse(w, info)
-}
-
-// listServers handles GET /api/v0/registry/servers
-//
-// @Summary		List all servers
-// @Description	Get a list of all available MCP servers in the registry
-// @Tags			servers
-// @Accept			json
-// @Produce		json
-// @Param			format	query		string	false	"Response format"	Enums(toolhive,upstream)	default(toolhive)
-// @Success		200		{object}	ListServersResponse
-// @Failure		400		{object}	ErrorResponse
-// @Failure		501		{object}	ErrorResponse
-// @Router			/api/v0/registry/servers [get]
-// @Deprecated
-func (rr *Routes) listServers(w http.ResponseWriter, r *http.Request) {
-	// Get format parameter (default to toolhive for now)
-	format := r.URL.Query().Get("format")
-	if format == "" {
-		format = FormatToolhive
-	}
-
-	// Support both toolhive and upstream formats
-	if format != FormatToolhive && format != FormatUpstream {
-		rr.writeErrorResponse(w, "Unsupported format. Supported formats: 'toolhive', 'upstream'", http.StatusBadRequest)
-		return
-	}
-
-	// Upstream format not implemented yet
-	if format == FormatUpstream {
-		rr.writeErrorResponse(w, "Upstream format not yet implemented", http.StatusNotImplemented)
-		return
-	}
-
-	servers, err := rr.service.ListServers(r.Context())
-	if err != nil {
-		logger.Errorf("Failed to list servers: %v", err)
-		rr.writeErrorResponse(w, "Failed to list servers", http.StatusInternalServerError)
-		return
-	}
-
-	// Convert to summary response format
-	serverResponses := make([]ServerSummaryResponse, len(servers))
-	for i := range servers {
-		serverResponses[i] = newServerSummaryResponse(servers[i])
-	}
-
-	// Toolhive format response
-	response := ListServersResponse{
-		Servers: serverResponses,
-		Total:   len(servers),
-	}
-
-	rr.writeJSONResponse(w, response)
-}
-
-// getServer handles GET /api/v0/registry/servers/{name}
-//
-// @Summary		Get server by name
-// @Description	Get detailed information about a specific MCP server
-// @Tags			servers
-// @Accept			json
-// @Produce		json
-// @Param			name	path		string	true	"Server name"
-// @Param			format	query		string	false	"Response format"	Enums(toolhive,upstream)	default(toolhive)
-// @Success		200		{object}	ServerDetailResponse
-// @Failure		400		{object}	ErrorResponse
-// @Failure		404		{object}	ErrorResponse
-// @Failure		501		{object}	ErrorResponse
-// @Router			/api/v0/registry/servers/{name} [get]
-// @Deprecated
-func (rr *Routes) getServer(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
-	if name == "" {
-		rr.writeErrorResponse(w, "Server name is required", http.StatusBadRequest)
-		return
-	}
-
-	// Get format parameter (default to toolhive for now)
-	format := r.URL.Query().Get("format")
-	if format == "" {
-		format = FormatToolhive
-	}
-
-	// Support both toolhive and upstream formats
-	if format != FormatToolhive && format != FormatUpstream {
-		rr.writeErrorResponse(w, "Unsupported format. Supported formats: 'toolhive', 'upstream'", http.StatusBadRequest)
-		return
-	}
-
-	// Upstream format not implemented yet
-	if format == FormatUpstream {
-		rr.writeErrorResponse(w, "Upstream format not yet implemented", http.StatusNotImplemented)
-		return
-	}
-
-	server, err := rr.service.GetServer(r.Context(), name)
-	if err != nil {
-		if errors.Is(err, service.ErrServerNotFound) {
-			rr.writeErrorResponse(w, "Server not found", http.StatusNotFound)
-			return
-		}
-		logger.Errorf("Failed to get server %s: %v", name, err)
-		rr.writeErrorResponse(w, "Failed to get server", http.StatusInternalServerError)
-		return
-	}
-
-	// Convert to detailed response format
-	serverResponse := newServerDetailResponse(server)
-
-	// Toolhive format
-	rr.writeJSONResponse(w, serverResponse)
-}
-
-// publishServer handles POST /v0/publish
-//
-// @Summary		Publish MCP server (Not Implemented)
-// @Description	Publish a new MCP server to the registry or update an existing one
-// @Tags			servers
-// @Accept			json
-// @Produce		json
-// @Success		501		{object}	ErrorResponse
-// @Router			/v0/publish [post]
-// @Deprecated
-func (rr *Routes) publishServer(w http.ResponseWriter, _ *http.Request) {
-	rr.writeErrorResponse(w, "Publishing is not supported by this registry implementation", http.StatusNotImplemented)
-}
-
-// listDeployedServers handles GET /api/v0/registry/servers/deployed
-//
-// @Summary		List deployed servers
-// @Description	Get a list of all currently deployed MCP servers
-// @Tags			deployed-servers
-// @Accept			json
-// @Produce		json
-// @Success		200	{array}		service.DeployedServer
-// @Failure		500	{object}	ErrorResponse
-// @Router			/api/v0/registry/servers/deployed [get]
-// @Deprecated
-func (rr *Routes) listDeployedServers(w http.ResponseWriter, r *http.Request) {
-	servers, err := rr.service.ListDeployedServers(r.Context())
-	if err != nil {
-		logger.Errorf("Failed to list deployed servers: %v", err)
-		rr.writeErrorResponse(w, "Failed to list deployed servers", http.StatusInternalServerError)
-		return
-	}
-
-	rr.writeJSONResponse(w, servers)
-}
-
-// newServerSummaryResponse creates a ServerSummaryResponse from server metadata
-func newServerSummaryResponse(server toolhivetypes.ServerMetadata) ServerSummaryResponse {
-	return ServerSummaryResponse{
-		Name:        server.GetName(),
-		Description: server.GetDescription(),
-		Tier:        server.GetTier(),
-		Status:      server.GetStatus(),
-		Transport:   server.GetTransport(),
-		ToolsCount:  len(server.GetTools()),
-	}
-}
-
-// newServerDetailResponse creates a ServerDetailResponse from server metadata with all available fields
-func newServerDetailResponse(server toolhivetypes.ServerMetadata) ServerDetailResponse {
-	response := ServerDetailResponse{
-		Name:          server.GetName(),
-		Description:   server.GetDescription(),
-		Tier:          server.GetTier(),
-		Status:        server.GetStatus(),
-		Transport:     server.GetTransport(),
-		Tools:         server.GetTools(),
-		RepositoryURL: server.GetRepositoryURL(),
-		Tags:          server.GetTags(),
-	}
-
-	populateEnvVars(&response, server)
-	populateMetadata(&response, server)
-	populateServerTypeSpecificFields(&response, server)
-
-	return response
-}
-
-// populateEnvVars converts and populates environment variables in the response
-func populateEnvVars(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
-	envVars := server.GetEnvVars()
-	if envVars == nil {
-		return
-	}
-
-	response.EnvVars = make([]EnvVarDetail, 0, len(envVars))
-	for _, envVar := range envVars {
-		if envVar != nil {
-			response.EnvVars = append(response.EnvVars, EnvVarDetail{
-				Name:        envVar.Name,
-				Description: envVar.Description,
-				Required:    envVar.Required,
-				Default:     envVar.Default,
-				Secret:      envVar.Secret,
-			})
-		}
-	}
-}
-
-// populateMetadata converts and populates metadata in the response
-func populateMetadata(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
-	// Convert metadata from *Metadata to map[string]interface{}
-	if metadata := server.GetMetadata(); metadata != nil {
-		response.Metadata = map[string]interface{}{
-			"stars":        metadata.Stars,
-			"pulls":        metadata.Pulls,
-			"last_updated": metadata.LastUpdated,
-		}
-	}
-
-	// Add custom metadata
-	if customMetadata := server.GetCustomMetadata(); customMetadata != nil {
-		if response.Metadata == nil {
-			response.Metadata = make(map[string]interface{})
-		}
-		for k, v := range customMetadata {
-			response.Metadata[k] = v
-		}
-	}
-}
-
-// populateServerTypeSpecificFields populates fields specific to container or remote servers
-func populateServerTypeSpecificFields(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
-	if !server.IsRemote() {
-		populateContainerServerFields(response, server)
-	} else {
-		populateRemoteServerFields(response, server)
-	}
-}
-
-// populateContainerServerFields populates fields specific to container servers (ImageMetadata)
-func populateContainerServerFields(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
-	// The server might be wrapped in a serverWithName struct from the service layer
-	actualServer := extractEmbeddedServerMetadata(server)
-
-	// Type assert to access ImageMetadata-specific fields
-	imgMetadata, ok := actualServer.(*toolhivetypes.ImageMetadata)
-	if !ok {
-		return
-	}
-
-	// Add permissions if available
-	if imgMetadata.Permissions != nil {
-		response.Permissions = map[string]interface{}{
-			"profile": imgMetadata.Permissions,
-		}
-	}
-
-	// Add args if available
-	if imgMetadata.Args != nil {
-		response.Args = imgMetadata.Args
-	}
-
-	// Add image as top-level field
-	response.Image = imgMetadata.Image
-
-	// Add image-specific metadata
-	if response.Metadata == nil {
-		response.Metadata = make(map[string]interface{})
-	}
-	response.Metadata["target_port"] = imgMetadata.TargetPort
-	response.Metadata["docker_tags"] = imgMetadata.DockerTags
-}
-
-// populateRemoteServerFields populates fields specific to remote servers
-func populateRemoteServerFields(response *ServerDetailResponse, server toolhivetypes.ServerMetadata) {
-	// The server might be wrapped in a serverWithName struct from the service layer
-	actualServer := extractEmbeddedServerMetadata(server)
-
-	remoteMetadata, ok := actualServer.(*toolhivetypes.RemoteServerMetadata)
-	if !ok {
-		return
-	}
-
-	if response.Metadata == nil {
-		response.Metadata = make(map[string]interface{})
-	}
-
-	response.Metadata["url"] = remoteMetadata.URL
-	if remoteMetadata.Headers != nil {
-		response.Metadata["headers_count"] = len(remoteMetadata.Headers)
-	}
-	response.Metadata["oauth_enabled"] = remoteMetadata.OAuthConfig != nil
-}
-
-// extractEmbeddedServerMetadata extracts the embedded ServerMetadata from serverWithName wrapper
-func extractEmbeddedServerMetadata(server toolhivetypes.ServerMetadata) toolhivetypes.ServerMetadata {
-	// Use reflection to check if this is a struct with an embedded ServerMetadata field
-	v := reflect.ValueOf(server)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-
-	if v.Kind() == reflect.Struct {
-		// Look for an embedded field of type registry.ServerMetadata
-		for i := 0; i < v.NumField(); i++ {
-			field := v.Field(i)
-			fieldType := v.Type().Field(i)
-
-			// Check if it's an embedded field (Anonymous) that implements ServerMetadata
-			if fieldType.Anonymous && field.CanInterface() {
-				if serverMetadata, ok := field.Interface().(toolhivetypes.ServerMetadata); ok {
-					return serverMetadata
-				}
-			}
-		}
-	}
-
-	// If not wrapped, return the original server
-	return server
-}
-
-// getDeployedServer handles GET /api/v0/registry/servers/deployed/{name}
-//
-// @Summary		Get deployed servers by registry name
-// @Description	Get all deployed MCP servers that match the specified server registry name
-// @Tags			deployed-servers
-// @Accept			json
-// @Produce		json
-// @Param			name	path		string	true	"Server registry name"
-// @Success		200		{array}		service.DeployedServer
-// @Failure		400		{object}	ErrorResponse
-// @Failure		500		{object}	ErrorResponse
-// @Router			/api/v0/registry/servers/deployed/{name} [get]
-// @Deprecated
-func (rr *Routes) getDeployedServer(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
-	if name == "" {
-		rr.writeErrorResponse(w, "Server name is required", http.StatusBadRequest)
-		return
-	}
-
-	servers, err := rr.service.GetDeployedServer(r.Context(), name)
-	if err != nil {
-		logger.Errorf("Failed to get deployed servers for %s: %v", name, err)
-		rr.writeErrorResponse(w, "Failed to get deployed servers", http.StatusInternalServerError)
-		return
-	}
-
-	rr.writeJSONResponse(w, servers)
 }
 
 // HealthRouter creates a router for health check endpoints
@@ -648,35 +232,13 @@ func (*Routes) writeErrorResponse(w http.ResponseWriter, message string, statusC
 // @Router			/api/v0/registry/openapi.yaml [get]
 // @Deprecated
 func serveOpenAPIYAML(w http.ResponseWriter, _ *http.Request) {
-	// Parse the JSON OpenAPI spec
-	var openAPISpec map[string]interface{}
-	if err := json.Unmarshal([]byte(docs.SwaggerInfo.ReadDoc()), &openAPISpec); err != nil {
-		http.Error(w, "Failed to parse OpenAPI specification", http.StatusInternalServerError)
-		return
-	}
-
-	// Convert to YAML
-	yamlData, err := yaml.Marshal(openAPISpec)
-	if err != nil {
-		http.Error(w, "Failed to convert OpenAPI specification to YAML", http.StatusInternalServerError)
+	// Check if initialization failed (cachedOpenAPIYAML would be empty)
+	if len(cachedOpenAPIYAML) == 0 {
+		http.Error(w, "OpenAPI specification not available", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/x-yaml")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(yamlData)
-}
-
-// Test helpers - these functions are exported only for testing purposes
-
-// NewServerSummaryResponseForTesting creates a ServerSummaryResponse for testing
-// Deprecated: Use API v0.1 instead
-func NewServerSummaryResponseForTesting(server toolhivetypes.ServerMetadata) ServerSummaryResponse {
-	return newServerSummaryResponse(server)
-}
-
-// NewServerDetailResponseForTesting creates a ServerDetailResponse for testing
-// Deprecated: Use API v0.1 instead
-func NewServerDetailResponseForTesting(server toolhivetypes.ServerMetadata) ServerDetailResponse {
-	return newServerDetailResponse(server)
+	_, _ = w.Write(cachedOpenAPIYAML)
 }
