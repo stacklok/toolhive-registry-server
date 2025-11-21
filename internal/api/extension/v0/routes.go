@@ -35,8 +35,10 @@ func Router(svc service.RegistryService) http.Handler {
 	r.Put("/registries/{registryName}", routes.upsertRegistry)
 	r.Delete("/registries/{registryName}", routes.deleteRegistry)
 
-	r.Put("/registries/{registryName}/servers/{serverName}/versions/{version}", routes.upsertVersion)
-	r.Delete("/registries/{registryName}/servers/{serverName}/versions/{version}", routes.deleteVersion)
+	r.Route("/registries/{registryName}/servers/{serverName}", func(r chi.Router) {
+		r.Put("/versions/{version}", routes.upsertVersion)
+		r.Delete("/versions/{version}", routes.deleteVersion)
+	})
 
 	return r
 }
