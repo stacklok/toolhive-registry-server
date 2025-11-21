@@ -9,6 +9,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
+	"github.com/stacklok/toolhive-registry-server/internal/sync"
 )
 
 // checkRegistrySync performs a sync check and updates status accordingly for a specific registry
@@ -16,18 +17,20 @@ func (c *defaultCoordinator) checkRegistrySync(ctx context.Context, regCfg *conf
 	registryName := regCfg.Name
 
 	// Check if sync is needed (read status under lock)
-	// ShouldSync will return false with ReasonAlreadyInProgress if Phase == SyncPhaseSyncing
-	var shouldSync bool
-	var reason string
+	// ShouldSync will return ReasonAlreadyInProgress if Phase == SyncPhaseSyncing
+	var reason sync.Reason
 	c.withRegistryStatus(registryName, func(syncStatus *status.SyncStatus) {
-		shouldSync, reason, _ = c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
+		reason = c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
 	})
-	logger.Infof("Registry '%s': %s sync check: shouldSync=%v, reason=%s", registryName, checkType, shouldSync, reason)
+	logger.Infof(
+		"Registry '%s': %s sync check: shouldSync=%v, reason=%s",
+		registryName, checkType, reason.ShouldSync(), reason.String(),
+	)
 
-	if shouldSync {
+	if reason.ShouldSync() {
 		c.performRegistrySync(ctx, regCfg)
 	} else {
-		c.updateStatusForSkippedSync(ctx, regCfg, reason)
+		c.updateStatusForSkippedSync(ctx, regCfg, reason.String())
 	}
 }
 

@@ -51,9 +51,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 		manualSyncRequested bool
 		config              *config.RegistryConfig
 		syncStatus          *status.SyncStatus
-		expectedSyncNeeded  bool
-		expectedReason      string
-		expectedNextTime    bool // whether nextSyncTime should be set
+		expectedReason      Reason
 	}{
 		{
 			name:                "sync needed when registry is in failed state",
@@ -68,9 +66,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			syncStatus: &status.SyncStatus{
 				Phase: status.SyncPhaseFailed,
 			},
-			expectedSyncNeeded: true,
-			expectedReason:     ReasonRegistryNotReady,
-			expectedNextTime:   false,
+			expectedReason: ReasonRegistryNotReady,
 		},
 		{
 			name:                "sync not needed when already syncing",
@@ -85,9 +81,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			syncStatus: &status.SyncStatus{
 				Phase: status.SyncPhaseSyncing,
 			},
-			expectedSyncNeeded: false,
-			expectedReason:     ReasonAlreadyInProgress,
-			expectedNextTime:   false,
+			expectedReason: ReasonAlreadyInProgress,
 		},
 		{
 			name:                "sync needed when registry is in failed state",
@@ -103,9 +97,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 				Phase:        status.SyncPhaseFailed,
 				LastSyncHash: "",
 			},
-			expectedSyncNeeded: true,
-			expectedReason:     ReasonRegistryNotReady,
-			expectedNextTime:   false,
+			expectedReason: ReasonRegistryNotReady,
 		},
 		{
 			name:                "manual sync not needed with new trigger value and same hash",
@@ -121,9 +113,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 				Phase:        status.SyncPhaseComplete,
 				LastSyncHash: testHash,
 			},
-			expectedSyncNeeded: false,
-			expectedReason:     ReasonManualNoChanges, // No data changes but manual trigger
-			expectedNextTime:   false,
+			expectedReason: ReasonManualNoChanges, // No data changes but manual trigger
 		},
 	}
 
@@ -138,22 +128,11 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			syncNeeded, reason, nextSyncTime := syncManager.ShouldSync(ctx, tt.config, tt.syncStatus, tt.manualSyncRequested)
+			reason := syncManager.ShouldSync(ctx, tt.config, tt.syncStatus, tt.manualSyncRequested)
 
-			// We expect some errors for file source operations, but that's okay for this test
-			if tt.expectedSyncNeeded {
-				assert.True(t, syncNeeded, "Expected sync to be needed for "+tt.name)
-				assert.Equal(t, tt.expectedReason, reason, "Expected specific sync reason")
-			} else {
-				assert.False(t, syncNeeded, "Expected sync not to be needed for "+tt.name)
-				assert.Equal(t, tt.expectedReason, reason, "Expected specific sync reason")
-			}
-
-			if tt.expectedNextTime {
-				assert.NotNil(t, nextSyncTime, "Expected next sync time to be set")
-			} else {
-				assert.Nil(t, nextSyncTime, "Expected next sync time to be nil")
-			}
+			assert.Equal(t, tt.expectedReason, reason, "Expected specific sync reason for "+tt.name)
+			assert.Equal(t, tt.expectedReason.ShouldSync(), reason.ShouldSync(), "ShouldSync() should match expected reason")
+			assert.Equal(t, tt.expectedReason.String(), reason.String(), "String() should match expected reason")
 		})
 	}
 }
@@ -325,7 +304,7 @@ func TestIsManualSync(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		reason   string
+		reason   Reason
 		expected bool
 	}{
 		{ReasonManualWithChanges, true},
@@ -336,7 +315,7 @@ func TestIsManualSync(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.reason, func(t *testing.T) {
+		t.Run(tt.reason.String(), func(t *testing.T) {
 			t.Parallel()
 			result := IsManualSync(tt.reason)
 			assert.Equal(t, tt.expected, result)
