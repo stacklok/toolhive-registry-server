@@ -386,10 +386,11 @@ func (c *Config) validateSourceConfigByType() error {
 
 // validateStorageConfig validates the storage configuration
 func (c *Config) validateStorageConfig() error {
+	// TODO: Reinstate this validation once database is fully wired in
 	// Error if both database and file storage are configured
-	if c.Database != nil && c.FileStorage != nil {
-		return fmt.Errorf("cannot configure both database and fileStorage - only one storage backend is allowed")
-	}
+	// if c.Database != nil && c.FileStorage != nil {
+	// 	return fmt.Errorf("cannot configure both database and fileStorage - only one storage backend is allowed")
+	// }
 
 	// If database is configured, validate required fields
 	if c.Database != nil {

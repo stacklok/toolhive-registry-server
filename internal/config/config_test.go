@@ -443,31 +443,32 @@ func TestConfigValidate(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name: "both_file_storage_and_database_configured",
-			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
-					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
-				},
-				FileStorage: &FileStorageConfig{
-					BaseDir: "/custom/data",
-				},
-				Database: &DatabaseConfig{
-					Host:     "localhost",
-					Port:     5432,
-					User:     "testuser",
-					Database: "testdb",
-				},
-			},
-			wantErr: true,
-			errMsg:  "cannot configure both database and fileStorage",
-		},
+		// TODO: Reinstate this test case once database is fully wired in
+		// {
+		// 	name: "both_file_storage_and_database_configured",
+		// 	config: &Config{
+		// 		Source: SourceConfig{
+		// 			Type: "file",
+		// 			File: &FileConfig{
+		// 				Path: "/data/registry.json",
+		// 			},
+		// 		},
+		// 		SyncPolicy: &SyncPolicyConfig{
+		// 			Interval: "30m",
+		// 		},
+		// 		FileStorage: &FileStorageConfig{
+		// 			BaseDir: "/custom/data",
+		// 		},
+		// 		Database: &DatabaseConfig{
+		// 			Host:     "localhost",
+		// 			Port:     5432,
+		// 			User:     "testuser",
+		// 			Database: "testdb",
+		// 		},
+		// 	},
+		// 	wantErr: true,
+		// 	errMsg:  "cannot configure both database and fileStorage",
+		// },
 		{
 			name: "database_storage_missing_host",
 			config: &Config{
