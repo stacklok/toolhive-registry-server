@@ -115,7 +115,7 @@ type GitConfig struct {
 // APIConfig defines API source configuration for ToolHive Registry APIs
 type APIConfig struct {
 	// Endpoint is the base API URL (without path)
-	// The source handler will append the appropriate paths, for instance:
+	// The registry handler will append the appropriate paths, for instance:
 	//   - /v0/servers - List all servers (single response, no pagination)
 	//   - /v0/servers/{name} - Get specific server (future)
 	//   - /v0/info - Get registry metadata (future)

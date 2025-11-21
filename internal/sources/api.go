@@ -10,27 +10,27 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
 )
 
-// apiSourceHandler handles registry data from API endpoints
+// apiRegistryHandler handles registry data from API endpoints
 // It validates the Upstream format and delegates to the appropriate handler
-type apiSourceHandler struct {
+type apiRegistryHandler struct {
 	httpClient      httpclient.Client
-	validator       SourceDataValidator
+	validator       RegistryDataValidator
 	upstreamHandler *upstreamAPIHandler
 }
 
-// NewAPISourceHandler creates a new API source handler
-func NewAPISourceHandler() SourceHandler {
+// NewAPIRegistryHandler creates a new API registry handler
+func NewAPIRegistryHandler() RegistryHandler {
 	httpClient := httpclient.NewDefaultClient(0) // Use default timeout
 
-	return &apiSourceHandler{
+	return &apiRegistryHandler{
 		httpClient:      httpClient,
-		validator:       NewSourceDataValidator(),
+		validator:       NewRegistryDataValidator(),
 		upstreamHandler: NewUpstreamAPIHandler(httpClient),
 	}
 }
 
 // Validate validates the API registry configuration
-func (*apiSourceHandler) Validate(regCfg *config.RegistryConfig) error {
+func (*apiRegistryHandler) Validate(regCfg *config.RegistryConfig) error {
 	if regCfg == nil {
 		return fmt.Errorf("registry configuration cannot be nil")
 	}
@@ -53,7 +53,7 @@ func (*apiSourceHandler) Validate(regCfg *config.RegistryConfig) error {
 
 // FetchRegistry retrieves registry data from the API endpoint
 // It validates the Upstream format and delegates to the appropriate handler
-func (h *apiSourceHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
+func (h *apiRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
 	logger := log.FromContext(ctx)
 
 	// Validate registry configuration
@@ -74,7 +74,7 @@ func (h *apiSourceHandler) FetchRegistry(ctx context.Context, regCfg *config.Reg
 }
 
 // CurrentHash returns the current hash of the API response
-func (h *apiSourceHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
+func (h *apiRegistryHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
 	// Validate registry configuration
 	if err := h.Validate(regCfg); err != nil {
 		return "", fmt.Errorf("registry validation failed: %w", err)
@@ -91,7 +91,7 @@ func (h *apiSourceHandler) CurrentHash(ctx context.Context, regCfg *config.Regis
 }
 
 // validateUstreamFormat validates the Upstream format and returns the appropriate handler
-func (h *apiSourceHandler) validateUstreamFormat(
+func (h *apiRegistryHandler) validateUstreamFormat(
 	ctx context.Context,
 	regCfg *config.RegistryConfig,
 ) (*upstreamAPIHandler, error) {
@@ -110,7 +110,7 @@ func (h *apiSourceHandler) validateUstreamFormat(
 }
 
 // getBaseURL extracts and normalizes the base URL
-func (*apiSourceHandler) getBaseURL(regCfg *config.RegistryConfig) string {
+func (*apiRegistryHandler) getBaseURL(regCfg *config.RegistryConfig) string {
 	baseURL := regCfg.API.Endpoint
 
 	// Remove trailing slash

@@ -18,22 +18,22 @@ const (
 	DefaultRegistryDataFile = "registry.json"
 )
 
-// gitSourceHandler handles registry data from Git repositories
-type gitSourceHandler struct {
+// gitRegistryHandler handles registry data from Git repositories
+type gitRegistryHandler struct {
 	gitClient git2.Client
-	validator SourceDataValidator
+	validator RegistryDataValidator
 }
 
-// NewGitSourceHandler creates a new Git source handler
-func NewGitSourceHandler() SourceHandler {
-	return &gitSourceHandler{
+// NewGitRegistryHandler creates a new Git registry handler
+func NewGitRegistryHandler() RegistryHandler {
+	return &gitRegistryHandler{
 		gitClient: git2.NewDefaultGitClient(),
-		validator: NewSourceDataValidator(),
+		validator: NewRegistryDataValidator(),
 	}
 }
 
 // Validate validates the Git registry configuration
-func (*gitSourceHandler) Validate(regCfg *config.RegistryConfig) error {
+func (*gitRegistryHandler) Validate(regCfg *config.RegistryConfig) error {
 	if regCfg == nil {
 		return fmt.Errorf("registry configuration cannot be nil")
 	}
@@ -73,7 +73,7 @@ func (*gitSourceHandler) Validate(regCfg *config.RegistryConfig) error {
 }
 
 // fetchRegistryData retrieves registry data from the Git repository
-func (h *gitSourceHandler) fetchRegistryData(ctx context.Context, regCfg *config.RegistryConfig) ([]byte, error) {
+func (h *gitRegistryHandler) fetchRegistryData(ctx context.Context, regCfg *config.RegistryConfig) ([]byte, error) {
 
 	// Validate registry configuration
 	if err := h.Validate(regCfg); err != nil {
@@ -140,7 +140,7 @@ func (h *gitSourceHandler) fetchRegistryData(ctx context.Context, regCfg *config
 }
 
 // FetchRegistry retrieves registry data from the Git repository
-func (h *gitSourceHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
+func (h *gitRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
 
 	registryData, err := h.fetchRegistryData(ctx, regCfg)
 	if err != nil {
@@ -161,7 +161,7 @@ func (h *gitSourceHandler) FetchRegistry(ctx context.Context, regCfg *config.Reg
 }
 
 // CurrentHash returns the current hash of the source data after fetching the registry data
-func (h *gitSourceHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
+func (h *gitRegistryHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
 	registryData, err := h.fetchRegistryData(ctx, regCfg)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch registry data: %w", err)

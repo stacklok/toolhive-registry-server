@@ -16,14 +16,14 @@ import (
 // Phase 2 implementation - currently validates format but does not fetch data
 type upstreamAPIHandler struct {
 	httpClient httpclient.Client
-	validator  SourceDataValidator
+	validator  RegistryDataValidator
 }
 
 // NewUpstreamAPIHandler creates a new upstream MCP Registry API handler
 func NewUpstreamAPIHandler(httpClient httpclient.Client) *upstreamAPIHandler {
 	return &upstreamAPIHandler{
 		httpClient: httpClient,
-		validator:  NewSourceDataValidator(),
+		validator:  NewRegistryDataValidator(),
 	}
 }
 

@@ -23,10 +23,10 @@ import (
 func TestNewDefaultSyncManager(t *testing.T) {
 	t.Parallel()
 
-	sourceHandlerFactory := sources.NewSourceHandlerFactory()
+	registryHandlerFactory := sources.NewRegistryHandlerFactory()
 	storageManager := sources.NewFileStorageManager("/tmp/test-storage")
 
-	syncManager := NewDefaultSyncManager(sourceHandlerFactory, storageManager)
+	syncManager := NewDefaultSyncManager(registryHandlerFactory, storageManager)
 
 	assert.NotNil(t, syncManager)
 	assert.IsType(t, &defaultSyncManager{}, syncManager)
@@ -131,9 +131,9 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			sourceHandlerFactory := sources.NewSourceHandlerFactory()
+			registryHandlerFactory := sources.NewRegistryHandlerFactory()
 			storageManager := sources.NewFileStorageManager("/tmp/test-storage")
-			syncManager := NewDefaultSyncManager(sourceHandlerFactory, storageManager)
+			syncManager := NewDefaultSyncManager(registryHandlerFactory, storageManager)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -286,7 +286,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			sourceHandlerFactory := sources.NewSourceHandlerFactory()
+			registryHandlerFactory := sources.NewRegistryHandlerFactory()
 			mockStorageManager := mocks.NewMockStorageManager(ctrl)
 
 			// Setup expectations for successful syncs
@@ -297,7 +297,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 					Times(1)
 			}
 
-			syncManager := NewDefaultSyncManager(sourceHandlerFactory, mockStorageManager)
+			syncManager := NewDefaultSyncManager(registryHandlerFactory, mockStorageManager)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()

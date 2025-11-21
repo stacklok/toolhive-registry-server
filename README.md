@@ -486,7 +486,7 @@ pkg/
 │   ├── git.go               # Git repository source
 │   ├── api.go               # API endpoint source
 │   ├── file.go              # File system source
-│   ├── factory.go           # Source handler factory
+│   ├── factory.go           # Registry handler factory
 │   └── storage_manager.go   # Storage abstraction
 ├── sync/                # Sync manager and coordination
 │   └── manager.go           # Background sync logic
@@ -503,10 +503,10 @@ The server follows a clean architecture pattern with the following layers:
 1. **API Layer** (`cmd/thv-registry-api/api`): HTTP handlers implementing the MCP Registry API
 2. **Service Layer** (`cmd/thv-registry-api/internal/service`): Legacy business logic (being refactored)
 3. **Configuration Layer** (`pkg/config`): YAML configuration loading and validation
-4. **Source Handler Layer** (`pkg/sources`): Pluggable data source implementations
-   - `GitSourceHandler`: Clones Git repositories and extracts registry files
-   - `APISourceHandler`: Fetches from upstream MCP Registry APIs
-   - `FileSourceHandler`: Reads from local filesystem
+4. **Registry Handler Layer** (`pkg/sources`): Pluggable data source implementations
+   - `GitRegistryHandler`: Clones Git repositories and extracts registry files
+   - `APIRegistryHandler`: Fetches from upstream MCP Registry APIs
+   - `FileRegistryHandler`: Reads from local filesystem
 5. **Sync Manager** (`pkg/sync`): Coordinates automatic registry synchronization
 6. **Storage Layer** (`pkg/sources`): Persists registry data to local storage
 7. **Status Tracking** (`pkg/status`): Tracks and persists sync status

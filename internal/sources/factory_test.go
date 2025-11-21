@@ -8,17 +8,17 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
-func TestNewSourceHandlerFactory(t *testing.T) {
+func TestNewRegistryHandlerFactory(t *testing.T) {
 	t.Parallel()
 
-	factory := NewSourceHandlerFactory()
+	factory := NewRegistryHandlerFactory()
 	assert.NotNil(t, factory)
 }
 
-func TestDefaultSourceHandlerFactory_CreateHandler(t *testing.T) {
+func TestDefaultRegistryHandlerFactory_CreateHandler(t *testing.T) {
 	t.Parallel()
 
-	factory := NewSourceHandlerFactory()
+	factory := NewRegistryHandlerFactory()
 
 	tests := []struct {
 		name           string
@@ -34,7 +34,7 @@ func TestDefaultSourceHandlerFactory_CreateHandler(t *testing.T) {
 				File: &config.FileConfig{Path: "/path/to/file"},
 			},
 			expectError:  false,
-			expectedType: &fileSourceHandler{},
+			expectedType: &fileRegistryHandler{},
 		},
 		{
 			name: "git source type",
@@ -43,7 +43,7 @@ func TestDefaultSourceHandlerFactory_CreateHandler(t *testing.T) {
 				Git:  &config.GitConfig{Repository: "https://github.com/test/repo.git"},
 			},
 			expectError:  false,
-			expectedType: &gitSourceHandler{},
+			expectedType: &gitRegistryHandler{},
 		},
 		{
 			name: "api source type",
@@ -52,7 +52,7 @@ func TestDefaultSourceHandlerFactory_CreateHandler(t *testing.T) {
 				API:  &config.APIConfig{Endpoint: "https://api.example.com"},
 			},
 			expectError:  false,
-			expectedType: &apiSourceHandler{},
+			expectedType: &apiRegistryHandler{},
 		},
 		{
 			name: "no source type configured",

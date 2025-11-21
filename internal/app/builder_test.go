@@ -169,17 +169,17 @@ func TestWithMiddlewares(t *testing.T) {
 	assert.Len(t, cfg.middlewares, 2)
 }
 
-func TestWithSourceHandlerFactory(t *testing.T) {
+func TestWithRegistryHandlerFactory(t *testing.T) {
 	t.Parallel()
 	cfg := &registryAppConfig{}
 	// Use nil factory for testing - we're just verifying the field is set
-	var testFactory sources.SourceHandlerFactory
+	var testFactory sources.RegistryHandlerFactory
 
-	opt := WithSourceHandlerFactory(testFactory)
+	opt := WithRegistryHandlerFactory(testFactory)
 	err := opt(cfg)
 
 	require.NoError(t, err)
-	assert.Equal(t, testFactory, cfg.sourceHandlerFactory)
+	assert.Equal(t, testFactory, cfg.registryHandlerFactory)
 }
 
 func TestWithStorageManager(t *testing.T) {
@@ -513,19 +513,19 @@ func TestBuildSyncComponents(t *testing.T) {
 		{
 			name: "success with all nil components - creates defaults",
 			config: &registryAppConfig{
-				config:               createValidTestConfig(),
-				dataDir:              t.TempDir(),
-				statusFile:           t.TempDir() + "/status.json",
-				sourceHandlerFactory: nil,
-				storageManager:       nil,
-				statusPersistence:    nil,
-				syncManager:          nil,
+				config:                 createValidTestConfig(),
+				dataDir:                t.TempDir(),
+				statusFile:             t.TempDir() + "/status.json",
+				registryHandlerFactory: nil,
+				storageManager:         nil,
+				statusPersistence:      nil,
+				syncManager:            nil,
 			},
 			wantErr: false,
 			//nolint:thelper // we want to see these lines
 			verify: func(t *testing.T, coord coordinator.Coordinator, cfg *registryAppConfig) {
 				assert.NotNil(t, coord, "coordinator should be created")
-				assert.NotNil(t, cfg.sourceHandlerFactory, "sourceHandlerFactory should be created")
+				assert.NotNil(t, cfg.registryHandlerFactory, "registryHandlerFactory should be created")
 				assert.NotNil(t, cfg.storageManager, "storageManager should be created")
 				assert.NotNil(t, cfg.statusPersistence, "statusPersistence should be created")
 				assert.NotNil(t, cfg.syncManager, "syncManager should be created")
@@ -536,14 +536,14 @@ func TestBuildSyncComponents(t *testing.T) {
 			config: func() *registryAppConfig {
 				tempDir := t.TempDir()
 				return &registryAppConfig{
-					config:               createValidTestConfig(),
-					dataDir:              tempDir,
-					statusFile:           tempDir + "/status.json",
-					sourceHandlerFactory: sources.NewSourceHandlerFactory(),
-					storageManager:       sources.NewFileStorageManager(tempDir),
-					statusPersistence:    status.NewFileStatusPersistence(tempDir + "/status.json"),
+					config:                 createValidTestConfig(),
+					dataDir:                tempDir,
+					statusFile:             tempDir + "/status.json",
+					registryHandlerFactory: sources.NewRegistryHandlerFactory(),
+					storageManager:         sources.NewFileStorageManager(tempDir),
+					statusPersistence:      status.NewFileStatusPersistence(tempDir + "/status.json"),
 					syncManager: pkgsync.NewDefaultSyncManager(
-						sources.NewSourceHandlerFactory(),
+						sources.NewRegistryHandlerFactory(),
 						sources.NewFileStorageManager(tempDir),
 					),
 				}
@@ -553,7 +553,7 @@ func TestBuildSyncComponents(t *testing.T) {
 			verify: func(t *testing.T, coord coordinator.Coordinator, cfg *registryAppConfig) {
 				assert.NotNil(t, coord, "coordinator should be created")
 				// Verify that the original components are still set (not replaced)
-				assert.NotNil(t, cfg.sourceHandlerFactory, "sourceHandlerFactory should remain set")
+				assert.NotNil(t, cfg.registryHandlerFactory, "registryHandlerFactory should remain set")
 				assert.NotNil(t, cfg.storageManager, "storageManager should remain set")
 				assert.NotNil(t, cfg.statusPersistence, "statusPersistence should remain set")
 				assert.NotNil(t, cfg.syncManager, "syncManager should remain set")
@@ -564,20 +564,20 @@ func TestBuildSyncComponents(t *testing.T) {
 			config: func() *registryAppConfig {
 				tempDir := t.TempDir()
 				return &registryAppConfig{
-					config:               createValidTestConfig(),
-					dataDir:              tempDir,
-					statusFile:           tempDir + "/status.json",
-					sourceHandlerFactory: sources.NewSourceHandlerFactory(), // pre-set
-					storageManager:       nil,                               // will be created
-					statusPersistence:    nil,                               // will be created
-					syncManager:          nil,                               // will be created
+					config:                 createValidTestConfig(),
+					dataDir:                tempDir,
+					statusFile:             tempDir + "/status.json",
+					registryHandlerFactory: sources.NewRegistryHandlerFactory(), // pre-set
+					storageManager:         nil,                                 // will be created
+					statusPersistence:      nil,                                 // will be created
+					syncManager:            nil,                                 // will be created
 				}
 			}(),
 			wantErr: false,
 			//nolint:thelper // we want to see these lines
 			verify: func(t *testing.T, coord coordinator.Coordinator, cfg *registryAppConfig) {
 				assert.NotNil(t, coord, "coordinator should be created")
-				assert.NotNil(t, cfg.sourceHandlerFactory, "pre-set sourceHandlerFactory should remain")
+				assert.NotNil(t, cfg.registryHandlerFactory, "pre-set registryHandlerFactory should remain")
 				assert.NotNil(t, cfg.storageManager, "storageManager should be created")
 				assert.NotNil(t, cfg.statusPersistence, "statusPersistence should be created")
 				assert.NotNil(t, cfg.syncManager, "syncManager should be created")
@@ -586,13 +586,13 @@ func TestBuildSyncComponents(t *testing.T) {
 		{
 			name: "error when data directory creation fails",
 			config: &registryAppConfig{
-				config:               createValidTestConfig(),
-				dataDir:              "/dev/null/invalid/path", // Invalid path that should fail
-				statusFile:           "/dev/null/invalid/path/status.json",
-				sourceHandlerFactory: nil,
-				storageManager:       nil, // This will trigger directory creation
-				statusPersistence:    nil,
-				syncManager:          nil,
+				config:                 createValidTestConfig(),
+				dataDir:                "/dev/null/invalid/path", // Invalid path that should fail
+				statusFile:             "/dev/null/invalid/path/status.json",
+				registryHandlerFactory: nil,
+				storageManager:         nil, // This will trigger directory creation
+				statusPersistence:      nil,
+				syncManager:            nil,
 			},
 			wantErr: true,
 		},
