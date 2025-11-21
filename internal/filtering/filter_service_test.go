@@ -34,8 +34,10 @@ func TestNewDefaultFilterService(t *testing.T) {
 
 	service := NewDefaultFilterService()
 	assert.NotNil(t, service)
-	assert.NotNil(t, service.nameFilter)
-	assert.NotNil(t, service.tagFilter)
+	// Cast to concrete type to access fields in tests (same package)
+	concreteService := service.(*defaultFilterService)
+	assert.NotNil(t, concreteService.nameFilter)
+	assert.NotNil(t, concreteService.tagFilter)
 }
 
 func TestNewFilterService(t *testing.T) {
@@ -46,8 +48,10 @@ func TestNewFilterService(t *testing.T) {
 
 	service := NewFilterService(nameFilter, tagFilter)
 	assert.NotNil(t, service)
-	assert.Equal(t, nameFilter, service.nameFilter)
-	assert.Equal(t, tagFilter, service.tagFilter)
+	// Cast to concrete type to access fields in tests (same package)
+	concreteService := service.(*defaultFilterService)
+	assert.Equal(t, nameFilter, concreteService.nameFilter)
+	assert.Equal(t, tagFilter, concreteService.tagFilter)
 }
 
 func TestDefaultFilterService_ApplyFilters_NoFilter(t *testing.T) {

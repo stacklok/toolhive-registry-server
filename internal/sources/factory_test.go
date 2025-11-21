@@ -13,7 +13,6 @@ func TestNewSourceHandlerFactory(t *testing.T) {
 
 	factory := NewSourceHandlerFactory()
 	assert.NotNil(t, factory)
-	assert.IsType(t, &DefaultSourceHandlerFactory{}, factory)
 }
 
 func TestDefaultSourceHandlerFactory_CreateHandler(t *testing.T) {
@@ -32,19 +31,19 @@ func TestDefaultSourceHandlerFactory_CreateHandler(t *testing.T) {
 			name:         "file source type",
 			sourceType:   config.SourceTypeFile,
 			expectError:  false,
-			expectedType: &FileSourceHandler{},
+			expectedType: &fileSourceHandler{},
 		},
 		{
 			name:         "git source type",
 			sourceType:   config.SourceTypeGit,
 			expectError:  false,
-			expectedType: &GitSourceHandler{},
+			expectedType: &gitSourceHandler{},
 		},
 		{
 			name:         "api source type",
 			sourceType:   config.SourceTypeAPI,
 			expectError:  false,
-			expectedType: &APISourceHandler{},
+			expectedType: &apiSourceHandler{},
 		},
 		{
 			name:          "unsupported source type",

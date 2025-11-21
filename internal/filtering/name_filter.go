@@ -12,12 +12,14 @@ type NameFilter interface {
 	ShouldInclude(name string, include, exclude []string) (bool, string)
 }
 
-// DefaultNameFilter implements name filtering using Go's filepath.Match for glob patterns
-type DefaultNameFilter struct{}
+// defaultNameFilter implements name filtering using Go's filepath.Match for glob patterns
+type defaultNameFilter struct{}
 
-// NewDefaultNameFilter creates a new DefaultNameFilter
-func NewDefaultNameFilter() *DefaultNameFilter {
-	return &DefaultNameFilter{}
+var _ NameFilter = (*defaultNameFilter)(nil)
+
+// NewDefaultNameFilter creates a new defaultNameFilter
+func NewDefaultNameFilter() NameFilter {
+	return &defaultNameFilter{}
 }
 
 // ShouldInclude determines if a server name should be included based on include/exclude patterns
@@ -28,7 +30,7 @@ func NewDefaultNameFilter() *DefaultNameFilter {
 // 3. If include patterns are specified and name doesn't match any -> exclude
 // 4. If only exclude patterns are specified (no include) and name doesn't match exclude -> include
 // 5. If no patterns are specified -> include (default behavior)
-func (*DefaultNameFilter) ShouldInclude(name string, include, exclude []string) (bool, string) {
+func (*defaultNameFilter) ShouldInclude(name string, include, exclude []string) (bool, string) {
 	// Check exclude patterns first (exclude takes precedence)
 	if len(exclude) > 0 {
 		for _, pattern := range exclude {

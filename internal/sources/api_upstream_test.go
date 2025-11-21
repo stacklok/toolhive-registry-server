@@ -1,4 +1,4 @@
-package sources_test
+package sources
 
 import (
 	"context"
@@ -10,21 +10,20 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
-	"github.com/stacklok/toolhive-registry-server/internal/sources"
 )
 
 const upstreamOpenapiPath = "/openapi.yaml"
 
 var _ = Describe("UpstreamAPIHandler", func() {
 	var (
-		handler    *sources.UpstreamAPIHandler
+		handler    *upstreamAPIHandler
 		ctx        context.Context
 		mockServer *httptest.Server
 	)
 
 	BeforeEach(func() {
 		httpClient := httpclient.NewDefaultClient(0)
-		handler = sources.NewUpstreamAPIHandler(httpClient)
+		handler = NewUpstreamAPIHandler(httpClient)
 		ctx = context.Background()
 	})
 

@@ -16,20 +16,22 @@ type RegistryProviderFactory interface {
 	CreateProvider(cfg *config.Config) (RegistryDataProvider, error)
 }
 
-// DefaultRegistryProviderFactory is the default implementation of RegistryProviderFactory
-type DefaultRegistryProviderFactory struct {
+// defaultRegistryProviderFactory is the default implementation of RegistryProviderFactory
+type defaultRegistryProviderFactory struct {
 	storageManager sources.StorageManager
 }
 
+var _ RegistryProviderFactory = (*defaultRegistryProviderFactory)(nil)
+
 // NewRegistryProviderFactory creates a new default registry provider factory
 func NewRegistryProviderFactory(storageManager sources.StorageManager) RegistryProviderFactory {
-	return &DefaultRegistryProviderFactory{
+	return &defaultRegistryProviderFactory{
 		storageManager: storageManager,
 	}
 }
 
 // CreateProvider implements RegistryProviderFactory.CreateProvider
-func (f *DefaultRegistryProviderFactory) CreateProvider(cfg *config.Config) (RegistryDataProvider, error) {
+func (f *defaultRegistryProviderFactory) CreateProvider(cfg *config.Config) (RegistryDataProvider, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}

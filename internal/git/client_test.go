@@ -14,9 +14,9 @@ func TestNewDefaultGitClient(t *testing.T) {
 		t.Fatal("NewDefaultGitClient() returned nil")
 	}
 
-	// Verify it's the correct type
-	if _, ok := any(client).(*DefaultGitClient); !ok {
-		t.Fatal("NewDefaultGitClient() did not return *DefaultGitClient")
+	// Verify it returns the correct concrete type
+	if _, ok := client.(*defaultGitClient); !ok {
+		t.Fatal("NewDefaultGitClient() did not return *defaultGitClient")
 	}
 }
 

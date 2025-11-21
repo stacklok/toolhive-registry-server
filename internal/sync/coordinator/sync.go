@@ -11,7 +11,7 @@ import (
 )
 
 // checkSync performs a sync check and updates status accordingly
-func (c *DefaultCoordinator) checkSync(ctx context.Context, checkType string) {
+func (c *defaultCoordinator) checkSync(ctx context.Context, checkType string) {
 	// Check if sync is needed (read status under lock)
 	// ShouldSync will return false with ReasonAlreadyInProgress if Phase == SyncPhaseSyncing
 	var shouldSync bool
@@ -29,7 +29,7 @@ func (c *DefaultCoordinator) checkSync(ctx context.Context, checkType string) {
 }
 
 // performSync executes a sync operation and updates status
-func (c *DefaultCoordinator) performSync(ctx context.Context) {
+func (c *defaultCoordinator) performSync(ctx context.Context) {
 	// Ensure status is persisted at the end, whatever the result
 	defer func() {
 		c.withStatus(func(syncStatus *status.SyncStatus) {
@@ -84,7 +84,7 @@ func (c *DefaultCoordinator) performSync(ctx context.Context) {
 }
 
 // updateStatusForSkippedSync updates the status when a sync check determines sync is not needed
-func (c *DefaultCoordinator) updateStatusForSkippedSync(ctx context.Context, reason string) {
+func (c *defaultCoordinator) updateStatusForSkippedSync(ctx context.Context, reason string) {
 	// Only update if we have a previous successful sync
 	// Don't overwrite Failed/Syncing states with "skipped" messages
 	c.withStatus(func(syncStatus *status.SyncStatus) {

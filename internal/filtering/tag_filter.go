@@ -9,12 +9,14 @@ type TagFilter interface {
 	ShouldInclude(tags []string, include, exclude []string) (bool, string)
 }
 
-// DefaultTagFilter implements tag filtering using exact string matching
-type DefaultTagFilter struct{}
+// defaultTagFilter implements tag filtering using exact string matching
+type defaultTagFilter struct{}
 
-// NewDefaultTagFilter creates a new DefaultTagFilter
-func NewDefaultTagFilter() *DefaultTagFilter {
-	return &DefaultTagFilter{}
+var _ TagFilter = (*defaultTagFilter)(nil)
+
+// NewDefaultTagFilter creates a new defaultTagFilter
+func NewDefaultTagFilter() TagFilter {
+	return &defaultTagFilter{}
 }
 
 // ShouldInclude determines if a server with given tags should be included based on include/exclude tag lists
@@ -25,7 +27,7 @@ func NewDefaultTagFilter() *DefaultTagFilter {
 // 3. If include tags are specified and no server tags match any include tag -> exclude
 // 4. If only exclude tags are specified (no include) and no server tags match exclude -> include
 // 5. If no tag filters are specified -> include (default behavior)
-func (*DefaultTagFilter) ShouldInclude(tags []string, include, exclude []string) (bool, string) {
+func (*defaultTagFilter) ShouldInclude(tags []string, include, exclude []string) (bool, string) {
 	// Check exclude tags first (exclude takes precedence)
 	if len(exclude) > 0 {
 		for _, serverTag := range tags {

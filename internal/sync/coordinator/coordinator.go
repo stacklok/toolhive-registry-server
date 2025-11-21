@@ -25,8 +25,8 @@ type Coordinator interface {
 	GetStatus() *status.SyncStatus
 }
 
-// DefaultCoordinator is the default implementation of Coordinator
-type DefaultCoordinator struct {
+// defaultCoordinator is the default implementation of Coordinator
+type defaultCoordinator struct {
 	manager           pkgsync.Manager
 	statusPersistence status.StatusPersistence
 	config            *config.Config
@@ -46,7 +46,7 @@ func New(
 	statusPersistence status.StatusPersistence,
 	cfg *config.Config,
 ) Coordinator {
-	return &DefaultCoordinator{
+	return &defaultCoordinator{
 		manager:           manager,
 		statusPersistence: statusPersistence,
 		config:            cfg,
@@ -55,7 +55,7 @@ func New(
 }
 
 // Start begins background sync coordination
-func (c *DefaultCoordinator) Start(ctx context.Context) error {
+func (c *defaultCoordinator) Start(ctx context.Context) error {
 	logger.Info("Starting background sync coordinator")
 
 	// Create cancellable context for this coordinator
@@ -92,7 +92,7 @@ func (c *DefaultCoordinator) Start(ctx context.Context) error {
 }
 
 // Stop gracefully stops the coordinator
-func (c *DefaultCoordinator) Stop() error {
+func (c *defaultCoordinator) Stop() error {
 	if c.cancelFunc != nil {
 		logger.Info("Stopping sync coordinator...")
 		c.cancelFunc()
@@ -103,7 +103,7 @@ func (c *DefaultCoordinator) Stop() error {
 }
 
 // GetStatus returns current sync status (thread-safe)
-func (c *DefaultCoordinator) GetStatus() *status.SyncStatus {
+func (c *defaultCoordinator) GetStatus() *status.SyncStatus {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -116,7 +116,7 @@ func (c *DefaultCoordinator) GetStatus() *status.SyncStatus {
 }
 
 // loadOrInitializeStatus loads existing status or creates default
-func (c *DefaultCoordinator) loadOrInitializeStatus(ctx context.Context) {
+func (c *defaultCoordinator) loadOrInitializeStatus(ctx context.Context) {
 	syncStatus, err := c.statusPersistence.LoadStatus(ctx)
 	if err != nil {
 		logger.Warnf("Failed to load sync status, initializing with defaults: %v", err)
@@ -162,7 +162,7 @@ func (c *DefaultCoordinator) loadOrInitializeStatus(ctx context.Context) {
 }
 
 // withStatus executes a function while holding the status lock
-func (c *DefaultCoordinator) withStatus(fn func(*status.SyncStatus)) {
+func (c *defaultCoordinator) withStatus(fn func(*status.SyncStatus)) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	fn(c.cachedStatus)
