@@ -63,7 +63,7 @@ func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
 			wantErr: false,
 			checkType: func(t *testing.T, provider RegistryDataProvider) {
 				t.Helper()
-				assert.IsType(t, &FileRegistryDataProvider{}, provider)
+				assert.IsType(t, &fileRegistryDataProvider{}, provider)
 			},
 		},
 		{
