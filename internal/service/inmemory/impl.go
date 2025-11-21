@@ -23,6 +23,8 @@ type regSvc struct {
 	cacheDuration time.Duration
 }
 
+var _ service.RegistryService = (*regSvc)(nil)
+
 // Option is a functional option for configuring the regSvc
 type Option func(*regSvc)
 
@@ -141,39 +143,68 @@ func (s *regSvc) GetRegistry(ctx context.Context) (*toolhivetypes.UpstreamRegist
 }
 
 // ListServers implements RegistryService.ListServers
-func (s *regSvc) ListServers(ctx context.Context) ([]upstreamv0.ServerJSON, error) {
+func (s *regSvc) ListServers(
+	ctx context.Context,
+	_ ...service.Option[service.ListServersOptions],
+) ([]*upstreamv0.ServerJSON, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
 		logger.Warnf("Failed to refresh data: %v", err)
 	}
 
 	if s.registryData != nil {
-		return s.registryData.Servers, nil
+		servers := make([]*upstreamv0.ServerJSON, len(s.registryData.Servers))
+		for i, server := range s.registryData.Servers {
+			servers[i] = &server
+		}
+		return servers, nil
 	}
 
-	return []upstreamv0.ServerJSON{}, nil
+	return nil, nil
 }
 
-// GetServer implements RegistryService.GetServer
-func (s *regSvc) GetServer(ctx context.Context, name string) (upstreamv0.ServerJSON, error) {
+// ListServerVersions implements RegistryService.ListServerVersions
+func (s *regSvc) ListServerVersions(
+	ctx context.Context,
+	_ ...service.Option[service.ListServerVersionsOptions],
+) ([]*upstreamv0.ServerJSON, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
 		logger.Warnf("Failed to refresh data: %v", err)
 	}
 
-	if s.registryData != nil {
-		return s.getServerByName(name)
-	}
-
-	return upstreamv0.ServerJSON{}, service.ErrServerNotFound
+	return nil, service.ErrNotImplemented
 }
 
-// getServerByNameWithName returns a server by name with name properly populated
-func (s *regSvc) getServerByName(name string) (upstreamv0.ServerJSON, error) {
-	// Check container servers first
-	for _, server := range s.registryData.Servers {
-		if server.Name == name {
-			return server, nil
+// GetServerVersion implements RegistryService.GetServerVersion
+func (s *regSvc) GetServerVersion(
+	ctx context.Context,
+	opts ...service.Option[service.GetServerVersionOptions],
+) (*upstreamv0.ServerJSON, error) {
+	if err := s.refreshDataIfNeeded(ctx); err != nil {
+		logger.Warnf("Failed to refresh data: %v", err)
+	}
+
+	options := &service.GetServerVersionOptions{}
+	for _, opt := range opts {
+		if err := opt(options); err != nil {
+			return nil, err
 		}
 	}
 
-	return upstreamv0.ServerJSON{}, service.ErrServerNotFound
+	if s.registryData != nil {
+		return s.getServerByName(options.Name)
+	}
+
+	return nil, service.ErrServerNotFound
+}
+
+// getServerByNameWithName returns a server by name with name properly populated
+func (s *regSvc) getServerByName(name string) (*upstreamv0.ServerJSON, error) {
+	// Check container servers first
+	for _, server := range s.registryData.Servers {
+		if server.Name == name {
+			return &server, nil
+		}
+	}
+
+	return nil, service.ErrServerNotFound
 }
