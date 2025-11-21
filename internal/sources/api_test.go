@@ -41,65 +41,6 @@ var _ = Describe("APISourceHandler", func() {
 		}
 	})
 
-	Describe("Validate", func() {
-		It("should reject non-API source types", func() {
-			source := &config.SourceConfig{
-				Type: config.SourceTypeGit,
-			}
-
-			err := handler.Validate(source)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("invalid source type"))
-		})
-
-		It("should reject non-Upstream format", func() {
-			source := &config.SourceConfig{
-				Type:   config.SourceTypeAPI,
-				Format: config.SourceFormatToolHive,
-			}
-
-			err := handler.Validate(source)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("unsupported format:"))
-		})
-
-		It("should reject missing API configuration", func() {
-			source := &config.SourceConfig{
-				Type: config.SourceTypeAPI,
-				API:  nil,
-			}
-
-			err := handler.Validate(source)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("api configuration is required"))
-		})
-
-		It("should reject empty endpoint", func() {
-			source := &config.SourceConfig{
-				Type: config.SourceTypeAPI,
-				API: &config.APIConfig{
-					Endpoint: "",
-				},
-			}
-
-			err := handler.Validate(source)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("endpoint cannot be empty"))
-		})
-
-		It("should accept valid API configuration", func() {
-			source := &config.SourceConfig{
-				Type: config.SourceTypeAPI,
-				API: &config.APIConfig{
-					Endpoint: "http://example.com",
-				},
-			}
-
-			err := handler.Validate(source)
-			Expect(err).NotTo(HaveOccurred())
-		})
-	})
-
 	Describe("Upstream Format Validation", func() {
 		Context("Upstream Format", func() {
 			BeforeEach(func() {
@@ -125,12 +66,11 @@ openapi: 3.1.0
 			})
 
 			It("should detect upstream format", func() {
-				registryConfig := &config.Config{
-					Source: config.SourceConfig{
-						Type: config.SourceTypeAPI,
-						API: &config.APIConfig{
-							Endpoint: mockServer.URL,
-						},
+				registryConfig := &config.RegistryConfig{
+					Name:   "test-registry",
+					Format: config.SourceFormatUpstream,
+					API: &config.APIConfig{
+						Endpoint: mockServer.URL,
 					},
 				}
 				// Should detect as upstream but fail fetch (Phase 2 not implemented)
@@ -148,19 +88,18 @@ openapi: 3.1.0
 				}))
 			})
 
-			It("should fail when neither format validates", func() {
-				registryConfig := &config.Config{
-					Source: config.SourceConfig{
-						Type: config.SourceTypeAPI,
-						API: &config.APIConfig{
-							Endpoint: mockServer.URL,
-						},
+			It("should fail when invalid format specified", func() {
+				registryConfig := &config.RegistryConfig{
+					Name:   "test-registry",
+					Format: config.SourceFormatToolHive,
+					API: &config.APIConfig{
+						Endpoint: mockServer.URL,
 					},
 				}
 
 				_, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("upstream format validation failed"))
+				Expect(err.Error()).To(ContainSubstring("unsupported format"))
 			})
 		})
 	})

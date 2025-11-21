@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
-
-	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
 const (
@@ -21,14 +19,17 @@ const (
 
 // StorageManager defines the interface for registry data persistence
 type StorageManager interface {
-	// Store saves a UpstreamRegistry instance to persistent storage
-	Store(ctx context.Context, cfg *config.Config, reg *toolhivetypes.UpstreamRegistry) error
+	// Store saves a UpstreamRegistry instance to persistent storage for a specific registry
+	Store(ctx context.Context, registryName string, reg *toolhivetypes.UpstreamRegistry) error
 
-	// Get retrieves and parses registry data from persistent storage
-	Get(ctx context.Context, cfg *config.Config) (*toolhivetypes.UpstreamRegistry, error)
+	// Get retrieves and parses registry data from persistent storage for a specific registry
+	Get(ctx context.Context, registryName string) (*toolhivetypes.UpstreamRegistry, error)
 
-	// Delete removes registry data from persistent storage
-	Delete(ctx context.Context, cfg *config.Config) error
+	// GetAll retrieves and parses registry data from all registries
+	GetAll(ctx context.Context) (map[string]*toolhivetypes.UpstreamRegistry, error)
+
+	// Delete removes registry data from persistent storage for a specific registry
+	Delete(ctx context.Context, registryName string) error
 }
 
 // fileStorageManager implements StorageManager using local filesystem
@@ -43,14 +44,15 @@ func NewFileStorageManager(basePath string) StorageManager {
 	}
 }
 
-// Store saves the registry data to a JSON file
-func (f *fileStorageManager) Store(_ context.Context, _ *config.Config, reg *toolhivetypes.UpstreamRegistry) error {
-	// Create base directory if it doesn't exist
-	if err := os.MkdirAll(f.basePath, 0750); err != nil {
-		return fmt.Errorf("failed to create storage directory: %w", err)
+// Store saves the registry data to a JSON file in a registry-specific subdirectory
+func (f *fileStorageManager) Store(_ context.Context, registryName string, reg *toolhivetypes.UpstreamRegistry) error {
+	// Create registry-specific directory if it doesn't exist
+	registryDir := filepath.Join(f.basePath, registryName)
+	if err := os.MkdirAll(registryDir, 0750); err != nil {
+		return fmt.Errorf("failed to create registry directory: %w", err)
 	}
 
-	filePath := filepath.Join(f.basePath, RegistryFileName)
+	filePath := filepath.Join(registryDir, RegistryFileName)
 
 	// Marshal UpstreamRegistry to JSON with pretty printing for readability
 	data, err := json.MarshalIndent(reg, "", "  ")
@@ -74,39 +76,75 @@ func (f *fileStorageManager) Store(_ context.Context, _ *config.Config, reg *too
 	return nil
 }
 
-// Get retrieves and parses registry data from the JSON file
-func (f *fileStorageManager) Get(_ context.Context, _ *config.Config) (*toolhivetypes.UpstreamRegistry, error) {
-	filePath := filepath.Join(f.basePath, RegistryFileName)
+// Get retrieves and parses registry data from the JSON file for a specific registry
+func (f *fileStorageManager) Get(_ context.Context, registryName string) (*toolhivetypes.UpstreamRegistry, error) {
+	registryDir := filepath.Join(f.basePath, registryName)
+	filePath := filepath.Join(registryDir, RegistryFileName)
 
 	// Read file
 	//nolint:gosec // File path is internally managed by StorageManager, not user input
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("registry file not found: %w", err)
+			return nil, fmt.Errorf("registry file not found for registry '%s': %w", registryName, err)
 		}
-		return nil, fmt.Errorf("failed to read registry file: %w", err)
+		return nil, fmt.Errorf("failed to read registry file for registry '%s': %w", registryName, err)
 	}
 
 	// Unmarshal JSON to UpstreamRegistry
 	var reg toolhivetypes.UpstreamRegistry
 	if err := json.Unmarshal(data, &reg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal registry data: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal registry data for registry '%s': %w", registryName, err)
 	}
 
 	return &reg, nil
 }
 
-// Delete removes the registry data file
-func (f *fileStorageManager) Delete(_ context.Context, _ *config.Config) error {
-	filePath := filepath.Join(f.basePath, RegistryFileName)
+// GetAll retrieves registry data from all registries in the base path
+func (f *fileStorageManager) GetAll(ctx context.Context) (map[string]*toolhivetypes.UpstreamRegistry, error) {
+	result := make(map[string]*toolhivetypes.UpstreamRegistry)
 
-	if err := os.Remove(filePath); err != nil {
+	// Read all subdirectories in the base path
+	entries, err := os.ReadDir(f.basePath)
+	if err != nil {
 		if os.IsNotExist(err) {
-			// File doesn't exist, nothing to delete
+			// Base directory doesn't exist yet, return empty map
+			return result, nil
+		}
+		return nil, fmt.Errorf("failed to read storage directory: %w", err)
+	}
+
+	// For each subdirectory, try to load registry data
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		registryName := entry.Name()
+		reg, err := f.Get(ctx, registryName)
+		if err != nil {
+			// Log error but continue with other registries
+			// This allows partial results if some registries fail to load
+			continue
+		}
+
+		result[registryName] = reg
+	}
+
+	return result, nil
+}
+
+// Delete removes the registry data file for a specific registry
+func (f *fileStorageManager) Delete(_ context.Context, registryName string) error {
+	registryDir := filepath.Join(f.basePath, registryName)
+
+	// Remove the entire registry directory
+	if err := os.RemoveAll(registryDir); err != nil {
+		if os.IsNotExist(err) {
+			// Directory doesn't exist, nothing to delete
 			return nil
 		}
-		return fmt.Errorf("failed to delete registry file: %w", err)
+		return fmt.Errorf("failed to delete registry directory for registry '%s': %w", registryName, err)
 	}
 
 	return nil

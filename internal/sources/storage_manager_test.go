@@ -11,6 +11,8 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
 
+const testRegistryName = "test-registry"
+
 func TestFileStorageManager_StoreAndGet(t *testing.T) {
 	t.Parallel()
 
@@ -28,16 +30,17 @@ func TestFileStorageManager_StoreAndGet(t *testing.T) {
 
 	// Store the registry
 	ctx := context.Background()
-	err := manager.Store(ctx, nil, UpstreamRegistry)
+	registryName := testRegistryName
+	err := manager.Store(ctx, registryName, UpstreamRegistry)
 	require.NoError(t, err)
 
-	// Verify file was created
-	filePath := filepath.Join(tmpDir, RegistryFileName)
+	// Verify file was created in registry-specific directory
+	filePath := filepath.Join(tmpDir, registryName, RegistryFileName)
 	_, err = os.Stat(filePath)
 	require.NoError(t, err)
 
 	// Get the registry back
-	retrieved, err := manager.Get(ctx, nil)
+	retrieved, err := manager.Get(ctx, registryName)
 	require.NoError(t, err)
 	require.NotNil(t, retrieved)
 	require.Equal(t, UpstreamRegistry.Version, retrieved.Version)
@@ -59,16 +62,17 @@ func TestFileStorageManager_Delete(t *testing.T) {
 	)
 
 	ctx := context.Background()
-	err := manager.Store(ctx, nil, UpstreamRegistry)
+	registryName := testRegistryName
+	err := manager.Store(ctx, registryName, UpstreamRegistry)
 	require.NoError(t, err)
 
 	// Delete the registry
-	err = manager.Delete(ctx, nil)
+	err = manager.Delete(ctx, registryName)
 	require.NoError(t, err)
 
-	// Verify file was deleted
-	filePath := filepath.Join(tmpDir, RegistryFileName)
-	_, err = os.Stat(filePath)
+	// Verify entire registry directory was deleted
+	registryDir := filepath.Join(tmpDir, registryName)
+	_, err = os.Stat(registryDir)
 	require.True(t, os.IsNotExist(err))
 }
 
@@ -83,7 +87,8 @@ func TestFileStorageManager_GetNonExistent(t *testing.T) {
 
 	// Try to get non-existent registry
 	ctx := context.Background()
-	_, err := manager.Get(ctx, nil)
+	registryName := "nonexistent-registry"
+	_, err := manager.Get(ctx, registryName)
 	require.Error(t, err)
 }
 
@@ -99,7 +104,8 @@ func TestFileStorageManager_Delete_PermissionDenied(t *testing.T) {
 	)
 
 	ctx := context.Background()
-	err := manager.Store(ctx, nil, UpstreamRegistry)
+	registryName := testRegistryName
+	err := manager.Store(ctx, registryName, UpstreamRegistry)
 	require.NoError(t, err)
 
 	// Make directory read-only to prevent deletion
@@ -107,9 +113,9 @@ func TestFileStorageManager_Delete_PermissionDenied(t *testing.T) {
 	require.NoError(t, err)
 
 	// Try to delete - should fail with permission error
-	err = manager.Delete(ctx, nil)
-	require.Error(t, err) //
-	require.Contains(t, err.Error(), "failed to delete registry file")
+	err = manager.Delete(ctx, registryName)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to delete registry directory")
 
 	_ = os.Chmod(tmpDir, 0755) // Restore permissions
 }
@@ -120,9 +126,10 @@ func TestFileStorageManager_Delete_NonExistent(t *testing.T) {
 	tmpDir := t.TempDir()
 	manager := NewFileStorageManager(tmpDir)
 
-	// Try to delete file that doesn't exist
+	// Try to delete registry that doesn't exist
 	ctx := context.Background()
-	err := manager.Delete(ctx, nil)
+	registryName := "nonexistent-registry"
+	err := manager.Delete(ctx, registryName)
 
 	// Should succeed (idempotent operation)
 	require.NoError(t, err)

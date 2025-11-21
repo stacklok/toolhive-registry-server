@@ -32,29 +32,52 @@ func NewFileRegistryDataProvider(storageManager sources.StorageManager, cfg *con
 }
 
 // GetRegistryData implements RegistryDataProvider.GetRegistryData.
-// It delegates to the StorageManager to retrieve and parse registry data.
-// This eliminates code duplication and provides a single source of truth for file operations.
-//
-// NOTE: In PR 1, StorageManager returns UpstreamRegistry but RegistryDataProvider interface
-// still expects toolhive Registry. This method converts at the boundary to maintain
-// backward compatibility until PR 2.
+// It delegates to the StorageManager to retrieve and parse registry data from all registries,
+// then merges them into a single UpstreamRegistry for the API response.
 func (p *fileRegistryDataProvider) GetRegistryData(ctx context.Context) (*toolhivetypes.UpstreamRegistry, error) {
-	// Get UpstreamRegistry from storage manager (new format)
-	registry, err := p.storageManager.Get(ctx, p.config)
+	// Get all registry data from storage manager
+	allRegistries, err := p.storageManager.GetAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get registry data: %w", err)
 	}
 
-	return registry, nil
+	// Merge all registries into a single UpstreamRegistry
+	merged := &toolhivetypes.UpstreamRegistry{}
+
+	for registryName, reg := range allRegistries {
+		if reg == nil {
+			continue
+		}
+		// Add all servers from this registry
+		// TODO: Consider adding registry source metadata to each server entry
+		_ = registryName // Will be used for metadata in future
+		merged.Servers = append(merged.Servers, reg.Servers...)
+	}
+
+	return merged, nil
 }
 
 // GetSource implements RegistryDataProvider.GetSource.
-// It returns a descriptive string indicating the file source from the configuration.
+// It returns a descriptive string indicating all configured registries.
 func (p *fileRegistryDataProvider) GetSource() string {
-	if p.config.Source.File == nil || p.config.Source.File.Path == "" {
-		return "file:<not-configured>"
+	if len(p.config.Registries) == 0 {
+		return "multi-registry:<not-configured>"
 	}
-	return fmt.Sprintf("file:%s", p.config.Source.File.Path)
+	if len(p.config.Registries) == 1 {
+		regCfg := &p.config.Registries[0]
+		if regCfg.File != nil {
+			return fmt.Sprintf("file:%s", regCfg.File.Path)
+		}
+		if regCfg.Git != nil {
+			return fmt.Sprintf("git:%s", regCfg.Git.Repository)
+		}
+		if regCfg.API != nil {
+			return fmt.Sprintf("api:%s", regCfg.API.Endpoint)
+		}
+		return fmt.Sprintf("registry:%s", regCfg.Name)
+	}
+	// Multiple registries
+	return fmt.Sprintf("multi-registry:%d-sources", len(p.config.Registries))
 }
 
 // GetRegistryName implements RegistryDataProvider.GetRegistryName.

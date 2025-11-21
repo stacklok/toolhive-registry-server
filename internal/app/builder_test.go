@@ -24,15 +24,17 @@ func TestNewRegistryAppBuilder(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{
 		RegistryName: "test-registry",
-		Source: config.SourceConfig{
-			Type:   config.SourceTypeFile,
-			Format: config.SourceFormatToolHive,
-			File: &config.FileConfig{
-				Path: "/tmp/test-registry.json",
+		Registries: []config.RegistryConfig{
+			{
+				Name:   "test-registry-1",
+				Format: config.SourceFormatToolHive,
+				File: &config.FileConfig{
+					Path: "/tmp/test-registry.json",
+				},
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "30m",
+				},
 			},
-		},
-		SyncPolicy: &config.SyncPolicyConfig{
-			Interval: "30m",
 		},
 	}
 
@@ -94,15 +96,17 @@ func TestRegistryAppBuilder_ChainedBuilder(t *testing.T) {
 func createValidTestConfig() *config.Config {
 	return &config.Config{
 		RegistryName: "test-registry",
-		Source: config.SourceConfig{
-			Type:   config.SourceTypeFile,
-			Format: config.SourceFormatToolHive,
-			File: &config.FileConfig{
-				Path: "/tmp/test-registry.json",
+		Registries: []config.RegistryConfig{
+			{
+				Name:   "test-registry-1",
+				Format: config.SourceFormatToolHive,
+				File: &config.FileConfig{
+					Path: "/tmp/test-registry.json",
+				},
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "30m",
+				},
 			},
-		},
-		SyncPolicy: &config.SyncPolicyConfig{
-			Interval: "30m",
 		},
 	}
 }

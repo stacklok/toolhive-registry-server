@@ -21,41 +21,52 @@ func TestDefaultSourceHandlerFactory_CreateHandler(t *testing.T) {
 	factory := NewSourceHandlerFactory()
 
 	tests := []struct {
-		name          string
-		sourceType    string
-		expectError   bool
-		expectedType  interface{}
-		errorContains string
+		name           string
+		registryConfig *config.RegistryConfig
+		expectError    bool
+		expectedType   interface{}
+		errorContains  string
 	}{
 		{
-			name:         "file source type",
-			sourceType:   config.SourceTypeFile,
+			name: "file source type",
+			registryConfig: &config.RegistryConfig{
+				Name: "test-file",
+				File: &config.FileConfig{Path: "/path/to/file"},
+			},
 			expectError:  false,
 			expectedType: &fileSourceHandler{},
 		},
 		{
-			name:         "git source type",
-			sourceType:   config.SourceTypeGit,
+			name: "git source type",
+			registryConfig: &config.RegistryConfig{
+				Name: "test-git",
+				Git:  &config.GitConfig{Repository: "https://github.com/test/repo.git"},
+			},
 			expectError:  false,
 			expectedType: &gitSourceHandler{},
 		},
 		{
-			name:         "api source type",
-			sourceType:   config.SourceTypeAPI,
+			name: "api source type",
+			registryConfig: &config.RegistryConfig{
+				Name: "test-api",
+				API:  &config.APIConfig{Endpoint: "https://api.example.com"},
+			},
 			expectError:  false,
 			expectedType: &apiSourceHandler{},
 		},
 		{
-			name:          "unsupported source type",
-			sourceType:    "unsupported",
+			name: "no source type configured",
+			registryConfig: &config.RegistryConfig{
+				Name: "test-invalid",
+			},
 			expectError:   true,
-			errorContains: "unsupported source type",
+			errorContains: "unable to determine source type",
 		},
 		{
-			name:          "empty source type",
-			sourceType:    "",
-			expectError:   true,
-			errorContains: "unsupported source type",
+			name:           "nil registry config",
+			registryConfig: nil,
+			expectError:    true,
+			errorContains:  "registry configuration cannot be nil",
 		},
 	}
 
@@ -63,7 +74,7 @@ func TestDefaultSourceHandlerFactory_CreateHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler, err := factory.CreateHandler(tt.sourceType)
+			handler, err := factory.CreateHandler(tt.registryConfig)
 
 			if tt.expectError {
 				assert.Error(t, err)

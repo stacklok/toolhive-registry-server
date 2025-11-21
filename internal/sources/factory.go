@@ -16,8 +16,18 @@ func NewSourceHandlerFactory() SourceHandlerFactory {
 	return &defaultSourceHandlerFactory{}
 }
 
-// CreateHandler creates a source handler for the given source type
-func (*defaultSourceHandlerFactory) CreateHandler(sourceType string) (SourceHandler, error) {
+// CreateHandler creates a source handler for the given registry configuration
+// The source type is inferred from which field is present (Git/API/File)
+func (*defaultSourceHandlerFactory) CreateHandler(regCfg *config.RegistryConfig) (SourceHandler, error) {
+	if regCfg == nil {
+		return nil, fmt.Errorf("registry configuration cannot be nil")
+	}
+
+	sourceType := regCfg.GetType()
+	if sourceType == "" {
+		return nil, fmt.Errorf("unable to determine source type from registry configuration")
+	}
+
 	switch sourceType {
 	case config.SourceTypeGit:
 		return NewGitSourceHandler(), nil
