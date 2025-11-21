@@ -127,22 +127,22 @@ type AutomaticSyncChecker interface {
 
 // defaultSyncManager is the default implementation of Manager
 type defaultSyncManager struct {
-	sourceHandlerFactory sources.SourceHandlerFactory
-	storageManager       sources.StorageManager
-	filterService        filtering.FilterService
-	dataChangeDetector   DataChangeDetector
-	automaticSyncChecker AutomaticSyncChecker
+	registryHandlerFactory sources.RegistryHandlerFactory
+	storageManager         sources.StorageManager
+	filterService          filtering.FilterService
+	dataChangeDetector     DataChangeDetector
+	automaticSyncChecker   AutomaticSyncChecker
 }
 
 // NewDefaultSyncManager creates a new defaultSyncManager
 func NewDefaultSyncManager(
-	sourceHandlerFactory sources.SourceHandlerFactory, storageManager sources.StorageManager) Manager {
+	registryHandlerFactory sources.RegistryHandlerFactory, storageManager sources.StorageManager) Manager {
 	return &defaultSyncManager{
-		sourceHandlerFactory: sourceHandlerFactory,
-		storageManager:       storageManager,
-		filterService:        filtering.NewDefaultFilterService(),
-		dataChangeDetector:   &defaultDataChangeDetector{sourceHandlerFactory: sourceHandlerFactory},
-		automaticSyncChecker: &defaultAutomaticSyncChecker{},
+		registryHandlerFactory: registryHandlerFactory,
+		storageManager:         storageManager,
+		filterService:          filtering.NewDefaultFilterService(),
+		dataChangeDetector:     &defaultDataChangeDetector{registryHandlerFactory: registryHandlerFactory},
+		automaticSyncChecker:   &defaultAutomaticSyncChecker{},
 	}
 }
 
@@ -292,26 +292,26 @@ func (s *defaultSyncManager) Delete(ctx context.Context, registryName string) er
 	return s.storageManager.Delete(ctx, registryName)
 }
 
-// fetchAndProcessRegistryData handles source handler creation, validation, fetch, and filtering
+// fetchAndProcessRegistryData handles registry handler creation, validation, fetch, and filtering
 func (s *defaultSyncManager) fetchAndProcessRegistryData(
 	ctx context.Context,
 	regCfg *config.RegistryConfig) (*sources.FetchResult, *Error) {
 	ctxLogger := log.FromContext(ctx)
 
-	// Get source handler
-	sourceHandler, err := s.sourceHandlerFactory.CreateHandler(regCfg)
+	// Get registry handler
+	registryHandler, err := s.registryHandlerFactory.CreateHandler(regCfg)
 	if err != nil {
-		ctxLogger.Error(err, "Failed to create source handler")
+		ctxLogger.Error(err, "Failed to create registry handler")
 		return nil, &Error{
 			Err:             err,
-			Message:         fmt.Sprintf("Failed to create source handler: %v", err),
+			Message:         fmt.Sprintf("Failed to create registry handler: %v", err),
 			ConditionType:   ConditionSourceAvailable,
 			ConditionReason: conditionReasonHandlerCreationFailed,
 		}
 	}
 
 	// Validate registry configuration
-	if err := sourceHandler.Validate(regCfg); err != nil {
+	if err := registryHandler.Validate(regCfg); err != nil {
 		ctxLogger.Error(err, "Registry validation failed")
 		return nil, &Error{
 			Err:             err,
@@ -322,7 +322,7 @@ func (s *defaultSyncManager) fetchAndProcessRegistryData(
 	}
 
 	// Execute fetch operation
-	fetchResult, err := sourceHandler.FetchRegistry(ctx, regCfg)
+	fetchResult, err := registryHandler.FetchRegistry(ctx, regCfg)
 	if err != nil {
 		ctxLogger.Error(err, "Fetch operation failed")
 		// Sync attempt counting is now handled by the controller via status collector

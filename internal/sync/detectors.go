@@ -11,7 +11,7 @@ import (
 
 // defaultDataChangeDetector implements DataChangeDetector
 type defaultDataChangeDetector struct {
-	sourceHandlerFactory sources.SourceHandlerFactory
+	registryHandlerFactory sources.RegistryHandlerFactory
 }
 
 // IsDataChanged checks if source data has changed by comparing hashes for a specific registry
@@ -29,14 +29,14 @@ func (d *defaultDataChangeDetector) IsDataChanged(
 		return true, nil
 	}
 
-	// Get source handler
-	sourceHandler, err := d.sourceHandlerFactory.CreateHandler(regCfg)
+	// Get registry handler
+	registryHandler, err := d.registryHandlerFactory.CreateHandler(regCfg)
 	if err != nil {
 		return true, err
 	}
 
 	// Get current hash from source
-	currentHash, err := sourceHandler.CurrentHash(ctx, regCfg)
+	currentHash, err := registryHandler.CurrentHash(ctx, regCfg)
 	if err != nil {
 		return true, err
 	}

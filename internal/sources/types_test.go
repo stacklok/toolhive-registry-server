@@ -129,17 +129,17 @@ func TestFetchResultHashDifference(t *testing.T) {
 	assert.NotEqual(t, result1.Registry, result2.Registry)    // Different registries
 }
 
-func TestNewSourceDataValidator(t *testing.T) {
+func TestNewRegistryDataValidator(t *testing.T) {
 	t.Parallel()
 
-	validator := NewSourceDataValidator()
+	validator := NewRegistryDataValidator()
 	assert.NotNil(t, validator)
 }
 
-func TestDefaultSourceDataValidator_ValidateData(t *testing.T) {
+func TestDefaultRegistryDataValidator_ValidateData(t *testing.T) {
 	t.Parallel()
 
-	validator := NewSourceDataValidator()
+	validator := NewRegistryDataValidator()
 
 	validToolhiveData := []byte(`{
 		"version": "1.0.0",

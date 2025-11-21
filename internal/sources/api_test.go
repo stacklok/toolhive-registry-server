@@ -20,18 +20,18 @@ const (
 func TestAPISources(t *testing.T) {
 	t.Parallel()
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "API Source Handler Suite")
+	RunSpecs(t, "API Registry Handler Suite")
 }
 
-var _ = Describe("APISourceHandler", func() {
+var _ = Describe("APIRegistryHandler", func() {
 	var (
-		handler    sources.SourceHandler
+		handler    sources.RegistryHandler
 		ctx        context.Context
 		mockServer *httptest.Server
 	)
 
 	BeforeEach(func() {
-		handler = sources.NewAPISourceHandler()
+		handler = sources.NewAPIRegistryHandler()
 		ctx = context.Background()
 	})
 

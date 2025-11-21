@@ -42,11 +42,11 @@ type registryAppConfig struct {
 	config *config.Config
 
 	// Optional component overrides (primarily for testing)
-	sourceHandlerFactory sources.SourceHandlerFactory
-	storageManager       sources.StorageManager
-	statusPersistence    status.StatusPersistence
-	syncManager          pkgsync.Manager
-	registryProvider     service.RegistryDataProvider
+	registryHandlerFactory sources.RegistryHandlerFactory
+	storageManager         sources.StorageManager
+	statusPersistence      status.StatusPersistence
+	syncManager            pkgsync.Manager
+	registryProvider       service.RegistryDataProvider
 
 	// HTTP server options
 	address        string
@@ -183,10 +183,10 @@ func WithDataDirectory(dir string) RegistryAppOptions {
 	}
 }
 
-// WithSourceHandlerFactory allows injecting a custom source handler factory (for testing)
-func WithSourceHandlerFactory(factory sources.SourceHandlerFactory) RegistryAppOptions {
+// WithRegistryHandlerFactory allows injecting a custom registry handler factory (for testing)
+func WithRegistryHandlerFactory(factory sources.RegistryHandlerFactory) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
-		cfg.sourceHandlerFactory = factory
+		cfg.registryHandlerFactory = factory
 		return nil
 	}
 }
@@ -229,9 +229,9 @@ func buildSyncComponents(
 ) (coordinator.Coordinator, error) {
 	logger.Info("Initializing sync components")
 
-	// Build source handler factory
-	if b.sourceHandlerFactory == nil {
-		b.sourceHandlerFactory = sources.NewSourceHandlerFactory()
+	// Build registry handler factory
+	if b.registryHandlerFactory == nil {
+		b.registryHandlerFactory = sources.NewRegistryHandlerFactory()
 	}
 
 	// Build storage manager
@@ -253,7 +253,7 @@ func buildSyncComponents(
 	// Build sync manager
 	if b.syncManager == nil {
 		b.syncManager = pkgsync.NewDefaultSyncManager(
-			b.sourceHandlerFactory,
+			b.registryHandlerFactory,
 			b.storageManager,
 		)
 	}
