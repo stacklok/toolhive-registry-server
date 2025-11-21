@@ -13,6 +13,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
+	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
@@ -145,7 +146,7 @@ func TestService_ListServers(t *testing.T) {
 		name            string
 		setupMocks      func(*mocks.MockRegistryDataProvider)
 		expectedCount   int
-		validateServers func(*testing.T, []upstreamv0.ServerJSON)
+		validateServers func(*testing.T, []*upstreamv0.ServerJSON)
 	}{
 		{
 			name: "list servers from registry",
@@ -169,7 +170,7 @@ func TestService_ListServers(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 			},
 			expectedCount: 3,
-			validateServers: func(t *testing.T, servers []upstreamv0.ServerJSON) {
+			validateServers: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
 				t.Helper()
 				names := make([]string, len(servers))
 				for i, s := range servers {
@@ -265,16 +266,19 @@ func TestService_GetServer(t *testing.T) {
 			svc, err := inmemory.New(context.Background(), mockProvider)
 			require.NoError(t, err)
 
-			server, err := svc.GetServer(context.Background(), tt.serverName)
+			server, err := svc.GetServerVersion(
+				context.Background(),
+				service.WithName[service.GetServerVersionOptions](tt.serverName),
+			)
 
 			if tt.expectedError != "" {
 				assert.EqualError(t, err, tt.expectedError)
-				assert.Empty(t, server.Name)
+				assert.Nil(t, server)
 			} else {
 				assert.NoError(t, err)
-				assert.NotEmpty(t, server.Name)
+				assert.NotNil(t, server)
 				if tt.validateServer != nil {
-					tt.validateServer(t, server)
+					tt.validateServer(t, *server)
 				}
 			}
 		})
