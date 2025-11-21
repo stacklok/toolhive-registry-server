@@ -1689,3 +1689,278 @@ func TestListServerRemotes(t *testing.T) {
 		})
 	}
 }
+
+func TestGetServerVersion(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string)
+		scenarioFunc func(t *testing.T, queries *Queries, serverName, version string)
+	}{
+		{
+			name: "get server version with minimal fields",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
+				createdAt := time.Now().UTC()
+				_, err := queries.UpsertServerVersion(
+					context.Background(),
+					UpsertServerVersionParams{
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+				//nolint:goconst
+				return "test-server", "1.0.0"
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
+				server, err := queries.GetServerVersion(
+					context.Background(),
+					GetServerVersionParams{
+						Name:    serverName,
+						Version: version,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, serverName, server.Name)
+				require.Equal(t, version, server.Version)
+				require.Equal(t, RegistryTypeREMOTE, server.RegistryType)
+				require.False(t, server.IsLatest)
+				require.NotNil(t, server.ID)
+				require.NotNil(t, server.CreatedAt)
+			},
+		},
+		{
+			name: "get server version with all fields",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
+				createdAt := time.Now().UTC()
+				_, err := queries.UpsertServerVersion(
+					context.Background(),
+					UpsertServerVersionParams{
+						Name:                "test-server",
+						Version:             "1.0.0",
+						RegID:               regID,
+						Description:         ptr.String("Test description"),
+						Title:               ptr.String("Test Title"),
+						Website:             ptr.String("https://example.com"),
+						UpstreamMeta:        []byte(`{"key": "value"}`),
+						ServerMeta:          []byte(`{"meta": "data"}`),
+						RepositoryUrl:       ptr.String("https://github.com/test/repo"),
+						RepositoryID:        ptr.String("repo-id"),
+						RepositorySubfolder: ptr.String("subfolder"),
+						RepositoryType:      ptr.String("git"),
+						CreatedAt:           &createdAt,
+						UpdatedAt:           &createdAt,
+					},
+				)
+				require.NoError(t, err)
+				return "test-server", "1.0.0"
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
+				server, err := queries.GetServerVersion(
+					context.Background(),
+					GetServerVersionParams{
+						Name:    serverName,
+						Version: version,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, serverName, server.Name)
+				require.Equal(t, version, server.Version)
+				require.Equal(t, RegistryTypeREMOTE, server.RegistryType)
+				require.NotNil(t, server.Description)
+				require.Equal(t, "Test description", *server.Description)
+				require.NotNil(t, server.Title)
+				require.Equal(t, "Test Title", *server.Title)
+				require.NotNil(t, server.Website)
+				require.Equal(t, "https://example.com", *server.Website)
+				require.Equal(t, []byte(`{"key": "value"}`), server.UpstreamMeta)
+				require.Equal(t, []byte(`{"meta": "data"}`), server.ServerMeta)
+				require.NotNil(t, server.RepositoryUrl)
+				require.Equal(t, "https://github.com/test/repo", *server.RepositoryUrl)
+				require.NotNil(t, server.RepositoryID)
+				require.Equal(t, "repo-id", *server.RepositoryID)
+				require.NotNil(t, server.RepositorySubfolder)
+				require.Equal(t, "subfolder", *server.RepositorySubfolder)
+				require.NotNil(t, server.RepositoryType)
+				require.Equal(t, "git", *server.RepositoryType)
+			},
+		},
+		{
+			name: "get server version marked as latest",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
+				createdAt := time.Now().UTC()
+				serverID, err := queries.UpsertServerVersion(
+					context.Background(),
+					UpsertServerVersionParams{
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+
+				_, err = queries.UpsertLatestServerVersion(
+					context.Background(),
+					UpsertLatestServerVersionParams{
+						RegID:    regID,
+						Name:     "test-server",
+						Version:  "1.0.0",
+						ServerID: serverID,
+					},
+				)
+				require.NoError(t, err)
+				return "test-server", "1.0.0"
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
+				server, err := queries.GetServerVersion(
+					context.Background(),
+					GetServerVersionParams{
+						Name:    serverName,
+						Version: version,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, serverName, server.Name)
+				require.Equal(t, version, server.Version)
+				require.True(t, server.IsLatest)
+			},
+		},
+		{
+			name: "get server version not marked as latest",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
+				// Create first version and mark it as latest
+				serverID1, err := queries.UpsertServerVersion(
+					context.Background(),
+					UpsertServerVersionParams{
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+
+				_, err = queries.UpsertLatestServerVersion(
+					context.Background(),
+					UpsertLatestServerVersionParams{
+						RegID:    regID,
+						Name:     "test-server",
+						Version:  "1.0.0",
+						ServerID: serverID1,
+					},
+				)
+				require.NoError(t, err)
+
+				// Create second version (not marked as latest)
+				createdAt2 := createdAt.Add(1 * time.Second)
+				_, err = queries.UpsertServerVersion(
+					context.Background(),
+					UpsertServerVersionParams{
+						Name:      "test-server",
+						Version:   "2.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt2,
+						UpdatedAt: &createdAt2,
+					},
+				)
+				require.NoError(t, err)
+				return "test-server", "2.0.0"
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
+				server, err := queries.GetServerVersion(
+					context.Background(),
+					GetServerVersionParams{
+						Name:    serverName,
+						Version: version,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, serverName, server.Name)
+				require.Equal(t, version, server.Version)
+				require.False(t, server.IsLatest)
+			},
+		},
+		{
+			name: "get non-existent server version",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) (string, string) {
+				return "non-existent-server", "1.0.0"
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
+				_, err := queries.GetServerVersion(
+					context.Background(),
+					GetServerVersionParams{
+						Name:    serverName,
+						Version: version,
+					},
+				)
+				require.Error(t, err)
+			},
+		},
+		{
+			name: "get server version with wrong version",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
+				createdAt := time.Now().UTC()
+				_, err := queries.UpsertServerVersion(
+					context.Background(),
+					UpsertServerVersionParams{
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+				return "test-server", "2.0.0"
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
+				_, err := queries.GetServerVersion(
+					context.Background(),
+					GetServerVersionParams{
+						Name:    serverName,
+						Version: version,
+					},
+				)
+				require.Error(t, err)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			db, cleanupFunc := database.SetupTestDB(t)
+			t.Cleanup(cleanupFunc)
+
+			queries := New(db)
+			require.NotNil(t, queries)
+
+			regID := setupRegistry(t, queries)
+			require.NotNil(t, regID)
+
+			serverName, version := tc.setupFunc(t, queries, regID)
+			tc.scenarioFunc(t, queries, serverName, version)
+		})
+	}
+}

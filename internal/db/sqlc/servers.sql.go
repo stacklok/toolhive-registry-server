@@ -12,6 +12,78 @@ import (
 	"github.com/google/uuid"
 )
 
+const getServerVersion = `-- name: GetServerVersion :one
+SELECT r.reg_type as registry_type,
+       s.id,
+       s.name,
+       s.version,
+       (l.latest_server_id IS NOT NULL)::boolean AS is_latest,
+       s.created_at,
+       s.updated_at,
+       s.description,
+       s.title,
+       s.website,
+       s.upstream_meta,
+       s.server_meta,
+       s.repository_url,
+       s.repository_id,
+       s.repository_subfolder,
+       s.repository_type
+  FROM mcp_server s
+  JOIN registry r ON s.reg_id = r.id
+  LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
+ WHERE s.name = $1
+   AND s.version = $2
+`
+
+type GetServerVersionParams struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+type GetServerVersionRow struct {
+	RegistryType        RegistryType `json:"registry_type"`
+	ID                  uuid.UUID    `json:"id"`
+	Name                string       `json:"name"`
+	Version             string       `json:"version"`
+	IsLatest            bool         `json:"is_latest"`
+	CreatedAt           *time.Time   `json:"created_at"`
+	UpdatedAt           *time.Time   `json:"updated_at"`
+	Description         *string      `json:"description"`
+	Title               *string      `json:"title"`
+	Website             *string      `json:"website"`
+	UpstreamMeta        []byte       `json:"upstream_meta"`
+	ServerMeta          []byte       `json:"server_meta"`
+	RepositoryUrl       *string      `json:"repository_url"`
+	RepositoryID        *string      `json:"repository_id"`
+	RepositorySubfolder *string      `json:"repository_subfolder"`
+	RepositoryType      *string      `json:"repository_type"`
+}
+
+func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error) {
+	row := q.db.QueryRow(ctx, getServerVersion, arg.Name, arg.Version)
+	var i GetServerVersionRow
+	err := row.Scan(
+		&i.RegistryType,
+		&i.ID,
+		&i.Name,
+		&i.Version,
+		&i.IsLatest,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Description,
+		&i.Title,
+		&i.Website,
+		&i.UpstreamMeta,
+		&i.ServerMeta,
+		&i.RepositoryUrl,
+		&i.RepositoryID,
+		&i.RepositorySubfolder,
+		&i.RepositoryType,
+	)
+	return i, err
+}
+
 const listServerPackages = `-- name: ListServerPackages :many
 SELECT p.server_id,
        p.registry_type,
@@ -102,9 +174,11 @@ func (q *Queries) ListServerRemotes(ctx context.Context, serverIds []uuid.UUID) 
 }
 
 const listServerVersions = `-- name: ListServerVersions :many
-SELECT s.id,
+SELECT r.reg_type as registry_type,
+       s.id,
        s.name,
        s.version,
+       (l.latest_server_id IS NOT NULL)::boolean AS is_latest,
        s.created_at,
        s.updated_at,
        s.description,
@@ -117,6 +191,8 @@ SELECT s.id,
        s.repository_subfolder,
        s.repository_type
   FROM mcp_server s
+  JOIN registry r ON s.reg_id = r.id
+  LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
  WHERE s.name = $1
    AND (($2::timestamp with time zone IS NULL OR s.created_at > $2)
     AND ($3::timestamp with time zone IS NULL OR s.created_at < $3))
@@ -134,20 +210,22 @@ type ListServerVersionsParams struct {
 }
 
 type ListServerVersionsRow struct {
-	ID                  uuid.UUID  `json:"id"`
-	Name                string     `json:"name"`
-	Version             string     `json:"version"`
-	CreatedAt           *time.Time `json:"created_at"`
-	UpdatedAt           *time.Time `json:"updated_at"`
-	Description         *string    `json:"description"`
-	Title               *string    `json:"title"`
-	Website             *string    `json:"website"`
-	UpstreamMeta        []byte     `json:"upstream_meta"`
-	ServerMeta          []byte     `json:"server_meta"`
-	RepositoryUrl       *string    `json:"repository_url"`
-	RepositoryID        *string    `json:"repository_id"`
-	RepositorySubfolder *string    `json:"repository_subfolder"`
-	RepositoryType      *string    `json:"repository_type"`
+	RegistryType        RegistryType `json:"registry_type"`
+	ID                  uuid.UUID    `json:"id"`
+	Name                string       `json:"name"`
+	Version             string       `json:"version"`
+	IsLatest            bool         `json:"is_latest"`
+	CreatedAt           *time.Time   `json:"created_at"`
+	UpdatedAt           *time.Time   `json:"updated_at"`
+	Description         *string      `json:"description"`
+	Title               *string      `json:"title"`
+	Website             *string      `json:"website"`
+	UpstreamMeta        []byte       `json:"upstream_meta"`
+	ServerMeta          []byte       `json:"server_meta"`
+	RepositoryUrl       *string      `json:"repository_url"`
+	RepositoryID        *string      `json:"repository_id"`
+	RepositorySubfolder *string      `json:"repository_subfolder"`
+	RepositoryType      *string      `json:"repository_type"`
 }
 
 func (q *Queries) ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error) {
@@ -165,9 +243,11 @@ func (q *Queries) ListServerVersions(ctx context.Context, arg ListServerVersions
 	for rows.Next() {
 		var i ListServerVersionsRow
 		if err := rows.Scan(
+			&i.RegistryType,
 			&i.ID,
 			&i.Name,
 			&i.Version,
+			&i.IsLatest,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Description,
