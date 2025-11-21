@@ -83,8 +83,11 @@ func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
 					Database: "testdb",
 				},
 			},
-			wantErr:     true,
-			errContains: "database storage is not yet implemented",
+			wantErr: false,
+			checkType: func(t *testing.T, provider RegistryDataProvider) {
+				t.Helper()
+				assert.IsType(t, &fileRegistryDataProvider{}, provider)
+			},
 		},
 	}
 
