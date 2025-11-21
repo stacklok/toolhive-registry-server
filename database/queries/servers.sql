@@ -33,6 +33,57 @@ SELECT r.reg_type as registry_type,
  CASE WHEN sqlc.narg(prev)::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
  LIMIT sqlc.arg(size)::bigint;
 
+-- name: ListServerVersions :many
+SELECT r.reg_type as registry_type,
+       s.id,
+       s.name,
+       s.version,
+       (l.latest_server_id IS NOT NULL)::boolean AS is_latest,
+       s.created_at,
+       s.updated_at,
+       s.description,
+       s.title,
+       s.website,
+       s.upstream_meta,
+       s.server_meta,
+       s.repository_url,
+       s.repository_id,
+       s.repository_subfolder,
+       s.repository_type
+  FROM mcp_server s
+  JOIN registry r ON s.reg_id = r.id
+  LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
+ WHERE s.name = sqlc.arg(name)
+   AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next))
+    AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR s.created_at < sqlc.narg(prev)))
+ ORDER BY
+ CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.created_at END ASC,
+ CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
+ LIMIT sqlc.arg(size)::bigint;
+
+-- name: GetServerVersion :one
+SELECT r.reg_type as registry_type,
+       s.id,
+       s.name,
+       s.version,
+       (l.latest_server_id IS NOT NULL)::boolean AS is_latest,
+       s.created_at,
+       s.updated_at,
+       s.description,
+       s.title,
+       s.website,
+       s.upstream_meta,
+       s.server_meta,
+       s.repository_url,
+       s.repository_id,
+       s.repository_subfolder,
+       s.repository_type
+  FROM mcp_server s
+  JOIN registry r ON s.reg_id = r.id
+  LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
+ WHERE s.name = sqlc.arg(name)
+   AND s.version = sqlc.arg(version);
+
 -- name: ListServerPackages :many
 SELECT p.server_id,
        p.registry_type,
@@ -60,30 +111,6 @@ SELECT r.server_id,
   FROM mcp_server_remote r
  WHERE r.server_id = ANY(sqlc.slice(server_ids)::UUID[])
  ORDER BY r.transport, r.transport_url;
-
--- name: ListServerVersions :many
-SELECT s.id,
-       s.name,
-       s.version,
-       s.created_at,
-       s.updated_at,
-       s.description,
-       s.title,
-       s.website,
-       s.upstream_meta,
-       s.server_meta,
-       s.repository_url,
-       s.repository_id,
-       s.repository_subfolder,
-       s.repository_type
-  FROM mcp_server s
- WHERE s.name = sqlc.arg(name)
-   AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next))
-    AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR s.created_at < sqlc.narg(prev)))
- ORDER BY
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.created_at END ASC,
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
- LIMIT sqlc.arg(size)::bigint;
 
 -- name: UpsertServerVersion :one
 INSERT INTO mcp_server (

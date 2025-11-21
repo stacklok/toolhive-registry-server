@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	GetRegistry(ctx context.Context, id uuid.UUID) (Registry, error)
 	GetRegistrySync(ctx context.Context, id uuid.UUID) (RegistrySync, error)
+	GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error)
 	InsertRegistry(ctx context.Context, arg InsertRegistryParams) (uuid.UUID, error)
 	InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (uuid.UUID, error)
 	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error)
