@@ -26,8 +26,8 @@ type Client interface {
 	Get(ctx context.Context, url string) ([]byte, error)
 }
 
-// DefaultClient is the default HTTP client implementation
-type DefaultClient struct {
+// defaultClient is the default HTTP client implementation
+type defaultClient struct {
 	client  *http.Client
 	timeout time.Duration
 }
@@ -39,7 +39,7 @@ func NewDefaultClient(timeout time.Duration) Client {
 		timeout = DefaultTimeout
 	}
 	// TODO: Use TLS by default
-	return &DefaultClient{
+	return &defaultClient{
 		client: &http.Client{
 			Timeout: timeout,
 		},
@@ -48,7 +48,7 @@ func NewDefaultClient(timeout time.Duration) Client {
 }
 
 // Get performs an HTTP GET request
-func (c *DefaultClient) Get(ctx context.Context, url string) ([]byte, error) {
+func (c *defaultClient) Get(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

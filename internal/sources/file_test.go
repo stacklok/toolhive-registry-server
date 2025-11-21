@@ -17,7 +17,9 @@ func TestNewFileSourceHandler(t *testing.T) {
 
 	handler := NewFileSourceHandler()
 	assert.NotNil(t, handler)
-	assert.NotNil(t, handler.validator)
+	// Cast to concrete type to access fields in tests (same package)
+	concreteHandler := handler.(*fileSourceHandler)
+	assert.NotNil(t, concreteHandler.validator)
 }
 
 func TestFileSourceHandler_Validate(t *testing.T) {

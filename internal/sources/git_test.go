@@ -80,8 +80,10 @@ func TestNewGitSourceHandler(t *testing.T) {
 	handler := NewGitSourceHandler()
 
 	assert.NotNil(t, handler)
-	assert.NotNil(t, handler.gitClient)
-	assert.NotNil(t, handler.validator)
+	// Cast to concrete type to access fields in tests (same package)
+	concreteHandler := handler.(*gitSourceHandler)
+	assert.NotNil(t, concreteHandler.gitClient)
+	assert.NotNil(t, concreteHandler.validator)
 }
 
 func TestGitSourceHandler_Validate(t *testing.T) {
@@ -434,7 +436,7 @@ func TestGitSourceHandler_FetchRegistry(t *testing.T) {
 			tt.setupMocks(mockGitClient, mockValidator)
 
 			// Create handler with mocks
-			handler := &GitSourceHandler{
+			handler := &gitSourceHandler{
 				gitClient: mockGitClient,
 				validator: mockValidator,
 			}
@@ -571,7 +573,7 @@ func TestGitSourceHandler_CurrentHash(t *testing.T) {
 			tt.setupMocks(mockGitClient)
 
 			// Create handler with mocks
-			handler := &GitSourceHandler{
+			handler := &gitSourceHandler{
 				gitClient: mockGitClient,
 				validator: NewSourceDataValidator(), // Use real validator for hash tests
 			}
@@ -649,7 +651,7 @@ func TestGitSourceHandler_CleanupFailure(t *testing.T) {
 
 	mockValidator.On("ValidateData", testData, config.SourceFormatToolHive).Return(UpstreamRegistry, nil)
 
-	handler := &GitSourceHandler{
+	handler := &gitSourceHandler{
 		gitClient: mockGitClient,
 		validator: mockValidator,
 	}

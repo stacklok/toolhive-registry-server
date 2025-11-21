@@ -25,7 +25,7 @@ func TestAPISources(t *testing.T) {
 
 var _ = Describe("APISourceHandler", func() {
 	var (
-		handler    *sources.APISourceHandler
+		handler    sources.SourceHandler
 		ctx        context.Context
 		mockServer *httptest.Server
 	)

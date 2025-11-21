@@ -125,8 +125,8 @@ type AutomaticSyncChecker interface {
 	IsIntervalSyncNeeded(cfg *config.Config, syncStatus *status.SyncStatus) (bool, time.Time, error)
 }
 
-// DefaultSyncManager is the default implementation of Manager
-type DefaultSyncManager struct {
+// defaultSyncManager is the default implementation of Manager
+type defaultSyncManager struct {
 	sourceHandlerFactory sources.SourceHandlerFactory
 	storageManager       sources.StorageManager
 	filterService        filtering.FilterService
@@ -134,22 +134,22 @@ type DefaultSyncManager struct {
 	automaticSyncChecker AutomaticSyncChecker
 }
 
-// NewDefaultSyncManager creates a new DefaultSyncManager
+// NewDefaultSyncManager creates a new defaultSyncManager
 func NewDefaultSyncManager(
-	sourceHandlerFactory sources.SourceHandlerFactory, storageManager sources.StorageManager) *DefaultSyncManager {
-	return &DefaultSyncManager{
+	sourceHandlerFactory sources.SourceHandlerFactory, storageManager sources.StorageManager) Manager {
+	return &defaultSyncManager{
 		sourceHandlerFactory: sourceHandlerFactory,
 		storageManager:       storageManager,
 		filterService:        filtering.NewDefaultFilterService(),
-		dataChangeDetector:   &DefaultDataChangeDetector{sourceHandlerFactory: sourceHandlerFactory},
-		automaticSyncChecker: &DefaultAutomaticSyncChecker{},
+		dataChangeDetector:   &defaultDataChangeDetector{sourceHandlerFactory: sourceHandlerFactory},
+		automaticSyncChecker: &defaultAutomaticSyncChecker{},
 	}
 }
 
 // ShouldSync determines if a sync operation is needed
 // Returns: (shouldSync bool, reason string, nextSyncTime *time.Time)
 // nextSyncTime is always nil - timing is controlled by the configured sync interval
-func (s *DefaultSyncManager) ShouldSync(
+func (s *defaultSyncManager) ShouldSync(
 	ctx context.Context,
 	cfg *config.Config,
 	syncStatus *status.SyncStatus,
@@ -216,7 +216,7 @@ func (s *DefaultSyncManager) ShouldSync(
 }
 
 // isSyncNeededForState checks if sync is needed based on the registry's current state
-func (*DefaultSyncManager) isSyncNeededForState(syncStatus *status.SyncStatus) bool {
+func (*defaultSyncManager) isSyncNeededForState(syncStatus *status.SyncStatus) bool {
 	// If we have sync status, use it to determine sync readiness
 	if syncStatus != nil {
 		syncPhase := syncStatus.Phase
@@ -237,7 +237,7 @@ func (*DefaultSyncManager) isSyncNeededForState(syncStatus *status.SyncStatus) b
 }
 
 // isFilterChanged checks if the filter has changed compared to the last applied configuration
-func (*DefaultSyncManager) isFilterChanged(ctx context.Context, cfg *config.Config, syncStatus *status.SyncStatus) bool {
+func (*defaultSyncManager) isFilterChanged(ctx context.Context, cfg *config.Config, syncStatus *status.SyncStatus) bool {
 	logger := log.FromContext(ctx)
 
 	currentFilter := cfg.Filter
@@ -262,7 +262,7 @@ func (*DefaultSyncManager) isFilterChanged(ctx context.Context, cfg *config.Conf
 
 // PerformSync performs the complete sync operation for the Registry
 // Returns sync result on success, or error on failure
-func (s *DefaultSyncManager) PerformSync(
+func (s *defaultSyncManager) PerformSync(
 	ctx context.Context, cfg *config.Config,
 ) (*Result, *Error) {
 	// Fetch and process registry data
@@ -286,12 +286,12 @@ func (s *DefaultSyncManager) PerformSync(
 }
 
 // Delete cleans up storage resources for the Registry
-func (s *DefaultSyncManager) Delete(ctx context.Context, cfg *config.Config) error {
+func (s *defaultSyncManager) Delete(ctx context.Context, cfg *config.Config) error {
 	return s.storageManager.Delete(ctx, cfg)
 }
 
 // fetchAndProcessRegistryData handles source handler creation, validation, fetch, and filtering
-func (s *DefaultSyncManager) fetchAndProcessRegistryData(
+func (s *defaultSyncManager) fetchAndProcessRegistryData(
 	ctx context.Context,
 	cfg *config.Config) (*sources.FetchResult, *Error) {
 	ctxLogger := log.FromContext(ctx)
@@ -346,7 +346,7 @@ func (s *DefaultSyncManager) fetchAndProcessRegistryData(
 }
 
 // applyFilteringIfConfigured applies filtering to fetch result if registry has filter configuration
-func (s *DefaultSyncManager) applyFilteringIfConfigured(
+func (s *defaultSyncManager) applyFilteringIfConfigured(
 	ctx context.Context,
 	cfg *config.Config,
 	fetchResult *sources.FetchResult) *Error {
@@ -386,7 +386,7 @@ func (s *DefaultSyncManager) applyFilteringIfConfigured(
 }
 
 // storeRegistryData stores the registry data using the storage manager
-func (s *DefaultSyncManager) storeRegistryData(
+func (s *defaultSyncManager) storeRegistryData(
 	ctx context.Context,
 	cfg *config.Config,
 	fetchResult *sources.FetchResult) *Error {

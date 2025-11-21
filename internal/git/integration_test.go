@@ -230,7 +230,7 @@ func TestDefaultGitClient_UpdateRepositoryInfo(t *testing.T) {
 		t.Fatalf("Failed to checkout branch: %v", err)
 	}
 
-	client := NewDefaultGitClient()
+	client := &defaultGitClient{}
 	repoInfo := &RepositoryInfo{
 		Repository: repo,
 	}

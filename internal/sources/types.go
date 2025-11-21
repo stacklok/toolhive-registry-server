@@ -70,16 +70,18 @@ type SourceHandlerFactory interface {
 	CreateHandler(sourceType string) (SourceHandler, error)
 }
 
-// DefaultSourceDataValidator is the default implementation of SourceValidator
-type DefaultSourceDataValidator struct{}
+// defaultSourceDataValidator is the default implementation of SourceValidator
+type defaultSourceDataValidator struct{}
+
+var _ SourceDataValidator = (*defaultSourceDataValidator)(nil)
 
 // NewSourceDataValidator creates a new default source validator
 func NewSourceDataValidator() SourceDataValidator {
-	return &DefaultSourceDataValidator{}
+	return &defaultSourceDataValidator{}
 }
 
 // ValidateData validates raw data and returns a parsed UpstreamRegistry
-func (*DefaultSourceDataValidator) ValidateData(data []byte, format string) (*toolhivetypes.UpstreamRegistry, error) {
+func (*defaultSourceDataValidator) ValidateData(data []byte, format string) (*toolhivetypes.UpstreamRegistry, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("data cannot be empty")
 	}
