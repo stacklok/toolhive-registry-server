@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 )
 
+//go:generate mockgen -destination=mocks/mock_status_persistence.go -package=mocks -source=persistence.go StatusPersistence
+
 const (
 	// StatusFileName is the name of the status file
 	StatusFileName = "status.json"
