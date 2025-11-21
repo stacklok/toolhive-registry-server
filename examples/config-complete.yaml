@@ -152,18 +152,7 @@ filter:
       - "unmaintained"        # Exclude unmaintained servers
 
 # ==============================================================================
-# STORAGE CONFIGURATION (Optional)
-# ==============================================================================
-
-# Storage type for registry data
-# Options:
-#   - file: Store data in local JSON files (default)
-#   - database: Store data in PostgreSQL database
-# Defaults to "file" if not specified
-storage: file
-
-# ==============================================================================
-# DATABASE CONFIGURATION (Required when storage: database)
+# DATABASE CONFIGURATION
 # ==============================================================================
 
 # PostgreSQL database configuration
