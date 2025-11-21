@@ -451,9 +451,6 @@ thv-registry-api serve \
 ## Command Reference
 
 ```bash
-# Validate configs before using
-./examples/validate-configs.sh
-
 # Start with Git sync
 thv-registry-api serve --config examples/config-git.yaml
 
