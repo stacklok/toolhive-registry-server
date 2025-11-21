@@ -4,7 +4,7 @@ This file provides AI assistant guidance for working with the ToolHive Registry 
 
 ## Available Subagents
 
-ToolHive uses specialized AI subagents for different aspects of development. These agents are configured in `.claude/agents/` and MUST be invoked when you need to perform tasks that come under their expertise:
+Registry Server uses specialized AI subagents for different aspects of development. These agents are configured in `.claude/agents/` and MUST be invoked when you need to perform tasks that come under their expertise:
 
 ### Core Development Agents
 
@@ -12,7 +12,7 @@ ToolHive uses specialized AI subagents for different aspects of development. The
 
 - **unit-test-writer**: Specialized in writing comprehensive unit tests for Go code. Use when you need thorough test coverage for functions, methods, or components.
 
-- **code-reviewer**: Reviews code for ToolHive best practices, security patterns, Go conventions, and architectural consistency. Use after significant code changes.
+- **code-reviewer**: Reviews code for Registry Server best practices, security patterns, Go conventions, and architectural consistency. Use after significant code changes.
 
 - **tech-lead-orchestrator**: Provides architectural oversight, task delegation, and technical leadership for code development projects. Use for complex features or architectural decisions.
 
