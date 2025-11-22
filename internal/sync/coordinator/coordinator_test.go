@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -11,7 +12,12 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	statusmocks "github.com/stacklok/toolhive-registry-server/internal/status/mocks"
+	"github.com/stacklok/toolhive-registry-server/internal/sync"
 	syncmocks "github.com/stacklok/toolhive-registry-server/internal/sync/mocks"
+)
+
+const (
+	testRegistryName = "test-registry"
 )
 
 func TestGetSyncInterval(t *testing.T) {
@@ -206,12 +212,582 @@ func TestCoordinator_Stop_BeforeStart(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// NOTE: TestCoordinator_StartAndStop is intentionally not included here.
-// It's a complex integration test that involves:
-// - Starting background goroutines
-// - Managing async sync operations
-// - Coordinating shutdown
-// The race detector often flags this kind of test even when the code is correct.
-// The existing tests (GetStatus, GetAllStatus, Stop_BeforeStart) provide sufficient
-// coverage of the coordinator's core functionality without the complexity of
-// testing the full async lifecycle.
+func TestPerformRegistrySync_StatusPersistence(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		syncError      *sync.Error
+		expectedPhase  status.SyncPhase
+		expectedMsg    string
+		shouldHaveHash bool
+	}{
+		{
+			name:           "successful sync updates status to Complete",
+			syncError:      nil,
+			expectedPhase:  status.SyncPhaseComplete,
+			expectedMsg:    "Sync completed successfully",
+			shouldHaveHash: true,
+		},
+		{
+			name: "failed sync updates status to Failed",
+			syncError: &sync.Error{
+				Message: "sync failed due to network error",
+			},
+			expectedPhase:  status.SyncPhaseFailed,
+			expectedMsg:    "sync failed due to network error",
+			shouldHaveHash: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			// Create temporary directory for status file
+			tempDir := t.TempDir()
+
+			// Create mock sync manager
+			mockSyncMgr := syncmocks.NewMockManager(ctrl)
+
+			// Setup mock behavior
+			if tt.syncError == nil {
+				mockSyncMgr.EXPECT().
+					PerformSync(gomock.Any(), gomock.Any()).
+					Return(&sync.Result{
+						Hash:        "test-hash-123",
+						ServerCount: 42,
+					}, nil)
+			} else {
+				mockSyncMgr.EXPECT().
+					PerformSync(gomock.Any(), gomock.Any()).
+					Return(nil, tt.syncError)
+			}
+
+			// Create status persistence
+			statusPersistence := status.NewFileStatusPersistence(tempDir)
+
+			// Create config
+			registryName := testRegistryName
+			cfg := &config.Config{
+				RegistryName: "global-registry",
+				Registries: []config.RegistryConfig{
+					{Name: registryName},
+				},
+			}
+			regCfg := &cfg.Registries[0]
+
+			// Create coordinator with initial status
+			coord := &defaultCoordinator{
+				manager:           mockSyncMgr,
+				statusPersistence: statusPersistence,
+				config:            cfg,
+				cachedStatuses: map[string]*status.SyncStatus{
+					registryName: {
+						Phase:   status.SyncPhaseFailed,
+						Message: "Initial state",
+					},
+				},
+			}
+
+			// Execute performRegistrySync
+			ctx := context.Background()
+			coord.performRegistrySync(ctx, regCfg)
+
+			// Verify the status object was updated correctly
+			cachedStatus := coord.cachedStatuses[registryName]
+			assert.Equal(t, tt.expectedPhase, cachedStatus.Phase, "Phase should be updated")
+			assert.Equal(t, tt.expectedMsg, cachedStatus.Message, "Message should be updated")
+
+			if tt.shouldHaveHash {
+				assert.Equal(t, "test-hash-123", cachedStatus.LastSyncHash, "Hash should be set")
+				assert.Equal(t, 42, cachedStatus.ServerCount, "ServerCount should be set")
+				assert.NotNil(t, cachedStatus.LastSyncTime, "LastSyncTime should be set")
+			}
+
+			// Verify status was persisted to file
+			loadedStatus, err := statusPersistence.LoadStatus(ctx, registryName)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedPhase, loadedStatus.Phase, "Persisted phase should match")
+			assert.Equal(t, tt.expectedMsg, loadedStatus.Message, "Persisted message should match")
+
+			if tt.shouldHaveHash {
+				assert.Equal(t, "test-hash-123", loadedStatus.LastSyncHash, "Persisted hash should match")
+			}
+		})
+	}
+}
+
+func TestPerformRegistrySync_AlwaysPersists(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tempDir := t.TempDir()
+	mockSyncMgr := syncmocks.NewMockManager(ctrl)
+
+	// Mock successful sync
+	mockSyncMgr.EXPECT().
+		PerformSync(gomock.Any(), gomock.Any()).
+		Return(&sync.Result{
+			Hash:        "test-hash",
+			ServerCount: 10,
+		}, nil)
+
+	statusPersistence := status.NewFileStatusPersistence(tempDir)
+	registryName := testRegistryName
+
+	cfg := &config.Config{
+		RegistryName: "global-registry",
+		Registries: []config.RegistryConfig{
+			{Name: registryName},
+		},
+	}
+	regCfg := &cfg.Registries[0]
+
+	coord := &defaultCoordinator{
+		manager:           mockSyncMgr,
+		statusPersistence: statusPersistence,
+		config:            cfg,
+		cachedStatuses: map[string]*status.SyncStatus{
+			registryName: {
+				Phase:   status.SyncPhaseFailed,
+				Message: "Initial",
+			},
+		},
+	}
+
+	// Execute
+	coord.performRegistrySync(context.Background(), regCfg)
+
+	// Verify status file exists and was written
+	loadedStatus, err := statusPersistence.LoadStatus(context.Background(), registryName)
+	require.NoError(t, err)
+	assert.NotNil(t, loadedStatus)
+	assert.Equal(t, status.SyncPhaseComplete, loadedStatus.Phase)
+}
+
+func TestPerformRegistrySync_SyncingPhasePersistedImmediately(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tempDir := t.TempDir()
+	mockSyncMgr := syncmocks.NewMockManager(ctrl)
+
+	// Mock sync that takes some time and succeeds
+	syncCalled := make(chan struct{})
+	mockSyncMgr.EXPECT().
+		PerformSync(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *config.RegistryConfig) (*sync.Result, *sync.Error) {
+			close(syncCalled)
+			time.Sleep(50 * time.Millisecond) // Simulate work
+			return &sync.Result{
+				Hash:        "test-hash",
+				ServerCount: 5,
+			}, nil
+		})
+
+	statusPersistence := status.NewFileStatusPersistence(tempDir)
+	registryName := testRegistryName
+
+	cfg := &config.Config{
+		RegistryName: "global-registry",
+		Registries: []config.RegistryConfig{
+			{Name: registryName},
+		},
+	}
+	regCfg := &cfg.Registries[0]
+
+	coord := &defaultCoordinator{
+		manager:           mockSyncMgr,
+		statusPersistence: statusPersistence,
+		config:            cfg,
+		cachedStatuses: map[string]*status.SyncStatus{
+			registryName: {
+				Phase: status.SyncPhaseFailed,
+			},
+		},
+	}
+
+	// Execute sync in background
+	done := make(chan struct{})
+	go func() {
+		coord.performRegistrySync(context.Background(), regCfg)
+		close(done)
+	}()
+
+	// Wait for sync to be called
+	<-syncCalled
+
+	// While sync is in progress, check that status shows "Syncing"
+	loadedStatus, err := statusPersistence.LoadStatus(context.Background(), registryName)
+	require.NoError(t, err)
+	assert.Equal(t, status.SyncPhaseSyncing, loadedStatus.Phase, "Status should be Syncing while operation is in progress")
+
+	// Wait for completion
+	<-done
+
+	// Final status should be Complete
+	finalStatus, err := statusPersistence.LoadStatus(context.Background(), registryName)
+	require.NoError(t, err)
+	assert.Equal(t, status.SyncPhaseComplete, finalStatus.Phase)
+}
+
+func TestPerformRegistrySync_PhaseTransitions(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tempDir := t.TempDir()
+	mockSyncMgr := syncmocks.NewMockManager(ctrl)
+
+	mockSyncMgr.EXPECT().
+		PerformSync(gomock.Any(), gomock.Any()).
+		Return(&sync.Result{
+			Hash:        "new-hash",
+			ServerCount: 15,
+		}, nil)
+
+	statusPersistence := status.NewFileStatusPersistence(tempDir)
+	registryName := testRegistryName
+
+	cfg := &config.Config{
+		RegistryName: "global-registry",
+		Registries: []config.RegistryConfig{
+			{Name: registryName},
+		},
+	}
+	regCfg := &cfg.Registries[0]
+
+	// Start with Failed status
+	initialStatus := &status.SyncStatus{
+		Phase:   status.SyncPhaseFailed,
+		Message: "Previous sync failed",
+	}
+
+	coord := &defaultCoordinator{
+		manager:           mockSyncMgr,
+		statusPersistence: statusPersistence,
+		config:            cfg,
+		cachedStatuses: map[string]*status.SyncStatus{
+			registryName: initialStatus,
+		},
+	}
+
+	// Execute sync
+	coord.performRegistrySync(context.Background(), regCfg)
+
+	// Verify transition: Failed -> Syncing -> Complete
+	finalStatus := coord.cachedStatuses[registryName]
+	assert.Equal(t, status.SyncPhaseComplete, finalStatus.Phase)
+	assert.Equal(t, "Sync completed successfully", finalStatus.Message)
+	assert.Equal(t, "new-hash", finalStatus.LastSyncHash)
+	assert.Equal(t, 15, finalStatus.ServerCount)
+}
+
+func TestUpdateStatusForSkippedSync(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tempDir := t.TempDir()
+	mockSyncMgr := syncmocks.NewMockManager(ctrl)
+
+	statusPersistence := status.NewFileStatusPersistence(tempDir)
+	registryName := testRegistryName
+
+	cfg := &config.Config{
+		RegistryName: "global-registry",
+		Registries: []config.RegistryConfig{
+			{Name: registryName},
+		},
+	}
+	regCfg := &cfg.Registries[0]
+
+	coord := &defaultCoordinator{
+		manager:           mockSyncMgr,
+		statusPersistence: statusPersistence,
+		config:            cfg,
+		cachedStatuses: map[string]*status.SyncStatus{
+			registryName: {
+				Phase:   status.SyncPhaseComplete,
+				Message: "Previous sync completed",
+			},
+		},
+	}
+
+	// Call updateStatusForSkippedSync
+	reason := sync.ReasonUpToDateWithPolicy
+	coord.updateStatusForSkippedSync(context.Background(), regCfg, reason)
+
+	// Verify status is updated but phase remains the same
+	finalStatus := coord.cachedStatuses[registryName]
+	assert.Equal(t, status.SyncPhaseComplete, finalStatus.Phase, "Phase should remain Complete")
+	assert.Contains(t, finalStatus.Message, reason, "Message should include skip reason")
+
+	// Verify status was persisted
+	loadedStatus, err := statusPersistence.LoadStatus(context.Background(), registryName)
+	require.NoError(t, err)
+	assert.Equal(t, status.SyncPhaseComplete, loadedStatus.Phase)
+}
+
+func TestCheckRegistrySync_PerformsSyncWhenNeeded(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tempDir := t.TempDir()
+	mockSyncMgr := syncmocks.NewMockManager(ctrl)
+
+	registryName := testRegistryName
+	cfg := &config.Config{
+		RegistryName: "global-registry",
+		Registries: []config.RegistryConfig{
+			{Name: registryName},
+		},
+	}
+	regCfg := &cfg.Registries[0]
+
+	// Mock ShouldSync to return true
+	mockSyncMgr.EXPECT().
+		ShouldSync(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(true, sync.ReasonSourceDataChanged, (*time.Time)(nil))
+
+	// Mock PerformSync
+	mockSyncMgr.EXPECT().
+		PerformSync(gomock.Any(), gomock.Any()).
+		Return(&sync.Result{
+			Hash:        "new-hash",
+			ServerCount: 20,
+		}, nil)
+
+	statusPersistence := status.NewFileStatusPersistence(tempDir)
+
+	coord := &defaultCoordinator{
+		manager:           mockSyncMgr,
+		statusPersistence: statusPersistence,
+		config:            cfg,
+		cachedStatuses: map[string]*status.SyncStatus{
+			registryName: {
+				Phase: status.SyncPhaseComplete,
+			},
+		},
+	}
+
+	// Execute checkRegistrySync
+	coord.checkRegistrySync(context.Background(), regCfg, "automatic")
+
+	// Verify sync was performed
+	finalStatus := coord.cachedStatuses[registryName]
+	assert.Equal(t, status.SyncPhaseComplete, finalStatus.Phase)
+	assert.Equal(t, "new-hash", finalStatus.LastSyncHash)
+}
+
+func TestCheckRegistrySync_SkipsSyncWhenNotNeeded(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tempDir := t.TempDir()
+	mockSyncMgr := syncmocks.NewMockManager(ctrl)
+
+	registryName := testRegistryName
+	cfg := &config.Config{
+		RegistryName: "global-registry",
+		Registries: []config.RegistryConfig{
+			{Name: registryName},
+		},
+	}
+	regCfg := &cfg.Registries[0]
+
+	// Mock ShouldSync to return false
+	mockSyncMgr.EXPECT().
+		ShouldSync(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(false, sync.ReasonUpToDateWithPolicy, (*time.Time)(nil))
+
+	// PerformSync should NOT be called
+	mockSyncMgr.EXPECT().
+		PerformSync(gomock.Any(), gomock.Any()).
+		Times(0)
+
+	statusPersistence := status.NewFileStatusPersistence(tempDir)
+
+	coord := &defaultCoordinator{
+		manager:           mockSyncMgr,
+		statusPersistence: statusPersistence,
+		config:            cfg,
+		cachedStatuses: map[string]*status.SyncStatus{
+			registryName: {
+				Phase:        status.SyncPhaseComplete,
+				LastSyncHash: "existing-hash",
+			},
+		},
+	}
+
+	// Execute checkRegistrySync
+	coord.checkRegistrySync(context.Background(), regCfg, "automatic")
+
+	// Verify sync was NOT performed (hash unchanged)
+	finalStatus := coord.cachedStatuses[registryName]
+	assert.Equal(t, status.SyncPhaseComplete, finalStatus.Phase)
+	assert.Equal(t, "existing-hash", finalStatus.LastSyncHash)
+}
+
+func TestLoadOrInitializeRegistryStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		setupFile       bool
+		existingPhase   status.SyncPhase
+		expectedPhase   status.SyncPhase
+		expectedMessage string
+	}{
+		{
+			name:            "loads existing status from file",
+			setupFile:       true,
+			existingPhase:   status.SyncPhaseComplete,
+			expectedPhase:   status.SyncPhaseComplete,
+			expectedMessage: "Previous sync",
+		},
+		{
+			name:            "initializes new status when file doesn't exist",
+			setupFile:       false,
+			expectedPhase:   status.SyncPhaseFailed,
+			expectedMessage: "No previous sync status found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			tempDir := t.TempDir()
+			registryName := testRegistryName
+
+			statusPersistence := status.NewFileStatusPersistence(tempDir)
+
+			// Setup: Create existing status file if needed
+			if tt.setupFile {
+				existingStatus := &status.SyncStatus{
+					Phase:   tt.existingPhase,
+					Message: tt.expectedMessage,
+				}
+				err := statusPersistence.SaveStatus(context.Background(), registryName, existingStatus)
+				require.NoError(t, err)
+			}
+
+			mockSyncMgr := syncmocks.NewMockManager(ctrl)
+			cfg := &config.Config{
+				RegistryName: "global-registry",
+				Registries: []config.RegistryConfig{
+					{Name: registryName},
+				},
+			}
+
+			coord := &defaultCoordinator{
+				manager:           mockSyncMgr,
+				statusPersistence: statusPersistence,
+				config:            cfg,
+				cachedStatuses:    make(map[string]*status.SyncStatus),
+			}
+
+			// Execute
+			coord.loadOrInitializeRegistryStatus(context.Background(), registryName)
+
+			// Verify
+			loadedStatus := coord.cachedStatuses[registryName]
+			require.NotNil(t, loadedStatus)
+			assert.Equal(t, tt.expectedPhase, loadedStatus.Phase)
+			assert.Contains(t, loadedStatus.Message, tt.expectedMessage)
+		})
+	}
+}
+
+func TestMultiRegistry_IndependentSyncStatus(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tempDir := t.TempDir()
+	mockSyncMgr := syncmocks.NewMockManager(ctrl)
+	statusPersistence := status.NewFileStatusPersistence(tempDir)
+
+	// Setup two registries
+	registry1 := "registry-1"
+	registry2 := "registry-2"
+
+	cfg := &config.Config{
+		RegistryName: "global-registry",
+		Registries: []config.RegistryConfig{
+			{Name: registry1},
+			{Name: registry2},
+		},
+	}
+
+	coord := &defaultCoordinator{
+		manager:           mockSyncMgr,
+		statusPersistence: statusPersistence,
+		config:            cfg,
+		cachedStatuses: map[string]*status.SyncStatus{
+			registry1: {
+				Phase:        status.SyncPhaseComplete,
+				LastSyncHash: "hash-1",
+				ServerCount:  10,
+			},
+			registry2: {
+				Phase:        status.SyncPhaseFailed,
+				LastSyncHash: "",
+				ServerCount:  0,
+			},
+		},
+	}
+
+	// Get individual statuses
+	status1 := coord.GetStatus(registry1)
+	status2 := coord.GetStatus(registry2)
+
+	// Verify they are independent
+	assert.Equal(t, status.SyncPhaseComplete, status1.Phase)
+	assert.Equal(t, "hash-1", status1.LastSyncHash)
+	assert.Equal(t, 10, status1.ServerCount)
+
+	assert.Equal(t, status.SyncPhaseFailed, status2.Phase)
+	assert.Empty(t, status2.LastSyncHash)
+	assert.Equal(t, 0, status2.ServerCount)
+
+	// Update registry-2
+	mockSyncMgr.EXPECT().
+		PerformSync(gomock.Any(), gomock.Any()).
+		Return(&sync.Result{
+			Hash:        "hash-2",
+			ServerCount: 25,
+		}, nil)
+
+	coord.performRegistrySync(context.Background(), &cfg.Registries[1])
+
+	// Verify registry-1 is unchanged
+	status1After := coord.GetStatus(registry1)
+	assert.Equal(t, status.SyncPhaseComplete, status1After.Phase)
+	assert.Equal(t, "hash-1", status1After.LastSyncHash)
+
+	// Verify registry-2 is updated
+	status2After := coord.GetStatus(registry2)
+	assert.Equal(t, status.SyncPhaseComplete, status2After.Phase)
+	assert.Equal(t, "hash-2", status2After.LastSyncHash)
+	assert.Equal(t, 25, status2After.ServerCount)
+}
