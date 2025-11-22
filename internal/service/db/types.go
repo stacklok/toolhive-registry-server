@@ -3,6 +3,7 @@ package database
 import (
 	"time"
 
+	"github.com/aws/smithy-go/ptr"
 	"github.com/google/uuid"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
@@ -113,29 +114,44 @@ func helperToServer(
 	server := upstreamv0.ServerJSON{
 		Schema:      "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
 		Name:        dbServer.Name,
-		Description: *dbServer.Description,
-		Title:       *dbServer.Title,
-		Repository: &model.Repository{
-			URL:       *dbServer.RepositoryUrl,
-			Source:    *dbServer.RepositoryType,
-			ID:        *dbServer.RepositoryID,
-			Subfolder: *dbServer.RepositorySubfolder,
-		},
-		Version:    dbServer.Version,
-		WebsiteURL: *dbServer.Website,
-		Packages:   toPackages(packages),
-		Remotes:    toRemotes(remotes),
+		Description: ptr.ToString(dbServer.Description),
+		Title:       ptr.ToString(dbServer.Title),
+		Version:     dbServer.Version,
+		WebsiteURL:  ptr.ToString(dbServer.Website),
+		Packages:    toPackages(packages),
+		Remotes:     toRemotes(remotes),
+	}
+
+	if dbServer.RepositoryUrl != nil {
+		server.Repository = &model.Repository{
+			URL:       ptr.ToString(dbServer.RepositoryUrl),
+			Source:    ptr.ToString(dbServer.RepositoryType),
+			ID:        ptr.ToString(dbServer.RepositoryID),
+			Subfolder: ptr.ToString(dbServer.RepositorySubfolder),
+		}
 	}
 
 	server.Meta = &upstreamv0.ServerMeta{
 		PublisherProvided: make(map[string]any),
 	}
-	server.Meta.PublisherProvided["upstream_meta"] = dbServer.UpstreamMeta
-	server.Meta.PublisherProvided["server_meta"] = dbServer.ServerMeta
-	server.Meta.PublisherProvided["repository_url"] = dbServer.RepositoryUrl
-	server.Meta.PublisherProvided["repository_id"] = dbServer.RepositoryID
-	server.Meta.PublisherProvided["repository_subfolder"] = dbServer.RepositorySubfolder
-	server.Meta.PublisherProvided["repository_type"] = dbServer.RepositoryType
+	if len(dbServer.UpstreamMeta) > 0 {
+		server.Meta.PublisherProvided["upstream_meta"] = dbServer.UpstreamMeta
+	}
+	if len(dbServer.ServerMeta) > 0 {
+		server.Meta.PublisherProvided["server_meta"] = dbServer.ServerMeta
+	}
+	if dbServer.RepositoryUrl != nil {
+		server.Meta.PublisherProvided["repository_url"] = ptr.ToString(dbServer.RepositoryUrl)
+	}
+	if dbServer.RepositoryID != nil {
+		server.Meta.PublisherProvided["repository_id"] = ptr.ToString(dbServer.RepositoryID)
+	}
+	if dbServer.RepositorySubfolder != nil {
+		server.Meta.PublisherProvided["repository_subfolder"] = ptr.ToString(dbServer.RepositorySubfolder)
+	}
+	if dbServer.RepositoryType != nil {
+		server.Meta.PublisherProvided["repository_type"] = ptr.ToString(dbServer.RepositoryType)
+	}
 
 	return server
 }
@@ -150,11 +166,11 @@ func toPackages(
 			RegistryBaseURL: dbPackage.PkgRegistryUrl,
 			Identifier:      dbPackage.PkgIdentifier,
 			Version:         dbPackage.PkgVersion,
-			FileSHA256:      *dbPackage.Sha256Hash,
-			RunTimeHint:     *dbPackage.RuntimeHint,
+			FileSHA256:      ptr.ToString(dbPackage.Sha256Hash),
+			RunTimeHint:     ptr.ToString(dbPackage.RuntimeHint),
 			Transport: model.Transport{
 				Type:    dbPackage.Transport,
-				URL:     *dbPackage.TransportUrl,
+				URL:     ptr.ToString(dbPackage.TransportUrl),
 				Headers: toKeyValueInputs(dbPackage.TransportHeaders),
 			},
 			RuntimeArguments:     toArguments(dbPackage.RuntimeArguments),
@@ -183,9 +199,9 @@ func toKeyValueInputs(
 	strings []string,
 ) []model.KeyValueInput {
 	result := make([]model.KeyValueInput, len(strings))
-	for i, string := range strings {
+	for i, str := range strings {
 		result[i] = model.KeyValueInput{
-			Name: string,
+			Name: str,
 		}
 	}
 	return result
@@ -195,9 +211,9 @@ func toArguments(
 	strings []string,
 ) []model.Argument {
 	result := make([]model.Argument, len(strings))
-	for i, string := range strings {
+	for i, str := range strings {
 		result[i] = model.Argument{
-			Name: string,
+			Name: str,
 		}
 	}
 	return result

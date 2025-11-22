@@ -4,6 +4,7 @@ package database
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"time"
 
@@ -17,6 +18,11 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
+var (
+	// ErrBug is returned when a server is not found
+	ErrBug = errors.New("bug")
+)
+
 // options holds configuration options for the database service
 type options struct {
 	pool *pgxpool.Pool
@@ -26,30 +32,13 @@ type options struct {
 type Option func(*options) error
 
 // WithConnectionPool creates a new database-backed registry service with the
-// given pgx pool.
+// given pgx pool. The caller is responsible for closing the pool when it is
+// done.
 func WithConnectionPool(pool *pgxpool.Pool) Option {
 	return func(o *options) error {
 		if pool == nil {
 			return fmt.Errorf("pgx pool is required")
 		}
-		o.pool = pool
-		return nil
-	}
-}
-
-// WithConnectionString creates a new database-backed registry service with
-// the given connection string.
-func WithConnectionString(connString string) Option {
-	return func(o *options) error {
-		if connString == "" {
-			return fmt.Errorf("connection string is required")
-		}
-
-		pool, err := pgxpool.New(context.Background(), connString)
-		if err != nil {
-			return fmt.Errorf("failed to create pgx pool: %w", err)
-		}
-
 		o.pool = pool
 		return nil
 	}
@@ -98,7 +87,6 @@ func (s *dbService) ListServers(
 	ctx context.Context,
 	opts ...service.Option[service.ListServersOptions],
 ) ([]*upstreamv0.ServerJSON, error) {
-	// TODO: implement
 	options := &service.ListServersOptions{}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
@@ -108,14 +96,17 @@ func (s *dbService) ListServers(
 
 	decoded, err := base64.StdEncoding.DecodeString(options.Cursor)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid cursor format: %w", err)
 	}
 	nextTime, err := time.Parse(time.RFC3339, string(decoded))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid cursor format: %w", err)
 	}
 
-	querierFunc := func(querier sqlc.Querier) ([]helper, error) {
+	// Note: this function fetches a list of servers. In case no records are
+	// found, the called function should return an empty slice as it's
+	// customary in Go.
+	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
 		servers, err := querier.ListServers(
 			ctx,
 			sqlc.ListServersParams{
@@ -123,7 +114,6 @@ func (s *dbService) ListServers(
 				Size: int64(options.Limit),
 			},
 		)
-
 		if err != nil {
 			return nil, err
 		}
@@ -151,7 +141,10 @@ func (s *dbService) ListServerVersions(
 		}
 	}
 
-	querierFunc := func(querier sqlc.Querier) ([]helper, error) {
+	// Note: this function fetches a list of server versions. In case no records are
+	// found, the called function should return an empty slice as it's
+	// customary in Go.
+	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
 		servers, err := querier.ListServerVersions(
 			ctx,
 			sqlc.ListServerVersionsParams{
@@ -188,7 +181,10 @@ func (s *dbService) GetServerVersion(
 		}
 	}
 
-	querierFunc := func(querier sqlc.Querier) ([]helper, error) {
+	// Note: this function fetches a single record given name and version.
+	// In case no record is found, the called function should return an
+	// `sql.ErrNoRows` error as it's customary in Go.
+	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
 		server, err := querier.GetServerVersion(
 			ctx,
 			sqlc.GetServerVersionParams{
@@ -208,25 +204,62 @@ func (s *dbService) GetServerVersion(
 		return nil, err
 	}
 
+	// Note: the `queryFunc` function is expected to return an error
+	// sooner if no records are found, so getting this far with
+	// a length result slice other than 1 means there's a bug.
+	if len(res) != 1 {
+		return nil, fmt.Errorf("%w: number of servers returned is not 1", ErrBug)
+	}
+
 	return res[0], nil
 }
 
+// querierFunction is a function that uses the given querier object to run the
+// main extraction. As of the time of this writing, its main use is accessing
+// the `mcp_server` table in a type-agnostic way. This is to overcome a
+// limitation of sqlc that prevents us from having the exact same go type
+// despite the fact that the underlying columns returned are the same.
+//
+// Note that the underlying table does not have to be the `mcp_server` table
+// as it is used now, as long as the result is a slice of helpers.
+type querierFunction func(ctx context.Context, querier sqlc.Querier) ([]helper, error)
+
+// sharedListServers is a helper function to list servers and mapping them to
+// the API schema.
+//
+// Its responsibilities are:
+// * Begin a transaction
+// * Execute the querier function
+// * List packages and remotes using the server IDs
+// * Map the results to the API schema
+// * Return the results
+//
+// The argument `querierFunc` is a function that uses the given querier object
+// to run the main extraction. Note that the underlying table does not have
+// to be the `mcp_server` table as it is used now, as long as the result is a
+// slice of helpers.
 func (s *dbService) sharedListServers(
 	ctx context.Context,
-	querierFunc func(querier sqlc.Querier) ([]helper, error),
+	querierFunc querierFunction,
 ) ([]*upstreamv0.ServerJSON, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.ReadCommitted,
 		AccessMode: pgx.ReadOnly,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			// TODO: log the rollback error (add proper logging)
+			_ = err
+		}
+	}()
 
 	querier := sqlc.New(tx)
 
-	servers, err := querierFunc(querier)
+	servers, err := querierFunc(ctx, querier)
 	if err != nil {
 		return nil, err
 	}
