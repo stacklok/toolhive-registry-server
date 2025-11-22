@@ -109,3 +109,19 @@ CREATE TABLE mcp_server_icon (
     theme      icon_theme, -- NULL means 'any' theme.
     PRIMARY KEY (server_id, source_uri, mime_type, theme) -- Unclear if mime_type or theme should be part of the PK
 );
+
+-- Grant permissions to application user if it exists
+-- This allows normal operations with limited privileges
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'db_app') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO db_app;
+        GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO db_app;
+
+        -- Grant permissions on future tables created by migration user
+        ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO db_app;
+        ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
+            GRANT USAGE, SELECT ON SEQUENCES TO db_app;
+    END IF;
+END $$;

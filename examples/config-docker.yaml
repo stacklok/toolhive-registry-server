@@ -12,11 +12,10 @@
 #
 # The docker-compose setup includes:
 #   1. postgres - PostgreSQL 18 database server
-#   2. migrate - One-time migration service (runs schema migrations)
-#   3. registry-api - Main API server
+#   2. registry-api - Main API server (runs migrations automatically on startup)
 #
 # Database password is provided via THV_DATABASE_PASSWORD environment variable
-# set in the docker-compose.yaml file for both migrate and registry-api services.
+# set in the docker-compose.yaml file for the registry-api service.
 
 # Registry name/identifier
 registryName: docker-registry
@@ -35,9 +34,10 @@ syncPolicy:
   # Check for file changes every 5 minutes
   interval: "5m"
 
-# PostgreSQL database configuration
-# The password is provided via THV_DATABASE_PASSWORD environment variable
-# This is set in docker-compose.yaml for both the migrate and registry-api services
+# PostgreSQL database configuration with separate users for migrations and operations
+# This demonstrates the principle of least privilege:
+#   - Migration user (db_migrator) has elevated privileges for schema changes
+#   - Application user (db_app) has limited privileges for normal operations
 database:
   # Use service name from docker-compose as hostname
   host: postgres
@@ -45,11 +45,17 @@ database:
   # PostgreSQL default port
   port: 5432
 
-  # Database credentials (must match POSTGRES_USER in docker-compose.yaml)
-  user: registry
+  # Application user with limited privileges (SELECT, INSERT, UPDATE, DELETE)
+  # Password from THV_DATABASE_PASSWORD environment variable
+  user: db_app
 
-  # Password is read from THV_DATABASE_PASSWORD environment variable
-  # Do not set passwordFile in Docker Compose - use environment variables instead
+  # Migration user with elevated privileges (CREATE, ALTER, DROP)
+  # Password from THV_DATABASE_MIGRATION_PASSWORD environment variable
+  migrationUser: db_migrator
+
+  # Passwords are read from environment variables (set in docker-compose.yaml):
+  # - THV_DATABASE_PASSWORD: Application user password
+  # - THV_DATABASE_MIGRATION_PASSWORD: Migration user password
 
   # Database name (must match POSTGRES_DB in docker-compose.yaml)
   database: registry
