@@ -581,15 +581,22 @@ func TestBuildSyncComponents(t *testing.T) {
 		},
 		{
 			name: "error when data directory creation fails",
-			config: &registryAppConfig{
-				config:               createValidTestConfig(),
-				dataDir:              "/dev/null/invalid/path", // Invalid path that should fail
-				statusFile:           "/dev/null/invalid/path/status.json",
-				sourceHandlerFactory: nil,
-				storageManager:       nil, // This will trigger directory creation
-				statusPersistence:    nil,
-				syncManager:          nil,
-			},
+			config: func() *registryAppConfig {
+				cfg := createValidTestConfig()
+				// Set an invalid base directory path that should fail
+				cfg.FileStorage = &config.FileStorageConfig{
+					BaseDir: "/dev/null/invalid/path",
+				}
+				return &registryAppConfig{
+					config:               cfg,
+					dataDir:              "/tmp", // This is not used anymore, config takes precedence
+					statusFile:           "/tmp/status.json",
+					sourceHandlerFactory: nil,
+					storageManager:       nil, // This will trigger directory creation
+					statusPersistence:    nil,
+					syncManager:          nil,
+				}
+			}(),
 			wantErr: true,
 		},
 	}

@@ -236,11 +236,13 @@ func buildSyncComponents(
 
 	// Build storage manager
 	if b.storageManager == nil {
+		// Use config's file storage base directory (defaults to "./data")
+		baseDir := b.config.GetFileStorageBaseDir()
 		// Ensure data directory exists
-		if err := os.MkdirAll(b.dataDir, 0750); err != nil {
-			return nil, fmt.Errorf("failed to create data directory %s: %w", b.dataDir, err)
+		if err := os.MkdirAll(baseDir, 0750); err != nil {
+			return nil, fmt.Errorf("failed to create data directory %s: %w", baseDir, err)
 		}
-		b.storageManager = sources.NewFileStorageManager(b.dataDir)
+		b.storageManager = sources.NewFileStorageManager(baseDir)
 	}
 
 	// Build status persistence
