@@ -730,77 +730,6 @@ func TestWithConnectionPool(t *testing.T) {
 	}
 }
 
-func TestWithConnectionString(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name         string
-		setupFunc    func(*testing.T) string
-		validateFunc func(*testing.T, error, *options)
-	}{
-		{
-			name: "success with valid connection string",
-			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T) string {
-				ctx := context.Background()
-				db, cleanupFunc := database.SetupTestDB(t)
-				t.Cleanup(cleanupFunc)
-
-				connStr := db.Config().ConnString()
-				pool, err := pgxpool.New(ctx, connStr)
-				require.NoError(t, err)
-				t.Cleanup(func() { pool.Close() })
-
-				return connStr
-			},
-			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, err error, o *options) {
-				require.NoError(t, err)
-				require.NotNil(t, o.pool)
-				// Clean up the pool created by the option
-				if o.pool != nil {
-					o.pool.Close()
-				}
-			},
-		},
-		{
-			name: "failure with empty connection string",
-			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T) string {
-				return ""
-			},
-			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, err error, _ *options) {
-				require.Error(t, err)
-			},
-		},
-		{
-			name: "failure with invalid connection string",
-			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T) string {
-				return "invalid-connection-string"
-			},
-			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, err error, _ *options) {
-				require.Error(t, err)
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			connString := tt.setupFunc(t)
-			opt := WithConnectionString(connString)
-			o := &options{}
-			err := opt(o)
-
-			tt.validateFunc(t, err, o)
-		})
-	}
-}
-
 func TestNew(t *testing.T) {
 	t.Parallel()
 
@@ -843,7 +772,7 @@ func TestNew(t *testing.T) {
 				require.NoError(t, err)
 				t.Cleanup(func() { pool.Close() })
 
-				return []Option{WithConnectionString(connStr)}
+				return []Option{WithConnectionPool(pool)}
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, svc service.RegistryService, err error) {
@@ -855,7 +784,7 @@ func TestNew(t *testing.T) {
 			name: "failure with invalid connection string",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(_ *testing.T) []Option {
-				return []Option{WithConnectionString("invalid-connection-string")}
+				return []Option{WithConnectionPool(nil)}
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, svc service.RegistryService, err error) {
