@@ -18,33 +18,31 @@ const (
 	DefaultRegistryDataFile = "registry.json"
 )
 
-// gitSourceHandler handles registry data from Git repositories
-type gitSourceHandler struct {
+// gitRegistryHandler handles registry data from Git repositories
+type gitRegistryHandler struct {
 	gitClient git2.Client
-	validator SourceDataValidator
+	validator RegistryDataValidator
 }
 
-// NewGitSourceHandler creates a new Git source handler
-func NewGitSourceHandler() SourceHandler {
-	return &gitSourceHandler{
+// NewGitRegistryHandler creates a new Git registry handler
+func NewGitRegistryHandler() RegistryHandler {
+	return &gitRegistryHandler{
 		gitClient: git2.NewDefaultGitClient(),
-		validator: NewSourceDataValidator(),
+		validator: NewRegistryDataValidator(),
 	}
 }
 
-// Validate validates the Git source configuration
-func (*gitSourceHandler) Validate(source *config.SourceConfig) error {
-	if source.Type != config.SourceTypeGit {
-		return fmt.Errorf("invalid source type: expected %s, got %s",
-			config.SourceTypeGit, source.Type)
+// Validate validates the Git registry configuration
+func (*gitRegistryHandler) Validate(regCfg *config.RegistryConfig) error {
+	if regCfg == nil {
+		return fmt.Errorf("registry configuration cannot be nil")
 	}
 
-	if source.Git == nil {
-		return fmt.Errorf("git configuration is required for source type %s",
-			config.SourceTypeGit)
+	if regCfg.Git == nil {
+		return fmt.Errorf("git configuration is required")
 	}
 
-	gitSource := source.Git
+	gitSource := regCfg.Git
 
 	if gitSource.Repository == "" {
 		return fmt.Errorf("git repository URL cannot be empty")
@@ -74,15 +72,15 @@ func (*gitSourceHandler) Validate(source *config.SourceConfig) error {
 	return nil
 }
 
-// FetchRegistry retrieves registry data from the Git repository
-func (h *gitSourceHandler) fetchRegistryData(ctx context.Context, cfg *config.Config) ([]byte, error) {
+// fetchRegistryData retrieves registry data from the Git repository
+func (h *gitRegistryHandler) fetchRegistryData(ctx context.Context, regCfg *config.RegistryConfig) ([]byte, error) {
 
-	// Validate source configuration
-	if err := h.Validate(&cfg.Source); err != nil {
-		return nil, fmt.Errorf("source validation failed: %w", err)
+	// Validate registry configuration
+	if err := h.Validate(regCfg); err != nil {
+		return nil, fmt.Errorf("registry validation failed: %w", err)
 	}
 
-	gitSource := cfg.Source.Git
+	gitSource := regCfg.Git
 	// Prepare clone configuration
 	cloneConfig := &git2.CloneConfig{
 		URL:    gitSource.Repository,
@@ -142,15 +140,15 @@ func (h *gitSourceHandler) fetchRegistryData(ctx context.Context, cfg *config.Co
 }
 
 // FetchRegistry retrieves registry data from the Git repository
-func (h *gitSourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config) (*FetchResult, error) {
+func (h *gitRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
 
-	registryData, err := h.fetchRegistryData(ctx, cfg)
+	registryData, err := h.fetchRegistryData(ctx, regCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch registry data: %w", err)
 	}
 
 	// Validate and parse registry data
-	reg, err := h.validator.ValidateData(registryData, cfg.Source.Format)
+	reg, err := h.validator.ValidateData(registryData, regCfg.Format)
 	if err != nil {
 		return nil, fmt.Errorf("registry data validation failed: %w", err)
 	}
@@ -159,12 +157,12 @@ func (h *gitSourceHandler) FetchRegistry(ctx context.Context, cfg *config.Config
 	hash := fmt.Sprintf("%x", sha256.Sum256(registryData))
 
 	// Create and return fetch result with pre-calculated hash
-	return NewFetchResult(reg, hash, cfg.Source.Format), nil
+	return NewFetchResult(reg, hash, regCfg.Format), nil
 }
 
 // CurrentHash returns the current hash of the source data after fetching the registry data
-func (h *gitSourceHandler) CurrentHash(ctx context.Context, cfg *config.Config) (string, error) {
-	registryData, err := h.fetchRegistryData(ctx, cfg)
+func (h *gitRegistryHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
+	registryData, err := h.fetchRegistryData(ctx, regCfg)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch registry data: %w", err)
 	}

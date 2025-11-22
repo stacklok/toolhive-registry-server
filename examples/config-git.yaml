@@ -9,35 +9,33 @@
 # Registry name/identifier (optional, defaults to "default")
 registryName: toolhive
 
-# Data source configuration
-source:
-  # Source type: git, configmap, or api
-  type: git
+# Registries configuration (can have multiple registries)
+registries:
+  - name: toolhive
+    # Data format: toolhive (native) or upstream (MCP registry format)
+    format: toolhive
 
-  # Data format: toolhive (native) or upstream (MCP registry format)
-  format: toolhive
+    # Git repository configuration
+    git:
+      # Repository URL (HTTP/HTTPS/SSH)
+      repository: https://github.com/stacklok/toolhive.git
 
-  # Git repository configuration
-  git:
-    # Repository URL (HTTP/HTTPS/SSH)
-    repository: https://github.com/stacklok/toolhive.git
+      # Branch to use (mutually exclusive with tag and commit)
+      branch: main
 
-    # Branch to use (mutually exclusive with tag and commit)
-    branch: main
+      # Alternative: Use a specific tag
+      # tag: v1.0.0
 
-    # Alternative: Use a specific tag
-    # tag: v1.0.0
+      # Alternative: Use a specific commit SHA
+      # commit: abc123def456
 
-    # Alternative: Use a specific commit SHA
-    # commit: abc123def456
+      # Path to registry file within the repository
+      path: pkg/registry/data/registry.json
 
-    # Path to registry file within the repository
-    path: pkg/registry/data/registry.json
-
-# Automatic synchronization policy
-syncPolicy:
-  # Sync interval (valid duration: 1m, 5m, 30m, 1h, 24h, etc.)
-  interval: "30m"
+    # Per-registry automatic synchronization policy
+    syncPolicy:
+      # Sync interval (valid duration: 1m, 5m, 30m, 1h, 24h, etc.)
+      interval: "30m"
 
 # Optional: PostgreSQL database configuration
 # Uncomment to store registry data in a database instead of local files

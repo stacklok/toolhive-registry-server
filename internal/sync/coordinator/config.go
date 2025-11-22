@@ -8,7 +8,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
-// getSyncInterval extracts the sync interval from the policy configuration
+// getSyncInterval extracts the sync interval from the registry's policy configuration
 func getSyncInterval(policy *config.SyncPolicyConfig) time.Duration {
 	// Use policy interval if configured
 	if policy != nil && policy.Interval != "" {

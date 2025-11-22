@@ -100,58 +100,58 @@ func (e *Error) Unwrap() error {
 //
 //go:generate mockgen -destination=mocks/mock_manager.go -package=mocks github.com/stacklok/toolhive-registry-server/internal/sync Manager
 type Manager interface {
-	// ShouldSync determines if a sync operation is needed
+	// ShouldSync determines if a sync operation is needed for a specific registry
 	ShouldSync(
-		ctx context.Context, cfg *config.Config, syncStatus *status.SyncStatus, manualSyncRequested bool,
+		ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus, manualSyncRequested bool,
 	) (bool, string, *time.Time)
 
-	// PerformSync executes the complete sync operation
-	PerformSync(ctx context.Context, cfg *config.Config) (*Result, *Error)
+	// PerformSync executes the complete sync operation for a specific registry
+	PerformSync(ctx context.Context, regCfg *config.RegistryConfig) (*Result, *Error)
 
-	// Delete cleans up storage resources for the Registry
-	Delete(ctx context.Context, cfg *config.Config) error
+	// Delete cleans up storage resources for a specific registry
+	Delete(ctx context.Context, registryName string) error
 }
 
 // DataChangeDetector detects changes in source data
 type DataChangeDetector interface {
-	// IsDataChanged checks if source data has changed by comparing hashes
-	IsDataChanged(ctx context.Context, cfg *config.Config, syncStatus *status.SyncStatus) (bool, error)
+	// IsDataChanged checks if source data has changed by comparing hashes for a specific registry
+	IsDataChanged(ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus) (bool, error)
 }
 
 // AutomaticSyncChecker handles automatic sync timing logic
 type AutomaticSyncChecker interface {
-	// IsIntervalSyncNeeded checks if sync is needed based on time interval
+	// IsIntervalSyncNeeded checks if sync is needed based on time interval for a specific registry
 	// Returns (syncNeeded, nextSyncTime, error) where nextSyncTime is always in the future
-	IsIntervalSyncNeeded(cfg *config.Config, syncStatus *status.SyncStatus) (bool, time.Time, error)
+	IsIntervalSyncNeeded(regCfg *config.RegistryConfig, syncStatus *status.SyncStatus) (bool, time.Time, error)
 }
 
 // defaultSyncManager is the default implementation of Manager
 type defaultSyncManager struct {
-	sourceHandlerFactory sources.SourceHandlerFactory
-	storageManager       sources.StorageManager
-	filterService        filtering.FilterService
-	dataChangeDetector   DataChangeDetector
-	automaticSyncChecker AutomaticSyncChecker
+	registryHandlerFactory sources.RegistryHandlerFactory
+	storageManager         sources.StorageManager
+	filterService          filtering.FilterService
+	dataChangeDetector     DataChangeDetector
+	automaticSyncChecker   AutomaticSyncChecker
 }
 
 // NewDefaultSyncManager creates a new defaultSyncManager
 func NewDefaultSyncManager(
-	sourceHandlerFactory sources.SourceHandlerFactory, storageManager sources.StorageManager) Manager {
+	registryHandlerFactory sources.RegistryHandlerFactory, storageManager sources.StorageManager) Manager {
 	return &defaultSyncManager{
-		sourceHandlerFactory: sourceHandlerFactory,
-		storageManager:       storageManager,
-		filterService:        filtering.NewDefaultFilterService(),
-		dataChangeDetector:   &defaultDataChangeDetector{sourceHandlerFactory: sourceHandlerFactory},
-		automaticSyncChecker: &defaultAutomaticSyncChecker{},
+		registryHandlerFactory: registryHandlerFactory,
+		storageManager:         storageManager,
+		filterService:          filtering.NewDefaultFilterService(),
+		dataChangeDetector:     &defaultDataChangeDetector{registryHandlerFactory: registryHandlerFactory},
+		automaticSyncChecker:   &defaultAutomaticSyncChecker{},
 	}
 }
 
-// ShouldSync determines if a sync operation is needed
+// ShouldSync determines if a sync operation is needed for a specific registry
 // Returns: (shouldSync bool, reason string, nextSyncTime *time.Time)
 // nextSyncTime is always nil - timing is controlled by the configured sync interval
 func (s *defaultSyncManager) ShouldSync(
 	ctx context.Context,
-	cfg *config.Config,
+	regCfg *config.RegistryConfig,
 	syncStatus *status.SyncStatus,
 	manualSyncRequested bool,
 ) (bool, string, *time.Time) {
@@ -165,9 +165,9 @@ func (s *defaultSyncManager) ShouldSync(
 	// Check if sync is needed based on registry state
 	syncNeededForState := s.isSyncNeededForState(syncStatus)
 	// Check if filter has changed
-	filterChanged := s.isFilterChanged(ctx, cfg, syncStatus)
+	filterChanged := s.isFilterChanged(ctx, regCfg, syncStatus)
 	// Check if interval has elapsed
-	checkIntervalElapsed, _, err := s.automaticSyncChecker.IsIntervalSyncNeeded(cfg, syncStatus)
+	checkIntervalElapsed, _, err := s.automaticSyncChecker.IsIntervalSyncNeeded(regCfg, syncStatus)
 	if err != nil {
 		ctxLogger.Error(err, "Failed to determine if interval has elapsed")
 		return false, ReasonErrorCheckingSyncNeed, nil
@@ -180,7 +180,7 @@ func (s *defaultSyncManager) ShouldSync(
 	dataChangedString := "N/A"
 	if syncNeededForState || manualSyncRequested || filterChanged || checkIntervalElapsed {
 		// Check if source data has changed
-		dataChanged, err := s.dataChangeDetector.IsDataChanged(ctx, cfg, syncStatus)
+		dataChanged, err := s.dataChangeDetector.IsDataChanged(ctx, regCfg, syncStatus)
 		if err != nil {
 			ctxLogger.Error(err, "Failed to determine if data has changed")
 			shouldSync = true
@@ -237,10 +237,12 @@ func (*defaultSyncManager) isSyncNeededForState(syncStatus *status.SyncStatus) b
 }
 
 // isFilterChanged checks if the filter has changed compared to the last applied configuration
-func (*defaultSyncManager) isFilterChanged(ctx context.Context, cfg *config.Config, syncStatus *status.SyncStatus) bool {
+func (*defaultSyncManager) isFilterChanged(
+	ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus,
+) bool {
 	logger := log.FromContext(ctx)
 
-	currentFilter := cfg.Filter
+	currentFilter := regCfg.Filter
 	currentFilterJSON, err := json.Marshal(currentFilter)
 	if err != nil {
 		logger.Error(err, "Failed to marshal current filter")
@@ -260,19 +262,19 @@ func (*defaultSyncManager) isFilterChanged(ctx context.Context, cfg *config.Conf
 	return currentHashStr != lastHash
 }
 
-// PerformSync performs the complete sync operation for the Registry
+// PerformSync performs the complete sync operation for a specific registry
 // Returns sync result on success, or error on failure
 func (s *defaultSyncManager) PerformSync(
-	ctx context.Context, cfg *config.Config,
+	ctx context.Context, regCfg *config.RegistryConfig,
 ) (*Result, *Error) {
 	// Fetch and process registry data
-	fetchResult, err := s.fetchAndProcessRegistryData(ctx, cfg)
+	fetchResult, err := s.fetchAndProcessRegistryData(ctx, regCfg)
 	if err != nil {
 		return nil, err
 	}
 
 	// Store the processed registry data
-	if err := s.storeRegistryData(ctx, cfg, fetchResult); err != nil {
+	if err := s.storeRegistryData(ctx, regCfg, fetchResult); err != nil {
 		return nil, err
 	}
 
@@ -285,42 +287,42 @@ func (s *defaultSyncManager) PerformSync(
 	return syncResult, nil
 }
 
-// Delete cleans up storage resources for the Registry
-func (s *defaultSyncManager) Delete(ctx context.Context, cfg *config.Config) error {
-	return s.storageManager.Delete(ctx, cfg)
+// Delete cleans up storage resources for a specific registry
+func (s *defaultSyncManager) Delete(ctx context.Context, registryName string) error {
+	return s.storageManager.Delete(ctx, registryName)
 }
 
-// fetchAndProcessRegistryData handles source handler creation, validation, fetch, and filtering
+// fetchAndProcessRegistryData handles registry handler creation, validation, fetch, and filtering
 func (s *defaultSyncManager) fetchAndProcessRegistryData(
 	ctx context.Context,
-	cfg *config.Config) (*sources.FetchResult, *Error) {
+	regCfg *config.RegistryConfig) (*sources.FetchResult, *Error) {
 	ctxLogger := log.FromContext(ctx)
 
-	// Get source handler
-	sourceHandler, err := s.sourceHandlerFactory.CreateHandler(cfg.Source.Type)
+	// Get registry handler
+	registryHandler, err := s.registryHandlerFactory.CreateHandler(regCfg)
 	if err != nil {
-		ctxLogger.Error(err, "Failed to create source handler")
+		ctxLogger.Error(err, "Failed to create registry handler")
 		return nil, &Error{
 			Err:             err,
-			Message:         fmt.Sprintf("Failed to create source handler: %v", err),
+			Message:         fmt.Sprintf("Failed to create registry handler: %v", err),
 			ConditionType:   ConditionSourceAvailable,
 			ConditionReason: conditionReasonHandlerCreationFailed,
 		}
 	}
 
-	// Validate source configuration
-	if err := sourceHandler.Validate(&cfg.Source); err != nil {
-		ctxLogger.Error(err, "Source validation failed")
+	// Validate registry configuration
+	if err := registryHandler.Validate(regCfg); err != nil {
+		ctxLogger.Error(err, "Registry validation failed")
 		return nil, &Error{
 			Err:             err,
-			Message:         fmt.Sprintf("Source validation failed: %v", err),
+			Message:         fmt.Sprintf("Registry validation failed: %v", err),
 			ConditionType:   ConditionSourceAvailable,
 			ConditionReason: conditionReasonValidationFailed,
 		}
 	}
 
 	// Execute fetch operation
-	fetchResult, err := sourceHandler.FetchRegistry(ctx, cfg)
+	fetchResult, err := registryHandler.FetchRegistry(ctx, regCfg)
 	if err != nil {
 		ctxLogger.Error(err, "Fetch operation failed")
 		// Sync attempt counting is now handled by the controller via status collector
@@ -338,7 +340,7 @@ func (s *defaultSyncManager) fetchAndProcessRegistryData(
 		"hash", fetchResult.Hash)
 
 	// Apply filtering if configured
-	if err := s.applyFilteringIfConfigured(ctx, cfg, fetchResult); err != nil {
+	if err := s.applyFilteringIfConfigured(ctx, regCfg, fetchResult); err != nil {
 		return nil, err
 	}
 
@@ -348,17 +350,17 @@ func (s *defaultSyncManager) fetchAndProcessRegistryData(
 // applyFilteringIfConfigured applies filtering to fetch result if registry has filter configuration
 func (s *defaultSyncManager) applyFilteringIfConfigured(
 	ctx context.Context,
-	cfg *config.Config,
+	regCfg *config.RegistryConfig,
 	fetchResult *sources.FetchResult) *Error {
 	ctxLogger := log.FromContext(ctx)
 
-	if cfg.Filter != nil {
+	if regCfg.Filter != nil {
 		ctxLogger.Info("Applying registry filters",
-			"hasNameFilters", cfg.Filter.Names != nil,
-			"hasTagFilters", cfg.Filter.Tags != nil)
+			"hasNameFilters", regCfg.Filter.Names != nil,
+			"hasTagFilters", regCfg.Filter.Tags != nil)
 
 		// Apply filtering to UpstreamRegistry
-		filteredServerReg, err := s.filterService.ApplyFilters(ctx, fetchResult.Registry, cfg.Filter)
+		filteredServerReg, err := s.filterService.ApplyFilters(ctx, fetchResult.Registry, regCfg.Filter)
 		if err != nil {
 			ctxLogger.Error(err, "Registry filtering failed")
 			return &Error{
@@ -388,11 +390,11 @@ func (s *defaultSyncManager) applyFilteringIfConfigured(
 // storeRegistryData stores the registry data using the storage manager
 func (s *defaultSyncManager) storeRegistryData(
 	ctx context.Context,
-	cfg *config.Config,
+	regCfg *config.RegistryConfig,
 	fetchResult *sources.FetchResult) *Error {
 	ctxLogger := log.FromContext(ctx)
 
-	if err := s.storageManager.Store(ctx, cfg, fetchResult.Registry); err != nil {
+	if err := s.storageManager.Store(ctx, regCfg.Name, fetchResult.Registry); err != nil {
 		ctxLogger.Error(err, "Failed to store registry data")
 		return &Error{
 			Err:             err,
@@ -402,8 +404,7 @@ func (s *defaultSyncManager) storeRegistryData(
 		}
 	}
 
-	ctxLogger.Info("Registry data stored successfully")
-	// TODO add registry and source name to the context
+	ctxLogger.Info("Registry data stored successfully", "registryName", regCfg.Name)
 
 	return nil
 }

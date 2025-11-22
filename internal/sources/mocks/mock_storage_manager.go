@@ -13,7 +13,6 @@ import (
 	context "context"
 	reflect "reflect"
 
-	config "github.com/stacklok/toolhive-registry-server/internal/config"
 	registry "github.com/stacklok/toolhive/pkg/registry/registry"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -43,44 +42,59 @@ func (m *MockStorageManager) EXPECT() *MockStorageManagerMockRecorder {
 }
 
 // Delete mocks base method.
-func (m *MockStorageManager) Delete(ctx context.Context, cfg *config.Config) error {
+func (m *MockStorageManager) Delete(ctx context.Context, registryName string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, cfg)
+	ret := m.ctrl.Call(m, "Delete", ctx, registryName)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Delete indicates an expected call of Delete.
-func (mr *MockStorageManagerMockRecorder) Delete(ctx, cfg any) *gomock.Call {
+func (mr *MockStorageManagerMockRecorder) Delete(ctx, registryName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockStorageManager)(nil).Delete), ctx, cfg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockStorageManager)(nil).Delete), ctx, registryName)
 }
 
 // Get mocks base method.
-func (m *MockStorageManager) Get(ctx context.Context, cfg *config.Config) (*registry.UpstreamRegistry, error) {
+func (m *MockStorageManager) Get(ctx context.Context, registryName string) (*registry.UpstreamRegistry, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, cfg)
+	ret := m.ctrl.Call(m, "Get", ctx, registryName)
 	ret0, _ := ret[0].(*registry.UpstreamRegistry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Get indicates an expected call of Get.
-func (mr *MockStorageManagerMockRecorder) Get(ctx, cfg any) *gomock.Call {
+func (mr *MockStorageManagerMockRecorder) Get(ctx, registryName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockStorageManager)(nil).Get), ctx, cfg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockStorageManager)(nil).Get), ctx, registryName)
+}
+
+// GetAll mocks base method.
+func (m *MockStorageManager) GetAll(ctx context.Context) (map[string]*registry.UpstreamRegistry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAll", ctx)
+	ret0, _ := ret[0].(map[string]*registry.UpstreamRegistry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAll indicates an expected call of GetAll.
+func (mr *MockStorageManagerMockRecorder) GetAll(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAll", reflect.TypeOf((*MockStorageManager)(nil).GetAll), ctx)
 }
 
 // Store mocks base method.
-func (m *MockStorageManager) Store(ctx context.Context, cfg *config.Config, reg *registry.UpstreamRegistry) error {
+func (m *MockStorageManager) Store(ctx context.Context, registryName string, reg *registry.UpstreamRegistry) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Store", ctx, cfg, reg)
+	ret := m.ctrl.Call(m, "Store", ctx, registryName, reg)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Store indicates an expected call of Store.
-func (mr *MockStorageManagerMockRecorder) Store(ctx, cfg, reg any) *gomock.Call {
+func (mr *MockStorageManagerMockRecorder) Store(ctx, registryName, reg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Store", reflect.TypeOf((*MockStorageManager)(nil).Store), ctx, cfg, reg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Store", reflect.TypeOf((*MockStorageManager)(nil).Store), ctx, registryName, reg)
 }

@@ -14,28 +14,26 @@
 # Registry name/identifier (optional, defaults to "default")
 registryName: mcp-registry
 
-# Data source configuration
-source:
-  # Source type: git, or api
-  type: api
+# Registries configuration (can have multiple registries)
+registries:
+  - name: mcp-upstream
+    # Data format: only 'upstream' is supported for API sources
+    format: upstream
 
-  # Data format: only 'upstream' is supported for API sources
-  format: upstream
+    # API endpoint configuration
+    api:
+      # Base API URL (without path)
+      # The sync manager will append the appropriate API paths:
+      #   - /v0/servers - List all servers (single response, no pagination)
+      #   - /v0/servers/{name} - Get specific server (future)
+      #   - /v0/info - Get registry metadata (future)
+      endpoint: https://registry.modelcontextprotocol.io/api
 
-  # API endpoint configuration
-  api:
-    # Base API URL (without path)
-    # The sync manager will append the appropriate API paths:
-    #   - /v0/servers - List all servers (single response, no pagination)
-    #   - /v0/servers/{name} - Get specific server (future)
-    #   - /v0/info - Get registry metadata (future)
-    endpoint: https://registry.modelcontextprotocol.io/api
-
-# Automatic synchronization policy
-syncPolicy:
-  # Sync interval (valid duration: 1m, 5m, 30m, 1h, 24h, etc.)
-  # Less frequent for upstream API to be respectful of external services
-  interval: "1h"
+    # Per-registry automatic synchronization policy
+    syncPolicy:
+      # Sync interval (valid duration: 1m, 5m, 30m, 1h, 24h, etc.)
+      # Less frequent for upstream API to be respectful of external services
+      interval: "1h"
 
 # Optional: PostgreSQL database configuration
 # Uncomment to store registry data in a database instead of local files

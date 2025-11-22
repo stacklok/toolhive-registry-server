@@ -243,14 +243,12 @@ info:
 	})
 
 	Describe("FetchRegistry", func() {
-		var registryConfig *config.Config
+		var registryConfig *config.RegistryConfig
 
 		BeforeEach(func() {
-			registryConfig = &config.Config{
-				Source: config.SourceConfig{
-					Type: config.SourceTypeAPI,
-					API:  &config.APIConfig{},
-				},
+			registryConfig = &config.RegistryConfig{
+				Name: "test-registry",
+				API:  &config.APIConfig{},
 			}
 		})
 
@@ -265,14 +263,12 @@ info:
 	})
 
 	Describe("CurrentHash", func() {
-		var registryConfig *config.Config
+		var registryConfig *config.RegistryConfig
 
 		BeforeEach(func() {
-			registryConfig = &config.Config{
-				Source: config.SourceConfig{
-					Type: config.SourceTypeAPI,
-					API:  &config.APIConfig{},
-				},
+			registryConfig = &config.RegistryConfig{
+				Name: "test-registry",
+				API:  &config.APIConfig{},
 			}
 		})
 

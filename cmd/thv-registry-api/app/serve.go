@@ -70,8 +70,8 @@ func runServe(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	logger.Infof("Loaded configuration from %s (registry: %s, source: %s)",
-		configPath, cfg.GetRegistryName(), cfg.Source.Type)
+	logger.Infof("Loaded configuration from %s (registry: %s, %d registries configured)",
+		configPath, cfg.GetRegistryName(), len(cfg.Registries))
 
 	// Build application using the builder pattern
 	address := viper.GetString("address")
