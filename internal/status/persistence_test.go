@@ -150,3 +150,136 @@ func TestFileStatusPersistence_AtomicWrite(t *testing.T) {
 	_, err = os.Stat(tempPath)
 	require.True(t, os.IsNotExist(err), "Temporary file should not exist after save")
 }
+
+func TestFileStatusPersistence_LoadAllStatus(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	persistence := NewFileStatusPersistence(tmpDir)
+
+	ctx := context.Background()
+
+	// Create multiple test statuses
+	now := time.Now()
+	status1 := &SyncStatus{
+		Phase:        SyncPhaseComplete,
+		Message:      "Registry 1 sync completed",
+		LastAttempt:  &now,
+		AttemptCount: 1,
+		LastSyncHash: "hash1",
+		ServerCount:  5,
+	}
+	status2 := &SyncStatus{
+		Phase:        SyncPhaseSyncing,
+		Message:      "Registry 2 syncing",
+		LastAttempt:  &now,
+		AttemptCount: 2,
+		LastSyncHash: "hash2",
+		ServerCount:  10,
+	}
+	status3 := &SyncStatus{
+		Phase:        SyncPhaseFailed,
+		Message:      "Registry 3 failed",
+		LastAttempt:  &now,
+		AttemptCount: 3,
+		ServerCount:  0,
+	}
+
+	// Save statuses for multiple registries
+	err := persistence.SaveStatus(ctx, "registry1", status1)
+	require.NoError(t, err)
+	err = persistence.SaveStatus(ctx, "registry2", status2)
+	require.NoError(t, err)
+	err = persistence.SaveStatus(ctx, "registry3", status3)
+	require.NoError(t, err)
+
+	// Load all statuses
+	result, err := persistence.LoadAllStatus(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result, 3)
+
+	// Verify all statuses were retrieved
+	require.Contains(t, result, "registry1")
+	require.Contains(t, result, "registry2")
+	require.Contains(t, result, "registry3")
+
+	// Verify content
+	require.Equal(t, SyncPhaseComplete, result["registry1"].Phase)
+	require.Equal(t, "Registry 1 sync completed", result["registry1"].Message)
+	require.Equal(t, 5, result["registry1"].ServerCount)
+
+	require.Equal(t, SyncPhaseSyncing, result["registry2"].Phase)
+	require.Equal(t, "Registry 2 syncing", result["registry2"].Message)
+	require.Equal(t, 10, result["registry2"].ServerCount)
+
+	require.Equal(t, SyncPhaseFailed, result["registry3"].Phase)
+	require.Equal(t, "Registry 3 failed", result["registry3"].Message)
+	require.Equal(t, 0, result["registry3"].ServerCount)
+}
+
+func TestFileStatusPersistence_LoadAllStatus_EmptyDirectory(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	persistence := NewFileStatusPersistence(tmpDir)
+
+	ctx := context.Background()
+
+	// Load all from empty directory
+	result, err := persistence.LoadAllStatus(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Empty(t, result)
+}
+
+func TestFileStatusPersistence_LoadAllStatus_NonExistentDirectory(t *testing.T) {
+	t.Parallel()
+
+	// Use a non-existent base directory
+	tmpDir := filepath.Join(t.TempDir(), "nonexistent")
+	persistence := NewFileStatusPersistence(tmpDir)
+
+	ctx := context.Background()
+
+	// Load all should return empty result when directory doesn't exist
+	result, err := persistence.LoadAllStatus(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Empty(t, result)
+}
+
+func TestFileStatusPersistence_LoadAllStatus_PartialFailure(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	persistence := NewFileStatusPersistence(tmpDir)
+
+	ctx := context.Background()
+
+	// Create one valid status
+	now := time.Now()
+	status1 := &SyncStatus{
+		Phase:       SyncPhaseComplete,
+		LastAttempt: &now,
+		ServerCount: 5,
+	}
+	err := persistence.SaveStatus(ctx, "registry1", status1)
+	require.NoError(t, err)
+
+	// Create a registry directory with invalid JSON file
+	invalidDir := filepath.Join(tmpDir, "invalid-registry")
+	err = os.MkdirAll(invalidDir, 0750)
+	require.NoError(t, err)
+	invalidFile := filepath.Join(invalidDir, StatusFileName)
+	err = os.WriteFile(invalidFile, []byte("{invalid json}"), 0644)
+	require.NoError(t, err)
+
+	// LoadAllStatus should return the valid status and skip the invalid one
+	result, err := persistence.LoadAllStatus(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result, 1)
+	require.Contains(t, result, "registry1")
+	require.NotContains(t, result, "invalid-registry")
+}
