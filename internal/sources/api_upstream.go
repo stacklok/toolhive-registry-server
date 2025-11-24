@@ -16,14 +16,14 @@ import (
 // Phase 2 implementation - currently validates format but does not fetch data
 type upstreamAPIHandler struct {
 	httpClient httpclient.Client
-	validator  SourceDataValidator
+	validator  RegistryDataValidator
 }
 
 // NewUpstreamAPIHandler creates a new upstream MCP Registry API handler
 func NewUpstreamAPIHandler(httpClient httpclient.Client) *upstreamAPIHandler {
 	return &upstreamAPIHandler{
 		httpClient: httpClient,
-		validator:  NewSourceDataValidator(),
+		validator:  NewRegistryDataValidator(),
 	}
 }
 
@@ -74,13 +74,13 @@ func (h *upstreamAPIHandler) Validate(ctx context.Context, endpoint string) erro
 
 // FetchRegistry retrieves registry data from the upstream MCP Registry API endpoint
 // Phase 2: Not yet implemented - will support pagination and format conversion
-func (*upstreamAPIHandler) FetchRegistry(_ context.Context, _ *config.Config) (*FetchResult, error) {
+func (*upstreamAPIHandler) FetchRegistry(_ context.Context, _ *config.RegistryConfig) (*FetchResult, error) {
 	return nil, fmt.Errorf("upstream MCP Registry API support not yet implemented (Phase 2)")
 }
 
 // CurrentHash returns the current hash of the API response
 // Phase 2: Not yet implemented
-func (*upstreamAPIHandler) CurrentHash(_ context.Context, _ *config.Config) (string, error) {
+func (*upstreamAPIHandler) CurrentHash(_ context.Context, _ *config.RegistryConfig) (string, error) {
 	return "", fmt.Errorf("upstream MCP Registry API support not yet implemented (Phase 2)")
 }
 

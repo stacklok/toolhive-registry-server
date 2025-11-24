@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
@@ -15,76 +14,134 @@ import (
 	sourcesmocks "github.com/stacklok/toolhive-registry-server/internal/sources/mocks"
 )
 
+func TestFileRegistryDataProvider_GetRegistryName(t *testing.T) {
+	t.Parallel()
+
+	provider := &fileRegistryDataProvider{
+		registryName: "test-registry",
+	}
+
+	assert.Equal(t, "test-registry", provider.GetRegistryName())
+}
+
+func TestNewFileRegistryDataProvider(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
+	cfg := &config.Config{
+		RegistryName: "test-registry",
+		Registries: []config.RegistryConfig{
+			{
+				Name: "registry-1",
+				File: &config.FileConfig{Path: "/path/to/file1.json"},
+			},
+		},
+	}
+
+	provider := NewFileRegistryDataProvider(mockStorageManager, cfg)
+
+	require.NotNil(t, provider)
+	assert.Equal(t, "test-registry", provider.GetRegistryName())
+}
+
 func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 
 	tests := []struct {
-		name        string
-		setupMock   func(*sourcesmocks.MockStorageManager)
-		wantErr     bool
-		errContains string
-		validate    func(*testing.T, *toolhivetypes.UpstreamRegistry)
+		name          string
+		setupMock     func(*sourcesmocks.MockStorageManager)
+		expectedErr   bool
+		expectedCount int
+		errorContains string
 	}{
 		{
-			name: "successful retrieval",
+			name: "success with single registry",
 			setupMock: func(m *sourcesmocks.MockStorageManager) {
-				expectedRegistry := registry.NewTestUpstreamRegistry(
-					registry.WithVersion("1.0"),
-					registry.WithLastUpdated("2024-01-01T00:00:00Z"),
-					registry.WithServers(
-						registry.NewTestServer("test-server",
-							registry.WithDescription("A test server"),
-							registry.WithOCIPackage("test:latest"),
+				allRegs := map[string]*toolhivetypes.UpstreamRegistry{
+					"registry-1": registry.NewTestUpstreamRegistry(
+						registry.WithServers(
+							registry.NewTestServer("test-server-1"),
 						),
 					),
-				)
+				}
 				m.EXPECT().
-					Get(gomock.Any(), gomock.Any()).
-					Return(expectedRegistry, nil)
+					GetAll(gomock.Any()).
+					Return(allRegs, nil)
 			},
-			wantErr: false,
-			validate: func(t *testing.T, reg *toolhivetypes.UpstreamRegistry) {
-				t.Helper()
-				assert.Equal(t, "1.0", reg.Version)
-				assert.Equal(t, "2024-01-01T00:00:00Z", reg.LastUpdated)
-				assert.Len(t, reg.Servers, 1)
-				assert.Equal(t, "test-server", reg.Servers[0].Name)
-			},
+			expectedErr:   false,
+			expectedCount: 1,
 		},
 		{
-			name: "empty registry",
+			name: "success with multiple registries",
 			setupMock: func(m *sourcesmocks.MockStorageManager) {
-				expectedRegistry := registry.NewTestUpstreamRegistry(
-					registry.WithVersion("1.0"),
-					registry.WithLastUpdated("2024-01-01T00:00:00Z"),
-				)
+				allRegs := map[string]*toolhivetypes.UpstreamRegistry{
+					"registry-1": registry.NewTestUpstreamRegistry(
+						registry.WithServers(
+							registry.NewTestServer("test-server-1"),
+							registry.NewTestServer("test-server-2"),
+						),
+					),
+					"registry-2": registry.NewTestUpstreamRegistry(
+						registry.WithServers(
+							registry.NewTestServer("test-server-3"),
+						),
+					),
+				}
 				m.EXPECT().
-					Get(gomock.Any(), gomock.Any()).
-					Return(expectedRegistry, nil)
+					GetAll(gomock.Any()).
+					Return(allRegs, nil)
 			},
-			wantErr: false,
-			validate: func(t *testing.T, reg *toolhivetypes.UpstreamRegistry) {
-				t.Helper()
-				assert.Equal(t, "1.0", reg.Version)
-				assert.Len(t, reg.Servers, 0)
-			},
+			expectedErr:   false,
+			expectedCount: 3,
 		},
 		{
-			name: "storage manager returns error",
+			name: "success with empty registry",
+			setupMock: func(m *sourcesmocks.MockStorageManager) {
+				allRegs := map[string]*toolhivetypes.UpstreamRegistry{}
+				m.EXPECT().
+					GetAll(gomock.Any()).
+					Return(allRegs, nil)
+			},
+			expectedErr:   false,
+			expectedCount: 0,
+		},
+		{
+			name: "success with nil registries skipped",
+			setupMock: func(m *sourcesmocks.MockStorageManager) {
+				allRegs := map[string]*toolhivetypes.UpstreamRegistry{
+					"registry-1": registry.NewTestUpstreamRegistry(
+						registry.WithServers(
+							registry.NewTestServer("test-server-1"),
+						),
+					),
+					"registry-2": nil, // Should be skipped
+				}
+				m.EXPECT().
+					GetAll(gomock.Any()).
+					Return(allRegs, nil)
+			},
+			expectedErr:   false,
+			expectedCount: 1,
+		},
+		{
+			name: "error from storage manager",
 			setupMock: func(m *sourcesmocks.MockStorageManager) {
 				m.EXPECT().
-					Get(gomock.Any(), gomock.Any()).
-					Return(nil, errors.New("registry file not found"))
+					GetAll(gomock.Any()).
+					Return(nil, assert.AnError)
 			},
-			wantErr:     true,
-			errContains: "registry file not found",
+			expectedErr:   true,
+			errorContains: "failed to get registry data",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
@@ -93,29 +150,21 @@ func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
 
 			cfg := &config.Config{
 				RegistryName: "test-registry",
-				Source: config.SourceConfig{
-					Type:   config.SourceTypeFile,
-					Format: config.SourceFormatToolHive,
-					File:   &config.FileConfig{Path: "/tmp/registry.json"},
-				},
 			}
 
 			provider := NewFileRegistryDataProvider(mockStorageManager, cfg)
+			registry, err := provider.GetRegistryData(context.Background())
 
-			result, err := provider.GetRegistryData(ctx)
-
-			if tt.wantErr {
+			if tt.expectedErr {
 				assert.Error(t, err)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains)
 				}
-				assert.Nil(t, result)
+				assert.Nil(t, registry)
 			} else {
 				assert.NoError(t, err)
-				assert.NotNil(t, result)
-				if tt.validate != nil {
-					tt.validate(t, result)
-				}
+				require.NotNil(t, registry)
+				assert.Len(t, registry.Servers, tt.expectedCount)
 			}
 		})
 	}
@@ -123,145 +172,90 @@ func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
 
 func TestFileRegistryDataProvider_GetSource(t *testing.T) {
 	t.Parallel()
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-
-	mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
 
 	tests := []struct {
-		name     string
-		config   *config.Config
-		expected string
+		name           string
+		config         *config.Config
+		expectedSource string
 	}{
 		{
-			name: "absolute path",
+			name: "no registries configured",
 			config: &config.Config{
 				RegistryName: "test-registry",
-				Source: config.SourceConfig{
-					Type:   config.SourceTypeFile,
-					Format: config.SourceFormatToolHive,
-					File:   &config.FileConfig{Path: "/data/registry/registry.json"},
-				},
+				Registries:   []config.RegistryConfig{},
 			},
-			expected: "file:/data/registry/registry.json",
+			expectedSource: "multi-registry:<not-configured>",
 		},
 		{
-			name: "relative path",
+			name: "single file registry",
 			config: &config.Config{
 				RegistryName: "test-registry",
-				Source: config.SourceConfig{
-					Type:   config.SourceTypeFile,
-					Format: config.SourceFormatToolHive,
-					File:   &config.FileConfig{Path: "./registry.json"},
+				Registries: []config.RegistryConfig{
+					{
+						Name: "registry-1",
+						File: &config.FileConfig{Path: "/path/to/file.json"},
+					},
 				},
 			},
-			expected: "file:./registry.json",
+			expectedSource: "file:/path/to/file.json",
 		},
 		{
-			name: "empty path",
+			name: "single git registry",
 			config: &config.Config{
 				RegistryName: "test-registry",
-				Source: config.SourceConfig{
-					Type:   config.SourceTypeFile,
-					Format: config.SourceFormatToolHive,
-					File:   &config.FileConfig{Path: ""},
+				Registries: []config.RegistryConfig{
+					{
+						Name: "registry-1",
+						Git:  &config.GitConfig{Repository: "https://github.com/test/repo.git"},
+					},
 				},
 			},
-			expected: "file:<not-configured>",
+			expectedSource: "git:https://github.com/test/repo.git",
 		},
 		{
-			name: "nil file config",
+			name: "single api registry",
 			config: &config.Config{
 				RegistryName: "test-registry",
-				Source: config.SourceConfig{
-					Type:   config.SourceTypeFile,
-					Format: config.SourceFormatToolHive,
-					File:   nil,
+				Registries: []config.RegistryConfig{
+					{
+						Name: "registry-1",
+						API:  &config.APIConfig{Endpoint: "https://api.example.com"},
+					},
 				},
 			},
-			expected: "file:<not-configured>",
+			expectedSource: "api:https://api.example.com",
+		},
+		{
+			name: "multiple registries",
+			config: &config.Config{
+				RegistryName: "test-registry",
+				Registries: []config.RegistryConfig{
+					{
+						Name: "registry-1",
+						File: &config.FileConfig{Path: "/path/to/file1.json"},
+					},
+					{
+						Name: "registry-2",
+						Git:  &config.GitConfig{Repository: "https://github.com/test/repo.git"},
+					},
+				},
+			},
+			expectedSource: "multi-registry:2-sources",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
 			provider := NewFileRegistryDataProvider(mockStorageManager, tt.config)
-			result := provider.GetSource()
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
 
-func TestNewFileRegistryDataProvider(t *testing.T) {
-	t.Parallel()
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
-
-	cfg := &config.Config{
-		RegistryName: "test-registry",
-		Source: config.SourceConfig{
-			Type:   config.SourceTypeFile,
-			Format: config.SourceFormatToolHive,
-			File:   &config.FileConfig{Path: "/test/path/registry.json"},
-		},
-	}
-
-	provider := NewFileRegistryDataProvider(mockStorageManager, cfg)
-
-	require.NotNil(t, provider)
-	assert.Equal(t, "file:/test/path/registry.json", provider.GetSource())
-	assert.Equal(t, "test-registry", provider.GetRegistryName())
-}
-
-func TestFileRegistryDataProvider_GetRegistryName(t *testing.T) {
-	t.Parallel()
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-
-	mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
-
-	tests := []struct {
-		name         string
-		registryName string
-	}{
-		{
-			name:         "normal registry name",
-			registryName: "my-custom-registry",
-		},
-		{
-			name:         "production registry",
-			registryName: "production-registry",
-		},
-		{
-			name:         "empty registry name defaults to default",
-			registryName: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			cfg := &config.Config{
-				RegistryName: tt.registryName,
-				Source: config.SourceConfig{
-					Type:   config.SourceTypeFile,
-					Format: config.SourceFormatToolHive,
-					File:   &config.FileConfig{Path: "/path/to/file.json"},
-				},
-			}
-
-			provider := NewFileRegistryDataProvider(mockStorageManager, cfg)
-			result := provider.GetRegistryName()
-
-			// Config.GetRegistryName() returns "default" for empty names
-			expectedName := tt.registryName
-			if expectedName == "" {
-				expectedName = "default"
-			}
-			assert.Equal(t, expectedName, result)
+			source := provider.GetSource()
+			assert.Equal(t, tt.expectedSource, source)
 		})
 	}
 }

@@ -1,7 +1,7 @@
 # Complete configuration example showing all available options
 #
-# This is a comprehensive reference showing every supported configuration option.
-# Most deployments will only need a subset of these settings.
+# This is a comprehensive reference showing every supported configuration option
+# with multi-registry support. Most deployments will only need a subset of these settings.
 #
 # For practical examples, see:
 #   - config-git.yaml: Git repository source
@@ -21,135 +21,138 @@
 registryName: my-registry
 
 # ==============================================================================
-# DATA SOURCE CONFIGURATION (Required)
+# REGISTRIES CONFIGURATION (Required)
 # ==============================================================================
 
-source:
-  # Source type (Required)
-  # Options: git, api, file
-  type: git
+# Registries configuration allows you to sync from multiple sources simultaneously
+# Each registry has its own name, sync policy, filters, and source configuration
 
-  # Data format (Required)
-  # Options:
-  #   - toolhive: Native ToolHive registry format (recommended)
-  #   - upstream: Official MCP registry format (not yet fully supported)
-  format: toolhive
+registries:
+  # ------------------------------------------------------------------------------
+  # FIRST REGISTRY: Git Source (ToolHive Format)
+  # ------------------------------------------------------------------------------
+  - name: toolhive
+    # Data format: toolhive (native) or upstream (MCP registry format)
+    format: toolhive
+
+    # Git repository configuration
+    git:
+      # Repository URL (Required for git source)
+      # Supports HTTP, HTTPS, and SSH protocols
+      repository: https://github.com/stacklok/toolhive.git
+
+      # Version selection (Choose ONE of: branch, tag, or commit)
+      # Option 1: Use a branch (tracks latest commits)
+      branch: main
+
+      # Option 2: Use a specific tag (pinned version)
+      # tag: v1.0.0
+
+      # Option 3: Use a specific commit SHA (exact version)
+      # commit: abc123def456789
+
+      # Path to registry file within repository (Required)
+      path: pkg/registry/data/registry.json
+
+    # Per-registry synchronization policy
+    syncPolicy:
+      # Sync interval - how often to check for and sync updates
+      # Format: Go duration string (e.g., "30s", "5m", "1h", "24h")
+      # Recommended: 30m-1h for Git sources
+      interval: "30m"
+
+    # Per-registry filter configuration (optional)
+    filter:
+      # Name-based filtering
+      names:
+        # Only include official and stacklok servers
+        include:
+          - "official/*"
+          - "stacklok/*"
+        # Exclude deprecated servers
+        exclude:
+          - "*/deprecated"
+
+      # Tag-based filtering
+      tags:
+        # Only include stable servers
+        include:
+          - "stable"
+          - "production"
+        # Exclude experimental servers
+        exclude:
+          - "experimental"
+          - "beta"
 
   # ------------------------------------------------------------------------------
-  # GIT SOURCE OPTIONS (used when type: git)
+  # SECOND REGISTRY: API Source (Upstream MCP Format)
   # ------------------------------------------------------------------------------
-  git:
-    # Repository URL (Required for git source)
-    # Supports HTTP, HTTPS, and SSH protocols
-    repository: https://github.com/stacklok/toolhive.git
+  - name: mcp-upstream
+    # Data format: upstream is required for API sources
+    format: upstream
 
-    # Version selection (Choose ONE of: branch, tag, or commit)
+    # API endpoint configuration
+    api:
+      # Base API URL without path (Required)
+      # The sync manager appends standard MCP registry API paths:
+      #   - /v0/servers (list all servers)
+      #   - /v0/servers/{name} (get specific server, future)
+      #   - /v0/info (registry metadata, future)
+      endpoint: https://registry.modelcontextprotocol.io/api
 
-    # Option 1: Use a branch (tracks latest commits)
-    branch: main
+    # Per-registry synchronization policy
+    syncPolicy:
+      # Sync interval - less frequent for upstream API to be respectful
+      # Recommended: 1h-6h for API sources
+      interval: "1h"
 
-    # Option 2: Use a specific tag (pinned version)
-    # tag: v1.0.0
+    # Per-registry filter configuration (optional for this registry)
+    filter:
+      # Name-based filtering
+      names:
+        # Only include verified MCP servers
+        include:
+          - "@modelcontextprotocol/*"
 
-    # Option 3: Use a specific commit SHA (exact version)
-    # commit: abc123def456789
-
-    # Path to registry file within repository (Required)
-    path: pkg/registry/data/registry.json
+      # Tag-based filtering
+      tags:
+        # Only include official servers
+        include:
+          - "official"
+          - "verified"
 
   # ------------------------------------------------------------------------------
-  # API ENDPOINT SOURCE OPTIONS (used when type: api)
+  # THIRD REGISTRY: File Source (Local Testing)
   # ------------------------------------------------------------------------------
-  # api:
-  #   # Base API URL without path (Required)
-  #   # The sync manager appends standard MCP registry API paths:
-  #   #   - /v0/servers (list all servers)
-  #   #   - /v0/servers/{name} (get specific server, future)
-  #   #   - /v0/info (registry metadata, future)
-  #   endpoint: https://registry.modelcontextprotocol.io/api
-
-  # ------------------------------------------------------------------------------
-  # LOCAL FILE SOURCE OPTIONS (used when type: file)
-  # ------------------------------------------------------------------------------
-  # file:
-  #   # Path to registry.json file (Required)
-  #   # Can be absolute or relative to the working directory
-  #   # Useful for:
-  #   #   - Reading from mounted volumes (e.g., ConfigMaps as files)
-  #   #   - Pre-downloaded or static registry data
-  #   #   - Development and testing
-  #   path: ./data/registry.json
-
-# ==============================================================================
-# SYNCHRONIZATION POLICY (Required)
-# ==============================================================================
-
-syncPolicy:
-  # Sync interval (Required)
-  # How often to check for and sync updates from the source
-  # Format: Go duration string (e.g., "30s", "5m", "1h", "24h")
+  # Uncomment to add a local file registry for testing
+  # - name: local-test
+  #   format: toolhive
   #
-  # Recommended values:
-  #   - File: 1m-5m (local source, low latency)
-  #   - Git: 30m-1h (balance freshness vs. load)
-  #   - API: 1h-6h (respectful of external services)
-  #   - Stable: 24h (infrequent updates)
-  interval: "30m"
-
-# ==============================================================================
-# FILTERING CONFIGURATION (Optional)
-# ==============================================================================
-
-# Filter configuration allows you to include/exclude servers from the synced registry
-# This is useful for:
-#   - Creating curated subsets of larger registries
-#   - Removing deprecated or internal-only servers
-#   - Enforcing organizational policies
-#   - Reducing registry size for specific use cases
-
-filter:
-  # ------------------------------------------------------------------------------
-  # NAME-BASED FILTERING (Optional)
-  # ------------------------------------------------------------------------------
-  names:
-    # Include patterns (Optional)
-    # Only servers matching these glob patterns will be included
-    # Patterns are evaluated before exclude patterns
-    include:
-      - "official/*"          # Include all official servers
-      - "stacklok/*"          # Include all Stacklok servers
-      - "@modelcontextprotocol/*"  # Include all MCP organization servers
-
-    # Exclude patterns (Optional)
-    # Servers matching these patterns will be removed
-    # Applied after include patterns
-    exclude:
-      - "*/deprecated"        # Exclude deprecated servers
-      - "*/internal"          # Exclude internal-only servers
-      - "*/test"              # Exclude test servers
-      - "experimental/*"      # Exclude experimental namespace
-
-  # ------------------------------------------------------------------------------
-  # TAG-BASED FILTERING (Optional)
-  # ------------------------------------------------------------------------------
-  tags:
-    # Include tags (Optional)
-    # Only servers with at least one of these tags will be included
-    include:
-      - "production"          # Only production-ready servers
-      - "stable"              # Only stable releases
-      - "verified"            # Only verified servers
-      - "certified"           # Only certified servers
-
-    # Exclude tags (Optional)
-    # Servers with any of these tags will be removed
-    # Applied after include tags
-    exclude:
-      - "experimental"        # Exclude experimental servers
-      - "beta"                # Exclude beta versions
-      - "alpha"               # Exclude alpha versions
-      - "deprecated"          # Exclude deprecated servers
-      - "unmaintained"        # Exclude unmaintained servers
+  #   # Local file configuration
+  #   file:
+  #     # Path to registry.json file (absolute or relative)
+  #     # Useful for:
+  #     #   - Reading from mounted volumes (e.g., ConfigMaps as files)
+  #     #   - Pre-downloaded or static registry data
+  #     #   - Development and testing
+  #     path: ./data/registry.json
+  #
+  #   # Per-registry synchronization policy
+  #   syncPolicy:
+  #     # Sync interval - shorter for local files
+  #     # Recommended: 1m-5m for file sources
+  #     interval: "5m"
+  #
+  #   # Per-registry filter configuration (optional)
+  #   filter:
+  #     # Name-based filtering
+  #     names:
+  #       include:
+  #         - "test/*"
+  #     # Tag-based filtering
+  #     tags:
+  #       include:
+  #         - "development"
 
 # ==============================================================================
 # DATABASE CONFIGURATION (Optional)
@@ -207,14 +210,17 @@ database:
 
 # Storage Locations:
 #   Without database:
-#     - Registry data: ./data/registry.json
-#     - Sync status: ./data/status.json
+#     - Registry data: ./data/{registryName}/registry.json (per-registry)
+#     - Sync status: ./data/{registryName}/status.json (per-registry)
 #   With database:
 #     - Registry data: PostgreSQL database
 #     - Sync status: PostgreSQL database
-#
-# The storage location is currently hardcoded but will be configurable
-# via CLI flags in a future release.
+
+# Multi-Registry Behavior:
+#   - Each registry runs in its own sync loop with independent timing
+#   - API responses merge servers from all configured registries
+#   - Per-registry filters are applied before merging
+#   - Storage is isolated per registry for better organization
 
 # Authentication:
 #   - File: No authentication required
@@ -224,25 +230,26 @@ database:
 
 # Error Handling:
 #   - Failed syncs are retried at the next configured sync interval
-#   - Sync interval is configured via syncPolicy.interval (e.g., "5m", "30m", "1h")
-#   - Server continues running even if sync fails
-#   - Status is persisted to track failures and attempts
+#   - Each registry's sync interval is configured independently
+#   - Server continues running even if one registry sync fails
+#   - Per-registry status is persisted to track failures and attempts
 
 # Filter Behavior:
-#   - Filters are applied in order: name include → name exclude → tag include → tag exclude
+#   - Filters are applied per-registry before merging
+#   - Order: name include → name exclude → tag include → tag exclude
 #   - Empty include list means "include all"
 #   - Empty exclude list means "exclude none"
 #   - Patterns use glob syntax: * (any chars), ? (single char)
 #   - Tag matching is exact (no glob patterns)
 
 # Performance:
-#   - Sync runs in background, doesn't block server startup
-#   - Registry data is cached in memory (refreshes every 30s by default)
-#   - Sync status is written atomically to prevent corruption
+#   - Each registry sync runs in a separate goroutine
+#   - Registry data is cached in memory (refreshes based on sync interval)
+#   - Sync status is written atomically per registry to prevent corruption
 #   - Git clones are shallow (depth=1) to minimize bandwidth
 
 # Monitoring:
-#   - Check ./data/status.json for sync health
-#   - Watch server logs for sync messages
-#   - Use GET /api/v0/info endpoint for registry metadata
-#   - Monitor serverCount in status for changes
+#   - Check ./data/{registryName}/status.json for per-registry sync health
+#   - Watch server logs for sync messages with registry names
+#   - Use GET /api/v0/info endpoint for merged registry metadata
+#   - Monitor serverCount in status for changes per registry

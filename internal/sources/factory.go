@@ -6,25 +6,35 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
-// defaultSourceHandlerFactory is the default implementation of SourceHandlerFactory
-type defaultSourceHandlerFactory struct{}
+// defaultRegistryHandlerFactory is the default implementation of RegistryHandlerFactory
+type defaultRegistryHandlerFactory struct{}
 
-var _ SourceHandlerFactory = (*defaultSourceHandlerFactory)(nil)
+var _ RegistryHandlerFactory = (*defaultRegistryHandlerFactory)(nil)
 
-// NewSourceHandlerFactory creates a new source handler factory
-func NewSourceHandlerFactory() SourceHandlerFactory {
-	return &defaultSourceHandlerFactory{}
+// NewRegistryHandlerFactory creates a new registry handler factory
+func NewRegistryHandlerFactory() RegistryHandlerFactory {
+	return &defaultRegistryHandlerFactory{}
 }
 
-// CreateHandler creates a source handler for the given source type
-func (*defaultSourceHandlerFactory) CreateHandler(sourceType string) (SourceHandler, error) {
+// CreateHandler creates a registry handler for the given registry configuration
+// The source type is inferred from which field is present (Git/API/File)
+func (*defaultRegistryHandlerFactory) CreateHandler(regCfg *config.RegistryConfig) (RegistryHandler, error) {
+	if regCfg == nil {
+		return nil, fmt.Errorf("registry configuration cannot be nil")
+	}
+
+	sourceType := regCfg.GetType()
+	if sourceType == "" {
+		return nil, fmt.Errorf("unable to determine source type from registry configuration")
+	}
+
 	switch sourceType {
 	case config.SourceTypeGit:
-		return NewGitSourceHandler(), nil
+		return NewGitRegistryHandler(), nil
 	case config.SourceTypeAPI:
-		return NewAPISourceHandler(), nil
+		return NewAPIRegistryHandler(), nil
 	case config.SourceTypeFile:
-		return NewFileSourceHandler(), nil
+		return NewFileRegistryHandler(), nil
 	default:
 		return nil, fmt.Errorf("unsupported source type: %s", sourceType)
 	}

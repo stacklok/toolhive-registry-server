@@ -28,19 +28,18 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 
 	tests := []struct {
 		name            string
-		config          *config.Config
+		config          *config.RegistryConfig
 		status          *status.SyncStatus
 		expectedChanged bool
 		expectError     bool
 	}{
 		{
 			name: "data changed when no last sync hash",
-			config: &config.Config{
-				Source: config.SourceConfig{
-					Type: "file",
-					File: &config.FileConfig{
-						Path: testFilePath,
-					},
+			config: &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatToolHive,
+				File: &config.FileConfig{
+					Path: testFilePath,
 				},
 			},
 			status: &status.SyncStatus{
@@ -51,12 +50,11 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 		},
 		{
 			name: "data unchanged when hash matches",
-			config: &config.Config{
-				Source: config.SourceConfig{
-					Type: "file",
-					File: &config.FileConfig{
-						Path: testFilePath,
-					},
+			config: &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatToolHive,
+				File: &config.FileConfig{
+					Path: testFilePath,
 				},
 			},
 			status: &status.SyncStatus{
@@ -67,13 +65,11 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 		},
 		{
 			name: "data changed when hash differs",
-			config: &config.Config{
-				Source: config.SourceConfig{
-					Type:   "file",
-					Format: config.SourceFormatToolHive,
-					File: &config.FileConfig{
-						Path: testFilePath,
-					},
+			config: &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatToolHive,
+				File: &config.FileConfig{
+					Path: testFilePath,
 				},
 			},
 			status: &status.SyncStatus{
@@ -84,13 +80,11 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 		},
 		{
 			name: "error when file not found",
-			config: &config.Config{
-				Source: config.SourceConfig{
-					Type:   "file",
-					Format: config.SourceFormatToolHive,
-					File: &config.FileConfig{
-						Path: filepath.Join(tempDir, "missing-registry.json"),
-					},
+			config: &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatToolHive,
+				File: &config.FileConfig{
+					Path: filepath.Join(tempDir, "missing-registry.json"),
 				},
 			},
 			status: &status.SyncStatus{
@@ -106,9 +100,9 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			sourceHandlerFactory := sources.NewSourceHandlerFactory()
+			registryHandlerFactory := sources.NewRegistryHandlerFactory()
 			detector := &defaultDataChangeDetector{
-				sourceHandlerFactory: sourceHandlerFactory,
+				registryHandlerFactory: registryHandlerFactory,
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -136,7 +130,7 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 
 	tests := []struct {
 		name                 string
-		config               *config.Config
+		config               *config.RegistryConfig
 		status               *status.SyncStatus
 		expectedSyncNeeded   bool
 		expectedNextTimeFunc func(time.Time) bool // Function to verify nextSyncTime
@@ -144,7 +138,9 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 	}{
 		{
 			name: "invalid interval format",
-			config: &config.Config{
+			config: &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatToolHive,
 				SyncPolicy: &config.SyncPolicyConfig{
 					Interval: "invalid-duration",
 				},
@@ -157,7 +153,9 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 		},
 		{
 			name: "no last sync time - sync needed",
-			config: &config.Config{
+			config: &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatToolHive,
 				SyncPolicy: &config.SyncPolicyConfig{
 					Interval: "1h",
 				},
@@ -175,7 +173,9 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 		},
 		{
 			name: "last sync time in past - sync needed",
-			config: &config.Config{
+			config: &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatToolHive,
 				SyncPolicy: &config.SyncPolicyConfig{
 					Interval: "30m",
 				},
@@ -193,7 +193,9 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 		},
 		{
 			name: "last sync time recent - sync not needed",
-			config: &config.Config{
+			config: &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatToolHive,
 				SyncPolicy: &config.SyncPolicyConfig{
 					Interval: "1h",
 				},
@@ -212,7 +214,9 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 		},
 		{
 			name: "last sync time exactly at interval - sync needed",
-			config: &config.Config{
+			config: &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatToolHive,
 				SyncPolicy: &config.SyncPolicyConfig{
 					Interval: "1h",
 				},

@@ -13,24 +13,24 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
-// SourceDataValidator is an interface for validating registry source configurations
-type SourceDataValidator interface {
+// RegistryDataValidator is an interface for validating registry source configurations
+type RegistryDataValidator interface {
 	// ValidateData validates raw data and returns a parsed UpstreamRegistry
 	ValidateData(data []byte, format string) (*toolhivetypes.UpstreamRegistry, error)
 }
 
-//go:generate mockgen -destination=mocks/mock_source_handler.go -package=mocks -source=types.go SourceHandler,SourceHandlerFactory
+//go:generate mockgen -destination=mocks/mock_registry_handler.go -package=mocks -source=types.go RegistryHandler,RegistryHandlerFactory
 
-// SourceHandler is an interface with methods to fetch data from external data sources
-type SourceHandler interface {
+// RegistryHandler is an interface with methods to fetch data from external data sources
+type RegistryHandler interface {
 	// FetchRegistry retrieves data from the source and returns the result
-	FetchRegistry(ctx context.Context, cfg *config.Config) (*FetchResult, error)
+	FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error)
 
-	// Validate validates the source configuration
-	Validate(source *config.SourceConfig) error
+	// Validate validates the registry configuration
+	Validate(regCfg *config.RegistryConfig) error
 
 	// CurrentHash returns the current hash of the source data without performing a full fetch
-	CurrentHash(ctx context.Context, cfg *config.Config) (string, error)
+	CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error)
 }
 
 // FetchResult contains the result of a fetch operation
@@ -49,7 +49,7 @@ type FetchResult struct {
 }
 
 // NewFetchResult creates a new FetchResult from a UpstreamRegistry instance and pre-calculated hash
-// The hash should be calculated by the source handler to ensure consistency with CurrentHash
+// The hash should be calculated by the registry handler to ensure consistency with CurrentHash
 func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string, format string) *FetchResult {
 	serverCount := 0
 	if reg != nil {
@@ -64,24 +64,25 @@ func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string, format str
 	}
 }
 
-// SourceHandlerFactory creates source handlers based on source type
-type SourceHandlerFactory interface {
-	// CreateHandler creates a source handler for the given source type
-	CreateHandler(sourceType string) (SourceHandler, error)
+// RegistryHandlerFactory creates registry handlers based on registry configuration
+type RegistryHandlerFactory interface {
+	// CreateHandler creates a registry handler for the given registry configuration
+	// The source type is inferred from which field is present (Git/API/File)
+	CreateHandler(regCfg *config.RegistryConfig) (RegistryHandler, error)
 }
 
-// defaultSourceDataValidator is the default implementation of SourceValidator
-type defaultSourceDataValidator struct{}
+// defaultRegistryDataValidator is the default implementation of RegistryDataValidator
+type defaultRegistryDataValidator struct{}
 
-var _ SourceDataValidator = (*defaultSourceDataValidator)(nil)
+var _ RegistryDataValidator = (*defaultRegistryDataValidator)(nil)
 
-// NewSourceDataValidator creates a new default source validator
-func NewSourceDataValidator() SourceDataValidator {
-	return &defaultSourceDataValidator{}
+// NewRegistryDataValidator creates a new default registry data validator
+func NewRegistryDataValidator() RegistryDataValidator {
+	return &defaultRegistryDataValidator{}
 }
 
 // ValidateData validates raw data and returns a parsed UpstreamRegistry
-func (*defaultSourceDataValidator) ValidateData(data []byte, format string) (*toolhivetypes.UpstreamRegistry, error) {
+func (*defaultRegistryDataValidator) ValidateData(data []byte, format string) (*toolhivetypes.UpstreamRegistry, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("data cannot be empty")
 	}

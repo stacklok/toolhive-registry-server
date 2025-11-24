@@ -11,114 +11,6 @@ import (
 	sourcesmocks "github.com/stacklok/toolhive-registry-server/internal/sources/mocks"
 )
 
-func TestDefaultRegistryProviderFactory_CreateProvider(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name        string
-		config      *config.Config
-		wantErr     bool
-		errContains string
-		checkType   func(*testing.T, RegistryDataProvider)
-	}{
-		{
-			name: "create file provider with valid config",
-			config: &config.Config{
-				RegistryName: "test-file-registry",
-				Source: config.SourceConfig{
-					Type:   config.SourceTypeFile,
-					Format: config.SourceFormatToolHive,
-					File:   &config.FileConfig{Path: "/data/registry.json"},
-				},
-				SyncPolicy: &config.SyncPolicyConfig{Interval: "30m"},
-			},
-			wantErr: false,
-			checkType: func(t *testing.T, provider RegistryDataProvider) {
-				t.Helper()
-				assert.IsType(t, &fileRegistryDataProvider{}, provider)
-				assert.Equal(t, "file:/data/registry.json", provider.GetSource())
-				assert.Equal(t, "test-file-registry", provider.GetRegistryName())
-			},
-		},
-		{
-			name:        "nil config",
-			config:      nil,
-			wantErr:     true,
-			errContains: "config cannot be nil",
-		},
-		{
-			name: "create file provider with explicit file storage",
-			config: &config.Config{
-				RegistryName: "test-registry",
-				Source: config.SourceConfig{
-					Type:   config.SourceTypeFile,
-					Format: config.SourceFormatToolHive,
-					File:   &config.FileConfig{Path: "/data/registry.json"},
-				},
-				SyncPolicy: &config.SyncPolicyConfig{Interval: "30m"},
-				FileStorage: &config.FileStorageConfig{
-					BaseDir: "/custom/data",
-				},
-			},
-			wantErr: false,
-			checkType: func(t *testing.T, provider RegistryDataProvider) {
-				t.Helper()
-				assert.IsType(t, &fileRegistryDataProvider{}, provider)
-			},
-		},
-		{
-			name: "database storage not yet implemented",
-			config: &config.Config{
-				RegistryName: "test-registry",
-				Source: config.SourceConfig{
-					Type:   config.SourceTypeFile,
-					Format: config.SourceFormatToolHive,
-					File:   &config.FileConfig{Path: "/data/registry.json"},
-				},
-				SyncPolicy: &config.SyncPolicyConfig{Interval: "30m"},
-				Database: &config.DatabaseConfig{
-					Host:     "localhost",
-					Port:     5432,
-					User:     "testuser",
-					Database: "testdb",
-				},
-			},
-			wantErr: false,
-			checkType: func(t *testing.T, provider RegistryDataProvider) {
-				t.Helper()
-				assert.IsType(t, &fileRegistryDataProvider{}, provider)
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
-			mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
-			factory := NewRegistryProviderFactory(mockStorageManager)
-
-			provider, err := factory.CreateProvider(tt.config)
-
-			if tt.wantErr {
-				assert.Error(t, err)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
-				}
-				assert.Nil(t, provider)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, provider)
-				if tt.checkType != nil {
-					tt.checkType(t, provider)
-				}
-			}
-		})
-	}
-}
-
 func TestNewRegistryProviderFactory(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
@@ -133,4 +25,117 @@ func TestNewRegistryProviderFactory(t *testing.T) {
 	concreteFactory, ok := factory.(*defaultRegistryProviderFactory)
 	require.True(t, ok)
 	assert.NotNil(t, concreteFactory.storageManager)
+}
+
+func TestRegistryProviderFactory_CreateProvider(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		config        *config.Config
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name: "success with single file registry",
+			config: &config.Config{
+				RegistryName: "test-registry",
+				Registries: []config.RegistryConfig{
+					{
+						Name: "registry-1",
+						File: &config.FileConfig{Path: "/path/to/file.json"},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "success with multiple registries",
+			config: &config.Config{
+				RegistryName: "test-registry",
+				Registries: []config.RegistryConfig{
+					{
+						Name: "registry-1",
+						File: &config.FileConfig{Path: "/path/to/file1.json"},
+					},
+					{
+						Name: "registry-2",
+						Git:  &config.GitConfig{Repository: "https://github.com/test/repo.git"},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "success with git registry",
+			config: &config.Config{
+				RegistryName: "test-registry",
+				Registries: []config.RegistryConfig{
+					{
+						Name: "registry-1",
+						Git: &config.GitConfig{
+							Repository: "https://github.com/test/repo.git",
+							Branch:     "main",
+						},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "success with api registry",
+			config: &config.Config{
+				RegistryName: "test-registry",
+				Registries: []config.RegistryConfig{
+					{
+						Name: "registry-1",
+						API:  &config.APIConfig{Endpoint: "https://api.example.com"},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "success with empty registries",
+			config: &config.Config{
+				RegistryName: "test-registry",
+				Registries:   []config.RegistryConfig{},
+			},
+			expectError: false,
+		},
+		{
+			name:          "error with nil config",
+			config:        nil,
+			expectError:   true,
+			errorContains: "config cannot be nil",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
+			factory := NewRegistryProviderFactory(mockStorageManager)
+
+			provider, err := factory.CreateProvider(tt.config)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains)
+				}
+				assert.Nil(t, provider)
+			} else {
+				assert.NoError(t, err)
+				require.NotNil(t, provider)
+				// Verify the provider is a file registry data provider
+				_, ok := provider.(*fileRegistryDataProvider)
+				assert.True(t, ok, "provider should be a fileRegistryDataProvider")
+			}
+		})
+	}
 }

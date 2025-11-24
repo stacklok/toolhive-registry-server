@@ -41,35 +41,46 @@ func TestConfigFiles(t *testing.T) {
 				t.Fatalf("Invalid YAML syntax: %v", err)
 			}
 
-			// Check required fields
-			if _, ok := config["source"]; !ok {
-				t.Fatal("Missing required field: source")
+			// Skip database-only configs that don't have registries
+			if _, ok := config["database"]; ok && config["registries"] == nil {
+				return // Database-only configs are valid
 			}
 
-			source, ok := config["source"].(map[string]any)
+			// Check required fields for registry-based configs
+			if _, ok := config["registries"]; !ok {
+				t.Fatal("Missing required field: registries")
+			}
+
+			registries, ok := config["registries"].([]any)
 			if !ok {
-				t.Fatal("source must be a map")
+				t.Fatal("registries must be an array")
 			}
 
-			if _, ok := source["type"]; !ok {
-				t.Fatal("Missing required field: source.type")
+			if len(registries) == 0 {
+				t.Fatal("registries array must not be empty")
 			}
 
-			if _, ok := source["format"]; !ok {
-				t.Fatal("Missing required field: source.format")
-			}
-
-			if _, ok := config["syncPolicy"]; !ok {
-				t.Fatal("Missing required field: syncPolicy")
-			}
-
-			syncPolicy, ok := config["syncPolicy"].(map[string]any)
+			// Validate first registry entry
+			registry, ok := registries[0].(map[string]any)
 			if !ok {
-				t.Fatal("syncPolicy must be a map")
+				t.Fatal("registry entry must be a map")
 			}
 
-			if _, ok := syncPolicy["interval"]; !ok {
-				t.Fatal("Missing required field: syncPolicy.interval")
+			if _, ok := registry["format"]; !ok {
+				t.Fatal("Missing required field: registries[0].format")
+			}
+
+			// Check that at least one source type is defined (git, api, or file)
+			hasSourceType := false
+			for _, sourceType := range []string{"git", "api", "file"} {
+				if _, ok := registry[sourceType]; ok {
+					hasSourceType = true
+					break
+				}
+			}
+
+			if !hasSourceType {
+				t.Fatal("Registry must have at least one source type (git, api, or file)")
 			}
 		})
 	}
