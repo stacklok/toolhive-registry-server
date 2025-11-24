@@ -520,14 +520,16 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "database_storage_missing_host",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
 					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
 				},
 				Database: &DatabaseConfig{
 					Port:     5432,
@@ -541,14 +543,16 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "database_storage_missing_port",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
 					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -562,14 +566,16 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "database_storage_missing_user",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
 					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -583,14 +589,16 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "database_storage_missing_database",
 			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{
-						Path: "/data/registry.json",
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
 					},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
 				},
 				Database: &DatabaseConfig{
 					Host: "localhost",
@@ -1214,30 +1222,31 @@ func TestAuthConfig(t *testing.T) {
 	}{
 		{
 			name: "auth defaults to anonymous",
-			yaml: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"`,
+			yaml: `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"`,
 			wantErr: false,
 			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-				// Source should be parsed correctly
-				assert.Equal(t, "file", cfg.Source.Type)
-				assert.Equal(t, "/data/registry.json", cfg.Source.File.Path)
+				// Registries should be parsed correctly
+				require.Len(t, cfg.Registries, 1)
+				assert.Equal(t, "test-registry", cfg.Registries[0].Name)
+				assert.Equal(t, "/data/registry.json", cfg.Registries[0].File.Path)
 				// Auth should be nil (defaults to anonymous behavior)
 				assert.Nil(t, cfg.Auth)
 			},
 		},
 		{
 			name: "oauth with k8s and okta providers",
-			yaml: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"
+			yaml: `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
 auth:
   mode: oauth
   oauth:
@@ -1261,12 +1270,12 @@ auth:
 		},
 		{
 			name: "explicit anonymous mode",
-			yaml: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"
+			yaml: `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
 auth:
   mode: anonymous`,
 			wantErr: false,
@@ -1278,12 +1287,12 @@ auth:
 		},
 		{
 			name: "oauth requires oauth config",
-			yaml: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"
+			yaml: `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
 auth:
   mode: oauth`,
 			wantErr: true,
@@ -1291,12 +1300,12 @@ auth:
 		},
 		{
 			name: "oauth requires providers",
-			yaml: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"
+			yaml: `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
 auth:
   mode: oauth
   oauth:
@@ -1306,12 +1315,12 @@ auth:
 		},
 		{
 			name: "provider requires issuerUrl",
-			yaml: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"
+			yaml: `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
 auth:
   mode: oauth
   oauth:
@@ -1322,12 +1331,12 @@ auth:
 		},
 		{
 			name: "provider requires audience",
-			yaml: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"
+			yaml: `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
 auth:
   mode: oauth
   oauth:
@@ -1339,12 +1348,12 @@ auth:
 		},
 		{
 			name: "issuerUrl must be HTTPS",
-			yaml: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"
+			yaml: `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
 auth:
   mode: oauth
   oauth:
@@ -1357,12 +1366,12 @@ auth:
 		},
 		{
 			name: "issuerUrl must be valid URL",
-			yaml: `source:
-  type: file
-  file:
-    path: /data/registry.json
-syncPolicy:
-  interval: "30m"
+			yaml: `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
 auth:
   mode: oauth
   oauth:
