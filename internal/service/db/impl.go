@@ -239,7 +239,7 @@ func (s *dbService) DeleteServerVersion(
 
 	// 2. Begin transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   pgx.ReadCommitted,
+		IsoLevel:   pgx.Serializable,
 		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {

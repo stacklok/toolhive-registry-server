@@ -370,9 +370,9 @@ func (routes *Routes) deleteVersionWithRegistryName(w http.ResponseWriter, r *ht
 	// Call service layer
 	err := routes.service.DeleteServerVersion(
 		r.Context(),
-		service.WithDeleteRegistryName(registryName),
-		service.WithDeleteServerName(serverName),
-		service.WithDeleteVersion(version),
+		service.WithRegistryName[service.DeleteServerVersionOptions](registryName),
+		service.WithName[service.DeleteServerVersionOptions](serverName),
+		service.WithVersion[service.DeleteServerVersionOptions](version),
 	)
 
 	if err != nil {

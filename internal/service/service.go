@@ -117,8 +117,9 @@ func WithUpdatedSince(updatedSince time.Time) Option[ListServersOptions] {
 	}
 }
 
-// WithRegistryName sets the registry name for the ListServers, ListServerVersions, or GetServerVersion operation
-func WithRegistryName[T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions](
+// WithRegistryName sets the registry name for the ListServers, ListServerVersions,
+// GetServerVersion, or DeleteServerVersion operation
+func WithRegistryName[T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions | DeleteServerVersionOptions](
 	registryName string,
 ) Option[T] {
 	return func(o *T) error {
@@ -132,6 +133,8 @@ func WithRegistryName[T ListServersOptions | ListServerVersionsOptions | GetServ
 			o.RegistryName = &registryName
 		case *GetServerVersionOptions:
 			o.RegistryName = &registryName
+		case *DeleteServerVersionOptions:
+			o.RegistryName = registryName
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
@@ -161,8 +164,9 @@ func WithPrev(prev time.Time) Option[ListServerVersionsOptions] {
 	}
 }
 
-// WithVersion sets the version for the ListServers or GetServerVersion operation
-func WithVersion[T ListServersOptions | GetServerVersionOptions](version string) Option[T] {
+// WithVersion sets the version for the ListServers, GetServerVersion,
+// or DeleteServerVersion operation
+func WithVersion[T ListServersOptions | GetServerVersionOptions | DeleteServerVersionOptions](version string) Option[T] {
 	return func(o *T) error {
 		if version == "" {
 			return fmt.Errorf("invalid version: %s", version)
@@ -173,6 +177,8 @@ func WithVersion[T ListServersOptions | GetServerVersionOptions](version string)
 			o.Version = version
 		case *GetServerVersionOptions:
 			o.Version = version
+		case *DeleteServerVersionOptions:
+			o.Version = version
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
@@ -181,8 +187,9 @@ func WithVersion[T ListServersOptions | GetServerVersionOptions](version string)
 	}
 }
 
-// WithName sets the name for the ListServerVersions or GetServerVersion operation
-func WithName[T ListServerVersionsOptions | GetServerVersionOptions](name string) Option[T] {
+// WithName sets the name for the ListServerVersions, GetServerVersion,
+// or DeleteServerVersion operation
+func WithName[T ListServerVersionsOptions | GetServerVersionOptions | DeleteServerVersionOptions](name string) Option[T] {
 	return func(o *T) error {
 		if name == "" {
 			return fmt.Errorf("invalid name: %s", name)
@@ -193,6 +200,8 @@ func WithName[T ListServerVersionsOptions | GetServerVersionOptions](name string
 			o.Name = name
 		case *GetServerVersionOptions:
 			o.Name = name
+		case *DeleteServerVersionOptions:
+			o.ServerName = name
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
@@ -217,39 +226,6 @@ func WithLimit[T ListServersOptions | ListServerVersionsOptions](limit int) Opti
 			return fmt.Errorf("invalid option type: %T", o)
 		}
 
-		return nil
-	}
-}
-
-// WithDeleteRegistryName sets the registry name for DeleteServerVersion
-func WithDeleteRegistryName(registryName string) Option[DeleteServerVersionOptions] {
-	return func(o *DeleteServerVersionOptions) error {
-		if registryName == "" {
-			return fmt.Errorf("registry name cannot be empty")
-		}
-		o.RegistryName = registryName
-		return nil
-	}
-}
-
-// WithDeleteServerName sets the server name for DeleteServerVersion
-func WithDeleteServerName(serverName string) Option[DeleteServerVersionOptions] {
-	return func(o *DeleteServerVersionOptions) error {
-		if serverName == "" {
-			return fmt.Errorf("server name cannot be empty")
-		}
-		o.ServerName = serverName
-		return nil
-	}
-}
-
-// WithDeleteVersion sets the version for DeleteServerVersion
-func WithDeleteVersion(version string) Option[DeleteServerVersionOptions] {
-	return func(o *DeleteServerVersionOptions) error {
-		if version == "" {
-			return fmt.Errorf("version cannot be empty")
-		}
-		o.Version = version
 		return nil
 	}
 }
