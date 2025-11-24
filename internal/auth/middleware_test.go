@@ -307,3 +307,49 @@ func TestMultiProviderMiddleware_WWWAuthenticate(t *testing.T) {
 		})
 	}
 }
+
+func TestWrapWithPublicPaths(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		path           string
+		publicPaths    []string
+		expectAuthCall bool
+	}{
+		// Public paths bypass auth
+		{"exact public path bypasses auth", "/health", []string{"/health"}, false},
+		{"sub-path of public bypasses auth", "/health/check", []string{"/health"}, false},
+		{"well-known bypasses auth", "/.well-known/oauth", []string{"/.well-known"}, false},
+
+		// Protected paths require auth
+		{"protected path requires auth", "/v0/servers", []string{"/health"}, true},
+		{"similar prefix still requires auth", "/healthcheck", []string{"/health"}, true},
+		{"empty public paths requires auth", "/health", []string{}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			authCalled := false
+			mockAuthMw := func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					authCalled = true
+					next.ServeHTTP(w, r)
+				})
+			}
+
+			mw := WrapWithPublicPaths(mockAuthMw, tt.publicPaths)
+			handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req, _ := http.NewRequest(http.MethodGet, tt.path, nil)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.expectAuthCall, authCalled)
+		})
+	}
+}

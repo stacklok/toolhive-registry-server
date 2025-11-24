@@ -14,6 +14,7 @@ import (
 	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
@@ -35,6 +36,9 @@ const (
 	defaultWriteTimeout   = 15 * time.Second
 	defaultIdleTimeout    = 60 * time.Second
 )
+
+// defaultPublicPaths are paths that never require authentication
+var defaultPublicPaths = []string{"/health", "/docs", "/swagger", "/.well-known"}
 
 // RegistryAppOptions is a function that configures the registry app builder
 type RegistryAppOptions func(*registryAppConfig) error
@@ -63,6 +67,10 @@ type registryAppConfig struct {
 	dataDir      string
 	registryFile string
 	statusFile   string
+
+	// Auth components
+	authMiddleware  func(http.Handler) http.Handler
+	authInfoHandler http.Handler
 }
 
 func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
@@ -107,6 +115,15 @@ func NewRegistryApp(
 	registryService, cleanupFunc, err := buildServiceComponents(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build service components: %w", err)
+	}
+
+	// Build auth middleware (if not injected)
+	if cfg.authMiddleware == nil {
+		var authErr error
+		cfg.authMiddleware, cfg.authInfoHandler, authErr = auth.NewAuthMiddleware(ctx, cfg.config.Auth, auth.DefaultValidatorFactory)
+		if authErr != nil {
+			return nil, fmt.Errorf("failed to build auth middleware: %w", authErr)
+		}
 	}
 
 	// Build HTTP server
@@ -405,8 +422,16 @@ func buildHTTPServer(
 		}
 	}
 
+	// Create auth middleware that bypasses public paths
+	publicPaths := defaultPublicPaths
+	if b.config != nil && b.config.Auth != nil && len(b.config.Auth.PublicPaths) > 0 {
+		publicPaths = append(publicPaths, b.config.Auth.PublicPaths...)
+	}
+	authMw := auth.WrapWithPublicPaths(b.authMiddleware, publicPaths)
+	b.middlewares = append(b.middlewares, authMw)
+
 	// Create router with middlewares
-	router := api.NewServer(svc, api.WithMiddlewares(b.middlewares...))
+	router := api.NewServer(svc, api.WithMiddlewares(b.middlewares...), api.WithAuthInfoHandler(b.authInfoHandler))
 
 	// Create HTTP server
 	server := &http.Server{
