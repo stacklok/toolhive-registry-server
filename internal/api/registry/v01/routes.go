@@ -2,6 +2,7 @@
 package v01
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -43,6 +44,7 @@ func Router(svc service.RegistryService) http.Handler {
 	r.Route("/{registryName}/v0.1/servers/{serverName}", func(r chi.Router) {
 		r.Get("/versions", routes.listVersionsWithRegistryName)
 		r.Get("/versions/{version}", routes.getVersionWithRegistryName)
+		r.Delete("/versions/{version}", routes.deleteVersionWithRegistryName)
 	})
 	r.Post("/{registryName}/v0.1/publish", routes.publishWithRegistryName)
 
@@ -326,6 +328,70 @@ func (routes *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 func (routes *Routes) getVersionWithRegistryName(w http.ResponseWriter, r *http.Request) {
 	registryName := chi.URLParam(r, "registryName")
 	routes.handleGetVersion(w, r, registryName)
+}
+
+// deleteVersionWithRegistryName handles DELETE /{registryName}/v0.1/servers/{serverName}/versions/{version}
+//
+// @Summary      Delete server version from specific registry
+// @Description  Delete a server version from a specific managed registry
+// @Tags         registry,official
+// @Accept       json
+// @Produce      json
+// @Param        registryName  path  string  true  "Registry name"
+// @Param        serverName    path  string  true  "Server name (URL-encoded)"
+// @Param        version       path  string  true  "Version (URL-encoded)"
+// @Success      204  "No content"
+// @Failure      400  {object}  map[string]string  "Bad request"
+// @Failure      403  {object}  map[string]string  "Not a managed registry"
+// @Failure      404  {object}  map[string]string  "Server version not found"
+// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Router       /{registryName}/v0.1/servers/{serverName}/versions/{version} [delete]
+func (routes *Routes) deleteVersionWithRegistryName(w http.ResponseWriter, r *http.Request) {
+	// Extract URL parameters
+	registryName := chi.URLParam(r, "registryName")
+	serverName := chi.URLParam(r, "serverName")
+	version := chi.URLParam(r, "version")
+
+	if strings.TrimSpace(registryName) == "" {
+		common.WriteErrorResponse(w, "Registry name is required", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(serverName) == "" {
+		common.WriteErrorResponse(w, "Server name is required", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(version) == "" {
+		common.WriteErrorResponse(w, "Version is required", http.StatusBadRequest)
+		return
+	}
+
+	// Call service layer
+	err := routes.service.DeleteServerVersion(
+		r.Context(),
+		service.WithDeleteRegistryName(registryName),
+		service.WithDeleteServerName(serverName),
+		service.WithDeleteVersion(version),
+	)
+
+	if err != nil {
+		// Check for specific error types
+		if errors.Is(err, service.ErrRegistryNotFound) || errors.Is(err, service.ErrServerNotFound) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, service.ErrNotManagedRegistry) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		// All other errors
+		common.WriteErrorResponse(w, "Failed to delete server version", http.StatusInternalServerError)
+		return
+	}
+
+	// Success - return 204 No Content
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handlePublish is a shared helper that handles publishing with an optional registry name.

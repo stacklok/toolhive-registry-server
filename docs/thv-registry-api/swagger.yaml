@@ -348,6 +348,72 @@ info:
   version: "0.1"
 openapi: 3.1.0
 paths:
+  /{registryName}/v0.1/servers/{serverName}/versions/{version}:
+    delete:
+      description: Delete a server version from a specific managed registry
+      parameters:
+      - description: Registry name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      - description: Server name (URL-encoded)
+        in: path
+        name: serverName
+        required: true
+        schema:
+          type: string
+      - description: Version (URL-encoded)
+        in: path
+        name: version
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "204":
+          description: No content
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "403":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not a managed registry
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Server version not found
+        "500":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Internal server error
+      summary: Delete server version from specific registry
+      tags:
+      - registry
+      - official
   /api/v0/registry/info:
     get:
       deprecated: true
@@ -532,52 +598,6 @@ paths:
       tags:
       - extension
   /extension/v0/registries/{registryName}/servers/{serverName}/versions/{version}:
-    delete:
-      description: Delete a server from the registry
-      parameters:
-      - description: Registry Name
-        in: path
-        name: registryName
-        required: true
-        schema:
-          type: string
-      - description: URL-encoded server name (e.g., \
-        in: path
-        name: serverName
-        required: true
-        schema:
-          type: string
-      - description: URL-encoded version to retrieve (e.g., \
-        in: path
-        name: version
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "400":
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Bad request
-        "501":
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Not implemented
-      summary: Delete server
-      tags:
-      - extension
     put:
       description: Create or update a server in the registry
       parameters:

@@ -25,6 +25,15 @@ SELECT id,
   FROM registry
  WHERE id = sqlc.arg(id);
 
+-- name: GetRegistryByName :one
+SELECT id,
+       name,
+       reg_type,
+       created_at,
+       updated_at
+  FROM registry
+ WHERE name = sqlc.arg(name);
+
 -- name: InsertRegistry :one
 INSERT INTO registry (
     name,

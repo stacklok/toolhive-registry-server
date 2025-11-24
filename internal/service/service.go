@@ -16,6 +16,10 @@ var (
 	ErrServerNotFound = errors.New("server not found")
 	// ErrNotImplemented is returned when a feature is not implemented
 	ErrNotImplemented = errors.New("not implemented")
+	// ErrRegistryNotFound is returned when a registry is not found
+	ErrRegistryNotFound = errors.New("registry not found")
+	// ErrNotManagedRegistry is returned when attempting write operations on a non-managed registry
+	ErrNotManagedRegistry = errors.New("registry is not managed")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service
@@ -36,10 +40,16 @@ type RegistryService interface {
 
 	// GetServer returns a specific server by name
 	GetServerVersion(ctx context.Context, opts ...Option[GetServerVersionOptions]) (*upstreamv0.ServerJSON, error)
+
+	// DeleteServerVersion removes a server version from a managed registry
+	DeleteServerVersion(ctx context.Context, opts ...Option[DeleteServerVersionOptions]) error
 }
 
-// Option is a function that sets an option for the ListServersOptions, ListServerVersionsOptions, or GetServerVersionOptions
-type Option[T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions] func(*T) error
+// Option is a function that sets an option for the ListServersOptions, ListServerVersionsOptions,
+// GetServerVersionOptions, or DeleteServerVersionOptions
+type Option[
+	T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions | DeleteServerVersionOptions,
+] func(*T) error
 
 // ListServersOptions is the options for the ListServers operation
 type ListServersOptions struct {
@@ -64,6 +74,13 @@ type ListServerVersionsOptions struct {
 type GetServerVersionOptions struct {
 	RegistryName *string
 	Name         string
+	Version      string
+}
+
+// DeleteServerVersionOptions is the options for the DeleteServerVersion operation
+type DeleteServerVersionOptions struct {
+	RegistryName string
+	ServerName   string
 	Version      string
 }
 
@@ -200,6 +217,39 @@ func WithLimit[T ListServersOptions | ListServerVersionsOptions](limit int) Opti
 			return fmt.Errorf("invalid option type: %T", o)
 		}
 
+		return nil
+	}
+}
+
+// WithDeleteRegistryName sets the registry name for DeleteServerVersion
+func WithDeleteRegistryName(registryName string) Option[DeleteServerVersionOptions] {
+	return func(o *DeleteServerVersionOptions) error {
+		if registryName == "" {
+			return fmt.Errorf("registry name cannot be empty")
+		}
+		o.RegistryName = registryName
+		return nil
+	}
+}
+
+// WithDeleteServerName sets the server name for DeleteServerVersion
+func WithDeleteServerName(serverName string) Option[DeleteServerVersionOptions] {
+	return func(o *DeleteServerVersionOptions) error {
+		if serverName == "" {
+			return fmt.Errorf("server name cannot be empty")
+		}
+		o.ServerName = serverName
+		return nil
+	}
+}
+
+// WithDeleteVersion sets the version for DeleteServerVersion
+func WithDeleteVersion(version string) Option[DeleteServerVersionOptions] {
+	return func(o *DeleteServerVersionOptions) error {
+		if version == "" {
+			return fmt.Errorf("version cannot be empty")
+		}
+		o.Version = version
 		return nil
 	}
 }

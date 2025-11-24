@@ -237,3 +237,9 @@ INSERT INTO mcp_server_icon (
 ) ON CONFLICT (server_id, source_uri, mime_type, theme)
   DO UPDATE SET
     theme = sqlc.arg(theme);
+
+-- name: DeleteServerVersion :exec
+DELETE FROM mcp_server
+WHERE reg_id = sqlc.arg(reg_id)
+  AND name = sqlc.arg(name)
+  AND version = sqlc.arg(version);

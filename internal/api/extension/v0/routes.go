@@ -37,7 +37,6 @@ func Router(svc service.RegistryService) http.Handler {
 
 	r.Route("/registries/{registryName}/servers/{serverName}", func(r chi.Router) {
 		r.Put("/versions/{version}", routes.upsertVersion)
-		r.Delete("/versions/{version}", routes.deleteVersion)
 	})
 
 	return r
@@ -151,38 +150,4 @@ func (*Routes) upsertVersion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	common.WriteErrorResponse(w, "Creating or updating servers is not supported", http.StatusNotImplemented)
-}
-
-// deleteVersion handles DELETE /extension/v0/registries/{registryName}/servers/{serverName}/versions/{version}
-//
-// @Summary		Delete server
-// @Description	Delete a server from the registry
-// @Tags		extension
-// @Accept		json
-// @Produce		json
-// @Param		registryName	path	string	true	"Registry Name"
-// @Param		serverName		path	string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
-// @Param		version			path	string	true	"URL-encoded version to retrieve (e.g., \"1.0.0\")"
-// @Failure		400	{object}	map[string]string	"Bad request"
-// @Failure		501	{object}	map[string]string	"Not implemented"
-// @Router		/extension/v0/registries/{registryName}/servers/{serverName}/versions/{version} [delete]
-func (*Routes) deleteVersion(w http.ResponseWriter, r *http.Request) {
-	registryName := chi.URLParam(r, "registryName")
-	serverName := chi.URLParam(r, "serverName")
-	version := chi.URLParam(r, "version")
-
-	if strings.TrimSpace(registryName) == "" {
-		common.WriteErrorResponse(w, "Registry name is required", http.StatusBadRequest)
-		return
-	}
-	if strings.TrimSpace(serverName) == "" {
-		common.WriteErrorResponse(w, "Server ID is required", http.StatusBadRequest)
-		return
-	}
-	if strings.TrimSpace(version) == "" {
-		common.WriteErrorResponse(w, "Version is required", http.StatusBadRequest)
-		return
-	}
-
-	common.WriteErrorResponse(w, "Deleting servers is not supported", http.StatusNotImplemented)
 }

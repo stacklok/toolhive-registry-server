@@ -224,6 +224,70 @@ func (s *dbService) GetServerVersion(
 	return res[0], nil
 }
 
+// DeleteServerVersion removes a server version from a managed registry
+func (s *dbService) DeleteServerVersion(
+	ctx context.Context,
+	opts ...service.Option[service.DeleteServerVersionOptions],
+) error {
+	// 1. Parse options
+	options := &service.DeleteServerVersionOptions{}
+	for _, opt := range opts {
+		if err := opt(options); err != nil {
+			return fmt.Errorf("invalid option: %w", err)
+		}
+	}
+
+	// 2. Begin transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.ReadCommitted,
+		AccessMode: pgx.ReadWrite,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			// TODO: log the rollback error (add proper logging)
+			_ = err
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	// 3. Validate registry exists and get registry info
+	registry, err := querier.GetRegistryByName(ctx, options.RegistryName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, options.RegistryName)
+		}
+		return fmt.Errorf("failed to get registry: %w", err)
+	}
+
+	// 4. Validate registry is LOCAL (managed) type
+	if registry.RegType != sqlc.RegistryTypeLOCAL {
+		return fmt.Errorf("%w: registry %s has type %s",
+			service.ErrNotManagedRegistry, options.RegistryName, registry.RegType)
+	}
+
+	// 5. Delete the server version
+	err = querier.DeleteServerVersion(ctx, sqlc.DeleteServerVersionParams{
+		RegID:   registry.ID,
+		Name:    options.ServerName,
+		Version: options.Version,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete server version: %w", err)
+	}
+
+	// 6. Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
 // querierFunction is a function that uses the given querier object to run the
 // main extraction. As of the time of this writing, its main use is accessing
 // the `mcp_server` table in a type-agnostic way. This is to overcome a
