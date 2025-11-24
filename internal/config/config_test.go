@@ -298,7 +298,7 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "one of git, api, or file configuration must be specified",
+			errMsg:  "one of git, api, file, or managed configuration must be specified",
 		},
 		{
 			name: "missing_file_path",
@@ -446,7 +446,141 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "only one of git, api, or file configuration may be specified",
+			errMsg:  "only one of git, api, file, or managed configuration may be specified",
+		},
+		{
+			name: "valid_managed_registry_no_sync_policy",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name:    "managed-registry",
+						Managed: &ManagedConfig{},
+						// No SyncPolicy required for managed registries
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid_managed_registry_with_ignored_sync_policy",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name:    "managed-registry",
+						Managed: &ManagedConfig{},
+						// SyncPolicy is silently ignored for managed registries
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid_managed_registry_with_ignored_filter",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name:    "managed-registry",
+						Managed: &ManagedConfig{},
+						// Filter is silently ignored for managed registries
+						Filter: &FilterConfig{
+							Tags: &TagFilterConfig{
+								Include: []string{"test"},
+							},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "managed_and_file_source_specified",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name:    "multi-source",
+						Managed: &ManagedConfig{},
+						File: &FileConfig{
+							Path: "/tmp/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "only one of git, api, file, or managed configuration may be specified",
+		},
+		{
+			name: "managed_and_git_source_specified",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name:    "multi-source",
+						Managed: &ManagedConfig{},
+						Git: &GitConfig{
+							Repository: "https://github.com/example/repo.git",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "only one of git, api, file, or managed configuration may be specified",
+		},
+		{
+			name: "managed_and_api_source_specified",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name:    "multi-source",
+						Managed: &ManagedConfig{},
+						API: &APIConfig{
+							Endpoint: "http://example.com",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "only one of git, api, file, or managed configuration may be specified",
+		},
+		{
+			name: "mixed_managed_and_synced_registries",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "file-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+					{
+						Name:    "managed-registry",
+						Managed: &ManagedConfig{},
+					},
+					{
+						Name: "git-registry",
+						Git: &GitConfig{
+							Repository: "https://github.com/example/repo.git",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "1h",
+						},
+					},
+				},
+			},
+			wantErr: false,
 		},
 		{
 			name: "valid_config_with_file_storage",
@@ -1459,4 +1593,68 @@ func TestGetClientSecret(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to read client secret")
 	})
+}
+
+func TestRegistryConfig_GetType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		registryConf *RegistryConfig
+		expectedType string
+	}{
+		{
+			name: "git type",
+			registryConf: &RegistryConfig{
+				Name: "git-registry",
+				Git: &GitConfig{
+					Repository: "https://github.com/example/repo.git",
+				},
+			},
+			expectedType: SourceTypeGit,
+		},
+		{
+			name: "api type",
+			registryConf: &RegistryConfig{
+				Name: "api-registry",
+				API: &APIConfig{
+					Endpoint: "https://api.example.com",
+				},
+			},
+			expectedType: SourceTypeAPI,
+		},
+		{
+			name: "file type",
+			registryConf: &RegistryConfig{
+				Name: "file-registry",
+				File: &FileConfig{
+					Path: "/data/registry.json",
+				},
+			},
+			expectedType: SourceTypeFile,
+		},
+		{
+			name: "managed type",
+			registryConf: &RegistryConfig{
+				Name:    "managed-registry",
+				Managed: &ManagedConfig{},
+			},
+			expectedType: SourceTypeManaged,
+		},
+		{
+			name: "no type configured returns empty string",
+			registryConf: &RegistryConfig{
+				Name: "invalid-registry",
+			},
+			expectedType: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := tt.registryConf.GetType()
+			assert.Equal(t, tt.expectedType, result)
+		})
+	}
 }
