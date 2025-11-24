@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	v0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	service "github.com/stacklok/toolhive-registry-server/internal/service"
 	registry "github.com/stacklok/toolhive/pkg/registry/registry"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -72,32 +73,62 @@ func (mr *MockRegistryServiceMockRecorder) GetRegistry(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRegistry", reflect.TypeOf((*MockRegistryService)(nil).GetRegistry), ctx)
 }
 
-// GetServer mocks base method.
-func (m *MockRegistryService) GetServer(ctx context.Context, name string) (v0.ServerJSON, error) {
+// GetServerVersion mocks base method.
+func (m *MockRegistryService) GetServerVersion(ctx context.Context, opts ...service.Option[service.GetServerVersionOptions]) (*v0.ServerJSON, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetServer", ctx, name)
-	ret0, _ := ret[0].(v0.ServerJSON)
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "GetServerVersion", varargs...)
+	ret0, _ := ret[0].(*v0.ServerJSON)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetServer indicates an expected call of GetServer.
-func (mr *MockRegistryServiceMockRecorder) GetServer(ctx, name any) *gomock.Call {
+// GetServerVersion indicates an expected call of GetServerVersion.
+func (mr *MockRegistryServiceMockRecorder) GetServerVersion(ctx any, opts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetServer", reflect.TypeOf((*MockRegistryService)(nil).GetServer), ctx, name)
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetServerVersion", reflect.TypeOf((*MockRegistryService)(nil).GetServerVersion), varargs...)
+}
+
+// ListServerVersions mocks base method.
+func (m *MockRegistryService) ListServerVersions(ctx context.Context, opts ...service.Option[service.ListServerVersionsOptions]) ([]*v0.ServerJSON, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ListServerVersions", varargs...)
+	ret0, _ := ret[0].([]*v0.ServerJSON)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListServerVersions indicates an expected call of ListServerVersions.
+func (mr *MockRegistryServiceMockRecorder) ListServerVersions(ctx any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListServerVersions", reflect.TypeOf((*MockRegistryService)(nil).ListServerVersions), varargs...)
 }
 
 // ListServers mocks base method.
-func (m *MockRegistryService) ListServers(ctx context.Context) ([]v0.ServerJSON, error) {
+func (m *MockRegistryService) ListServers(ctx context.Context, opts ...service.Option[service.ListServersOptions]) ([]*v0.ServerJSON, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListServers", ctx)
-	ret0, _ := ret[0].([]v0.ServerJSON)
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ListServers", varargs...)
+	ret0, _ := ret[0].([]*v0.ServerJSON)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListServers indicates an expected call of ListServers.
-func (mr *MockRegistryServiceMockRecorder) ListServers(ctx any) *gomock.Call {
+func (mr *MockRegistryServiceMockRecorder) ListServers(ctx any, opts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListServers", reflect.TypeOf((*MockRegistryService)(nil).ListServers), ctx)
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListServers", reflect.TypeOf((*MockRegistryService)(nil).ListServers), varargs...)
 }

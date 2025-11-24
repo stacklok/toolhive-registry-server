@@ -2,6 +2,35 @@
 
 This file provides AI assistant guidance for working with the ToolHive Registry API Server codebase.
 
+## Available Subagents
+
+Registry Server uses specialized AI subagents for different aspects of development. These agents are configured in `.claude/agents/` and MUST be invoked when you need to perform tasks that come under their expertise:
+
+### Core Development Agents
+
+- **golang-code-writer**: Expert Go developer for writing clean, idiomatic Go code. Use when creating new functions, structs, interfaces, or complete packages.
+
+- **unit-test-writer**: Specialized in writing comprehensive unit tests for Go code. Use when you need thorough test coverage for functions, methods, or components.
+
+- **code-reviewer**: Reviews code for Registry Server best practices, security patterns, Go conventions, and architectural consistency. Use after significant code changes.
+
+- **tech-lead-orchestrator**: Provides architectural oversight, task delegation, and technical leadership for code development projects. Use for complex features or architectural decisions.
+
+### Support Agents
+
+- **security-advisor**: Provides security guidance for coding tasks, including code reviews, architecture decisions, and secure implementation patterns.
+
+### When to Use Subagents
+
+Invoke specialized agents when:
+- You need expertise in their specific domain (e.g., writing code, reviewing code)
+- Writing new code (use golang-code-writer)
+- Creating tests (use unit-test-writer)
+- Orchestrating the different tasks to other subagents that are required for completing work asked by the user (use tech-lead-orchestrator)
+- Reviewing code that is written (use code-reviewer)
+
+The agents work together - for example, tech-lead-orchestrator might delegate to golang-code-writer for implementation and then to code-reviewer for validation, then finally to security-advisor for a security check of any implementation details.
+
 ## Project Overview
 
 See [README.md](README.md) for complete project documentation including features, API endpoints, configuration, and deployment.
