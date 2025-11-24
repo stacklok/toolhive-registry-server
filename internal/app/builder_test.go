@@ -483,16 +483,18 @@ func TestBuildServiceComponents(t *testing.T) {
 			// Store original provider to check if it was set
 			originalProvider := tt.config.registryProvider
 
-			svc, err := buildServiceComponents(ctx, tt.config)
+			svc, cleanupFunc, err := buildServiceComponents(ctx, tt.config)
 
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Nil(t, svc)
+				assert.Nil(t, cleanupFunc)
 				return
 			}
 
 			require.NoError(t, err)
 			require.NotNil(t, svc)
+			require.NotNil(t, cleanupFunc)
 
 			if tt.verify != nil {
 				tt.verify(t, svc, tt.config, originalProvider)
