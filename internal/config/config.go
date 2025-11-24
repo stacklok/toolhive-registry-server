@@ -23,6 +23,24 @@ const (
 	SourceTypeFile = "file"
 )
 
+// StorageType is an enum of supported storage backends for registry data.
+type StorageType string
+
+const (
+	// StorageTypeDatabase stores registry data in PostgreSQL database
+	StorageTypeDatabase StorageType = "database"
+
+	// StorageTypeFile stores registry data in local JSON files
+	StorageTypeFile StorageType = "file"
+)
+
+// FileStorageConfig defines file storage settings
+type FileStorageConfig struct {
+	// BaseDir is the base directory for file storage
+	// Defaults to "./data" if not specified
+	BaseDir string `yaml:"baseDir,omitempty"`
+}
+
 const (
 	// SourceFormatToolHive is the native ToolHive registry format
 	SourceFormatToolHive = "toolhive"
@@ -69,11 +87,12 @@ func WithConfigPath(path string) Option {
 type Config struct {
 	// RegistryName is the name/identifier for this registry instance
 	// Defaults to "default" if not specified
-	RegistryName string            `yaml:"registryName,omitempty"`
-	Source       SourceConfig      `yaml:"source"`
-	SyncPolicy   *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
-	Filter       *FilterConfig     `yaml:"filter,omitempty"`
-	Database     *DatabaseConfig   `yaml:"database,omitempty"`
+	RegistryName string             `yaml:"registryName,omitempty"`
+	Source       SourceConfig       `yaml:"source"`
+	SyncPolicy   *SyncPolicyConfig  `yaml:"syncPolicy,omitempty"`
+	Filter       *FilterConfig      `yaml:"filter,omitempty"`
+	Database     *DatabaseConfig    `yaml:"database,omitempty"`
+	FileStorage  *FileStorageConfig `yaml:"fileStorage,omitempty"`
 }
 
 // SourceConfig defines the data source configuration
@@ -279,6 +298,25 @@ func (c *Config) GetRegistryName() string {
 	return c.RegistryName
 }
 
+// GetStorageType determines the storage type based on configuration
+// Returns StorageTypeDatabase if database is configured
+// Returns StorageTypeFile if file storage is configured or neither is configured (default)
+func (c *Config) GetStorageType() StorageType {
+	if c.Database != nil {
+		return StorageTypeDatabase
+	}
+	return StorageTypeFile
+}
+
+// GetFileStorageBaseDir returns the base directory for file storage
+// Returns "./data" as the default if not specified
+func (c *Config) GetFileStorageBaseDir() string {
+	if c.FileStorage != nil && c.FileStorage.BaseDir != "" {
+		return c.FileStorage.BaseDir
+	}
+	return "./data"
+}
+
 // Validate performs validation on the configuration
 func (c *Config) validate() error {
 	if c == nil {
@@ -304,7 +342,8 @@ func (c *Config) validate() error {
 		return fmt.Errorf("syncPolicy.interval must be a valid duration (e.g., '30m', '1h'): %w", err)
 	}
 
-	return nil
+	// Validate storage configuration
+	return c.validateStorageConfig()
 }
 
 // validateSourceConfigByType validates the source configuration by the source type
@@ -341,6 +380,35 @@ func (c *Config) validateSourceConfigByType() error {
 	default:
 		return fmt.Errorf("unsupported source type: %s", c.Source.Type)
 	}
+
+	return nil
+}
+
+// validateStorageConfig validates the storage configuration
+func (c *Config) validateStorageConfig() error {
+	// TODO: Reinstate this validation once database is fully wired in
+	// Error if both database and file storage are configured
+	// if c.Database != nil && c.FileStorage != nil {
+	// 	return fmt.Errorf("cannot configure both database and fileStorage - only one storage backend is allowed")
+	// }
+
+	// If database is configured, validate required fields
+	if c.Database != nil {
+		if c.Database.Host == "" {
+			return fmt.Errorf("database.host is required when database is configured")
+		}
+		if c.Database.Port == 0 {
+			return fmt.Errorf("database.port is required when database is configured")
+		}
+		if c.Database.User == "" {
+			return fmt.Errorf("database.user is required when database is configured")
+		}
+		if c.Database.Database == "" {
+			return fmt.Errorf("database.database is required when database is configured")
+		}
+	}
+
+	// File storage validation is minimal - baseDir is optional with default
 
 	return nil
 }
