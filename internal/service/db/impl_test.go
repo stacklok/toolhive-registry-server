@@ -43,6 +43,14 @@ func setupTestService(t *testing.T) (*dbService, func()) {
 	return svc, serviceCleanup
 }
 
+// createCursor creates a valid base64-encoded RFC3339 time cursor
+//
+// nolint:unparam
+func createCursor(offset time.Duration) string {
+	cursorTime := time.Now().Add(offset).UTC()
+	return base64.StdEncoding.EncodeToString([]byte(cursorTime.Format(time.RFC3339)))
+}
+
 // setupTestData creates a registry and server versions for testing
 //
 //nolint:thelper // We want to see these lines in the test output
@@ -129,14 +137,8 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServersOptions]{
-				func(opts *service.ListServersOptions) error {
-					// Create a valid base64-encoded RFC3339 time cursor
-					cursorTime := time.Now().Add(-1 * time.Hour).UTC()
-					cursorStr := base64.StdEncoding.EncodeToString([]byte(cursorTime.Format(time.RFC3339)))
-					opts.Cursor = cursorStr
-					opts.Limit = 10
-					return nil
-				},
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
@@ -155,13 +157,8 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServersOptions]{
-				func(opts *service.ListServersOptions) error {
-					cursorTime := time.Now().Add(-1 * time.Hour).UTC()
-					cursorStr := base64.StdEncoding.EncodeToString([]byte(cursorTime.Format(time.RFC3339)))
-					opts.Cursor = cursorStr
-					opts.Limit = 2
-					return nil
-				},
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](2),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
@@ -175,11 +172,8 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServersOptions]{
-				func(opts *service.ListServersOptions) error {
-					opts.Cursor = "invalid-base64"
-					opts.Limit = 10
-					return nil
-				},
+				service.WithCursor("invalid-base64"),
+				service.WithLimit[service.ListServersOptions](10),
 			},
 		},
 		{
@@ -189,13 +183,8 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServersOptions]{
-				func(opts *service.ListServersOptions) error {
-					// Valid base64 but invalid time format
-					invalidTime := base64.StdEncoding.EncodeToString([]byte("not-a-time"))
-					opts.Cursor = invalidTime
-					opts.Limit = 10
-					return nil
-				},
+				service.WithCursor(base64.StdEncoding.EncodeToString([]byte("not-a-time"))),
+				service.WithLimit[service.ListServersOptions](10),
 			},
 		},
 		{
@@ -205,13 +194,45 @@ func TestListServers(t *testing.T) {
 				// Don't set up any data
 			},
 			options: []service.Option[service.ListServersOptions]{
-				func(opts *service.ListServersOptions) error {
-					cursorTime := time.Now().Add(-1 * time.Hour).UTC()
-					cursorStr := base64.StdEncoding.EncodeToString([]byte(cursorTime.Format(time.RFC3339)))
-					opts.Cursor = cursorStr
-					opts.Limit = 10
-					return nil
-				},
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
+				require.Len(t, servers, 0)
+			},
+		},
+		{
+			name: "list servers with registry name",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithRegistryName[service.ListServersOptions]("test-registry"),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
+				require.Len(t, servers, 4)
+				// Verify server structure
+				for _, server := range servers {
+					require.NotEmpty(t, server.Name)
+					require.NotEmpty(t, server.Version)
+				}
+			},
+		},
+		{
+			name: "list servers with non-existent registry name",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithRegistryName[service.ListServersOptions]("non-existent-registry"),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
@@ -359,6 +380,50 @@ func TestListServerVersions(t *testing.T) {
 			options: []service.Option[service.ListServerVersionsOptions]{
 				service.WithName[service.ListServerVersionsOptions](""), // Empty name should error
 				service.WithLimit[service.ListServerVersionsOptions](10),
+			},
+		},
+		{
+			name: "list versions with registry name",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServerVersionsOptions]{
+				service.WithName[service.ListServerVersionsOptions]("test-server-1"),
+				service.WithRegistryName[service.ListServerVersionsOptions]("test-registry"),
+				service.WithLimit[service.ListServerVersionsOptions](10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
+				require.Len(t, servers, 3)
+				// Verify all are the same server name
+				for _, server := range servers {
+					require.Equal(t, "test-server-1", server.Name)
+				}
+				// Verify versions are present
+				versions := make([]string, len(servers))
+				for i, s := range servers {
+					versions[i] = s.Version
+				}
+				require.Contains(t, versions, "1.0.0")
+				require.Contains(t, versions, "1.1.0")
+				require.Contains(t, versions, "2.0.0")
+			},
+		},
+		{
+			name: "list versions with non-existent registry name",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServerVersionsOptions]{
+				service.WithName[service.ListServerVersionsOptions]("test-server-1"),
+				service.WithRegistryName[service.ListServerVersionsOptions]("non-existent-registry"),
+				service.WithLimit[service.ListServerVersionsOptions](10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
+				require.Len(t, servers, 0)
 			},
 		},
 	}
@@ -596,6 +661,38 @@ func TestGetServerVersion(t *testing.T) {
 				require.Len(t, server.Remotes, 1)
 				require.Equal(t, "sse", server.Remotes[0].Type)
 				require.Equal(t, "https://example.com/sse", server.Remotes[0].URL)
+			},
+		},
+		{
+			name: "get server version with registry name",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				service.WithName[service.GetServerVersionOptions]("test-server-1"),
+				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+				service.WithRegistryName[service.GetServerVersionOptions]("test-registry"),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON) {
+				require.NotNil(t, server)
+				require.Equal(t, "test-server-1", server.Name)
+				require.Equal(t, "1.0.0", server.Version)
+				require.Equal(t, "Test server 1 description", server.Description)
+				require.Equal(t, "Test Server 1", server.Title)
+			},
+		},
+		{
+			name: "get server version with non-existent registry name",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				service.WithName[service.GetServerVersionOptions]("test-server-1"),
+				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+				service.WithRegistryName[service.GetServerVersionOptions]("non-existent-registry"),
 			},
 		},
 	}

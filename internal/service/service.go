@@ -43,26 +43,28 @@ type Option[T ListServersOptions | ListServerVersionsOptions | GetServerVersionO
 
 // ListServersOptions is the options for the ListServers operation
 type ListServersOptions struct {
+	RegistryName *string
 	Cursor       string
 	Limit        int
 	Search       string
 	UpdatedSince time.Time
 	Version      string
-	RegistryName string
 }
 
 // ListServerVersionsOptions is the options for the ListServerVersions operation
 type ListServerVersionsOptions struct {
-	Name  string
-	Next  *time.Time
-	Prev  *time.Time
-	Limit int
+	RegistryName *string
+	Name         string
+	Next         *time.Time
+	Prev         *time.Time
+	Limit        int
 }
 
 // GetServerVersionOptions is the options for the GetServerVersion operation
 type GetServerVersionOptions struct {
-	Name    string
-	Version string
+	RegistryName *string
+	Name         string
+	Version      string
 }
 
 // WithCursor sets the cursor for the ListServers operation
@@ -98,13 +100,24 @@ func WithUpdatedSince(updatedSince time.Time) Option[ListServersOptions] {
 	}
 }
 
-// WithRegistryName sets the registry name for the ListServers operation
-func WithRegistryName(registryName string) Option[ListServersOptions] {
-	return func(o *ListServersOptions) error {
+// WithRegistryName sets the registry name for the ListServers, ListServerVersions, or GetServerVersion operation
+func WithRegistryName[T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions](
+	registryName string,
+) Option[T] {
+	return func(o *T) error {
 		if registryName == "" {
 			return fmt.Errorf("invalid registry name: %s", registryName)
 		}
-		o.RegistryName = registryName
+		switch o := any(o).(type) {
+		case *ListServersOptions:
+			o.RegistryName = &registryName
+		case *ListServerVersionsOptions:
+			o.RegistryName = &registryName
+		case *GetServerVersionOptions:
+			o.RegistryName = &registryName
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
 		return nil
 	}
 }

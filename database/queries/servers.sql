@@ -18,8 +18,9 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
- WHERE (sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next))
-   AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR s.created_at < sqlc.narg(prev))
+ WHERE (sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next)::timestamp with time zone)
+   AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR s.created_at < sqlc.narg(prev)::timestamp with time zone)
+   AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
  ORDER BY
  -- next page sorting
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN r.reg_type END ASC,
@@ -54,6 +55,7 @@ SELECT r.reg_type as registry_type,
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
  WHERE s.name = sqlc.arg(name)
+   AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
    AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next))
     AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR s.created_at < sqlc.narg(prev)))
  ORDER BY
@@ -82,7 +84,8 @@ SELECT r.reg_type as registry_type,
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
  WHERE s.name = sqlc.arg(name)
-   AND s.version = sqlc.arg(version);
+   AND s.version = sqlc.arg(version)
+   AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text);
 
 -- name: ListServerPackages :many
 SELECT p.server_id,

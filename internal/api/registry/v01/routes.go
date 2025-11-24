@@ -50,7 +50,7 @@ func Router(svc service.RegistryService) http.Handler {
 }
 
 // handleListServers is a shared helper that handles listing servers with an optional registry name.
-func (*Routes) handleListServers(w http.ResponseWriter, r *http.Request, registryName string) {
+func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, registryName string) {
 	// Parse query parameters
 	query := r.URL.Query()
 
@@ -89,21 +89,49 @@ func (*Routes) handleListServers(w http.ResponseWriter, r *http.Request, registr
 	// Parse version (optional string)
 	version := query.Get("version")
 
-	// TODO: Use the parsed parameters in the actual implementation
-	_ = cursor
-	_ = limit
-	_ = search
-	_ = updatedSince
-	_ = version
-	_ = registryName
+	opts := []service.Option[service.ListServersOptions]{}
+	if cursor != "" {
+		opts = append(opts, service.WithCursor(cursor))
+	}
+	if limit != nil {
+		opts = append(opts, service.WithLimit[service.ListServersOptions](*limit))
+	}
+	if search != "" {
+		opts = append(opts, service.WithSearch(search))
+	}
+	if updatedSince != nil {
+		opts = append(opts, service.WithUpdatedSince(*updatedSince))
+	}
+	if version != "" {
+		opts = append(opts, service.WithVersion[service.ListServersOptions](version))
+	}
+	if registryName != "" {
+		opts = append(opts, service.WithRegistryName[service.ListServersOptions](registryName))
+	}
 
-	// Placeholder response - replace with actual implementation
-	common.WriteJSONResponse(w, upstreamv0.ServerListResponse{
-		Servers: []upstreamv0.ServerResponse{},
+	servers, err := routes.service.ListServers(r.Context(), opts...)
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	serverResponses := make([]upstreamv0.ServerResponse, len(servers))
+	for i, server := range servers {
+		serverResponses[i] = upstreamv0.ServerResponse{
+			Server: *server,
+			Meta:   upstreamv0.ResponseMeta{},
+		}
+	}
+
+	result := upstreamv0.ServerListResponse{
+		Servers: serverResponses,
 		Metadata: upstreamv0.Metadata{
-			Count: 0,
+			NextCursor: "",
+			Count:      len(servers),
 		},
-	}, http.StatusOK)
+	}
+
+	common.WriteJSONResponse(w, result, http.StatusOK)
 }
 
 // listServers handles GET /registry/v0.1/servers
@@ -147,24 +175,48 @@ func (routes *Routes) listServersWithRegistryName(w http.ResponseWriter, r *http
 }
 
 // handleListVersions is a shared helper that handles listing versions with an optional registry name.
-func (*Routes) handleListVersions(w http.ResponseWriter, r *http.Request, registryName string) {
+func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request, registryName string) {
 	serverName := chi.URLParam(r, "serverName")
 	if strings.TrimSpace(serverName) == "" {
 		common.WriteErrorResponse(w, "Server name is required", http.StatusBadRequest)
 		return
 	}
 
-	// TODO: Use registryName and serverName in the actual implementation
-	_ = registryName
-	_ = serverName
+	opts := []service.Option[service.ListServerVersionsOptions]{
+		// Note: Upstream API does not support pagination for versions,
+		// so we return an arbitrary large number of records.
+		service.WithLimit[service.ListServerVersionsOptions](1000),
+	}
+	if registryName != "" {
+		opts = append(opts, service.WithRegistryName[service.ListServerVersionsOptions](registryName))
+	}
+	if serverName != "" {
+		opts = append(opts, service.WithName[service.ListServerVersionsOptions](serverName))
+	}
 
-	// Return empty version list
-	common.WriteJSONResponse(w, upstreamv0.ServerListResponse{
-		Servers: []upstreamv0.ServerResponse{},
+	versions, err := routes.service.ListServerVersions(r.Context(), opts...)
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	serverResponses := make([]upstreamv0.ServerResponse, len(versions))
+	for i, version := range versions {
+		serverResponses[i] = upstreamv0.ServerResponse{
+			Server: *version,
+			Meta:   upstreamv0.ResponseMeta{},
+		}
+	}
+
+	result := upstreamv0.ServerListResponse{
+		Servers: serverResponses,
 		Metadata: upstreamv0.Metadata{
-			Count: 0,
+			NextCursor: "",
+			Count:      len(versions),
 		},
-	}, http.StatusOK)
+	}
+
+	common.WriteJSONResponse(w, result, http.StatusOK)
 }
 
 // listVersions handles GET /registry/v0.1/servers/{serverName}/versions
@@ -202,7 +254,7 @@ func (routes *Routes) listVersionsWithRegistryName(w http.ResponseWriter, r *htt
 }
 
 // handleGetVersion is a shared helper that handles getting a version with an optional registry name.
-func (*Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, registryName string) {
+func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, registryName string) {
 	serverName := chi.URLParam(r, "serverName")
 	version := chi.URLParam(r, "version")
 	if strings.TrimSpace(serverName) == "" || strings.TrimSpace(version) == "" {
@@ -210,12 +262,32 @@ func (*Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, registry
 		return
 	}
 
-	// TODO: Use registryName, serverName, and version in the actual implementation
-	_ = registryName
-	_ = serverName
-	_ = version
+	opts := []service.Option[service.GetServerVersionOptions]{}
+	if registryName != "" {
+		opts = append(opts, service.WithRegistryName[service.GetServerVersionOptions](registryName))
+	}
+	if serverName != "" {
+		opts = append(opts, service.WithName[service.GetServerVersionOptions](serverName))
+	}
+	if version != "" {
+		opts = append(opts, service.WithVersion[service.GetServerVersionOptions](version))
+	}
 
-	common.WriteJSONResponse(w, upstreamv0.ServerResponse{}, http.StatusOK)
+	server, err := routes.service.GetServerVersion(r.Context(), opts...)
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if server == nil {
+		common.WriteErrorResponse(w, "Server not found", http.StatusNotFound)
+		return
+	}
+
+	serverResponse := upstreamv0.ServerResponse{
+		Server: *server,
+		Meta:   upstreamv0.ResponseMeta{},
+	}
+	common.WriteJSONResponse(w, serverResponse, http.StatusOK)
 }
 
 // getVersion handles GET /registry/v0.1/servers/{serverName}/versions/{version}
