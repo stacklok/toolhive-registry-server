@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
 	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
@@ -101,7 +103,7 @@ func NewRegistryApp(
 	}
 
 	// Build service components
-	registryService, err := buildServiceComponents(ctx, cfg)
+	registryService, cleanupFunc, err := buildServiceComponents(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build service components: %w", err)
 	}
@@ -115,6 +117,11 @@ func NewRegistryApp(
 	// Create application context
 	appCtx, cancel := context.WithCancel(ctx)
 
+	cancelFunc := func() {
+		cleanupFunc()
+		cancel()
+	}
+
 	return &RegistryApp{
 		config: cfg.config,
 		components: &AppComponents{
@@ -123,7 +130,7 @@ func NewRegistryApp(
 		},
 		httpServer: httpServer,
 		ctx:        appCtx,
-		cancelFunc: cancel,
+		cancelFunc: cancelFunc,
 	}, nil
 }
 
@@ -269,29 +276,108 @@ func buildSyncComponents(
 func buildServiceComponents(
 	ctx context.Context,
 	b *registryAppConfig,
-) (service.RegistryService, error) {
+) (service.RegistryService, func(), error) {
 	logger.Info("Initializing service components")
 
-	// Build registry provider (reads from synced data via StorageManager)
-	if b.registryProvider == nil {
-		// StorageManager was already built in buildSyncComponents
-		factory := service.NewRegistryProviderFactory(b.storageManager)
-		provider, err := factory.CreateProvider(b.config)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create registry provider: %w", err)
-		}
-		b.registryProvider = provider
-		logger.Infof("Created registry data provider using storage manager")
+	if b.config == nil {
+		return nil, nil, fmt.Errorf("config cannot be nil")
 	}
 
-	// Create service (deployment provider is optional and can be injected via WithDeploymentProvider for testing)
-	svc, err := inmemory.New(ctx, b.registryProvider)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create registry service: %w", err)
+	// Determine storage type from config
+	storageType := b.config.GetStorageType()
+
+	// Create service based on storage type
+	var svc service.RegistryService
+	var cleanupFunc func()
+	switch storageType {
+	case config.StorageTypeFile:
+		// Build registry provider (reads from synced data via StorageManager)
+		if b.registryProvider == nil {
+			// StorageManager was already built in buildSyncComponents
+			factory := service.NewRegistryProviderFactory(b.storageManager)
+			provider, err := factory.CreateProvider(b.config)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to create registry provider: %w", err)
+			}
+			b.registryProvider = provider
+			logger.Infof("Created registry data provider using storage manager")
+		}
+
+		// Create in-memory service (reads from file storage)
+		inMemorySvc, err := inmemory.New(ctx, b.registryProvider)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create in-memory registry service: %w", err)
+		}
+		logger.Info("Created in-memory registry service")
+
+		svc = inMemorySvc
+		cleanupFunc = func() {}
+	case config.StorageTypeDatabase:
+		// Create database-backed service
+		pool, err := buildDatabaseConnectionPool(ctx, b.config)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create database service: %w", err)
+		}
+
+		databaseSvc, err := database.New(database.WithConnectionPool(pool))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create database service: %w", err)
+		}
+		logger.Info("Created database-backed registry service")
+
+		svc = databaseSvc
+		cleanupFunc = pool.Close
+	default:
+		return nil, nil, fmt.Errorf("unknown storage type: %s", storageType)
 	}
 
 	logger.Info("Service components initialized successfully")
-	return svc, nil
+	return svc, cleanupFunc, nil
+}
+
+// buildDatabaseConnectionPool creates a database connection pool
+func buildDatabaseConnectionPool(
+	ctx context.Context,
+	cfg *config.Config,
+) (*pgxpool.Pool, error) {
+	if cfg.Database == nil {
+		return nil, fmt.Errorf("database configuration is required for database storage type")
+	}
+
+	// Get connection string from config
+	connStr, err := cfg.Database.GetConnectionString()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database connection string: %w", err)
+	}
+
+	// Parse connection string into config
+	poolConfig, err := pgxpool.ParseConfig(connStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse database connection string: %w", err)
+	}
+
+	// Configure pool settings from config
+	if cfg.Database.MaxOpenConns > 0 {
+		poolConfig.MaxConns = int32(cfg.Database.MaxOpenConns)
+	}
+	if cfg.Database.MaxIdleConns > 0 {
+		poolConfig.MinConns = int32(cfg.Database.MaxIdleConns)
+	}
+	if cfg.Database.ConnMaxLifetime != "" {
+		lifetime, err := time.ParseDuration(cfg.Database.ConnMaxLifetime)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse connMaxLifetime: %w", err)
+		}
+		poolConfig.MaxConnLifetime = lifetime
+	}
+
+	// Create connection pool
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create database connection pool: %w", err)
+	}
+
+	return pool, nil
 }
 
 // buildHTTPServer builds the HTTP server with router and middleware
