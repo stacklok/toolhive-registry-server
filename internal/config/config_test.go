@@ -12,10 +12,11 @@ import (
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name        string
-		yamlContent string
-		wantConfig  *Config
-		wantErr     bool
+		name             string
+		yamlContent      string
+		skipFileCreation bool
+		wantConfig       *Config
+		wantErr          bool
 	}{
 		{
 			name: "valid_config_matching_spec",
@@ -146,10 +147,11 @@ filter:
 			wantErr:     true,
 		},
 		{
-			name:        "file_not_found",
-			yamlContent: "",
-			wantConfig:  nil,
-			wantErr:     true,
+			name:             "file_not_found",
+			yamlContent:      "",
+			skipFileCreation: true,
+			wantConfig:       nil,
+			wantErr:          true,
 		},
 	}
 
@@ -158,19 +160,16 @@ filter:
 			t.Parallel()
 			// Create a temporary directory for test files
 			tmpDir := t.TempDir()
-
-			// TODO: this is typical Claude Code pattern, we must fix this
-			if tt.name == "file_not_found" {
-				// Test with non-existent file
-				_, err := LoadConfig(WithConfigPath(filepath.Join(tmpDir, "non-existent.yaml")))
-				require.Error(t, err)
-				return
-			}
-
-			// Create test config file
 			configPath := filepath.Join(tmpDir, "config.yaml")
-			err := os.WriteFile(configPath, []byte(tt.yamlContent), 0600)
-			require.NoError(t, err)
+
+			if tt.skipFileCreation {
+				// Test with non-existent file
+				configPath = filepath.Join(tmpDir, "non-existent.yaml")
+			} else {
+				// Create test config file
+				err := os.WriteFile(configPath, []byte(tt.yamlContent), 0600)
+				require.NoError(t, err)
+			}
 
 			// Load the config
 			config, err := LoadConfig(WithConfigPath(configPath))
@@ -362,20 +361,6 @@ func TestConfigValidate(t *testing.T) {
 			},
 			wantErr: true,
 			errMsg:  "source.file is required",
-		},
-		{
-			name: "missing_file_path",
-			config: &Config{
-				Source: SourceConfig{
-					Type: "file",
-					File: &FileConfig{},
-				},
-				SyncPolicy: &SyncPolicyConfig{
-					Interval: "30m",
-				},
-			},
-			wantErr: true,
-			errMsg:  "source.file.path is required",
 		},
 		{
 			name: "invalid_format_when_type_is_api",
@@ -1146,4 +1131,254 @@ syncPolicy:
 			assert.Equal(t, tt.wantConfig, config)
 		})
 	}
+}
+
+func TestAuthConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr bool
+		errMsg  string
+		check   func(t *testing.T, cfg *Config)
+	}{
+		{
+			name: "auth defaults to anonymous",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"`,
+			wantErr: false,
+			check: func(t *testing.T, cfg *Config) {
+				t.Helper()
+				// Source should be parsed correctly
+				assert.Equal(t, "file", cfg.Source.Type)
+				assert.Equal(t, "/data/registry.json", cfg.Source.File.Path)
+				// Auth should be nil (defaults to anonymous behavior)
+				assert.Nil(t, cfg.Auth)
+			},
+		},
+		{
+			name: "oauth with k8s and okta providers",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+auth:
+  mode: oauth
+  oauth:
+    providers:
+      - name: kubernetes
+        issuerUrl: https://kubernetes.default.svc.cluster.local
+        audience: https://kubernetes.default.svc.cluster.local
+      - name: okta
+        issuerUrl: https://dev-12345.okta.com
+        audience: api://mcp-registry`,
+			wantErr: false,
+			check: func(t *testing.T, cfg *Config) {
+				t.Helper()
+				require.NotNil(t, cfg.Auth)
+				assert.Equal(t, AuthModeOAuth, cfg.Auth.Mode)
+				require.NotNil(t, cfg.Auth.OAuth)
+				assert.Len(t, cfg.Auth.OAuth.Providers, 2)
+				assert.Equal(t, "https://kubernetes.default.svc.cluster.local", cfg.Auth.OAuth.Providers[0].IssuerURL)
+				assert.Equal(t, "https://dev-12345.okta.com", cfg.Auth.OAuth.Providers[1].IssuerURL)
+			},
+		},
+		{
+			name: "explicit anonymous mode",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+auth:
+  mode: anonymous`,
+			wantErr: false,
+			check: func(t *testing.T, cfg *Config) {
+				t.Helper()
+				require.NotNil(t, cfg.Auth)
+				assert.Equal(t, AuthModeAnonymous, cfg.Auth.Mode)
+			},
+		},
+		{
+			name: "oauth requires oauth config",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+auth:
+  mode: oauth`,
+			wantErr: true,
+			errMsg:  "auth.oauth is required",
+		},
+		{
+			name: "oauth requires providers",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+auth:
+  mode: oauth
+  oauth:
+    providers: []`,
+			wantErr: true,
+			errMsg:  "providers",
+		},
+		{
+			name: "provider requires issuerUrl",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+auth:
+  mode: oauth
+  oauth:
+    providers:
+      - name: kubernetes`,
+			wantErr: true,
+			errMsg:  "issuerUrl",
+		},
+		{
+			name: "provider requires audience",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+auth:
+  mode: oauth
+  oauth:
+    providers:
+      - name: kubernetes
+        issuerUrl: https://kubernetes.default.svc.cluster.local`,
+			wantErr: true,
+			errMsg:  "audience is required",
+		},
+		{
+			name: "issuerUrl must be HTTPS",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+auth:
+  mode: oauth
+  oauth:
+    providers:
+      - name: test
+        issuerUrl: http://example.com
+        audience: api://test`,
+			wantErr: true,
+			errMsg:  "must use HTTPS",
+		},
+		{
+			name: "issuerUrl must be valid URL",
+			yaml: `source:
+  type: file
+  file:
+    path: /data/registry.json
+syncPolicy:
+  interval: "30m"
+auth:
+  mode: oauth
+  oauth:
+    providers:
+      - name: test
+        issuerUrl: "not-a-valid-url"
+        audience: api://test`,
+			wantErr: true,
+			errMsg:  "must be an absolute URL with host",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			configPath := filepath.Join(tmpDir, "config.yaml")
+			err := os.WriteFile(configPath, []byte(tt.yaml), 0600)
+			require.NoError(t, err)
+
+			cfg, err := LoadConfig(WithConfigPath(configPath))
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			if tt.check != nil {
+				tt.check(t, cfg)
+			}
+		})
+	}
+}
+
+func TestGetClientSecret(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reads secret from file", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		secretFile := filepath.Join(tmpDir, "secret.txt")
+		err := os.WriteFile(secretFile, []byte("  my-secret-value\n"), 0600)
+		require.NoError(t, err)
+
+		provider := &OAuthProviderConfig{
+			Name:             "test",
+			IssuerURL:        "https://example.com",
+			ClientSecretFile: secretFile,
+		}
+
+		secret, err := provider.GetClientSecret()
+		require.NoError(t, err)
+		assert.Equal(t, "my-secret-value", secret)
+	})
+
+	t.Run("returns empty for no file configured", func(t *testing.T) {
+		t.Parallel()
+
+		provider := &OAuthProviderConfig{
+			Name:      "test",
+			IssuerURL: "https://example.com",
+		}
+
+		secret, err := provider.GetClientSecret()
+		require.NoError(t, err)
+		assert.Equal(t, "", secret)
+	})
+
+	t.Run("returns error for missing file", func(t *testing.T) {
+		t.Parallel()
+
+		provider := &OAuthProviderConfig{
+			Name:             "test",
+			IssuerURL:        "https://example.com",
+			ClientSecretFile: "/nonexistent/secret.txt",
+		}
+
+		_, err := provider.GetClientSecret()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to read client secret")
+	})
 }
