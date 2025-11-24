@@ -706,7 +706,7 @@ func TestLoadOrInitializeRegistryStatus(t *testing.T) {
 			}
 
 			// Execute
-			coord.loadOrInitializeRegistryStatus(context.Background(), registryName)
+			coord.loadOrInitializeRegistryStatus(context.Background(), &cfg.Registries[0])
 
 			// Verify
 			loadedStatus := coord.cachedStatuses[registryName]
@@ -790,4 +790,121 @@ func TestMultiRegistry_IndependentSyncStatus(t *testing.T) {
 	assert.Equal(t, status.SyncPhaseComplete, status2After.Phase)
 	assert.Equal(t, "hash-2", status2After.LastSyncHash)
 	assert.Equal(t, 25, status2After.ServerCount)
+}
+
+func TestManagedRegistry_StatusInitialization(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tempDir := t.TempDir()
+	mockSyncMgr := syncmocks.NewMockManager(ctrl)
+	statusPersistence := status.NewFileStatusPersistence(tempDir)
+
+	// Create config with one managed registry
+	cfg := &config.Config{
+		RegistryName: "global-registry",
+		Registries: []config.RegistryConfig{
+			{
+				Name:    "managed-registry",
+				Managed: &config.ManagedConfig{},
+			},
+		},
+	}
+
+	coord := &defaultCoordinator{
+		manager:           mockSyncMgr,
+		statusPersistence: statusPersistence,
+		config:            cfg,
+		cachedStatuses:    make(map[string]*status.SyncStatus),
+	}
+
+	// Initialize status for managed registry
+	coord.loadOrInitializeRegistryStatus(context.Background(), &cfg.Registries[0])
+
+	// Verify managed registry gets Complete status (not Failed)
+	managedStatus := coord.cachedStatuses["managed-registry"]
+	require.NotNil(t, managedStatus)
+	assert.Equal(t, status.SyncPhaseComplete, managedStatus.Phase)
+	assert.Contains(t, managedStatus.Message, "Managed registry")
+	assert.Contains(t, managedStatus.Message, "data managed via API")
+}
+
+func TestManagedRegistry_MixedWithSyncedRegistries(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tempDir := t.TempDir()
+	mockSyncMgr := syncmocks.NewMockManager(ctrl)
+	statusPersistence := status.NewFileStatusPersistence(tempDir)
+
+	// Create config with both managed and synced registries
+	cfg := &config.Config{
+		RegistryName: "global-registry",
+		Registries: []config.RegistryConfig{
+			{
+				Name: "file-registry",
+				File: &config.FileConfig{
+					Path: "/data/registry.json",
+				},
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			{
+				Name:    "managed-registry-1",
+				Managed: &config.ManagedConfig{},
+			},
+			{
+				Name: "git-registry",
+				Git: &config.GitConfig{
+					Repository: "https://github.com/example/repo.git",
+				},
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "1h",
+				},
+			},
+			{
+				Name:    "managed-registry-2",
+				Managed: &config.ManagedConfig{},
+			},
+		},
+	}
+
+	coord := &defaultCoordinator{
+		manager:           mockSyncMgr,
+		statusPersistence: statusPersistence,
+		config:            cfg,
+		cachedStatuses:    make(map[string]*status.SyncStatus),
+	}
+
+	// Initialize all statuses
+	coord.loadOrInitializeAllStatus(context.Background())
+
+	// Verify all statuses exist
+	allStatuses := coord.GetAllStatus()
+	require.Len(t, allStatuses, 4)
+
+	// Verify managed registries have Complete status
+	managedStatus1 := coord.GetStatus("managed-registry-1")
+	require.NotNil(t, managedStatus1)
+	assert.Equal(t, status.SyncPhaseComplete, managedStatus1.Phase)
+	assert.Contains(t, managedStatus1.Message, "Managed registry")
+
+	managedStatus2 := coord.GetStatus("managed-registry-2")
+	require.NotNil(t, managedStatus2)
+	assert.Equal(t, status.SyncPhaseComplete, managedStatus2.Phase)
+	assert.Contains(t, managedStatus2.Message, "Managed registry")
+
+	// Verify synced registries have Failed status (not yet synced)
+	fileStatus := coord.GetStatus("file-registry")
+	require.NotNil(t, fileStatus)
+	assert.Equal(t, status.SyncPhaseFailed, fileStatus.Phase)
+
+	gitStatus := coord.GetStatus("git-registry")
+	require.NotNil(t, gitStatus)
+	assert.Equal(t, status.SyncPhaseFailed, gitStatus.Phase)
 }

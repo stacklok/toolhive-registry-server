@@ -83,9 +83,16 @@ func (c *defaultCoordinator) Start(ctx context.Context) error {
 	// Load or initialize sync status for all registries
 	c.loadOrInitializeAllStatus(coordCtx)
 
-	// Start sync loop for each registry
+	// Start sync loop for each registry (skip managed registries)
 	for i := range c.config.Registries {
 		regCfg := &c.config.Registries[i]
+
+		// Skip managed registries - they don't sync from external sources
+		if regCfg.GetType() == config.SourceTypeManaged {
+			logger.Infof("Registry '%s': Skipping sync loop (managed registry)", regCfg.Name)
+			continue
+		}
+
 		c.startRegistrySync(coordCtx, regCfg)
 	}
 
@@ -143,33 +150,53 @@ func (c *defaultCoordinator) GetAllStatus() map[string]*status.SyncStatus {
 func (c *defaultCoordinator) loadOrInitializeAllStatus(ctx context.Context) {
 	for i := range c.config.Registries {
 		regCfg := &c.config.Registries[i]
-		c.loadOrInitializeRegistryStatus(ctx, regCfg.Name)
+		c.loadOrInitializeRegistryStatus(ctx, regCfg)
 	}
 }
 
 // loadOrInitializeRegistryStatus loads existing status or creates default for a specific registry
-func (c *defaultCoordinator) loadOrInitializeRegistryStatus(ctx context.Context, registryName string) {
+func (c *defaultCoordinator) loadOrInitializeRegistryStatus(ctx context.Context, regCfg *config.RegistryConfig) {
+	registryName := regCfg.Name
+	isManaged := regCfg.GetType() == config.SourceTypeManaged
+
 	syncStatus, err := c.statusPersistence.LoadStatus(ctx, registryName)
 	if err != nil {
 		logger.Warnf("Registry '%s': Failed to load sync status, initializing with defaults: %v", registryName, err)
-		syncStatus = &status.SyncStatus{
-			Phase:   status.SyncPhaseFailed,
-			Message: "No previous sync status found",
+
+		// Managed registries get a different default status
+		if isManaged {
+			syncStatus = &status.SyncStatus{
+				Phase:   status.SyncPhaseComplete,
+				Message: "Managed registry (data managed via API)",
+			}
+		} else {
+			syncStatus = &status.SyncStatus{
+				Phase:   status.SyncPhaseFailed,
+				Message: "No previous sync status found",
+			}
 		}
 	}
 
 	// Check if this is a brand new status (no file existed)
 	if syncStatus.Phase == "" && syncStatus.LastSyncTime == nil {
 		logger.Infof("Registry '%s': No previous sync status found, initializing with defaults", registryName)
-		syncStatus.Phase = status.SyncPhaseFailed
-		syncStatus.Message = "No previous sync status found"
+
+		// Managed registries get a different default status
+		if isManaged {
+			syncStatus.Phase = status.SyncPhaseComplete
+			syncStatus.Message = "Managed registry (data managed via API)"
+		} else {
+			syncStatus.Phase = status.SyncPhaseFailed
+			syncStatus.Message = "No previous sync status found"
+		}
+
 		// Persist the default status immediately
 		if err := c.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
 			logger.Warnf("Registry '%s': Failed to persist default sync status: %v", registryName, err)
 		}
-	} else if syncStatus.Phase == status.SyncPhaseSyncing {
-		// If status was left in Syncing state, it means the previous run was interrupted
-		// Reset it to Failed so the sync will be triggered
+	} else if !isManaged && syncStatus.Phase == status.SyncPhaseSyncing {
+		// If status was left in Syncing state (only for non-managed registries),
+		// it means the previous run was interrupted. Reset it to Failed so the sync will be triggered
 		logger.Warnf("Registry '%s': Previous sync was interrupted (status=Syncing), resetting to Failed", registryName)
 		syncStatus.Phase = status.SyncPhaseFailed
 		syncStatus.Message = "Previous sync was interrupted"
@@ -180,7 +207,9 @@ func (c *defaultCoordinator) loadOrInitializeRegistryStatus(ctx context.Context,
 	}
 
 	// Log the loaded/initialized status
-	if syncStatus.LastSyncTime != nil {
+	if isManaged {
+		logger.Infof("Registry '%s': Managed registry - data managed via API", registryName)
+	} else if syncStatus.LastSyncTime != nil {
 		logger.Infof("Registry '%s': Loaded sync status: phase=%s, last sync at %s, %d servers",
 			registryName, syncStatus.Phase, syncStatus.LastSyncTime.Format(time.RFC3339), syncStatus.ServerCount)
 	} else {
