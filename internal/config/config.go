@@ -21,6 +21,10 @@ const (
 
 	// SourceTypeFile is the type for registry data stored in local files
 	SourceTypeFile = "file"
+
+	// SourceTypeManaged is the type for registries directly managed via API
+	// Managed registries do not sync from external sources
+	SourceTypeManaged = "managed"
 )
 
 // StorageType is an enum of supported storage backends for registry data.
@@ -103,14 +107,17 @@ type RegistryConfig struct {
 	Format string `yaml:"format"`
 
 	// Type-specific configurations (only one should be set)
-	Git  *GitConfig  `yaml:"git,omitempty"`
-	API  *APIConfig  `yaml:"api,omitempty"`
-	File *FileConfig `yaml:"file,omitempty"`
+	Git     *GitConfig     `yaml:"git,omitempty"`
+	API     *APIConfig     `yaml:"api,omitempty"`
+	File    *FileConfig    `yaml:"file,omitempty"`
+	Managed *ManagedConfig `yaml:"managed,omitempty"`
 
 	// Per-registry sync policy
+	// Note: Not applicable for managed registries (will be ignored if Managed is set)
 	SyncPolicy *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
 
 	// Per-registry filtering rules
+	// Note: Not applicable for managed registries (will be ignored if Managed is set)
 	Filter *FilterConfig `yaml:"filter,omitempty"`
 }
 
@@ -148,6 +155,13 @@ type FileConfig struct {
 	// Path is the path to the registry.json file on the local filesystem
 	// Can be absolute or relative to the working directory
 	Path string `yaml:"path"`
+}
+
+// ManagedConfig defines configuration for managed registries
+// Managed registries are directly manipulated via API and do not sync from external sources
+// Note: Initially empty, may be used as a placeholder for future configuration options
+type ManagedConfig struct {
+	// Future fields can be added here as needed
 }
 
 // SyncPolicyConfig defines synchronization settings
@@ -520,13 +534,19 @@ func (c *Config) validate() error {
 func (*Config) validateRegistryConfig(reg *RegistryConfig, index int) error {
 	prefix := fmt.Sprintf("registry[%d] (%s)", index, reg.Name)
 
-	// Validate sync policy
-	if err := validateSyncPolicy(reg.SyncPolicy, prefix); err != nil {
+	// Validate exactly one source type is configured
+	if err := validateSourceTypeCount(reg, prefix); err != nil {
 		return err
 	}
 
-	// Validate exactly one source type is configured
-	if err := validateSourceTypeCount(reg, prefix); err != nil {
+	// Managed registries don't require sync policy or filter
+	// If syncPolicy or filter are set for managed registries, they will be silently ignored
+	if reg.Managed != nil {
+		return nil
+	}
+
+	// Non-managed registries require sync policy
+	if err := validateSyncPolicy(reg.SyncPolicy, prefix); err != nil {
 		return err
 	}
 
@@ -560,12 +580,15 @@ func validateSourceTypeCount(reg *RegistryConfig, prefix string) error {
 	if reg.File != nil {
 		configCount++
 	}
+	if reg.Managed != nil {
+		configCount++
+	}
 
 	if configCount == 0 {
-		return fmt.Errorf("%s: one of git, api, or file configuration must be specified", prefix)
+		return fmt.Errorf("%s: one of git, api, file, or managed configuration must be specified", prefix)
 	}
 	if configCount > 1 {
-		return fmt.Errorf("%s: only one of git, api, or file configuration may be specified", prefix)
+		return fmt.Errorf("%s: only one of git, api, file, or managed configuration may be specified", prefix)
 	}
 
 	return nil
@@ -691,6 +714,9 @@ func (r *RegistryConfig) GetType() string {
 	}
 	if r.File != nil {
 		return SourceTypeFile
+	}
+	if r.Managed != nil {
+		return SourceTypeManaged
 	}
 	return ""
 }

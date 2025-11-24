@@ -706,7 +706,7 @@ func TestLoadOrInitializeRegistryStatus(t *testing.T) {
 			}
 
 			// Execute
-			coord.loadOrInitializeRegistryStatus(context.Background(), registryName)
+			coord.loadOrInitializeRegistryStatus(context.Background(), &cfg.Registries[0])
 
 			// Verify
 			loadedStatus := coord.cachedStatuses[registryName]
