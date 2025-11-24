@@ -103,17 +103,19 @@ func (s *dbService) ListServers(
 		return nil, fmt.Errorf("invalid cursor format: %w", err)
 	}
 
+	params := sqlc.ListServersParams{
+		Next: &nextTime,
+		Size: int64(options.Limit),
+	}
+	if options.RegistryName != nil {
+		params.RegistryName = options.RegistryName
+	}
+
 	// Note: this function fetches a list of servers. In case no records are
 	// found, the called function should return an empty slice as it's
 	// customary in Go.
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
-		servers, err := querier.ListServers(
-			ctx,
-			sqlc.ListServersParams{
-				Next: &nextTime,
-				Size: int64(options.Limit),
-			},
-		)
+		servers, err := querier.ListServers(ctx, params)
 		if err != nil {
 			return nil, err
 		}
@@ -141,19 +143,25 @@ func (s *dbService) ListServerVersions(
 		}
 	}
 
+	if options.Next != nil && options.Prev != nil {
+		return nil, fmt.Errorf("next and prev cannot be set at the same time")
+	}
+
+	params := sqlc.ListServerVersionsParams{
+		Name: options.Name,
+		Next: options.Next,
+		Prev: options.Prev,
+		Size: int64(options.Limit),
+	}
+	if options.RegistryName != nil {
+		params.RegistryName = options.RegistryName
+	}
+
 	// Note: this function fetches a list of server versions. In case no records are
 	// found, the called function should return an empty slice as it's
 	// customary in Go.
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
-		servers, err := querier.ListServerVersions(
-			ctx,
-			sqlc.ListServerVersionsParams{
-				Name: options.Name,
-				Next: options.Next,
-				Prev: options.Prev,
-				Size: int64(options.Limit),
-			},
-		)
+		servers, err := querier.ListServerVersions(ctx, params)
 		if err != nil {
 			return nil, err
 		}
@@ -181,17 +189,19 @@ func (s *dbService) GetServerVersion(
 		}
 	}
 
+	params := sqlc.GetServerVersionParams{
+		Name:    options.Name,
+		Version: options.Version,
+	}
+	if options.RegistryName != nil {
+		params.RegistryName = options.RegistryName
+	}
+
 	// Note: this function fetches a single record given name and version.
 	// In case no record is found, the called function should return an
 	// `sql.ErrNoRows` error as it's customary in Go.
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
-		server, err := querier.GetServerVersion(
-			ctx,
-			sqlc.GetServerVersionParams{
-				Name:    options.Name,
-				Version: options.Version,
-			},
-		)
+		server, err := querier.GetServerVersion(ctx, params)
 		if err != nil {
 			return nil, err
 		}

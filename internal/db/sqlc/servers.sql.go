@@ -34,11 +34,13 @@ SELECT r.reg_type as registry_type,
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
  WHERE s.name = $1
    AND s.version = $2
+   AND ($3::text IS NULL OR r.name = $3::text)
 `
 
 type GetServerVersionParams struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	Name         string  `json:"name"`
+	Version      string  `json:"version"`
+	RegistryName *string `json:"registry_name"`
 }
 
 type GetServerVersionRow struct {
@@ -61,7 +63,7 @@ type GetServerVersionRow struct {
 }
 
 func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error) {
-	row := q.db.QueryRow(ctx, getServerVersion, arg.Name, arg.Version)
+	row := q.db.QueryRow(ctx, getServerVersion, arg.Name, arg.Version, arg.RegistryName)
 	var i GetServerVersionRow
 	err := row.Scan(
 		&i.RegistryType,
@@ -194,19 +196,21 @@ SELECT r.reg_type as registry_type,
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
  WHERE s.name = $1
-   AND (($2::timestamp with time zone IS NULL OR s.created_at > $2)
-    AND ($3::timestamp with time zone IS NULL OR s.created_at < $3))
+   AND ($2::text IS NULL OR r.name = $2::text)
+   AND (($3::timestamp with time zone IS NULL OR s.created_at > $3)
+    AND ($4::timestamp with time zone IS NULL OR s.created_at < $4))
  ORDER BY
- CASE WHEN $2::timestamp with time zone IS NULL THEN s.created_at END ASC,
- CASE WHEN $2::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
- LIMIT $4::bigint
+ CASE WHEN $3::timestamp with time zone IS NULL THEN s.created_at END ASC,
+ CASE WHEN $3::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
+ LIMIT $5::bigint
 `
 
 type ListServerVersionsParams struct {
-	Name string     `json:"name"`
-	Next *time.Time `json:"next"`
-	Prev *time.Time `json:"prev"`
-	Size int64      `json:"size"`
+	Name         string     `json:"name"`
+	RegistryName *string    `json:"registry_name"`
+	Next         *time.Time `json:"next"`
+	Prev         *time.Time `json:"prev"`
+	Size         int64      `json:"size"`
 }
 
 type ListServerVersionsRow struct {
@@ -231,6 +235,7 @@ type ListServerVersionsRow struct {
 func (q *Queries) ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error) {
 	rows, err := q.db.Query(ctx, listServerVersions,
 		arg.Name,
+		arg.RegistryName,
 		arg.Next,
 		arg.Prev,
 		arg.Size,
@@ -290,8 +295,9 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
- WHERE ($1::timestamp with time zone IS NULL OR s.created_at > $1)
-   AND ($2::timestamp with time zone IS NULL OR s.created_at < $2)
+ WHERE ($1::timestamp with time zone IS NULL OR s.created_at > $1::timestamp with time zone)
+   AND ($2::timestamp with time zone IS NULL OR s.created_at < $2::timestamp with time zone)
+   AND ($3::text IS NULL OR r.name = $3::text)
  ORDER BY
  -- next page sorting
  CASE WHEN $1::timestamp with time zone IS NULL THEN r.reg_type END ASC,
@@ -303,13 +309,14 @@ SELECT r.reg_type as registry_type,
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.name END DESC,
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.created_at END DESC,
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
- LIMIT $3::bigint
+ LIMIT $4::bigint
 `
 
 type ListServersParams struct {
-	Next *time.Time `json:"next"`
-	Prev *time.Time `json:"prev"`
-	Size int64      `json:"size"`
+	Next         *time.Time `json:"next"`
+	Prev         *time.Time `json:"prev"`
+	RegistryName *string    `json:"registry_name"`
+	Size         int64      `json:"size"`
 }
 
 type ListServersRow struct {
@@ -332,7 +339,12 @@ type ListServersRow struct {
 }
 
 func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error) {
-	rows, err := q.db.Query(ctx, listServers, arg.Next, arg.Prev, arg.Size)
+	rows, err := q.db.Query(ctx, listServers,
+		arg.Next,
+		arg.Prev,
+		arg.RegistryName,
+		arg.Size,
+	)
 	if err != nil {
 		return nil, err
 	}

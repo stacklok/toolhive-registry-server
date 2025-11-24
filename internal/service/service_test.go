@@ -147,7 +147,7 @@ func TestWithUpdatedSince(t *testing.T) {
 	}
 }
 
-func TestWithRegistryName(t *testing.T) {
+func TestWithRegistryNameListServers(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
@@ -174,9 +174,8 @@ func TestWithRegistryName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			opt := service.WithRegistryName(tt.registryName)
+			opt := service.WithRegistryName[service.ListServersOptions](tt.registryName)
 			opts := &service.ListServersOptions{}
-
 			err := opt(opts)
 
 			if tt.expectedValue == "" {
@@ -185,7 +184,91 @@ func TestWithRegistryName(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.expectedValue, opts.RegistryName)
+			assert.Equal(t, tt.expectedValue, *opts.RegistryName)
+		})
+	}
+}
+
+func TestWithRegistryNameListServersVersions(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		registryName  string
+		expectedValue string
+	}{
+		{
+			name:          "valid registry name",
+			registryName:  "my-registry",
+			expectedValue: "my-registry",
+		},
+		{
+			name:          "empty registry name",
+			registryName:  "",
+			expectedValue: "",
+		},
+		{
+			name:          "registry name with underscores",
+			registryName:  "my_registry_v1",
+			expectedValue: "my_registry_v1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opt := service.WithRegistryName[service.ListServerVersionsOptions](tt.registryName)
+			opts := &service.ListServerVersionsOptions{}
+			err := opt(opts)
+
+			if tt.expectedValue == "" {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedValue, *opts.RegistryName)
+		})
+	}
+}
+
+func TestWithRegistryNameGetServerVersion(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		registryName  string
+		expectedValue string
+	}{
+		{
+			name:          "valid registry name",
+			registryName:  "my-registry",
+			expectedValue: "my-registry",
+		},
+		{
+			name:          "empty registry name",
+			registryName:  "",
+			expectedValue: "",
+		},
+		{
+			name:          "registry name with underscores",
+			registryName:  "my_registry_v1",
+			expectedValue: "my_registry_v1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opt := service.WithRegistryName[service.GetServerVersionOptions](tt.registryName)
+			opts := &service.GetServerVersionOptions{}
+			err := opt(opts)
+
+			if tt.expectedValue == "" {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedValue, *opts.RegistryName)
 		})
 	}
 }
@@ -282,48 +365,68 @@ func TestWithPrev(t *testing.T) {
 	}
 }
 
-func TestWithVersion(t *testing.T) {
+func TestWithVersionListServers(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
 		version       string
-		optionType    string // "ListServersOptions" or "GetServerVersionOptions"
 		expectedValue string
 	}{
 		{
-			name:          "valid version for ListServersOptions",
+			name:          "valid version",
 			version:       "1.0.0",
-			optionType:    "ListServersOptions",
 			expectedValue: "1.0.0",
 		},
 		{
-			name:          "valid version for GetServerVersionOptions",
+			name:          "empty version",
+			version:       "",
+			expectedValue: "",
+		},
+		{
+			name:          "version with pre-release",
+			version:       "1.0.0-alpha.1",
+			expectedValue: "1.0.0-alpha.1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opt := service.WithVersion[service.ListServersOptions](tt.version)
+			opts := &service.ListServersOptions{}
+			err := opt(opts)
+
+			if tt.expectedValue == "" {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedValue, opts.Version)
+		})
+	}
+}
+
+func TestWithVersionGetServerVersion(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		version       string
+		expectedValue string
+	}{
+		{
+			name:          "valid version",
 			version:       "2.3.4",
-			optionType:    "GetServerVersionOptions",
 			expectedValue: "2.3.4",
 		},
 		{
-			name:          "empty version for ListServersOptions",
+			name:          "empty version",
 			version:       "",
-			optionType:    "ListServersOptions",
 			expectedValue: "",
 		},
 		{
-			name:          "empty version for GetServerVersionOptions",
-			version:       "",
-			optionType:    "GetServerVersionOptions",
-			expectedValue: "",
-		},
-		{
-			name:          "version with pre-release for ListServersOptions",
-			version:       "1.0.0-alpha.1",
-			optionType:    "ListServersOptions",
-			expectedValue: "1.0.0-alpha.1",
-		},
-		{
-			name:          "version with build metadata for GetServerVersionOptions",
+			name:          "version with build metadata",
 			version:       "1.0.0+build.123",
-			optionType:    "GetServerVersionOptions",
 			expectedValue: "1.0.0+build.123",
 		},
 	}
@@ -331,79 +434,83 @@ func TestWithVersion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			opt := service.WithVersion[service.GetServerVersionOptions](tt.version)
+			opts := &service.GetServerVersionOptions{}
+			err := opt(opts)
 
-			switch tt.optionType {
-			case "ListServersOptions":
-				opt := service.WithVersion[service.ListServersOptions](tt.version)
-				opts := &service.ListServersOptions{}
-				err := opt(opts)
-
-				if tt.expectedValue == "" {
-					require.Error(t, err)
-					return
-				}
-
-				require.NoError(t, err)
-				assert.Equal(t, tt.expectedValue, opts.Version)
-			case "GetServerVersionOptions":
-				opt := service.WithVersion[service.GetServerVersionOptions](tt.version)
-				opts := &service.GetServerVersionOptions{}
-				err := opt(opts)
-
-				if tt.expectedValue == "" {
-					require.Error(t, err)
-					return
-				}
-
-				require.NoError(t, err)
-				assert.Equal(t, tt.expectedValue, opts.Version)
+			if tt.expectedValue == "" {
+				require.Error(t, err)
+				return
 			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedValue, opts.Version)
 		})
 	}
 }
 
-func TestWithName(t *testing.T) {
+func TestWithNameListServerVersions(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
 		serverName    string
-		optionType    string // "ListServerVersionsOptions" or "GetServerVersionOptions"
 		expectedValue string
 	}{
 		{
-			name:          "valid name for ListServerVersionsOptions",
+			name:          "valid name",
 			serverName:    "my-server",
-			optionType:    "ListServerVersionsOptions",
 			expectedValue: "my-server",
 		},
 		{
-			name:          "valid name for GetServerVersionOptions",
+			name:          "empty name",
+			serverName:    "",
+			expectedValue: "",
+		},
+		{
+			name:          "name with underscores",
+			serverName:    "my_server_v1",
+			expectedValue: "my_server_v1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opt := service.WithName[service.ListServerVersionsOptions](tt.serverName)
+			opts := &service.ListServerVersionsOptions{}
+			err := opt(opts)
+
+			if tt.expectedValue == "" {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedValue, opts.Name)
+		})
+	}
+}
+
+func TestWithNameGetServerVersion(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		serverName    string
+		expectedValue string
+	}{
+		{
+			name:          "valid name",
 			serverName:    "test-server",
-			optionType:    "GetServerVersionOptions",
 			expectedValue: "test-server",
 		},
 		{
-			name:          "empty name for ListServerVersionsOptions",
+			name:          "empty name",
 			serverName:    "",
-			optionType:    "ListServerVersionsOptions",
 			expectedValue: "",
 		},
 		{
-			name:          "empty name for GetServerVersionOptions",
-			serverName:    "",
-			optionType:    "GetServerVersionOptions",
-			expectedValue: "",
-		},
-		{
-			name:          "name with underscores for ListServerVersionsOptions",
-			serverName:    "my_server_v1",
-			optionType:    "ListServerVersionsOptions",
-			expectedValue: "my_server_v1",
-		},
-		{
-			name:          "name with hyphens for GetServerVersionOptions",
+			name:          "name with hyphens",
 			serverName:    "my-server-v2",
-			optionType:    "GetServerVersionOptions",
 			expectedValue: "my-server-v2",
 		},
 	}
@@ -411,91 +518,93 @@ func TestWithName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			opt := service.WithName[service.GetServerVersionOptions](tt.serverName)
+			opts := &service.GetServerVersionOptions{}
+			err := opt(opts)
 
-			switch tt.optionType {
-			case "ListServerVersionsOptions":
-				opt := service.WithName[service.ListServerVersionsOptions](tt.serverName)
-				opts := &service.ListServerVersionsOptions{}
-				err := opt(opts)
-
-				if tt.expectedValue == "" {
-					require.Error(t, err)
-					return
-				}
-
-				require.NoError(t, err)
-				assert.Equal(t, tt.expectedValue, opts.Name)
-			case "GetServerVersionOptions":
-				opt := service.WithName[service.GetServerVersionOptions](tt.serverName)
-				opts := &service.GetServerVersionOptions{}
-				err := opt(opts)
-
-				if tt.expectedValue == "" {
-					require.Error(t, err)
-					return
-				}
-
-				require.NoError(t, err)
-				assert.Equal(t, tt.expectedValue, opts.Name)
+			if tt.expectedValue == "" {
+				require.Error(t, err)
+				return
 			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedValue, opts.Name)
 		})
 	}
 }
 
-func TestWithLimit(t *testing.T) {
+func TestWithLimitListServers(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
 		limit         int
-		optionType    string // "ListServersOptions" or "ListServerVersionsOptions"
 		expectedValue int
 	}{
 		{
-			name:          "valid limit for ListServersOptions",
+			name:          "valid limit",
 			limit:         10,
-			optionType:    "ListServersOptions",
 			expectedValue: 10,
 		},
 		{
-			name:          "valid limit for ListServerVersionsOptions",
+			name:          "zero limit",
+			limit:         0,
+			expectedValue: 0,
+		},
+		{
+			name:          "negative limit",
+			limit:         -5,
+			expectedValue: 0,
+		},
+		{
+			name:          "large limit",
+			limit:         1000,
+			expectedValue: 1000,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opt := service.WithLimit[service.ListServersOptions](tt.limit)
+			opts := &service.ListServersOptions{}
+			err := opt(opts)
+
+			if tt.expectedValue == 0 {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedValue, opts.Limit)
+		})
+	}
+}
+
+func TestWithLimitListServerVersions(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		limit         int
+		expectedValue int
+	}{
+		{
+			name:          "valid limit",
 			limit:         20,
-			optionType:    "ListServerVersionsOptions",
 			expectedValue: 20,
 		},
 		{
-			name:          "zero limit for ListServersOptions",
+			name:          "zero limit",
 			limit:         0,
-			optionType:    "ListServersOptions",
 			expectedValue: 0,
 		},
 		{
-			name:          "zero limit for ListServerVersionsOptions",
-			limit:         0,
-			optionType:    "ListServerVersionsOptions",
-			expectedValue: 0,
-		},
-		{
-			name:          "negative limit for ListServersOptions",
-			limit:         -5,
-			optionType:    "ListServersOptions",
-			expectedValue: 0,
-		},
-		{
-			name:          "negative limit for ListServerVersionsOptions",
+			name:          "negative limit",
 			limit:         -10,
-			optionType:    "ListServerVersionsOptions",
 			expectedValue: 0,
 		},
 		{
-			name:          "large limit for ListServersOptions",
-			limit:         1000,
-			optionType:    "ListServersOptions",
-			expectedValue: 1000,
-		},
-		{
-			name:          "limit of 1 for ListServerVersionsOptions",
+			name:          "limit of 1",
 			limit:         1,
-			optionType:    "ListServerVersionsOptions",
 			expectedValue: 1,
 		},
 	}
@@ -503,33 +612,17 @@ func TestWithLimit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			opt := service.WithLimit[service.ListServerVersionsOptions](tt.limit)
+			opts := &service.ListServerVersionsOptions{}
+			err := opt(opts)
 
-			switch tt.optionType {
-			case "ListServersOptions":
-				opt := service.WithLimit[service.ListServersOptions](tt.limit)
-				opts := &service.ListServersOptions{}
-				err := opt(opts)
-
-				if tt.expectedValue == 0 {
-					require.Error(t, err)
-					return
-				}
-
-				require.NoError(t, err)
-				assert.Equal(t, tt.expectedValue, opts.Limit)
-			case "ListServerVersionsOptions":
-				opt := service.WithLimit[service.ListServerVersionsOptions](tt.limit)
-				opts := &service.ListServerVersionsOptions{}
-				err := opt(opts)
-
-				if tt.expectedValue == 0 {
-					require.Error(t, err)
-					return
-				}
-
-				require.NoError(t, err)
-				assert.Equal(t, tt.expectedValue, opts.Limit)
+			if tt.expectedValue == 0 {
+				require.Error(t, err)
+				return
 			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedValue, opts.Limit)
 		})
 	}
 }
