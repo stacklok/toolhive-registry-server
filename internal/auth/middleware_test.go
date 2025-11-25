@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	thvauth "github.com/stacklok/toolhive/pkg/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -14,10 +15,22 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/auth/mocks"
 )
 
+// singleProviderConfig returns a minimal provider config for testing.
+func singleProviderConfig() []providerConfig {
+	return []providerConfig{{
+		Name:      "test-provider",
+		IssuerURL: "https://issuer.example.com",
+		ValidatorConfig: thvauth.TokenValidatorConfig{
+			Issuer:   "https://issuer.example.com",
+			Audience: "test-audience",
+		},
+	}}
+}
+
 func TestNewMultiProviderMiddleware_EmptyProviders(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewMultiProviderMiddleware(context.Background(), nil, "", "")
+	_, err := NewMultiProviderMiddleware(context.Background(), nil, "", "", DefaultValidatorFactory)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "at least one provider must be configured")
 }
@@ -26,55 +39,49 @@ func TestMultiProviderMiddleware_Middleware(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          string
-		authHeader    string
-		setupMocks    func(*mocks.MockTokenValidatorInterface)
-		numValidators int
-		wantStatus    int
-		wantCalled    bool
+		name       string
+		authHeader string
+		setupMock  func(*mocks.MockTokenValidatorInterface)
+		wantStatus int
+		wantCalled bool
 	}{
 		{
-			name:          "missing authorization header",
-			authHeader:    "",
-			numValidators: 1,
-			wantStatus:    http.StatusUnauthorized,
-			wantCalled:    false,
+			name:       "missing authorization header",
+			authHeader: "",
+			wantStatus: http.StatusUnauthorized,
+			wantCalled: false,
 		},
 		{
-			name:          "invalid bearer format - Basic auth",
-			authHeader:    "Basic xyz",
-			numValidators: 1,
-			wantStatus:    http.StatusUnauthorized,
-			wantCalled:    false,
+			name:       "invalid bearer format - Basic auth",
+			authHeader: "Basic xyz",
+			wantStatus: http.StatusUnauthorized,
+			wantCalled: false,
 		},
 		{
-			name:          "empty bearer token",
-			authHeader:    "Bearer ",
-			numValidators: 1,
-			wantStatus:    http.StatusUnauthorized,
-			wantCalled:    false,
+			name:       "empty bearer token",
+			authHeader: "Bearer ",
+			wantStatus: http.StatusUnauthorized,
+			wantCalled: false,
 		},
 		{
-			name:       "valid token - first provider succeeds",
+			name:       "valid token",
 			authHeader: "Bearer valid-token",
-			setupMocks: func(m *mocks.MockTokenValidatorInterface) {
+			setupMock: func(m *mocks.MockTokenValidatorInterface) {
 				m.EXPECT().ValidateToken(gomock.Any(), "valid-token").
 					Return(map[string]any{"sub": "user"}, nil)
 			},
-			numValidators: 1,
-			wantStatus:    http.StatusOK,
-			wantCalled:    true,
+			wantStatus: http.StatusOK,
+			wantCalled: true,
 		},
 		{
-			name:       "all providers fail",
+			name:       "invalid token",
 			authHeader: "Bearer bad-token",
-			setupMocks: func(m *mocks.MockTokenValidatorInterface) {
+			setupMock: func(m *mocks.MockTokenValidatorInterface) {
 				m.EXPECT().ValidateToken(gomock.Any(), "bad-token").
 					Return(nil, errors.New("validation failed"))
 			},
-			numValidators: 1,
-			wantStatus:    http.StatusUnauthorized,
-			wantCalled:    false,
+			wantStatus: http.StatusUnauthorized,
+			wantCalled: false,
 		},
 	}
 
@@ -83,21 +90,21 @@ func TestMultiProviderMiddleware_Middleware(t *testing.T) {
 			t.Parallel()
 
 			ctrl := gomock.NewController(t)
-
-			// Create validators with mocks
-			validators := make([]NamedValidator, tt.numValidators)
-			for i := range validators {
-				mockValidator := mocks.NewMockTokenValidatorInterface(ctrl)
-				if tt.setupMocks != nil {
-					tt.setupMocks(mockValidator)
-				}
-				validators[i] = NamedValidator{
-					Name:      "test-provider",
-					Validator: mockValidator,
-				}
+			mockValidator := mocks.NewMockTokenValidatorInterface(ctrl)
+			if tt.setupMock != nil {
+				tt.setupMock(mockValidator)
 			}
 
-			m := NewMultiProviderMiddlewareWithValidators(validators, "https://api.example.com", "")
+			m, err := NewMultiProviderMiddleware(
+				context.Background(),
+				singleProviderConfig(),
+				"https://api.example.com",
+				"",
+				func(_ context.Context, _ thvauth.TokenValidatorConfig) (TokenValidatorInterface, error) {
+					return mockValidator, nil
+				},
+			)
+			require.NoError(t, err)
 
 			called := false
 			handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -130,23 +137,53 @@ func TestMultiProviderMiddleware_SequentialFallback(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 
-	mock1 := mocks.NewMockTokenValidatorInterface(ctrl)
-	mock2 := mocks.NewMockTokenValidatorInterface(ctrl)
+	// Two different providers with different issuers
+	keycloakMock := mocks.NewMockTokenValidatorInterface(ctrl)
+	googleMock := mocks.NewMockTokenValidatorInterface(ctrl)
 
-	// First validator fails, second succeeds
+	// First provider (Keycloak) fails, second (Google) succeeds
 	gomock.InOrder(
-		mock1.EXPECT().ValidateToken(gomock.Any(), "token").
+		keycloakMock.EXPECT().ValidateToken(gomock.Any(), "token").
 			Return(nil, errors.New("invalid issuer")),
-		mock2.EXPECT().ValidateToken(gomock.Any(), "token").
-			Return(map[string]any{"sub": "user"}, nil),
+		googleMock.EXPECT().ValidateToken(gomock.Any(), "token").
+			Return(map[string]any{"sub": "user@google.com"}, nil),
 	)
 
-	validators := []NamedValidator{
-		{Name: "provider1", Validator: mock1},
-		{Name: "provider2", Validator: mock2},
+	providers := []providerConfig{
+		{
+			Name:      "keycloak",
+			IssuerURL: "https://keycloak.example.com",
+			ValidatorConfig: thvauth.TokenValidatorConfig{
+				Issuer:   "https://keycloak.example.com",
+				Audience: "my-app",
+			},
+		},
+		{
+			Name:      "google",
+			IssuerURL: "https://accounts.google.com",
+			ValidatorConfig: thvauth.TokenValidatorConfig{
+				Issuer:   "https://accounts.google.com",
+				Audience: "my-app.apps.googleusercontent.com",
+			},
+		},
 	}
 
-	m := NewMultiProviderMiddlewareWithValidators(validators, "", "")
+	// Factory returns the correct mock based on call order
+	callIdx := 0
+	validatorMocks := []*mocks.MockTokenValidatorInterface{keycloakMock, googleMock}
+
+	m, err := NewMultiProviderMiddleware(
+		context.Background(),
+		providers,
+		"",
+		"",
+		func(_ context.Context, _ thvauth.TokenValidatorConfig) (TokenValidatorInterface, error) {
+			mock := validatorMocks[callIdx]
+			callIdx++
+			return mock, nil
+		},
+	)
+	require.NoError(t, err)
 
 	called := false
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -242,11 +279,16 @@ func TestMultiProviderMiddleware_WWWAuthenticate(t *testing.T) {
 			mockValidator.EXPECT().ValidateToken(gomock.Any(), gomock.Any()).
 				Return(nil, errors.New("fail")).AnyTimes()
 
-			validators := []NamedValidator{
-				{Name: "test", Validator: mockValidator},
-			}
-
-			m := NewMultiProviderMiddlewareWithValidators(validators, tt.resourceURL, tt.realm)
+			m, err := NewMultiProviderMiddleware(
+				context.Background(),
+				singleProviderConfig(),
+				tt.resourceURL,
+				tt.realm,
+				func(_ context.Context, _ thvauth.TokenValidatorConfig) (TokenValidatorInterface, error) {
+					return mockValidator, nil
+				},
+			)
+			require.NoError(t, err)
 
 			handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)

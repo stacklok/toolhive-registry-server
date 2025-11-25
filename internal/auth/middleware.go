@@ -63,6 +63,17 @@ type NamedValidator struct {
 // DefaultRealm is the default protection space identifier
 const DefaultRealm = "mcp-registry"
 
+// ValidatorFactory creates token validators from configuration.
+type ValidatorFactory func(ctx context.Context, cfg auth.TokenValidatorConfig) (TokenValidatorInterface, error)
+
+// DefaultValidatorFactory uses the real ToolHive token validator.
+var DefaultValidatorFactory ValidatorFactory = func(
+	ctx context.Context,
+	cfg auth.TokenValidatorConfig,
+) (TokenValidatorInterface, error) {
+	return auth.NewTokenValidator(ctx, cfg)
+}
+
 // MultiProviderMiddleware handles authentication with multiple OAuth/OIDC providers.
 type MultiProviderMiddleware struct {
 	validators  []NamedValidator
@@ -76,6 +87,7 @@ func NewMultiProviderMiddleware(
 	providers []providerConfig,
 	resourceURL string,
 	realm string,
+	validatorFactory ValidatorFactory,
 ) (*MultiProviderMiddleware, error) {
 	if len(providers) == 0 {
 		return nil, errors.New("at least one provider must be configured")
@@ -93,7 +105,7 @@ func NewMultiProviderMiddleware(
 	}
 
 	for _, pc := range providers {
-		validator, err := auth.NewTokenValidator(ctx, pc.ValidatorConfig)
+		validator, err := validatorFactory(ctx, pc.ValidatorConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create validator for provider %q: %w", pc.Name, err)
 		}
@@ -106,23 +118,6 @@ func NewMultiProviderMiddleware(
 	}
 
 	return m, nil
-}
-
-// NewMultiProviderMiddlewareWithValidators creates middleware with pre-built validators.
-// This is primarily for testing with mock validators.
-func NewMultiProviderMiddlewareWithValidators(
-	validators []NamedValidator,
-	resourceURL string,
-	realm string,
-) *MultiProviderMiddleware {
-	if realm == "" {
-		realm = DefaultRealm
-	}
-	return &MultiProviderMiddleware{
-		validators:  validators,
-		resourceURL: resourceURL,
-		realm:       realm,
-	}
 }
 
 // Middleware returns an HTTP middleware function that performs authentication.
