@@ -12,7 +12,6 @@ package mocks
 import (
 	context "context"
 	reflect "reflect"
-	time "time"
 
 	config "github.com/stacklok/toolhive-registry-server/internal/config"
 	status "github.com/stacklok/toolhive-registry-server/internal/status"
@@ -74,13 +73,11 @@ func (mr *MockManagerMockRecorder) PerformSync(ctx, regCfg any) *gomock.Call {
 }
 
 // ShouldSync mocks base method.
-func (m *MockManager) ShouldSync(ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus, manualSyncRequested bool) (bool, string, *time.Time) {
+func (m *MockManager) ShouldSync(ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus, manualSyncRequested bool) sync.Reason {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ShouldSync", ctx, regCfg, syncStatus, manualSyncRequested)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(string)
-	ret2, _ := ret[2].(*time.Time)
-	return ret0, ret1, ret2
+	ret0, _ := ret[0].(sync.Reason)
+	return ret0
 }
 
 // ShouldSync indicates an expected call of ShouldSync.

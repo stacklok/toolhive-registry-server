@@ -22,6 +22,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
+	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
 )
 
 const (
@@ -265,8 +266,11 @@ func buildSyncComponents(
 		)
 	}
 
+	// Create state service
+	stateService := state.NewFileStateService(b.statusPersistence)
+
 	// Create coordinator
-	syncCoordinator := coordinator.New(b.syncManager, b.statusPersistence, b.config)
+	syncCoordinator := coordinator.New(b.syncManager, stateService, b.config)
 	logger.Info("Sync components initialized successfully")
 
 	return syncCoordinator, nil
