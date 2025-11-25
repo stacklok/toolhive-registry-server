@@ -35,6 +35,29 @@ func (q *Queries) GetRegistry(ctx context.Context, id uuid.UUID) (Registry, erro
 	return i, err
 }
 
+const getRegistryByName = `-- name: GetRegistryByName :one
+SELECT id,
+       name,
+       reg_type,
+       created_at,
+       updated_at
+  FROM registry
+ WHERE name = $1
+`
+
+func (q *Queries) GetRegistryByName(ctx context.Context, name string) (Registry, error) {
+	row := q.db.QueryRow(ctx, getRegistryByName, name)
+	var i Registry
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.RegType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertRegistry = `-- name: InsertRegistry :one
 INSERT INTO registry (
     name,

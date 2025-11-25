@@ -197,6 +197,14 @@ func (s *regSvc) GetServerVersion(
 	return nil, service.ErrServerNotFound
 }
 
+// DeleteServerVersion implements RegistryService.DeleteServerVersion
+func (*regSvc) DeleteServerVersion(
+	_ context.Context,
+	_ ...service.Option[service.DeleteServerVersionOptions],
+) error {
+	return service.ErrNotImplemented
+}
+
 // getServerByNameWithName returns a server by name with name properly populated
 func (s *regSvc) getServerByName(name string) (*upstreamv0.ServerJSON, error) {
 	// Check container servers first
