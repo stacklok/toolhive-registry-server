@@ -27,20 +27,34 @@
 # Registry name/identifier
 registryName: production-registry
 
-# Data source configuration
-source:
-  type: git
-  format: toolhive
-  git:
-    repository: https://github.com/stacklok/toolhive.git
-    # Use a specific tag for production stability
-    tag: v1.0.0
-    path: pkg/registry/data/registry.json
+# Registries configuration (can have multiple registries)
+registries:
+  - name: toolhive
+    # Data format: toolhive (native) or upstream (MCP registry format)
+    format: toolhive
 
-# Automatic synchronization policy
-syncPolicy:
-  # Less frequent syncs for production to reduce load
-  interval: "1h"
+    # Git repository configuration
+    git:
+      repository: https://github.com/stacklok/toolhive.git
+      # Use a specific tag for production stability
+      tag: v1.0.0
+      path: pkg/registry/data/registry.json
+
+    # Per-registry automatic synchronization policy
+    syncPolicy:
+      # Less frequent syncs for production to reduce load
+      interval: "1h"
+
+    # Optional: Per-registry filter configuration to ensure only stable servers
+    filter:
+      tags:
+        include:
+          - "production"
+          - "stable"
+        exclude:
+          - "experimental"
+          - "beta"
+          - "alpha"
 
 # PostgreSQL database configuration for production
 database:
@@ -76,14 +90,3 @@ database:
   maxOpenConns: 25
   maxIdleConns: 5
   connMaxLifetime: "1h"
-
-# Optional: Production filtering to ensure only stable servers
-filter:
-  tags:
-    include:
-      - "production"
-      - "stable"
-    exclude:
-      - "experimental"
-      - "beta"
-      - "alpha"

@@ -20,19 +20,22 @@
 # Registry name/identifier
 registryName: docker-registry
 
-# Data source configuration
-source:
-  # Use file source for docker-compose demo
-  # The sample registry file is mounted at /registry-sample.json
-  type: file
-  format: upstream
-  file:
-    path: /registry-sample.json
+# Registries configuration (can have multiple registries)
+registries:
+  - name: local-file
+    # Data format: toolhive (native) or upstream (MCP registry format)
+    format: upstream
 
-# Automatic synchronization policy
-syncPolicy:
-  # Check for file changes every 5 minutes
-  interval: "5m"
+    # Local file configuration
+    # Use file source for docker-compose demo
+    # The sample registry file is mounted at /registry-sample.json
+    file:
+      path: /registry-sample.json
+
+    # Per-registry automatic synchronization policy
+    syncPolicy:
+      # Check for file changes every 5 minutes
+      interval: "5m"
 
 # PostgreSQL database configuration with separate users for migrations and operations
 # This demonstrates the principle of least privilege:

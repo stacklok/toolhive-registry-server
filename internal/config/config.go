@@ -545,7 +545,7 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	}
 
 	// Validate the config
-	if err := config.validate(); err != nil {
+	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
@@ -580,7 +580,7 @@ func (c *Config) GetFileStorageBaseDir() string {
 }
 
 // Validate performs validation on the configuration
-func (c *Config) validate() error {
+func (c *Config) Validate() error {
 	if c == nil {
 		return fmt.Errorf("config cannot be nil")
 	}

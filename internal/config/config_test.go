@@ -748,7 +748,7 @@ func TestConfigValidate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := tt.config.validate()
+			err := tt.config.Validate()
 
 			if tt.wantErr {
 				require.Error(t, err)

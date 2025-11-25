@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
 //go:embed config-*.yaml
@@ -35,52 +37,15 @@ func TestConfigFiles(t *testing.T) {
 				t.Fatalf("Failed to read file: %v", err)
 			}
 
-			// Validate YAML syntax
-			var config map[string]any
-			if err := yaml.Unmarshal(data, &config); err != nil {
+			// Parse YAML into Config type
+			var cfg config.Config
+			if err := yaml.Unmarshal(data, &cfg); err != nil {
 				t.Fatalf("Invalid YAML syntax: %v", err)
 			}
 
-			// Skip database-only configs that don't have registries
-			if _, ok := config["database"]; ok && config["registries"] == nil {
-				return // Database-only configs are valid
-			}
-
-			// Check required fields for registry-based configs
-			if _, ok := config["registries"]; !ok {
-				t.Fatal("Missing required field: registries")
-			}
-
-			registries, ok := config["registries"].([]any)
-			if !ok {
-				t.Fatal("registries must be an array")
-			}
-
-			if len(registries) == 0 {
-				t.Fatal("registries array must not be empty")
-			}
-
-			// Validate first registry entry
-			registry, ok := registries[0].(map[string]any)
-			if !ok {
-				t.Fatal("registry entry must be a map")
-			}
-
-			if _, ok := registry["format"]; !ok {
-				t.Fatal("Missing required field: registries[0].format")
-			}
-
-			// Check that at least one source type is defined (git, api, or file)
-			hasSourceType := false
-			for _, sourceType := range []string{"git", "api", "file"} {
-				if _, ok := registry[sourceType]; ok {
-					hasSourceType = true
-					break
-				}
-			}
-
-			if !hasSourceType {
-				t.Fatal("Registry must have at least one source type (git, api, or file)")
+			// Validate configuration using the Config type's validation
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("Invalid configuration: %v", err)
 			}
 		})
 	}
