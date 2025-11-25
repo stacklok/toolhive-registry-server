@@ -3,10 +3,9 @@ package examples
 import (
 	"embed"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
@@ -37,15 +36,30 @@ func TestConfigFiles(t *testing.T) {
 				t.Fatalf("Failed to read file: %v", err)
 			}
 
-			// Parse YAML into Config type
-			var cfg config.Config
-			if err := yaml.Unmarshal(data, &cfg); err != nil {
-				t.Fatalf("Invalid YAML syntax: %v", err)
+			// Write to temporary file for LoadConfig to read
+			tmpFile, err := os.CreateTemp("", "config-*.yaml")
+			if err != nil {
+				t.Fatalf("Failed to create temp file: %v", err)
+			}
+			defer os.Remove(tmpFile.Name())
+			defer tmpFile.Close()
+
+			if _, err := tmpFile.Write(data); err != nil {
+				t.Fatalf("Failed to write temp file: %v", err)
+			}
+			if err := tmpFile.Close(); err != nil {
+				t.Fatalf("Failed to close temp file: %v", err)
 			}
 
-			// Validate configuration using the Config type's validation
-			if err := cfg.Validate(); err != nil {
-				t.Fatalf("Invalid configuration: %v", err)
+			// Load and validate configuration using LoadConfig
+			cfg, err := config.LoadConfig(config.WithConfigPath(tmpFile.Name()))
+			if err != nil {
+				t.Fatalf("Failed to load configuration: %v", err)
+			}
+
+			// Ensure config is not nil (LoadConfig validates internally)
+			if cfg == nil {
+				t.Fatal("LoadConfig returned nil config")
 			}
 		})
 	}
