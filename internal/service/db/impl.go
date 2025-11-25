@@ -230,7 +230,8 @@ func (s *dbService) GetServerVersion(
 	return res[0], nil
 }
 
-// insertServerVersionData inserts the server version record and returns the server ID
+// insertServerVersionData inserts the server version record and returns the server ID.
+// It validates unique constraints on (registry_id, name, version) and returns ErrVersionAlreadyExists if violated.
 func insertServerVersionData(
 	ctx context.Context,
 	querier *sqlc.Queries,
@@ -283,7 +284,8 @@ func insertServerVersionData(
 	return serverID, nil
 }
 
-// insertServerPackages inserts all packages for a server version
+// insertServerPackages inserts all packages for a server version.
+// Each package includes transport configuration, runtime/package arguments, and environment variables.
 func insertServerPackages(
 	ctx context.Context,
 	querier *sqlc.Queries,
@@ -313,7 +315,8 @@ func insertServerPackages(
 	return nil
 }
 
-// insertServerRemotes inserts all remotes for a server version
+// insertServerRemotes inserts all remotes for a server version.
+// Remote transports (SSE, streamable-http) require a transport URL.
 func insertServerRemotes(
 	ctx context.Context,
 	querier *sqlc.Queries,
@@ -334,7 +337,51 @@ func insertServerRemotes(
 	return nil
 }
 
-// validateManagedRegistry validates that the registry exists and is a managed (LOCAL) registry
+// insertServerIcons inserts all icons for a server version.
+// Icons include source URI, MIME type, and theme (light/dark) attributes.
+func insertServerIcons(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	serverID uuid.UUID,
+	icons []model.Icon,
+) error {
+	for _, icon := range icons {
+		// Convert theme string pointer to IconTheme enum
+		var theme sqlc.IconTheme
+		if icon.Theme != nil {
+			switch *icon.Theme {
+			case "light":
+				theme = sqlc.IconThemeLIGHT
+			case "dark":
+				theme = sqlc.IconThemeDARK
+			default:
+				theme = sqlc.IconThemeLIGHT // Default to light if unknown
+			}
+		} else {
+			theme = sqlc.IconThemeLIGHT // Default to light if not specified
+		}
+
+		// Get MIME type, default to empty string if not provided
+		mimeType := ""
+		if icon.MimeType != nil {
+			mimeType = *icon.MimeType
+		}
+
+		err := querier.InsertServerIcon(ctx, sqlc.InsertServerIconParams{
+			ServerID:  serverID,
+			SourceUri: icon.Src,
+			MimeType:  mimeType,
+			Theme:     theme,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to insert server icon: %w", err)
+		}
+	}
+	return nil
+}
+
+// validateManagedRegistry validates that the registry exists and is a managed (LOCAL) registry.
+// Returns ErrRegistryNotFound if the registry doesn't exist, or ErrNotManagedRegistry if it's not a LOCAL type.
 func validateManagedRegistry(
 	ctx context.Context,
 	querier *sqlc.Queries,
@@ -414,6 +461,11 @@ func (s *dbService) PublishServerVersion(
 		return nil, err
 	}
 
+	// Insert icons
+	if err := insertServerIcons(ctx, querier, serverID, serverData.Icons); err != nil {
+		return nil, err
+	}
+
 	// Upsert latest server version pointer
 	_, err = querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
 		RegID:    registry.ID,
@@ -490,13 +542,19 @@ func (s *dbService) DeleteServerVersion(
 	}
 
 	// 5. Delete the server version
-	err = querier.DeleteServerVersion(ctx, sqlc.DeleteServerVersionParams{
+	rowsAffected, err := querier.DeleteServerVersion(ctx, sqlc.DeleteServerVersionParams{
 		RegID:   registry.ID,
 		Name:    options.ServerName,
 		Version: options.Version,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to delete server version: %w", err)
+	}
+
+	// 5.1. Check if the server version was found and deleted
+	if rowsAffected == 0 {
+		return fmt.Errorf("%w: %s@%s",
+			service.ErrServerNotFound, options.ServerName, options.Version)
 	}
 
 	// 6. Commit transaction

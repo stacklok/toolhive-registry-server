@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const deleteServerVersion = `-- name: DeleteServerVersion :exec
+const deleteServerVersion = `-- name: DeleteServerVersion :execrows
 DELETE FROM mcp_server
 WHERE reg_id = $1
   AND name = $2
@@ -25,9 +25,12 @@ type DeleteServerVersionParams struct {
 	Version string    `json:"version"`
 }
 
-func (q *Queries) DeleteServerVersion(ctx context.Context, arg DeleteServerVersionParams) error {
-	_, err := q.db.Exec(ctx, deleteServerVersion, arg.RegID, arg.Name, arg.Version)
-	return err
+func (q *Queries) DeleteServerVersion(ctx context.Context, arg DeleteServerVersionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteServerVersion, arg.RegID, arg.Name, arg.Version)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getServerVersion = `-- name: GetServerVersion :one

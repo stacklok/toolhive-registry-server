@@ -223,7 +223,7 @@ INSERT INTO mcp_server_icon (
     sqlc.arg(theme)
 );
 
--- name: DeleteServerVersion :exec
+-- name: DeleteServerVersion :execrows
 DELETE FROM mcp_server
 WHERE reg_id = sqlc.arg(reg_id)
   AND name = sqlc.arg(name)
