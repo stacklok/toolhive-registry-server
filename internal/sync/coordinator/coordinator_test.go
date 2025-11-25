@@ -134,7 +134,7 @@ func TestCheckRegistrySync_NotReadyToSync(t *testing.T) {
 			// Mock ShouldSync returning false (not ready to sync)
 			mockManager.EXPECT().
 				ShouldSync(gomock.Any(), regCfg, testStatus, false).
-				Return(false, "", (*time.Time)(nil))
+				Return(sync.ReasonUpToDateWithPolicy)
 
 			result := fn(testStatus)
 			return result, nil
@@ -185,7 +185,7 @@ func TestCheckRegistrySync_SuccessfulSync(t *testing.T) {
 			// Mock ShouldSync returning true (ready to sync)
 			mockManager.EXPECT().
 				ShouldSync(gomock.Any(), regCfg, testStatus, false).
-				Return(true, "", (*time.Time)(nil))
+				Return(sync.ReasonSourceDataChanged)
 
 			result := fn(testStatus)
 
@@ -253,7 +253,7 @@ func TestCheckRegistrySync_FailedSync(t *testing.T) {
 
 			mockManager.EXPECT().
 				ShouldSync(gomock.Any(), regCfg, testStatus, false).
-				Return(true, "", (*time.Time)(nil))
+				Return(sync.ReasonSourceDataChanged)
 
 			result := fn(testStatus)
 			assert.Equal(t, status.SyncPhaseSyncing, testStatus.Phase)
@@ -312,7 +312,7 @@ func TestCheckRegistrySync_AlwaysUpdatesFinalStatus(t *testing.T) {
 
 			mockManager.EXPECT().
 				ShouldSync(gomock.Any(), regCfg, testStatus, false).
-				Return(true, "", (*time.Time)(nil))
+				Return(sync.ReasonSourceDataChanged)
 
 			return fn(testStatus), nil
 		})
@@ -370,7 +370,7 @@ func TestStart_InitializesStateService(t *testing.T) {
 			testStatus := &status.SyncStatus{Phase: status.SyncPhaseComplete}
 			mockManager.EXPECT().
 				ShouldSync(gomock.Any(), gomock.Any(), testStatus, false).
-				Return(false, "", (*time.Time)(nil)).
+				Return(sync.ReasonUpToDateWithPolicy).
 				AnyTimes()
 			return fn(testStatus), nil
 		}).
@@ -468,7 +468,7 @@ func TestStart_MixedManagedAndNonManagedRegistries(t *testing.T) {
 			testStatus := &status.SyncStatus{Phase: status.SyncPhaseComplete}
 			mockManager.EXPECT().
 				ShouldSync(gomock.Any(), gomock.Any(), testStatus, false).
-				Return(false, "", (*time.Time)(nil)).
+				Return(sync.ReasonUpToDateWithPolicy).
 				AnyTimes()
 			return fn(testStatus), nil
 		}).
@@ -532,7 +532,7 @@ func TestRunRegistrySync_PerformsInitialAndPeriodicSync(t *testing.T) {
 			testStatus := &status.SyncStatus{Phase: status.SyncPhaseComplete}
 			mockManager.EXPECT().
 				ShouldSync(gomock.Any(), regCfg, testStatus, false).
-				Return(false, "", (*time.Time)(nil))
+				Return(sync.ReasonUpToDateWithPolicy)
 			return fn(testStatus), nil
 		}).
 		MinTimes(2)
@@ -577,7 +577,7 @@ func TestStartRegistrySync_CreatesRegistrySyncEntry(t *testing.T) {
 			testStatus := &status.SyncStatus{Phase: status.SyncPhaseComplete}
 			mockManager.EXPECT().
 				ShouldSync(gomock.Any(), gomock.Any(), testStatus, false).
-				Return(false, "", (*time.Time)(nil)).
+				Return(sync.ReasonUpToDateWithPolicy).
 				AnyTimes()
 			return fn(testStatus), nil
 		}).
