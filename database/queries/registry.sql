@@ -46,3 +46,46 @@ INSERT INTO registry (
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 ) RETURNING id;
+
+-- name: UpsertRegistry :one
+INSERT INTO registry (
+    name,
+    reg_type,
+    created_at,
+    updated_at
+) VALUES (
+    sqlc.arg(name),
+    sqlc.arg(reg_type),
+    sqlc.arg(created_at),
+    sqlc.arg(updated_at)
+)
+ON CONFLICT (name) DO UPDATE SET
+    reg_type = EXCLUDED.reg_type,
+    updated_at = EXCLUDED.updated_at
+RETURNING id;
+
+-- name: BulkUpsertRegistries :many
+INSERT INTO registry (
+    name,
+    reg_type,
+    created_at,
+    updated_at
+)
+SELECT
+    unnest(sqlc.arg(names)::text[]),
+    unnest(sqlc.arg(reg_types)::registry_type[]),
+    unnest(sqlc.arg(created_ats)::timestamp with time zone[]),
+    unnest(sqlc.arg(updated_ats)::timestamp with time zone[])
+ON CONFLICT (name) DO UPDATE SET
+    reg_type = EXCLUDED.reg_type,
+    updated_at = EXCLUDED.updated_at
+RETURNING id, name;
+
+-- name: DeleteRegistriesNotInList :exec
+DELETE FROM registry WHERE id NOT IN (SELECT unnest(sqlc.arg(ids)::uuid[]));
+
+-- name: DeleteRegistry :exec
+DELETE FROM registry WHERE name = sqlc.arg(name);
+
+-- name: ListAllRegistryNames :many
+SELECT name FROM registry ORDER BY name;

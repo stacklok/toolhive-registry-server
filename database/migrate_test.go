@@ -27,17 +27,26 @@ func TestMigrations(t *testing.T) {
 	fnames, err := fs.Glob(migrationsFS, "migrations/*.up.sql")
 	require.NoError(t, err)
 
+	// Test each migration individually: apply, rollback, re-apply
 	for i := 1; i <= len(fnames); i++ {
-		// step up
-		err = m.Steps(i)
-		assert.NoError(t, err)
+		// Apply one migration
+		err = m.Steps(1)
+		assert.NoError(t, err, "Failed to apply migration %d", i)
 
-		// step down
-		err = m.Steps(-i)
-		assert.NoError(t, err)
+		// Roll back one migration
+		err = m.Steps(-1)
+		assert.NoError(t, err, "Failed to roll back migration %d", i)
 
-		// step up again
-		err = m.Steps(i)
-		assert.NoError(t, err)
+		// Re-apply the same migration
+		err = m.Steps(1)
+		assert.NoError(t, err, "Failed to re-apply migration %d", i)
 	}
+
+	// Test rolling back all migrations
+	err = m.Down()
+	assert.NoError(t, err, "Failed to roll back all migrations")
+
+	// Test applying all migrations at once
+	err = m.Up()
+	assert.NoError(t, err, "Failed to apply all migrations")
 }
