@@ -500,6 +500,109 @@ spec:
             path: db-password
 ```
 
+## Authentication
+
+The server supports OAuth 2.0/OIDC authentication to protect API endpoints. Authentication is optional and defaults to anonymous mode.
+
+### Authentication Modes
+
+| Mode | Description |
+|------|-------------|
+| `anonymous` | No authentication required (default) |
+| `oauth` | OAuth 2.0/OIDC token validation |
+
+### Multi-Provider Support
+
+The server supports multiple OAuth providers with sequential fallback. When a token is received:
+
+1. The token is validated against each provider in order
+2. If validation succeeds with any provider, the request is authenticated
+3. If all providers fail, the request is rejected with 401 Unauthorized
+
+This enables supporting both Kubernetes service accounts and external identity providers simultaneously.
+
+### Configuration
+
+```yaml
+auth:
+  # Authentication mode: anonymous (default) or oauth
+  mode: oauth
+
+  # Additional paths that bypass authentication (optional)
+  # These extend the default public paths listed below
+  # publicPaths:
+  #   - /api/v0/public
+
+  # OAuth/OIDC configuration (required when mode is "oauth")
+  oauth:
+    # URL identifying this protected resource (RFC 9728)
+    # Used in /.well-known/oauth-protected-resource endpoint
+    resourceUrl: https://registry.example.com
+
+    # Protection space identifier for WWW-Authenticate header (optional)
+    # Defaults to "mcp-registry"
+    # realm: mcp-registry
+
+    # OAuth scopes supported by this resource (optional)
+    # Defaults to ["mcp-registry:read", "mcp-registry:write"]
+    # scopesSupported:
+    #   - custom:read
+    #   - custom:write
+
+    # OAuth/OIDC providers (at least one required)
+    providers:
+      - name: my-idp
+        issuerUrl: https://idp.example.com
+        audience: api://registry
+
+      - name: kubernetes
+        issuerUrl: https://kubernetes.default.svc
+        audience: https://kubernetes.default.svc
+        caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+```
+
+### Default Public Paths
+
+The following endpoints are always accessible without authentication:
+
+- `/health` - Health check endpoint
+- `/readiness` - Readiness probe endpoint
+- `/version` - Version information
+- `/.well-known/*` - OAuth discovery endpoints (RFC 9728)
+
+Additional public paths can be configured using the `publicPaths` option.
+
+### Provider Configuration
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Unique identifier for this provider |
+| `issuerUrl` | Yes | OIDC issuer URL (must be HTTPS in production) |
+| `audience` | Yes | Expected audience claim in the token |
+| `clientId` | No | OAuth client ID for token introspection |
+| `clientSecretFile` | No | Path to file containing client secret |
+| `caCertPath` | No | Path to CA certificate for TLS verification |
+
+### RFC 9728 Protected Resource Metadata
+
+When OAuth is enabled, the server exposes an RFC 9728 compliant discovery endpoint:
+
+```
+GET /.well-known/oauth-protected-resource
+```
+
+Response:
+```json
+{
+  "resource": "https://registry.example.com",
+  "authorization_servers": ["https://idp.example.com"],
+  "bearer_methods_supported": ["header"],
+  "scopes_supported": ["mcp-registry:read", "mcp-registry:write"]
+}
+```
+
+This endpoint allows OAuth clients to automatically discover authentication requirements.
+
 ## Development
 
 ### Build Commands
