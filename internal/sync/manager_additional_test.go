@@ -106,20 +106,36 @@ func TestResult_ZeroValues(t *testing.T) {
 	assert.Equal(t, 0, result.ServerCount)
 }
 
-func TestSyncReasonConstants(t *testing.T) {
+func TestReasonConstants(t *testing.T) {
 	t.Parallel()
 
-	// Verify sync reason constants are properly defined
-	assert.Equal(t, "sync-already-in-progress", ReasonAlreadyInProgress)
-	assert.Equal(t, "registry-not-ready", ReasonRegistryNotReady)
-	assert.Equal(t, "error-checking-sync-need", ReasonErrorCheckingSyncNeed)
-	assert.Equal(t, "error-checking-data-changes", ReasonErrorCheckingChanges)
-	assert.Equal(t, "error-parsing-sync-interval", ReasonErrorParsingInterval)
-	assert.Equal(t, "source-data-changed", ReasonSourceDataChanged)
-	assert.Equal(t, "manual-sync-with-data-changes", ReasonManualWithChanges)
-	assert.Equal(t, "manual-sync-no-data-changes", ReasonManualNoChanges)
-	assert.Equal(t, "up-to-date-with-policy", ReasonUpToDateWithPolicy)
-	assert.Equal(t, "up-to-date-no-policy", ReasonUpToDateNoPolicy)
+	// Verify sync reason constants are properly defined and have correct string representations
+	// Order matches the original const block
+	assert.Equal(t, "sync-already-in-progress", ReasonAlreadyInProgress.String())
+	assert.Equal(t, "registry-not-ready", ReasonRegistryNotReady.String())
+	assert.Equal(t, "filter-changed", ReasonFilterChanged.String())
+	assert.Equal(t, "source-data-changed", ReasonSourceDataChanged.String())
+	assert.Equal(t, "error-checking-data-changes", ReasonErrorCheckingChanges.String())
+	assert.Equal(t, "manual-sync-with-data-changes", ReasonManualWithChanges.String())
+	assert.Equal(t, "manual-sync-no-data-changes", ReasonManualNoChanges.String())
+	assert.Equal(t, "error-parsing-sync-interval", ReasonErrorParsingInterval.String())
+	assert.Equal(t, "error-checking-sync-need", ReasonErrorCheckingSyncNeed.String())
+	assert.Equal(t, "up-to-date-with-policy", ReasonUpToDateWithPolicy.String())
+	assert.Equal(t, "up-to-date-no-policy", ReasonUpToDateNoPolicy.String())
+
+	// Verify ShouldSync() returns correct values
+	assert.False(t, ReasonAlreadyInProgress.ShouldSync())
+	assert.False(t, ReasonManualNoChanges.ShouldSync())
+	assert.False(t, ReasonErrorParsingInterval.ShouldSync())
+	assert.False(t, ReasonErrorCheckingSyncNeed.ShouldSync())
+	assert.False(t, ReasonUpToDateWithPolicy.ShouldSync())
+	assert.False(t, ReasonUpToDateNoPolicy.ShouldSync())
+
+	assert.True(t, ReasonRegistryNotReady.ShouldSync())
+	assert.True(t, ReasonFilterChanged.ShouldSync())
+	assert.True(t, ReasonSourceDataChanged.ShouldSync())
+	assert.True(t, ReasonErrorCheckingChanges.ShouldSync())
+	assert.True(t, ReasonManualWithChanges.ShouldSync())
 }
 
 func TestConditionReasonConstants(t *testing.T) {

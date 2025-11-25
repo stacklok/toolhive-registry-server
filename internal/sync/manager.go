@@ -22,31 +22,61 @@ type Result struct {
 	ServerCount int
 }
 
-// Sync reason constants
+// Reason represents the decision and reason for whether a sync should occur
+type Reason int
+
+//nolint:revive // Group comments are for categorization, not per-constant documentation
 const (
-	// Registry state related reasons
-	ReasonAlreadyInProgress = "sync-already-in-progress"
-	ReasonRegistryNotReady  = "registry-not-ready"
+	// Reasons that require sync
+	ReasonRegistryNotReady Reason = iota
+	ReasonFilterChanged
+	ReasonSourceDataChanged
+	ReasonErrorCheckingChanges
+	ReasonManualWithChanges
 
-	// Filter change related reasons
-	ReasonFilterChanged = "filter-changed"
-
-	// Data change related reasons
-	ReasonSourceDataChanged    = "source-data-changed"
-	ReasonErrorCheckingChanges = "error-checking-data-changes"
-
-	// Manual sync related reasons
-	ReasonManualWithChanges = "manual-sync-with-data-changes"
-	ReasonManualNoChanges   = "manual-sync-no-data-changes"
-
-	// Automatic sync related reasons
-	ReasonErrorParsingInterval  = "error-parsing-sync-interval"
-	ReasonErrorCheckingSyncNeed = "error-checking-sync-need"
-
-	// Up-to-date reasons
-	ReasonUpToDateWithPolicy = "up-to-date-with-policy"
-	ReasonUpToDateNoPolicy   = "up-to-date-no-policy"
+	// Reasons that do NOT require sync
+	ReasonAlreadyInProgress
+	ReasonManualNoChanges
+	ReasonErrorParsingInterval
+	ReasonErrorCheckingSyncNeed
+	ReasonUpToDateWithPolicy
+	ReasonUpToDateNoPolicy
 )
+
+// String returns the string representation of the sync reason
+func (r Reason) String() string {
+	switch r {
+	case ReasonRegistryNotReady:
+		return "registry-not-ready"
+	case ReasonFilterChanged:
+		return "filter-changed"
+	case ReasonSourceDataChanged:
+		return "source-data-changed"
+	case ReasonErrorCheckingChanges:
+		return "error-checking-data-changes"
+	case ReasonManualWithChanges:
+		return "manual-sync-with-data-changes"
+	case ReasonAlreadyInProgress:
+		return "sync-already-in-progress"
+	case ReasonManualNoChanges:
+		return "manual-sync-no-data-changes"
+	case ReasonErrorParsingInterval:
+		return "error-parsing-sync-interval"
+	case ReasonErrorCheckingSyncNeed:
+		return "error-checking-sync-need"
+	case ReasonUpToDateWithPolicy:
+		return "up-to-date-with-policy"
+	case ReasonUpToDateNoPolicy:
+		return "up-to-date-no-policy"
+	default:
+		return "unknown-sync-reason"
+	}
+}
+
+// ShouldSync returns true if sync is needed, false otherwise
+func (r Reason) ShouldSync() bool {
+	return r <= ReasonManualWithChanges
+}
 
 // Manual sync annotation detection reasons
 const (
@@ -101,9 +131,10 @@ func (e *Error) Unwrap() error {
 //go:generate mockgen -destination=mocks/mock_manager.go -package=mocks github.com/stacklok/toolhive-registry-server/internal/sync Manager
 type Manager interface {
 	// ShouldSync determines if a sync operation is needed for a specific registry
+	// Returns the sync reason which encodes both whether sync is needed and the reason
 	ShouldSync(
 		ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus, manualSyncRequested bool,
-	) (bool, string, *time.Time)
+	) Reason
 
 	// PerformSync executes the complete sync operation for a specific registry
 	PerformSync(ctx context.Context, regCfg *config.RegistryConfig) (*Result, *Error)
@@ -147,19 +178,18 @@ func NewDefaultSyncManager(
 }
 
 // ShouldSync determines if a sync operation is needed for a specific registry
-// Returns: (shouldSync bool, reason string, nextSyncTime *time.Time)
-// nextSyncTime is always nil - timing is controlled by the configured sync interval
+// Returns a Reason which encodes both whether sync is needed and the reason
 func (s *defaultSyncManager) ShouldSync(
 	ctx context.Context,
 	regCfg *config.RegistryConfig,
 	syncStatus *status.SyncStatus,
 	manualSyncRequested bool,
-) (bool, string, *time.Time) {
+) Reason {
 	ctxLogger := log.FromContext(ctx)
 
 	// If registry is currently syncing, don't start another sync
 	if syncStatus.Phase == status.SyncPhaseSyncing {
-		return false, ReasonAlreadyInProgress, nil
+		return ReasonAlreadyInProgress
 	}
 
 	// Check if sync is needed based on registry state
@@ -170,10 +200,9 @@ func (s *defaultSyncManager) ShouldSync(
 	checkIntervalElapsed, _, err := s.automaticSyncChecker.IsIntervalSyncNeeded(regCfg, syncStatus)
 	if err != nil {
 		ctxLogger.Error(err, "Failed to determine if interval has elapsed")
-		return false, ReasonErrorCheckingSyncNeed, nil
+		return ReasonErrorCheckingSyncNeed
 	}
 
-	shouldSync := false
 	reason := ReasonUpToDateNoPolicy
 
 	// Check if update is needed for state, manual sync, or filter change
@@ -183,12 +212,10 @@ func (s *defaultSyncManager) ShouldSync(
 		dataChanged, err := s.dataChangeDetector.IsDataChanged(ctx, regCfg, syncStatus)
 		if err != nil {
 			ctxLogger.Error(err, "Failed to determine if data has changed")
-			shouldSync = true
 			reason = ReasonErrorCheckingChanges
 		} else {
 			ctxLogger.Info("Checked data changes", "dataChanged", dataChanged)
 			if dataChanged {
-				shouldSync = true
 				if syncNeededForState {
 					reason = ReasonRegistryNotReady
 				} else if manualSyncRequested {
@@ -199,7 +226,6 @@ func (s *defaultSyncManager) ShouldSync(
 					reason = ReasonSourceDataChanged
 				}
 			} else {
-				shouldSync = false
 				if manualSyncRequested {
 					reason = ReasonManualNoChanges
 				}
@@ -210,9 +236,9 @@ func (s *defaultSyncManager) ShouldSync(
 
 	ctxLogger.Info("ShouldSync", "syncNeededForState", syncNeededForState, "filterChanged", filterChanged,
 		"manualSyncRequested", manualSyncRequested, "checkIntervalElapsed", checkIntervalElapsed, "dataChanged", dataChangedString)
-	ctxLogger.Info("ShouldSync returning", "shouldSync", shouldSync, "reason", reason)
+	ctxLogger.Info("ShouldSync returning", "reason", reason.String(), "shouldSync", reason.ShouldSync())
 
-	return shouldSync, reason, nil
+	return reason
 }
 
 // isSyncNeededForState checks if sync is needed based on the registry's current state

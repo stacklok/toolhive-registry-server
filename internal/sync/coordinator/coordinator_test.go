@@ -526,12 +526,12 @@ func TestUpdateStatusForSkippedSync(t *testing.T) {
 
 	// Call updateStatusForSkippedSync
 	reason := sync.ReasonUpToDateWithPolicy
-	coord.updateStatusForSkippedSync(context.Background(), regCfg, reason)
+	coord.updateStatusForSkippedSync(context.Background(), regCfg, reason.String())
 
 	// Verify status is updated but phase remains the same
 	finalStatus := coord.cachedStatuses[registryName]
 	assert.Equal(t, status.SyncPhaseComplete, finalStatus.Phase, "Phase should remain Complete")
-	assert.Contains(t, finalStatus.Message, reason, "Message should include skip reason")
+	assert.Contains(t, finalStatus.Message, reason.String(), "Message should include skip reason")
 
 	// Verify status was persisted
 	loadedStatus, err := statusPersistence.LoadStatus(context.Background(), registryName)
@@ -557,10 +557,10 @@ func TestCheckRegistrySync_PerformsSyncWhenNeeded(t *testing.T) {
 	}
 	regCfg := &cfg.Registries[0]
 
-	// Mock ShouldSync to return true
+	// Mock ShouldSync to return a reason that requires sync
 	mockSyncMgr.EXPECT().
 		ShouldSync(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(true, sync.ReasonSourceDataChanged, (*time.Time)(nil))
+		Return(sync.ReasonSourceDataChanged)
 
 	// Mock PerformSync
 	mockSyncMgr.EXPECT().
@@ -610,10 +610,10 @@ func TestCheckRegistrySync_SkipsSyncWhenNotNeeded(t *testing.T) {
 	}
 	regCfg := &cfg.Registries[0]
 
-	// Mock ShouldSync to return false
+	// Mock ShouldSync to return a reason that does NOT require sync
 	mockSyncMgr.EXPECT().
 		ShouldSync(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(false, sync.ReasonUpToDateWithPolicy, (*time.Time)(nil))
+		Return(sync.ReasonUpToDateWithPolicy)
 
 	// PerformSync should NOT be called
 	mockSyncMgr.EXPECT().

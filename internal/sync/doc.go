@@ -37,17 +37,23 @@
 //
 // # Sync Reasons
 //
-// The package defines extensive reason constants to track why syncs occur or don't:
+// The Manager.ShouldSync method returns a Reason enum that encodes both
+// whether sync is needed and the reason. Use Reason.ShouldSync() to check
+// if sync is needed and Reason.String() to get the reason string.
 //
+// Sync reasons that indicate sync is NOT needed:
 //   - ReasonAlreadyInProgress: Sync already running
-//   - ReasonRegistryNotReady: Initial sync or recovery from failure
-//   - ReasonSourceDataChanged: Source data hash changed
-//   - ReasonFilterChanged: Filter configuration modified
-//   - ReasonManualWithChanges: Manual sync requested with detected changes
 //   - ReasonManualNoChanges: Manual sync requested but no changes detected
-//   - ReasonUpToDateWithPolicy: No sync needed, data is current
+//   - ReasonErrorCheckingSyncNeed: Error checking if sync is needed
+//   - ReasonUpToDateWithPolicy: No sync needed, data is current with policy
 //   - ReasonUpToDateNoPolicy: No sync needed, no automatic policy
-//   - ReasonErrorCheckingChanges: Error during change detection
+//
+// Sync reasons that indicate sync IS needed:
+//   - ReasonRegistryNotReady: Initial sync or recovery from failure
+//   - ReasonFilterChanged: Filter configuration modified
+//   - ReasonSourceDataChanged: Source data hash changed
+//   - ReasonErrorCheckingChanges: Error during change detection, sync anyway
+//   - ReasonManualWithChanges: Manual sync requested with detected changes
 //
 // # Kubernetes Status Integration
 //
