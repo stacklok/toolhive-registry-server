@@ -233,6 +233,17 @@ type OAuthConfig struct {
 	Realm string `yaml:"realm,omitempty"`
 }
 
+// DefaultScopes are the default OAuth scopes for the registry when not configured
+var DefaultScopes = []string{"mcp-registry:read", "mcp-registry:write"}
+
+// GetScopes returns the configured OAuth scopes or defaults if not specified
+func (o *OAuthConfig) GetScopes() []string {
+	if len(o.ScopesSupported) == 0 {
+		return DefaultScopes
+	}
+	return o.ScopesSupported
+}
+
 // OAuthProviderConfig defines configuration for an OAuth/OIDC provider
 type OAuthProviderConfig struct {
 	// Name is a unique identifier for this provider (e.g., "kubernetes", "keycloak")
