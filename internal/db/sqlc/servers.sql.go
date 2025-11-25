@@ -104,6 +104,209 @@ func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionPara
 	return i, err
 }
 
+const insertServerIcon = `-- name: InsertServerIcon :exec
+INSERT INTO mcp_server_icon (
+    server_id,
+    source_uri,
+    mime_type,
+    theme
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4
+)
+`
+
+type InsertServerIconParams struct {
+	ServerID  uuid.UUID `json:"server_id"`
+	SourceUri string    `json:"source_uri"`
+	MimeType  string    `json:"mime_type"`
+	Theme     IconTheme `json:"theme"`
+}
+
+func (q *Queries) InsertServerIcon(ctx context.Context, arg InsertServerIconParams) error {
+	_, err := q.db.Exec(ctx, insertServerIcon,
+		arg.ServerID,
+		arg.SourceUri,
+		arg.MimeType,
+		arg.Theme,
+	)
+	return err
+}
+
+const insertServerPackage = `-- name: InsertServerPackage :exec
+INSERT INTO mcp_server_package (
+    server_id,
+    registry_type,
+    pkg_registry_url,
+    pkg_identifier,
+    pkg_version,
+    runtime_hint,
+    runtime_arguments,
+    package_arguments,
+    env_vars,
+    sha256_hash,
+    transport,
+    transport_url,
+    transport_headers
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12,
+    $13
+)
+`
+
+type InsertServerPackageParams struct {
+	ServerID         uuid.UUID `json:"server_id"`
+	RegistryType     string    `json:"registry_type"`
+	PkgRegistryUrl   string    `json:"pkg_registry_url"`
+	PkgIdentifier    string    `json:"pkg_identifier"`
+	PkgVersion       string    `json:"pkg_version"`
+	RuntimeHint      *string   `json:"runtime_hint"`
+	RuntimeArguments []string  `json:"runtime_arguments"`
+	PackageArguments []string  `json:"package_arguments"`
+	EnvVars          []string  `json:"env_vars"`
+	Sha256Hash       *string   `json:"sha256_hash"`
+	Transport        string    `json:"transport"`
+	TransportUrl     *string   `json:"transport_url"`
+	TransportHeaders []string  `json:"transport_headers"`
+}
+
+func (q *Queries) InsertServerPackage(ctx context.Context, arg InsertServerPackageParams) error {
+	_, err := q.db.Exec(ctx, insertServerPackage,
+		arg.ServerID,
+		arg.RegistryType,
+		arg.PkgRegistryUrl,
+		arg.PkgIdentifier,
+		arg.PkgVersion,
+		arg.RuntimeHint,
+		arg.RuntimeArguments,
+		arg.PackageArguments,
+		arg.EnvVars,
+		arg.Sha256Hash,
+		arg.Transport,
+		arg.TransportUrl,
+		arg.TransportHeaders,
+	)
+	return err
+}
+
+const insertServerRemote = `-- name: InsertServerRemote :exec
+INSERT INTO mcp_server_remote (
+    server_id,
+    transport,
+    transport_url,
+    transport_headers
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4
+)
+`
+
+type InsertServerRemoteParams struct {
+	ServerID         uuid.UUID `json:"server_id"`
+	Transport        string    `json:"transport"`
+	TransportUrl     string    `json:"transport_url"`
+	TransportHeaders []string  `json:"transport_headers"`
+}
+
+func (q *Queries) InsertServerRemote(ctx context.Context, arg InsertServerRemoteParams) error {
+	_, err := q.db.Exec(ctx, insertServerRemote,
+		arg.ServerID,
+		arg.Transport,
+		arg.TransportUrl,
+		arg.TransportHeaders,
+	)
+	return err
+}
+
+const insertServerVersion = `-- name: InsertServerVersion :one
+INSERT INTO mcp_server (
+    name,
+    version,
+    reg_id,
+    created_at,
+    updated_at,
+    description,
+    title,
+    website,
+    upstream_meta,
+    server_meta,
+    repository_url,
+    repository_id,
+    repository_subfolder,
+    repository_type
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12,
+    $13,
+    $14
+)
+RETURNING id
+`
+
+type InsertServerVersionParams struct {
+	Name                string     `json:"name"`
+	Version             string     `json:"version"`
+	RegID               uuid.UUID  `json:"reg_id"`
+	CreatedAt           *time.Time `json:"created_at"`
+	UpdatedAt           *time.Time `json:"updated_at"`
+	Description         *string    `json:"description"`
+	Title               *string    `json:"title"`
+	Website             *string    `json:"website"`
+	UpstreamMeta        []byte     `json:"upstream_meta"`
+	ServerMeta          []byte     `json:"server_meta"`
+	RepositoryUrl       *string    `json:"repository_url"`
+	RepositoryID        *string    `json:"repository_id"`
+	RepositorySubfolder *string    `json:"repository_subfolder"`
+	RepositoryType      *string    `json:"repository_type"`
+}
+
+func (q *Queries) InsertServerVersion(ctx context.Context, arg InsertServerVersionParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, insertServerVersion,
+		arg.Name,
+		arg.Version,
+		arg.RegID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.Description,
+		arg.Title,
+		arg.Website,
+		arg.UpstreamMeta,
+		arg.ServerMeta,
+		arg.RepositoryUrl,
+		arg.RepositoryID,
+		arg.RepositorySubfolder,
+		arg.RepositoryType,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const listServerPackages = `-- name: ListServerPackages :many
 SELECT p.server_id,
        p.registry_type,
@@ -433,222 +636,4 @@ func (q *Queries) UpsertLatestServerVersion(ctx context.Context, arg UpsertLates
 	var latest_server_id uuid.UUID
 	err := row.Scan(&latest_server_id)
 	return latest_server_id, err
-}
-
-const upsertServerIcon = `-- name: UpsertServerIcon :exec
-INSERT INTO mcp_server_icon (
-    server_id,
-    source_uri,
-    mime_type,
-    theme
-) VALUES (
-    $1,
-    $2,
-    $3,
-    $4
-) ON CONFLICT (server_id, source_uri, mime_type, theme)
-  DO UPDATE SET
-    theme = $4
-`
-
-type UpsertServerIconParams struct {
-	ServerID  uuid.UUID `json:"server_id"`
-	SourceUri string    `json:"source_uri"`
-	MimeType  string    `json:"mime_type"`
-	Theme     IconTheme `json:"theme"`
-}
-
-func (q *Queries) UpsertServerIcon(ctx context.Context, arg UpsertServerIconParams) error {
-	_, err := q.db.Exec(ctx, upsertServerIcon,
-		arg.ServerID,
-		arg.SourceUri,
-		arg.MimeType,
-		arg.Theme,
-	)
-	return err
-}
-
-const upsertServerPackage = `-- name: UpsertServerPackage :exec
-INSERT INTO mcp_server_package (
-    server_id,
-    registry_type,
-    pkg_registry_url,
-    pkg_identifier,
-    pkg_version,
-    runtime_hint,
-    runtime_arguments,
-    package_arguments,
-    env_vars,
-    sha256_hash,
-    transport,
-    transport_url,
-    transport_headers
-) VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    $5,
-    $6,
-    $7,
-    $8,
-    $9,
-    $10,
-    $11,
-    $12,
-    $13
-)
-`
-
-type UpsertServerPackageParams struct {
-	ServerID         uuid.UUID `json:"server_id"`
-	RegistryType     string    `json:"registry_type"`
-	PkgRegistryUrl   string    `json:"pkg_registry_url"`
-	PkgIdentifier    string    `json:"pkg_identifier"`
-	PkgVersion       string    `json:"pkg_version"`
-	RuntimeHint      *string   `json:"runtime_hint"`
-	RuntimeArguments []string  `json:"runtime_arguments"`
-	PackageArguments []string  `json:"package_arguments"`
-	EnvVars          []string  `json:"env_vars"`
-	Sha256Hash       *string   `json:"sha256_hash"`
-	Transport        string    `json:"transport"`
-	TransportUrl     *string   `json:"transport_url"`
-	TransportHeaders []string  `json:"transport_headers"`
-}
-
-func (q *Queries) UpsertServerPackage(ctx context.Context, arg UpsertServerPackageParams) error {
-	_, err := q.db.Exec(ctx, upsertServerPackage,
-		arg.ServerID,
-		arg.RegistryType,
-		arg.PkgRegistryUrl,
-		arg.PkgIdentifier,
-		arg.PkgVersion,
-		arg.RuntimeHint,
-		arg.RuntimeArguments,
-		arg.PackageArguments,
-		arg.EnvVars,
-		arg.Sha256Hash,
-		arg.Transport,
-		arg.TransportUrl,
-		arg.TransportHeaders,
-	)
-	return err
-}
-
-const upsertServerRemote = `-- name: UpsertServerRemote :exec
-INSERT INTO mcp_server_remote (
-    server_id,
-    transport,
-    transport_url,
-    transport_headers
-) VALUES (
-    $1,
-    $2,
-    $3,
-    $4
-) ON CONFLICT (server_id, transport, transport_url)
-  DO UPDATE SET
-    transport_headers = $4
-`
-
-type UpsertServerRemoteParams struct {
-	ServerID         uuid.UUID `json:"server_id"`
-	Transport        string    `json:"transport"`
-	TransportUrl     *string   `json:"transport_url"`
-	TransportHeaders []string  `json:"transport_headers"`
-}
-
-func (q *Queries) UpsertServerRemote(ctx context.Context, arg UpsertServerRemoteParams) error {
-	_, err := q.db.Exec(ctx, upsertServerRemote,
-		arg.ServerID,
-		arg.Transport,
-		arg.TransportUrl,
-		arg.TransportHeaders,
-	)
-	return err
-}
-
-const upsertServerVersion = `-- name: UpsertServerVersion :one
-INSERT INTO mcp_server (
-    name,
-    version,
-    reg_id,
-    created_at,
-    updated_at,
-    description,
-    title,
-    website,
-    upstream_meta,
-    server_meta,
-    repository_url,
-    repository_id,
-    repository_subfolder,
-    repository_type
-) VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    $5,
-    $6,
-    $7,
-    $8,
-    $9,
-    $10,
-    $11,
-    $12,
-    $13,
-    $14
-) ON CONFLICT (reg_id, name, version)
-  DO UPDATE SET
-    updated_at = $5,
-    description = $6,
-    title = $7,
-    website = $8,
-    upstream_meta = $9,
-    server_meta = $10,
-    repository_url = $11,
-    repository_id = $12,
-    repository_subfolder = $13,
-    repository_type = $14
-RETURNING id
-`
-
-type UpsertServerVersionParams struct {
-	Name                string     `json:"name"`
-	Version             string     `json:"version"`
-	RegID               uuid.UUID  `json:"reg_id"`
-	CreatedAt           *time.Time `json:"created_at"`
-	UpdatedAt           *time.Time `json:"updated_at"`
-	Description         *string    `json:"description"`
-	Title               *string    `json:"title"`
-	Website             *string    `json:"website"`
-	UpstreamMeta        []byte     `json:"upstream_meta"`
-	ServerMeta          []byte     `json:"server_meta"`
-	RepositoryUrl       *string    `json:"repository_url"`
-	RepositoryID        *string    `json:"repository_id"`
-	RepositorySubfolder *string    `json:"repository_subfolder"`
-	RepositoryType      *string    `json:"repository_type"`
-}
-
-func (q *Queries) UpsertServerVersion(ctx context.Context, arg UpsertServerVersionParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, upsertServerVersion,
-		arg.Name,
-		arg.Version,
-		arg.RegID,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-		arg.Description,
-		arg.Title,
-		arg.Website,
-		arg.UpstreamMeta,
-		arg.ServerMeta,
-		arg.RepositoryUrl,
-		arg.RepositoryID,
-		arg.RepositorySubfolder,
-		arg.RepositoryType,
-	)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
 }

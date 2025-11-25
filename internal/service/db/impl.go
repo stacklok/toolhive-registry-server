@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
@@ -226,6 +227,164 @@ func (s *dbService) GetServerVersion(
 	}
 
 	return res[0], nil
+}
+
+// PublishServerVersion publishes a server version to a managed registry
+func (s *dbService) PublishServerVersion(
+	ctx context.Context,
+	opts ...service.Option[service.PublishServerVersionOptions],
+) (*upstreamv0.ServerJSON, error) {
+	// 1. Parse options
+	options := &service.PublishServerVersionOptions{}
+	for _, opt := range opts {
+		if err := opt(options); err != nil {
+			return nil, fmt.Errorf("invalid option: %w", err)
+		}
+	}
+
+	if options.ServerData == nil {
+		return nil, fmt.Errorf("server data is required")
+	}
+
+	serverData := options.ServerData
+
+	// 2. Begin transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.Serializable,
+		AccessMode: pgx.ReadWrite,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			// TODO: log the rollback error (add proper logging)
+			_ = err
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	// 3. Validate registry exists and get registry info
+	registry, err := querier.GetRegistryByName(ctx, options.RegistryName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, options.RegistryName)
+		}
+		return nil, fmt.Errorf("failed to get registry: %w", err)
+	}
+
+	// 4. Validate registry is LOCAL (managed) type
+	if registry.RegType != sqlc.RegistryTypeLOCAL {
+		return nil, fmt.Errorf("%w: registry %s has type %s",
+			service.ErrNotManagedRegistry, options.RegistryName, registry.RegType)
+	}
+
+	// 5. Prepare repository fields
+	var repoURL, repoID, repoSubfolder, repoType *string
+	if serverData.Repository != nil {
+		repoURL = &serverData.Repository.URL
+		repoID = &serverData.Repository.ID
+		repoSubfolder = &serverData.Repository.Subfolder
+		repoType = &serverData.Repository.Source
+	}
+
+	// 6. Serialize publisher-provided metadata
+	serverMeta, err := serializePublisherProvidedMeta(serverData.Meta)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize metadata: %w", err)
+	}
+
+	// 7. Insert the server version
+	now := time.Now()
+	serverID, err := querier.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
+		Name:                serverData.Name,
+		Version:             serverData.Version,
+		RegID:               registry.ID,
+		CreatedAt:           &now,
+		UpdatedAt:           &now,
+		Description:         &serverData.Description,
+		Title:               &serverData.Title,
+		Website:             &serverData.WebsiteURL,
+		UpstreamMeta:        nil,
+		ServerMeta:          serverMeta,
+		RepositoryUrl:       repoURL,
+		RepositoryID:        repoID,
+		RepositorySubfolder: repoSubfolder,
+		RepositoryType:      repoType,
+	})
+	if err != nil {
+		// Check if this is a unique constraint violation (PostgreSQL error code 23505)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, fmt.Errorf("%w: %s@%s", service.ErrVersionAlreadyExists, serverData.Name, serverData.Version)
+		}
+		return nil, fmt.Errorf("failed to insert server version: %w", err)
+	}
+
+	// 8. Insert packages
+	for _, pkg := range serverData.Packages {
+		err = querier.InsertServerPackage(ctx, sqlc.InsertServerPackageParams{
+			ServerID:         serverID,
+			RegistryType:     pkg.RegistryType,
+			PkgRegistryUrl:   pkg.RegistryBaseURL,
+			PkgIdentifier:    pkg.Identifier,
+			PkgVersion:       pkg.Version,
+			RuntimeHint:      &pkg.RunTimeHint,
+			RuntimeArguments: extractArgumentValues(pkg.RuntimeArguments),
+			PackageArguments: extractArgumentValues(pkg.PackageArguments),
+			EnvVars:          extractKeyValueNames(pkg.EnvironmentVariables),
+			Sha256Hash:       &pkg.FileSHA256,
+			Transport:        pkg.Transport.Type,
+			TransportUrl:     &pkg.Transport.URL,
+			TransportHeaders: extractKeyValueNames(pkg.Transport.Headers),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to insert server package: %w", err)
+		}
+	}
+
+	// 9. Insert remotes
+	for _, remote := range serverData.Remotes {
+		err = querier.InsertServerRemote(ctx, sqlc.InsertServerRemoteParams{
+			ServerID:         serverID,
+			Transport:        remote.Type,
+			TransportUrl:     remote.URL,
+			TransportHeaders: extractKeyValueNames(remote.Headers),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to insert server remote: %w", err)
+		}
+	}
+
+	// 10. Upsert latest server version pointer
+	_, err = querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
+		RegID:    registry.ID,
+		Name:     serverData.Name,
+		Version:  serverData.Version,
+		ServerID: serverID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert latest server version: %w", err)
+	}
+
+	// 11. Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// 12. Fetch the inserted server to return it (in new read transaction)
+	result, err := s.GetServerVersion(ctx,
+		service.WithRegistryName[service.GetServerVersionOptions](options.RegistryName),
+		service.WithName[service.GetServerVersionOptions](serverData.Name),
+		service.WithVersion[service.GetServerVersionOptions](serverData.Version),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch published server: %w", err)
+	}
+
+	return result, nil
 }
 
 // DeleteServerVersion removes a server version from a managed registry

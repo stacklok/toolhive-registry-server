@@ -197,6 +197,14 @@ func (s *regSvc) GetServerVersion(
 	return nil, service.ErrServerNotFound
 }
 
+// PublishServerVersion implements RegistryService.PublishServerVersion
+func (*regSvc) PublishServerVersion(
+	_ context.Context,
+	_ ...service.Option[service.PublishServerVersionOptions],
+) (*upstreamv0.ServerJSON, error) {
+	return nil, service.ErrNotImplemented
+}
+
 // DeleteServerVersion implements RegistryService.DeleteServerVersion
 func (*regSvc) DeleteServerVersion(
 	_ context.Context,

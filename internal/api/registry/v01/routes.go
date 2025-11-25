@@ -2,6 +2,7 @@
 package v01
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -394,39 +395,93 @@ func (routes *Routes) deleteVersionWithRegistryName(w http.ResponseWriter, r *ht
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handlePublish is a shared helper that handles publishing with an optional registry name.
-func (*Routes) handlePublish(w http.ResponseWriter, r *http.Request, registryName string) {
-	// TODO: Use registryName in the actual implementation
-	_ = registryName
-	_ = r
-
-	common.WriteErrorResponse(w, "Publishing is not supported", http.StatusNotImplemented)
-}
-
-// publish handles POST /registry/v0.1/publish
-//
-// @Summary		Publish server
-// @Description	Publish a server to the registry
-// @Tags		registry,official
-// @Accept		json
-// @Produce		json
-// @Failure		501	{object}	map[string]string	"Not implemented"
-// @Router		/registry/v0.1/publish [post]
-func (routes *Routes) publish(w http.ResponseWriter, r *http.Request) {
-	routes.handlePublish(w, r, "")
-}
-
 // publishWithRegistryName handles POST /{registryName}/v0.1/publish
 //
-// @Summary		Publish server
-// @Description	Publish a server to the registry
+// @Summary      Publish server to specific registry
+// @Description  Publish a server version to a specific managed registry
+// @Tags         registry,official
+// @Accept       json
+// @Produce      json
+// @Param        registryName  path      string                    true  "Registry name"
+// @Param        server        body      upstreamv0.ServerJSON     true  "Server data"
+// @Success      201           {object}  upstreamv0.ServerJSON     "Created"
+// @Failure      400           {object}  map[string]string         "Bad request"
+// @Failure      403           {object}  map[string]string         "Not a managed registry"
+// @Failure      404           {object}  map[string]string         "Registry not found"
+// @Failure      409           {object}  map[string]string         "Version already exists"
+// @Failure      500           {object}  map[string]string         "Internal server error"
+// @Router       /{registryName}/v0.1/publish [post]
+func (routes *Routes) publishWithRegistryName(w http.ResponseWriter, r *http.Request) {
+	// Extract URL parameters
+	registryName := chi.URLParam(r, "registryName")
+
+	if strings.TrimSpace(registryName) == "" {
+		common.WriteErrorResponse(w, "Registry name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Parse request body
+	var serverData upstreamv0.ServerJSON
+	if err := json.NewDecoder(r.Body).Decode(&serverData); err != nil {
+		common.WriteErrorResponse(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if strings.TrimSpace(serverData.Name) == "" {
+		common.WriteErrorResponse(w, "Server name is required", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(serverData.Version) == "" {
+		common.WriteErrorResponse(w, "Server version is required", http.StatusBadRequest)
+		return
+	}
+
+	// Call service layer
+	result, err := routes.service.PublishServerVersion(
+		r.Context(),
+		service.WithRegistryName[service.PublishServerVersionOptions](registryName),
+		service.WithServerData(&serverData),
+	)
+
+	if err != nil {
+		// Check for specific error types
+		if errors.Is(err, service.ErrRegistryNotFound) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, service.ErrNotManagedRegistry) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, service.ErrVersionAlreadyExists) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusConflict)
+			return
+		}
+		// All other errors
+		common.WriteErrorResponse(w, "Failed to publish server version", http.StatusInternalServerError)
+		return
+	}
+
+	// Success - return 201 Created with the published server data
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		// Log error but don't try to send another response
+		return
+	}
+}
+
+// publish handles POST /registry/v0.1/publish (deprecated - use registry-specific endpoint)
+//
+// @Summary		Publish server (deprecated)
+// @Description	This endpoint is deprecated. Use /{registryName}/v0.1/publish instead
 // @Tags		registry,official
 // @Accept		json
 // @Produce		json
-// @Param		registryName	path		string	true	"Registry name"
-// @Failure		501	{object}	map[string]string	"Not implemented"
-// @Router		/registry/{registryName}/v0.1/publish [post]
-func (routes *Routes) publishWithRegistryName(w http.ResponseWriter, r *http.Request) {
-	registryName := chi.URLParam(r, "registryName")
-	routes.handlePublish(w, r, registryName)
+// @Failure		400	{object}	map[string]string	"Bad request - registry name required"
+// @Router		/registry/v0.1/publish [post]
+func (routes *Routes) publish(w http.ResponseWriter, r *http.Request) {
+	common.WriteErrorResponse(w, "Registry name is required. Use /{registryName}/v0.1/publish endpoint", http.StatusBadRequest)
 }

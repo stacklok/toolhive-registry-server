@@ -115,7 +115,7 @@ SELECT r.server_id,
  WHERE r.server_id = ANY(sqlc.slice(server_ids)::UUID[])
  ORDER BY r.transport, r.transport_url;
 
--- name: UpsertServerVersion :one
+-- name: InsertServerVersion :one
 INSERT INTO mcp_server (
     name,
     version,
@@ -146,18 +146,7 @@ INSERT INTO mcp_server (
     sqlc.narg(repository_id),
     sqlc.narg(repository_subfolder),
     sqlc.narg(repository_type)
-) ON CONFLICT (reg_id, name, version)
-  DO UPDATE SET
-    updated_at = sqlc.arg(updated_at),
-    description = sqlc.narg(description),
-    title = sqlc.narg(title),
-    website = sqlc.narg(website),
-    upstream_meta = sqlc.narg(upstream_meta),
-    server_meta = sqlc.narg(server_meta),
-    repository_url = sqlc.narg(repository_url),
-    repository_id = sqlc.narg(repository_id),
-    repository_subfolder = sqlc.narg(repository_subfolder),
-    repository_type = sqlc.narg(repository_type)
+)
 RETURNING id;
 
 -- name: UpsertLatestServerVersion :one
@@ -177,7 +166,7 @@ INSERT INTO latest_server_version (
     latest_server_id = sqlc.arg(server_id)
 RETURNING latest_server_id;
 
--- name: UpsertServerPackage :exec
+-- name: InsertServerPackage :exec
 INSERT INTO mcp_server_package (
     server_id,
     registry_type,
@@ -208,7 +197,7 @@ INSERT INTO mcp_server_package (
     sqlc.narg(transport_headers)
 );
 
--- name: UpsertServerRemote :exec
+-- name: InsertServerRemote :exec
 INSERT INTO mcp_server_remote (
     server_id,
     transport,
@@ -217,13 +206,11 @@ INSERT INTO mcp_server_remote (
 ) VALUES (
     sqlc.arg(server_id),
     sqlc.arg(transport),
-    sqlc.narg(transport_url),
+    sqlc.arg(transport_url),
     sqlc.narg(transport_headers)
-) ON CONFLICT (server_id, transport, transport_url)
-  DO UPDATE SET
-    transport_headers = sqlc.narg(transport_headers);
+);
 
--- name: UpsertServerIcon :exec
+-- name: InsertServerIcon :exec
 INSERT INTO mcp_server_icon (
     server_id,
     source_uri,
@@ -234,9 +221,7 @@ INSERT INTO mcp_server_icon (
     sqlc.arg(source_uri),
     sqlc.arg(mime_type),
     sqlc.arg(theme)
-) ON CONFLICT (server_id, source_uri, mime_type, theme)
-  DO UPDATE SET
-    theme = sqlc.arg(theme);
+);
 
 -- name: DeleteServerVersion :exec
 DELETE FROM mcp_server
