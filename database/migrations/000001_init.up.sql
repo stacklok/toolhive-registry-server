@@ -110,18 +110,31 @@ CREATE TABLE mcp_server_icon (
     PRIMARY KEY (server_id, source_uri, mime_type, theme) -- Unclear if mime_type or theme should be part of the PK
 );
 
--- Grant permissions to application user if it exists
--- This allows normal operations with limited privileges
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'db_app') THEN
-        GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO db_app;
-        GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO db_app;
-
-        -- Grant permissions on future tables created by migration user
-        ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
-            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO db_app;
-        ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
-            GRANT USAGE, SELECT ON SEQUENCES TO db_app;
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
+        CREATE ROLE toolhive_registry_server;
     END IF;
-END $$;
+END
+$$;
+
+-- Grant permissions on existing tables to application role if it exists
+-- This allows normal operations with limited privileges
+GRANT SELECT ON ALL TABLES    IN SCHEMA public TO toolhive_registry_server;
+GRANT INSERT ON ALL TABLES    IN SCHEMA public TO toolhive_registry_server;
+GRANT UPDATE ON ALL TABLES    IN SCHEMA public TO toolhive_registry_server;
+GRANT DELETE ON ALL TABLES    IN SCHEMA public TO toolhive_registry_server;
+
+-- Grant permissions on existing sequences to application role
+GRANT USAGE  ON ALL SEQUENCES IN SCHEMA public TO toolhive_registry_server;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO toolhive_registry_server;
+
+-- Grant permissions on future tables to application role
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO toolhive_registry_server;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT INSERT ON TABLES TO toolhive_registry_server;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT UPDATE ON TABLES TO toolhive_registry_server;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT DELETE ON TABLES TO toolhive_registry_server;
+
+-- Grant permissions on future sequences to application role
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE  ON SEQUENCES TO toolhive_registry_server;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO toolhive_registry_server;

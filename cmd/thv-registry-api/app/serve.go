@@ -137,9 +137,25 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 		}
 	}()
 
+	tx, err := conn.BeginTx(
+		ctx,
+		pgx.TxOptions{
+			IsoLevel:   pgx.Serializable,
+			AccessMode: pgx.ReadWrite,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil {
+			logger.Errorf("Error rolling back transaction: %v", err)
+		}
+	}()
+
 	// Run migrations
 	logger.Infof("Applying database migrations...")
-	if err := database.MigrateUp(ctx, conn); err != nil {
+	if err := database.MigrateUp(ctx, tx.Conn()); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 

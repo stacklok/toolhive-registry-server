@@ -84,7 +84,7 @@ The `thv-registry-api` CLI provides the following commands:
 # Start the API server
 thv-registry-api serve --config config.yaml [--address :8080]
 
-# Run database migrations
+# Manually run database migrations
 thv-registry-api migrate up --config config.yaml [--yes]
 thv-registry-api migrate down --config config.yaml --num-steps N [--yes]
 
@@ -284,6 +284,38 @@ The server includes built-in database migration support to manage the database s
 **Automatic migrations on startup:**
 
 When you start the server with `serve`, database migrations run automatically if database configuration is present in your config file. This ensures your database schema is always up to date.
+
+The only thing necessary is granting the role `toolhive_registry_server` to
+the database user you want, for example
+
+```sql
+BEGIN;
+
+DO $$
+  BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
+      CREATE ROLE toolhive_registry_server;
+    END IF;
+  END
+$$;
+
+DO $$
+  BEGIN
+    IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'thvr_user') THEN
+      CREATE USER thvr_user WITH PASSWORD 'thvr_user_pass';
+    END IF;
+  END
+$$;
+
+GRANT toolhive_registry_server TO thvr_user;
+
+COMMIT;
+```
+
+To help with that, we plan to add a `prime` subcommand that does just that
+in an idempotent fashion with username and password provided by the user.
+
+Once done, you start the server as follows
 
 ```bash
 # Migrations run automatically when database is configured
