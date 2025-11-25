@@ -87,28 +87,32 @@ func (s *dbService) ListServers(
 	ctx context.Context,
 	opts ...service.Option[service.ListServersOptions],
 ) ([]*upstreamv0.ServerJSON, error) {
-	options := &service.ListServersOptions{}
+	options := &service.ListServersOptions{
+		Limit: 50, // default limit
+	}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
 			return nil, err
 		}
 	}
 
-	decoded, err := base64.StdEncoding.DecodeString(options.Cursor)
-	if err != nil {
-		return nil, fmt.Errorf("invalid cursor format: %w", err)
-	}
-	nextTime, err := time.Parse(time.RFC3339, string(decoded))
-	if err != nil {
-		return nil, fmt.Errorf("invalid cursor format: %w", err)
-	}
-
 	params := sqlc.ListServersParams{
-		Next: &nextTime,
 		Size: int64(options.Limit),
 	}
 	if options.RegistryName != nil {
 		params.RegistryName = options.RegistryName
+	}
+
+	if options.Cursor != "" {
+		decoded, err := base64.StdEncoding.DecodeString(options.Cursor)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cursor format: %w", err)
+		}
+		nextTime, err := time.Parse(time.RFC3339, string(decoded))
+		if err != nil {
+			return nil, fmt.Errorf("invalid cursor format: %w", err)
+		}
+		params.Next = &nextTime
 	}
 
 	// Note: this function fetches a list of servers. In case no records are

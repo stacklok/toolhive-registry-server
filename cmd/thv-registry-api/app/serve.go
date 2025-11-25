@@ -8,12 +8,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stacklok/toolhive/pkg/logger"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	"github.com/stacklok/toolhive-registry-server/database"
 	registryapp "github.com/stacklok/toolhive-registry-server/internal/app"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
@@ -27,6 +29,8 @@ The server requires a configuration file (--config) that specifies:
 - Registry name and data source (Git, API, or File)
 - Sync policy and filtering rules
 - All other operational settings
+
+If database configuration is present, migrations will run automatically on startup.
 
 See examples/ directory for sample configurations.`,
 	RunE: runServe,
@@ -73,6 +77,14 @@ func runServe(_ *cobra.Command, _ []string) error {
 	logger.Infof("Loaded configuration from %s (registry: %s, %d registries configured)",
 		configPath, cfg.GetRegistryName(), len(cfg.Registries))
 
+	// Run database migrations if database is configured
+	if cfg.Database != nil {
+		logger.Infof("Database configuration found, running migrations...")
+		if err := runMigrations(ctx, cfg); err != nil {
+			return fmt.Errorf("failed to run database migrations: %w", err)
+		}
+	}
+
 	// Build application using the builder pattern
 	address := viper.GetString("address")
 	app, err := registryapp.NewRegistryApp(
@@ -100,4 +112,62 @@ func runServe(_ *cobra.Command, _ []string) error {
 
 	// Graceful shutdown
 	return app.Stop(defaultGracefulTimeout)
+}
+
+// runMigrations executes database migrations on startup
+func runMigrations(ctx context.Context, cfg *config.Config) error {
+	// Get migration connection string (uses migration user if configured)
+	connString, err := cfg.Database.GetMigrationConnectionString()
+	if err != nil {
+		return fmt.Errorf("failed to get migration connection string: %w", err)
+	}
+
+	// Log which user is running migrations
+	migrationUser := cfg.Database.GetMigrationUser()
+	logger.Infof("Running migrations as user: %s", migrationUser)
+
+	// Connect to database
+	conn, err := pgx.Connect(ctx, connString)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer func() {
+		if closeErr := conn.Close(ctx); closeErr != nil {
+			logger.Errorf("Error closing database connection: %v", closeErr)
+		}
+	}()
+
+	tx, err := conn.BeginTx(
+		ctx,
+		pgx.TxOptions{
+			IsoLevel:   pgx.Serializable,
+			AccessMode: pgx.ReadWrite,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil {
+			logger.Errorf("Error rolling back transaction: %v", err)
+		}
+	}()
+
+	// Run migrations
+	logger.Infof("Applying database migrations...")
+	if err := database.MigrateUp(ctx, tx.Conn()); err != nil {
+		return fmt.Errorf("failed to apply migrations: %w", err)
+	}
+
+	// Get and log current version
+	version, dirty, err := database.GetVersion(connString)
+	if err != nil {
+		logger.Warnf("Unable to get migration version: %v", err)
+	} else if dirty {
+		logger.Warnf("Database is in a dirty state at version %d", version)
+	} else {
+		logger.Infof("Database migrations completed successfully. Current version: %d", version)
+	}
+
+	return nil
 }

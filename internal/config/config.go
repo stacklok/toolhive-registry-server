@@ -355,13 +355,22 @@ type DatabaseConfig struct {
 	// Port is the database server port
 	Port int `yaml:"port"`
 
-	// User is the database username
+	// User is the database username for normal operations
 	User string `yaml:"user"`
 
 	// PasswordFile is the path to a file containing the database password
 	// This is the recommended approach for production deployments
 	// The file should contain only the password with optional trailing whitespace
 	PasswordFile string `yaml:"passwordFile,omitempty"`
+
+	// MigrationUser is the database username for running migrations
+	// This user should have elevated privileges for schema changes
+	// If not specified, falls back to User
+	MigrationUser string `yaml:"migrationUser,omitempty"`
+
+	// MigrationPasswordFile is the path to a file containing the migration user's password
+	// If not specified, falls back to PasswordFile
+	MigrationPasswordFile string `yaml:"migrationPasswordFile,omitempty"`
 
 	// Database is the database name
 	Database string `yaml:"database"`
@@ -379,7 +388,7 @@ type DatabaseConfig struct {
 	ConnMaxLifetime string `yaml:"connMaxLifetime,omitempty"`
 }
 
-// GetPassword returns the database password using the following priority:
+// GetPassword returns the database password for normal operations using the following priority:
 // 1. Read from PasswordFile if specified
 // 2. Read from THV_DATABASE_PASSWORD environment variable
 //
@@ -410,8 +419,48 @@ func (d *DatabaseConfig) GetPassword() (string, error) {
 	)
 }
 
-// GetConnectionString builds a PostgreSQL connection string with proper password handling.
-// The password is URL-escaped to handle special characters safely.
+// GetMigrationPassword returns the migration user password using the following priority:
+// 1. Read from MigrationPasswordFile if specified
+// 2. Read from THV_DATABASE_MIGRATION_PASSWORD environment variable
+// 3. Fall back to GetPassword() (regular user password)
+//
+// The password from file will have leading/trailing whitespace trimmed.
+func (d *DatabaseConfig) GetMigrationPassword() (string, error) {
+	// Priority 1: Read from migration password file if specified
+	if d.MigrationPasswordFile != "" {
+		// Use filepath.Clean to prevent path traversal attacks
+		cleanPath := filepath.Clean(d.MigrationPasswordFile)
+
+		data, err := os.ReadFile(cleanPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to read migration password from file %s: %w", d.MigrationPasswordFile, err)
+		}
+
+		// Trim whitespace (including newlines) from file content
+		password := strings.TrimSpace(string(data))
+		return password, nil
+	}
+
+	// Priority 2: Check migration-specific environment variable
+	if envPassword := os.Getenv("THV_DATABASE_MIGRATION_PASSWORD"); envPassword != "" {
+		return envPassword, nil
+	}
+
+	// Priority 3: Fall back to regular password
+	return d.GetPassword()
+}
+
+// GetMigrationUser returns the username for migrations.
+// If MigrationUser is specified, returns that; otherwise falls back to User.
+func (d *DatabaseConfig) GetMigrationUser() string {
+	if d.MigrationUser != "" {
+		return d.MigrationUser
+	}
+	return d.User
+}
+
+// GetConnectionString builds a PostgreSQL connection string for normal operations
+// with proper password handling. The password is URL-escaped to handle special characters safely.
 func (d *DatabaseConfig) GetConnectionString() (string, error) {
 	password, err := d.GetPassword()
 	if err != nil {
@@ -429,6 +478,35 @@ func (d *DatabaseConfig) GetConnectionString() (string, error) {
 	connString := fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
 		d.User,
+		escapedPassword,
+		d.Host,
+		d.Port,
+		d.Database,
+		sslMode,
+	)
+
+	return connString, nil
+}
+
+// GetMigrationConnectionString builds a PostgreSQL connection string for migrations
+// using the migration user credentials. The password is URL-escaped to handle special characters safely.
+func (d *DatabaseConfig) GetMigrationConnectionString() (string, error) {
+	password, err := d.GetMigrationPassword()
+	if err != nil {
+		return "", err
+	}
+
+	sslMode := d.SSLMode
+	if sslMode == "" {
+		sslMode = "require"
+	}
+
+	// URL-escape the password to handle special characters
+	escapedPassword := url.QueryEscape(password)
+
+	connString := fmt.Sprintf(
+		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		d.GetMigrationUser(),
 		escapedPassword,
 		d.Host,
 		d.Port,
