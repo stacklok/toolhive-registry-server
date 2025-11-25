@@ -11,7 +11,9 @@ import (
 )
 
 type Querier interface {
+	DeleteServerVersion(ctx context.Context, arg DeleteServerVersionParams) error
 	GetRegistry(ctx context.Context, id uuid.UUID) (Registry, error)
+	GetRegistryByName(ctx context.Context, name string) (Registry, error)
 	GetRegistrySync(ctx context.Context, id uuid.UUID) (RegistrySync, error)
 	GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error)
 	InsertRegistry(ctx context.Context, arg InsertRegistryParams) (uuid.UUID, error)

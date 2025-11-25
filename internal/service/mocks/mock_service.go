@@ -57,6 +57,25 @@ func (mr *MockRegistryServiceMockRecorder) CheckReadiness(ctx any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckReadiness", reflect.TypeOf((*MockRegistryService)(nil).CheckReadiness), ctx)
 }
 
+// DeleteServerVersion mocks base method.
+func (m *MockRegistryService) DeleteServerVersion(ctx context.Context, opts ...service.Option[service.DeleteServerVersionOptions]) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DeleteServerVersion", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteServerVersion indicates an expected call of DeleteServerVersion.
+func (mr *MockRegistryServiceMockRecorder) DeleteServerVersion(ctx any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteServerVersion", reflect.TypeOf((*MockRegistryService)(nil).DeleteServerVersion), varargs...)
+}
+
 // GetRegistry mocks base method.
 func (m *MockRegistryService) GetRegistry(ctx context.Context) (*registry.UpstreamRegistry, string, error) {
 	m.ctrl.T.Helper()
