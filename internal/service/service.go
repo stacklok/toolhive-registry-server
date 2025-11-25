@@ -53,7 +53,8 @@ type RegistryService interface {
 // Option is a function that sets an option for the ListServersOptions, ListServerVersionsOptions,
 // GetServerVersionOptions, PublishServerVersionOptions, or DeleteServerVersionOptions
 type Option[
-	T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions | PublishServerVersionOptions | DeleteServerVersionOptions,
+	T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions |
+		PublishServerVersionOptions | DeleteServerVersionOptions,
 ] func(*T) error
 
 // ListServersOptions is the options for the ListServers operation
@@ -130,7 +131,10 @@ func WithUpdatedSince(updatedSince time.Time) Option[ListServersOptions] {
 
 // WithRegistryName sets the registry name for the ListServers, ListServerVersions,
 // GetServerVersion, PublishServerVersion, or DeleteServerVersion operation
-func WithRegistryName[T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions | PublishServerVersionOptions | DeleteServerVersionOptions](
+func WithRegistryName[
+	T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions |
+		PublishServerVersionOptions | DeleteServerVersionOptions,
+](
 	registryName string,
 ) Option[T] {
 	return func(o *T) error {

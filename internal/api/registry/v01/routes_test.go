@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
@@ -375,26 +376,38 @@ func TestPublish(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 
 	tests := []struct {
-		name       string
-		path       string
-		wantStatus int
+		name          string
+		path          string
+		body          string
+		wantStatus    int
+		expectedError string
 	}{
 		{
-			name:       "publish - basic",
-			path:       "/v0.1/publish",
-			wantStatus: http.StatusNotImplemented,
+			name:          "publish - basic (deprecated)",
+			path:          "/v0.1/publish",
+			body:          `{"name":"test","version":"1.0.0"}`,
+			wantStatus:    http.StatusBadRequest,
+			expectedError: "Registry name is required. Use /{registryName}/v0.1/publish endpoint",
 		},
 		{
-			name:       "publish with registry name - basic",
-			path:       "/foo/v0.1/publish",
-			wantStatus: http.StatusNotImplemented,
+			name:          "publish with registry name - missing body",
+			path:          "/foo/v0.1/publish",
+			body:          ``,
+			wantStatus:    http.StatusBadRequest,
+			expectedError: "Invalid request body",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			req, err := http.NewRequest("POST", tt.path, nil)
+			var body *strings.Reader
+			if tt.body != "" {
+				body = strings.NewReader(tt.body)
+			} else {
+				body = strings.NewReader("")
+			}
+			req, err := http.NewRequest("POST", tt.path, body)
 			require.NoError(t, err)
 
 			mockSvc := mocks.NewMockRegistryService(ctrl)
@@ -409,7 +422,7 @@ func TestPublish(t *testing.T) {
 			err = json.Unmarshal(rr.Body.Bytes(), &response)
 			require.NoError(t, err)
 			assert.Contains(t, response, "error")
-			assert.Equal(t, "Publishing is not supported", response["error"])
+			assert.Contains(t, response["error"], tt.expectedError)
 		})
 	}
 }

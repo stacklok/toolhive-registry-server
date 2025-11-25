@@ -482,6 +482,6 @@ func (routes *Routes) publishWithRegistryName(w http.ResponseWriter, r *http.Req
 // @Produce		json
 // @Failure		400	{object}	map[string]string	"Bad request - registry name required"
 // @Router		/registry/v0.1/publish [post]
-func (routes *Routes) publish(w http.ResponseWriter, r *http.Request) {
+func (*Routes) publish(w http.ResponseWriter, _ *http.Request) {
 	common.WriteErrorResponse(w, "Registry name is required. Use /{registryName}/v0.1/publish endpoint", http.StatusBadRequest)
 }

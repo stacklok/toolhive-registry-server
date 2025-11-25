@@ -9,6 +9,7 @@ import (
 	"github.com/aws/smithy-go/ptr"
 	"github.com/jackc/pgx/v5/pgxpool"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	"github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/database"
@@ -74,9 +75,9 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	// Server 1 with multiple versions
 	for i, version := range []string{"1.0.0", "1.1.0", "2.0.0"} {
 		createdAt := now.Add(time.Duration(i) * time.Hour)
-		_, err := queries.UpsertServerVersion(
+		_, err := queries.InsertServerVersion(
 			ctx,
-			sqlc.UpsertServerVersionParams{
+			sqlc.InsertServerVersionParams{
 				Name:                "test-server-1",
 				Version:             version,
 				RegID:               regID,
@@ -98,9 +99,9 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 
 	// Server 2 with single version
 	createdAt := now.Add(2 * time.Hour)
-	_, err = queries.UpsertServerVersion(
+	_, err = queries.InsertServerVersion(
 		ctx,
-		sqlc.UpsertServerVersionParams{
+		sqlc.InsertServerVersionParams{
 			Name:                "test-server-2",
 			Version:             "1.0.0",
 			RegID:               regID,
@@ -579,9 +580,9 @@ func TestGetServerVersion(t *testing.T) {
 
 				// Create a server version
 				now := time.Now().UTC()
-				serverID, err := queries.UpsertServerVersion(
+				serverID, err := queries.InsertServerVersion(
 					ctx,
-					sqlc.UpsertServerVersionParams{
+					sqlc.InsertServerVersionParams{
 						Name:                "test-server-with-packages",
 						Version:             "1.0.0",
 						RegID:               regID,
@@ -601,9 +602,9 @@ func TestGetServerVersion(t *testing.T) {
 				require.NoError(t, err)
 
 				// Add a package
-				err = queries.UpsertServerPackage(
+				err = queries.InsertServerPackage(
 					ctx,
-					sqlc.UpsertServerPackageParams{
+					sqlc.InsertServerPackageParams{
 						ServerID:         serverID,
 						RegistryType:     "npm",
 						PkgRegistryUrl:   "https://registry.npmjs.org",
@@ -622,12 +623,12 @@ func TestGetServerVersion(t *testing.T) {
 				require.NoError(t, err)
 
 				// Add a remote
-				err = queries.UpsertServerRemote(
+				err = queries.InsertServerRemote(
 					ctx,
-					sqlc.UpsertServerRemoteParams{
+					sqlc.InsertServerRemoteParams{
 						ServerID:         serverID,
 						Transport:        "sse",
-						TransportUrl:     ptr.String("https://example.com/sse"),
+						TransportUrl:     "https://example.com/sse",
 						TransportHeaders: []string{"Authorization: Bearer token"},
 					},
 				)
@@ -899,6 +900,277 @@ func TestNew(t *testing.T) {
 			svc, err := New(opts...)
 
 			tt.validateFunc(t, svc, err)
+		})
+	}
+}
+
+func TestPublishServerVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *pgxpool.Pool) *sqlc.Registry
+		serverData   *upstreamv0.ServerJSON
+		registryName string
+		validateFunc func(*testing.T, *upstreamv0.ServerJSON, error)
+	}{
+		{
+			name: "success - publish new server version",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				// Create a LOCAL (managed) registry
+				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
+					Name:    "test-registry",
+					RegType: sqlc.RegistryTypeLOCAL,
+				})
+				require.NoError(t, err)
+
+				reg, err := queries.GetRegistry(ctx, regID)
+				require.NoError(t, err)
+				return &reg
+			},
+			serverData: &upstreamv0.ServerJSON{
+				Name:        "test-server",
+				Version:     "1.0.0",
+				Description: "Test server description",
+				Title:       "Test Server",
+			},
+			registryName: "test-registry",
+			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "test-server", result.Name)
+				require.Equal(t, "1.0.0", result.Version)
+				require.Equal(t, "Test server description", result.Description)
+				require.Equal(t, "Test Server", result.Title)
+			},
+		},
+		{
+			name: "success - publish with metadata and repository",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
+					Name:    "test-registry-meta",
+					RegType: sqlc.RegistryTypeLOCAL,
+				})
+				require.NoError(t, err)
+
+				reg, err := queries.GetRegistry(ctx, regID)
+				require.NoError(t, err)
+				return &reg
+			},
+			serverData: &upstreamv0.ServerJSON{
+				Name:        "server-with-meta",
+				Version:     "2.0.0",
+				Description: "Server with metadata",
+				Title:       "Meta Server",
+				Repository: &model.Repository{
+					URL:       "https://github.com/example/server",
+					Source:    "github",
+					ID:        "example/server",
+					Subfolder: "src",
+				},
+				Meta: &upstreamv0.ServerMeta{
+					PublisherProvided: map[string]interface{}{
+						"custom_field": "custom_value",
+					},
+				},
+			},
+			registryName: "test-registry-meta",
+			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "server-with-meta", result.Name)
+				require.Equal(t, "2.0.0", result.Version)
+				require.NotNil(t, result.Repository)
+				require.Equal(t, "https://github.com/example/server", result.Repository.URL)
+			},
+		},
+		{
+			name: "success - publish with packages and remotes",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
+					Name:    "test-registry-full",
+					RegType: sqlc.RegistryTypeLOCAL,
+				})
+				require.NoError(t, err)
+
+				reg, err := queries.GetRegistry(ctx, regID)
+				require.NoError(t, err)
+				return &reg
+			},
+			serverData: &upstreamv0.ServerJSON{
+				Name:        "server-with-packages-remotes",
+				Version:     "3.0.0",
+				Description: "Server with packages and remotes",
+				Title:       "Full Server",
+				Packages: []model.Package{
+					{
+						RegistryType:    "npm",
+						RegistryBaseURL: "https://registry.npmjs.org",
+						Identifier:      "@test/package",
+						Version:         "1.0.0",
+						RunTimeHint:     "npx",
+						FileSHA256:      "abc123",
+						Transport: model.Transport{
+							Type: "stdio",
+							URL:  "https://example.com/transport",
+						},
+						RuntimeArguments:     []model.Argument{{Name: "--yes"}},
+						PackageArguments:     []model.Argument{{Name: "--verbose"}},
+						EnvironmentVariables: []model.KeyValueInput{{Name: "NODE_ENV"}},
+					},
+				},
+				Remotes: []model.Transport{
+					{
+						Type:    "sse",
+						URL:     "https://example.com/sse",
+						Headers: []model.KeyValueInput{{Name: "Authorization"}},
+					},
+				},
+			},
+			registryName: "test-registry-full",
+			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "server-with-packages-remotes", result.Name)
+				require.Equal(t, "3.0.0", result.Version)
+				require.Len(t, result.Packages, 1)
+				require.Equal(t, "npm", result.Packages[0].RegistryType)
+				require.Equal(t, "@test/package", result.Packages[0].Identifier)
+				require.Len(t, result.Remotes, 1)
+				require.Equal(t, "sse", result.Remotes[0].Type)
+				require.Equal(t, "https://example.com/sse", result.Remotes[0].URL)
+			},
+		},
+		{
+			name: "failure - registry not found",
+			setupFunc: func(t *testing.T, _ *pgxpool.Pool) *sqlc.Registry {
+				t.Helper()
+				return nil
+			},
+			serverData: &upstreamv0.ServerJSON{
+				Name:        "test-server",
+				Version:     "1.0.0",
+				Description: "Test",
+			},
+			registryName: "nonexistent-registry",
+			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrRegistryNotFound)
+			},
+		},
+		{
+			name: "failure - not a managed registry",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				// Create a REMOTE (non-managed) registry
+				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
+					Name:    "remote-registry",
+					RegType: sqlc.RegistryTypeREMOTE,
+				})
+				require.NoError(t, err)
+
+				reg, err := queries.GetRegistry(ctx, regID)
+				require.NoError(t, err)
+				return &reg
+			},
+			serverData: &upstreamv0.ServerJSON{
+				Name:        "test-server",
+				Version:     "1.0.0",
+				Description: "Test",
+			},
+			registryName: "remote-registry",
+			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrNotManagedRegistry)
+			},
+		},
+		{
+			name: "failure - version already exists",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				// Create a LOCAL registry
+				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
+					Name:    "test-registry-dup",
+					RegType: sqlc.RegistryTypeLOCAL,
+				})
+				require.NoError(t, err)
+
+				// Insert a server version
+				now := time.Now()
+				_, err = queries.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
+					Name:        "existing-server",
+					Version:     "1.0.0",
+					RegID:       regID,
+					CreatedAt:   &now,
+					UpdatedAt:   &now,
+					Description: ptr.String("Existing"),
+				})
+				require.NoError(t, err)
+
+				reg, err := queries.GetRegistry(ctx, regID)
+				require.NoError(t, err)
+				return &reg
+			},
+			serverData: &upstreamv0.ServerJSON{
+				Name:        "existing-server",
+				Version:     "1.0.0",
+				Description: "Duplicate",
+			},
+			registryName: "test-registry-dup",
+			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrVersionAlreadyExists)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			// Setup registry if needed
+			if tt.setupFunc != nil {
+				tt.setupFunc(t, svc.pool)
+			}
+
+			// Call PublishServerVersion
+			result, err := svc.PublishServerVersion(
+				context.Background(),
+				service.WithRegistryName[service.PublishServerVersionOptions](tt.registryName),
+				service.WithServerData(tt.serverData),
+			)
+
+			tt.validateFunc(t, result, err)
 		})
 	}
 }
