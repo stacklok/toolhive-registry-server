@@ -42,3 +42,6 @@ go.work.sum
 
 # data folder created by local examples
 data/
+
+# Local config file path
+config.local.yaml
