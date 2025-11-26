@@ -30,7 +30,7 @@ func singleProviderConfig() []providerConfig {
 func TestNewMultiProviderMiddleware_EmptyProviders(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewMultiProviderMiddleware(context.Background(), nil, "", "", DefaultValidatorFactory)
+	_, err := newMultiProviderMiddleware(context.Background(), nil, "", "", DefaultValidatorFactory)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "at least one provider must be configured")
 }
@@ -41,7 +41,7 @@ func TestMultiProviderMiddleware_Middleware(t *testing.T) {
 	tests := []struct {
 		name       string
 		authHeader string
-		setupMock  func(*mocks.MockTokenValidatorInterface)
+		setupMock  func(*mocks.MocktokenValidatorInterface)
 		wantStatus int
 		wantCalled bool
 	}{
@@ -66,7 +66,7 @@ func TestMultiProviderMiddleware_Middleware(t *testing.T) {
 		{
 			name:       "valid token",
 			authHeader: "Bearer valid-token",
-			setupMock: func(m *mocks.MockTokenValidatorInterface) {
+			setupMock: func(m *mocks.MocktokenValidatorInterface) {
 				m.EXPECT().ValidateToken(gomock.Any(), "valid-token").
 					Return(map[string]any{"sub": "user"}, nil)
 			},
@@ -76,7 +76,7 @@ func TestMultiProviderMiddleware_Middleware(t *testing.T) {
 		{
 			name:       "invalid token",
 			authHeader: "Bearer bad-token",
-			setupMock: func(m *mocks.MockTokenValidatorInterface) {
+			setupMock: func(m *mocks.MocktokenValidatorInterface) {
 				m.EXPECT().ValidateToken(gomock.Any(), "bad-token").
 					Return(nil, errors.New("validation failed"))
 			},
@@ -90,17 +90,17 @@ func TestMultiProviderMiddleware_Middleware(t *testing.T) {
 			t.Parallel()
 
 			ctrl := gomock.NewController(t)
-			mockValidator := mocks.NewMockTokenValidatorInterface(ctrl)
+			mockValidator := mocks.NewMocktokenValidatorInterface(ctrl)
 			if tt.setupMock != nil {
 				tt.setupMock(mockValidator)
 			}
 
-			m, err := NewMultiProviderMiddleware(
+			m, err := newMultiProviderMiddleware(
 				context.Background(),
 				singleProviderConfig(),
 				"https://api.example.com",
 				"",
-				func(_ context.Context, _ thvauth.TokenValidatorConfig) (TokenValidatorInterface, error) {
+				func(_ context.Context, _ thvauth.TokenValidatorConfig) (tokenValidatorInterface, error) {
 					return mockValidator, nil
 				},
 			)
@@ -138,8 +138,8 @@ func TestMultiProviderMiddleware_SequentialFallback(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	// Two different providers with different issuers
-	keycloakMock := mocks.NewMockTokenValidatorInterface(ctrl)
-	googleMock := mocks.NewMockTokenValidatorInterface(ctrl)
+	keycloakMock := mocks.NewMocktokenValidatorInterface(ctrl)
+	googleMock := mocks.NewMocktokenValidatorInterface(ctrl)
 
 	// First provider (Keycloak) fails, second (Google) succeeds
 	gomock.InOrder(
@@ -170,14 +170,14 @@ func TestMultiProviderMiddleware_SequentialFallback(t *testing.T) {
 
 	// Factory returns the correct mock based on call order
 	callIdx := 0
-	validatorMocks := []*mocks.MockTokenValidatorInterface{keycloakMock, googleMock}
+	validatorMocks := []*mocks.MocktokenValidatorInterface{keycloakMock, googleMock}
 
-	m, err := NewMultiProviderMiddleware(
+	m, err := newMultiProviderMiddleware(
 		context.Background(),
 		providers,
 		"",
 		"",
-		func(_ context.Context, _ thvauth.TokenValidatorConfig) (TokenValidatorInterface, error) {
+		func(_ context.Context, _ thvauth.TokenValidatorConfig) (tokenValidatorInterface, error) {
 			mock := validatorMocks[callIdx]
 			callIdx++
 			return mock, nil
@@ -275,16 +275,16 @@ func TestMultiProviderMiddleware_WWWAuthenticate(t *testing.T) {
 			t.Parallel()
 
 			ctrl := gomock.NewController(t)
-			mockValidator := mocks.NewMockTokenValidatorInterface(ctrl)
+			mockValidator := mocks.NewMocktokenValidatorInterface(ctrl)
 			mockValidator.EXPECT().ValidateToken(gomock.Any(), gomock.Any()).
 				Return(nil, errors.New("fail")).AnyTimes()
 
-			m, err := NewMultiProviderMiddleware(
+			m, err := newMultiProviderMiddleware(
 				context.Background(),
 				singleProviderConfig(),
 				tt.resourceURL,
 				tt.realm,
-				func(_ context.Context, _ thvauth.TokenValidatorConfig) (TokenValidatorInterface, error) {
+				func(_ context.Context, _ thvauth.TokenValidatorConfig) (tokenValidatorInterface, error) {
 					return mockValidator, nil
 				},
 			)

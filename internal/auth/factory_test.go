@@ -23,14 +23,14 @@ func TestNewAuthMiddleware(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	// Mock validator factory for OAuth tests
-	mockValidatorFactory := func(_ context.Context, _ thvauth.TokenValidatorConfig) (TokenValidatorInterface, error) {
-		return mocks.NewMockTokenValidatorInterface(ctrl), nil
+	mockValidatorFactory := func(_ context.Context, _ thvauth.TokenValidatorConfig) (tokenValidatorInterface, error) {
+		return mocks.NewMocktokenValidatorInterface(ctrl), nil
 	}
 
 	tests := []struct {
 		name             string
 		config           *config.AuthConfig
-		validatorFactory ValidatorFactory
+		validatorFactory validatorFactory
 		wantErr          string
 		wantHandler      bool // whether handler should be non-nil
 	}{
@@ -119,9 +119,9 @@ func TestNewAuthMiddleware_ClientSecretFile(t *testing.T) {
 
 		ctrl := gomock.NewController(t)
 		var capturedConfig thvauth.TokenValidatorConfig
-		capturingFactory := func(_ context.Context, cfg thvauth.TokenValidatorConfig) (TokenValidatorInterface, error) {
+		capturingFactory := func(_ context.Context, cfg thvauth.TokenValidatorConfig) (tokenValidatorInterface, error) {
 			capturedConfig = cfg
-			return mocks.NewMockTokenValidatorInterface(ctrl), nil
+			return mocks.NewMocktokenValidatorInterface(ctrl), nil
 		}
 
 		// Create temp file with secret
@@ -154,8 +154,8 @@ func TestNewAuthMiddleware_ClientSecretFile(t *testing.T) {
 		t.Parallel()
 
 		ctrl := gomock.NewController(t)
-		mockFactory := func(_ context.Context, _ thvauth.TokenValidatorConfig) (TokenValidatorInterface, error) {
-			return mocks.NewMockTokenValidatorInterface(ctrl), nil
+		mockFactory := func(_ context.Context, _ thvauth.TokenValidatorConfig) (tokenValidatorInterface, error) {
+			return mocks.NewMocktokenValidatorInterface(ctrl), nil
 		}
 
 		cfg := &config.AuthConfig{
@@ -187,7 +187,7 @@ func TestAnonymousMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	wrapped := AnonymousMiddleware(handler)
+	wrapped := anonymousMiddleware(handler)
 
 	req := httptest.NewRequest("GET", "/test", nil)
 	rr := httptest.NewRecorder()

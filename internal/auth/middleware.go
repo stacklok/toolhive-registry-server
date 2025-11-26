@@ -13,31 +13,22 @@ import (
 	"github.com/stacklok/toolhive/pkg/logger"
 )
 
-// Domain errors for authentication
-var (
-	// ErrAllProvidersFailed indicates all providers failed during sequential fallback
-	ErrAllProvidersFailed = errors.New("all providers failed to validate token")
-
-	// ErrMissingToken indicates the authorization header is missing
-	ErrMissingToken = errors.New("authorization header missing")
-
-	// ErrInvalidTokenFormat indicates the token format is invalid (not Bearer)
-	ErrInvalidTokenFormat = errors.New("invalid bearer token format")
-)
+// errAllProvidersFailed indicates all providers failed during sequential fallback
+var errAllProvidersFailed = errors.New("all providers failed to validate token")
 
 // RFC 6750 Section 3 error codes
 const (
-	// ErrorCodeInvalidRequest indicates the request is missing a required parameter,
+	// errorCodeInvalidRequest indicates the request is missing a required parameter,
 	// includes an unsupported parameter or parameter value, or is otherwise malformed.
-	ErrorCodeInvalidRequest = "invalid_request"
+	errorCodeInvalidRequest = "invalid_request"
 
-	// ErrorCodeInvalidToken indicates the access token provided is expired, revoked,
+	// errorCodeInvalidToken indicates the access token provided is expired, revoked,
 	// malformed, or invalid for other reasons.
-	ErrorCodeInvalidToken = "invalid_token"
+	errorCodeInvalidToken = "invalid_token"
 )
 
-// ValidationResult contains the outcome of token validation
-type ValidationResult struct {
+// validationResult contains the outcome of token validation
+type validationResult struct {
 	// Provider is the name of the provider that validated the token
 	Provider string
 
@@ -45,72 +36,72 @@ type ValidationResult struct {
 	Error error
 
 	// Errors contains all errors from sequential fallback (for debugging)
-	Errors []ProviderError
+	Errors []providerError
 }
 
-// ProviderError pairs a provider name with its validation error
-type ProviderError struct {
+// providerError pairs a provider name with its validation error
+type providerError struct {
 	Provider string
 	Error    error
 }
 
-// NamedValidator pairs a validator with its provider metadata
-type NamedValidator struct {
+// namedValidator pairs a validator with its provider metadata
+type namedValidator struct {
 	Name      string
-	Validator TokenValidatorInterface
+	Validator tokenValidatorInterface
 }
 
-// DefaultRealm is the default protection space identifier
-const DefaultRealm = "mcp-registry"
+// defaultRealm is the default protection space identifier
+const defaultRealm = "mcp-registry"
 
-// ValidatorFactory creates token validators from configuration.
-type ValidatorFactory func(ctx context.Context, cfg auth.TokenValidatorConfig) (TokenValidatorInterface, error)
+// validatorFactory creates token validators from configuration.
+type validatorFactory func(ctx context.Context, cfg auth.TokenValidatorConfig) (tokenValidatorInterface, error)
 
 // DefaultValidatorFactory uses the real ToolHive token validator.
-var DefaultValidatorFactory ValidatorFactory = func(
+var DefaultValidatorFactory validatorFactory = func(
 	ctx context.Context,
 	cfg auth.TokenValidatorConfig,
-) (TokenValidatorInterface, error) {
+) (tokenValidatorInterface, error) {
 	return auth.NewTokenValidator(ctx, cfg)
 }
 
-// MultiProviderMiddleware handles authentication with multiple OAuth/OIDC providers.
-type MultiProviderMiddleware struct {
-	validators  []NamedValidator
+// multiProviderMiddleware handles authentication with multiple OAuth/OIDC providers.
+type multiProviderMiddleware struct {
+	validators  []namedValidator
 	resourceURL string
 	realm       string
 }
 
-// NewMultiProviderMiddleware creates a new multi-provider authentication middleware.
-func NewMultiProviderMiddleware(
+// newMultiProviderMiddleware creates a new multi-provider authentication middleware.
+func newMultiProviderMiddleware(
 	ctx context.Context,
 	providers []providerConfig,
 	resourceURL string,
 	realm string,
-	validatorFactory ValidatorFactory,
-) (*MultiProviderMiddleware, error) {
+	factory validatorFactory,
+) (*multiProviderMiddleware, error) {
 	if len(providers) == 0 {
 		return nil, errors.New("at least one provider must be configured")
 	}
 
 	// Apply default realm if not specified
 	if realm == "" {
-		realm = DefaultRealm
+		realm = defaultRealm
 	}
 
-	m := &MultiProviderMiddleware{
-		validators:  make([]NamedValidator, 0, len(providers)),
+	m := &multiProviderMiddleware{
+		validators:  make([]namedValidator, 0, len(providers)),
 		resourceURL: resourceURL,
 		realm:       realm,
 	}
 
 	for _, pc := range providers {
-		validator, err := validatorFactory(ctx, pc.ValidatorConfig)
+		validator, err := factory(ctx, pc.ValidatorConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create validator for provider %q: %w", pc.Name, err)
 		}
 
-		nv := NamedValidator{
+		nv := namedValidator{
 			Name:      pc.Name,
 			Validator: validator,
 		}
@@ -121,19 +112,19 @@ func NewMultiProviderMiddleware(
 }
 
 // Middleware returns an HTTP middleware function that performs authentication.
-func (m *MultiProviderMiddleware) Middleware(next http.Handler) http.Handler {
+func (m *multiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, err := auth.ExtractBearerToken(r)
 		if err != nil {
 			logger.Debugf("auth: token extraction failed: %v", err)
-			m.writeError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, "missing or malformed authorization header")
+			m.writeError(w, http.StatusUnauthorized, errorCodeInvalidRequest, "missing or malformed authorization header")
 			return
 		}
 
 		result := m.validateToken(r.Context(), token)
 		if result.Error != nil {
 			logger.Debugf("auth: token validation failed: %v", result.Error)
-			m.writeError(w, http.StatusUnauthorized, ErrorCodeInvalidToken, "token validation failed")
+			m.writeError(w, http.StatusUnauthorized, errorCodeInvalidToken, "token validation failed")
 			return
 		}
 
@@ -144,13 +135,13 @@ func (m *MultiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 }
 
 // validateToken attempts to validate the token by iterating through providers sequentially.
-func (m *MultiProviderMiddleware) validateToken(ctx context.Context, token string) ValidationResult {
-	providerErrors := make([]ProviderError, 0, len(m.validators))
+func (m *multiProviderMiddleware) validateToken(ctx context.Context, token string) validationResult {
+	providerErrors := make([]providerError, 0, len(m.validators))
 
 	for _, nv := range m.validators {
 		_, err := nv.Validator.ValidateToken(ctx, token)
 		if err != nil {
-			providerErrors = append(providerErrors, ProviderError{
+			providerErrors = append(providerErrors, providerError{
 				Provider: nv.Name,
 				Error:    err,
 			})
@@ -158,14 +149,14 @@ func (m *MultiProviderMiddleware) validateToken(ctx context.Context, token strin
 			continue
 		}
 
-		return ValidationResult{
+		return validationResult{
 			Provider: nv.Name,
 			Errors:   providerErrors,
 		}
 	}
 
-	return ValidationResult{
-		Error:  ErrAllProvidersFailed,
+	return validationResult{
+		Error:  errAllProvidersFailed,
 		Errors: providerErrors,
 	}
 }
@@ -186,8 +177,8 @@ func sanitizeHeaderValue(s string) string {
 }
 
 // writeError writes a JSON error response with RFC 6750 compliant WWW-Authenticate header.
-// The errorCode parameter should be one of the RFC 6750 error codes (invalid_request, invalid_token).
-func (m *MultiProviderMiddleware) writeError(w http.ResponseWriter, status int, errorCode, description string) {
+// The errCode parameter should be one of the RFC 6750 error codes (invalid_request, invalid_token).
+func (m *multiProviderMiddleware) writeError(w http.ResponseWriter, status int, errCode, description string) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Sanitize values to prevent header injection
@@ -197,11 +188,11 @@ func (m *MultiProviderMiddleware) writeError(w http.ResponseWriter, status int, 
 
 	// Build WWW-Authenticate header with error codes per RFC 6750 Section 3
 	wwwAuth := fmt.Sprintf(`Bearer realm="%s", error="%s", error_description="%s"`,
-		realm, errorCode, sanitizedDescription)
+		realm, errCode, sanitizedDescription)
 	if resourceURL != "" {
 		wwwAuth = fmt.Sprintf(
 			`Bearer realm="%s", error="%s", error_description="%s", resource_metadata="%s/.well-known/oauth-protected-resource"`,
-			realm, errorCode, sanitizedDescription, resourceURL)
+			realm, errCode, sanitizedDescription, resourceURL)
 	}
 	w.Header().Set("WWW-Authenticate", wwwAuth)
 	w.WriteHeader(status)
