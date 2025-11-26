@@ -173,20 +173,27 @@ database:
   # Database server port (Required)
   port: 5432
 
-  # Database username (Required)
+  # Application database username (Required)
+  # This user has limited privileges: SELECT, INSERT, UPDATE, DELETE
   user: thv_user
 
-  # Password file path (Recommended for production)
-  # The file should contain only the password (trailing whitespace is trimmed)
-  # This is more secure than environment variables or inline passwords
-  passwordFile: /run/secrets/db_password
-
-  # Alternative: Use THV_DATABASE_PASSWORD environment variable
-  # If passwordFile is not set, the application will check this env var
-  # export THV_DATABASE_PASSWORD="your-password-here"
+  # Migration database username (Optional)
+  # This user has elevated privileges: CREATE, ALTER, DROP
+  # Used for running schema migrations on startup
+  # If not set, defaults to the regular 'user' for backward compatibility
+  migrationUser: thv_migrator
 
   # Database name (Required)
   database: toolhive_registry
+
+  # Password management via pgpass file (Recommended)
+  # The pgpass file provides credentials for both application and migration users
+  # Format: hostname:port:database:username:password
+  # Example ~/.pgpass contents:
+  #   localhost:5432:toolhive_registry:thv_user:app_password
+  #   localhost:5432:toolhive_registry:thv_migrator:migration_password
+  # Set PGPASSFILE environment variable to use a custom location
+  # See: https://www.postgresql.org/docs/current/libpq-pgpass.html
 
   # SSL mode (Optional, defaults to "require")
   # Options: disable, require, verify-ca, verify-full

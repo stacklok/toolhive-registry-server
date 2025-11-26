@@ -1,17 +1,27 @@
 # ToolHive Registry API Server - Docker Compose Configuration
 #
 # Services:
-# 1. postgres - PostgreSQL 18 database with separate users for migrations and operations
+# 1. postgres - PostgreSQL 18 database
 # 2. registry-api - Main API server (runs migrations on startup)
 #
 # Startup flow:
-# postgres (healthy) → registry-api (runs migrations as db_migrator, then operates as db_app)
-#
-# Database Users:
-# - db_migrator: Migration user with elevated privileges (CREATE, ALTER, DROP)
-# - db_app: Application user with limited privileges (SELECT, INSERT, UPDATE, DELETE)
+# postgres (healthy) -> registry-api (runs migrations automatically on startup)
 #
 # Migrations are embedded in the binary and run automatically on startup.
+#
+# Two-User Security Model:
+# This setup uses two separate database users for security:
+# - db_app: Application user with limited privileges (SELECT, INSERT, UPDATE, DELETE)
+# - db_migrator: Migration user with elevated privileges (CREATE, ALTER, DROP)
+#
+# Password Management (pgpass file):
+# Passwords are provided via a pgpass file mounted at /root/.pgpass
+# The pgpass file format is: hostname:port:database:username:password
+# Example contents:
+#   postgres:5432:registry:db_app:app_password
+#   postgres:5432:registry:db_migrator:migration_password
+#
+# See: https://www.postgresql.org/docs/current/libpq-pgpass.html
 
 services:
   postgres:
@@ -49,11 +59,16 @@ services:
       - ./examples/config-docker.yaml:/config.yaml:ro
       - ./examples/registry-sample.json:/registry-sample.json:ro
       - registry_data:/app/data
+      # Mount pgpass file for database credentials
+      # The file should contain entries for both db_app and db_migrator users
+      # Mounted to user 1001's home directory
+      - ./docker/pgpass:/home/appuser/.pgpass:ro
     command: ["serve", "--config", "/config.yaml", "--address", ":8080"]
     environment:
       - LOG_LEVEL=debug
-      - THV_DATABASE_PASSWORD=app_password              # Application user password
-      - THV_DATABASE_MIGRATION_PASSWORD=migration_password  # Migration user password
+      # Point to the pgpass file for PostgreSQL authentication
+      - PGPASSFILE=/home/appuser/.pgpass
+      # No THV_DATABASE_PASSWORD - using pgpass file instead
     networks:
       - registry-network
     restart: unless-stopped

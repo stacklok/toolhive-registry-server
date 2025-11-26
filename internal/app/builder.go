@@ -365,11 +365,8 @@ func buildDatabaseConnectionPool(
 		return nil, fmt.Errorf("database configuration is required for database storage type")
 	}
 
-	// Get connection string from config
-	connStr, err := cfg.Database.GetConnectionString()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get database connection string: %w", err)
-	}
+	// Get connection string from config (for application user)
+	connStr := cfg.Database.GetConnectionString()
 
 	// Parse connection string into config
 	poolConfig, err := pgxpool.ParseConfig(connStr)

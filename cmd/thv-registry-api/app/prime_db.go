@@ -118,10 +118,7 @@ func executePrimeSQL(ctx context.Context, primeSQL string, configPath string) er
 		return fmt.Errorf("database configuration is required")
 	}
 
-	connString, err := cfg.Database.GetMigrationConnectionString()
-	if err != nil {
-		return fmt.Errorf("failed to get migration connection string: %w", err)
-	}
+	connString := cfg.Database.GetMigrationConnectionString()
 
 	conn, err := pgx.Connect(ctx, connString)
 	if err != nil {

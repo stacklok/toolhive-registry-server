@@ -1,16 +1,26 @@
 # Example configuration for local development with PostgreSQL database
 #
 # This configuration is optimized for local development with a PostgreSQL database.
-# It uses environment variables for the password and disables SSL for simplicity.
+# It uses pgpass file for password management and disables SSL for simplicity.
+#
+# Two-User Security Model:
+# This configuration uses two separate database users for security:
+#   - thv_user: Application user with limited privileges (SELECT, INSERT, UPDATE, DELETE)
+#   - thv_migrator: Migration user with elevated privileges (CREATE, ALTER, DROP)
 #
 # Prerequisites:
 #   1. PostgreSQL running locally (or via docker-compose)
 #   2. Database created: createdb toolhive_registry
-#   3. User created with password
-#   4. Environment variable set: export THV_DATABASE_PASSWORD="your-password"
+#   3. Users created with appropriate privileges
+#   4. pgpass file created with credentials for both users
+#
+# Setup pgpass file (~/.pgpass or set PGPASSFILE env var):
+#   localhost:5432:toolhive_registry:thv_user:your_app_password
+#   localhost:5432:toolhive_registry:thv_migrator:your_migration_password
+#
+# Make sure to set permissions: chmod 600 ~/.pgpass
 #
 # Usage:
-#   export THV_DATABASE_PASSWORD="devpassword"
 #   thv-registry-api serve --config examples/config-database-dev.yaml
 #
 # Note: Database migrations run automatically when the server starts
@@ -36,14 +46,20 @@ registries:
       interval: "5m"
 
 # PostgreSQL database configuration for development
+# Uses two-user security model: separate users for operations and migrations
 database:
   # Local PostgreSQL instance
   host: localhost
   port: 5432
 
-  # Database credentials
+  # Application user (limited privileges)
+  # Password provided via pgpass file
   user: thv_user
-  # Password from environment variable: THV_DATABASE_PASSWORD
+
+  # Migration user (elevated privileges for schema changes)
+  # Optional: defaults to 'user' if not set
+  # Password provided via pgpass file
+  migrationUser: thv_migrator
 
   # Database name
   database: toolhive_registry

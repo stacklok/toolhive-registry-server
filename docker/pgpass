@@ -1,0 +1,13 @@
+# PostgreSQL password file (pgpass)
+# Format: hostname:port:database:username:password
+# See: https://www.postgresql.org/docs/current/libpq-pgpass.html
+#
+# This file provides credentials for the two-user security model:
+# - db_app: Application user (limited privileges)
+# - db_migrator: Migration user (elevated privileges)
+#
+# IMPORTANT: This file must have permissions 600 (chmod 600 pgpass)
+# Docker will mount it read-only, but locally it should be protected.
+
+postgres:5432:registry:db_app:app_password
+postgres:5432:registry:db_migrator:migration_password

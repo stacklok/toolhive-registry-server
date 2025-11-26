@@ -355,22 +355,13 @@ type DatabaseConfig struct {
 	// Port is the database server port
 	Port int `yaml:"port"`
 
-	// User is the database username for normal operations
+	// User is the database username for normal operations (SELECT, INSERT, UPDATE, DELETE)
 	User string `yaml:"user"`
 
-	// PasswordFile is the path to a file containing the database password
-	// This is the recommended approach for production deployments
-	// The file should contain only the password with optional trailing whitespace
-	PasswordFile string `yaml:"passwordFile,omitempty"`
-
-	// MigrationUser is the database username for running migrations
-	// This user should have elevated privileges for schema changes
-	// If not specified, falls back to User
+	// MigrationUser is the database username for schema migrations (optional)
+	// This user typically has elevated privileges (CREATE, ALTER, DROP)
+	// If not specified, defaults to User for backward compatibility
 	MigrationUser string `yaml:"migrationUser,omitempty"`
-
-	// MigrationPasswordFile is the path to a file containing the migration user's password
-	// If not specified, falls back to PasswordFile
-	MigrationPasswordFile string `yaml:"migrationPasswordFile,omitempty"`
 
 	// Database is the database name
 	Database string `yaml:"database"`
@@ -388,70 +379,26 @@ type DatabaseConfig struct {
 	ConnMaxLifetime string `yaml:"connMaxLifetime,omitempty"`
 }
 
-// GetPassword returns the database password for normal operations using the following priority:
-// 1. Read from PasswordFile if specified
-// 2. Read from THV_DATABASE_PASSWORD environment variable
+// GetPassword returns the database password for the application user.
+// Returns empty string to let pgx use PGPASSFILE env var or ~/.pgpass.
+// This is the recommended approach - use a pgpass file to provide credentials
+// for both the application user and the migration user.
 //
-// The password from file will have leading/trailing whitespace trimmed.
-func (d *DatabaseConfig) GetPassword() (string, error) {
-	// Priority 1: Read from file if specified
-	if d.PasswordFile != "" {
-		// Use filepath.Clean to prevent path traversal attacks
-		cleanPath := filepath.Clean(d.PasswordFile)
-
-		data, err := os.ReadFile(cleanPath)
-		if err != nil {
-			return "", fmt.Errorf("failed to read password from file %s: %w", d.PasswordFile, err)
-		}
-
-		// Trim whitespace (including newlines) from file content
-		password := strings.TrimSpace(string(data))
-		return password, nil
-	}
-
-	// Priority 2: Check environment variable
-	if envPassword := os.Getenv("THV_DATABASE_PASSWORD"); envPassword != "" {
-		return envPassword, nil
-	}
-
-	return "", fmt.Errorf(
-		"no database password configured: set passwordFile or THV_DATABASE_PASSWORD environment variable",
-	)
+// The pgpass file format is: hostname:port:database:username:password
+// Example:
+//
+//	localhost:5432:registry:db_app:app_password
+//	localhost:5432:registry:db_migrator:migration_password
+//
+// See: https://www.postgresql.org/docs/current/libpq-pgpass.html
+func (*DatabaseConfig) GetPassword() string {
+	// Return empty string to allow pgx to use PGPASSFILE or default ~/.pgpass
+	// The pgx driver will automatically check these if no password is provided
+	return ""
 }
 
-// GetMigrationPassword returns the migration user password using the following priority:
-// 1. Read from MigrationPasswordFile if specified
-// 2. Read from THV_DATABASE_MIGRATION_PASSWORD environment variable
-// 3. Fall back to GetPassword() (regular user password)
-//
-// The password from file will have leading/trailing whitespace trimmed.
-func (d *DatabaseConfig) GetMigrationPassword() (string, error) {
-	// Priority 1: Read from migration password file if specified
-	if d.MigrationPasswordFile != "" {
-		// Use filepath.Clean to prevent path traversal attacks
-		cleanPath := filepath.Clean(d.MigrationPasswordFile)
-
-		data, err := os.ReadFile(cleanPath)
-		if err != nil {
-			return "", fmt.Errorf("failed to read migration password from file %s: %w", d.MigrationPasswordFile, err)
-		}
-
-		// Trim whitespace (including newlines) from file content
-		password := strings.TrimSpace(string(data))
-		return password, nil
-	}
-
-	// Priority 2: Check migration-specific environment variable
-	if envPassword := os.Getenv("THV_DATABASE_MIGRATION_PASSWORD"); envPassword != "" {
-		return envPassword, nil
-	}
-
-	// Priority 3: Fall back to regular password
-	return d.GetPassword()
-}
-
-// GetMigrationUser returns the username for migrations.
-// If MigrationUser is specified, returns that; otherwise falls back to User.
+// GetMigrationUser returns the database user for running migrations.
+// If MigrationUser is not set, returns the regular User for backward compatibility.
 func (d *DatabaseConfig) GetMigrationUser() string {
 	if d.MigrationUser != "" {
 		return d.MigrationUser
@@ -459,62 +406,55 @@ func (d *DatabaseConfig) GetMigrationUser() string {
 	return d.User
 }
 
-// GetConnectionString builds a PostgreSQL connection string for normal operations
-// with proper password handling. The password is URL-escaped to handle special characters safely.
-func (d *DatabaseConfig) GetConnectionString() (string, error) {
-	password, err := d.GetPassword()
-	if err != nil {
-		return "", err
-	}
-
-	sslMode := d.SSLMode
-	if sslMode == "" {
-		sslMode = "require"
-	}
-
-	// URL-escape the password to handle special characters
-	escapedPassword := url.QueryEscape(password)
-
-	connString := fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		d.User,
-		escapedPassword,
-		d.Host,
-		d.Port,
-		d.Database,
-		sslMode,
-	)
-
-	return connString, nil
+// GetMigrationPassword returns the database password for the migration user.
+// Returns empty string to let pgx use PGPASSFILE env var or ~/.pgpass.
+// This allows different passwords for app user and migration user via pgpass.
+func (*DatabaseConfig) GetMigrationPassword() string {
+	// Return empty string to allow pgx to use PGPASSFILE or default ~/.pgpass
+	return ""
 }
 
-// GetMigrationConnectionString builds a PostgreSQL connection string for migrations
-// using the migration user credentials. The password is URL-escaped to handle special characters safely.
-func (d *DatabaseConfig) GetMigrationConnectionString() (string, error) {
-	password, err := d.GetMigrationPassword()
-	if err != nil {
-		return "", err
-	}
-
+// GetConnectionString builds a PostgreSQL connection string for the application user.
+// The connection string omits the password, allowing pgx to look up the password
+// from PGPASSFILE or ~/.pgpass.
+func (d *DatabaseConfig) GetConnectionString() string {
 	sslMode := d.SSLMode
 	if sslMode == "" {
 		sslMode = "require"
 	}
 
-	// URL-escape the password to handle special characters
-	escapedPassword := url.QueryEscape(password)
-
-	connString := fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		d.GetMigrationUser(),
-		escapedPassword,
+	// No password in connection string - pgx will use PGPASSFILE or ~/.pgpass
+	return fmt.Sprintf(
+		"postgres://%s@%s:%d/%s?sslmode=%s",
+		d.User,
 		d.Host,
 		d.Port,
 		d.Database,
 		sslMode,
 	)
+}
 
-	return connString, nil
+// GetMigrationConnectionString builds a PostgreSQL connection string for the migration user.
+// Uses GetMigrationUser() which defaults to User if MigrationUser is not set.
+// The connection string omits the password, allowing pgx to look up the password
+// from PGPASSFILE or ~/.pgpass.
+func (d *DatabaseConfig) GetMigrationConnectionString() string {
+	sslMode := d.SSLMode
+	if sslMode == "" {
+		sslMode = "require"
+	}
+
+	migrationUser := d.GetMigrationUser()
+
+	// No password in connection string - pgx will use PGPASSFILE or ~/.pgpass
+	return fmt.Sprintf(
+		"postgres://%s@%s:%d/%s?sslmode=%s",
+		migrationUser,
+		d.Host,
+		d.Port,
+		d.Database,
+		sslMode,
+	)
 }
 
 // LoadConfig loads and parses configuration from a YAML file

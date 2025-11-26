@@ -33,11 +33,15 @@ FROM index.docker.io/library/alpine@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be50
 COPY --from=builder /workspace/main /thv-registry-api
 COPY LICENSE /licenses/LICENSE
 
-# Create working directory and data directory with proper permissions
-RUN mkdir -p /app/data && \
-    chown -R 1001:1001 /app
+# Create working directory, data directory, and home directory for user 1001
+# User 1001 needs a home directory for the pgpass file
+RUN mkdir -p /app/data /home/appuser && \
+    chown -R 1001:1001 /app /home/appuser
 
 WORKDIR /app
+
+# Set HOME environment variable for user 1001
+ENV HOME=/home/appuser
 
 USER 1001
 
