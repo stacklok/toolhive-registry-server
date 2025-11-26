@@ -44,7 +44,7 @@ func TestFileStorageManager_StoreAndGet(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, retrieved)
 	require.Equal(t, UpstreamRegistry.Version, retrieved.Version)
-	require.Equal(t, UpstreamRegistry.LastUpdated, retrieved.LastUpdated)
+	require.Equal(t, UpstreamRegistry.Meta.LastUpdated, retrieved.Meta.LastUpdated)
 }
 
 func TestFileStorageManager_Delete(t *testing.T) {

@@ -53,7 +53,7 @@ type FetchResult struct {
 func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string, format string) *FetchResult {
 	serverCount := 0
 	if reg != nil {
-		serverCount = len(reg.Servers)
+		serverCount = len(reg.Data.Servers)
 	}
 
 	return &FetchResult{

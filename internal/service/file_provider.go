@@ -5,9 +5,11 @@ import (
 	"context"
 	"fmt"
 
+	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 )
 
@@ -42,16 +44,43 @@ func (p *fileRegistryDataProvider) GetRegistryData(ctx context.Context) (*toolhi
 	}
 
 	// Merge all registries into a single UpstreamRegistry
-	merged := &toolhivetypes.UpstreamRegistry{}
+	merged := &toolhivetypes.UpstreamRegistry{
+		Schema:  registry.UpstreamRegistrySchemaURL, // Use default schema URL
+		Version: registry.UpstreamRegistryVersion,   // Use default version
+		Meta:    toolhivetypes.UpstreamMeta{},
+		Data: toolhivetypes.UpstreamData{
+			Servers: make([]upstreamv0.ServerJSON, 0),
+			Groups:  make([]toolhivetypes.UpstreamGroup, 0),
+		},
+	}
 
+	firstRegistry := true
 	for registryName, reg := range allRegistries {
 		if reg == nil {
 			continue
 		}
+
+		// Copy metadata from first non-nil registry, but use defaults if empty
+		if firstRegistry {
+			// Use registry's schema if provided, otherwise keep default
+			if reg.Schema != "" {
+				merged.Schema = reg.Schema
+			}
+			// Use registry's version if provided, otherwise keep default
+			if reg.Version != "" {
+				merged.Version = reg.Version
+			}
+			merged.Meta = reg.Meta
+			firstRegistry = false
+		}
+
 		// Add all servers from this registry
 		// TODO: Consider adding registry source metadata to each server entry
 		_ = registryName // Will be used for metadata in future
-		merged.Servers = append(merged.Servers, reg.Servers...)
+		merged.Data.Servers = append(merged.Data.Servers, reg.Data.Servers...)
+
+		// Merge groups if any
+		merged.Data.Groups = append(merged.Data.Groups, reg.Data.Groups...)
 	}
 
 	return merged, nil

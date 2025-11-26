@@ -76,9 +76,13 @@ func TestRegistryRouter(t *testing.T) {
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	// Set up expectations for all routes
 	mockSvc.EXPECT().GetRegistry(gomock.Any()).Return(&toolhivetypes.UpstreamRegistry{
-		Version:     "1.0.0",
-		LastUpdated: time.Now().Format(time.RFC3339),
-		Servers:     []upstreamv0.ServerJSON{},
+		Version: "1.0.0",
+		Meta: toolhivetypes.UpstreamMeta{
+			LastUpdated: time.Now().Format(time.RFC3339),
+		},
+		Data: toolhivetypes.UpstreamData{
+			Servers: []upstreamv0.ServerJSON{},
+		},
 	}, "test", nil).AnyTimes()
 	router := v0.Router(mockSvc)
 

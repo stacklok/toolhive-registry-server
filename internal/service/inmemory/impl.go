@@ -10,6 +10,7 @@ import (
 	"github.com/stacklok/toolhive/pkg/logger"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
@@ -81,7 +82,7 @@ func (s *regSvc) loadRegistryData(ctx context.Context) error {
 	s.lastFetch = time.Now()
 
 	// Count total servers (both container and remote)
-	totalServers := len(data.Servers)
+	totalServers := len(data.Data.Servers)
 	logger.Infof("Loaded registry data: %d servers", totalServers)
 	return nil
 }
@@ -133,9 +134,15 @@ func (s *regSvc) GetRegistry(ctx context.Context) (*toolhivetypes.UpstreamRegist
 	if s.registryData == nil {
 		// Return an empty registry if no data is loaded
 		return &toolhivetypes.UpstreamRegistry{
-			Version:     "1.0.0",
-			LastUpdated: time.Now().Format(time.RFC3339),
-			Servers:     make([]upstreamv0.ServerJSON, 0),
+			Schema:  registry.UpstreamRegistrySchemaURL,
+			Version: registry.UpstreamRegistryVersion,
+			Meta: toolhivetypes.UpstreamMeta{
+				LastUpdated: time.Now().Format(time.RFC3339),
+			},
+			Data: toolhivetypes.UpstreamData{
+				Servers: make([]upstreamv0.ServerJSON, 0),
+				Groups:  make([]toolhivetypes.UpstreamGroup, 0),
+			},
 		}, source, nil
 	}
 
@@ -152,8 +159,8 @@ func (s *regSvc) ListServers(
 	}
 
 	if s.registryData != nil {
-		servers := make([]*upstreamv0.ServerJSON, len(s.registryData.Servers))
-		for i, server := range s.registryData.Servers {
+		servers := make([]*upstreamv0.ServerJSON, len(s.registryData.Data.Servers))
+		for i, server := range s.registryData.Data.Servers {
 			servers[i] = &server
 		}
 		return servers, nil
@@ -216,7 +223,7 @@ func (*regSvc) DeleteServerVersion(
 // getServerByNameWithName returns a server by name with name properly populated
 func (s *regSvc) getServerByName(name string) (*upstreamv0.ServerJSON, error) {
 	// Check container servers first
-	for _, server := range s.registryData.Servers {
+	for _, server := range s.registryData.Data.Servers {
 		if server.Name == name {
 			return &server, nil
 		}

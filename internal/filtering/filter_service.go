@@ -66,13 +66,19 @@ func (s *defaultFilterService) ApplyFilters(
 	}
 
 	ctxLogger.Info("Applying registry filters",
-		"originalServerCount", len(reg.Servers))
+		"originalServerCount", len(reg.Data.Servers))
 
 	// Create a new filtered registry with same metadata
 	filteredRegistry := &toolhivetypes.UpstreamRegistry{
-		Version:     reg.Version,
-		LastUpdated: reg.LastUpdated,
-		Servers:     make([]upstreamv0.ServerJSON, 0),
+		Schema:  reg.Schema,
+		Version: reg.Version,
+		Meta: toolhivetypes.UpstreamMeta{
+			LastUpdated: reg.Meta.LastUpdated,
+		},
+		Data: toolhivetypes.UpstreamData{
+			Servers: make([]upstreamv0.ServerJSON, 0),
+			Groups:  reg.Data.Groups, // Preserve groups if any
+		},
 	}
 
 	// Extract filter criteria
@@ -90,7 +96,7 @@ func (s *defaultFilterService) ApplyFilters(
 	excludedCount := 0
 
 	// Filter container servers
-	for _, server := range reg.Servers {
+	for _, server := range reg.Data.Servers {
 		serverName := server.Name
 		tags := registry.ExtractTags(&server)
 		included, reason := s.shouldIncludeServerWithReason(
@@ -102,7 +108,7 @@ func (s *defaultFilterService) ApplyFilters(
 			tagExclude,
 		)
 		if included {
-			filteredRegistry.Servers = append(filteredRegistry.Servers, server)
+			filteredRegistry.Data.Servers = append(filteredRegistry.Data.Servers, server)
 			includedCount++
 			ctxLogger.Info("Including container server",
 				"name", serverName,
@@ -120,7 +126,7 @@ func (s *defaultFilterService) ApplyFilters(
 	ctxLogger.Info("Registry filtering completed",
 		"includedServers", includedCount,
 		"excludedServers", excludedCount,
-		"filteredServerCount", len(filteredRegistry.Servers))
+		"filteredServerCount", len(filteredRegistry.Data.Servers))
 
 	return filteredRegistry, nil
 }

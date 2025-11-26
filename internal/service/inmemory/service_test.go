@@ -45,8 +45,8 @@ func TestService_GetRegistry(t *testing.T) {
 			validateResult: func(t *testing.T, r *toolhivetypes.UpstreamRegistry) {
 				t.Helper()
 				assert.Equal(t, "1.0.0", r.Version)
-				assert.Len(t, r.Servers, 1)
-				assert.Equal(t, "test-server", r.Servers[0].Name)
+				assert.Len(t, r.Data.Servers, 1)
+				assert.Equal(t, "test-server", r.Data.Servers[0].Name)
 			},
 		},
 		{
@@ -61,7 +61,7 @@ func TestService_GetRegistry(t *testing.T) {
 				// Should return empty registry on error
 				assert.NotNil(t, r)
 				assert.Equal(t, "1.0.0", r.Version)
-				assert.Empty(t, r.Servers)
+				assert.Empty(t, r.Data.Servers)
 			},
 		},
 	}
