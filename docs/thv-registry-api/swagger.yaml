@@ -358,6 +358,12 @@ components:
         server:
           $ref: '#/components/schemas/v0.ServerJSON'
       type: object
+  securitySchemes:
+    BearerAuth:
+      description: 'OAuth 2.0 Bearer token authentication. Format: "Bearer {token}"'
+      in: header
+      name: Authorization
+      type: apiKey
 externalDocs:
   description: ""
   url: ""
@@ -368,6 +374,10 @@ info:
     API for accessing MCP server registry data and deployed server information
     This API provides endpoints to query the MCP (Model Context Protocol) server registry,
     get information about available servers, and check the status of deployed servers.
+
+    Authentication is required by default. Use Bearer token authentication with a valid
+    OAuth/OIDC access token. The /.well-known/oauth-protected-resource endpoint provides
+    OAuth discovery metadata (RFC 9728).
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
@@ -407,6 +417,14 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
         "403":
           content:
             application/json:
@@ -439,6 +457,8 @@ paths:
                   type: string
                 type: object
           description: Internal server error
+      security:
+      - BearerAuth: []
       summary: Publish server to specific registry
       tags:
       - registry
@@ -481,6 +501,14 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
         "403":
           content:
             application/json:
@@ -505,6 +533,8 @@ paths:
                   type: string
                 type: object
           description: Internal server error
+      security:
+      - BearerAuth: []
       summary: Delete server version from specific registry
       tags:
       - registry
@@ -524,6 +554,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryListResponse'
           description: List of registries
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
         "500":
           content:
             application/json:
@@ -532,6 +570,8 @@ paths:
                   type: string
                 type: object
           description: Internal server error
+      security:
+      - BearerAuth: []
       summary: List registries
       tags:
       - extension
@@ -559,6 +599,14 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
         "501":
           content:
             application/json:
@@ -567,6 +615,8 @@ paths:
                   type: string
                 type: object
           description: Not implemented
+      security:
+      - BearerAuth: []
       summary: Delete registry
       tags:
       - extension
@@ -599,6 +649,14 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
         "404":
           content:
             application/json:
@@ -623,6 +681,8 @@ paths:
                   type: string
                 type: object
           description: Not implemented
+      security:
+      - BearerAuth: []
       summary: Get registry
       tags:
       - extension
@@ -649,6 +709,14 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
         "501":
           content:
             application/json:
@@ -657,6 +725,8 @@ paths:
                   type: string
                 type: object
           description: Not implemented
+      security:
+      - BearerAuth: []
       summary: Create or update registry
       tags:
       - extension
@@ -696,6 +766,14 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
         "501":
           content:
             application/json:
@@ -704,6 +782,8 @@ paths:
                   type: string
                 type: object
           description: Not implemented
+      security:
+      - BearerAuth: []
       summary: Create or update server
       tags:
       - extension
@@ -817,6 +897,16 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
+      security:
+      - BearerAuth: []
       summary: List servers
       tags:
       - registry
@@ -858,6 +948,14 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
         "404":
           content:
             application/json:
@@ -866,6 +964,8 @@ paths:
                   type: string
                 type: object
           description: Server not found
+      security:
+      - BearerAuth: []
       summary: List all versions of an MCP server
       tags:
       - registry
@@ -914,6 +1014,14 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
         "404":
           content:
             application/json:
@@ -922,6 +1030,8 @@ paths:
                   type: string
                 type: object
           description: Server or version not found
+      security:
+      - BearerAuth: []
       summary: Get specific MCP server version
       tags:
       - registry
@@ -937,6 +1047,14 @@ paths:
             schema:
               type: object
       responses:
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
         "501":
           content:
             application/json:
@@ -945,6 +1063,8 @@ paths:
                   type: string
                 type: object
           description: Not implemented
+      security:
+      - BearerAuth: []
       summary: Publish server
       tags:
       - registry
@@ -994,6 +1114,16 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
+      security:
+      - BearerAuth: []
       summary: List servers
       tags:
       - registry
@@ -1029,6 +1159,14 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
         "404":
           content:
             application/json:
@@ -1037,6 +1175,8 @@ paths:
                   type: string
                 type: object
           description: Server not found
+      security:
+      - BearerAuth: []
       summary: List all versions of an MCP server
       tags:
       - registry
@@ -1079,6 +1219,14 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
         "404":
           content:
             application/json:
@@ -1087,6 +1235,8 @@ paths:
                   type: string
                 type: object
           description: Server or version not found
+      security:
+      - BearerAuth: []
       summary: Get specific MCP server version
       tags:
       - registry
@@ -1106,12 +1256,3 @@ paths:
       summary: Version information
       tags:
       - system
-tags:
-- description: Registry metadata and information
-  name: registry
-- description: Server discovery and metadata
-  name: servers
-- description: Deployed server status and information
-  name: deployed-servers
-- description: System health and version information
-  name: system
