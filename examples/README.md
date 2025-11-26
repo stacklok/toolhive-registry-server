@@ -50,16 +50,17 @@ Syncs from the official ToolHive Git repository.
 
 **Configuration:**
 ```yaml
-source:
-  type: git
-  format: toolhive
-  git:
-    repository: https://github.com/stacklok/toolhive.git
-    branch: main
-    path: pkg/registry/data/registry.json
+registryName: toolhive
 
-syncPolicy:
-  interval: "30m"
+registries:
+  - name: toolhive
+    format: toolhive
+    git:
+      repository: https://github.com/stacklok/toolhive.git
+      branch: main
+      path: pkg/registry/data/registry.json
+    syncPolicy:
+      interval: "30m"
 ```
 
 **What happens when you start:**
@@ -93,14 +94,13 @@ Syncs from another MCP Registry API endpoint (like the official upstream registr
 ```yaml
 registryName: mcp-registry
 
-source:
-  type: api
-  format: upstream
-  api:
-    endpoint: https://registry.modelcontextprotocol.io/
-
-syncPolicy:
-  interval: "1h"
+registries:
+  - name: mcp-upstream
+    format: upstream
+    api:
+      endpoint: https://registry.modelcontextprotocol.io
+    syncPolicy:
+      interval: "1h"
 ```
 
 **What happens when you start:**
@@ -129,14 +129,13 @@ Reads registry data from a local file on the filesystem.
 ```yaml
 registryName: toolhive
 
-source:
-  type: file
-  format: toolhive
-  file:
-    path: ./data/registry.json
-
-syncPolicy:
-  interval: "5m"
+registries:
+  - name: local-file
+    format: toolhive
+    file:
+      path: ./data/registry.json
+    syncPolicy:
+      interval: "5m"
 ```
 
 **What happens when you start:**
@@ -177,35 +176,38 @@ All config files follow this structure:
 # Registry name/identifier (optional, defaults to "default")
 registryName: <name>
 
-# Data source configuration (required)
-source:
-  type: <git|api|file>
-  format: <toolhive|upstream>
+# Registries configuration (can have multiple registries)
+registries:
+  - name: <registry-name>
+    # Data format: toolhive (native) or upstream (MCP registry format)
+    format: <toolhive|upstream>
 
-  # Source-specific config (one of):
-  git:
-    repository: <url>
-    branch: <name>      # OR tag: <name> OR commit: <sha>
-    path: <file-path>
+    # Source-specific config (one of: git, api, file, managed)
+    git:
+      repository: <url>
+      branch: <name>      # OR tag: <name> OR commit: <sha>
+      path: <file-path>
 
-  api:
-    endpoint: <base-url>
+    api:
+      endpoint: <base-url>
 
-  file:
-    path: <file-path>
+    file:
+      path: <file-path>
 
-# Automatic sync policy (required)
-syncPolicy:
-  interval: <duration>  # e.g., "30m", "1h", "24h"
+    managed: {}  # For API-managed registries (no sync)
 
-# Optional: Filter servers
-filter:
-  names:
-    include: [<glob-patterns>]
-    exclude: [<glob-patterns>]
-  tags:
-    include: [<tag-names>]
-    exclude: [<tag-names>]
+    # Per-registry sync policy (required except for managed registries)
+    syncPolicy:
+      interval: <duration>  # e.g., "30m", "1h", "24h"
+
+    # Optional: Per-registry filter
+    filter:
+      names:
+        include: [<glob-patterns>]
+        exclude: [<glob-patterns>]
+      tags:
+        include: [<tag-names>]
+        exclude: [<tag-names>]
 ```
 
 ---
@@ -259,20 +261,24 @@ filter:
 ### Git Version Pinning
 
 ```yaml
-source:
-  git:
-    repository: https://github.com/stacklok/toolhive.git
+registries:
+  - name: my-registry
+    format: toolhive
+    git:
+      repository: https://github.com/stacklok/toolhive.git
 
-    # Option 1: Track latest on a branch
-    branch: main
+      # Option 1: Track latest on a branch
+      branch: main
 
-    # Option 2: Pin to a release tag
-    tag: v1.2.3
+      # Option 2: Pin to a release tag
+      tag: v1.2.3
 
-    # Option 3: Pin to exact commit
-    commit: abc123def456
+      # Option 3: Pin to exact commit
+      commit: abc123def456
 
-    path: pkg/registry/data/registry.json
+      path: pkg/registry/data/registry.json
+    syncPolicy:
+      interval: "30m"
 ```
 
 ---
@@ -391,15 +397,15 @@ Synced data is stored in:
 Fast updates for local development:
 
 ```yaml
-source:
-  type: git
-  git:
-    repository: https://github.com/stacklok/toolhive.git
-    branch: develop  # Use dev branch
-    path: pkg/registry/data/registry.json
-
-syncPolicy:
-  interval: "1m"  # Very frequent for testing
+registries:
+  - name: dev-registry
+    format: toolhive
+    git:
+      repository: https://github.com/stacklok/toolhive.git
+      branch: develop  # Use dev branch
+      path: pkg/registry/data/registry.json
+    syncPolicy:
+      interval: "1m"  # Very frequent for testing
 ```
 
 ### Production Setup
@@ -407,20 +413,19 @@ syncPolicy:
 Conservative config with filtering:
 
 ```yaml
-source:
-  type: git
-  git:
-    repository: https://github.com/your-org/registry.git
-    branch: production
-    path: registry.json
-
-syncPolicy:
-  interval: "30m"
-
-filter:
-  tags:
-    include: ["production", "stable"]
-    exclude: ["experimental", "deprecated"]
+registries:
+  - name: prod-registry
+    format: toolhive
+    git:
+      repository: https://github.com/your-org/registry.git
+      branch: production
+      path: registry.json
+    syncPolicy:
+      interval: "30m"
+    filter:
+      tags:
+        include: ["production", "stable"]
+        exclude: ["experimental", "deprecated"]
 ```
 
 ### Multi-Source Aggregation
