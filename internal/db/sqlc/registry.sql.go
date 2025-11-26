@@ -141,3 +141,45 @@ func (q *Queries) ListRegistries(ctx context.Context, arg ListRegistriesParams) 
 	}
 	return items, nil
 }
+
+const upsertRegistry = `-- name: UpsertRegistry :one
+INSERT INTO registry (
+    name,
+    reg_type,
+    created_at,
+    updated_at
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4
+) ON CONFLICT (name) DO UPDATE SET
+    reg_type = EXCLUDED.reg_type,
+    updated_at = EXCLUDED.updated_at
+RETURNING id, name, reg_type, created_at, updated_at
+`
+
+type UpsertRegistryParams struct {
+	Name      string       `json:"name"`
+	RegType   RegistryType `json:"reg_type"`
+	CreatedAt *time.Time   `json:"created_at"`
+	UpdatedAt *time.Time   `json:"updated_at"`
+}
+
+func (q *Queries) UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (Registry, error) {
+	row := q.db.QueryRow(ctx, upsertRegistry,
+		arg.Name,
+		arg.RegType,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Registry
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.RegType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stacklok/toolhive/pkg/logger"
@@ -82,6 +83,11 @@ func runServe(_ *cobra.Command, _ []string) error {
 		logger.Infof("Database configuration found, running migrations...")
 		if err := runMigrations(ctx, cfg); err != nil {
 			return fmt.Errorf("failed to run database migrations: %w", err)
+		}
+
+		// Initialize managed registries after migrations complete
+		if err := initializeManagedRegistries(ctx, cfg); err != nil {
+			return fmt.Errorf("failed to initialize managed registries: %w", err)
 		}
 	}
 
@@ -170,4 +176,23 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 	}
 
 	return nil
+}
+
+// initializeManagedRegistries ensures managed registries from config exist in the database
+func initializeManagedRegistries(ctx context.Context, cfg *config.Config) error {
+	// Get application connection string (uses regular user)
+	connString, err := cfg.Database.GetConnectionString()
+	if err != nil {
+		return fmt.Errorf("failed to get database connection string: %w", err)
+	}
+
+	// Create connection pool for initialization
+	pool, err := pgxpool.New(ctx, connString)
+	if err != nil {
+		return fmt.Errorf("failed to create database pool: %w", err)
+	}
+	defer pool.Close()
+
+	// Initialize managed registries
+	return registryapp.InitializeManagedRegistries(ctx, cfg, pool)
 }

@@ -46,3 +46,19 @@ INSERT INTO registry (
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 ) RETURNING id;
+
+-- name: UpsertRegistry :one
+INSERT INTO registry (
+    name,
+    reg_type,
+    created_at,
+    updated_at
+) VALUES (
+    sqlc.arg(name),
+    sqlc.arg(reg_type),
+    sqlc.arg(created_at),
+    sqlc.arg(updated_at)
+) ON CONFLICT (name) DO UPDATE SET
+    reg_type = EXCLUDED.reg_type,
+    updated_at = EXCLUDED.updated_at
+RETURNING id, name, reg_type, created_at, updated_at;

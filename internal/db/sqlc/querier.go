@@ -29,6 +29,7 @@ type Querier interface {
 	ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error)
 	UpdateRegistrySync(ctx context.Context, arg UpdateRegistrySyncParams) error
 	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (uuid.UUID, error)
+	UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (Registry, error)
 }
 
 var _ Querier = (*Queries)(nil)
