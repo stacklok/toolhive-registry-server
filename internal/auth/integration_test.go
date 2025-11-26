@@ -131,7 +131,7 @@ type middlewareTestConfig struct {
 }
 
 // setupMiddleware creates a multiProviderMiddleware with standard test configuration.
-func setupMiddleware(t *testing.T, jwksServer *testJWKSServer, cfg middlewareTestConfig) *MultiProviderMiddleware {
+func setupMiddleware(t *testing.T, jwksServer *testJWKSServer, cfg middlewareTestConfig) *multiProviderMiddleware {
 	t.Helper()
 
 	ctx := context.Background()
@@ -148,7 +148,7 @@ func setupMiddleware(t *testing.T, jwksServer *testJWKSServer, cfg middlewareTes
 		},
 	}
 
-	middleware, err := NewMultiProviderMiddleware(ctx, providers, cfg.resourceURL, cfg.realm, DefaultValidatorFactory)
+	middleware, err := newMultiProviderMiddleware(ctx, providers, cfg.resourceURL, cfg.realm, DefaultValidatorFactory)
 	require.NoError(t, err)
 
 	return middleware
@@ -167,7 +167,7 @@ func executeAuthRequest(t *testing.T, handler http.Handler, path, token string) 
 }
 
 // setupMultiProviderMiddleware creates a multiProviderMiddleware with multiple test JWKS servers.
-func setupMultiProviderMiddleware(t *testing.T, servers ...*testJWKSServer) *MultiProviderMiddleware {
+func setupMultiProviderMiddleware(t *testing.T, servers ...*testJWKSServer) *multiProviderMiddleware {
 	t.Helper()
 
 	ctx := context.Background()
@@ -185,7 +185,7 @@ func setupMultiProviderMiddleware(t *testing.T, servers ...*testJWKSServer) *Mul
 		}
 	}
 
-	middleware, err := NewMultiProviderMiddleware(ctx, providers, "", "", DefaultValidatorFactory)
+	middleware, err := newMultiProviderMiddleware(ctx, providers, "", "", DefaultValidatorFactory)
 	require.NoError(t, err)
 
 	return middleware
