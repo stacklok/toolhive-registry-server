@@ -106,9 +106,9 @@ func (rr *Routes) getRegistryInfo(w http.ResponseWriter, r *http.Request) {
 
 	info := RegistryInfoResponse{
 		Version:      reg.Version,
-		LastUpdated:  reg.LastUpdated,
+		LastUpdated:  reg.Meta.LastUpdated,
 		Source:       source,
-		TotalServers: len(reg.Servers),
+		TotalServers: len(reg.Data.Servers),
 	}
 
 	rr.writeJSONResponse(w, info)

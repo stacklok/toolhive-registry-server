@@ -164,7 +164,7 @@ func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				require.NotNil(t, registry)
-				assert.Len(t, registry.Servers, tt.expectedCount)
+				assert.Len(t, registry.Data.Servers, tt.expectedCount)
 			}
 		})
 	}

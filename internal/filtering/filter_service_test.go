@@ -163,10 +163,10 @@ func TestDefaultFilterService_ApplyFilters_NameFiltering(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, originalRegistry.Version, result.Version)
-			assert.Equal(t, originalRegistry.LastUpdated, result.LastUpdated)
+			assert.Equal(t, originalRegistry.Meta.LastUpdated, result.Meta.LastUpdated)
 
 			// Check filtered servers using helper
-			assertContainsServerNames(t, result.Servers, tt.expectedNames)
+			assertContainsServerNames(t, result.Data.Servers, tt.expectedNames)
 		})
 	}
 }
@@ -250,7 +250,7 @@ func TestDefaultFilterService_ApplyFilters_TagFiltering(t *testing.T) {
 			require.NoError(t, err)
 
 			// Check filtered servers using helper
-			assertContainsServerNames(t, result.Servers, tt.expectedNames)
+			assertContainsServerNames(t, result.Data.Servers, tt.expectedNames)
 		})
 	}
 }
@@ -308,7 +308,7 @@ func TestDefaultFilterService_ApplyFilters_CombinedFiltering(t *testing.T) {
 	// Should exclude:
 	// - postgres-experimental: excluded by *-experimental pattern (exclude takes precedence)
 	// - web-server: matches no name patterns
-	assertContainsServerNames(t, result.Servers, []string{"postgres-server", "database-api"})
+	assertContainsServerNames(t, result.Data.Servers, []string{"postgres-server", "database-api"})
 }
 
 func TestDefaultFilterService_ApplyFilters_EmptyRegistry(t *testing.T) {
@@ -329,9 +329,9 @@ func TestDefaultFilterService_ApplyFilters_EmptyRegistry(t *testing.T) {
 	result, err := service.ApplyFilters(ctx, originalRegistry, filter)
 
 	require.NoError(t, err)
-	assert.Len(t, result.Servers, 0)
+	assert.Len(t, result.Data.Servers, 0)
 	assert.Equal(t, originalRegistry.Version, result.Version)
-	assert.Equal(t, originalRegistry.LastUpdated, result.LastUpdated)
+	assert.Equal(t, originalRegistry.Meta.LastUpdated, result.Meta.LastUpdated)
 }
 
 func TestDefaultFilterService_ApplyFilters_PreservesMetadata(t *testing.T) {
@@ -364,7 +364,7 @@ func TestDefaultFilterService_ApplyFilters_PreservesMetadata(t *testing.T) {
 	require.NoError(t, err)
 	// Verify metadata is preserved exactly
 	assert.Equal(t, originalRegistry.Version, result.Version)
-	assert.Equal(t, originalRegistry.LastUpdated, result.LastUpdated)
+	assert.Equal(t, originalRegistry.Meta.LastUpdated, result.Meta.LastUpdated)
 	// Verify server is included (wildcard match)
-	assert.Len(t, result.Servers, 1)
+	assert.Len(t, result.Data.Servers, 1)
 }

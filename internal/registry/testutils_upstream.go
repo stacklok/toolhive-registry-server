@@ -18,9 +18,15 @@ type ServerOption func(*upstreamv0.ServerJSON)
 // and applies any provided options
 func NewTestUpstreamRegistry(opts ...UpstreamRegistryOption) *toolhivetypes.UpstreamRegistry {
 	reg := &toolhivetypes.UpstreamRegistry{
-		Version:     "1.0.0",
-		LastUpdated: time.Now().Format(time.RFC3339),
-		Servers:     []upstreamv0.ServerJSON{},
+		Schema:  UpstreamRegistrySchemaURL,
+		Version: UpstreamRegistryVersion,
+		Meta: toolhivetypes.UpstreamMeta{
+			LastUpdated: time.Now().Format(time.RFC3339),
+		},
+		Data: toolhivetypes.UpstreamData{
+			Servers: []upstreamv0.ServerJSON{},
+			Groups:  []toolhivetypes.UpstreamGroup{},
+		},
 	}
 
 	for _, opt := range opts {
@@ -40,14 +46,14 @@ func WithVersion(version string) UpstreamRegistryOption {
 // WithLastUpdated sets the registry last updated timestamp
 func WithLastUpdated(timestamp string) UpstreamRegistryOption {
 	return func(reg *toolhivetypes.UpstreamRegistry) {
-		reg.LastUpdated = timestamp
+		reg.Meta.LastUpdated = timestamp
 	}
 }
 
 // WithServers adds servers to the registry
 func WithServers(servers ...upstreamv0.ServerJSON) UpstreamRegistryOption {
 	return func(reg *toolhivetypes.UpstreamRegistry) {
-		reg.Servers = append(reg.Servers, servers...)
+		reg.Data.Servers = append(reg.Data.Servers, servers...)
 	}
 }
 

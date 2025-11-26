@@ -400,7 +400,7 @@ func (s *defaultSyncManager) applyFilteringIfConfigured(
 		// Update fetch result with filtered data
 		originalServerCount := fetchResult.ServerCount
 		fetchResult.Registry = filteredServerReg
-		fetchResult.ServerCount = len(filteredServerReg.Servers)
+		fetchResult.ServerCount = len(filteredServerReg.Data.Servers)
 
 		ctxLogger.Info("Registry filtering completed",
 			"originalServerCount", originalServerCount,
