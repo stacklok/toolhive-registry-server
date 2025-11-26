@@ -14,20 +14,30 @@ import (
 
 // NewAuthMiddleware creates authentication middleware based on config.
 // Returns: (middleware, authInfoHandler, error)
+//
+// By default, authentication is ENABLED and requires OAuth configuration.
+// To disable authentication for development, either:
+//   - Use --auth-mode=anonymous flag
+//   - Set auth.mode: anonymous in the config file
+//
+// This function validates the auth configuration before creating the middleware.
 func NewAuthMiddleware(
 	ctx context.Context,
 	cfg *config.AuthConfig,
 	factory validatorFactory,
 ) (func(http.Handler) http.Handler, http.Handler, error) {
-	// Handle nil config - defaults to anonymous
-	// TODO: switch to non-anonymous once the whole branch is merged
+	// Handle nil config - authentication is required by default
 	if cfg == nil {
-		logger.Infof("auth: anonymous mode (no auth config)")
-		return anonymousMiddleware, nil, nil
+		return nil, nil, errors.New("auth configuration is required")
+	}
+
+	// Validate the auth configuration
+	if err := cfg.Validate(); err != nil {
+		return nil, nil, fmt.Errorf("invalid auth configuration: %w", err)
 	}
 
 	switch cfg.Mode {
-	case config.AuthModeAnonymous, "":
+	case config.AuthModeAnonymous:
 		logger.Infof("auth: anonymous mode")
 		return anonymousMiddleware, nil, nil
 	case config.AuthModeOAuth:

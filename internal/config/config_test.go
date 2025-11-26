@@ -1309,37 +1309,34 @@ database:
 	}
 }
 
-func TestAuthConfig(t *testing.T) {
+func TestAuthConfigLoading(t *testing.T) {
 	t.Parallel()
 
+	// These tests verify that auth configuration is correctly parsed during LoadConfig.
+	// Note: Auth validation is deferred to serve.go after mode resolution,
+	// so these tests focus on parsing behavior, not validation.
 	tests := []struct {
-		name    string
-		yaml    string
-		wantErr bool
-		errMsg  string
-		check   func(t *testing.T, cfg *Config)
+		name  string
+		yaml  string
+		check func(t *testing.T, cfg *Config)
 	}{
 		{
-			name: "auth defaults to anonymous",
+			name: "no auth section results in nil Auth",
 			yaml: `registries:
   - name: test-registry
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"`,
-			wantErr: false,
 			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
-				// Registries should be parsed correctly
 				require.Len(t, cfg.Registries, 1)
 				assert.Equal(t, "test-registry", cfg.Registries[0].Name)
-				assert.Equal(t, "/data/registry.json", cfg.Registries[0].File.Path)
-				// Auth should be nil (defaults to anonymous behavior)
 				assert.Nil(t, cfg.Auth)
 			},
 		},
 		{
-			name: "oauth with k8s and okta providers",
+			name: "oauth with providers is parsed correctly",
 			yaml: `registries:
   - name: test-registry
     file:
@@ -1356,7 +1353,6 @@ auth:
       - name: okta
         issuerUrl: https://dev-12345.okta.com
         audience: api://mcp-registry`,
-			wantErr: false,
 			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
 				require.NotNil(t, cfg.Auth)
@@ -1368,7 +1364,7 @@ auth:
 			},
 		},
 		{
-			name: "explicit anonymous mode",
+			name: "explicit anonymous mode is parsed correctly",
 			yaml: `registries:
   - name: test-registry
     file:
@@ -1377,7 +1373,6 @@ auth:
       interval: "30m"
 auth:
   mode: anonymous`,
-			wantErr: false,
 			check: func(t *testing.T, cfg *Config) {
 				t.Helper()
 				require.NotNil(t, cfg.Auth)
@@ -1385,7 +1380,7 @@ auth:
 			},
 		},
 		{
-			name: "oauth requires oauth config",
+			name: "empty mode is parsed as empty string",
 			yaml: `registries:
   - name: test-registry
     file:
@@ -1393,93 +1388,12 @@ auth:
     syncPolicy:
       interval: "30m"
 auth:
-  mode: oauth`,
-			wantErr: true,
-			errMsg:  "auth.oauth is required",
-		},
-		{
-			name: "oauth requires providers",
-			yaml: `registries:
-  - name: test-registry
-    file:
-      path: /data/registry.json
-    syncPolicy:
-      interval: "30m"
-auth:
-  mode: oauth
-  oauth:
-    providers: []`,
-			wantErr: true,
-			errMsg:  "providers",
-		},
-		{
-			name: "provider requires issuerUrl",
-			yaml: `registries:
-  - name: test-registry
-    file:
-      path: /data/registry.json
-    syncPolicy:
-      interval: "30m"
-auth:
-  mode: oauth
-  oauth:
-    providers:
-      - name: kubernetes`,
-			wantErr: true,
-			errMsg:  "issuerUrl",
-		},
-		{
-			name: "provider requires audience",
-			yaml: `registries:
-  - name: test-registry
-    file:
-      path: /data/registry.json
-    syncPolicy:
-      interval: "30m"
-auth:
-  mode: oauth
-  oauth:
-    providers:
-      - name: kubernetes
-        issuerUrl: https://kubernetes.default.svc.cluster.local`,
-			wantErr: true,
-			errMsg:  "audience is required",
-		},
-		{
-			name: "issuerUrl must be HTTPS",
-			yaml: `registries:
-  - name: test-registry
-    file:
-      path: /data/registry.json
-    syncPolicy:
-      interval: "30m"
-auth:
-  mode: oauth
-  oauth:
-    providers:
-      - name: test
-        issuerUrl: http://example.com
-        audience: api://test`,
-			wantErr: true,
-			errMsg:  "must use HTTPS",
-		},
-		{
-			name: "issuerUrl must be valid URL",
-			yaml: `registries:
-  - name: test-registry
-    file:
-      path: /data/registry.json
-    syncPolicy:
-      interval: "30m"
-auth:
-  mode: oauth
-  oauth:
-    providers:
-      - name: test
-        issuerUrl: "not-a-valid-url"
-        audience: api://test`,
-			wantErr: true,
-			errMsg:  "must be an absolute URL with host",
+  mode: ""`,
+			check: func(t *testing.T, cfg *Config) {
+				t.Helper()
+				require.NotNil(t, cfg.Auth)
+				assert.Equal(t, AuthMode(""), cfg.Auth.Mode)
+			},
 		},
 	}
 
@@ -1493,18 +1407,176 @@ auth:
 			require.NoError(t, err)
 
 			cfg, err := LoadConfig(WithConfigPath(configPath))
+			require.NoError(t, err)
+			tt.check(t, cfg)
+		})
+	}
+}
+
+func TestAuthConfigValidate(t *testing.T) {
+	t.Parallel()
+
+	// These tests verify AuthConfig.Validate() behavior.
+	// The method assumes Mode has already been resolved to a valid value.
+	tests := []struct {
+		name    string
+		config  *AuthConfig
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "anonymous mode is valid",
+			config: &AuthConfig{
+				Mode: AuthModeAnonymous,
+			},
+			wantErr: false,
+		},
+		{
+			name: "oauth mode requires oauth config",
+			config: &AuthConfig{
+				Mode: AuthModeOAuth,
+			},
+			wantErr: true,
+			errMsg:  "auth.oauth is required",
+		},
+		{
+			name: "oauth mode requires providers",
+			config: &AuthConfig{
+				Mode:  AuthModeOAuth,
+				OAuth: &OAuthConfig{},
+			},
+			wantErr: true,
+			errMsg:  "auth.oauth.providers is required",
+		},
+		{
+			name: "oauth provider requires name",
+			config: &AuthConfig{
+				Mode: AuthModeOAuth,
+				OAuth: &OAuthConfig{
+					Providers: []OAuthProviderConfig{
+						{
+							IssuerURL: "https://example.com",
+							Audience:  "api://test",
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "name is required",
+		},
+		{
+			name: "oauth provider requires issuerUrl",
+			config: &AuthConfig{
+				Mode: AuthModeOAuth,
+				OAuth: &OAuthConfig{
+					Providers: []OAuthProviderConfig{
+						{
+							Name:     "test",
+							Audience: "api://test",
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "issuerUrl is required",
+		},
+		{
+			name: "oauth provider requires audience",
+			config: &AuthConfig{
+				Mode: AuthModeOAuth,
+				OAuth: &OAuthConfig{
+					Providers: []OAuthProviderConfig{
+						{
+							Name:      "test",
+							IssuerURL: "https://example.com",
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "audience is required",
+		},
+		{
+			name: "oauth provider issuerUrl must be HTTPS",
+			config: &AuthConfig{
+				Mode: AuthModeOAuth,
+				OAuth: &OAuthConfig{
+					Providers: []OAuthProviderConfig{
+						{
+							Name:      "test",
+							IssuerURL: "http://example.com",
+							Audience:  "api://test",
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "must use HTTPS",
+		},
+		{
+			name: "oauth provider issuerUrl must be valid URL",
+			config: &AuthConfig{
+				Mode: AuthModeOAuth,
+				OAuth: &OAuthConfig{
+					Providers: []OAuthProviderConfig{
+						{
+							Name:      "test",
+							IssuerURL: "not-a-valid-url",
+							Audience:  "api://test",
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "must be an absolute URL with host",
+		},
+		{
+			name: "valid oauth configuration",
+			config: &AuthConfig{
+				Mode: AuthModeOAuth,
+				OAuth: &OAuthConfig{
+					Providers: []OAuthProviderConfig{
+						{
+							Name:      "kubernetes",
+							IssuerURL: "https://kubernetes.default.svc.cluster.local",
+							Audience:  "https://kubernetes.default.svc.cluster.local",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid mode returns error",
+			config: &AuthConfig{
+				Mode: AuthMode("invalid"),
+			},
+			wantErr: true,
+			errMsg:  "invalid auth.mode",
+		},
+		{
+			name: "empty mode returns error (should be resolved before validation)",
+			config: &AuthConfig{
+				Mode: AuthMode(""),
+			},
+			wantErr: true,
+			errMsg:  "invalid auth.mode",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := tt.config.Validate()
 
 			if tt.wantErr {
 				require.Error(t, err)
 				if tt.errMsg != "" {
 					assert.Contains(t, err.Error(), tt.errMsg)
 				}
-				return
-			}
-
-			require.NoError(t, err)
-			if tt.check != nil {
-				tt.check(t, cfg)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
