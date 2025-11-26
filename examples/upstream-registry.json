@@ -1,0 +1,1190 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stacklok/toolhive/main/pkg/registry/data/upstream-registry.schema.json",
+  "version": "1.0.0",
+  "meta": {
+    "last_updated": "2025-11-26T00:27:46Z"
+  },
+  "data": {
+    "servers": [
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "name": "io.github.stacklok/adb-mysql-mcp-server",
+        "description": "Official MCP server for AnalyticDB for MySQL of Alibaba Cloud",
+        "title": "adb-mysql-mcp-server",
+        "repository": {
+          "url": "https://github.com/aliyun/alibabacloud-adb-mysql-mcp-server",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "ghcr.io/stacklok/dockyard/uvx/adb-mysql-mcp-server:1.0.0",
+            "transport": {
+              "type": "stdio"
+            },
+            "environmentVariables": [
+              {
+                "description": "AnalyticDB for MySQL host address",
+                "isRequired": true,
+                "name": "ADB_MYSQL_HOST"
+              },
+              {
+                "description": "AnalyticDB for MySQL port number",
+                "isRequired": true,
+                "name": "ADB_MYSQL_PORT"
+              },
+              {
+                "description": "Database user for authentication",
+                "isRequired": true,
+                "name": "ADB_MYSQL_USER"
+              },
+              {
+                "description": "Database password for authentication",
+                "isRequired": true,
+                "isSecret": true,
+                "name": "ADB_MYSQL_PASSWORD"
+              },
+              {
+                "description": "Database name to connect to",
+                "isRequired": true,
+                "name": "ADB_MYSQL_DATABASE"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "io.github.stacklok": {
+              "ghcr.io/stacklok/dockyard/uvx/adb-mysql-mcp-server:1.0.0": {
+                "metadata": {
+                  "last_updated": "2025-11-15T02:31:08Z",
+                  "pulls": 0,
+                  "stars": 17
+                },
+                "permissions": {
+                  "network": {
+                    "outbound": {
+                      "insecure_allow_all": true
+                    }
+                  }
+                },
+                "provenance": {
+                  "sigstore_url": "tuf-repo-cdn.sigstore.dev",
+                  "repository_uri": "https://github.com/stacklok/dockyard",
+                  "signer_identity": "/.github/workflows/build-containers.yml",
+                  "runner_environment": "github-hosted",
+                  "cert_issuer": "https://token.actions.githubusercontent.com"
+                },
+                "status": "Active",
+                "tags": [
+                  "database",
+                  "mysql",
+                  "analytics",
+                  "sql",
+                  "alibaba-cloud",
+                  "data-warehouse"
+                ],
+                "tier": "Official",
+                "tools": [
+                  "execute_sql",
+                  "get_query_plan",
+                  "get_execution_plan"
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "name": "io.github.stacklok/apollo-mcp-server",
+        "description": "Exposes GraphQL operations as MCP tools for AI-driven API orchestration with Apollo",
+        "title": "apollo-mcp-server",
+        "repository": {
+          "url": "https://github.com/apollographql/apollo-mcp-server",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "ghcr.io/apollographql/apollo-mcp-server:v1.2.1",
+            "transport": {
+              "type": "streamable-http",
+              "url": "http://localhost:5000"
+            },
+            "environmentVariables": [
+              {
+                "description": "Graph ref (graph ID and variant) used to fetch persisted queries or schema (required if no config file)",
+                "name": "APOLLO_GRAPH_REF"
+              },
+              {
+                "description": "Apollo Studio API key for the graph (required if no config file)",
+                "isSecret": true,
+                "name": "APOLLO_KEY"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "io.github.stacklok": {
+              "ghcr.io/apollographql/apollo-mcp-server:v1.2.1": {
+                "metadata": {
+                  "last_updated": "2025-11-17T02:33:29Z",
+                  "pulls": 0,
+                  "stars": 231
+                },
+                "permissions": {
+                  "network": {
+                    "outbound": {
+                      "insecure_allow_all": true,
+                      "allow_port": [
+                        443
+                      ]
+                    }
+                  }
+                },
+                "status": "Active",
+                "tags": [
+                  "graphql",
+                  "api",
+                  "orchestration",
+                  "apollo",
+                  "mcp"
+                ],
+                "tier": "Official",
+                "tools": [
+                  "example_GetAstronautsCurrentlyInSpace"
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "name": "io.github.stacklok/arxiv-mcp-server",
+        "description": "AI assistants search and access arXiv papers through MCP with persistent paper storage",
+        "title": "arxiv-mcp-server",
+        "repository": {
+          "url": "https://github.com/blazickjp/arxiv-mcp-server",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "ghcr.io/stacklok/dockyard/uvx/arxiv-mcp-server:0.3.1",
+            "transport": {
+              "type": "stdio"
+            },
+            "environmentVariables": [
+              {
+                "description": "Directory path where downloaded papers will be stored",
+                "default": "/arxiv-papers",
+                "name": "ARXIV_STORAGE_PATH"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "io.github.stacklok": {
+              "ghcr.io/stacklok/dockyard/uvx/arxiv-mcp-server:0.3.1": {
+                "args": [
+                  "--storage-path",
+                  "/arxiv-papers"
+                ],
+                "metadata": {
+                  "last_updated": "2025-11-24T02:36:20Z",
+                  "pulls": 77,
+                  "stars": 1895
+                },
+                "permissions": {
+                  "network": {
+                    "outbound": {
+                      "allow_host": [
+                        "arxiv.org",
+                        "export.arxiv.org"
+                      ],
+                      "allow_port": [
+                        443,
+                        80
+                      ]
+                    }
+                  }
+                },
+                "provenance": {
+                  "sigstore_url": "tuf-repo-cdn.sigstore.dev",
+                  "repository_uri": "https://github.com/stacklok/dockyard",
+                  "signer_identity": "/.github/workflows/build-containers.yml",
+                  "runner_environment": "github-hosted",
+                  "cert_issuer": "https://token.actions.githubusercontent.com"
+                },
+                "status": "Active",
+                "tags": [
+                  "research",
+                  "academic",
+                  "papers",
+                  "arxiv",
+                  "search"
+                ],
+                "tier": "Community",
+                "tools": [
+                  "search_papers",
+                  "download_paper",
+                  "list_papers",
+                  "read_paper"
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "name": "io.github.stacklok/aws-api",
+        "description": "Enables AI assistants to interact with AWS services and resources through AWS CLI commands",
+        "title": "aws-api",
+        "repository": {
+          "url": "https://github.com/awslabs/mcp",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "public.ecr.aws/awslabs-mcp/awslabs/aws-api-mcp-server:1.1.7",
+            "transport": {
+              "type": "stdio"
+            },
+            "environmentVariables": [
+              {
+                "description": "Default AWS region for CLI commands unless a specific region is provided in the request",
+                "default": "us-east-1",
+                "name": "AWS_REGION"
+              },
+              {
+                "description": "AWS access key ID for authentication",
+                "isSecret": true,
+                "name": "AWS_ACCESS_KEY_ID"
+              },
+              {
+                "description": "AWS secret access key for authentication",
+                "isSecret": true,
+                "name": "AWS_SECRET_ACCESS_KEY"
+              },
+              {
+                "description": "AWS session token for temporary credentials",
+                "isSecret": true,
+                "name": "AWS_SESSION_TOKEN"
+              },
+              {
+                "description": "When set to \"true\", restricts execution to read-only operations",
+                "default": "false",
+                "name": "READ_OPERATIONS_ONLY"
+              },
+              {
+                "description": "When set to \"true\", asks explicit consent before executing non-read-only operations",
+                "default": "false",
+                "name": "REQUIRE_MUTATION_CONSENT"
+              },
+              {
+                "description": "Working directory path for MCP server operations (must be absolute path)",
+                "name": "AWS_API_MCP_WORKING_DIR"
+              },
+              {
+                "description": "When set to \"true\", enables system-wide file access (may cause unintended overwrites)",
+                "default": "false",
+                "name": "AWS_API_MCP_ALLOW_UNRESTRICTED_LOCAL_FILE_ACCESS"
+              },
+              {
+                "description": "Allow sending additional telemetry data to AWS related to server configuration",
+                "default": "true",
+                "name": "AWS_API_MCP_TELEMETRY"
+              },
+              {
+                "description": "When set to \"true\", enables experimental agent scripts functionality",
+                "default": "false",
+                "name": "EXPERIMENTAL_AGENT_SCRIPTS"
+              },
+              {
+                "description": "Directory path containing custom user scripts for agent scripts functionality",
+                "name": "AWS_API_MCP_AGENT_SCRIPTS_DIR"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "io.github.stacklok": {
+              "public.ecr.aws/awslabs-mcp/awslabs/aws-api-mcp-server:1.1.7": {
+                "metadata": {
+                  "last_updated": "2025-11-07T02:32:29Z",
+                  "pulls": 0,
+                  "stars": 6955
+                },
+                "permissions": {
+                  "network": {
+                    "outbound": {
+                      "allow_host": [
+                        "aws.amazon.com",
+                        ".amazonaws.com"
+                      ],
+                      "allow_port": [
+                        443
+                      ]
+                    }
+                  }
+                },
+                "status": "Active",
+                "tags": [
+                  "aws",
+                  "cli",
+                  "cloud",
+                  "infrastructure",
+                  "api",
+                  "devops"
+                ],
+                "tier": "Official",
+                "tools": [
+                  "call_aws",
+                  "suggest_aws_commands"
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "name": "io.github.stacklok/browserbase",
+        "description": "MCP server for cloud browser automation with Browserbase and Stagehand",
+        "title": "browserbase",
+        "repository": {
+          "url": "https://github.com/browserbase/mcp-server-browserbase",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "ghcr.io/stacklok/dockyard/npx/browserbase-mcp-server:2.4.1",
+            "transport": {
+              "type": "stdio"
+            },
+            "environmentVariables": [
+              {
+                "description": "Browserbase API key",
+                "isRequired": true,
+                "isSecret": true,
+                "name": "BROWSERBASE_API_KEY"
+              },
+              {
+                "description": "Browserbase project ID",
+                "isRequired": true,
+                "name": "BROWSERBASE_PROJECT_ID"
+              },
+              {
+                "description": "Google Gemini API key for Stagehand",
+                "isRequired": true,
+                "isSecret": true,
+                "name": "GEMINI_API_KEY"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "io.github.stacklok": {
+              "ghcr.io/stacklok/dockyard/npx/browserbase-mcp-server:2.4.1": {
+                "metadata": {
+                  "last_updated": "2025-11-01T02:32:39Z",
+                  "pulls": 133,
+                  "stars": 2757
+                },
+                "permissions": {
+                  "network": {
+                    "outbound": {
+                      "insecure_allow_all": true
+                    }
+                  }
+                },
+                "provenance": {
+                  "sigstore_url": "tuf-repo-cdn.sigstore.dev",
+                  "repository_uri": "https://github.com/stacklok/dockyard",
+                  "signer_identity": "/.github/workflows/build-containers.yml",
+                  "runner_environment": "github-hosted",
+                  "cert_issuer": "https://token.actions.githubusercontent.com"
+                },
+                "status": "Active",
+                "tags": [
+                  "browser",
+                  "automation",
+                  "web-scraping",
+                  "testing",
+                  "stagehand"
+                ],
+                "tier": "Official",
+                "tools": [
+                  "browserbase_screenshot",
+                  "browserbase_session_close",
+                  "browserbase_session_create",
+                  "browserbase_stagehand_act",
+                  "browserbase_stagehand_agent",
+                  "browserbase_stagehand_extract",
+                  "browserbase_stagehand_get_url",
+                  "browserbase_stagehand_navigate",
+                  "browserbase_stagehand_observe"
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "name": "io.github.stacklok/chrome-devtools-mcp",
+        "description": "Control and inspect live Chrome browser from AI coding agents with full DevTools access",
+        "title": "chrome-devtools-mcp",
+        "repository": {
+          "url": "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "ghcr.io/stacklok/dockyard/npx/chrome-devtools-mcp:0.10.2",
+            "transport": {
+              "type": "stdio"
+            }
+          }
+        ],
+        "_meta": {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "io.github.stacklok": {
+              "ghcr.io/stacklok/dockyard/npx/chrome-devtools-mcp:0.10.2": {
+                "metadata": {
+                  "last_updated": "2025-11-12T00:00:00Z",
+                  "pulls": 0,
+                  "stars": 14453
+                },
+                "permissions": {
+                  "network": {
+                    "outbound": {
+                      "insecure_allow_all": true,
+                      "allow_port": [
+                        443,
+                        80
+                      ]
+                    }
+                  }
+                },
+                "provenance": {
+                  "sigstore_url": "tuf-repo-cdn.sigstore.dev",
+                  "repository_uri": "https://github.com/stacklok/dockyard",
+                  "signer_identity": "/.github/workflows/build-containers.yml",
+                  "runner_environment": "github-hosted",
+                  "cert_issuer": "https://token.actions.githubusercontent.com"
+                },
+                "status": "Active",
+                "tags": [
+                  "chrome",
+                  "devtools",
+                  "browser",
+                  "automation",
+                  "debugging",
+                  "performance",
+                  "puppeteer",
+                  "testing"
+                ],
+                "tier": "Official",
+                "tools": [
+                  "click",
+                  "drag",
+                  "fill",
+                  "fill_form",
+                  "handle_dialog",
+                  "hover",
+                  "press_key",
+                  "upload_file",
+                  "close_page",
+                  "list_pages",
+                  "navigate_page",
+                  "new_page",
+                  "select_page",
+                  "wait_for",
+                  "emulate",
+                  "resize_page",
+                  "performance_analyze_insight",
+                  "performance_start_trace",
+                  "performance_stop_trace",
+                  "get_network_request",
+                  "list_network_requests",
+                  "evaluate_script",
+                  "get_console_message",
+                  "list_console_messages",
+                  "take_screenshot",
+                  "take_snapshot"
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "name": "io.github.stacklok/crowdstrike-falcon",
+        "description": "CrowdStrike Falcon integration for security analysis, detections, incidents, and threat intel",
+        "title": "crowdstrike-falcon",
+        "repository": {
+          "url": "https://github.com/crowdstrike/falcon-mcp",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "quay.io/crowdstrike/falcon-mcp:latest",
+            "transport": {
+              "type": "streamable-http",
+              "url": "http://localhost:8000"
+            },
+            "environmentVariables": [
+              {
+                "description": "CrowdStrike API client ID",
+                "isRequired": true,
+                "isSecret": true,
+                "name": "FALCON_CLIENT_ID"
+              },
+              {
+                "description": "CrowdStrike API client secret",
+                "isRequired": true,
+                "isSecret": true,
+                "name": "FALCON_CLIENT_SECRET"
+              },
+              {
+                "description": "CrowdStrike API base URL (e.g., https://api.crowdstrike.com, https://api.us-2.crowdstrike.com, https://api.eu-1.crowdstrike.com)",
+                "isRequired": true,
+                "name": "FALCON_BASE_URL"
+              },
+              {
+                "description": "Comma-separated list of modules to enable (detections,incidents,intel,hosts,spotlight,cloud,idp). If not set, all modules are enabled.",
+                "name": "FALCON_MCP_MODULES"
+              },
+              {
+                "description": "Enable debug logging - true or false (default: false)",
+                "name": "FALCON_MCP_DEBUG"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "io.github.stacklok": {
+              "quay.io/crowdstrike/falcon-mcp:latest": {
+                "args": [
+                  "--transport",
+                  "streamable-http",
+                  "--host",
+                  "0.0.0.0",
+                  "--port",
+                  "8000"
+                ],
+                "metadata": {
+                  "last_updated": "2025-11-13T02:33:35Z",
+                  "pulls": 3771,
+                  "stars": 73
+                },
+                "permissions": {
+                  "network": {
+                    "outbound": {
+                      "allow_host": [
+                        "api.crowdstrike.com",
+                        "api.us-2.crowdstrike.com",
+                        "api.eu-1.crowdstrike.com",
+                        "api.laggar.gcw.crowdstrike.com"
+                      ],
+                      "allow_port": [
+                        443
+                      ]
+                    }
+                  }
+                },
+                "status": "Active",
+                "tags": [
+                  "crowdstrike",
+                  "falcon",
+                  "security",
+                  "cybersecurity",
+                  "threat-intelligence",
+                  "detections",
+                  "incidents",
+                  "vulnerabilities",
+                  "endpoint-security",
+                  "threat-hunting",
+                  "incident-response",
+                  "malware-analysis",
+                  "identity-protection",
+                  "cloud-security"
+                ],
+                "tier": "Official",
+                "tools": [
+                  "falcon_check_connectivity",
+                  "falcon_get_available_modules",
+                  "falcon_search_detections",
+                  "falcon_get_detection_details",
+                  "falcon_show_crowd_score",
+                  "falcon_search_incidents",
+                  "falcon_get_incident_details",
+                  "falcon_search_behaviors",
+                  "falcon_get_behavior_details",
+                  "falcon_search_actors",
+                  "falcon_search_indicators",
+                  "falcon_search_reports",
+                  "falcon_search_hosts",
+                  "falcon_get_host_details",
+                  "falcon_search_vulnerabilities",
+                  "falcon_search_kubernetes_containers",
+                  "falcon_count_kubernetes_containers",
+                  "falcon_search_images_vulnerabilities",
+                  "idp_investigate_entity"
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "name": "io.github.stacklok/fetch",
+        "description": "Allows you to fetch content from the web",
+        "title": "fetch",
+        "repository": {
+          "url": "https://github.com/stackloklabs/gofetch",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "ghcr.io/stackloklabs/gofetch/server:1.0.1",
+            "transport": {
+              "type": "streamable-http",
+              "url": "http://localhost:8080"
+            }
+          }
+        ],
+        "_meta": {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "io.github.stacklok": {
+              "ghcr.io/stackloklabs/gofetch/server:1.0.1": {
+                "metadata": {
+                  "last_updated": "2025-11-13T02:33:35Z",
+                  "pulls": 12390,
+                  "stars": 20
+                },
+                "permissions": {
+                  "network": {
+                    "outbound": {
+                      "insecure_allow_all": true,
+                      "allow_port": [
+                        443
+                      ]
+                    }
+                  }
+                },
+                "provenance": {
+                  "sigstore_url": "tuf-repo-cdn.sigstore.dev",
+                  "repository_uri": "https://github.com/StacklokLabs/gofetch",
+                  "signer_identity": "/.github/workflows/release.yml",
+                  "runner_environment": "github-hosted",
+                  "cert_issuer": "https://token.actions.githubusercontent.com"
+                },
+                "status": "Active",
+                "tags": [
+                  "content",
+                  "html",
+                  "markdown",
+                  "fetch",
+                  "fetching",
+                  "get",
+                  "wget",
+                  "json",
+                  "curl",
+                  "modelcontextprotocol"
+                ],
+                "tier": "Community",
+                "tools": [
+                  "fetch"
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "name": "io.github.stacklok/filesystem",
+        "description": "Allows you to do filesystem operations. Mount paths under /projects using --volume.",
+        "title": "filesystem",
+        "repository": {
+          "url": "https://github.com/modelcontextprotocol/servers",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "docker.io/mcp/filesystem:latest",
+            "transport": {
+              "type": "stdio"
+            }
+          }
+        ],
+        "_meta": {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "io.github.stacklok": {
+              "docker.io/mcp/filesystem:latest": {
+                "args": [
+                  "/projects"
+                ],
+                "metadata": {
+                  "last_updated": "2025-11-04T02:32:45Z",
+                  "pulls": 20619,
+                  "stars": 71855
+                },
+                "permissions": {
+                  "network": {
+                    "outbound": {}
+                  }
+                },
+                "status": "Active",
+                "tags": [
+                  "create_directory",
+                  "edit_file",
+                  "filesystem",
+                  "get_file_info",
+                  "implementing",
+                  "list_allowed_directories",
+                  "list_directory",
+                  "move_file",
+                  "node",
+                  "operations"
+                ],
+                "tier": "Community",
+                "tools": [
+                  "read_file",
+                  "read_multiple_files",
+                  "write_file",
+                  "edit_file",
+                  "create_directory",
+                  "list_directory",
+                  "directory_tree",
+                  "move_file",
+                  "search_files",
+                  "get_file_info",
+                  "list_allowed_directories"
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "name": "io.github.stacklok/genai-toolbox",
+        "description": "Will be removed soon. Please use database-toolbox instead.",
+        "title": "genai-toolbox",
+        "repository": {
+          "url": "https://github.com/googleapis/genai-toolbox",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "us-central1-docker.pkg.dev/database-toolbox/toolbox/toolbox:0.21.0",
+            "transport": {
+              "type": "sse",
+              "url": "http://localhost:5000"
+            }
+          }
+        ],
+        "_meta": {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "io.github.stacklok": {
+              "us-central1-docker.pkg.dev/database-toolbox/toolbox/toolbox:0.21.0": {
+                "metadata": {
+                  "last_updated": "2025-11-02T02:34:09Z",
+                  "pulls": 2408,
+                  "stars": 11251
+                },
+                "permissions": {
+                  "network": {
+                    "outbound": {
+                      "insecure_allow_all": true
+                    }
+                  }
+                },
+                "status": "Deprecated",
+                "tags": [
+                  "database",
+                  "sql",
+                  "postgresql",
+                  "mysql",
+                  "sqlite",
+                  "mongodb",
+                  "redis",
+                  "connection-pooling",
+                  "authentication",
+                  "observability",
+                  "toolbox",
+                  "genai",
+                  "mcp-server"
+                ],
+                "tier": "Official",
+                "tools": [
+                  "set_during_runtime"
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "name": "io.github.stacklok/github",
+        "description": "Provides integration with GitHub's APIs",
+        "title": "github",
+        "repository": {
+          "url": "https://github.com/github/github-mcp-server",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "ghcr.io/github/github-mcp-server:v0.22.0",
+            "transport": {
+              "type": "stdio"
+            },
+            "environmentVariables": [
+              {
+                "description": "GitHub personal access token with appropriate permissions",
+                "isRequired": true,
+                "isSecret": true,
+                "name": "GITHUB_PERSONAL_ACCESS_TOKEN"
+              },
+              {
+                "description": "GitHub Enterprise Server hostname (optional)",
+                "name": "GITHUB_HOST"
+              },
+              {
+                "description": "Comma-separated list of toolsets to enable (e.g., 'repos,issues,pull_requests'). If not set, all toolsets are enabled. See the README for available toolsets.",
+                "name": "GITHUB_TOOLSETS"
+              },
+              {
+                "description": "Set to '1' to enable dynamic toolset discovery",
+                "name": "GITHUB_DYNAMIC_TOOLSETS"
+              },
+              {
+                "description": "Set to '1' to enable read-only mode, preventing any modifications to GitHub resources",
+                "name": "GITHUB_READ_ONLY"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "io.github.stacklok": {
+              "ghcr.io/github/github-mcp-server:v0.22.0": {
+                "metadata": {
+                  "last_updated": "2025-11-06T02:33:26Z",
+                  "pulls": 5000,
+                  "stars": 24254
+                },
+                "permissions": {
+                  "network": {
+                    "outbound": {
+                      "allow_host": [
+                        ".github.com",
+                        ".githubusercontent.com"
+                      ],
+                      "allow_port": [
+                        443
+                      ]
+                    }
+                  }
+                },
+                "provenance": {
+                  "sigstore_url": "tuf-repo-cdn.sigstore.dev",
+                  "repository_uri": "https://github.com/github/github-mcp-server",
+                  "signer_identity": "/.github/workflows/docker-publish.yml",
+                  "runner_environment": "github-hosted",
+                  "cert_issuer": "https://token.actions.githubusercontent.com"
+                },
+                "status": "Active",
+                "tags": [
+                  "api",
+                  "create",
+                  "fork",
+                  "github",
+                  "list",
+                  "pull-request",
+                  "push",
+                  "repository",
+                  "search",
+                  "update",
+                  "issues"
+                ],
+                "tier": "Official",
+                "tools": [
+                  "add_comment_to_pending_review",
+                  "add_issue_comment",
+                  "assign_copilot_to_issue",
+                  "create_branch",
+                  "create_or_update_file",
+                  "create_pull_request",
+                  "create_repository",
+                  "delete_file",
+                  "fork_repository",
+                  "get_commit",
+                  "get_file_contents",
+                  "get_label",
+                  "get_latest_release",
+                  "get_me",
+                  "get_release_by_tag",
+                  "get_tag",
+                  "get_team_members",
+                  "get_teams",
+                  "issue_read",
+                  "issue_write",
+                  "list_branches",
+                  "list_commits",
+                  "list_issue_types",
+                  "list_issues",
+                  "list_pull_requests",
+                  "list_releases",
+                  "list_tags",
+                  "merge_pull_request",
+                  "pull_request_read",
+                  "pull_request_review_write",
+                  "push_files",
+                  "request_copilot_review",
+                  "search_code",
+                  "search_issues",
+                  "search_pull_requests",
+                  "search_repositories",
+                  "search_users",
+                  "sub_issue_write",
+                  "update_pull_request",
+                  "update_pull_request_branch"
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "name": "io.github.stacklok/gitlab",
+        "description": "Provides integration with a GitLab instance to manage projects, issues, merge requests, and more.",
+        "title": "gitlab",
+        "repository": {
+          "url": "https://github.com/zereight/gitlab-mcp",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "iwakitakuma/gitlab-mcp:2.0.13",
+            "transport": {
+              "type": "streamable-http",
+              "url": "http://localhost:3002"
+            },
+            "environmentVariables": [
+              {
+                "description": "Your GitLab personal access token.",
+                "isRequired": true,
+                "isSecret": true,
+                "name": "GITLAB_PERSONAL_ACCESS_TOKEN"
+              },
+              {
+                "description": "Your GitLab API URL.",
+                "default": "https://gitlab.com/api/v4",
+                "name": "GITLAB_API_URL"
+              },
+              {
+                "description": "Default project ID. If set, overwrite this value when making an API request.",
+                "name": "GITLAB_PROJECT_ID"
+              },
+              {
+                "description": "Optional comma-separated list of allowed project IDs. When set with a single value, acts as a default project.",
+                "name": "GITLAB_ALLOWED_PROJECT_IDS"
+              },
+              {
+                "description": "When set to 'true', restricts the server to only expose read-only operations.",
+                "name": "GITLAB_READ_ONLY_MODE"
+              },
+              {
+                "description": "When set to 'true', enables the wiki-related tools. By default, wiki features are disabled.",
+                "name": "USE_GITLAB_WIKI"
+              },
+              {
+                "description": "When set to 'true', enables the milestone-related tools. By default, milestone features are disabled.",
+                "name": "USE_MILESTONE"
+              },
+              {
+                "description": "When set to 'true', enables the pipeline-related tools. By default, pipeline features are disabled.",
+                "name": "USE_PIPELINE"
+              },
+              {
+                "description": "Path to an authentication cookie file for GitLab instances that require cookie-based authentication.",
+                "name": "GITLAB_AUTH_COOKIE_PATH"
+              },
+              {
+                "description": "When set to 'true', enables the Server-Sent Events transport.",
+                "name": "SSE"
+              },
+              {
+                "description": "When set to 'true', enables the Streamable HTTP transport. If both SSE and STREAMABLE_HTTP are set to 'true', Streamable HTTP is used.",
+                "default": "true",
+                "name": "STREAMABLE_HTTP"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "io.modelcontextprotocol.registry/publisher-provided": {
+            "io.github.stacklok": {
+              "iwakitakuma/gitlab-mcp:2.0.13": {
+                "metadata": {
+                  "last_updated": "2025-11-17T02:33:29Z",
+                  "pulls": 34542,
+                  "stars": 743
+                },
+                "permissions": {
+                  "network": {
+                    "outbound": {
+                      "allow_host": [
+                        ".gitlab.com",
+                        ".gitlab-static.net",
+                        ".gitlab.io",
+                        ".gitlab.net"
+                      ],
+                      "allow_port": [
+                        443
+                      ]
+                    }
+                  }
+                },
+                "status": "Active",
+                "tags": [
+                  "gitlab",
+                  "version-control",
+                  "repository",
+                  "issues",
+                  "merge-requests",
+                  "wiki",
+                  "milestones",
+                  "pipelines"
+                ],
+                "tier": "Community",
+                "tools": [
+                  "merge_merge_request",
+                  "create_or_update_file",
+                  "search_repositories",
+                  "create_repository",
+                  "get_file_contents",
+                  "push_files",
+                  "create_issue",
+                  "create_merge_request",
+                  "fork_repository",
+                  "create_branch",
+                  "get_merge_request",
+                  "get_merge_request_diffs",
+                  "list_merge_request_diffs",
+                  "get_branch_diffs",
+                  "update_merge_request",
+                  "create_note",
+                  "create_merge_request_thread",
+                  "mr_discussions",
+                  "update_merge_request_note",
+                  "create_merge_request_note",
+                  "get_draft_note",
+                  "list_draft_notes",
+                  "create_draft_note",
+                  "update_draft_note",
+                  "delete_draft_note",
+                  "publish_draft_note",
+                  "bulk_publish_draft_notes",
+                  "update_issue_note",
+                  "create_issue_note",
+                  "list_issues",
+                  "my_issues",
+                  "get_issue",
+                  "update_issue",
+                  "delete_issue",
+                  "list_issue_links",
+                  "list_issue_discussions",
+                  "get_issue_link",
+                  "create_issue_link",
+                  "delete_issue_link",
+                  "list_namespaces",
+                  "get_namespace",
+                  "verify_namespace",
+                  "get_project",
+                  "list_projects",
+                  "list_project_members",
+                  "list_labels",
+                  "get_label",
+                  "create_label",
+                  "update_label",
+                  "delete_label",
+                  "list_group_projects",
+                  "list_wiki_pages",
+                  "get_wiki_page",
+                  "create_wiki_page",
+                  "update_wiki_page",
+                  "delete_wiki_page",
+                  "get_repository_tree",
+                  "list_pipelines",
+                  "get_pipeline",
+                  "list_pipeline_jobs",
+                  "list_pipeline_trigger_jobs",
+                  "get_pipeline_job",
+                  "get_pipeline_job_output",
+                  "create_pipeline",
+                  "retry_pipeline",
+                  "cancel_pipeline",
+                  "list_merge_requests",
+                  "list_milestones",
+                  "get_milestone",
+                  "create_milestone",
+                  "edit_milestone",
+                  "delete_milestone",
+                  "get_milestone_issue",
+                  "get_milestone_merge_requests",
+                  "promote_milestone",
+                  "get_milestone_burndown_events",
+                  "get_users",
+                  "list_commits",
+                  "get_commit",
+                  "get_commit_diff",
+                  "list_group_iterations",
+                  "upload_markdown",
+                  "download_attachment"
+                ]
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

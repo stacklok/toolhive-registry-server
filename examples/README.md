@@ -115,7 +115,9 @@ registries:
 - Creating curated/filtered subsets
 - Registry federation scenarios
 
-**Note:** Upstream format conversion is not yet fully implemented. Use Git or File sources for production.
+**Format Structure:**
+The upstream format uses a wrapper structure with `version`, `meta`, and `data` sections (see `examples/upstream-registry.json`).
+Each server follows the MCP 2025-10-17 schema with `$schema`, `packages[]`, and `_meta` extensions for ToolHive-specific metadata (tier, status, tools, etc.).
 
 ---
 
@@ -258,12 +260,18 @@ filter:
 3. Tag include (empty = include all)
 4. Tag exclude
 
+### Data Format Examples
+
+See the example files for format reference:
+- **ToolHive format** (`examples/toolhive-registry.json`): Flat structure with servers as an object/map
+- **Upstream format** (`examples/upstream-registry.json`): Wrapper structure with meta/data sections and MCP 2025-10-17 schema
+
 ### Git Version Pinning
 
 ```yaml
 registries:
   - name: my-registry
-    format: toolhive
+    format: toolhive  # or "upstream"
     git:
       repository: https://github.com/stacklok/toolhive.git
 
