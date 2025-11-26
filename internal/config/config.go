@@ -206,7 +206,7 @@ type AuthConfig struct {
 
 	// PublicPaths defines additional paths that bypass authentication
 	// These extend the default public paths (health, docs, swagger, well-known)
-	// Example: ["/api/v0/public", "/custom/public"]
+	// Example: ["/custom/public", "/metrics"]
 	PublicPaths []string `yaml:"publicPaths,omitempty"`
 
 	// OAuth contains OAuth/OIDC specific configuration

@@ -578,7 +578,7 @@ auth:
   # Additional paths that bypass authentication (optional)
   # These extend the default public paths listed below
   # publicPaths:
-  #   - /api/v0/public
+  #   - /custom/public
 
   # OAuth/OIDC configuration (required when mode is "oauth")
   oauth:

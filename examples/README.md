@@ -35,7 +35,7 @@ cat ./data/status.json | jq '.phase, .serverCount, .lastSyncTime'
 cat ./data/registry.json | jq '.servers | keys'
 
 # Query the API
-curl http://localhost:8080/api/v0/servers | jq
+curl http://localhost:8080/registry/v0.1/servers | jq
 ```
 
 ---
@@ -97,14 +97,14 @@ source:
   type: api
   format: upstream
   api:
-    endpoint: https://registry.modelcontextprotocol.io/api
+    endpoint: https://registry.modelcontextprotocol.io/
 
 syncPolicy:
   interval: "1h"
 ```
 
 **What happens when you start:**
-1. Makes HTTP GET to `https://registry.modelcontextprotocol.io/api/v0/servers`
+1. Makes HTTP GET to `https://registry.modelcontextprotocol.io/registry/v0.1/servers`
 2. Converts from upstream MCP format to ToolHive format
 3. Saves to `./data/registry.json`
 4. Repeats every hour (less frequent to be respectful of external APIs)
@@ -366,7 +366,7 @@ df -h .
 **Symptom:** Status shows `Failed` with connection error
 
 **Solutions:**
-- Verify endpoint URL: `curl <endpoint>/v0/servers`
+- Verify endpoint URL: `curl <endpoint>/v0.1/servers`
 - Check network connectivity
 - Look for rate limiting (increase interval)
 - Verify API is MCP-compatible
@@ -470,13 +470,13 @@ cat ./data/status.json | jq
 cat ./data/registry.json | jq '.servers | keys'
 
 # Test API endpoint
-curl http://localhost:8080/api/v0/servers | jq
+curl http://localhost:8080/registry/v0.1/servers | jq
 
 # Watch logs
 tail -f /var/log/thv-registry-api.log | grep -i sync
 
-# Manually trigger sync (future feature)
-# curl -X POST http://localhost:8080/api/v0/sync
+# Note: Manual sync triggering is not currently supported
+# Sync happens automatically based on configured intervals
 ```
 
 ---
