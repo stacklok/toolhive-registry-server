@@ -2,16 +2,17 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stacklok/toolhive/pkg/logger"
+	"github.com/stacklok/toolhive/pkg/versions"
 
 	extensionv0 "github.com/stacklok/toolhive-registry-server/internal/api/extension/v0"
 	v01 "github.com/stacklok/toolhive-registry-server/internal/api/registry/v01"
-	v0 "github.com/stacklok/toolhive-registry-server/internal/api/v0"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
@@ -57,8 +58,10 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 		r.Use(mw)
 	}
 
-	// Mount health check routes directly at root
-	r.Mount("/", v0.HealthRouter(svc))
+	// Mount operational endpoints at root
+	r.Get("/health", healthHandler)
+	r.Get("/readiness", readinessHandler(svc))
+	r.Get("/version", versionHandler)
 
 	// Mount OpenAPI endpoint
 	r.Get("/openapi.json", openAPIHandler)
@@ -68,10 +71,9 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 		r.Handle("/.well-known/oauth-protected-resource", cfg.authInfoHandler)
 	}
 
-	// Mount MCP Registry API v0 compatible routes
+	// Mount MCP Registry API v0.1 routes
 	r.Mount("/registry", v01.Router(svc))
 	r.Mount("/extension/v0", extensionv0.Router(svc))
-	r.Mount("/v0", v0.Router(svc))
 
 	return r
 }
@@ -100,4 +102,74 @@ func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotImplemented)
 	_, _ = w.Write([]byte(`{"error":"OpenAPI specification not yet implemented"}`))
+}
+
+// healthHandler handles health check requests
+//
+// @Summary		Health check
+// @Description	Check if the registry API is healthy
+// @Tags		system
+// @Produce		json
+// @Success		200	{object}	map[string]string
+// @Router		/health [get]
+func healthHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"status":"healthy"}`))
+}
+
+// readinessHandler handles readiness check requests
+//
+// @Summary		Readiness check
+// @Description	Check if the registry API is ready to serve requests
+// @Tags		system
+// @Produce		json
+// @Success		200	{object}	map[string]string
+// @Failure		503	{object}	map[string]string
+// @Router		/readiness [get]
+func readinessHandler(svc service.RegistryService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := svc.CheckReadiness(r.Context()); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			errorResp := map[string]string{
+				"error": "RegistryService not ready: " + err.Error(),
+			}
+			if encodeErr := json.NewEncoder(w).Encode(errorResp); encodeErr != nil {
+				logger.Errorf("Failed to encode readiness error response: %v", encodeErr)
+			}
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
+	}
+}
+
+// versionHandler handles version information requests
+//
+// @Summary		Version information
+// @Description	Get version information about the registry API
+// @Tags		system
+// @Produce		json
+// @Success		200	{object}	map[string]string
+// @Router		/version [get]
+func versionHandler(w http.ResponseWriter, _ *http.Request) {
+	info := versions.GetVersionInfo()
+
+	response := map[string]string{
+		"version":    info.Version,
+		"commit":     info.Commit,
+		"build_date": info.BuildDate,
+		"go_version": info.GoVersion,
+		"platform":   info.Platform,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		logger.Errorf("Failed to encode version info: %v", err)
+	}
 }

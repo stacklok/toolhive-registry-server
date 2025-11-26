@@ -1,21 +1,5 @@
 components:
   schemas:
-    internal_api_v0.ErrorResponse:
-      properties:
-        error:
-          type: string
-      type: object
-    internal_api_v0.RegistryInfoResponse:
-      properties:
-        last_updated:
-          type: string
-        source:
-          type: string
-        total_servers:
-          type: integer
-        version:
-          type: string
-      type: object
     model.Argument:
       properties:
         choices:
@@ -482,66 +466,6 @@ paths:
       tags:
       - registry
       - official
-  /api/v0/registry/info:
-    get:
-      deprecated: true
-      description: Get registry metadata including version, last updated time, and
-        total servers
-      parameters:
-      - description: Response format
-        in: query
-        name: format
-        schema:
-          default: toolhive
-          enum:
-          - toolhive
-          - upstream
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/internal_api_v0.RegistryInfoResponse'
-          description: OK
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
-          description: Bad Request
-        "501":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
-          description: Not Implemented
-      summary: Get registry information
-      tags:
-      - registry
-  /api/v0/registry/openapi.yaml:
-    get:
-      deprecated: true
-      description: Returns the OpenAPI specification for the registry API in YAML
-        format
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: string
-            application/x-yaml:
-              schema:
-                type: string
-          description: OpenAPI specification in YAML format
-      summary: Get OpenAPI specification
-      tags:
-      - system
   /extension/v0/registries:
     get:
       description: List all registries
@@ -714,7 +638,6 @@ paths:
       - extension
   /health:
     get:
-      deprecated: true
       description: Check if the registry API is healthy
       responses:
         "200":
@@ -730,7 +653,6 @@ paths:
       - system
   /readiness:
     get:
-      deprecated: true
       description: Check if the registry API is ready to serve requests
       responses:
         "200":
@@ -745,7 +667,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/internal_api_v0.ErrorResponse'
+                additionalProperties:
+                  type: string
+                type: object
           description: Service Unavailable
       summary: Readiness check
       tags:
@@ -1077,7 +1001,6 @@ paths:
       - official
   /version:
     get:
-      deprecated: true
       description: Get version information about the registry API
       responses:
         "200":

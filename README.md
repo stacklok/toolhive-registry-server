@@ -100,15 +100,30 @@ See the [Database Migrations](#database-migrations) section for more details on 
 
 ## API Endpoints
 
-The server implements the standard MCP Registry API:
+The server implements the MCP Registry API v0.1:
 
-- `GET /api/v0/servers` - List all available MCP servers
-- `GET /api/v0/servers/{name}` - Get details for a specific server
-- `GET /api/v0/deployed` - List deployed server instances (Kubernetes only)
-- `GET /api/v0/deployed/{name}` - Get deployed instances of a specific server
+### Registry API (v0.1)
+
+- `GET /registry/v0.1/servers` - List all available MCP servers
+- `GET /registry/v0.1/servers/{name}/versions` - List all versions of a server
+- `GET /registry/v0.1/servers/{name}/versions/{version}` - Get a specific server version
+- `DELETE /registry/{registryName}/v0.1/servers/{name}/versions/{version}` - Delete a server version from a managed registry
+- `POST /registry/v0.1/publish` - Publish a server (not yet implemented)
+
+### Extension API (v0)
+
+- `GET /extension/v0/registries` - List all registries (not yet implemented)
+- `GET /extension/v0/registries/{name}` - Get registry details (not yet implemented)
+- `PUT /extension/v0/registries/{name}` - Create or update a registry (not yet implemented)
+- `DELETE /extension/v0/registries/{name}` - Delete a registry (not yet implemented)
+
+### Operational Endpoints
+
+- `GET /health` - Health check
+- `GET /readiness` - Readiness check
+- `GET /version` - Version information
 
 See the [MCP Registry API specification](https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/api/openapi.yaml) for full API details.
-**Note**: The current implementation is not strictly compliant with the standard. The deviations will be fixed in the next iterations.
 
 ## Configuration
 
@@ -846,10 +861,10 @@ Once running, the API is available at http://localhost:8080
 
 ```bash
 # List all servers
-curl http://localhost:8080/api/v0/servers
+curl http://localhost:8080/registry/v0.1/servers
 
-# Get specific server
-curl http://localhost:8080/api/v0/servers/example%2Ffilesystem
+# Get specific server version
+curl http://localhost:8080/registry/v0.1/servers/example%2Ffilesystem/versions/latest
 ```
 
 **Customization:**

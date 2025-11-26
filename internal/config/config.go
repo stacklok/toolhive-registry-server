@@ -139,14 +139,14 @@ type GitConfig struct {
 	Path string `yaml:"path,omitempty"`
 }
 
-// APIConfig defines API source configuration for ToolHive Registry APIs
+// APIConfig defines API source configuration for upstream MCP Registry APIs
 type APIConfig struct {
 	// Endpoint is the base API URL (without path)
-	// The registry handler will append the appropriate paths, for instance:
-	//   - /v0/servers - List all servers (single response, no pagination)
-	//   - /v0/servers/{name} - Get specific server (future)
-	//   - /v0/info - Get registry metadata (future)
-	// Example: "http://my-registry-api.default.svc.cluster.local/api"
+	// The registry handler will append the appropriate paths for the MCP Registry API v0.1:
+	//   - /v0.1/servers - List all servers
+	//   - /v0.1/servers/{name}/versions - List server versions
+	//   - /v0.1/servers/{name}/versions/{version} - Get specific version
+	// Example: "http://my-registry-api.default.svc.cluster.local/registry"
 	Endpoint string `yaml:"endpoint"`
 }
 
