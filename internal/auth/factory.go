@@ -17,21 +17,21 @@ import (
 func NewAuthMiddleware(
 	ctx context.Context,
 	cfg *config.AuthConfig,
-	validatorFactory ValidatorFactory,
+	factory validatorFactory,
 ) (func(http.Handler) http.Handler, http.Handler, error) {
 	// Handle nil config - defaults to anonymous
 	// TODO: switch to non-anonymous once the whole branch is merged
 	if cfg == nil {
 		logger.Infof("auth: anonymous mode (no auth config)")
-		return AnonymousMiddleware, nil, nil
+		return anonymousMiddleware, nil, nil
 	}
 
 	switch cfg.Mode {
 	case config.AuthModeAnonymous, "":
 		logger.Infof("auth: anonymous mode")
-		return AnonymousMiddleware, nil, nil
+		return anonymousMiddleware, nil, nil
 	case config.AuthModeOAuth:
-		return createOAuthMiddleware(ctx, cfg, validatorFactory)
+		return createOAuthMiddleware(ctx, cfg, factory)
 	default:
 		return nil, nil, fmt.Errorf("unsupported auth mode: %s", cfg.Mode)
 	}
@@ -41,7 +41,7 @@ func NewAuthMiddleware(
 func createOAuthMiddleware(
 	ctx context.Context,
 	cfg *config.AuthConfig,
-	validatorFactory ValidatorFactory,
+	factory validatorFactory,
 ) (func(http.Handler) http.Handler, http.Handler, error) {
 	if cfg.OAuth == nil {
 		return nil, nil, errors.New("oauth configuration is required for oauth mode")
@@ -75,7 +75,7 @@ func createOAuthMiddleware(
 		issuerURLs[i] = p.IssuerURL
 	}
 
-	m, err := NewMultiProviderMiddleware(ctx, providers, oauth.ResourceURL, oauth.Realm, validatorFactory)
+	m, err := newMultiProviderMiddleware(ctx, providers, oauth.ResourceURL, oauth.Realm, factory)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create multi-provider middleware: %w", err)
 	}
@@ -91,7 +91,7 @@ func createOAuthMiddleware(
 	return m.Middleware, handler, nil
 }
 
-// AnonymousMiddleware is a no-op middleware that passes requests through without authentication.
-func AnonymousMiddleware(next http.Handler) http.Handler {
+// anonymousMiddleware is a no-op middleware that passes requests through without authentication.
+func anonymousMiddleware(next http.Handler) http.Handler {
 	return next
 }
