@@ -912,22 +912,24 @@ paths:
       - official
   /registry/v0.1/publish:
     post:
-      description: This endpoint is deprecated. Use /{registryName}/v0.1/publish instead
+      description: |-
+        Publish a server to the registry. This server does not support publishing via this endpoint.
+        Use the registry-specific endpoint /{registryName}/v0.1/publish instead.
       requestBody:
         content:
           application/json:
             schema:
               type: object
       responses:
-        "400":
+        "501":
           content:
             application/json:
               schema:
                 additionalProperties:
                   type: string
                 type: object
-          description: Bad request - registry name required
-      summary: Publish server (deprecated)
+          description: Not implemented
+      summary: Publish server
       tags:
       - registry
       - official

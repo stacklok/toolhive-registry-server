@@ -473,15 +473,20 @@ func (routes *Routes) publishWithRegistryName(w http.ResponseWriter, r *http.Req
 	}
 }
 
-// publish handles POST /registry/v0.1/publish (deprecated - use registry-specific endpoint)
+// publish handles POST /registry/v0.1/publish
 //
-// @Summary		Publish server (deprecated)
-// @Description	This endpoint is deprecated. Use /{registryName}/v0.1/publish instead
+// @Summary		Publish server
+// @Description	Publish a server to the registry. This server does not support publishing via this endpoint.
+// @Description	Use the registry-specific endpoint /{registryName}/v0.1/publish instead.
 // @Tags		registry,official
 // @Accept		json
 // @Produce		json
-// @Failure		400	{object}	map[string]string	"Bad request - registry name required"
+// @Failure		501	{object}	map[string]string	"Not implemented"
 // @Router		/registry/v0.1/publish [post]
 func (*Routes) publish(w http.ResponseWriter, _ *http.Request) {
-	common.WriteErrorResponse(w, "Registry name is required. Use /{registryName}/v0.1/publish endpoint", http.StatusBadRequest)
+	common.WriteErrorResponse(
+		w,
+		"Publishing servers via this endpoint is not supported. Use /{registryName}/v0.1/publish endpoint instead",
+		http.StatusNotImplemented,
+	)
 }

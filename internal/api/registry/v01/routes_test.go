@@ -385,12 +385,12 @@ func TestPublish(t *testing.T) {
 		expectedError string
 	}{
 		{
-			name:          "publish - basic (deprecated)",
+			name:          "publish - not implemented",
 			path:          "/v0.1/publish",
 			body:          `{"name":"test","version":"1.0.0"}`,
 			setupMocks:    func(_ *mocks.MockRegistryService) {},
-			wantStatus:    http.StatusBadRequest,
-			expectedError: "Registry name is required. Use /{registryName}/v0.1/publish endpoint",
+			wantStatus:    http.StatusNotImplemented,
+			expectedError: "Publishing servers via this endpoint is not supported. Use /{registryName}/v0.1/publish endpoint instead",
 		},
 		{
 			name:          "publish with registry name - missing body",
