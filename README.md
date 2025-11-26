@@ -88,6 +88,9 @@ thv-registry-api serve --config config.yaml [--address :8080]
 thv-registry-api migrate up --config config.yaml [--yes]
 thv-registry-api migrate down --config config.yaml --num-steps N [--yes]
 
+# Create database users with proper roles
+thv-registry-api prime-db <username> --config config.yaml [--dry-run]
+
 # Display version information
 thv-registry-api version [--format json]
 
@@ -96,7 +99,7 @@ thv-registry-api --help
 thv-registry-api <command> --help
 ```
 
-See the [Database Migrations](#database-migrations) section for more details on using migration commands.
+See the [Database Migrations](#database-migrations) section for more details on using migration and database setup commands.
 
 ## API Endpoints
 
@@ -277,33 +280,41 @@ When you start the server with `serve`, database migrations run automatically us
 
 **Setting up the two-user model:**
 
-```sql
-BEGIN;
+Use the `prime-db` command to create database users with the correct role and privileges:
 
--- Create the toolhive_registry_server role (used by migrations)
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
-    CREATE ROLE toolhive_registry_server;
-  END IF;
-END
-$$;
+```bash
+# Create application user (interactive password entry)
+thv-registry-api prime-db db_app --config examples/config-database-dev.yaml
 
--- Create application user (limited privileges)
-CREATE USER db_app WITH PASSWORD 'app_password';
+# Create migration user (interactive password entry)
+thv-registry-api prime-db db_migrator --config examples/config-database-dev.yaml
+
+# Or pipe passwords from stdin (useful for automation)
+echo "app_password" | thv-registry-api prime-db db_app --config examples/config-database-dev.yaml
+echo "migration_password" | thv-registry-api prime-db db_migrator --config examples/config-database-dev.yaml
+
+# Preview the SQL that would be executed (dry-run mode)
+echo "app_password" | thv-registry-api prime-db db_app --config examples/config-database-dev.yaml --dry-run
+```
+
+The `prime-db` command:
+- Creates the `toolhive_registry_server` role if it doesn't exist
+- Creates the specified user with the provided password
+- Grants the `toolhive_registry_server` role to the user
+- Reads passwords from stdin (either interactively or piped)
+
+After creating the users, grant additional privileges:
+
+```bash
+# Connect to database and grant privileges
+psql -h localhost -U postgres -d toolhive_registry <<EOF
 GRANT CONNECT ON DATABASE toolhive_registry TO db_app;
 GRANT USAGE ON SCHEMA public TO db_app;
-GRANT toolhive_registry_server TO db_app;
-
--- Create migration user (elevated privileges)
-CREATE USER db_migrator WITH PASSWORD 'migration_password';
 GRANT CONNECT ON DATABASE toolhive_registry TO db_migrator;
 GRANT ALL PRIVILEGES ON SCHEMA public TO db_migrator;
 GRANT CREATE ON SCHEMA public TO db_migrator;
 GRANT ALL PRIVILEGES ON DATABASE toolhive_registry TO db_migrator;
-GRANT toolhive_registry_server TO db_migrator;
-
-COMMIT;
+EOF
 ```
 
 **Create pgpass file for both users:**
@@ -370,13 +381,25 @@ docker run -d --name postgres \
   -p 5432:5432 \
   postgres:16
 
-# 2. Create users (connect as postgres user)
+# 2. Create users with prime-db command
+# First, temporarily set up a pgpass for postgres superuser
+cat > ~/.pgpass <<EOF
+localhost:5432:toolhive_registry:postgres:postgres
+EOF
+chmod 600 ~/.pgpass
+
+# Create users using prime-db
+echo "app_password" | thv-registry-api prime-db db_app --config examples/config-database-dev.yaml
+echo "migration_password" | thv-registry-api prime-db db_migrator --config examples/config-database-dev.yaml
+
+# Grant additional privileges
 PGPASSWORD=postgres psql -h localhost -U postgres -d toolhive_registry <<EOF
-CREATE USER db_app WITH PASSWORD 'app_password';
-CREATE USER db_migrator WITH PASSWORD 'migration_password';
-GRANT ALL PRIVILEGES ON DATABASE toolhive_registry TO db_migrator;
-GRANT CREATE ON SCHEMA public TO db_migrator;
+GRANT CONNECT ON DATABASE toolhive_registry TO db_app;
 GRANT USAGE ON SCHEMA public TO db_app;
+GRANT CONNECT ON DATABASE toolhive_registry TO db_migrator;
+GRANT ALL PRIVILEGES ON SCHEMA public TO db_migrator;
+GRANT CREATE ON SCHEMA public TO db_migrator;
+GRANT ALL PRIVILEGES ON DATABASE toolhive_registry TO db_migrator;
 EOF
 
 # 3. Create pgpass file
@@ -393,17 +416,39 @@ thv-registry-api serve --config examples/config-database-dev.yaml
 **Example: Production deployment**
 
 ```bash
-# 1. Create pgpass file with both users
+# 1. Create database users (one-time setup - typically done by DBA)
+# First, set up temporary pgpass for superuser
+cat > /run/secrets/pgpass <<EOF
+db.production.example.com:5432:toolhive_registry:postgres:postgres_password
+EOF
+chmod 600 /run/secrets/pgpass
+export PGPASSFILE=/run/secrets/pgpass
+
+# Create users with prime-db
+echo "secure_app_password" | thv-registry-api prime-db db_app --config examples/config-database-prod.yaml
+echo "secure_migration_password" | thv-registry-api prime-db db_migrator --config examples/config-database-prod.yaml
+
+# Grant additional privileges
+psql -h db.production.example.com -U postgres -d toolhive_registry <<EOF
+GRANT CONNECT ON DATABASE toolhive_registry TO db_app;
+GRANT USAGE ON SCHEMA public TO db_app;
+GRANT CONNECT ON DATABASE toolhive_registry TO db_migrator;
+GRANT ALL PRIVILEGES ON SCHEMA public TO db_migrator;
+GRANT CREATE ON SCHEMA public TO db_migrator;
+GRANT ALL PRIVILEGES ON DATABASE toolhive_registry TO db_migrator;
+EOF
+
+# 2. Update pgpass file with application users
 cat > /run/secrets/pgpass <<EOF
 db.production.example.com:5432:toolhive_registry:db_app:secure_app_password
 db.production.example.com:5432:toolhive_registry:db_migrator:secure_migration_password
 EOF
 chmod 600 /run/secrets/pgpass
 
-# 2. Set PGPASSFILE environment variable
+# 3. Set PGPASSFILE environment variable
 export PGPASSFILE=/run/secrets/pgpass
 
-# 3. Start the server (migrations run automatically using db_migrator)
+# 4. Start the server (migrations run automatically using db_migrator)
 thv-registry-api serve --config examples/config-database-prod.yaml
 ```
 
