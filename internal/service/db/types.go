@@ -1,6 +1,8 @@
 package database
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/aws/smithy-go/ptr"
@@ -217,4 +219,37 @@ func toArguments(
 		}
 	}
 	return result
+}
+
+// Reverse conversion helpers (API -> Database)
+
+func extractArgumentValues(arguments []model.Argument) []string {
+	result := make([]string, len(arguments))
+	for i, arg := range arguments {
+		result[i] = arg.Name
+	}
+	return result
+}
+
+func extractKeyValueNames(kvInputs []model.KeyValueInput) []string {
+	result := make([]string, len(kvInputs))
+	for i, kv := range kvInputs {
+		result[i] = kv.Name
+	}
+	return result
+}
+
+// serializePublisherProvidedMeta serializes the PublisherProvided map to JSON bytes for storage
+func serializePublisherProvidedMeta(meta *upstreamv0.ServerMeta) ([]byte, error) {
+	if meta == nil || meta.PublisherProvided == nil || len(meta.PublisherProvided) == 0 {
+		return nil, nil
+	}
+
+	// Serialize the entire PublisherProvided map to JSON
+	bytes, err := json.Marshal(meta.PublisherProvided)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize publisher provided metadata: %w", err)
+	}
+
+	return bytes, nil
 }

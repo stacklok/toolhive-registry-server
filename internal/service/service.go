@@ -20,6 +20,8 @@ var (
 	ErrRegistryNotFound = errors.New("registry not found")
 	// ErrNotManagedRegistry is returned when attempting write operations on a non-managed registry
 	ErrNotManagedRegistry = errors.New("registry is not managed")
+	// ErrVersionAlreadyExists is returned when attempting to publish a version that already exists
+	ErrVersionAlreadyExists = errors.New("version already exists")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service
@@ -41,14 +43,18 @@ type RegistryService interface {
 	// GetServer returns a specific server by name
 	GetServerVersion(ctx context.Context, opts ...Option[GetServerVersionOptions]) (*upstreamv0.ServerJSON, error)
 
+	// PublishServerVersion publishes a server version to a managed registry
+	PublishServerVersion(ctx context.Context, opts ...Option[PublishServerVersionOptions]) (*upstreamv0.ServerJSON, error)
+
 	// DeleteServerVersion removes a server version from a managed registry
 	DeleteServerVersion(ctx context.Context, opts ...Option[DeleteServerVersionOptions]) error
 }
 
 // Option is a function that sets an option for the ListServersOptions, ListServerVersionsOptions,
-// GetServerVersionOptions, or DeleteServerVersionOptions
+// GetServerVersionOptions, PublishServerVersionOptions, or DeleteServerVersionOptions
 type Option[
-	T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions | DeleteServerVersionOptions,
+	T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions |
+		PublishServerVersionOptions | DeleteServerVersionOptions,
 ] func(*T) error
 
 // ListServersOptions is the options for the ListServers operation
@@ -75,6 +81,12 @@ type GetServerVersionOptions struct {
 	RegistryName *string
 	Name         string
 	Version      string
+}
+
+// PublishServerVersionOptions is the options for the PublishServerVersion operation
+type PublishServerVersionOptions struct {
+	RegistryName string
+	ServerData   *upstreamv0.ServerJSON
 }
 
 // DeleteServerVersionOptions is the options for the DeleteServerVersion operation
@@ -118,8 +130,11 @@ func WithUpdatedSince(updatedSince time.Time) Option[ListServersOptions] {
 }
 
 // WithRegistryName sets the registry name for the ListServers, ListServerVersions,
-// GetServerVersion, or DeleteServerVersion operation
-func WithRegistryName[T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions | DeleteServerVersionOptions](
+// GetServerVersion, PublishServerVersion, or DeleteServerVersion operation
+func WithRegistryName[
+	T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions |
+		PublishServerVersionOptions | DeleteServerVersionOptions,
+](
 	registryName string,
 ) Option[T] {
 	return func(o *T) error {
@@ -133,6 +148,8 @@ func WithRegistryName[T ListServersOptions | ListServerVersionsOptions | GetServ
 			o.RegistryName = &registryName
 		case *GetServerVersionOptions:
 			o.RegistryName = &registryName
+		case *PublishServerVersionOptions:
+			o.RegistryName = registryName
 		case *DeleteServerVersionOptions:
 			o.RegistryName = registryName
 		default:
@@ -226,6 +243,17 @@ func WithLimit[T ListServersOptions | ListServerVersionsOptions](limit int) Opti
 			return fmt.Errorf("invalid option type: %T", o)
 		}
 
+		return nil
+	}
+}
+
+// WithServerData sets the server data for the PublishServerVersion operation
+func WithServerData(serverData *upstreamv0.ServerJSON) Option[PublishServerVersionOptions] {
+	return func(o *PublishServerVersionOptions) error {
+		if serverData == nil {
+			return fmt.Errorf("server data is required")
+		}
+		o.ServerData = serverData
 		return nil
 	}
 }

@@ -10,8 +10,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	"github.com/modelcontextprotocol/registry/pkg/model"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
@@ -228,6 +230,271 @@ func (s *dbService) GetServerVersion(
 	return res[0], nil
 }
 
+// insertServerVersionData inserts the server version record and returns the server ID.
+// It validates unique constraints on (registry_id, name, version) and returns ErrVersionAlreadyExists if violated.
+func insertServerVersionData(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	serverData *upstreamv0.ServerJSON,
+	registryID uuid.UUID,
+) (uuid.UUID, error) {
+	// Prepare repository fields
+	var repoURL, repoID, repoSubfolder, repoType *string
+	if serverData.Repository != nil {
+		repoURL = &serverData.Repository.URL
+		repoID = &serverData.Repository.ID
+		repoSubfolder = &serverData.Repository.Subfolder
+		repoType = &serverData.Repository.Source
+	}
+
+	// Serialize publisher-provided metadata
+	serverMeta, err := serializePublisherProvidedMeta(serverData.Meta)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to serialize metadata: %w", err)
+	}
+
+	// Insert the server version
+	now := time.Now()
+	serverID, err := querier.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
+		Name:                serverData.Name,
+		Version:             serverData.Version,
+		RegID:               registryID,
+		CreatedAt:           &now,
+		UpdatedAt:           &now,
+		Description:         &serverData.Description,
+		Title:               &serverData.Title,
+		Website:             &serverData.WebsiteURL,
+		UpstreamMeta:        nil,
+		ServerMeta:          serverMeta,
+		RepositoryUrl:       repoURL,
+		RepositoryID:        repoID,
+		RepositorySubfolder: repoSubfolder,
+		RepositoryType:      repoType,
+	})
+	if err != nil {
+		// Check if this is a unique constraint violation
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return uuid.Nil, fmt.Errorf("%w: %s@%s",
+				service.ErrVersionAlreadyExists, serverData.Name, serverData.Version)
+		}
+		return uuid.Nil, fmt.Errorf("failed to insert server version: %w", err)
+	}
+
+	return serverID, nil
+}
+
+// insertServerPackages inserts all packages for a server version.
+// Each package includes transport configuration, runtime/package arguments, and environment variables.
+func insertServerPackages(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	serverID uuid.UUID,
+	packages []model.Package,
+) error {
+	for _, pkg := range packages {
+		err := querier.InsertServerPackage(ctx, sqlc.InsertServerPackageParams{
+			ServerID:         serverID,
+			RegistryType:     pkg.RegistryType,
+			PkgRegistryUrl:   pkg.RegistryBaseURL,
+			PkgIdentifier:    pkg.Identifier,
+			PkgVersion:       pkg.Version,
+			RuntimeHint:      &pkg.RunTimeHint,
+			RuntimeArguments: extractArgumentValues(pkg.RuntimeArguments),
+			PackageArguments: extractArgumentValues(pkg.PackageArguments),
+			EnvVars:          extractKeyValueNames(pkg.EnvironmentVariables),
+			Sha256Hash:       &pkg.FileSHA256,
+			Transport:        pkg.Transport.Type,
+			TransportUrl:     &pkg.Transport.URL,
+			TransportHeaders: extractKeyValueNames(pkg.Transport.Headers),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to insert server package: %w", err)
+		}
+	}
+	return nil
+}
+
+// insertServerRemotes inserts all remotes for a server version.
+// Remote transports (SSE, streamable-http) require a transport URL.
+func insertServerRemotes(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	serverID uuid.UUID,
+	remotes []model.Transport,
+) error {
+	for _, remote := range remotes {
+		err := querier.InsertServerRemote(ctx, sqlc.InsertServerRemoteParams{
+			ServerID:         serverID,
+			Transport:        remote.Type,
+			TransportUrl:     remote.URL,
+			TransportHeaders: extractKeyValueNames(remote.Headers),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to insert server remote: %w", err)
+		}
+	}
+	return nil
+}
+
+// insertServerIcons inserts all icons for a server version.
+// Icons include source URI, MIME type, and theme (light/dark) attributes.
+func insertServerIcons(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	serverID uuid.UUID,
+	icons []model.Icon,
+) error {
+	for _, icon := range icons {
+		// Convert theme string pointer to IconTheme enum
+		var theme sqlc.IconTheme
+		if icon.Theme != nil {
+			switch *icon.Theme {
+			case "light":
+				theme = sqlc.IconThemeLIGHT
+			case "dark":
+				theme = sqlc.IconThemeDARK
+			default:
+				theme = sqlc.IconThemeLIGHT // Default to light if unknown
+			}
+		} else {
+			theme = sqlc.IconThemeLIGHT // Default to light if not specified
+		}
+
+		// Get MIME type, default to empty string if not provided
+		mimeType := ""
+		if icon.MimeType != nil {
+			mimeType = *icon.MimeType
+		}
+
+		err := querier.InsertServerIcon(ctx, sqlc.InsertServerIconParams{
+			ServerID:  serverID,
+			SourceUri: icon.Src,
+			MimeType:  mimeType,
+			Theme:     theme,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to insert server icon: %w", err)
+		}
+	}
+	return nil
+}
+
+// validateManagedRegistry validates that the registry exists and is a managed (LOCAL) registry.
+// Returns ErrRegistryNotFound if the registry doesn't exist, or ErrNotManagedRegistry if it's not a LOCAL type.
+func validateManagedRegistry(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	registryName string,
+) (*sqlc.Registry, error) {
+	registry, err := querier.GetRegistryByName(ctx, registryName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
+		}
+		return nil, fmt.Errorf("failed to get registry: %w", err)
+	}
+
+	if registry.RegType != sqlc.RegistryTypeLOCAL {
+		return nil, fmt.Errorf("%w: registry %s has type %s",
+			service.ErrNotManagedRegistry, registryName, registry.RegType)
+	}
+
+	return &registry, nil
+}
+
+// PublishServerVersion publishes a server version to a managed registry
+func (s *dbService) PublishServerVersion(
+	ctx context.Context,
+	opts ...service.Option[service.PublishServerVersionOptions],
+) (*upstreamv0.ServerJSON, error) {
+	// Parse options
+	options := &service.PublishServerVersionOptions{}
+	for _, opt := range opts {
+		if err := opt(options); err != nil {
+			return nil, fmt.Errorf("invalid option: %w", err)
+		}
+	}
+
+	if options.ServerData == nil {
+		return nil, fmt.Errorf("server data is required")
+	}
+
+	serverData := options.ServerData
+
+	// Begin transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.Serializable,
+		AccessMode: pgx.ReadWrite,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			_ = err
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	// Validate registry exists and is managed
+	registry, err := validateManagedRegistry(ctx, querier, options.RegistryName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Insert the server version
+	serverID, err := insertServerVersionData(ctx, querier, serverData, registry.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Insert packages
+	if err := insertServerPackages(ctx, querier, serverID, serverData.Packages); err != nil {
+		return nil, err
+	}
+
+	// Insert remotes
+	if err := insertServerRemotes(ctx, querier, serverID, serverData.Remotes); err != nil {
+		return nil, err
+	}
+
+	// Insert icons
+	if err := insertServerIcons(ctx, querier, serverID, serverData.Icons); err != nil {
+		return nil, err
+	}
+
+	// Upsert latest server version pointer
+	_, err = querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
+		RegID:    registry.ID,
+		Name:     serverData.Name,
+		Version:  serverData.Version,
+		ServerID: serverID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert latest server version: %w", err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// Fetch the inserted server to return it
+	result, err := s.GetServerVersion(ctx,
+		service.WithRegistryName[service.GetServerVersionOptions](options.RegistryName),
+		service.WithName[service.GetServerVersionOptions](serverData.Name),
+		service.WithVersion[service.GetServerVersionOptions](serverData.Version),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch published server: %w", err)
+	}
+
+	return result, nil
+}
+
 // DeleteServerVersion removes a server version from a managed registry
 func (s *dbService) DeleteServerVersion(
 	ctx context.Context,
@@ -275,13 +542,19 @@ func (s *dbService) DeleteServerVersion(
 	}
 
 	// 5. Delete the server version
-	err = querier.DeleteServerVersion(ctx, sqlc.DeleteServerVersionParams{
+	rowsAffected, err := querier.DeleteServerVersion(ctx, sqlc.DeleteServerVersionParams{
 		RegID:   registry.ID,
 		Name:    options.ServerName,
 		Version: options.Version,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to delete server version: %w", err)
+	}
+
+	// 5.1. Check if the server version was found and deleted
+	if rowsAffected == 0 {
+		return fmt.Errorf("%w: %s@%s",
+			service.ErrServerNotFound, options.ServerName, options.Version)
 	}
 
 	// 6. Commit transaction

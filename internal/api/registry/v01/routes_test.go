@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
 
@@ -375,29 +377,124 @@ func TestPublish(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 
 	tests := []struct {
-		name       string
-		path       string
-		wantStatus int
+		name          string
+		path          string
+		body          string
+		setupMocks    func(*mocks.MockRegistryService)
+		wantStatus    int
+		expectedError string
 	}{
 		{
-			name:       "publish - basic",
-			path:       "/v0.1/publish",
-			wantStatus: http.StatusNotImplemented,
+			name:          "publish - not implemented",
+			path:          "/v0.1/publish",
+			body:          `{"name":"test","version":"1.0.0"}`,
+			setupMocks:    func(_ *mocks.MockRegistryService) {},
+			wantStatus:    http.StatusNotImplemented,
+			expectedError: "Publishing servers via this endpoint is not supported. Use /{registryName}/v0.1/publish endpoint instead",
 		},
 		{
-			name:       "publish with registry name - basic",
-			path:       "/foo/v0.1/publish",
-			wantStatus: http.StatusNotImplemented,
+			name:          "publish with registry name - missing body",
+			path:          "/foo/v0.1/publish",
+			body:          ``,
+			setupMocks:    func(_ *mocks.MockRegistryService) {},
+			wantStatus:    http.StatusBadRequest,
+			expectedError: "Invalid request body",
+		},
+		{
+			name: "publish with registry name - success",
+			path: "/foo/v0.1/publish",
+			body: `{"name":"test/server","version":"1.0.0","description":"Test server"}`,
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
+					Return(&upstreamv0.ServerJSON{
+						Name:        "test/server",
+						Version:     "1.0.0",
+						Description: "Test server",
+					}, nil)
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "publish - version already exists",
+			path: "/foo/v0.1/publish",
+			body: `{"name":"test/server","version":"1.0.0"}`,
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
+					Return(nil, service.ErrVersionAlreadyExists)
+			},
+			wantStatus:    http.StatusConflict,
+			expectedError: "version already exists",
+		},
+		{
+			name: "publish - registry not found",
+			path: "/nonexistent/v0.1/publish",
+			body: `{"name":"test/server","version":"1.0.0"}`,
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
+					Return(nil, service.ErrRegistryNotFound)
+			},
+			wantStatus:    http.StatusNotFound,
+			expectedError: "registry not found",
+		},
+		{
+			name: "publish - not a managed registry",
+			path: "/remote-registry/v0.1/publish",
+			body: `{"name":"test/server","version":"1.0.0"}`,
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
+					Return(nil, service.ErrNotManagedRegistry)
+			},
+			wantStatus:    http.StatusForbidden,
+			expectedError: "registry is not managed",
+		},
+		{
+			name:          "publish - missing server name",
+			path:          "/foo/v0.1/publish",
+			body:          `{"version":"1.0.0"}`,
+			setupMocks:    func(_ *mocks.MockRegistryService) {},
+			wantStatus:    http.StatusBadRequest,
+			expectedError: "Server name is required",
+		},
+		{
+			name:          "publish - missing version",
+			path:          "/foo/v0.1/publish",
+			body:          `{"name":"test/server"}`,
+			setupMocks:    func(_ *mocks.MockRegistryService) {},
+			wantStatus:    http.StatusBadRequest,
+			expectedError: "Server version is required",
+		},
+		{
+			name:          "publish - empty server name",
+			path:          "/foo/v0.1/publish",
+			body:          `{"name":"   ","version":"1.0.0"}`,
+			setupMocks:    func(_ *mocks.MockRegistryService) {},
+			wantStatus:    http.StatusBadRequest,
+			expectedError: "Server name is required",
+		},
+		{
+			name:          "publish - empty version",
+			path:          "/foo/v0.1/publish",
+			body:          `{"name":"test/server","version":"   "}`,
+			setupMocks:    func(_ *mocks.MockRegistryService) {},
+			wantStatus:    http.StatusBadRequest,
+			expectedError: "Server version is required",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			req, err := http.NewRequest("POST", tt.path, nil)
+			var body *strings.Reader
+			if tt.body != "" {
+				body = strings.NewReader(tt.body)
+			} else {
+				body = strings.NewReader("")
+			}
+			req, err := http.NewRequest("POST", tt.path, body)
 			require.NoError(t, err)
 
 			mockSvc := mocks.NewMockRegistryService(ctrl)
+			tt.setupMocks(mockSvc)
 			router := Router(mockSvc)
 
 			rr := httptest.NewRecorder()
@@ -405,11 +502,123 @@ func TestPublish(t *testing.T) {
 
 			assert.Equal(t, tt.wantStatus, rr.Code)
 
-			var response map[string]string
-			err = json.Unmarshal(rr.Body.Bytes(), &response)
+			if tt.wantStatus == http.StatusCreated {
+				var response upstreamv0.ServerJSON
+				err = json.Unmarshal(rr.Body.Bytes(), &response)
+				require.NoError(t, err)
+				assert.Equal(t, "test/server", response.Name)
+				assert.Equal(t, "1.0.0", response.Version)
+			} else {
+				var response map[string]string
+				err = json.Unmarshal(rr.Body.Bytes(), &response)
+				require.NoError(t, err)
+				assert.Contains(t, response, "error")
+				if tt.expectedError != "" {
+					assert.Contains(t, response["error"], tt.expectedError)
+				}
+			}
+		})
+	}
+}
+
+func TestDeleteVersion(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	tests := []struct {
+		name          string
+		path          string
+		setupMocks    func(*mocks.MockRegistryService)
+		wantStatus    int
+		expectedError string
+	}{
+		{
+			name: "delete - success",
+			path: "/foo/v0.1/servers/test%2Fserver/versions/1.0.0",
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().DeleteServerVersion(gomock.Any(), gomock.Any()).
+					Return(nil)
+			},
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name: "delete - server not found",
+			path: "/foo/v0.1/servers/nonexistent/versions/1.0.0",
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().DeleteServerVersion(gomock.Any(), gomock.Any()).
+					Return(service.ErrServerNotFound)
+			},
+			wantStatus:    http.StatusNotFound,
+			expectedError: "server not found",
+		},
+		{
+			name: "delete - registry not found",
+			path: "/nonexistent/v0.1/servers/test/versions/1.0.0",
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().DeleteServerVersion(gomock.Any(), gomock.Any()).
+					Return(service.ErrRegistryNotFound)
+			},
+			wantStatus:    http.StatusNotFound,
+			expectedError: "registry not found",
+		},
+		{
+			name: "delete - not a managed registry",
+			path: "/remote-registry/v0.1/servers/test/versions/1.0.0",
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().DeleteServerVersion(gomock.Any(), gomock.Any()).
+					Return(service.ErrNotManagedRegistry)
+			},
+			wantStatus:    http.StatusForbidden,
+			expectedError: "registry is not managed",
+		},
+		{
+			name:          "delete - empty registry name",
+			path:          "/%20/v0.1/servers/test/versions/1.0.0",
+			setupMocks:    func(_ *mocks.MockRegistryService) {},
+			wantStatus:    http.StatusBadRequest,
+			expectedError: "Registry name is required",
+		},
+		{
+			name:          "delete - empty server name",
+			path:          "/foo/v0.1/servers/%20/versions/1.0.0",
+			setupMocks:    func(_ *mocks.MockRegistryService) {},
+			wantStatus:    http.StatusBadRequest,
+			expectedError: "Server name is required",
+		},
+		{
+			name:          "delete - empty version",
+			path:          "/foo/v0.1/servers/test/versions/%20",
+			setupMocks:    func(_ *mocks.MockRegistryService) {},
+			wantStatus:    http.StatusBadRequest,
+			expectedError: "Version is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req, err := http.NewRequest("DELETE", tt.path, nil)
 			require.NoError(t, err)
-			assert.Contains(t, response, "error")
-			assert.Equal(t, "Publishing is not supported", response["error"])
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+			tt.setupMocks(mockSvc)
+			router := Router(mockSvc)
+
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.wantStatus, rr.Code)
+
+			if tt.wantStatus != http.StatusNoContent {
+				var response map[string]string
+				err = json.Unmarshal(rr.Body.Bytes(), &response)
+				require.NoError(t, err)
+				assert.Contains(t, response, "error")
+				if tt.expectedError != "" {
+					assert.Contains(t, response["error"], tt.expectedError)
+				}
+			}
 		})
 	}
 }

@@ -348,6 +348,74 @@ info:
   version: "0.1"
 openapi: 3.1.0
 paths:
+  /{registryName}/v0.1/publish:
+    post:
+      description: Publish a server version to a specific managed registry
+      parameters:
+      - description: Registry name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/v0.ServerJSON'
+        description: Server data
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v0.ServerJSON'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "403":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not a managed registry
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Registry not found
+        "409":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Version already exists
+        "500":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Internal server error
+      summary: Publish server to specific registry
+      tags:
+      - registry
+      - official
   /{registryName}/v0.1/servers/{serverName}/versions/{version}:
     delete:
       description: Delete a server version from a specific managed registry
@@ -682,34 +750,6 @@ paths:
       summary: Readiness check
       tags:
       - system
-  /registry/{registryName}/v0.1/publish:
-    post:
-      description: Publish a server to the registry
-      parameters:
-      - description: Registry name
-        in: path
-        name: registryName
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "501":
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Not implemented
-      summary: Publish server
-      tags:
-      - registry
-      - official
   /registry/{registryName}/v0.1/servers:
     get:
       description: Get a list of available servers in the registry
@@ -872,7 +912,9 @@ paths:
       - official
   /registry/v0.1/publish:
     post:
-      description: Publish a server to the registry
+      description: |-
+        Publish a server to the registry. This server does not support publishing via this endpoint.
+        Use the registry-specific endpoint /{registryName}/v0.1/publish instead.
       requestBody:
         content:
           application/json:

@@ -151,3 +151,23 @@ func (mr *MockRegistryServiceMockRecorder) ListServers(ctx any, opts ...any) *go
 	varargs := append([]any{ctx}, opts...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListServers", reflect.TypeOf((*MockRegistryService)(nil).ListServers), varargs...)
 }
+
+// PublishServerVersion mocks base method.
+func (m *MockRegistryService) PublishServerVersion(ctx context.Context, opts ...service.Option[service.PublishServerVersionOptions]) (*v0.ServerJSON, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "PublishServerVersion", varargs...)
+	ret0, _ := ret[0].(*v0.ServerJSON)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PublishServerVersion indicates an expected call of PublishServerVersion.
+func (mr *MockRegistryServiceMockRecorder) PublishServerVersion(ctx any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishServerVersion", reflect.TypeOf((*MockRegistryService)(nil).PublishServerVersion), varargs...)
+}
