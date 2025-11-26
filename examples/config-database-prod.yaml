@@ -1,24 +1,40 @@
 # Example configuration for production deployment with PostgreSQL database
 #
 # This configuration demonstrates production-ready PostgreSQL setup with:
-#   - Password stored in a secure file (not environment variables)
+#   - Two-user security model (separate users for operations and migrations)
+#   - pgpass file for secure password management
 #   - SSL enabled with full certificate verification
 #   - Optimized connection pool settings
 #   - Appropriate sync intervals
 #
+# Two-User Security Model:
+# This configuration uses two separate database users for enhanced security:
+#   - thv_production_user: Application user with limited privileges
+#     (SELECT, INSERT, UPDATE, DELETE on application tables)
+#   - thv_production_migrator: Migration user with elevated privileges
+#     (CREATE, ALTER, DROP for schema changes)
+#
 # Security Considerations:
-#   - Store password in a file with restricted permissions (chmod 600)
-#   - Mount password file from secrets management system (e.g., Kubernetes Secret)
+#   - Use pgpass file with restricted permissions (chmod 600)
+#   - Mount pgpass file from secrets management system (e.g., Kubernetes Secret)
 #   - Use SSL/TLS with certificate verification (sslMode: verify-full)
 #   - Regularly rotate database credentials
+#   - Migration user should only be accessible during deployment/startup
 #
 # Prerequisites:
 #   1. PostgreSQL server with SSL/TLS enabled
 #   2. Database created with proper permissions
-#   3. Password file created at /run/secrets/db_password (or similar secure location)
-#   4. SSL certificates configured if using verify-ca or verify-full
+#   3. Both users created with appropriate privileges
+#   4. pgpass file created at /run/secrets/pgpass (or similar secure location)
+#   5. SSL certificates configured if using verify-ca or verify-full
+#
+# pgpass file format (/run/secrets/pgpass):
+#   db.production.example.com:5432:toolhive_registry:thv_production_user:secure_app_password
+#   db.production.example.com:5432:toolhive_registry:thv_production_migrator:secure_migration_password
 #
 # Usage:
+#   # Set PGPASSFILE to point to the pgpass file
+#   export PGPASSFILE=/run/secrets/pgpass
 #   # Start server (migrations run automatically)
 #   thv-registry-api serve --config examples/config-database-prod.yaml
 #
@@ -57,23 +73,21 @@ registries:
           - "alpha"
 
 # PostgreSQL database configuration for production
+# Uses two-user security model: separate users for operations and migrations
 database:
   # Production database server
   # Can be a managed service (e.g., RDS, Cloud SQL) or self-hosted
   host: db.production.example.com
   port: 5432
 
-  # Database credentials
+  # Application user (limited privileges for runtime operations)
+  # Credentials provided via pgpass file
   user: thv_production_user
 
-  # Password stored in secure file (RECOMMENDED for production)
-  # File should contain only the password (trailing whitespace is trimmed)
-  # Permissions should be 600 (readable only by the application user)
-  # Common locations:
-  #   - Docker secrets: /run/secrets/db_password
-  #   - Kubernetes secrets: /var/run/secrets/db_password
-  #   - Custom mount: /etc/thv-registry/secrets/db_password
-  passwordFile: /run/secrets/db_password
+  # Migration user (elevated privileges for schema changes)
+  # Used only during startup to run migrations
+  # Credentials provided via pgpass file
+  migrationUser: thv_production_migrator
 
   # Database name
   database: toolhive_registry

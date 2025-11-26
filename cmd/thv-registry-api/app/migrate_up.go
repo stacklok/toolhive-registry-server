@@ -47,18 +47,12 @@ func runMigrateUp(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Get migration connection string (uses migration user if configured)
-	connString, err := cfg.Database.GetMigrationConnectionString()
-	if err != nil {
-		return fmt.Errorf("failed to get migration connection string: %w", err)
-	}
-
-	// Get the migration user for display
-	migrationUser := cfg.Database.GetMigrationUser()
+	connString := cfg.Database.GetMigrationConnectionString()
 
 	// Prompt user if not using --yes flag
 	if !yes {
-		logger.Infof("About to apply migrations to database: %s@%s:%d/%s (as user: %s)",
-			migrationUser, cfg.Database.Host, cfg.Database.Port, cfg.Database.Database, migrationUser)
+		logger.Infof("About to apply migrations to database: %s@%s:%d/%s",
+			cfg.Database.GetMigrationUser(), cfg.Database.Host, cfg.Database.Port, cfg.Database.Database)
 		fmt.Print("Continue? (yes/no): ")
 		var response string
 		if _, err := fmt.Scanln(&response); err != nil {

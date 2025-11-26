@@ -117,14 +117,10 @@ func runServe(_ *cobra.Command, _ []string) error {
 // runMigrations executes database migrations on startup
 func runMigrations(ctx context.Context, cfg *config.Config) error {
 	// Get migration connection string (uses migration user if configured)
-	connString, err := cfg.Database.GetMigrationConnectionString()
-	if err != nil {
-		return fmt.Errorf("failed to get migration connection string: %w", err)
-	}
+	connString := cfg.Database.GetMigrationConnectionString()
 
 	// Log which user is running migrations
-	migrationUser := cfg.Database.GetMigrationUser()
-	logger.Infof("Running migrations as user: %s", migrationUser)
+	logger.Infof("Running migrations as user: %s", cfg.Database.GetMigrationUser())
 
 	// Connect to database
 	conn, err := pgx.Connect(ctx, connString)

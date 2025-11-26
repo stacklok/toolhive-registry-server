@@ -994,88 +994,74 @@ func TestWithConfigPath(t *testing.T) {
 func TestDatabaseConfigGetPassword(t *testing.T) {
 	t.Parallel()
 
+	// GetPassword now always returns empty string to delegate to pgpass
+	dbConfig := &DatabaseConfig{
+		Host:     "localhost",
+		Port:     5432,
+		User:     "testuser",
+		Database: "testdb",
+	}
+
+	password := dbConfig.GetPassword()
+	assert.Equal(t, "", password, "GetPassword should return empty string to delegate to pgpass")
+}
+
+func TestDatabaseConfigGetMigrationUser(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name         string
-		dbConfig     *DatabaseConfig
-		setupFile    func(t *testing.T) string
-		wantPassword string
-		wantErr      bool
-		errMsg       string
+		name     string
+		dbConfig *DatabaseConfig
+		wantUser string
 	}{
 		{
-			name: "password_from_file",
+			name: "migration_user_set",
 			dbConfig: &DatabaseConfig{
-				Host:     "localhost",
-				Port:     5432,
-				User:     "testuser",
-				Database: "testdb",
+				User:          "appuser",
+				MigrationUser: "migratoruser",
 			},
-			setupFile: func(t *testing.T) string {
-				t.Helper()
-				tmpDir := t.TempDir()
-				passwordFile := filepath.Join(tmpDir, "password.txt")
-				err := os.WriteFile(passwordFile, []byte("mypassword"), 0600)
-				require.NoError(t, err)
-				return passwordFile
-			},
-			wantPassword: "mypassword",
-			wantErr:      false,
+			wantUser: "migratoruser",
 		},
 		{
-			name: "password_from_file_with_whitespace",
+			name: "migration_user_not_set_defaults_to_user",
 			dbConfig: &DatabaseConfig{
-				Host:     "localhost",
-				Port:     5432,
-				User:     "testuser",
-				Database: "testdb",
+				User: "appuser",
 			},
-			setupFile: func(t *testing.T) string {
-				t.Helper()
-				tmpDir := t.TempDir()
-				passwordFile := filepath.Join(tmpDir, "password.txt")
-				err := os.WriteFile(passwordFile, []byte("  mypassword\n\t"), 0600)
-				require.NoError(t, err)
-				return passwordFile
-			},
-			wantPassword: "mypassword",
-			wantErr:      false,
+			wantUser: "appuser",
 		},
 		{
-			name: "password_file_not_found",
+			name: "migration_user_empty_defaults_to_user",
 			dbConfig: &DatabaseConfig{
-				Host:         "localhost",
-				Port:         5432,
-				User:         "testuser",
-				Database:     "testdb",
-				PasswordFile: "/nonexistent/password.txt",
+				User:          "appuser",
+				MigrationUser: "",
 			},
-			wantErr: true,
-			errMsg:  "failed to read password from file",
+			wantUser: "appuser",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
-			// Setup password file if needed
-			if tt.setupFile != nil {
-				tt.dbConfig.PasswordFile = tt.setupFile(t)
-			}
-
-			password, err := tt.dbConfig.GetPassword()
-
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.wantPassword, password)
-			}
+			user := tt.dbConfig.GetMigrationUser()
+			assert.Equal(t, tt.wantUser, user)
 		})
 	}
+}
+
+func TestDatabaseConfigGetMigrationPassword(t *testing.T) {
+	t.Parallel()
+
+	// GetMigrationPassword always returns empty string to delegate to pgpass
+	dbConfig := &DatabaseConfig{
+		Host:          "localhost",
+		Port:          5432,
+		User:          "appuser",
+		MigrationUser: "migratoruser",
+		Database:      "testdb",
+	}
+
+	password := dbConfig.GetMigrationPassword()
+	assert.Equal(t, "", password, "GetMigrationPassword should return empty string to delegate to pgpass")
 }
 
 func TestDatabaseConfigGetConnectionString(t *testing.T) {
@@ -1084,32 +1070,21 @@ func TestDatabaseConfigGetConnectionString(t *testing.T) {
 	tests := []struct {
 		name        string
 		dbConfig    *DatabaseConfig
-		setupFile   func(t *testing.T) string
 		wantConnStr string
-		wantErr     bool
-		errMsg      string
 	}{
 		{
-			name: "valid_connection_string_with_default_sslmode",
+			name: "connection_string_with_default_sslmode",
 			dbConfig: &DatabaseConfig{
 				Host:     "localhost",
 				Port:     5432,
 				User:     "testuser",
 				Database: "testdb",
 			},
-			setupFile: func(t *testing.T) string {
-				t.Helper()
-				tmpDir := t.TempDir()
-				passwordFile := filepath.Join(tmpDir, "password.txt")
-				err := os.WriteFile(passwordFile, []byte("mypassword"), 0600)
-				require.NoError(t, err)
-				return passwordFile
-			},
-			wantConnStr: "postgres://testuser:mypassword@localhost:5432/testdb?sslmode=require",
-			wantErr:     false,
+			// Password omitted - pgx will use pgpass file
+			wantConnStr: "postgres://testuser@localhost:5432/testdb?sslmode=require",
 		},
 		{
-			name: "valid_connection_string_with_custom_sslmode",
+			name: "connection_string_with_custom_sslmode",
 			dbConfig: &DatabaseConfig{
 				Host:     "db.example.com",
 				Port:     5433,
@@ -1117,38 +1092,10 @@ func TestDatabaseConfigGetConnectionString(t *testing.T) {
 				Database: "production",
 				SSLMode:  "verify-full",
 			},
-			setupFile: func(t *testing.T) string {
-				t.Helper()
-				tmpDir := t.TempDir()
-				passwordFile := filepath.Join(tmpDir, "password.txt")
-				err := os.WriteFile(passwordFile, []byte("securepass"), 0600)
-				require.NoError(t, err)
-				return passwordFile
-			},
-			wantConnStr: "postgres://admin:securepass@db.example.com:5433/production?sslmode=verify-full",
-			wantErr:     false,
+			wantConnStr: "postgres://admin@db.example.com:5433/production?sslmode=verify-full",
 		},
 		{
-			name: "connection_string_with_special_characters_in_password",
-			dbConfig: &DatabaseConfig{
-				Host:     "localhost",
-				Port:     5432,
-				User:     "testuser",
-				Database: "testdb",
-			},
-			setupFile: func(t *testing.T) string {
-				t.Helper()
-				tmpDir := t.TempDir()
-				passwordFile := filepath.Join(tmpDir, "password.txt")
-				err := os.WriteFile(passwordFile, []byte("p@ss&w0rd!#$%"), 0600)
-				require.NoError(t, err)
-				return passwordFile
-			},
-			wantConnStr: "postgres://testuser:p%40ss%26w0rd%21%23%24%25@localhost:5432/testdb?sslmode=require",
-			wantErr:     false,
-		},
-		{
-			name: "connection_string_from_password_file",
+			name: "connection_string_with_disable_sslmode",
 			dbConfig: &DatabaseConfig{
 				Host:     "localhost",
 				Port:     5432,
@@ -1156,51 +1103,69 @@ func TestDatabaseConfigGetConnectionString(t *testing.T) {
 				Database: "testdb",
 				SSLMode:  "disable",
 			},
-			setupFile: func(t *testing.T) string {
-				t.Helper()
-				tmpDir := t.TempDir()
-				passwordFile := filepath.Join(tmpDir, "password.txt")
-				err := os.WriteFile(passwordFile, []byte("filepassword"), 0600)
-				require.NoError(t, err)
-				return passwordFile
-			},
-			wantConnStr: "postgres://testuser:filepassword@localhost:5432/testdb?sslmode=disable",
-			wantErr:     false,
-		},
-		{
-			name: "error_when_password_file_not_found",
-			dbConfig: &DatabaseConfig{
-				Host:         "localhost",
-				Port:         5432,
-				User:         "testuser",
-				Database:     "testdb",
-				PasswordFile: "/nonexistent/password.txt",
-			},
-			wantErr: true,
-			errMsg:  "failed to read password from file",
+			wantConnStr: "postgres://testuser@localhost:5432/testdb?sslmode=disable",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			connStr := tt.dbConfig.GetConnectionString()
+			assert.Equal(t, tt.wantConnStr, connStr)
+		})
+	}
+}
 
-			// Setup password file if needed
-			if tt.setupFile != nil {
-				tt.dbConfig.PasswordFile = tt.setupFile(t)
-			}
+func TestDatabaseConfigGetMigrationConnectionString(t *testing.T) {
+	t.Parallel()
 
-			connStr, err := tt.dbConfig.GetConnectionString()
+	tests := []struct {
+		name        string
+		dbConfig    *DatabaseConfig
+		wantConnStr string
+	}{
+		{
+			name: "migration_connection_string_with_migration_user",
+			dbConfig: &DatabaseConfig{
+				Host:          "localhost",
+				Port:          5432,
+				User:          "appuser",
+				MigrationUser: "migratoruser",
+				Database:      "testdb",
+			},
+			// Uses migration user, password omitted - pgx will use pgpass file
+			wantConnStr: "postgres://migratoruser@localhost:5432/testdb?sslmode=require",
+		},
+		{
+			name: "migration_connection_string_defaults_to_user",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "appuser",
+				Database: "testdb",
+			},
+			// Falls back to regular user when MigrationUser not set
+			wantConnStr: "postgres://appuser@localhost:5432/testdb?sslmode=require",
+		},
+		{
+			name: "migration_connection_string_with_custom_sslmode",
+			dbConfig: &DatabaseConfig{
+				Host:          "db.example.com",
+				Port:          5433,
+				User:          "appuser",
+				MigrationUser: "migratoruser",
+				Database:      "production",
+				SSLMode:       "verify-full",
+			},
+			wantConnStr: "postgres://migratoruser@db.example.com:5433/production?sslmode=verify-full",
+		},
+	}
 
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.wantConnStr, connStr)
-			}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			connStr := tt.dbConfig.GetMigrationConnectionString()
+			assert.Equal(t, tt.wantConnStr, connStr)
 		})
 	}
 }
@@ -1260,7 +1225,7 @@ database:
   host: db.example.com
   port: 5433
   user: admin
-  passwordFile: /secrets/db-password
+  migrationUser: admin_migrator
   database: production
   sslMode: verify-full
   maxOpenConns: 25
@@ -1282,7 +1247,7 @@ database:
 					Host:            "db.example.com",
 					Port:            5433,
 					User:            "admin",
-					PasswordFile:    "/secrets/db-password",
+					MigrationUser:   "admin_migrator",
 					Database:        "production",
 					SSLMode:         "verify-full",
 					MaxOpenConns:    25,
@@ -1657,4 +1622,31 @@ func TestRegistryConfig_GetType(t *testing.T) {
 			assert.Equal(t, tt.expectedType, result)
 		})
 	}
+}
+
+func TestDatabaseConfigPgpassDelegation(t *testing.T) {
+	t.Parallel()
+
+	dbConfig := &DatabaseConfig{
+		Host:          "localhost",
+		Port:          5432,
+		User:          "testuser",
+		MigrationUser: "migratoruser",
+		Database:      "testdb",
+	}
+
+	// Test that password methods always return empty string (delegate to pgpass)
+	password := dbConfig.GetPassword()
+	assert.Equal(t, "", password, "GetPassword should delegate to pgpass")
+
+	migrationPassword := dbConfig.GetMigrationPassword()
+	assert.Equal(t, "", migrationPassword, "GetMigrationPassword should delegate to pgpass")
+
+	// Verify connection string format (no password - pgpass will provide it)
+	connStr := dbConfig.GetConnectionString()
+	assert.Equal(t, "postgres://testuser@localhost:5432/testdb?sslmode=require", connStr)
+
+	// Verify migration connection string uses migration user
+	migrationConnStr := dbConfig.GetMigrationConnectionString()
+	assert.Equal(t, "postgres://migratoruser@localhost:5432/testdb?sslmode=require", migrationConnStr)
 }

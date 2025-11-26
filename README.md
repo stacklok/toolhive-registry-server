@@ -153,7 +153,6 @@ database:
   host: localhost
   port: 5432
   user: registry
-  passwordFile: /secrets/db-password  # Recommended for production
   database: registry
   sslMode: require
   maxOpenConns: 25
@@ -217,15 +216,31 @@ The server supports secure password management with separate credentials for nor
 
 **Normal Operations Password (for `user`):**
 
-1. **Password File** (Recommended for production):
-   - Set `passwordFile` to the path of a file containing only the password
-   - The file content will have leading/trailing whitespace trimmed
-   - Ideal for Kubernetes secrets mounted as files
-   - Example:
-     ```yaml
-     database:
-       passwordFile: /secrets/db-password
-     ```
+1. **Postgres Password File** (Recommended for production):
+
+The server supports PostgreSQL's standard pgpass file for password management.
+
+**pgpass file format:**
+```
+hostname:port:database:username:password
+```
+**Example pgpass file with two users:**
+```bash
+# Create pgpass file with credentials for both users
+cat > ~/.pgpass <<EOF
+localhost:5432:toolhive_registry:db_app:app_password
+localhost:5432:toolhive_registry:db_migrator:migration_password
+EOF
+# Set secure permissions (REQUIRED - pgx will ignore files with wrong permissions)
+chmod 600 ~/.pgpass
+```
+
+**Custom pgpass location:**
+```bash
+# Use PGPASSFILE environment variable for custom location
+export PGPASSFILE=/run/secrets/pgpass
+thv-registry-api serve --config config.yaml
+```
 
 2. **Environment Variable**:
    - Set `THV_DATABASE_PASSWORD` environment variable

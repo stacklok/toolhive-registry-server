@@ -1,11 +1,11 @@
 # Docker Compose configuration for ToolHive Registry API
 #
 # This configuration is designed for use with docker-compose.yaml in the repository root.
-# It demonstrates database-backed registry with PostgreSQL.
+# It demonstrates database-backed registry with PostgreSQL using the two-user security model.
 #
 # Prerequisites:
 #   - Docker and Docker Compose installed
-#   - THV_DATABASE_PASSWORD environment variable set in docker-compose.yaml
+#   - pgpass file mounted at /root/.pgpass with credentials for both users
 #
 # Usage:
 #   docker-compose up
@@ -14,8 +14,13 @@
 #   1. postgres - PostgreSQL 18 database server
 #   2. registry-api - Main API server (runs migrations automatically on startup)
 #
-# Database password is provided via THV_DATABASE_PASSWORD environment variable
-# set in the docker-compose.yaml file for the registry-api service.
+# Two-User Security Model:
+#   - db_app: Application user with limited privileges (SELECT, INSERT, UPDATE, DELETE)
+#   - db_migrator: Migration user with elevated privileges (CREATE, ALTER, DROP)
+#
+# Password management via pgpass file (mounted at /root/.pgpass):
+#   postgres:5432:registry:db_app:app_password
+#   postgres:5432:registry:db_migrator:migration_password
 
 # Registry name/identifier
 registryName: docker-registry
@@ -37,10 +42,8 @@ registries:
       # Check for file changes every 5 minutes
       interval: "5m"
 
-# PostgreSQL database configuration with separate users for migrations and operations
-# This demonstrates the principle of least privilege:
-#   - Migration user (db_migrator) has elevated privileges for schema changes
-#   - Application user (db_app) has limited privileges for normal operations
+# PostgreSQL database configuration
+# Uses two-user security model: separate users for operations and migrations
 database:
   # Use service name from docker-compose as hostname
   host: postgres
@@ -48,17 +51,14 @@ database:
   # PostgreSQL default port
   port: 5432
 
-  # Application user with limited privileges (SELECT, INSERT, UPDATE, DELETE)
-  # Password from THV_DATABASE_PASSWORD environment variable
+  # Application user (limited privileges: SELECT, INSERT, UPDATE, DELETE)
+  # Credentials provided via pgpass file
   user: db_app
 
-  # Migration user with elevated privileges (CREATE, ALTER, DROP)
-  # Password from THV_DATABASE_MIGRATION_PASSWORD environment variable
+  # Migration user (elevated privileges: CREATE, ALTER, DROP)
+  # Used for running database schema migrations
+  # Credentials provided via pgpass file
   migrationUser: db_migrator
-
-  # Passwords are read from environment variables (set in docker-compose.yaml):
-  # - THV_DATABASE_PASSWORD: Application user password
-  # - THV_DATABASE_MIGRATION_PASSWORD: Migration user password
 
   # Database name (must match POSTGRES_DB in docker-compose.yaml)
   database: registry

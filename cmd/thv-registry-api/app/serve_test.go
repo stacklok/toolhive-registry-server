@@ -16,6 +16,9 @@ import (
 
 // setupBenchmarkDB sets up a test database container for benchmarking
 // Returns a config and cleanup function
+// Creates two users following the two-user security model:
+// - appuser: Application user with limited privileges
+// - migratoruser: Migration user with elevated privileges
 func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 	t.Helper()
 
@@ -44,8 +47,11 @@ func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 
 	dbName := "testdb"
 
-	user := "appuser"
-	password := "apppass"
+	// Two-user security model
+	appUser := "appuser"
+	appPassword := "apppass"
+	migratorUser := "migratoruser"
+	migratorPassword := "migratorpass"
 
 	// Create the toolhive_registry_server role if it doesn't exist
 	// (This role is normally created by migrations, but we need it for the test user)
@@ -61,32 +67,89 @@ func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 	`)
 	require.NoError(t, err)
 
-	// Create the application user with the given password
+	// Create the application user with limited privileges
 	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
 		"CREATE USER %s WITH PASSWORD '%s'",
-		pgx.Identifier{user}.Sanitize(),
-		password,
+		pgx.Identifier{appUser}.Sanitize(),
+		appPassword,
 	))
 	require.NoError(t, err)
 
-	// Grant the toolhive_registry_server role to the user
+	// Grant the toolhive_registry_server role to the app user
 	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
 		"GRANT toolhive_registry_server TO %s",
-		pgx.Identifier{user}.Sanitize(),
+		pgx.Identifier{appUser}.Sanitize(),
 	))
 	require.NoError(t, err)
 
-	adminUser := "testuser"
-	adminPassword := "testpass"
-	os.Setenv("THV_DATABASE_MIGRATION_PASSWORD", adminPassword)
+	// Grant connect and schema usage to app user
+	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
+		"GRANT CONNECT ON DATABASE %s TO %s",
+		pgx.Identifier{dbName}.Sanitize(),
+		pgx.Identifier{appUser}.Sanitize(),
+	))
+	require.NoError(t, err)
 
-	// Create config with database settings
+	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
+		"GRANT USAGE ON SCHEMA public TO %s",
+		pgx.Identifier{appUser}.Sanitize(),
+	))
+	require.NoError(t, err)
+
+	// Create the migration user with elevated privileges
+	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
+		"CREATE USER %s WITH PASSWORD '%s'",
+		pgx.Identifier{migratorUser}.Sanitize(),
+		migratorPassword,
+	))
+	require.NoError(t, err)
+
+	// Grant the toolhive_registry_server role to the migrator user
+	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
+		"GRANT toolhive_registry_server TO %s",
+		pgx.Identifier{migratorUser}.Sanitize(),
+	))
+	require.NoError(t, err)
+
+	// Grant schema modification privileges for migrations
+	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
+		"GRANT CREATE ON SCHEMA public TO %s",
+		pgx.Identifier{migratorUser}.Sanitize(),
+	))
+	require.NoError(t, err)
+
+	// Grant all privileges on the database for migrations
+	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
+		"GRANT ALL PRIVILEGES ON DATABASE %s TO %s",
+		pgx.Identifier{dbName}.Sanitize(),
+		pgx.Identifier{migratorUser}.Sanitize(),
+	))
+	require.NoError(t, err)
+
+	// Create a temporary pgpass file for tests
+	pgpassContent := fmt.Sprintf("%s:%d:%s:%s:%s\n%s:%d:%s:%s:%s\n",
+		host, port, dbName, appUser, appPassword,
+		host, port, dbName, migratorUser, migratorPassword,
+	)
+	pgpassFile, err := os.CreateTemp("", "pgpass-test-*")
+	require.NoError(t, err)
+	_, err = pgpassFile.WriteString(pgpassContent)
+	require.NoError(t, err)
+	err = pgpassFile.Chmod(0600)
+	require.NoError(t, err)
+	err = pgpassFile.Close()
+	require.NoError(t, err)
+
+	// Set PGPASSFILE environment variable
+	os.Setenv("PGPASSFILE", pgpassFile.Name())
+
+	// Create config with database settings (two-user model)
 	cfg := &config.Config{
 		Database: &config.DatabaseConfig{
 			Host:          host,
 			Port:          port,
-			User:          user,
-			MigrationUser: adminUser,
+			User:          appUser,
+			MigrationUser: migratorUser,
 			Database:      dbName,
 			SSLMode:       "disable",
 		},
@@ -106,8 +169,9 @@ func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 	}
 
 	return cfg, connStr, func() {
+		os.Remove(pgpassFile.Name())
+		os.Unsetenv("PGPASSFILE")
 		cleanupFunc()
-		os.Unsetenv("THV_DATABASE_MIGRATION_PASSWORD")
 	}
 }
 
