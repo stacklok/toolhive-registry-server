@@ -150,6 +150,8 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 // @Param		version			query	string	false	"Filter by version ('latest' for latest version, or an exact version like '1.2.3')"
 // @Success		200		{object}	upstreamv0.ServerListResponse
 // @Failure		400		{object}	map[string]string	"Bad request"
+// @Failure		401		{object}	map[string]string	"Unauthorized"
+// @Security	BearerAuth
 // @Router		/registry/v0.1/servers [get]
 func (routes *Routes) listServers(w http.ResponseWriter, r *http.Request) {
 	routes.handleListServers(w, r, "")
@@ -170,6 +172,8 @@ func (routes *Routes) listServers(w http.ResponseWriter, r *http.Request) {
 // @Param		version			query	string	false	"Filter by version ('latest' for latest version, or an exact version like '1.2.3')"
 // @Success		200		{object}	upstreamv0.ServerListResponse
 // @Failure		400		{object}	map[string]string	"Bad request"
+// @Failure		401		{object}	map[string]string	"Unauthorized"
+// @Security	BearerAuth
 // @Router		/registry/{registryName}/v0.1/servers [get]
 func (routes *Routes) listServersWithRegistryName(w http.ResponseWriter, r *http.Request) {
 	registryName := chi.URLParam(r, "registryName")
@@ -231,7 +235,9 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 // @Param		serverName	path		string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
 // @Success		200		{object}	upstreamv0.ServerListResponse	"A list of all versions for the server"
 // @Failure		400		{object}	map[string]string	"Bad request"
+// @Failure		401		{object}	map[string]string	"Unauthorized"
 // @Failure		404		{object}	map[string]string	"Server not found"
+// @Security	BearerAuth
 // @Router		/registry/v0.1/servers/{serverName}/versions [get]
 func (routes *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 	routes.handleListVersions(w, r, "")
@@ -248,7 +254,9 @@ func (routes *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 // @Param		serverName	path		string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
 // @Success		200		{object}	upstreamv0.ServerListResponse	"A list of all versions for the server"
 // @Failure		400		{object}	map[string]string	"Bad request"
+// @Failure		401		{object}	map[string]string	"Unauthorized"
 // @Failure		404		{object}	map[string]string	"Server not found"
+// @Security	BearerAuth
 // @Router		/registry/{registryName}/v0.1/servers/{serverName}/versions [get]
 func (routes *Routes) listVersionsWithRegistryName(w http.ResponseWriter, r *http.Request) {
 	registryName := chi.URLParam(r, "registryName")
@@ -304,7 +312,9 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 // @Param		version		path	string	true	"URL-encoded version to retrieve (e.g., \"1.0.0\")"
 // @Success		200		{object}	upstreamv0.ServerResponse	"Detailed server information"
 // @Failure		400		{object}	map[string]string	"Bad request"
+// @Failure		401		{object}	map[string]string	"Unauthorized"
 // @Failure		404		{object}	map[string]string	"Server or version not found"
+// @Security	BearerAuth
 // @Router		/registry/v0.1/servers/{serverName}/versions/{version} [get]
 func (routes *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 	routes.handleGetVersion(w, r, "")
@@ -323,7 +333,9 @@ func (routes *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 // @Param		version			path		string	true	"URL-encoded version to retrieve (e.g., \"1.0.0\")"
 // @Success		200				{object}	upstreamv0.ServerResponse	"Detailed server information"
 // @Failure		400				{object}	map[string]string	"Bad request"
+// @Failure		401				{object}	map[string]string	"Unauthorized"
 // @Failure		404				{object}	map[string]string	"Server or version not found"
+// @Security	BearerAuth
 // @Router		/registry/{registryName}/v0.1/servers/{serverName}/versions/{version} [get]
 func (routes *Routes) getVersionWithRegistryName(w http.ResponseWriter, r *http.Request) {
 	registryName := chi.URLParam(r, "registryName")
@@ -342,9 +354,11 @@ func (routes *Routes) getVersionWithRegistryName(w http.ResponseWriter, r *http.
 // @Param        version       path  string  true  "Version (URL-encoded)"
 // @Success      204  "No content"
 // @Failure      400  {object}  map[string]string  "Bad request"
+// @Failure      401  {object}  map[string]string  "Unauthorized"
 // @Failure      403  {object}  map[string]string  "Not a managed registry"
 // @Failure      404  {object}  map[string]string  "Server version not found"
 // @Failure      500  {object}  map[string]string  "Internal server error"
+// @Security     BearerAuth
 // @Router       /{registryName}/v0.1/servers/{serverName}/versions/{version} [delete]
 func (routes *Routes) deleteVersionWithRegistryName(w http.ResponseWriter, r *http.Request) {
 	// Extract URL parameters
@@ -410,7 +424,9 @@ func (*Routes) handlePublish(w http.ResponseWriter, r *http.Request, registryNam
 // @Tags		registry,official
 // @Accept		json
 // @Produce		json
+// @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
 // @Router		/registry/v0.1/publish [post]
 func (routes *Routes) publish(w http.ResponseWriter, r *http.Request) {
 	routes.handlePublish(w, r, "")
@@ -424,7 +440,9 @@ func (routes *Routes) publish(w http.ResponseWriter, r *http.Request) {
 // @Accept		json
 // @Produce		json
 // @Param		registryName	path		string	true	"Registry name"
+// @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
 // @Router		/registry/{registryName}/v0.1/publish [post]
 func (routes *Routes) publishWithRegistryName(w http.ResponseWriter, r *http.Request) {
 	registryName := chi.URLParam(r, "registryName")

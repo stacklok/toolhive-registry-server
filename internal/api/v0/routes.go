@@ -93,7 +93,9 @@ func Router(svc service.RegistryService) http.Handler {
 // @Param			format	query		string	false	"Response format"	Enums(toolhive,upstream)	default(toolhive)
 // @Success		200		{object}	RegistryInfoResponse
 // @Failure		400		{object}	ErrorResponse
+// @Failure		401		{object}	ErrorResponse	"Unauthorized"
 // @Failure		501		{object}	ErrorResponse
+// @Security		BearerAuth
 // @Router			/api/v0/registry/info [get]
 // @Deprecated
 func (rr *Routes) getRegistryInfo(w http.ResponseWriter, r *http.Request) {

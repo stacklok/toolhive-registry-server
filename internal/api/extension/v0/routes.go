@@ -49,7 +49,9 @@ func Router(svc service.RegistryService) http.Handler {
 // @Tags		extension
 // @Accept		json
 // @Produce		json
+// @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
 // @Router		/extension/v0/registries [get]
 func (*Routes) listRegistries(w http.ResponseWriter, _ *http.Request) {
 	common.WriteErrorResponse(w, "Listing registries is not supported", http.StatusNotImplemented)
@@ -64,7 +66,9 @@ func (*Routes) listRegistries(w http.ResponseWriter, _ *http.Request) {
 // @Produce		json
 // @Param		registryName	path	string	true	"Registry Name"
 // @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
 // @Router		/extension/v0/registries/{registryName} [get]
 func (*Routes) getRegistry(w http.ResponseWriter, r *http.Request) {
 	registryName := chi.URLParam(r, "registryName")
@@ -85,7 +89,9 @@ func (*Routes) getRegistry(w http.ResponseWriter, r *http.Request) {
 // @Produce		json
 // @Param		registryName	path	string	true	"Registry Name"
 // @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
 // @Router		/extension/v0/registries/{registryName} [put]
 func (*Routes) upsertRegistry(w http.ResponseWriter, r *http.Request) {
 	registryName := chi.URLParam(r, "registryName")
@@ -106,7 +112,9 @@ func (*Routes) upsertRegistry(w http.ResponseWriter, r *http.Request) {
 // @Produce		json
 // @Param		registryName	path	string	true	"Registry Name"
 // @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
 // @Router		/extension/v0/registries/{registryName} [delete]
 func (*Routes) deleteRegistry(w http.ResponseWriter, r *http.Request) {
 	registryName := chi.URLParam(r, "registryName")
@@ -129,7 +137,9 @@ func (*Routes) deleteRegistry(w http.ResponseWriter, r *http.Request) {
 // @Param		serverName		path	string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
 // @Param		version			path	string	true	"URL-encoded version to retrieve (e.g., \"1.0.0\")"
 // @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
 // @Router		/extension/v0/registries/{registryName}/servers/{serverName}/versions/{version} [put]
 func (*Routes) upsertVersion(w http.ResponseWriter, r *http.Request) {
 	registryName := chi.URLParam(r, "registryName")
