@@ -60,17 +60,8 @@ func InitializeManagedRegistries(ctx context.Context, cfg *config.Config, pool *
 	if managedCount == 0 {
 		logger.Info("No managed registries found in config")
 	} else {
-		logger.Infof("Successfully initialized %d managed registr%s",
-			managedCount, pluralize(managedCount, "y", "ies"))
+		logger.Infof("Successfully initialized %d managed registry(ies)", managedCount)
 	}
 
 	return nil
-}
-
-// pluralize returns singular or plural suffix based on count
-func pluralize(count int, singular, plural string) string {
-	if count == 1 {
-		return singular
-	}
-	return plural
 }
