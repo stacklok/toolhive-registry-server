@@ -22,7 +22,7 @@ type providerConfig struct {
 // IsPublicPath checks if a path should bypass authentication.
 // It performs secure path matching by:
 // 1. Rejecting paths with encoded path separators to prevent double-encoding attacks
-// 2. Normalizing the path to prevent traversal attacks (e.g., /health/../v0/servers)
+// 2. Normalizing the path to prevent traversal attacks (e.g., /health/../registry/v0.1/servers)
 // 3. Using segment-aware matching so /health matches /health and /health/check but NOT /healthcheck
 func IsPublicPath(requestPath string, publicPaths []string) bool {
 	// Reject paths containing encoded path separators (double-encoding attack)

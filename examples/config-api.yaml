@@ -24,10 +24,11 @@ registries:
     api:
       # Base API URL (without path)
       # The sync manager will append the appropriate API paths:
-      #   - /v0/servers - List all servers (single response, no pagination)
-      #   - /v0/servers/{name} - Get specific server (future)
-      #   - /v0/info - Get registry metadata (future)
-      endpoint: https://registry.modelcontextprotocol.io/api
+      #   - /v0.1/servers - List all servers (with pagination support)
+      #   - /v0.1/servers/{name}/versions - List server versions
+      #   - /v0.1/servers/{name}/versions/{version} - Get specific version
+
+      endpoint: https://registry.modelcontextprotocol.io
 
     # Per-registry automatic synchronization policy
     syncPolicy:

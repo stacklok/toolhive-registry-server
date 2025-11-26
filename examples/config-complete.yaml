@@ -94,11 +94,12 @@ registries:
     # API endpoint configuration
     api:
       # Base API URL without path (Required)
-      # The sync manager appends standard MCP registry API paths:
-      #   - /v0/servers (list all servers)
-      #   - /v0/servers/{name} (get specific server, future)
-      #   - /v0/info (registry metadata, future)
-      endpoint: https://registry.modelcontextprotocol.io/api
+      # The sync manager appends standard MCP registry API v0.1 paths:
+      #   - /v0.1/servers (list all servers with pagination)
+      #   - /v0.1/servers/{name}/versions (list server versions)
+      #   - /v0.1/servers/{name}/versions/{version} (get specific version)
+
+      endpoint: https://registry.modelcontextprotocol.io/
 
     # Per-registry synchronization policy
     syncPolicy:
@@ -258,5 +259,5 @@ database:
 # Monitoring:
 #   - Check ./data/{registryName}/status.json for per-registry sync health
 #   - Watch server logs for sync messages with registry names
-#   - Use GET /api/v0/info endpoint for merged registry metadata
+
 #   - Monitor serverCount in status for changes per registry
