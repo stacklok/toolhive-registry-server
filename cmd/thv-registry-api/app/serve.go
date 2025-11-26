@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -43,6 +44,7 @@ const (
 func init() {
 	serveCmd.Flags().String("address", ":8080", "Address to listen on")
 	serveCmd.Flags().String("config", "", "Path to configuration file (YAML format, required)")
+	serveCmd.Flags().String("auth-mode", "", "Override auth mode from config (anonymous or oauth)")
 
 	err := viper.BindPFlag("address", serveCmd.Flags().Lookup("address"))
 	if err != nil {
@@ -51,6 +53,18 @@ func init() {
 	err = viper.BindPFlag("config", serveCmd.Flags().Lookup("config"))
 	if err != nil {
 		logger.Fatalf("Failed to bind config flag: %v", err)
+	}
+	err = viper.BindPFlag("auth.mode", serveCmd.Flags().Lookup("auth-mode"))
+	if err != nil {
+		logger.Fatalf("Failed to bind auth-mode flag: %v", err)
+	}
+
+	// Bind environment variable THV_AUTH_MODE to auth.mode
+	// This allows: THV_AUTH_MODE=anonymous thv-registry-api serve --config config.yaml
+	viper.SetEnvPrefix("THV")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	if err := viper.BindEnv("auth.mode", "THV_AUTH_MODE"); err != nil {
+		logger.Fatalf("Failed to bind THV_AUTH_MODE env var: %v", err)
 	}
 
 	// Mark config as required
@@ -72,6 +86,12 @@ func runServe(_ *cobra.Command, _ []string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	// Apply auth mode override from flag/env var if specified
+	// Priority: flag > env var > config file
+	if authMode := viper.GetString("auth.mode"); authMode != "" {
+		cfg = applyAuthModeOverride(cfg, config.AuthMode(authMode))
 	}
 
 	logger.Infof("Loaded configuration from %s (registry: %s, %d registries configured)",
@@ -170,4 +190,16 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 	}
 
 	return nil
+}
+
+// applyAuthModeOverride applies an auth mode override to the configuration.
+// This allows the auth mode to be set via flag or environment variable,
+// overriding the config file setting.
+func applyAuthModeOverride(cfg *config.Config, mode config.AuthMode) *config.Config {
+	if cfg.Auth == nil {
+		cfg.Auth = &config.AuthConfig{}
+	}
+	cfg.Auth.Mode = mode
+	logger.Infof("Auth mode overridden to: %s", mode)
+	return cfg
 }
