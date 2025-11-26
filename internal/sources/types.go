@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhiveregistry "github.com/stacklok/toolhive/pkg/registry"
 	"github.com/stacklok/toolhive/pkg/registry/converters"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
@@ -121,29 +120,32 @@ func validateToolhiveFormatAndParse(data []byte) (*toolhivetypes.UpstreamRegistr
 
 // validateUpstreamFormatAndParse validates data against upstream registry format and returns UpstreamRegistry
 func validateUpstreamFormatAndParse(data []byte) (*toolhivetypes.UpstreamRegistry, error) {
-	// Parse as upstream ServerResponse array to validate structure
-	var responses []upstreamv0.ServerResponse
-	if err := json.Unmarshal(data, &responses); err != nil {
-		return nil, fmt.Errorf("invalid upstream format: %w", err)
+	// Validate using toolhive's upstream registry schema validator
+	if err := toolhiveregistry.ValidateUpstreamRegistry(data); err != nil {
+		return nil, err
 	}
 
-	// Basic validation - ensure we have at least one server and required fields
-	if len(responses) == 0 {
+	// Parse directly as UpstreamRegistry structure
+	// This format has: { version, meta: { last_updated }, data: { servers: [...] } }
+	var upstreamReg toolhivetypes.UpstreamRegistry
+	if err := json.Unmarshal(data, &upstreamReg); err != nil {
+		return nil, fmt.Errorf("failed to parse upstream registry format: %w", err)
+	}
+
+	// Validate we have at least one server
+	if len(upstreamReg.Data.Servers) == 0 {
 		return nil, fmt.Errorf("upstream registry must contain at least one server")
 	}
 
-	// Extract ServerJSON from responses for validation and conversion
-	servers := make([]upstreamv0.ServerJSON, len(responses))
-	for i, response := range responses {
-		servers[i] = response.Server
-		if response.Server.Name == "" {
+	// Validate required fields for each server
+	for i, server := range upstreamReg.Data.Servers {
+		if server.Name == "" {
 			return nil, fmt.Errorf("server at index %d: name is required", i)
 		}
-		if response.Server.Description == "" {
-			return nil, fmt.Errorf("server at index %d (%s): description is required", i, response.Server.Name)
+		if server.Description == "" {
+			return nil, fmt.Errorf("server at index %d (%s): description is required", i, server.Name)
 		}
 	}
 
-	// Wrap in UpstreamRegistry using constructor
-	return converters.NewUpstreamRegistryFromUpstreamServers(servers), nil
+	return &upstreamReg, nil
 }
