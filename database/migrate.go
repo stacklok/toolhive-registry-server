@@ -17,6 +17,9 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+//go:embed prime.sql.tmpl
+var primeTemplateFS embed.FS
+
 // GetMigrate creates a new migrate instance using the embedded migrations
 func GetMigrate(connString string) (*migrate.Migrate, error) {
 	// Get the migrations subdirectory from the embedded filesystem
@@ -94,4 +97,9 @@ func GetVersion(connString string) (uint, bool, error) {
 	}
 
 	return version, dirty, nil
+}
+
+// GetPrimeTemplate returns the contents of the prime.sql.tmpl template file
+func GetPrimeTemplate() ([]byte, error) {
+	return primeTemplateFS.ReadFile("prime.sql.tmpl")
 }

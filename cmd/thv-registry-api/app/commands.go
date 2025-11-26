@@ -42,6 +42,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(migrateCmd)
+	rootCmd.AddCommand(primeDbCmd)
 
 	return rootCmd
 }

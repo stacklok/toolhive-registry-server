@@ -32,6 +32,7 @@ thv-registry-api [flags]
 ### SEE ALSO
 
 * [thv-registry-api migrate](thv-registry-api_migrate.md)	 - Database migration tool
+* [thv-registry-api prime-db](thv-registry-api_prime-db.md)	 - Prime the database with role and user
 * [thv-registry-api serve](thv-registry-api_serve.md)	 - Start the registry API server
 * [thv-registry-api version](thv-registry-api_version.md)	 - Print version information
 

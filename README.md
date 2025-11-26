@@ -292,28 +292,45 @@ the database user you want, for example
 BEGIN;
 
 DO $$
-  BEGIN
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
-      CREATE ROLE toolhive_registry_server;
-    END IF;
-  END
-$$;
+DECLARE
+  username TEXT := 'thvr_user';
+  password TEXT := 'custom-password';
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
+    CREATE ROLE toolhive_registry_server;
+    RAISE NOTICE 'Role toolhive_registry_server created';
+  END IF;
 
-DO $$
-  BEGIN
-    IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'thvr_user') THEN
-      CREATE USER thvr_user WITH PASSWORD 'thvr_user_pass';
-    END IF;
-  END
-$$;
+  IF NOT EXISTS (SELECT FROM pg_user WHERE usename = username) THEN
+    EXECUTE format('CREATE USER %I WITH PASSWORD %L', username, password);
+    RAISE NOTICE 'User % created', username;
+  END IF;
 
-GRANT toolhive_registry_server TO thvr_user;
+  EXECUTE format('GRANT toolhive_registry_server TO %I', username);
+  RAISE NOTICE 'Role toolhive_registry_server granted to %', username;
+END
+$$;
 
 COMMIT;
 ```
 
-To help with that, we plan to add a `prime` subcommand that does just that
-in an idempotent fashion with username and password provided by the user.
+To help with that, you can run the `prime-db` subcommand to configure a user with
+the correct role as follows.
+
+```sh
+thv-registry-api prime-db --config examples/config-database-dev.yaml
+...
+```
+
+By default, the password is read from input, but it is also possible to pipe
+it via shell via `echo "mypassword" | thv-registry-api prime-db --config ...`.
+
+Alternatively, the SQL script that would be executed can be printed to standard
+output without touching the database.
+
+```sh
+thv-registry-api prime-db --config examples/config-database-dev.yaml --dry-run
+```
 
 Once done, you start the server as follows
 

@@ -1,0 +1,19 @@
+DO $$
+DECLARE
+  username TEXT := '{{.Username}}';
+  password TEXT := '{{.Password}}';
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
+    CREATE ROLE toolhive_registry_server;
+    RAISE NOTICE 'Role toolhive_registry_server created';
+  END IF;
+
+  IF NOT EXISTS (SELECT FROM pg_user WHERE usename = username) THEN
+    EXECUTE format('CREATE USER %I WITH PASSWORD %L', username, password);
+    RAISE NOTICE 'User % created', username;
+  END IF;
+
+  EXECUTE format('GRANT toolhive_registry_server TO %I', username);
+  RAISE NOTICE 'Role toolhive_registry_server granted to %', username;
+END
+$$;
