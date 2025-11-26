@@ -35,16 +35,16 @@ func TestNewAuthMiddleware(t *testing.T) {
 		wantHandler      bool // whether handler should be non-nil
 	}{
 		{
-			name:             "nil config returns anonymous",
+			name:             "nil config returns error (auth required by default)",
 			config:           nil,
 			validatorFactory: DefaultValidatorFactory,
-			wantHandler:      false,
+			wantErr:          "auth configuration is required",
 		},
 		{
-			name:             "empty mode returns anonymous",
+			name:             "empty mode defaults to oauth (requires oauth config)",
 			config:           &config.AuthConfig{Mode: ""},
 			validatorFactory: DefaultValidatorFactory,
-			wantHandler:      false,
+			wantErr:          "oauth configuration is required",
 		},
 		{
 			name:             "explicit anonymous mode",
@@ -73,6 +73,22 @@ func TestNewAuthMiddleware(t *testing.T) {
 			name: "oauth mode with valid provider",
 			config: &config.AuthConfig{
 				Mode: config.AuthModeOAuth,
+				OAuth: &config.OAuthConfig{
+					ResourceURL: "https://registry.example.com",
+					Providers: []config.OAuthProviderConfig{{
+						Name:      "test-provider",
+						IssuerURL: "https://issuer.example.com",
+						Audience:  "test-audience",
+					}},
+				},
+			},
+			validatorFactory: mockValidatorFactory,
+			wantHandler:      true,
+		},
+		{
+			name: "empty mode with valid oauth config succeeds",
+			config: &config.AuthConfig{
+				Mode: "", // empty defaults to oauth
 				OAuth: &config.OAuthConfig{
 					ResourceURL: "https://registry.example.com",
 					Providers: []config.OAuthProviderConfig{{
