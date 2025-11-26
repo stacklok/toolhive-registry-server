@@ -88,9 +88,6 @@ thv-registry-api serve --config config.yaml [--address :8080]
 thv-registry-api migrate up --config config.yaml [--yes]
 thv-registry-api migrate down --config config.yaml --num-steps N [--yes]
 
-# Create database users with proper roles
-thv-registry-api prime-db <username> --config config.yaml [--dry-run]
-
 # Display version information
 thv-registry-api version [--format json]
 
@@ -99,7 +96,7 @@ thv-registry-api --help
 thv-registry-api <command> --help
 ```
 
-See the [Database Migrations](#database-migrations) section for more details on using migration and database setup commands.
+See the [Database Migrations](#database-migrations) section for more details on using migration commands.
 
 ## API Endpoints
 
@@ -156,7 +153,6 @@ database:
   host: localhost
   port: 5432
   user: registry
-  passwordFile: /secrets/db-password  # Recommended for production
   database: registry
   sslMode: require
   maxOpenConns: 25
@@ -196,38 +192,38 @@ For complete configuration examples and advanced options, see [examples/README.m
 
 The server optionally supports PostgreSQL database connectivity for storing registry state and metadata.
 
-#### Two-User Security Model
-
-The server supports a two-user security model for enhanced database security:
-
-- **Application User** (`user`): Limited privileges for runtime operations (SELECT, INSERT, UPDATE, DELETE)
-- **Migration User** (`migrationUser`): Elevated privileges for schema changes (CREATE, ALTER, DROP)
-
-This separation follows the principle of least privilege, ensuring that the application cannot accidentally or maliciously modify the database schema during normal operation.
-
 #### Configuration Fields
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `host` | string | Yes | - | Database server hostname or IP address |
 | `port` | int | Yes | - | Database server port |
-| `user` | string | Yes | - | Application database username (limited privileges) |
-| `migrationUser` | string | No | same as `user` | Migration database username (elevated privileges) |
+| `user` | string | Yes | - | Database username for normal operations |
+| `passwordFile` | string | No* | - | Path to file containing the database password |
+| `migrationUser` | string | No | `user` | Database username for running migrations (should have elevated privileges) |
+| `migrationPasswordFile` | string | No | `passwordFile` | Path to file containing the migration user's password |
 | `database` | string | Yes | - | Database name |
 | `sslMode` | string | No | `require` | SSL mode (`disable`, `require`, `verify-ca`, `verify-full`) |
 | `maxOpenConns` | int | No | `25` | Maximum number of open connections to the database |
 | `maxIdleConns` | int | No | `5` | Maximum number of idle connections in the pool |
 | `connMaxLifetime` | string | No | `5m` | Maximum lifetime of a connection (e.g., "1h", "30m") |
 
-#### Password Security with pgpass
+\* Password configuration is required but has multiple sources (see Password Security below)
 
-The server uses PostgreSQL's standard pgpass file for password management. This is the recommended approach.
+#### Password Security
+
+The server supports secure password management with separate credentials for normal operations and migrations.
+
+**Normal Operations Password (for `user`):**
+
+1. **Postgres Password File** (Recommended for production):
+
+The server supports PostgreSQL's standard pgpass file for password management.
 
 **pgpass file format:**
 ```
 hostname:port:database:username:password
 ```
-
 **Example pgpass file with two users:**
 ```bash
 # Create pgpass file with credentials for both users
@@ -235,7 +231,6 @@ cat > ~/.pgpass <<EOF
 localhost:5432:toolhive_registry:db_app:app_password
 localhost:5432:toolhive_registry:db_migrator:migration_password
 EOF
-
 # Set secure permissions (REQUIRED - pgx will ignore files with wrong permissions)
 chmod 600 ~/.pgpass
 ```
@@ -247,15 +242,42 @@ export PGPASSFILE=/run/secrets/pgpass
 thv-registry-api serve --config config.yaml
 ```
 
-**Security Best Practices:**
-- Use separate users for operations and migrations (two-user model)
-- Store pgpass file with restricted permissions (`chmod 600`)
-- Never commit passwords directly in configuration files
-- In Kubernetes, mount pgpass file from Secrets
-- Rotate passwords regularly
-- Migration user credentials should only be accessible during deployment
+2. **Environment Variable**:
+   - Set `THV_DATABASE_PASSWORD` environment variable
+   - Used if `passwordFile` is not specified
+   - Example:
+     ```bash
+     export THV_DATABASE_PASSWORD="your-secure-password"
+     thv-registry-api serve --config config.yaml
+     ```
 
-See: https://www.postgresql.org/docs/current/libpq-pgpass.html
+**Migration User Password (for `migrationUser`):**
+
+1. **Migration Password File**:
+   - Set `migrationPasswordFile` to the path of a file containing the migration user's password
+   - Falls back to `passwordFile` if not specified
+   - Example:
+     ```yaml
+     database:
+       migrationUser: db_migrator
+       migrationPasswordFile: /secrets/db-migration-password
+     ```
+
+2. **Environment Variable**:
+   - Set `THV_DATABASE_MIGRATION_PASSWORD` environment variable
+   - Falls back to `THV_DATABASE_PASSWORD` if not specified
+   - Example:
+     ```bash
+     export THV_DATABASE_MIGRATION_PASSWORD="migration-user-password"
+     thv-registry-api serve --config config.yaml
+     ```
+
+**Security Best Practices:**
+- Use separate users for migrations (with elevated privileges) and normal operations (read-only or limited)
+- Never commit passwords directly in configuration files
+- Use password files with restricted permissions (e.g., `chmod 400`)
+- In Kubernetes, mount passwords from Secrets
+- Rotate passwords regularly
 
 #### Connection Pooling
 
@@ -276,61 +298,59 @@ The server includes built-in database migration support to manage the database s
 
 **Automatic migrations on startup:**
 
-When you start the server with `serve`, database migrations run automatically using the migration user (if configured) or the application user. This ensures your database schema is always up to date.
+When you start the server with `serve`, database migrations run automatically if database configuration is present in your config file. This ensures your database schema is always up to date.
 
-**Setting up the two-user model:**
+The only thing necessary is granting the role `toolhive_registry_server` to
+the database user you want, for example
 
-Use the `prime-db` command to create database users with the correct role and privileges:
+```sql
+BEGIN;
 
-```bash
-# Create application user (interactive password entry)
-thv-registry-api prime-db db_app --config examples/config-database-dev.yaml
+DO $$
+DECLARE
+  username TEXT := 'thvr_user';
+  password TEXT := 'custom-password';
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
+    CREATE ROLE toolhive_registry_server;
+    RAISE NOTICE 'Role toolhive_registry_server created';
+  END IF;
 
-# Create migration user (interactive password entry)
-thv-registry-api prime-db db_migrator --config examples/config-database-dev.yaml
+  IF NOT EXISTS (SELECT FROM pg_user WHERE usename = username) THEN
+    EXECUTE format('CREATE USER %I WITH PASSWORD %L', username, password);
+    RAISE NOTICE 'User % created', username;
+  END IF;
 
-# Or pipe passwords from stdin (useful for automation)
-echo "app_password" | thv-registry-api prime-db db_app --config examples/config-database-dev.yaml
-echo "migration_password" | thv-registry-api prime-db db_migrator --config examples/config-database-dev.yaml
+  EXECUTE format('GRANT toolhive_registry_server TO %I', username);
+  RAISE NOTICE 'Role toolhive_registry_server granted to %', username;
+END
+$$;
 
-# Preview the SQL that would be executed (dry-run mode)
-echo "app_password" | thv-registry-api prime-db db_app --config examples/config-database-dev.yaml --dry-run
+COMMIT;
 ```
 
-The `prime-db` command:
-- Creates the `toolhive_registry_server` role if it doesn't exist
-- Creates the specified user with the provided password
-- Grants the `toolhive_registry_server` role to the user
-- Reads passwords from stdin (either interactively or piped)
+To help with that, you can run the `prime-db` subcommand to configure a user with
+the correct role as follows.
 
-After creating the users, grant additional privileges:
-
-```bash
-# Connect to database and grant privileges
-psql -h localhost -U postgres -d toolhive_registry <<EOF
-GRANT CONNECT ON DATABASE toolhive_registry TO db_app;
-GRANT USAGE ON SCHEMA public TO db_app;
-GRANT CONNECT ON DATABASE toolhive_registry TO db_migrator;
-GRANT ALL PRIVILEGES ON SCHEMA public TO db_migrator;
-GRANT CREATE ON SCHEMA public TO db_migrator;
-GRANT ALL PRIVILEGES ON DATABASE toolhive_registry TO db_migrator;
-EOF
+```sh
+thv-registry-api prime-db --config examples/config-database-dev.yaml
+...
 ```
 
-**Create pgpass file for both users:**
+By default, the password is read from input, but it is also possible to pipe
+it via shell via `echo "mypassword" | thv-registry-api prime-db --config ...`.
 
-```bash
-cat > ~/.pgpass <<EOF
-localhost:5432:toolhive_registry:db_app:app_password
-localhost:5432:toolhive_registry:db_migrator:migration_password
-EOF
-chmod 600 ~/.pgpass
+Alternatively, the SQL script that would be executed can be printed to standard
+output without touching the database.
+
+```sh
+thv-registry-api prime-db --config examples/config-database-dev.yaml --dry-run
 ```
 
-**Start the server:**
+Once done, you start the server as follows
 
 ```bash
-# Migrations run automatically using the migration user
+# Migrations run automatically when database is configured
 thv-registry-api serve --config examples/config-database-dev.yaml
 ```
 
@@ -366,89 +386,35 @@ task migrate-down CONFIG=examples/config-database-dev.yaml NUM_STEPS=1
 **Migration workflow:**
 
 1. **Configure database**: Create a config file with database settings (see [examples/config-database-dev.yaml](examples/config-database-dev.yaml))
-2. **Create users**: Set up both application and migration users with appropriate privileges
-3. **Set up pgpass**: Create pgpass file with credentials for both users
-4. **Start server**: Run `serve` command - migrations will run automatically using the migration user
+2. **Set password**: Either set `THV_DATABASE_PASSWORD` env var or use `passwordFile` in config
+3. **Start server**: Run `serve` command - migrations will run automatically
 
 **Example: Local development setup**
 
 ```bash
 # 1. Start PostgreSQL (example with Docker)
 docker run -d --name postgres \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_USER=thv_user \
+  -e POSTGRES_PASSWORD=devpassword \
   -e POSTGRES_DB=toolhive_registry \
   -p 5432:5432 \
   postgres:16
 
-# 2. Create users with prime-db command
-# First, temporarily set up a pgpass for postgres superuser
-cat > ~/.pgpass <<EOF
-localhost:5432:toolhive_registry:postgres:postgres
-EOF
-chmod 600 ~/.pgpass
+# 2. Set password environment variable
+export THV_DATABASE_PASSWORD="devpassword"
 
-# Create users using prime-db
-echo "app_password" | thv-registry-api prime-db db_app --config examples/config-database-dev.yaml
-echo "migration_password" | thv-registry-api prime-db db_migrator --config examples/config-database-dev.yaml
-
-# Grant additional privileges
-PGPASSWORD=postgres psql -h localhost -U postgres -d toolhive_registry <<EOF
-GRANT CONNECT ON DATABASE toolhive_registry TO db_app;
-GRANT USAGE ON SCHEMA public TO db_app;
-GRANT CONNECT ON DATABASE toolhive_registry TO db_migrator;
-GRANT ALL PRIVILEGES ON SCHEMA public TO db_migrator;
-GRANT CREATE ON SCHEMA public TO db_migrator;
-GRANT ALL PRIVILEGES ON DATABASE toolhive_registry TO db_migrator;
-EOF
-
-# 3. Create pgpass file
-cat > ~/.pgpass <<EOF
-localhost:5432:toolhive_registry:db_app:app_password
-localhost:5432:toolhive_registry:db_migrator:migration_password
-EOF
-chmod 600 ~/.pgpass
-
-# 4. Start the server (migrations run automatically using db_migrator)
+# 3. Start the server (migrations run automatically)
 thv-registry-api serve --config examples/config-database-dev.yaml
 ```
 
 **Example: Production deployment**
 
 ```bash
-# 1. Create database users (one-time setup - typically done by DBA)
-# First, set up temporary pgpass for superuser
-cat > /run/secrets/pgpass <<EOF
-db.production.example.com:5432:toolhive_registry:postgres:postgres_password
-EOF
-chmod 600 /run/secrets/pgpass
-export PGPASSFILE=/run/secrets/pgpass
+# 1. Create password file
+echo "your-secure-password" > /run/secrets/db_password
+chmod 400 /run/secrets/db_password
 
-# Create users with prime-db
-echo "secure_app_password" | thv-registry-api prime-db db_app --config examples/config-database-prod.yaml
-echo "secure_migration_password" | thv-registry-api prime-db db_migrator --config examples/config-database-prod.yaml
-
-# Grant additional privileges
-psql -h db.production.example.com -U postgres -d toolhive_registry <<EOF
-GRANT CONNECT ON DATABASE toolhive_registry TO db_app;
-GRANT USAGE ON SCHEMA public TO db_app;
-GRANT CONNECT ON DATABASE toolhive_registry TO db_migrator;
-GRANT ALL PRIVILEGES ON SCHEMA public TO db_migrator;
-GRANT CREATE ON SCHEMA public TO db_migrator;
-GRANT ALL PRIVILEGES ON DATABASE toolhive_registry TO db_migrator;
-EOF
-
-# 2. Update pgpass file with application users
-cat > /run/secrets/pgpass <<EOF
-db.production.example.com:5432:toolhive_registry:db_app:secure_app_password
-db.production.example.com:5432:toolhive_registry:db_migrator:secure_migration_password
-EOF
-chmod 600 /run/secrets/pgpass
-
-# 3. Set PGPASSFILE environment variable
-export PGPASSFILE=/run/secrets/pgpass
-
-# 4. Start the server (migrations run automatically using db_migrator)
+# 2. Start the server (migrations run automatically)
 thv-registry-api serve --config examples/config-database-prod.yaml
 ```
 
@@ -565,6 +531,109 @@ spec:
           - key: password
             path: db-password
 ```
+
+## Authentication
+
+The server supports OAuth 2.0/OIDC authentication to protect API endpoints. Authentication is optional and defaults to anonymous mode.
+
+### Authentication Modes
+
+| Mode | Description |
+|------|-------------|
+| `anonymous` | No authentication required (default) |
+| `oauth` | OAuth 2.0/OIDC token validation |
+
+### Multi-Provider Support
+
+The server supports multiple OAuth providers with sequential fallback. When a token is received:
+
+1. The token is validated against each provider in order
+2. If validation succeeds with any provider, the request is authenticated
+3. If all providers fail, the request is rejected with 401 Unauthorized
+
+This enables supporting both Kubernetes service accounts and external identity providers simultaneously.
+
+### Configuration
+
+```yaml
+auth:
+  # Authentication mode: anonymous (default) or oauth
+  mode: oauth
+
+  # Additional paths that bypass authentication (optional)
+  # These extend the default public paths listed below
+  # publicPaths:
+  #   - /api/v0/public
+
+  # OAuth/OIDC configuration (required when mode is "oauth")
+  oauth:
+    # URL identifying this protected resource (RFC 9728)
+    # Used in /.well-known/oauth-protected-resource endpoint
+    resourceUrl: https://registry.example.com
+
+    # Protection space identifier for WWW-Authenticate header (optional)
+    # Defaults to "mcp-registry"
+    # realm: mcp-registry
+
+    # OAuth scopes supported by this resource (optional)
+    # Defaults to ["mcp-registry:read", "mcp-registry:write"]
+    # scopesSupported:
+    #   - custom:read
+    #   - custom:write
+
+    # OAuth/OIDC providers (at least one required)
+    providers:
+      - name: my-idp
+        issuerUrl: https://idp.example.com
+        audience: api://registry
+
+      - name: kubernetes
+        issuerUrl: https://kubernetes.default.svc
+        audience: https://kubernetes.default.svc
+        caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+```
+
+### Default Public Paths
+
+The following endpoints are always accessible without authentication:
+
+- `/health` - Health check endpoint
+- `/readiness` - Readiness probe endpoint
+- `/version` - Version information
+- `/.well-known/*` - OAuth discovery endpoints (RFC 9728)
+
+Additional public paths can be configured using the `publicPaths` option.
+
+### Provider Configuration
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Unique identifier for this provider |
+| `issuerUrl` | Yes | OIDC issuer URL (must be HTTPS in production) |
+| `audience` | Yes | Expected audience claim in the token |
+| `clientId` | No | OAuth client ID for token introspection |
+| `clientSecretFile` | No | Path to file containing client secret |
+| `caCertPath` | No | Path to CA certificate for TLS verification |
+
+### RFC 9728 Protected Resource Metadata
+
+When OAuth is enabled, the server exposes an RFC 9728 compliant discovery endpoint:
+
+```
+GET /.well-known/oauth-protected-resource
+```
+
+Response:
+```json
+{
+  "resource": "https://registry.example.com",
+  "authorization_servers": ["https://idp.example.com"],
+  "bearer_methods_supported": ["header"],
+  "scopes_supported": ["mcp-registry:read", "mcp-registry:write"]
+}
+```
+
+This endpoint allows OAuth clients to automatically discover authentication requirements.
 
 ## Development
 
@@ -760,11 +829,14 @@ postgres (healthy) → registry-api (runs migrations, then starts)
 
 - Config file: `examples/config-docker.yaml`
 - Sample data: `examples/registry-sample.json`
-- Database password: Set via `THV_DATABASE_PASSWORD` environment variable in docker-compose.yaml
+- Database passwords: Set via environment variables in docker-compose.yaml
+  - `THV_DATABASE_PASSWORD`: Application user password
+  - `THV_DATABASE_MIGRATION_PASSWORD`: Migration user password
 
 The setup demonstrates:
-- Database-backed registry storage with PostgreSQL
-- Automatic schema migrations on startup
+- Database-backed registry storage with separate users for migrations and operations
+- Automatic schema migrations on startup using elevated privileges
+- Normal operations using limited database privileges (principle of least privilege)
 - File-based data source (for demo purposes)
 - Proper service dependencies and health checks
 
@@ -791,10 +863,8 @@ To use your own registry data:
 
 The Docker Compose setup creates three database users:
 - `registry`: Superuser (for administration)
-- `db_app`: Application user with limited privileges (SELECT, INSERT, UPDATE, DELETE)
-- `db_migrator`: Migration user with elevated privileges (CREATE, ALTER, DROP)
-
-Password management uses a pgpass file mounted at `/root/.pgpass` in the container.
+- `db_migrator`: Migration user with schema modification privileges
+- `db_app`: Application user with limited data access privileges
 
 To connect to the PostgreSQL database directly:
 
@@ -805,17 +875,9 @@ docker exec -it toolhive-registry-postgres psql -U registry -d registry
 # As application user
 docker exec -it toolhive-registry-postgres psql -U db_app -d registry
 
-# As migration user
-docker exec -it toolhive-registry-postgres psql -U db_migrator -d registry
-
-# From host machine (using pgpass file)
-cat >> ~/.pgpass <<EOF
-localhost:5432:registry:registry:registry_password
-localhost:5432:registry:db_app:app_password
-localhost:5432:registry:db_migrator:migration_password
-EOF
-chmod 600 ~/.pgpass
-psql -h localhost -U db_app -d registry
+# From host machine
+PGPASSWORD=registry_password psql -h localhost -U registry -d registry
+PGPASSWORD=app_password psql -h localhost -U db_app -d registry
 ```
 
 ## Integration with ToolHive
