@@ -38,7 +38,7 @@ const (
 )
 
 // defaultPublicPaths are paths that never require authentication
-var defaultPublicPaths = []string{"/health", "/docs", "/swagger", "/.well-known"}
+var defaultPublicPaths = []string{"/health", "/readiness", "/version", "/openapi.json", "/.well-known"}
 
 // RegistryAppOptions is a function that configures the registry app builder
 type RegistryAppOptions func(*registryAppConfig) error
