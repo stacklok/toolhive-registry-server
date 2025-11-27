@@ -921,10 +921,10 @@ func TestPublishServerVersion(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a LOCAL (managed) registry
+				// Create a MANAGED registry
 				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
 					Name:    "test-registry",
-					RegType: sqlc.RegistryTypeLOCAL,
+					RegType: sqlc.RegistryTypeMANAGED,
 				})
 				require.NoError(t, err)
 
@@ -958,7 +958,7 @@ func TestPublishServerVersion(t *testing.T) {
 
 				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
 					Name:    "test-registry-meta",
-					RegType: sqlc.RegistryTypeLOCAL,
+					RegType: sqlc.RegistryTypeMANAGED,
 				})
 				require.NoError(t, err)
 
@@ -1003,7 +1003,7 @@ func TestPublishServerVersion(t *testing.T) {
 
 				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
 					Name:    "test-registry-full",
-					RegType: sqlc.RegistryTypeLOCAL,
+					RegType: sqlc.RegistryTypeMANAGED,
 				})
 				require.NoError(t, err)
 
@@ -1113,10 +1113,10 @@ func TestPublishServerVersion(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a LOCAL registry
+				// Create a MANAGED registry
 				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
 					Name:    "test-registry-dup",
-					RegType: sqlc.RegistryTypeLOCAL,
+					RegType: sqlc.RegistryTypeMANAGED,
 				})
 				require.NoError(t, err)
 

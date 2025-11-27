@@ -395,7 +395,7 @@ func validateManagedRegistry(
 		return nil, fmt.Errorf("failed to get registry: %w", err)
 	}
 
-	if registry.RegType != sqlc.RegistryTypeLOCAL {
+	if registry.RegType != sqlc.RegistryTypeMANAGED {
 		return nil, fmt.Errorf("%w: registry %s has type %s",
 			service.ErrNotManagedRegistry, registryName, registry.RegType)
 	}
@@ -535,8 +535,8 @@ func (s *dbService) DeleteServerVersion(
 		return fmt.Errorf("failed to get registry: %w", err)
 	}
 
-	// 4. Validate registry is LOCAL (managed) type
-	if registry.RegType != sqlc.RegistryTypeLOCAL {
+	// 4. Validate registry is MANAGED type
+	if registry.RegType != sqlc.RegistryTypeMANAGED {
 		return fmt.Errorf("%w: registry %s has type %s",
 			service.ErrNotManagedRegistry, options.RegistryName, registry.RegType)
 	}

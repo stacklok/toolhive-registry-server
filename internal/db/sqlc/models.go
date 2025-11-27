@@ -57,9 +57,9 @@ func (ns NullIconTheme) Value() (driver.Value, error) {
 type RegistryType string
 
 const (
-	RegistryTypeLOCAL  RegistryType = "LOCAL"
-	RegistryTypeFILE   RegistryType = "FILE"
-	RegistryTypeREMOTE RegistryType = "REMOTE"
+	RegistryTypeMANAGED RegistryType = "MANAGED"
+	RegistryTypeFILE    RegistryType = "FILE"
+	RegistryTypeREMOTE  RegistryType = "REMOTE"
 )
 
 func (e *RegistryType) Scan(src interface{}) error {
@@ -204,10 +204,14 @@ type Registry struct {
 }
 
 type RegistrySync struct {
-	ID         uuid.UUID  `json:"id"`
-	RegID      uuid.UUID  `json:"reg_id"`
-	SyncStatus SyncStatus `json:"sync_status"`
-	ErrorMsg   *string    `json:"error_msg"`
-	StartedAt  *time.Time `json:"started_at"`
-	EndedAt    *time.Time `json:"ended_at"`
+	ID                    uuid.UUID  `json:"id"`
+	RegID                 uuid.UUID  `json:"reg_id"`
+	SyncStatus            SyncStatus `json:"sync_status"`
+	ErrorMsg              *string    `json:"error_msg"`
+	StartedAt             *time.Time `json:"started_at"`
+	EndedAt               *time.Time `json:"ended_at"`
+	AttemptCount          int64      `json:"attempt_count"`
+	LastSyncHash          *string    `json:"last_sync_hash"`
+	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
+	ServerCount           int64      `json:"server_count"`
 }

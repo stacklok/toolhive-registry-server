@@ -11,24 +11,34 @@ import (
 )
 
 type Querier interface {
+	BulkInitializeRegistrySyncs(ctx context.Context, arg BulkInitializeRegistrySyncsParams) error
+	BulkUpsertRegistries(ctx context.Context, arg BulkUpsertRegistriesParams) ([]BulkUpsertRegistriesRow, error)
+	DeleteRegistriesNotInList(ctx context.Context, ids []uuid.UUID) error
+	DeleteRegistry(ctx context.Context, name string) error
 	DeleteServerVersion(ctx context.Context, arg DeleteServerVersionParams) (int64, error)
 	GetRegistry(ctx context.Context, id uuid.UUID) (Registry, error)
 	GetRegistryByName(ctx context.Context, name string) (Registry, error)
 	GetRegistrySync(ctx context.Context, id uuid.UUID) (RegistrySync, error)
+	GetRegistrySyncByName(ctx context.Context, name string) (RegistrySync, error)
 	GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error)
+	InitializeRegistrySync(ctx context.Context, arg InitializeRegistrySyncParams) error
 	InsertRegistry(ctx context.Context, arg InsertRegistryParams) (uuid.UUID, error)
 	InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (uuid.UUID, error)
 	InsertServerIcon(ctx context.Context, arg InsertServerIconParams) error
 	InsertServerPackage(ctx context.Context, arg InsertServerPackageParams) error
 	InsertServerRemote(ctx context.Context, arg InsertServerRemoteParams) error
 	InsertServerVersion(ctx context.Context, arg InsertServerVersionParams) (uuid.UUID, error)
+	ListAllRegistryNames(ctx context.Context) ([]string, error)
 	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error)
+	ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow, error)
 	ListServerPackages(ctx context.Context, serverIds []uuid.UUID) ([]McpServerPackage, error)
 	ListServerRemotes(ctx context.Context, serverIds []uuid.UUID) ([]McpServerRemote, error)
 	ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error)
 	ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error)
 	UpdateRegistrySync(ctx context.Context, arg UpdateRegistrySyncParams) error
 	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (uuid.UUID, error)
+	UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (uuid.UUID, error)
+	UpsertRegistrySyncByName(ctx context.Context, arg UpsertRegistrySyncByNameParams) error
 }
 
 var _ Querier = (*Queries)(nil)

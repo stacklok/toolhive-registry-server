@@ -191,10 +191,9 @@ func TestRunMigrations(t *testing.T) {
 			err := runMigrations(ctx, cfg)
 			require.NoError(t, err)
 
-			version, dirty, err := database.GetVersion(connStr)
+			_, dirty, err := database.GetVersion(connStr)
 			require.NoError(t, err)
 			require.False(t, dirty)
-			require.Equal(t, uint(1), version)
 		})
 	}
 }

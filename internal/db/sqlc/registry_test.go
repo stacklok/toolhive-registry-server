@@ -43,7 +43,7 @@ func TestInsertRegistry(t *testing.T) {
 			},
 		},
 		{
-			name: "insert registry with local type",
+			name: "insert registry with managed type",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(_ *testing.T, _ *Queries) {},
 			//nolint:thelper // We want to see these lines in the test output
@@ -53,7 +53,7 @@ func TestInsertRegistry(t *testing.T) {
 					context.Background(),
 					InsertRegistryParams{
 						Name:      "test-registry",
-						RegType:   RegistryTypeLOCAL,
+						RegType:   RegistryTypeMANAGED,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
@@ -111,7 +111,7 @@ func TestInsertRegistry(t *testing.T) {
 					context.Background(),
 					InsertRegistryParams{
 						Name:      "test-registry",
-						RegType:   RegistryTypeLOCAL,
+						RegType:   RegistryTypeMANAGED,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
@@ -126,7 +126,7 @@ func TestInsertRegistry(t *testing.T) {
 					context.Background(),
 					InsertRegistryParams{
 						Name:      "test-registry",
-						RegType:   RegistryTypeLOCAL,
+						RegType:   RegistryTypeMANAGED,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
