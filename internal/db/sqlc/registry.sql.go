@@ -252,7 +252,6 @@ INSERT INTO registry (
     $4
 )
 ON CONFLICT (name) DO UPDATE SET
-    reg_type = EXCLUDED.reg_type,
     updated_at = EXCLUDED.updated_at
 RETURNING id
 `

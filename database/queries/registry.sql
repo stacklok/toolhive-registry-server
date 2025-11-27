@@ -60,7 +60,6 @@ INSERT INTO registry (
     sqlc.arg(updated_at)
 )
 ON CONFLICT (name) DO UPDATE SET
-    reg_type = EXCLUDED.reg_type,
     updated_at = EXCLUDED.updated_at
 RETURNING id;
 
