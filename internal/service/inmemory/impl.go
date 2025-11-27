@@ -231,3 +231,9 @@ func (s *regSvc) getServerByName(name string) (*upstreamv0.ServerJSON, error) {
 
 	return nil, service.ErrServerNotFound
 }
+
+// ListRegistries returns all configured registries - not supported for in-memory service
+func (*regSvc) ListRegistries(_ context.Context) ([]service.RegistryInfo, error) {
+	// TODO: Implement file-based ListRegistries support in a follow-up
+	return nil, service.ErrNotImplemented
+}

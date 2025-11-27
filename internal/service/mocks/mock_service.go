@@ -112,6 +112,21 @@ func (mr *MockRegistryServiceMockRecorder) GetServerVersion(ctx any, opts ...any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetServerVersion", reflect.TypeOf((*MockRegistryService)(nil).GetServerVersion), varargs...)
 }
 
+// ListRegistries mocks base method.
+func (m *MockRegistryService) ListRegistries(ctx context.Context) ([]service.RegistryInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRegistries", ctx)
+	ret0, _ := ret[0].([]service.RegistryInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRegistries indicates an expected call of ListRegistries.
+func (mr *MockRegistryServiceMockRecorder) ListRegistries(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRegistries", reflect.TypeOf((*MockRegistryService)(nil).ListRegistries), ctx)
+}
+
 // ListServerVersions mocks base method.
 func (m *MockRegistryService) ListServerVersions(ctx context.Context, opts ...service.Option[service.ListServerVersionsOptions]) ([]*v0.ServerJSON, error) {
 	m.ctrl.T.Helper()

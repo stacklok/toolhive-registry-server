@@ -1,5 +1,48 @@
 components:
   schemas:
+    github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo:
+      properties:
+        createdAt:
+          type: string
+        name:
+          type: string
+        syncStatus:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistrySyncStatus'
+        type:
+          description: MANAGED, FILE, REMOTE
+          type: string
+        updatedAt:
+          type: string
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_service.RegistryListResponse:
+      properties:
+        registries:
+          items:
+            $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo'
+          type: array
+          uniqueItems: false
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_service.RegistrySyncStatus:
+      properties:
+        attemptCount:
+          description: Number of sync attempts
+          type: integer
+        lastAttempt:
+          description: Last sync attempt
+          type: string
+        lastSyncTime:
+          description: Last successful sync
+          type: string
+        message:
+          description: Status or error message
+          type: string
+        phase:
+          description: complete, syncing, failed
+          type: string
+        serverCount:
+          description: Number of servers in registry
+          type: integer
+      type: object
     model.Argument:
       properties:
         choices:
@@ -475,14 +518,20 @@ paths:
             schema:
               type: object
       responses:
-        "501":
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryListResponse'
+          description: List of registries
+        "500":
           content:
             application/json:
               schema:
                 additionalProperties:
                   type: string
                 type: object
-          description: Not implemented
+          description: Internal server error
       summary: List registries
       tags:
       - extension

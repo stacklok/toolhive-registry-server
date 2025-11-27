@@ -2,14 +2,17 @@ package v0
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
 
@@ -108,24 +111,73 @@ func TestListRegistries(t *testing.T) {
 	router := Router(mockSvc)
 
 	tests := []struct {
-		name       string
-		path       string
-		method     string
-		wantStatus int
-		wantError  string
+		name         string
+		path         string
+		method       string
+		setupMock    func()
+		wantStatus   int
+		wantError    string
+		validateBody func(t *testing.T, body []byte)
 	}{
 		{
-			name:       "list registries - valid request",
-			path:       "/registries",
-			method:     "GET",
+			name:   "list registries - valid request",
+			path:   "/registries",
+			method: "GET",
+			setupMock: func() {
+				mockSvc.EXPECT().
+					ListRegistries(gomock.Any()).
+					Return([]service.RegistryInfo{
+						{
+							Name:      "registry1",
+							Type:      "MANAGED",
+							CreatedAt: time.Now(),
+							UpdatedAt: time.Now(),
+						},
+					}, nil)
+			},
+			wantStatus: http.StatusOK,
+			validateBody: func(t *testing.T, body []byte) {
+				t.Helper()
+				var response service.RegistryListResponse
+				err := json.Unmarshal(body, &response)
+				require.NoError(t, err)
+				assert.Len(t, response.Registries, 1)
+				assert.Equal(t, "registry1", response.Registries[0].Name)
+			},
+		},
+		{
+			name:   "list registries - service error",
+			path:   "/registries",
+			method: "GET",
+			setupMock: func() {
+				mockSvc.EXPECT().
+					ListRegistries(gomock.Any()).
+					Return(nil, errors.New("database error"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			wantError:  "database error",
+		},
+		{
+			name:   "list registries - not implemented",
+			path:   "/registries",
+			method: "GET",
+			setupMock: func() {
+				mockSvc.EXPECT().
+					ListRegistries(gomock.Any()).
+					Return(nil, service.ErrNotImplemented)
+			},
 			wantStatus: http.StatusNotImplemented,
-			wantError:  "Listing registries is not supported",
+			wantError:  "Listing registries is not supported in file mode",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			if tt.setupMock != nil {
+				tt.setupMock()
+			}
+
 			req, err := http.NewRequest(tt.method, tt.path, nil)
 			require.NoError(t, err)
 
@@ -134,12 +186,16 @@ func TestListRegistries(t *testing.T) {
 
 			assert.Equal(t, tt.wantStatus, rr.Code)
 
-			if tt.wantStatus == http.StatusNotImplemented {
+			if tt.wantError != "" {
 				var response map[string]string
 				err = json.Unmarshal(rr.Body.Bytes(), &response)
 				require.NoError(t, err)
 				assert.Contains(t, response, "error")
 				assert.Equal(t, tt.wantError, response["error"])
+			}
+
+			if tt.validateBody != nil {
+				tt.validateBody(t, rr.Body.Bytes())
 			}
 		})
 	}
