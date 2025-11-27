@@ -16,12 +16,13 @@ require (
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	github.com/spf13/viper v1.21.0
-	github.com/stacklok/toolhive v0.6.7
+	github.com/stacklok/toolhive v0.6.8
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc4
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.40.0
 	go.uber.org/mock v0.6.0
+	golang.org/x/term v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
 	sigs.k8s.io/controller-runtime v0.22.4
 )
@@ -160,12 +161,11 @@ require (
 	golang.ngrok.com/ngrok/v2 v2.1.0 // indirect
 	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/exp/event v0.0.0-20251023183803-a4bb9ffd2546 // indirect
-	golang.org/x/exp/jsonrpc2 v0.0.0-20251113190631-e25ba8c21ef6 // indirect
+	golang.org/x/exp/jsonrpc2 v0.0.0-20251125195548-87e1e737ad39 // indirect
 	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/oauth2 v0.33.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/term v0.37.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect
