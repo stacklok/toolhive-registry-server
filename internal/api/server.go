@@ -10,7 +10,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stacklok/toolhive/pkg/logger"
 	"github.com/stacklok/toolhive/pkg/versions"
+	"github.com/swaggo/swag/v2"
 
+	// Import generated docs package to register OpenAPI spec via init()
+	_ "github.com/stacklok/toolhive-registry-server/docs/thv-registry-api"
 	extensionv0 "github.com/stacklok/toolhive-registry-server/internal/api/extension/v0"
 	v01 "github.com/stacklok/toolhive-registry-server/internal/api/registry/v01"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -97,11 +100,31 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 }
 
 // openAPIHandler handles OpenAPI specification requests
+//
+// @Summary		OpenAPI specification
+// @Description	Get the OpenAPI 3.1.0 specification for this API
+// @Tags		system
+// @Produce		json
+// @Success		200	{object}	object	"OpenAPI 3.1.0 specification"
+// @Failure		500	{object}	map[string]string
+// @Router		/openapi.json [get]
 func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
-	// TODO: Implement OpenAPI spec serving
+	doc, err := swag.ReadDoc("swagger")
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		errorResp := map[string]string{
+			"error": "Failed to read OpenAPI specification: " + err.Error(),
+		}
+		if encodeErr := json.NewEncoder(w).Encode(errorResp); encodeErr != nil {
+			logger.Errorf("Failed to encode OpenAPI error response: %v", encodeErr)
+		}
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	_, _ = w.Write([]byte(`{"error":"OpenAPI specification not yet implemented"}`))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(doc))
 }
 
 // healthHandler handles health check requests

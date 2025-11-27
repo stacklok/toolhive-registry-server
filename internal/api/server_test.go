@@ -143,7 +143,28 @@ func TestOpenAPIEndpoint(t *testing.T) {
 	rr := httptest.NewRecorder()
 	server.ServeHTTP(rr, req)
 
-	// Currently returns 501 Not Implemented
-	assert.Equal(t, http.StatusNotImplemented, rr.Code)
+	// Should return 200 OK with OpenAPI spec
+	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+
+	// Validate the response is valid JSON and contains OpenAPI spec fields
+	var spec map[string]interface{}
+	err = json.Unmarshal(rr.Body.Bytes(), &spec)
+	require.NoError(t, err)
+
+	// Check for required OpenAPI 3.1.0 fields
+	assert.Equal(t, "3.1.0", spec["openapi"])
+	assert.Contains(t, spec, "info")
+	assert.Contains(t, spec, "paths")
+
+	// Verify info section
+	info, ok := spec["info"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "ToolHive Registry API", info["title"])
+	assert.Equal(t, "0.1", info["version"])
+
+	// Verify paths section contains our endpoint
+	paths, ok := spec["paths"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Contains(t, paths, "/openapi.json")
 }
