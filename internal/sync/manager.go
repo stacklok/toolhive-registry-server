@@ -14,6 +14,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/filtering"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
+	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 )
 
 // Result contains the result of a successful sync operation
@@ -138,9 +139,6 @@ type Manager interface {
 
 	// PerformSync executes the complete sync operation for a specific registry
 	PerformSync(ctx context.Context, regCfg *config.RegistryConfig) (*Result, *Error)
-
-	// Delete cleans up storage resources for a specific registry
-	Delete(ctx context.Context, registryName string) error
 }
 
 // DataChangeDetector detects changes in source data
@@ -159,7 +157,7 @@ type AutomaticSyncChecker interface {
 // defaultSyncManager is the default implementation of Manager
 type defaultSyncManager struct {
 	registryHandlerFactory sources.RegistryHandlerFactory
-	storageManager         sources.StorageManager
+	writer                 writer.SyncWriter
 	filterService          filtering.FilterService
 	dataChangeDetector     DataChangeDetector
 	automaticSyncChecker   AutomaticSyncChecker
@@ -167,10 +165,10 @@ type defaultSyncManager struct {
 
 // NewDefaultSyncManager creates a new defaultSyncManager
 func NewDefaultSyncManager(
-	registryHandlerFactory sources.RegistryHandlerFactory, storageManager sources.StorageManager) Manager {
+	registryHandlerFactory sources.RegistryHandlerFactory, syncWriter writer.SyncWriter) Manager {
 	return &defaultSyncManager{
 		registryHandlerFactory: registryHandlerFactory,
-		storageManager:         storageManager,
+		writer:                 syncWriter,
 		filterService:          filtering.NewDefaultFilterService(),
 		dataChangeDetector:     &defaultDataChangeDetector{registryHandlerFactory: registryHandlerFactory},
 		automaticSyncChecker:   &defaultAutomaticSyncChecker{},
@@ -313,11 +311,6 @@ func (s *defaultSyncManager) PerformSync(
 	return syncResult, nil
 }
 
-// Delete cleans up storage resources for a specific registry
-func (s *defaultSyncManager) Delete(ctx context.Context, registryName string) error {
-	return s.storageManager.Delete(ctx, registryName)
-}
-
 // fetchAndProcessRegistryData handles registry handler creation, validation, fetch, and filtering
 func (s *defaultSyncManager) fetchAndProcessRegistryData(
 	ctx context.Context,
@@ -420,7 +413,7 @@ func (s *defaultSyncManager) storeRegistryData(
 	fetchResult *sources.FetchResult) *Error {
 	ctxLogger := log.FromContext(ctx)
 
-	if err := s.storageManager.Store(ctx, regCfg.Name, fetchResult.Registry); err != nil {
+	if err := s.writer.Store(ctx, regCfg.Name, fetchResult.Registry); err != nil {
 		ctxLogger.Error(err, "Failed to store registry data")
 		return &Error{
 			Err:             err,

@@ -43,20 +43,6 @@ func (m *MockManager) EXPECT() *MockManagerMockRecorder {
 	return m.recorder
 }
 
-// Delete mocks base method.
-func (m *MockManager) Delete(ctx context.Context, registryName string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, registryName)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Delete indicates an expected call of Delete.
-func (mr *MockManagerMockRecorder) Delete(ctx, registryName any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockManager)(nil).Delete), ctx, registryName)
-}
-
 // PerformSync mocks base method.
 func (m *MockManager) PerformSync(ctx context.Context, regCfg *config.RegistryConfig) (*sync.Result, *sync.Error) {
 	m.ctrl.T.Helper()
