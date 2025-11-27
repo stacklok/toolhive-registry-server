@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/filtering"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
+	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 )
 
 // Result contains the result of a successful sync operation
