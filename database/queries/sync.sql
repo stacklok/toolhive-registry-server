@@ -61,7 +61,7 @@ SELECT r.name,
        rs.server_count
 FROM registry_sync rs
 INNER JOIN registry r ON rs.reg_id = r.id
-ORDER BY r.name;
+ORDER BY rs.started_at DESC, r.name ASC;
 
 -- name: UpsertRegistrySyncByName :exec
 INSERT INTO registry_sync (
