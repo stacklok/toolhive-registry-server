@@ -651,6 +651,27 @@ paths:
       summary: Health check
       tags:
       - system
+  /openapi.json:
+    get:
+      description: Get the OpenAPI 3.1.0 specification for this API
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+          description: OpenAPI 3.1.0 specification
+        "500":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Internal Server Error
+      summary: OpenAPI specification
+      tags:
+      - system
   /readiness:
     get:
       description: Check if the registry API is ready to serve requests
