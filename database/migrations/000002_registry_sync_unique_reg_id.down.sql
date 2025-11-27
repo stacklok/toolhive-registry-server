@@ -1,7 +1,7 @@
 -- Remove additional status fields and unique constraint from registry_sync table
 
--- Remove is_managed field from registry table (in reverse order from up migration)
-ALTER TABLE registry DROP COLUMN is_managed;
+-- Rename MANAGED back to LOCAL in registry_type enum
+ALTER TYPE registry_type RENAME VALUE 'MANAGED' TO 'LOCAL';
 
 -- Remove the additional columns (in reverse order from up migration)
 ALTER TABLE registry_sync DROP COLUMN server_count;

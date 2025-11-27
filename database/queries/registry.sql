@@ -3,8 +3,7 @@ SELECT id,
        name,
        reg_type,
        created_at,
-       updated_at,
-       is_managed
+       updated_at
   FROM registry
  WHERE (sqlc.narg(next)::timestamp with time zone IS NULL OR created_at > sqlc.narg(next))
    AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR created_at < sqlc.narg(prev))
@@ -22,8 +21,7 @@ SELECT id,
        name,
        reg_type,
        created_at,
-       updated_at,
-       is_managed
+       updated_at
   FROM registry
  WHERE id = sqlc.arg(id);
 
@@ -32,8 +30,7 @@ SELECT id,
        name,
        reg_type,
        created_at,
-       updated_at,
-       is_managed
+       updated_at
   FROM registry
  WHERE name = sqlc.arg(name);
 
@@ -42,14 +39,12 @@ INSERT INTO registry (
     name,
     reg_type,
     created_at,
-    updated_at,
-    is_managed
+    updated_at
 ) VALUES (
     sqlc.arg(name),
     sqlc.arg(reg_type),
     sqlc.arg(created_at),
-    sqlc.arg(updated_at),
-    sqlc.arg(is_managed)
+    sqlc.arg(updated_at)
 ) RETURNING id;
 
 -- name: UpsertRegistry :one
@@ -57,19 +52,16 @@ INSERT INTO registry (
     name,
     reg_type,
     created_at,
-    updated_at,
-    is_managed
+    updated_at
 ) VALUES (
     sqlc.arg(name),
     sqlc.arg(reg_type),
     sqlc.arg(created_at),
-    sqlc.arg(updated_at),
-    sqlc.arg(is_managed)
+    sqlc.arg(updated_at)
 )
 ON CONFLICT (name) DO UPDATE SET
     reg_type = EXCLUDED.reg_type,
-    updated_at = EXCLUDED.updated_at,
-    is_managed = EXCLUDED.is_managed
+    updated_at = EXCLUDED.updated_at
 RETURNING id;
 
 -- name: BulkUpsertRegistries :many
@@ -77,19 +69,16 @@ INSERT INTO registry (
     name,
     reg_type,
     created_at,
-    updated_at,
-    is_managed
+    updated_at
 )
 SELECT
     unnest(sqlc.arg(names)::text[]),
     unnest(sqlc.arg(reg_types)::registry_type[]),
     unnest(sqlc.arg(created_ats)::timestamp with time zone[]),
-    unnest(sqlc.arg(updated_ats)::timestamp with time zone[]),
-    unnest(sqlc.arg(is_manageds)::boolean[])
+    unnest(sqlc.arg(updated_ats)::timestamp with time zone[])
 ON CONFLICT (name) DO UPDATE SET
     reg_type = EXCLUDED.reg_type,
-    updated_at = EXCLUDED.updated_at,
-    is_managed = EXCLUDED.is_managed
+    updated_at = EXCLUDED.updated_at
 RETURNING id, name;
 
 -- name: DeleteRegistriesNotInList :exec

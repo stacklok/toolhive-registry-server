@@ -55,19 +55,19 @@ func TestMapConfigTypeToDBType(t *testing.T) {
 			want:       sqlc.RegistryTypeFILE,
 		},
 		{
-			name:       "maps managed to LOCAL",
+			name:       "maps managed to MANAGED",
 			configType: config.SourceTypeManaged,
-			want:       sqlc.RegistryTypeLOCAL,
+			want:       sqlc.RegistryTypeMANAGED,
 		},
 		{
-			name:       "maps unknown to LOCAL",
+			name:       "maps unknown to MANAGED",
 			configType: "unknown",
-			want:       sqlc.RegistryTypeLOCAL,
+			want:       sqlc.RegistryTypeMANAGED,
 		},
 		{
-			name:       "maps empty string to LOCAL",
+			name:       "maps empty string to MANAGED",
 			configType: "",
-			want:       sqlc.RegistryTypeLOCAL,
+			want:       sqlc.RegistryTypeMANAGED,
 		},
 	}
 
@@ -521,7 +521,7 @@ func TestMapConfigTypeToDBType_AllSourceTypes(t *testing.T) {
 			// Should not panic and should return a valid registry type
 			assert.NotEmpty(t, result)
 			assert.Contains(t, []sqlc.RegistryType{
-				sqlc.RegistryTypeLOCAL,
+				sqlc.RegistryTypeMANAGED,
 				sqlc.RegistryTypeFILE,
 				sqlc.RegistryTypeREMOTE,
 			}, result)

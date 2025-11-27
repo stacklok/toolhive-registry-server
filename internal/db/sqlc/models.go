@@ -57,9 +57,9 @@ func (ns NullIconTheme) Value() (driver.Value, error) {
 type RegistryType string
 
 const (
-	RegistryTypeLOCAL  RegistryType = "LOCAL"
-	RegistryTypeFILE   RegistryType = "FILE"
-	RegistryTypeREMOTE RegistryType = "REMOTE"
+	RegistryTypeMANAGED RegistryType = "MANAGED"
+	RegistryTypeFILE    RegistryType = "FILE"
+	RegistryTypeREMOTE  RegistryType = "REMOTE"
 )
 
 func (e *RegistryType) Scan(src interface{}) error {
@@ -201,7 +201,6 @@ type Registry struct {
 	RegType   RegistryType `json:"reg_type"`
 	CreatedAt *time.Time   `json:"created_at"`
 	UpdatedAt *time.Time   `json:"updated_at"`
-	IsManaged bool         `json:"is_managed"`
 }
 
 type RegistrySync struct {

@@ -12,7 +12,6 @@ ALTER TABLE registry_sync ADD COLUMN last_sync_hash TEXT;
 ALTER TABLE registry_sync ADD COLUMN last_applied_filter_hash TEXT;
 ALTER TABLE registry_sync ADD COLUMN server_count BIGINT NOT NULL DEFAULT 0;
 
--- Add is_managed field to registry table
--- This indicates whether the registry is managed by the system (synced from config)
--- or user-created (e.g., via API)
-ALTER TABLE registry ADD COLUMN is_managed BOOLEAN NOT NULL DEFAULT false;
+-- Rename LOCAL to MANAGED in registry_type enum
+-- Assumping that no prior data exists in the DB at this point.
+ALTER TYPE registry_type RENAME VALUE 'LOCAL' TO 'MANAGED';
