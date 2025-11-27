@@ -78,7 +78,7 @@ INSERT INTO registry_sync (
     (SELECT id FROM registry WHERE name = sqlc.arg(name)),
     sqlc.arg(sync_status),
     sqlc.narg(error_msg),
-    sqlc.arg(started_at),
+    sqlc.narg(started_at),
     sqlc.arg(ended_at),
     sqlc.arg(attempt_count),
     sqlc.narg(last_sync_hash),
