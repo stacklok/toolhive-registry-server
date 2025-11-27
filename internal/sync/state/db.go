@@ -67,6 +67,11 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		updatedAts[i] = now
 	}
 
+	// Validate that registry types haven't changed for existing registries
+	if err := validateRegistryTypes(ctx, queries, names, regTypes); err != nil {
+		return err
+	}
+
 	// Bulk upsert all registries - returns IDs and names
 	upsertedRegistries, err := queries.BulkUpsertRegistries(ctx, sqlc.BulkUpsertRegistriesParams{
 		Names:      names,
@@ -116,6 +121,37 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 
 	// Commit the transaction
 	return tx.Commit(ctx)
+}
+
+// validateRegistryTypes checks that registry types haven't changed for existing registries
+func validateRegistryTypes(ctx context.Context, queries *sqlc.Queries, names []string, regTypes []sqlc.RegistryType) error {
+	existingRegistries, err := queries.ListAllRegistryNames(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list existing registries: %w", err)
+	}
+
+	// Build a map of config name -> type for quick lookup
+	configTypeMap := make(map[string]sqlc.RegistryType)
+	for i, name := range names {
+		configTypeMap[name] = regTypes[i]
+	}
+
+	// Check if any existing registry has a different type in the config
+	for _, existingName := range existingRegistries {
+		if configType, exists := configTypeMap[existingName]; exists {
+			// Registry exists in both DB and config - check if type matches
+			existingReg, err := queries.GetRegistryByName(ctx, existingName)
+			if err != nil {
+				return fmt.Errorf("failed to get registry %s: %w", existingName, err)
+			}
+			if existingReg.RegType != configType {
+				return fmt.Errorf("registry '%s' type cannot be changed from %s to %s",
+					existingName, existingReg.RegType, configType)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (d *dbStatusService) ListSyncStatuses(ctx context.Context) (map[string]*status.SyncStatus, error) {

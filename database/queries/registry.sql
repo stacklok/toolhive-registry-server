@@ -76,7 +76,6 @@ SELECT
     unnest(sqlc.arg(created_ats)::timestamp with time zone[]),
     unnest(sqlc.arg(updated_ats)::timestamp with time zone[])
 ON CONFLICT (name) DO UPDATE SET
-    reg_type = EXCLUDED.reg_type,
     updated_at = EXCLUDED.updated_at
 RETURNING id, name;
 
