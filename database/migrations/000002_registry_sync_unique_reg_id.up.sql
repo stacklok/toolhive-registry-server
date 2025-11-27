@@ -11,3 +11,8 @@ ALTER TABLE registry_sync ADD COLUMN attempt_count BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE registry_sync ADD COLUMN last_sync_hash TEXT;
 ALTER TABLE registry_sync ADD COLUMN last_applied_filter_hash TEXT;
 ALTER TABLE registry_sync ADD COLUMN server_count BIGINT NOT NULL DEFAULT 0;
+
+-- Add is_managed field to registry table
+-- This indicates whether the registry is managed by the system (synced from config)
+-- or user-created (e.g., via API)
+ALTER TABLE registry ADD COLUMN is_managed BOOLEAN NOT NULL DEFAULT false;

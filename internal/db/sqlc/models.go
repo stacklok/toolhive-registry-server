@@ -201,6 +201,7 @@ type Registry struct {
 	RegType   RegistryType `json:"reg_type"`
 	CreatedAt *time.Time   `json:"created_at"`
 	UpdatedAt *time.Time   `json:"updated_at"`
+	IsManaged bool         `json:"is_managed"`
 }
 
 type RegistrySync struct {

@@ -54,12 +54,14 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	regTypes := make([]sqlc.RegistryType, len(registryConfigs))
 	createdAts := make([]time.Time, len(registryConfigs))
 	updatedAts := make([]time.Time, len(registryConfigs))
+	isManagedFlags := make([]bool, len(registryConfigs))
 
 	for i, reg := range registryConfigs {
 		names[i] = reg.Name
 		regTypes[i] = mapConfigTypeToDBType(reg.GetType())
 		createdAts[i] = now
 		updatedAts[i] = now
+		isManagedFlags[i] = reg.GetType() == config.SourceTypeManaged
 	}
 
 	// Bulk upsert all registries - returns IDs and names
@@ -68,6 +70,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		RegTypes:   regTypes,
 		CreatedAts: createdAts,
 		UpdatedAts: updatedAts,
+		IsManageds: isManagedFlags,
 	})
 	if err != nil {
 		return err

@@ -17,16 +17,19 @@ INSERT INTO registry (
     name,
     reg_type,
     created_at,
-    updated_at
+    updated_at,
+    is_managed
 )
 SELECT
     unnest($1::text[]),
     unnest($2::registry_type[]),
     unnest($3::timestamp with time zone[]),
-    unnest($4::timestamp with time zone[])
+    unnest($4::timestamp with time zone[]),
+    unnest($5::boolean[])
 ON CONFLICT (name) DO UPDATE SET
     reg_type = EXCLUDED.reg_type,
-    updated_at = EXCLUDED.updated_at
+    updated_at = EXCLUDED.updated_at,
+    is_managed = EXCLUDED.is_managed
 RETURNING id, name
 `
 
@@ -35,6 +38,7 @@ type BulkUpsertRegistriesParams struct {
 	RegTypes   []RegistryType `json:"reg_types"`
 	CreatedAts []time.Time    `json:"created_ats"`
 	UpdatedAts []time.Time    `json:"updated_ats"`
+	IsManageds []bool         `json:"is_manageds"`
 }
 
 type BulkUpsertRegistriesRow struct {
@@ -48,6 +52,7 @@ func (q *Queries) BulkUpsertRegistries(ctx context.Context, arg BulkUpsertRegist
 		arg.RegTypes,
 		arg.CreatedAts,
 		arg.UpdatedAts,
+		arg.IsManageds,
 	)
 	if err != nil {
 		return nil, err
@@ -90,7 +95,8 @@ SELECT id,
        name,
        reg_type,
        created_at,
-       updated_at
+       updated_at,
+       is_managed
   FROM registry
  WHERE id = $1
 `
@@ -104,6 +110,7 @@ func (q *Queries) GetRegistry(ctx context.Context, id uuid.UUID) (Registry, erro
 		&i.RegType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsManaged,
 	)
 	return i, err
 }
@@ -113,7 +120,8 @@ SELECT id,
        name,
        reg_type,
        created_at,
-       updated_at
+       updated_at,
+       is_managed
   FROM registry
  WHERE name = $1
 `
@@ -127,6 +135,7 @@ func (q *Queries) GetRegistryByName(ctx context.Context, name string) (Registry,
 		&i.RegType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsManaged,
 	)
 	return i, err
 }
@@ -136,12 +145,14 @@ INSERT INTO registry (
     name,
     reg_type,
     created_at,
-    updated_at
+    updated_at,
+    is_managed
 ) VALUES (
     $1,
     $2,
     $3,
-    $4
+    $4,
+    $5
 ) RETURNING id
 `
 
@@ -150,6 +161,7 @@ type InsertRegistryParams struct {
 	RegType   RegistryType `json:"reg_type"`
 	CreatedAt *time.Time   `json:"created_at"`
 	UpdatedAt *time.Time   `json:"updated_at"`
+	IsManaged bool         `json:"is_managed"`
 }
 
 func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) (uuid.UUID, error) {
@@ -158,6 +170,7 @@ func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) 
 		arg.RegType,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.IsManaged,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)
@@ -193,7 +206,8 @@ SELECT id,
        name,
        reg_type,
        created_at,
-       updated_at
+       updated_at,
+       is_managed
   FROM registry
  WHERE ($1::timestamp with time zone IS NULL OR created_at > $1)
    AND ($2::timestamp with time zone IS NULL OR created_at < $2)
@@ -228,6 +242,7 @@ func (q *Queries) ListRegistries(ctx context.Context, arg ListRegistriesParams) 
 			&i.RegType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IsManaged,
 		); err != nil {
 			return nil, err
 		}
@@ -244,16 +259,19 @@ INSERT INTO registry (
     name,
     reg_type,
     created_at,
-    updated_at
+    updated_at,
+    is_managed
 ) VALUES (
     $1,
     $2,
     $3,
-    $4
+    $4,
+    $5
 )
 ON CONFLICT (name) DO UPDATE SET
     reg_type = EXCLUDED.reg_type,
-    updated_at = EXCLUDED.updated_at
+    updated_at = EXCLUDED.updated_at,
+    is_managed = EXCLUDED.is_managed
 RETURNING id
 `
 
@@ -262,6 +280,7 @@ type UpsertRegistryParams struct {
 	RegType   RegistryType `json:"reg_type"`
 	CreatedAt *time.Time   `json:"created_at"`
 	UpdatedAt *time.Time   `json:"updated_at"`
+	IsManaged bool         `json:"is_managed"`
 }
 
 func (q *Queries) UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (uuid.UUID, error) {
@@ -270,6 +289,7 @@ func (q *Queries) UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) 
 		arg.RegType,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.IsManaged,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)
