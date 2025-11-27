@@ -38,36 +38,43 @@ func TestMapConfigTypeToDBType(t *testing.T) {
 		name       string
 		configType string
 		want       sqlc.RegistryType
+		wantErr    bool
 	}{
 		{
 			name:       "maps git to REMOTE",
 			configType: config.SourceTypeGit,
 			want:       sqlc.RegistryTypeREMOTE,
+			wantErr:    false,
 		},
 		{
 			name:       "maps api to REMOTE",
 			configType: config.SourceTypeAPI,
 			want:       sqlc.RegistryTypeREMOTE,
+			wantErr:    false,
 		},
 		{
 			name:       "maps file to FILE",
 			configType: config.SourceTypeFile,
 			want:       sqlc.RegistryTypeFILE,
+			wantErr:    false,
 		},
 		{
 			name:       "maps managed to MANAGED",
 			configType: config.SourceTypeManaged,
 			want:       sqlc.RegistryTypeMANAGED,
+			wantErr:    false,
 		},
 		{
-			name:       "maps unknown to MANAGED",
+			name:       "returns error for unknown type",
 			configType: "unknown",
-			want:       sqlc.RegistryTypeMANAGED,
+			want:       "",
+			wantErr:    true,
 		},
 		{
-			name:       "maps empty string to MANAGED",
+			name:       "returns error for empty string",
 			configType: "",
-			want:       sqlc.RegistryTypeMANAGED,
+			want:       "",
+			wantErr:    true,
 		},
 	}
 
@@ -75,8 +82,14 @@ func TestMapConfigTypeToDBType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := mapConfigTypeToDBType(tt.configType)
-			assert.Equal(t, tt.want, got)
+			got, err := mapConfigTypeToDBType(tt.configType)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Empty(t, got)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			}
 		})
 	}
 }
@@ -517,8 +530,9 @@ func TestMapConfigTypeToDBType_AllSourceTypes(t *testing.T) {
 		t.Run(sourceType, func(t *testing.T) {
 			t.Parallel()
 
-			result := mapConfigTypeToDBType(sourceType)
-			// Should not panic and should return a valid registry type
+			result, err := mapConfigTypeToDBType(sourceType)
+			// Should not return error for valid source types
+			assert.NoError(t, err)
 			assert.NotEmpty(t, result)
 			assert.Contains(t, []sqlc.RegistryType{
 				sqlc.RegistryTypeMANAGED,

@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -57,7 +58,11 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 
 	for i, reg := range registryConfigs {
 		names[i] = reg.Name
-		regTypes[i] = mapConfigTypeToDBType(reg.GetType())
+		regType, err := mapConfigTypeToDBType(reg.GetType())
+		if err != nil {
+			return err
+		}
+		regTypes[i] = regType
 		createdAts[i] = now
 		updatedAts[i] = now
 	}
@@ -338,18 +343,18 @@ func syncPhaseToDBStatus(phase status.SyncPhase) sqlc.SyncStatus {
 }
 
 // mapConfigTypeToDBType maps config source types to database registry types
-func mapConfigTypeToDBType(configType string) sqlc.RegistryType {
+func mapConfigTypeToDBType(configType string) (sqlc.RegistryType, error) {
 	switch configType {
 	case config.SourceTypeGit:
-		return sqlc.RegistryTypeREMOTE
+		return sqlc.RegistryTypeREMOTE, nil
 	case config.SourceTypeAPI:
-		return sqlc.RegistryTypeREMOTE
+		return sqlc.RegistryTypeREMOTE, nil
 	case config.SourceTypeFile:
-		return sqlc.RegistryTypeFILE
+		return sqlc.RegistryTypeFILE, nil
 	case config.SourceTypeManaged:
-		return sqlc.RegistryTypeMANAGED
+		return sqlc.RegistryTypeMANAGED, nil
 	default:
-		return sqlc.RegistryTypeMANAGED
+		return "", fmt.Errorf("unrecognized registry type: %s", configType)
 	}
 }
 
