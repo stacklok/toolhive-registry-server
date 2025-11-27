@@ -228,3 +228,109 @@ DELETE FROM mcp_server
 WHERE reg_id = sqlc.arg(reg_id)
   AND name = sqlc.arg(name)
   AND version = sqlc.arg(version);
+
+-- name: DeleteServersByRegistry :exec
+DELETE FROM mcp_server
+WHERE reg_id = sqlc.arg(reg_id);
+
+-- name: InsertServerVersionForSync :one
+INSERT INTO mcp_server (
+    name,
+    version,
+    reg_id,
+    created_at,
+    updated_at,
+    description,
+    title,
+    website,
+    upstream_meta,
+    server_meta,
+    repository_url,
+    repository_id,
+    repository_subfolder,
+    repository_type
+) VALUES (
+    sqlc.arg(name),
+    sqlc.arg(version),
+    sqlc.arg(reg_id),
+    sqlc.arg(created_at),
+    sqlc.arg(updated_at),
+    sqlc.narg(description),
+    sqlc.narg(title),
+    sqlc.narg(website),
+    sqlc.narg(upstream_meta),
+    sqlc.narg(server_meta),
+    sqlc.narg(repository_url),
+    sqlc.narg(repository_id),
+    sqlc.narg(repository_subfolder),
+    sqlc.narg(repository_type)
+)
+RETURNING id;
+
+-- name: UpsertServerVersionForSync :one
+INSERT INTO mcp_server (
+    name,
+    version,
+    reg_id,
+    created_at,
+    updated_at,
+    description,
+    title,
+    website,
+    upstream_meta,
+    server_meta,
+    repository_url,
+    repository_id,
+    repository_subfolder,
+    repository_type
+) VALUES (
+    sqlc.arg(name),
+    sqlc.arg(version),
+    sqlc.arg(reg_id),
+    sqlc.arg(created_at),
+    sqlc.arg(updated_at),
+    sqlc.narg(description),
+    sqlc.narg(title),
+    sqlc.narg(website),
+    sqlc.narg(upstream_meta),
+    sqlc.narg(server_meta),
+    sqlc.narg(repository_url),
+    sqlc.narg(repository_id),
+    sqlc.narg(repository_subfolder),
+    sqlc.narg(repository_type)
+)
+ON CONFLICT (reg_id, name, version)
+DO UPDATE SET
+    updated_at = sqlc.arg(updated_at),
+    description = sqlc.narg(description),
+    title = sqlc.narg(title),
+    website = sqlc.narg(website),
+    upstream_meta = sqlc.narg(upstream_meta),
+    server_meta = sqlc.narg(server_meta),
+    repository_url = sqlc.narg(repository_url),
+    repository_id = sqlc.narg(repository_id),
+    repository_subfolder = sqlc.narg(repository_subfolder),
+    repository_type = sqlc.narg(repository_type)
+RETURNING id;
+
+-- name: DeleteOrphanedServers :exec
+DELETE FROM mcp_server
+WHERE reg_id = sqlc.arg(reg_id)
+  AND id != ALL(sqlc.slice(keep_ids)::UUID[]);
+
+-- name: DeleteServerPackagesByServerId :exec
+DELETE FROM mcp_server_package
+WHERE server_id = sqlc.arg(server_id);
+
+-- name: DeleteServerRemotesByServerId :exec
+DELETE FROM mcp_server_remote
+WHERE server_id = sqlc.arg(server_id);
+
+-- name: DeleteServerIconsByServerId :exec
+DELETE FROM mcp_server_icon
+WHERE server_id = sqlc.arg(server_id);
+
+-- name: GetServerIDsByRegistryNameVersion :many
+SELECT id, name, version
+FROM mcp_server
+WHERE reg_id = sqlc.arg(reg_id);
