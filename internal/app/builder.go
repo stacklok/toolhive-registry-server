@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stacklok/toolhive/pkg/logger"
 
@@ -407,6 +409,12 @@ func buildDatabaseConnectionPool(
 		poolConfig.MaxConnLifetime = lifetime
 	}
 
+	// Register custom type codecs after connection is established
+	poolConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		// Register array codecs for all custom enum types
+		return registerCustomArrayCodecs(ctx, conn)
+	}
+
 	// Create connection pool
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
@@ -414,6 +422,45 @@ func buildDatabaseConnectionPool(
 	}
 
 	return pool, nil
+}
+
+// registerCustomArrayCodecs registers codecs for all custom enum array types
+// This is needed because pgx doesn't automatically know how to encode Go slices of custom enum types
+// into PostgreSQL array types
+func registerCustomArrayCodecs(ctx context.Context, conn *pgx.Conn) error {
+	// List of enum types that need array codec registration
+	enumTypes := []string{"registry_type", "sync_status", "icon_theme"}
+
+	for _, enumName := range enumTypes {
+		// Get the OID for the enum from the database
+		var enumOID uint32
+		err := conn.QueryRow(ctx, "SELECT oid FROM pg_type WHERE typname = $1", enumName).Scan(&enumOID)
+		if err != nil {
+			return fmt.Errorf("failed to get %s OID: %w", enumName, err)
+		}
+
+		// Get the OID for the array type (PostgreSQL prefixes array types with _)
+		var arrayOID uint32
+		err = conn.QueryRow(ctx, "SELECT oid FROM pg_type WHERE typname = $1", "_"+enumName).Scan(&arrayOID)
+		if err != nil {
+			return fmt.Errorf("failed to get %s[] array OID: %w", enumName, err)
+		}
+
+		// Register the array codec with proper element type codec
+		conn.TypeMap().RegisterType(&pgtype.Type{
+			Name: enumName + "[]",
+			OID:  arrayOID,
+			Codec: &pgtype.ArrayCodec{
+				ElementType: &pgtype.Type{
+					Name:  enumName,
+					OID:   enumOID,
+					Codec: pgtype.TextCodec{},
+				},
+			},
+		})
+	}
+
+	return nil
 }
 
 // buildHTTPServer builds the HTTP server with router and middleware
