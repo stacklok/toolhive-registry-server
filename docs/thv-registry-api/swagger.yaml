@@ -585,6 +585,12 @@ paths:
             schema:
               type: object
       responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo'
+          description: Registry details
         "400":
           content:
             application/json:
@@ -593,6 +599,22 @@ paths:
                   type: string
                 type: object
           description: Bad request
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Registry not found
+        "500":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Internal server error
         "501":
           content:
             application/json:

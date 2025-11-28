@@ -51,6 +51,9 @@ type RegistryService interface {
 
 	// ListRegistries returns all configured registries
 	ListRegistries(ctx context.Context) ([]RegistryInfo, error)
+
+	// GetRegistryByName returns a single registry by name
+	GetRegistryByName(ctx context.Context, name string) (*RegistryInfo, error)
 }
 
 // RegistryInfo represents detailed information about a registry
