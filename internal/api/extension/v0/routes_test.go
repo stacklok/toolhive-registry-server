@@ -104,17 +104,12 @@ func TestUpsertVersion(t *testing.T) {
 
 func TestListRegistries(t *testing.T) {
 	t.Parallel()
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-
-	mockSvc := mocks.NewMockRegistryService(ctrl)
-	router := Router(mockSvc)
 
 	tests := []struct {
 		name         string
 		path         string
 		method       string
-		setupMock    func()
+		setupMock    func(*mocks.MockRegistryService)
 		wantStatus   int
 		wantError    string
 		validateBody func(t *testing.T, body []byte)
@@ -123,7 +118,7 @@ func TestListRegistries(t *testing.T) {
 			name:   "list registries - valid request",
 			path:   "/registries",
 			method: "GET",
-			setupMock: func() {
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
 				mockSvc.EXPECT().
 					ListRegistries(gomock.Any()).
 					Return([]service.RegistryInfo{
@@ -149,7 +144,7 @@ func TestListRegistries(t *testing.T) {
 			name:   "list registries - service error",
 			path:   "/registries",
 			method: "GET",
-			setupMock: func() {
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
 				mockSvc.EXPECT().
 					ListRegistries(gomock.Any()).
 					Return(nil, errors.New("database error"))
@@ -161,7 +156,7 @@ func TestListRegistries(t *testing.T) {
 			name:   "list registries - not implemented",
 			path:   "/registries",
 			method: "GET",
-			setupMock: func() {
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
 				mockSvc.EXPECT().
 					ListRegistries(gomock.Any()).
 					Return(nil, service.ErrNotImplemented)
@@ -172,10 +167,18 @@ func TestListRegistries(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+			router := Router(mockSvc)
+
 			if tt.setupMock != nil {
-				tt.setupMock()
+				tt.setupMock(mockSvc)
 			}
 
 			req, err := http.NewRequest(tt.method, tt.path, nil)
@@ -203,25 +206,51 @@ func TestListRegistries(t *testing.T) {
 
 func TestGetRegistry(t *testing.T) {
 	t.Parallel()
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-
-	mockSvc := mocks.NewMockRegistryService(ctrl)
-	router := Router(mockSvc)
 
 	tests := []struct {
-		name       string
-		path       string
-		method     string
-		wantStatus int
-		wantError  string
+		name         string
+		path         string
+		method       string
+		setupMock    func(*mocks.MockRegistryService)
+		wantStatus   int
+		wantError    string
+		validateBody func(t *testing.T, body []byte)
 	}{
 		{
-			name:       "get registry - valid name",
-			path:       "/registries/foo",
-			method:     "GET",
-			wantStatus: http.StatusNotImplemented,
-			wantError:  "Getting registry is not supported",
+			name:   "get registry - valid name",
+			path:   "/registries/foo",
+			method: "GET",
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
+				mockSvc.EXPECT().
+					GetRegistryByName(gomock.Any(), "foo").
+					Return(&service.RegistryInfo{
+						Name:      "foo",
+						Type:      "MANAGED",
+						CreatedAt: time.Now(),
+						UpdatedAt: time.Now(),
+					}, nil)
+			},
+			wantStatus: http.StatusOK,
+			validateBody: func(t *testing.T, body []byte) {
+				t.Helper()
+				var response service.RegistryInfo
+				err := json.Unmarshal(body, &response)
+				require.NoError(t, err)
+				assert.Equal(t, "foo", response.Name)
+				assert.Equal(t, "MANAGED", response.Type)
+			},
+		},
+		{
+			name:   "get registry - not found",
+			path:   "/registries/nonexistent",
+			method: "GET",
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
+				mockSvc.EXPECT().
+					GetRegistryByName(gomock.Any(), "nonexistent").
+					Return(nil, service.ErrRegistryNotFound)
+			},
+			wantStatus: http.StatusNotFound,
+			wantError:  "Registry nonexistent not found",
 		},
 		{
 			name:       "get registry - empty registry name",
@@ -231,11 +260,28 @@ func TestGetRegistry(t *testing.T) {
 			wantError:  "Registry name is required",
 		},
 		{
-			name:       "get registry - with special characters",
-			path:       "/registries/foo%2Fbar",
-			method:     "GET",
+			name:   "get registry - not implemented in file mode",
+			path:   "/registries/foo",
+			method: "GET",
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
+				mockSvc.EXPECT().
+					GetRegistryByName(gomock.Any(), "foo").
+					Return(nil, service.ErrNotImplemented)
+			},
 			wantStatus: http.StatusNotImplemented,
-			wantError:  "Getting registry is not supported",
+			wantError:  "Getting registry is not supported in file mode",
+		},
+		{
+			name:   "get registry - internal error",
+			path:   "/registries/foo",
+			method: "GET",
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
+				mockSvc.EXPECT().
+					GetRegistryByName(gomock.Any(), "foo").
+					Return(nil, errors.New("database error"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			wantError:  "database error",
 		},
 		{
 			name:       "get registry - no name",
@@ -246,8 +292,20 @@ func TestGetRegistry(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+			router := Router(mockSvc)
+
+			if tt.setupMock != nil {
+				tt.setupMock(mockSvc)
+			}
+
 			req, err := http.NewRequest(tt.method, tt.path, nil)
 			require.NoError(t, err)
 
@@ -256,7 +314,7 @@ func TestGetRegistry(t *testing.T) {
 
 			assert.Equal(t, tt.wantStatus, rr.Code)
 
-			if tt.wantStatus == http.StatusNotImplemented {
+			if tt.wantError != "" {
 				var response map[string]string
 				err = json.Unmarshal(rr.Body.Bytes(), &response)
 				require.NoError(t, err)
@@ -264,12 +322,8 @@ func TestGetRegistry(t *testing.T) {
 				assert.Equal(t, tt.wantError, response["error"])
 			}
 
-			if tt.wantStatus == http.StatusBadRequest && tt.wantError != "" {
-				var response map[string]string
-				err = json.Unmarshal(rr.Body.Bytes(), &response)
-				require.NoError(t, err)
-				assert.Contains(t, response, "error")
-				assert.Equal(t, tt.wantError, response["error"])
+			if tt.validateBody != nil {
+				tt.validateBody(t, rr.Body.Bytes())
 			}
 		})
 	}
