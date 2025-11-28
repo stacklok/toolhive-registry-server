@@ -48,6 +48,33 @@ type RegistryService interface {
 
 	// DeleteServerVersion removes a server version from a managed registry
 	DeleteServerVersion(ctx context.Context, opts ...Option[DeleteServerVersionOptions]) error
+
+	// ListRegistries returns all configured registries
+	ListRegistries(ctx context.Context) ([]RegistryInfo, error)
+}
+
+// RegistryInfo represents detailed information about a registry
+type RegistryInfo struct {
+	Name       string              `json:"name"`
+	Type       string              `json:"type"` // MANAGED, FILE, REMOTE
+	SyncStatus *RegistrySyncStatus `json:"syncStatus,omitempty"`
+	CreatedAt  time.Time           `json:"createdAt"`
+	UpdatedAt  time.Time           `json:"updatedAt"`
+}
+
+// RegistrySyncStatus represents the sync status of a registry
+type RegistrySyncStatus struct {
+	Phase        string     `json:"phase"`                  // complete, syncing, failed
+	LastSyncTime *time.Time `json:"lastSyncTime,omitempty"` // Last successful sync
+	LastAttempt  *time.Time `json:"lastAttempt,omitempty"`  // Last sync attempt
+	AttemptCount int        `json:"attemptCount"`           // Number of sync attempts
+	ServerCount  int        `json:"serverCount"`            // Number of servers in registry
+	Message      string     `json:"message,omitempty"`      // Status or error message
+}
+
+// RegistryListResponse represents the response for listing registries
+type RegistryListResponse struct {
+	Registries []RegistryInfo `json:"registries"`
 }
 
 // Option is a function that sets an option for the ListServersOptions, ListServerVersionsOptions,

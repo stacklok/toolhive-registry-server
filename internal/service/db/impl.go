@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
+	"github.com/stacklok/toolhive/pkg/logger"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
@@ -649,4 +650,93 @@ func (s *dbService) sharedListServers(
 	}
 
 	return result, nil
+}
+
+// ListRegistries returns all configured registries
+func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo, error) {
+	// Begin a read-only transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.ReadCommitted,
+		AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			// TODO: log the rollback error (add proper logging)
+			_ = err
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	// List all registries (no pagination for now)
+	params := sqlc.ListRegistriesParams{
+		Size: 1000, // Maximum number of registries to return
+	}
+
+	registries, err := querier.ListRegistries(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list registries: %w", err)
+	}
+
+	// Convert to API response format
+	result := make([]service.RegistryInfo, 0, len(registries))
+	for _, reg := range registries {
+		info := service.RegistryInfo{
+			Name:      reg.Name,
+			Type:      string(reg.RegType), // MANAGED, FILE, REMOTE
+			CreatedAt: *reg.CreatedAt,
+			UpdatedAt: *reg.UpdatedAt,
+		}
+
+		// Fetch sync status from database
+		syncRecord, err := querier.GetRegistrySyncByName(ctx, reg.Name)
+		if err != nil {
+			// It's okay if sync record doesn't exist yet (registry may not have been synced)
+			if !errors.Is(err, pgx.ErrNoRows) {
+				logger.Warnf("Failed to get sync status for registry %s: %v", reg.Name, err)
+			}
+			// Leave SyncStatus as nil if not found or error
+			info.SyncStatus = nil
+		} else {
+			// Convert database sync status to service type
+			info.SyncStatus = &service.RegistrySyncStatus{
+				Phase:        convertSyncPhase(syncRecord.SyncStatus),
+				LastSyncTime: syncRecord.EndedAt,   // EndedAt represents successful completion
+				LastAttempt:  syncRecord.StartedAt, // StartedAt is the last attempt time
+				AttemptCount: int(syncRecord.AttemptCount),
+				ServerCount:  int(syncRecord.ServerCount),
+				Message:      getStatusMessage(syncRecord.ErrorMsg),
+			}
+		}
+
+		result = append(result, info)
+	}
+
+	return result, nil
+}
+
+// convertSyncPhase converts database SyncStatus enum to service phase string
+func convertSyncPhase(status sqlc.SyncStatus) string {
+	switch status {
+	case sqlc.SyncStatusINPROGRESS:
+		return "syncing"
+	case sqlc.SyncStatusCOMPLETED:
+		return "complete"
+	case sqlc.SyncStatusFAILED:
+		return "failed"
+	default:
+		return "unknown"
+	}
+}
+
+// getStatusMessage converts error message pointer to string
+func getStatusMessage(errorMsg *string) string {
+	if errorMsg == nil || *errorMsg == "" {
+		return ""
+	}
+	return *errorMsg
 }

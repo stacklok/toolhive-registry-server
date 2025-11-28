@@ -49,10 +49,27 @@ func Router(svc service.RegistryService) http.Handler {
 // @Tags		extension
 // @Accept		json
 // @Produce		json
-// @Failure		501	{object}	map[string]string	"Not implemented"
+// @Success		200	{object}	service.RegistryListResponse	"List of registries"
+// @Failure		500	{object}	map[string]string	"Internal server error"
 // @Router		/extension/v0/registries [get]
-func (*Routes) listRegistries(w http.ResponseWriter, _ *http.Request) {
-	common.WriteErrorResponse(w, "Listing registries is not supported", http.StatusNotImplemented)
+func (r *Routes) listRegistries(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+
+	registries, err := r.service.ListRegistries(ctx)
+	if err != nil {
+		if err == service.ErrNotImplemented {
+			common.WriteErrorResponse(w, "Listing registries is not supported in file mode", http.StatusNotImplemented)
+			return
+		}
+		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := service.RegistryListResponse{
+		Registries: registries,
+	}
+
+	common.WriteJSONResponse(w, response, http.StatusOK)
 }
 
 // getRegistry handles GET /extension/v0/registries/{registryName}
