@@ -2086,6 +2086,267 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	require.Len(t, servers, 2, "Should have 2 servers total (1 in each registry)")
 }
 
+// TestDbSyncWriter_Store_ServerWithMultiplePackages tests that a server can have multiple packages.
+func TestDbSyncWriter_Store_ServerWithMultiplePackages(t *testing.T) {
+	t.Parallel()
+
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	createTestRegistry(t, pool, "test-registry")
+
+	writer, err := NewDBSyncWriter(pool)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	queries := sqlc.New(pool)
+
+	// Create a server with 3 different packages (different registry types and identifiers)
+	server := createTestServer("test.org/server", "1.0.0")
+	server.Packages = []model.Package{
+		{
+			RegistryType:    "npm",
+			RegistryBaseURL: "https://registry.npmjs.org",
+			Identifier:      "@test/npm-package",
+			Version:         "1.0.0",
+			Transport:       model.Transport{Type: "stdio"},
+		},
+		{
+			RegistryType:    "pypi",
+			RegistryBaseURL: "https://pypi.org/simple",
+			Identifier:      "test-pypi-package",
+			Version:         "2.0.0",
+			Transport:       model.Transport{Type: "stdio"},
+		},
+		{
+			RegistryType:    "oci",
+			RegistryBaseURL: "",
+			Identifier:      "ghcr.io/test/oci-package:v1.0.0",
+			Version:         "",
+			Transport:       model.Transport{Type: "stdio"},
+		},
+	}
+
+	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
+
+	// First sync
+	err = writer.Store(ctx, "test-registry", registry)
+	require.NoError(t, err)
+
+	// Verify all 3 packages exist
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	require.NoError(t, err)
+	require.Len(t, servers, 1)
+
+	packages, err := queries.ListServerPackages(ctx, []uuid.UUID{servers[0].ID})
+	require.NoError(t, err)
+	require.Len(t, packages, 3, "Server should have 3 packages")
+
+	// Verify each package
+	pkgIdentifiers := make(map[string]bool)
+	for _, pkg := range packages {
+		pkgIdentifiers[pkg.PkgIdentifier] = true
+	}
+	assert.True(t, pkgIdentifiers["@test/npm-package"], "NPM package should exist")
+	assert.True(t, pkgIdentifiers["test-pypi-package"], "PyPI package should exist")
+	assert.True(t, pkgIdentifiers["ghcr.io/test/oci-package:v1.0.0"], "OCI package should exist")
+}
+
+// TestDbSyncWriter_Store_MultiplePackagesOrphanedCleanup tests that when packages are added/removed,
+// orphaned packages are properly deleted.
+func TestDbSyncWriter_Store_MultiplePackagesOrphanedCleanup(t *testing.T) {
+	t.Parallel()
+
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	createTestRegistry(t, pool, "test-registry")
+
+	writer, err := NewDBSyncWriter(pool)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	queries := sqlc.New(pool)
+
+	// First sync: server with 3 packages
+	server := createTestServer("test.org/server", "1.0.0")
+	server.Packages = []model.Package{
+		{
+			RegistryType:    "npm",
+			RegistryBaseURL: "https://registry.npmjs.org",
+			Identifier:      "@test/package-1",
+			Version:         "1.0.0",
+			Transport:       model.Transport{Type: "stdio"},
+		},
+		{
+			RegistryType:    "npm",
+			RegistryBaseURL: "https://registry.npmjs.org",
+			Identifier:      "@test/package-2",
+			Version:         "1.0.0",
+			Transport:       model.Transport{Type: "stdio"},
+		},
+		{
+			RegistryType:    "pypi",
+			RegistryBaseURL: "https://pypi.org/simple",
+			Identifier:      "test-package-3",
+			Version:         "1.0.0",
+			Transport:       model.Transport{Type: "stdio"},
+		},
+	}
+	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
+
+	err = writer.Store(ctx, "test-registry", registry)
+	require.NoError(t, err)
+
+	// Verify all 3 packages exist
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	require.NoError(t, err)
+	require.Len(t, servers, 1)
+	serverID := servers[0].ID
+
+	packages, err := queries.ListServerPackages(ctx, []uuid.UUID{serverID})
+	require.NoError(t, err)
+	require.Len(t, packages, 3, "Should have 3 packages after first sync")
+
+	// Second sync: Drop package-2, keep package-1 and package-3, add package-4
+	serverUpdated := createTestServer("test.org/server", "1.0.0")
+	serverUpdated.Packages = []model.Package{
+		{
+			RegistryType:    "npm",
+			RegistryBaseURL: "https://registry.npmjs.org",
+			Identifier:      "@test/package-1",
+			Version:         "1.0.0",
+			Transport:       model.Transport{Type: "stdio"},
+		},
+		{
+			RegistryType:    "pypi",
+			RegistryBaseURL: "https://pypi.org/simple",
+			Identifier:      "test-package-3",
+			Version:         "1.0.0",
+			Transport:       model.Transport{Type: "stdio"},
+		},
+		{
+			RegistryType:    "npm",
+			RegistryBaseURL: "https://registry.npmjs.org",
+			Identifier:      "@test/package-4",
+			Version:         "1.0.0",
+			Transport:       model.Transport{Type: "stdio"},
+		},
+	}
+	registryUpdated := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverUpdated})
+
+	err = writer.Store(ctx, "test-registry", registryUpdated)
+	require.NoError(t, err)
+
+	// Verify server UUID is preserved
+	serverAfterUpdate, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+		Name:    "test.org/server",
+		Version: "1.0.0",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, serverID, serverAfterUpdate.ID, "Server UUID should be preserved")
+
+	// Verify only 3 packages exist (package-1, package-3, package-4)
+	packages, err = queries.ListServerPackages(ctx, []uuid.UUID{serverID})
+	require.NoError(t, err)
+	require.Len(t, packages, 3, "Should have 3 packages after second sync")
+
+	// Verify package identifiers
+	pkgIdentifiers := make(map[string]bool)
+	for _, pkg := range packages {
+		pkgIdentifiers[pkg.PkgIdentifier] = true
+	}
+	assert.True(t, pkgIdentifiers["@test/package-1"], "Package-1 should exist")
+	assert.False(t, pkgIdentifiers["@test/package-2"], "Package-2 should have been deleted")
+	assert.True(t, pkgIdentifiers["test-package-3"], "Package-3 should exist")
+	assert.True(t, pkgIdentifiers["@test/package-4"], "Package-4 should exist")
+
+	// Third sync: Remove all packages
+	serverNoPackages := createTestServer("test.org/server", "1.0.0")
+	serverNoPackages.Packages = nil
+	registryNoPackages := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverNoPackages})
+
+	err = writer.Store(ctx, "test-registry", registryNoPackages)
+	require.NoError(t, err)
+
+	// Verify no packages exist
+	packages, err = queries.ListServerPackages(ctx, []uuid.UUID{serverID})
+	require.NoError(t, err)
+	require.Len(t, packages, 0, "Should have 0 packages after third sync")
+}
+
+// TestDbSyncWriter_Store_PackageUpdate tests that when a package is updated (same identifier but different attributes),
+// it is properly updated in place.
+func TestDbSyncWriter_Store_PackageUpdate(t *testing.T) {
+	t.Parallel()
+
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	createTestRegistry(t, pool, "test-registry")
+
+	writer, err := NewDBSyncWriter(pool)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	queries := sqlc.New(pool)
+
+	// First sync: server with 1 package
+	server := createTestServer("test.org/server", "1.0.0")
+	server.Packages = []model.Package{
+		{
+			RegistryType:    "npm",
+			RegistryBaseURL: "https://registry.npmjs.org",
+			Identifier:      "@test/my-package",
+			Version:         "1.0.0",
+			RunTimeHint:     "npx",
+			Transport:       model.Transport{Type: "stdio"},
+		},
+	}
+	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
+
+	err = writer.Store(ctx, "test-registry", registry)
+	require.NoError(t, err)
+
+	// Verify package exists with version 1.0.0
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	require.NoError(t, err)
+	require.Len(t, servers, 1)
+	serverID := servers[0].ID
+
+	packages, err := queries.ListServerPackages(ctx, []uuid.UUID{serverID})
+	require.NoError(t, err)
+	require.Len(t, packages, 1)
+	assert.Equal(t, "@test/my-package", packages[0].PkgIdentifier)
+	assert.Equal(t, "1.0.0", packages[0].PkgVersion)
+	assert.Equal(t, "npx", *packages[0].RuntimeHint)
+
+	// Second sync: Update the package version and runtime hint
+	serverUpdated := createTestServer("test.org/server", "1.0.0")
+	serverUpdated.Packages = []model.Package{
+		{
+			RegistryType:    "npm",
+			RegistryBaseURL: "https://registry.npmjs.org",
+			Identifier:      "@test/my-package",
+			Version:         "2.0.0", // Updated version
+			RunTimeHint:     "node",  // Updated hint
+			Transport:       model.Transport{Type: "stdio"},
+		},
+	}
+	registryUpdated := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverUpdated})
+
+	err = writer.Store(ctx, "test-registry", registryUpdated)
+	require.NoError(t, err)
+
+	// Verify package was updated in place
+	packages, err = queries.ListServerPackages(ctx, []uuid.UUID{serverID})
+	require.NoError(t, err)
+	require.Len(t, packages, 1, "Should still have 1 package")
+	assert.Equal(t, "@test/my-package", packages[0].PkgIdentifier)
+	assert.Equal(t, "2.0.0", packages[0].PkgVersion, "Package version should be updated")
+	assert.Equal(t, "node", *packages[0].RuntimeHint, "Runtime hint should be updated")
+}
+
 // TestDbSyncWriter_Store_ComplexSyncScenario tests a realistic scenario with multiple changes at once.
 func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 	t.Parallel()

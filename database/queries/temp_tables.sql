@@ -76,11 +76,9 @@ SELECT
     runtime_hint, runtime_arguments, package_arguments, env_vars, sha256_hash,
     transport, transport_url, transport_headers
 FROM temp_mcp_server_package
-ON CONFLICT (server_id)
+ON CONFLICT (server_id, registry_type, pkg_identifier)
 DO UPDATE SET
-    registry_type = EXCLUDED.registry_type,
     pkg_registry_url = EXCLUDED.pkg_registry_url,
-    pkg_identifier = EXCLUDED.pkg_identifier,
     pkg_version = EXCLUDED.pkg_version,
     runtime_hint = EXCLUDED.runtime_hint,
     runtime_arguments = EXCLUDED.runtime_arguments,
@@ -94,7 +92,9 @@ DO UPDATE SET
 -- name: DeleteOrphanedPackages :exec
 DELETE FROM mcp_server_package
 WHERE server_id = ANY(sqlc.slice(server_ids)::UUID[])
-  AND server_id NOT IN (SELECT server_id FROM temp_mcp_server_package);
+  AND (server_id, registry_type, pkg_identifier) NOT IN (
+    SELECT server_id, registry_type, pkg_identifier FROM temp_mcp_server_package
+  );
 
 -- Temp Remote Table Operations
 
