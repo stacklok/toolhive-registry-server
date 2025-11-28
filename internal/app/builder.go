@@ -26,6 +26,7 @@ import (
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
+	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 )
 
 const (
@@ -107,15 +108,30 @@ func NewRegistryApp(
 		return nil, fmt.Errorf("failed to build base configuration: %w", err)
 	}
 
+	// Build database pool if needed (used by both sync and service components)
+	var pool *pgxpool.Pool
+	var poolCleanup func()
+	if cfg.config.GetStorageType() == config.StorageTypeDatabase {
+		pool, err = buildDatabaseConnectionPool(ctx, cfg.config)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create database connection pool: %w", err)
+		}
+		poolCleanup = pool.Close
+	} else {
+		poolCleanup = func() {}
+	}
+
 	// Build sync components
-	syncCoordinator, err := buildSyncComponents(cfg)
+	syncCoordinator, err := buildSyncComponents(cfg, pool)
 	if err != nil {
+		poolCleanup()
 		return nil, fmt.Errorf("failed to build sync components: %w", err)
 	}
 
 	// Build service components
-	registryService, cleanupFunc, err := buildServiceComponents(ctx, cfg)
+	registryService, err := buildServiceComponents(ctx, cfg, pool)
 	if err != nil {
+		poolCleanup()
 		return nil, fmt.Errorf("failed to build service components: %w", err)
 	}
 
@@ -138,7 +154,7 @@ func NewRegistryApp(
 	appCtx, cancel := context.WithCancel(ctx)
 
 	cancelFunc := func() {
-		cleanupFunc()
+		poolCleanup()
 		cancel()
 	}
 
@@ -253,6 +269,7 @@ func WithRegistryProvider(provider service.RegistryDataProvider) RegistryAppOpti
 // buildSyncComponents builds sync manager, coordinator, and related components
 func buildSyncComponents(
 	b *registryAppConfig,
+	pool *pgxpool.Pool,
 ) (coordinator.Coordinator, error) {
 	logger.Info("Initializing sync components")
 
@@ -277,16 +294,20 @@ func buildSyncComponents(
 		b.statusPersistence = status.NewFileStatusPersistence(b.dataDir)
 	}
 
-	// Build sync manager
+	// Build sync manager using factory
 	if b.syncManager == nil {
+		syncWriter := writer.NewSyncWriter(b.config, b.storageManager)
 		b.syncManager = pkgsync.NewDefaultSyncManager(
 			b.registryHandlerFactory,
-			b.storageManager,
+			syncWriter,
 		)
 	}
 
-	// Create state service
-	stateService := state.NewFileStateService(b.statusPersistence)
+	// Create state service using factory
+	stateService, err := state.NewStateService(b.config, b.statusPersistence, pool)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create state service: %w", err)
+	}
 
 	// Create coordinator
 	syncCoordinator := coordinator.New(b.syncManager, stateService, b.config)
@@ -299,11 +320,12 @@ func buildSyncComponents(
 func buildServiceComponents(
 	ctx context.Context,
 	b *registryAppConfig,
-) (service.RegistryService, func(), error) {
+	pool *pgxpool.Pool,
+) (service.RegistryService, error) {
 	logger.Info("Initializing service components")
 
 	if b.config == nil {
-		return nil, nil, fmt.Errorf("config cannot be nil")
+		return nil, fmt.Errorf("config cannot be nil")
 	}
 
 	// Determine storage type from config
@@ -311,7 +333,6 @@ func buildServiceComponents(
 
 	// Create service based on storage type
 	var svc service.RegistryService
-	var cleanupFunc func()
 	switch storageType {
 	case config.StorageTypeFile:
 		// Build registry provider (reads from synced data via StorageManager)
@@ -320,7 +341,7 @@ func buildServiceComponents(
 			factory := service.NewRegistryProviderFactory(b.storageManager)
 			provider, err := factory.CreateProvider(b.config)
 			if err != nil {
-				return nil, nil, fmt.Errorf("failed to create registry provider: %w", err)
+				return nil, fmt.Errorf("failed to create registry provider: %w", err)
 			}
 			b.registryProvider = provider
 			logger.Infof("Created registry data provider using storage manager")
@@ -329,33 +350,30 @@ func buildServiceComponents(
 		// Create in-memory service (reads from file storage)
 		inMemorySvc, err := inmemory.New(ctx, b.registryProvider)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create in-memory registry service: %w", err)
+			return nil, fmt.Errorf("failed to create in-memory registry service: %w", err)
 		}
 		logger.Info("Created in-memory registry service")
 
 		svc = inMemorySvc
-		cleanupFunc = func() {}
 	case config.StorageTypeDatabase:
-		// Create database-backed service
-		pool, err := buildDatabaseConnectionPool(ctx, b.config)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create database service: %w", err)
+		// Create database-backed service using the pool created earlier
+		if pool == nil {
+			return nil, fmt.Errorf("database pool is required for database storage type")
 		}
 
 		databaseSvc, err := database.New(database.WithConnectionPool(pool))
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create database service: %w", err)
+			return nil, fmt.Errorf("failed to create database service: %w", err)
 		}
 		logger.Info("Created database-backed registry service")
 
 		svc = databaseSvc
-		cleanupFunc = pool.Close
 	default:
-		return nil, nil, fmt.Errorf("unknown storage type: %s", storageType)
+		return nil, fmt.Errorf("unknown storage type: %s", storageType)
 	}
 
 	logger.Info("Service components initialized successfully")
-	return svc, cleanupFunc, nil
+	return svc, nil
 }
 
 // buildDatabaseConnectionPool creates a database connection pool

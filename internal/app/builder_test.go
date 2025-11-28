@@ -487,18 +487,16 @@ func TestBuildServiceComponents(t *testing.T) {
 			// Store original provider to check if it was set
 			originalProvider := tt.config.registryProvider
 
-			svc, cleanupFunc, err := buildServiceComponents(ctx, tt.config)
+			svc, err := buildServiceComponents(ctx, tt.config, nil)
 
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Nil(t, svc)
-				assert.Nil(t, cleanupFunc)
 				return
 			}
 
 			require.NoError(t, err)
 			require.NotNil(t, svc)
-			require.NotNil(t, cleanupFunc)
 
 			if tt.verify != nil {
 				tt.verify(t, svc, tt.config, originalProvider)
@@ -615,7 +613,7 @@ func TestBuildSyncComponents(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			coord, err := buildSyncComponents(tt.config)
+			coord, err := buildSyncComponents(tt.config, nil)
 
 			if tt.wantErr {
 				require.Error(t, err)
