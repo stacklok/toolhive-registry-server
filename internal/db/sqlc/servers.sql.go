@@ -12,6 +12,52 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteOrphanedServers = `-- name: DeleteOrphanedServers :exec
+DELETE FROM mcp_server
+WHERE reg_id = $1
+  AND id != ALL($2::UUID[])
+`
+
+type DeleteOrphanedServersParams struct {
+	RegID   uuid.UUID   `json:"reg_id"`
+	KeepIds []uuid.UUID `json:"keep_ids"`
+}
+
+func (q *Queries) DeleteOrphanedServers(ctx context.Context, arg DeleteOrphanedServersParams) error {
+	_, err := q.db.Exec(ctx, deleteOrphanedServers, arg.RegID, arg.KeepIds)
+	return err
+}
+
+const deleteServerIconsByServerId = `-- name: DeleteServerIconsByServerId :exec
+DELETE FROM mcp_server_icon
+WHERE server_id = $1
+`
+
+func (q *Queries) DeleteServerIconsByServerId(ctx context.Context, serverID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteServerIconsByServerId, serverID)
+	return err
+}
+
+const deleteServerPackagesByServerId = `-- name: DeleteServerPackagesByServerId :exec
+DELETE FROM mcp_server_package
+WHERE server_id = $1
+`
+
+func (q *Queries) DeleteServerPackagesByServerId(ctx context.Context, serverID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteServerPackagesByServerId, serverID)
+	return err
+}
+
+const deleteServerRemotesByServerId = `-- name: DeleteServerRemotesByServerId :exec
+DELETE FROM mcp_server_remote
+WHERE server_id = $1
+`
+
+func (q *Queries) DeleteServerRemotesByServerId(ctx context.Context, serverID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteServerRemotesByServerId, serverID)
+	return err
+}
+
 const deleteServerVersion = `-- name: DeleteServerVersion :execrows
 DELETE FROM mcp_server
 WHERE reg_id = $1
@@ -31,6 +77,48 @@ func (q *Queries) DeleteServerVersion(ctx context.Context, arg DeleteServerVersi
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const deleteServersByRegistry = `-- name: DeleteServersByRegistry :exec
+DELETE FROM mcp_server
+WHERE reg_id = $1
+`
+
+func (q *Queries) DeleteServersByRegistry(ctx context.Context, regID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteServersByRegistry, regID)
+	return err
+}
+
+const getServerIDsByRegistryNameVersion = `-- name: GetServerIDsByRegistryNameVersion :many
+SELECT id, name, version
+FROM mcp_server
+WHERE reg_id = $1
+`
+
+type GetServerIDsByRegistryNameVersionRow struct {
+	ID      uuid.UUID `json:"id"`
+	Name    string    `json:"name"`
+	Version string    `json:"version"`
+}
+
+func (q *Queries) GetServerIDsByRegistryNameVersion(ctx context.Context, regID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error) {
+	rows, err := q.db.Query(ctx, getServerIDsByRegistryNameVersion, regID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetServerIDsByRegistryNameVersionRow{}
+	for rows.Next() {
+		var i GetServerIDsByRegistryNameVersionRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getServerVersion = `-- name: GetServerVersion :one
@@ -290,6 +378,80 @@ type InsertServerVersionParams struct {
 
 func (q *Queries) InsertServerVersion(ctx context.Context, arg InsertServerVersionParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertServerVersion,
+		arg.Name,
+		arg.Version,
+		arg.RegID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.Description,
+		arg.Title,
+		arg.Website,
+		arg.UpstreamMeta,
+		arg.ServerMeta,
+		arg.RepositoryUrl,
+		arg.RepositoryID,
+		arg.RepositorySubfolder,
+		arg.RepositoryType,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const insertServerVersionForSync = `-- name: InsertServerVersionForSync :one
+INSERT INTO mcp_server (
+    name,
+    version,
+    reg_id,
+    created_at,
+    updated_at,
+    description,
+    title,
+    website,
+    upstream_meta,
+    server_meta,
+    repository_url,
+    repository_id,
+    repository_subfolder,
+    repository_type
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12,
+    $13,
+    $14
+)
+RETURNING id
+`
+
+type InsertServerVersionForSyncParams struct {
+	Name                string     `json:"name"`
+	Version             string     `json:"version"`
+	RegID               uuid.UUID  `json:"reg_id"`
+	CreatedAt           *time.Time `json:"created_at"`
+	UpdatedAt           *time.Time `json:"updated_at"`
+	Description         *string    `json:"description"`
+	Title               *string    `json:"title"`
+	Website             *string    `json:"website"`
+	UpstreamMeta        []byte     `json:"upstream_meta"`
+	ServerMeta          []byte     `json:"server_meta"`
+	RepositoryUrl       *string    `json:"repository_url"`
+	RepositoryID        *string    `json:"repository_id"`
+	RepositorySubfolder *string    `json:"repository_subfolder"`
+	RepositoryType      *string    `json:"repository_type"`
+}
+
+func (q *Queries) InsertServerVersionForSync(ctx context.Context, arg InsertServerVersionForSyncParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, insertServerVersionForSync,
 		arg.Name,
 		arg.Version,
 		arg.RegID,
@@ -639,4 +801,90 @@ func (q *Queries) UpsertLatestServerVersion(ctx context.Context, arg UpsertLates
 	var latest_server_id uuid.UUID
 	err := row.Scan(&latest_server_id)
 	return latest_server_id, err
+}
+
+const upsertServerVersionForSync = `-- name: UpsertServerVersionForSync :one
+INSERT INTO mcp_server (
+    name,
+    version,
+    reg_id,
+    created_at,
+    updated_at,
+    description,
+    title,
+    website,
+    upstream_meta,
+    server_meta,
+    repository_url,
+    repository_id,
+    repository_subfolder,
+    repository_type
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12,
+    $13,
+    $14
+)
+ON CONFLICT (reg_id, name, version)
+DO UPDATE SET
+    updated_at = $5,
+    description = $6,
+    title = $7,
+    website = $8,
+    upstream_meta = $9,
+    server_meta = $10,
+    repository_url = $11,
+    repository_id = $12,
+    repository_subfolder = $13,
+    repository_type = $14
+RETURNING id
+`
+
+type UpsertServerVersionForSyncParams struct {
+	Name                string     `json:"name"`
+	Version             string     `json:"version"`
+	RegID               uuid.UUID  `json:"reg_id"`
+	CreatedAt           *time.Time `json:"created_at"`
+	UpdatedAt           *time.Time `json:"updated_at"`
+	Description         *string    `json:"description"`
+	Title               *string    `json:"title"`
+	Website             *string    `json:"website"`
+	UpstreamMeta        []byte     `json:"upstream_meta"`
+	ServerMeta          []byte     `json:"server_meta"`
+	RepositoryUrl       *string    `json:"repository_url"`
+	RepositoryID        *string    `json:"repository_id"`
+	RepositorySubfolder *string    `json:"repository_subfolder"`
+	RepositoryType      *string    `json:"repository_type"`
+}
+
+func (q *Queries) UpsertServerVersionForSync(ctx context.Context, arg UpsertServerVersionForSyncParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, upsertServerVersionForSync,
+		arg.Name,
+		arg.Version,
+		arg.RegID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.Description,
+		arg.Title,
+		arg.Website,
+		arg.UpstreamMeta,
+		arg.ServerMeta,
+		arg.RepositoryUrl,
+		arg.RepositoryID,
+		arg.RepositorySubfolder,
+		arg.RepositoryType,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }

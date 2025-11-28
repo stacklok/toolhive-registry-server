@@ -13,13 +13,33 @@ import (
 type Querier interface {
 	BulkInitializeRegistrySyncs(ctx context.Context, arg BulkInitializeRegistrySyncsParams) error
 	BulkUpsertRegistries(ctx context.Context, arg BulkUpsertRegistriesParams) ([]BulkUpsertRegistriesRow, error)
+	// Temp Icon Table Operations
+	CreateTempIconTable(ctx context.Context) error
+	// Temp Package Table Operations
+	CreateTempPackageTable(ctx context.Context) error
+	// Temp Remote Table Operations
+	CreateTempRemoteTable(ctx context.Context) error
+	// Temporary table operations for bulk sync
+	// Note: These queries reference temp tables that don't exist in the schema.
+	// sqlc cannot validate these, but we organize them here for maintainability.
+	// Temp Server Table Operations
+	CreateTempServerTable(ctx context.Context) error
+	DeleteOrphanedIcons(ctx context.Context, serverIds []uuid.UUID) error
+	DeleteOrphanedPackages(ctx context.Context, serverIds []uuid.UUID) error
+	DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UUID) error
+	DeleteOrphanedServers(ctx context.Context, arg DeleteOrphanedServersParams) error
 	DeleteRegistriesNotInList(ctx context.Context, ids []uuid.UUID) error
 	DeleteRegistry(ctx context.Context, name string) error
+	DeleteServerIconsByServerId(ctx context.Context, serverID uuid.UUID) error
+	DeleteServerPackagesByServerId(ctx context.Context, serverID uuid.UUID) error
+	DeleteServerRemotesByServerId(ctx context.Context, serverID uuid.UUID) error
 	DeleteServerVersion(ctx context.Context, arg DeleteServerVersionParams) (int64, error)
+	DeleteServersByRegistry(ctx context.Context, regID uuid.UUID) error
 	GetRegistry(ctx context.Context, id uuid.UUID) (Registry, error)
 	GetRegistryByName(ctx context.Context, name string) (Registry, error)
 	GetRegistrySync(ctx context.Context, id uuid.UUID) (RegistrySync, error)
 	GetRegistrySyncByName(ctx context.Context, name string) (RegistrySync, error)
+	GetServerIDsByRegistryNameVersion(ctx context.Context, regID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error)
 	GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error)
 	InitializeRegistrySync(ctx context.Context, arg InitializeRegistrySyncParams) error
 	InsertRegistry(ctx context.Context, arg InsertRegistryParams) (uuid.UUID, error)
@@ -28,6 +48,7 @@ type Querier interface {
 	InsertServerPackage(ctx context.Context, arg InsertServerPackageParams) error
 	InsertServerRemote(ctx context.Context, arg InsertServerRemoteParams) error
 	InsertServerVersion(ctx context.Context, arg InsertServerVersionParams) (uuid.UUID, error)
+	InsertServerVersionForSync(ctx context.Context, arg InsertServerVersionForSyncParams) (uuid.UUID, error)
 	ListAllRegistryNames(ctx context.Context) ([]string, error)
 	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error)
 	ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow, error)
@@ -36,9 +57,14 @@ type Querier interface {
 	ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error)
 	ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error)
 	UpdateRegistrySync(ctx context.Context, arg UpdateRegistrySyncParams) error
+	UpsertIconsFromTemp(ctx context.Context) error
 	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (uuid.UUID, error)
+	UpsertPackagesFromTemp(ctx context.Context) error
 	UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (uuid.UUID, error)
 	UpsertRegistrySyncByName(ctx context.Context, arg UpsertRegistrySyncByNameParams) error
+	UpsertRemotesFromTemp(ctx context.Context) error
+	UpsertServerVersionForSync(ctx context.Context, arg UpsertServerVersionForSyncParams) (uuid.UUID, error)
+	UpsertServersFromTemp(ctx context.Context) error
 }
 
 var _ Querier = (*Queries)(nil)

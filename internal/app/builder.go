@@ -296,7 +296,10 @@ func buildSyncComponents(
 
 	// Build sync manager using factory
 	if b.syncManager == nil {
-		syncWriter := writer.NewSyncWriter(b.config, b.storageManager)
+		syncWriter, err := writer.NewSyncWriter(b.config, b.storageManager, pool)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create sync writer: %w", err)
+		}
 		b.syncManager = pkgsync.NewDefaultSyncManager(
 			b.registryHandlerFactory,
 			syncWriter,

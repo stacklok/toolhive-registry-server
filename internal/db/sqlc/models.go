@@ -215,3 +215,50 @@ type RegistrySync struct {
 	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
 	ServerCount           int64      `json:"server_count"`
 }
+
+type TempMcpServer struct {
+	Name                string     `json:"name"`
+	Version             string     `json:"version"`
+	RegID               uuid.UUID  `json:"reg_id"`
+	CreatedAt           *time.Time `json:"created_at"`
+	UpdatedAt           *time.Time `json:"updated_at"`
+	Description         *string    `json:"description"`
+	Title               *string    `json:"title"`
+	Website             *string    `json:"website"`
+	UpstreamMeta        []byte     `json:"upstream_meta"`
+	ServerMeta          []byte     `json:"server_meta"`
+	RepositoryUrl       *string    `json:"repository_url"`
+	RepositoryID        *string    `json:"repository_id"`
+	RepositorySubfolder *string    `json:"repository_subfolder"`
+	RepositoryType      *string    `json:"repository_type"`
+}
+
+type TempMcpServerIcon struct {
+	ServerID  uuid.UUID `json:"server_id"`
+	SourceUri string    `json:"source_uri"`
+	MimeType  string    `json:"mime_type"`
+	Theme     string    `json:"theme"`
+}
+
+type TempMcpServerPackage struct {
+	ServerID         uuid.UUID `json:"server_id"`
+	RegistryType     string    `json:"registry_type"`
+	PkgRegistryUrl   string    `json:"pkg_registry_url"`
+	PkgIdentifier    string    `json:"pkg_identifier"`
+	PkgVersion       string    `json:"pkg_version"`
+	RuntimeHint      *string   `json:"runtime_hint"`
+	RuntimeArguments []string  `json:"runtime_arguments"`
+	PackageArguments []string  `json:"package_arguments"`
+	EnvVars          []string  `json:"env_vars"`
+	Sha256Hash       *string   `json:"sha256_hash"`
+	Transport        string    `json:"transport"`
+	TransportUrl     *string   `json:"transport_url"`
+	TransportHeaders []string  `json:"transport_headers"`
+}
+
+type TempMcpServerRemote struct {
+	ServerID         uuid.UUID `json:"server_id"`
+	Transport        string    `json:"transport"`
+	TransportUrl     string    `json:"transport_url"`
+	TransportHeaders []string  `json:"transport_headers"`
+}
