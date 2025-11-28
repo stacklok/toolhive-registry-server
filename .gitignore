@@ -45,3 +45,4 @@ data/
 
 # Local config file path
 config.local.yaml
+pgpass.local
