@@ -104,17 +104,12 @@ func TestUpsertVersion(t *testing.T) {
 
 func TestListRegistries(t *testing.T) {
 	t.Parallel()
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-
-	mockSvc := mocks.NewMockRegistryService(ctrl)
-	router := Router(mockSvc)
 
 	tests := []struct {
 		name         string
 		path         string
 		method       string
-		setupMock    func()
+		setupMock    func(*mocks.MockRegistryService)
 		wantStatus   int
 		wantError    string
 		validateBody func(t *testing.T, body []byte)
@@ -123,7 +118,7 @@ func TestListRegistries(t *testing.T) {
 			name:   "list registries - valid request",
 			path:   "/registries",
 			method: "GET",
-			setupMock: func() {
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
 				mockSvc.EXPECT().
 					ListRegistries(gomock.Any()).
 					Return([]service.RegistryInfo{
@@ -149,7 +144,7 @@ func TestListRegistries(t *testing.T) {
 			name:   "list registries - service error",
 			path:   "/registries",
 			method: "GET",
-			setupMock: func() {
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
 				mockSvc.EXPECT().
 					ListRegistries(gomock.Any()).
 					Return(nil, errors.New("database error"))
@@ -161,7 +156,7 @@ func TestListRegistries(t *testing.T) {
 			name:   "list registries - not implemented",
 			path:   "/registries",
 			method: "GET",
-			setupMock: func() {
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
 				mockSvc.EXPECT().
 					ListRegistries(gomock.Any()).
 					Return(nil, service.ErrNotImplemented)
@@ -172,9 +167,18 @@ func TestListRegistries(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+			router := Router(mockSvc)
+
 			if tt.setupMock != nil {
-				tt.setupMock()
+				tt.setupMock(mockSvc)
 			}
 
 			req, err := http.NewRequest(tt.method, tt.path, nil)
@@ -202,17 +206,12 @@ func TestListRegistries(t *testing.T) {
 
 func TestGetRegistry(t *testing.T) {
 	t.Parallel()
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-
-	mockSvc := mocks.NewMockRegistryService(ctrl)
-	router := Router(mockSvc)
 
 	tests := []struct {
 		name         string
 		path         string
 		method       string
-		setupMock    func()
+		setupMock    func(*mocks.MockRegistryService)
 		wantStatus   int
 		wantError    string
 		validateBody func(t *testing.T, body []byte)
@@ -221,7 +220,7 @@ func TestGetRegistry(t *testing.T) {
 			name:   "get registry - valid name",
 			path:   "/registries/foo",
 			method: "GET",
-			setupMock: func() {
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
 				mockSvc.EXPECT().
 					GetRegistryByName(gomock.Any(), "foo").
 					Return(&service.RegistryInfo{
@@ -245,7 +244,7 @@ func TestGetRegistry(t *testing.T) {
 			name:   "get registry - not found",
 			path:   "/registries/nonexistent",
 			method: "GET",
-			setupMock: func() {
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
 				mockSvc.EXPECT().
 					GetRegistryByName(gomock.Any(), "nonexistent").
 					Return(nil, service.ErrRegistryNotFound)
@@ -264,7 +263,7 @@ func TestGetRegistry(t *testing.T) {
 			name:   "get registry - not implemented in file mode",
 			path:   "/registries/foo",
 			method: "GET",
-			setupMock: func() {
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
 				mockSvc.EXPECT().
 					GetRegistryByName(gomock.Any(), "foo").
 					Return(nil, service.ErrNotImplemented)
@@ -276,7 +275,7 @@ func TestGetRegistry(t *testing.T) {
 			name:   "get registry - internal error",
 			path:   "/registries/foo",
 			method: "GET",
-			setupMock: func() {
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
 				mockSvc.EXPECT().
 					GetRegistryByName(gomock.Any(), "foo").
 					Return(nil, errors.New("database error"))
@@ -293,9 +292,18 @@ func TestGetRegistry(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+			router := Router(mockSvc)
+
 			if tt.setupMock != nil {
-				tt.setupMock()
+				tt.setupMock(mockSvc)
 			}
 
 			req, err := http.NewRequest(tt.method, tt.path, nil)
