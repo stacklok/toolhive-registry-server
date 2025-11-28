@@ -237,3 +237,9 @@ func (*regSvc) ListRegistries(_ context.Context) ([]service.RegistryInfo, error)
 	// TODO: Implement file-based ListRegistries support in a follow-up
 	return nil, service.ErrNotImplemented
 }
+
+// GetRegistryByName returns a single registry by name - not supported for in-memory service
+func (*regSvc) GetRegistryByName(_ context.Context, _ string) (*service.RegistryInfo, error) {
+	// TODO: Implement file-based GetRegistryByName support in a follow-up
+	return nil, service.ErrNotImplemented
+}

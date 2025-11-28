@@ -2,6 +2,8 @@
 package v0
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -80,17 +82,35 @@ func (r *Routes) listRegistries(w http.ResponseWriter, req *http.Request) {
 // @Accept		json
 // @Produce		json
 // @Param		registryName	path	string	true	"Registry Name"
+// @Success		200	{object}	service.RegistryInfo	"Registry details"
 // @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		404	{object}	map[string]string	"Registry not found"
+// @Failure		500	{object}	map[string]string	"Internal server error"
 // @Failure		501	{object}	map[string]string	"Not implemented"
 // @Router		/extension/v0/registries/{registryName} [get]
-func (*Routes) getRegistry(w http.ResponseWriter, r *http.Request) {
-	registryName := chi.URLParam(r, "registryName")
+func (r *Routes) getRegistry(w http.ResponseWriter, req *http.Request) {
+	registryName := chi.URLParam(req, "registryName")
 	if strings.TrimSpace(registryName) == "" {
 		common.WriteErrorResponse(w, "Registry name is required", http.StatusBadRequest)
 		return
 	}
 
-	common.WriteErrorResponse(w, "Getting registry is not supported", http.StatusNotImplemented)
+	ctx := req.Context()
+	registry, err := r.service.GetRegistryByName(ctx, registryName)
+	if err != nil {
+		if errors.Is(err, service.ErrNotImplemented) {
+			common.WriteErrorResponse(w, "Getting registry is not supported in file mode", http.StatusNotImplemented)
+			return
+		}
+		if errors.Is(err, service.ErrRegistryNotFound) {
+			common.WriteErrorResponse(w, fmt.Sprintf("Registry %s not found", registryName), http.StatusNotFound)
+			return
+		}
+		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	common.WriteJSONResponse(w, registry, http.StatusOK)
 }
 
 // upsertRegistry handles PUT /extension/v0/registries/{registryName}

@@ -740,3 +740,64 @@ func getStatusMessage(errorMsg *string) string {
 	}
 	return *errorMsg
 }
+
+// GetRegistryByName returns a single registry by name
+func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*service.RegistryInfo, error) {
+	// Begin a read-only transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.ReadCommitted,
+		AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			// TODO: log the rollback error (add proper logging)
+			_ = err
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	// Get the registry by name
+	registry, err := querier.GetRegistryByName(ctx, name)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+		}
+		return nil, fmt.Errorf("failed to get registry: %w", err)
+	}
+
+	// Convert to service type
+	info := service.RegistryInfo{
+		Name:      registry.Name,
+		Type:      string(registry.RegType), // MANAGED, FILE, REMOTE
+		CreatedAt: *registry.CreatedAt,
+		UpdatedAt: *registry.UpdatedAt,
+	}
+
+	// Fetch sync status from database
+	syncRecord, err := querier.GetRegistrySyncByName(ctx, registry.Name)
+	if err != nil {
+		// It's okay if sync record doesn't exist yet (registry may not have been synced)
+		if !errors.Is(err, pgx.ErrNoRows) {
+			logger.Warnf("Failed to get sync status for registry %s: %v", registry.Name, err)
+		}
+		// Leave SyncStatus as nil if not found or error
+		info.SyncStatus = nil
+	} else {
+		// Convert database sync status to service type
+		info.SyncStatus = &service.RegistrySyncStatus{
+			Phase:        convertSyncPhase(syncRecord.SyncStatus),
+			LastSyncTime: syncRecord.EndedAt,   // EndedAt represents successful completion
+			LastAttempt:  syncRecord.StartedAt, // StartedAt is the last attempt time
+			AttemptCount: int(syncRecord.AttemptCount),
+			ServerCount:  int(syncRecord.ServerCount),
+			Message:      getStatusMessage(syncRecord.ErrorMsg),
+		}
+	}
+
+	return &info, nil
+}

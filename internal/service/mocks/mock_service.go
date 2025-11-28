@@ -92,6 +92,21 @@ func (mr *MockRegistryServiceMockRecorder) GetRegistry(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRegistry", reflect.TypeOf((*MockRegistryService)(nil).GetRegistry), ctx)
 }
 
+// GetRegistryByName mocks base method.
+func (m *MockRegistryService) GetRegistryByName(ctx context.Context, name string) (*service.RegistryInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRegistryByName", ctx, name)
+	ret0, _ := ret[0].(*service.RegistryInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRegistryByName indicates an expected call of GetRegistryByName.
+func (mr *MockRegistryServiceMockRecorder) GetRegistryByName(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRegistryByName", reflect.TypeOf((*MockRegistryService)(nil).GetRegistryByName), ctx, name)
+}
+
 // GetServerVersion mocks base method.
 func (m *MockRegistryService) GetServerVersion(ctx context.Context, opts ...service.Option[service.GetServerVersionOptions]) (*v0.ServerJSON, error) {
 	m.ctrl.T.Helper()
