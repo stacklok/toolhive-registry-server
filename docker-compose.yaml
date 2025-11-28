@@ -57,7 +57,7 @@ services:
       - "8080:8080"
     volumes:
       - ./examples/config-docker.yaml:/config.yaml:ro
-      - ./examples/registry-sample.json:/registry-sample.json:ro
+      - ./examples/upstream-registry.json:/registry-sample.json:ro
       - registry_data:/app/data
       # Mount pgpass file for database credentials
       # The file should contain entries for both db_app and db_migrator users
