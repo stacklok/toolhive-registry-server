@@ -3,6 +3,7 @@ module github.com/stacklok/toolhive-registry-server
 go 1.25.3
 
 require (
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/aws/smithy-go v1.23.2
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-git/go-billy/v5 v5.6.2
@@ -16,7 +17,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	github.com/spf13/viper v1.21.0
-	github.com/stacklok/toolhive v0.6.8
+	github.com/stacklok/toolhive v0.6.9
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc4
 	github.com/testcontainers/testcontainers-go v0.40.0
@@ -33,7 +34,6 @@ require (
 	github.com/1password/onepassword-sdk-go v0.3.1 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
-	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
