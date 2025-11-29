@@ -13,12 +13,9 @@ import (
 
 const createTempIconTable = `-- name: CreateTempIconTable :exec
 
-CREATE TEMP TABLE temp_mcp_server_icon (
-    server_id UUID NOT NULL,
-    source_uri TEXT NOT NULL,
-    mime_type TEXT NOT NULL,
-    theme TEXT NOT NULL
-) ON COMMIT DROP
+CREATE TEMP TABLE temp_mcp_server_icon ON COMMIT DROP AS
+SELECT server_id, source_uri, mime_type, theme FROM mcp_server_icon
+  WITH NO DATA
 `
 
 // Temp Icon Table Operations
@@ -29,21 +26,9 @@ func (q *Queries) CreateTempIconTable(ctx context.Context) error {
 
 const createTempPackageTable = `-- name: CreateTempPackageTable :exec
 
-CREATE TEMP TABLE temp_mcp_server_package (
-    server_id UUID NOT NULL,
-    registry_type TEXT NOT NULL,
-    pkg_registry_url TEXT NOT NULL,
-    pkg_identifier TEXT NOT NULL,
-    pkg_version TEXT NOT NULL,
-    runtime_hint TEXT,
-    runtime_arguments TEXT[],
-    package_arguments TEXT[],
-    env_vars TEXT[],
-    sha256_hash TEXT,
-    transport TEXT NOT NULL,
-    transport_url TEXT,
-    transport_headers TEXT[]
-) ON COMMIT DROP
+CREATE TEMP TABLE temp_mcp_server_package ON COMMIT DROP AS
+SELECT server_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version, runtime_hint, runtime_arguments, package_arguments, env_vars, sha256_hash, transport, transport_url, transport_headers FROM mcp_server_package
+  WITH NO DATA
 `
 
 // Temp Package Table Operations
@@ -54,12 +39,9 @@ func (q *Queries) CreateTempPackageTable(ctx context.Context) error {
 
 const createTempRemoteTable = `-- name: CreateTempRemoteTable :exec
 
-CREATE TEMP TABLE temp_mcp_server_remote (
-    server_id UUID NOT NULL,
-    transport TEXT NOT NULL,
-    transport_url TEXT NOT NULL,
-    transport_headers TEXT[]
-) ON COMMIT DROP
+CREATE TEMP TABLE temp_mcp_server_remote ON COMMIT DROP AS
+SELECT server_id, transport, transport_url, transport_headers FROM mcp_server_remote
+  WITH NO DATA
 `
 
 // Temp Remote Table Operations
@@ -71,22 +53,9 @@ func (q *Queries) CreateTempRemoteTable(ctx context.Context) error {
 const createTempServerTable = `-- name: CreateTempServerTable :exec
 
 
-CREATE TEMP TABLE temp_mcp_server (
-    name TEXT NOT NULL,
-    version TEXT NOT NULL,
-    reg_id UUID NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE,
-    description TEXT,
-    title TEXT,
-    website TEXT,
-    upstream_meta JSONB,
-    server_meta JSONB,
-    repository_url TEXT,
-    repository_id TEXT,
-    repository_subfolder TEXT,
-    repository_type TEXT
-) ON COMMIT DROP
+CREATE TEMP TABLE temp_mcp_server ON COMMIT DROP AS
+SELECT id, name, version, reg_id, created_at, updated_at, description, title, website, upstream_meta, server_meta, repository_url, repository_id, repository_subfolder, repository_type FROM mcp_server
+  WITH NO DATA
 `
 
 // Temporary table operations for bulk sync
@@ -101,7 +70,7 @@ func (q *Queries) CreateTempServerTable(ctx context.Context) error {
 const deleteOrphanedIcons = `-- name: DeleteOrphanedIcons :exec
 DELETE FROM mcp_server_icon
 WHERE server_id = ANY($1::UUID[])
-  AND (server_id, source_uri, mime_type, theme::text) NOT IN (
+  AND (server_id, source_uri, mime_type, theme) NOT IN (
     SELECT server_id, source_uri, mime_type, theme FROM temp_mcp_server_icon
   )
 `

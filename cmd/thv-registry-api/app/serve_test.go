@@ -14,6 +14,13 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
+const (
+	migratorUser     = "migratoruser"
+	migratorPassword = "migratorpass"
+	appUser          = "appuser"
+	appPassword      = "apppass"
+)
+
 // setupBenchmarkDB sets up a test database container for benchmarking
 // Returns a config and cleanup function
 // Creates two users following the two-user security model:
@@ -45,91 +52,53 @@ func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 		require.NoError(t, err)
 	}
 
-	dbName := "testdb"
-
-	// Two-user security model
-	appUser := "appuser"
-	appPassword := "apppass"
-	migratorUser := "migratoruser"
-	migratorPassword := "migratorpass"
-
-	// Create the toolhive_registry_server role if it doesn't exist
-	// (This role is normally created by migrations, but we need it for the test user)
-	// Use DO block to check existence first since CREATE ROLE IF NOT EXISTS may not work in all contexts
-	_, err = tx.Conn().Exec(ctx, `
+	// This statement creates the equivalent of the `postgres` user with all
+	// privileges. This is meant to be used as the migration user.
+	migratorSQL := fmt.Sprintf(`
 		DO $$
+		DECLARE
+			migrator_user TEXT := '%s';
+			migrator_password TEXT := '%s';
+			db_name TEXT := '%s';
 		BEGIN
-			IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
-				CREATE ROLE toolhive_registry_server;
-			END IF;
+			EXECUTE format('CREATE USER %%I WITH PASSWORD %%L', migrator_user, migrator_password);
+			EXECUTE format('GRANT CONNECT ON DATABASE %%I TO %%I', db_name, migrator_user);
+			EXECUTE format('GRANT CREATE ON SCHEMA public TO %%I', migrator_user);
+			EXECUTE format('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO %%I', migrator_user);
 		END
 		$$;
-	`)
+	`, migratorUser, migratorPassword, database.DBName)
+
+	_, err = tx.Conn().Exec(ctx, migratorSQL)
 	require.NoError(t, err)
 
-	// Create the application user with limited privileges
-	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
-		"CREATE USER %s WITH PASSWORD '%s'",
-		pgx.Identifier{appUser}.Sanitize(),
-		appPassword,
-	))
-	require.NoError(t, err)
+	// This statement creates the application user with limited privileges.
+	// The user running this statement should be the migrator user.
+	appSQL := fmt.Sprintf(`
+		DO $$
+		DECLARE
+			app_user TEXT := '%s';
+			app_password TEXT := '%s';
+			db_name TEXT := '%s';
+		BEGIN
+			CREATE ROLE toolhive_registry_server;
+			EXECUTE format('CREATE USER %%I WITH PASSWORD %%L', app_user, app_password);
+			EXECUTE format('GRANT toolhive_registry_server TO %%I', app_user);
+			EXECUTE format('GRANT CONNECT ON DATABASE %%I TO %%I', db_name, app_user);
+			EXECUTE format('GRANT USAGE ON SCHEMA public TO %%I', app_user);
+			EXECUTE format('GRANT CREATE ON SCHEMA public TO %%I', app_user);
+			EXECUTE format('GRANT ALL PRIVILEGES ON DATABASE %%I TO %%I', db_name, app_user);
+		END
+		$$;
+	`, appUser, appPassword, database.DBName)
 
-	// Grant the toolhive_registry_server role to the app user
-	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
-		"GRANT toolhive_registry_server TO %s",
-		pgx.Identifier{appUser}.Sanitize(),
-	))
-	require.NoError(t, err)
-
-	// Grant connect and schema usage to app user
-	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
-		"GRANT CONNECT ON DATABASE %s TO %s",
-		pgx.Identifier{dbName}.Sanitize(),
-		pgx.Identifier{appUser}.Sanitize(),
-	))
-	require.NoError(t, err)
-
-	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
-		"GRANT USAGE ON SCHEMA public TO %s",
-		pgx.Identifier{appUser}.Sanitize(),
-	))
-	require.NoError(t, err)
-
-	// Create the migration user with elevated privileges
-	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
-		"CREATE USER %s WITH PASSWORD '%s'",
-		pgx.Identifier{migratorUser}.Sanitize(),
-		migratorPassword,
-	))
-	require.NoError(t, err)
-
-	// Grant the toolhive_registry_server role to the migrator user
-	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
-		"GRANT toolhive_registry_server TO %s",
-		pgx.Identifier{migratorUser}.Sanitize(),
-	))
-	require.NoError(t, err)
-
-	// Grant schema modification privileges for migrations
-	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
-		"GRANT CREATE ON SCHEMA public TO %s",
-		pgx.Identifier{migratorUser}.Sanitize(),
-	))
-	require.NoError(t, err)
-
-	// Grant all privileges on the database for migrations
-	_, err = tx.Conn().Exec(ctx, fmt.Sprintf(
-		"GRANT ALL PRIVILEGES ON DATABASE %s TO %s",
-		pgx.Identifier{dbName}.Sanitize(),
-		pgx.Identifier{migratorUser}.Sanitize(),
-	))
+	_, err = tx.Conn().Exec(ctx, appSQL)
 	require.NoError(t, err)
 
 	// Create a temporary pgpass file for tests
 	pgpassContent := fmt.Sprintf("%s:%d:%s:%s:%s\n%s:%d:%s:%s:%s\n",
-		host, port, dbName, appUser, appPassword,
-		host, port, dbName, migratorUser, migratorPassword,
+		host, port, database.DBName, appUser, appPassword,
+		host, port, database.DBName, migratorUser, migratorPassword,
 	)
 	pgpassFile, err := os.CreateTemp("", "pgpass-test-*")
 	require.NoError(t, err)
@@ -139,6 +108,15 @@ func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 	require.NoError(t, err)
 	err = pgpassFile.Close()
 	require.NoError(t, err)
+
+	// Unset PG* environment variables to avoid conflicts with local
+	// configuration.
+	os.Unsetenv("PGPASSWORD")
+	os.Unsetenv("PGUSER")
+	os.Unsetenv("PGHOST")
+	os.Unsetenv("PGPORT")
+	os.Unsetenv("PGDATABASE")
+	os.Unsetenv("PGSSLMODE")
 
 	// Set PGPASSFILE environment variable
 	os.Setenv("PGPASSFILE", pgpassFile.Name())
@@ -150,7 +128,7 @@ func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 			Port:          port,
 			User:          appUser,
 			MigrationUser: migratorUser,
-			Database:      dbName,
+			Database:      database.DBName,
 			SSLMode:       "disable",
 		},
 		Registries: []config.RegistryConfig{
