@@ -17,10 +17,13 @@ func (*nopLogger) Printf(_ string, _ ...any) {}
 
 var _ tclog.Logger = (*nopLogger)(nil)
 
-var (
-	dbName = "testdb"
-	dbUser = "testuser"
-	dbPass = "testpass"
+const (
+	// DBName is the name of the test database
+	DBName = "testdb"
+	// DBUser is the username for the root user of the test database
+	DBUser = "testuser"
+	// DBPass is the password for the root user of the test database
+	DBPass = "testpass"
 )
 
 // SetupTestDBContainer creates a Postgres container using testcontainers and returns a connection to the database
@@ -33,11 +36,12 @@ func SetupTestDBContainer(t *testing.T, ctx context.Context) (*pgx.Conn, func())
 	postgresContainer, err := postgres.Run(
 		ctx,
 		"postgres:16-alpine",
-		postgres.WithDatabase(dbName),
-		postgres.WithUsername(dbUser),
-		postgres.WithPassword(dbPass),
+		postgres.WithDatabase(DBName),
+		postgres.WithUsername(DBUser),
+		postgres.WithPassword(DBPass),
 		postgres.BasicWaitStrategies(),
 		tc.WithLogger(&nopLogger{}),
+		tc.WithCmd("postgres", "-c", "fsync=off", "-c", "log_statement=all"),
 	)
 	require.NoError(t, err)
 
