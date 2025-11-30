@@ -1,5 +1,6 @@
 -- name: ListServers :many
 SELECT r.reg_type as registry_type,
+       r.name as registry_name,
        s.id,
        s.name,
        s.version,
@@ -36,6 +37,7 @@ SELECT r.reg_type as registry_type,
 
 -- name: ListServerVersions :many
 SELECT r.reg_type as registry_type,
+       r.name as registry_name,
        s.id,
        s.name,
        s.version,
@@ -54,7 +56,10 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
- WHERE s.name = sqlc.arg(name)
+ WHERE ((sqlc.narg(prefixed_name)::text IS NOT NULL
+          AND r.name || '.' || s.name = sqlc.narg(prefixed_name)::text)
+      OR (sqlc.narg(prefixed_name)::text IS NULL
+          AND s.name = sqlc.arg(name)))
    AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
    AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next))
     AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR s.created_at < sqlc.narg(prev)))
@@ -65,6 +70,7 @@ SELECT r.reg_type as registry_type,
 
 -- name: GetServerVersion :one
 SELECT r.reg_type as registry_type,
+       r.name as registry_name,
        s.id,
        s.name,
        s.version,
@@ -83,7 +89,10 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
- WHERE s.name = sqlc.arg(name)
+ WHERE ((sqlc.narg(prefixed_name)::text IS NOT NULL
+          AND r.name || '.' || s.name = sqlc.narg(prefixed_name)::text)
+      OR (sqlc.narg(prefixed_name)::text IS NULL
+          AND s.name = sqlc.arg(name)))
    AND s.version = sqlc.arg(version)
    AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text);
 

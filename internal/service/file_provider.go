@@ -74,10 +74,13 @@ func (p *fileRegistryDataProvider) GetRegistryData(ctx context.Context) (*toolhi
 			firstRegistry = false
 		}
 
-		// Add all servers from this registry
-		// TODO: Consider adding registry source metadata to each server entry
-		_ = registryName // Will be used for metadata in future
-		merged.Data.Servers = append(merged.Data.Servers, reg.Data.Servers...)
+		// Add all servers from this registry with registry name prefix
+		// Since we're merging multiple registries, we need to disambiguate server names
+		for _, server := range reg.Data.Servers {
+			// Apply registry name prefix to create unique server names
+			server.Name = PrefixServerName(registryName, server.Name)
+			merged.Data.Servers = append(merged.Data.Servers, server)
+		}
 
 		// Merge groups if any
 		merged.Data.Groups = append(merged.Data.Groups, reg.Data.Groups...)

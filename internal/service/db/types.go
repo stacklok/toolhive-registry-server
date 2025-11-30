@@ -22,6 +22,7 @@ import (
 // layer.
 type helper struct {
 	RegistryType        sqlc.RegistryType
+	RegistryName        string
 	ID                  uuid.UUID
 	Name                string
 	Version             string
@@ -44,6 +45,7 @@ func listServersRowToHelper(
 ) helper {
 	return helper{
 		RegistryType:        dbServer.RegistryType,
+		RegistryName:        dbServer.RegistryName,
 		ID:                  dbServer.ID,
 		Name:                dbServer.Name,
 		Version:             dbServer.Version,
@@ -67,6 +69,7 @@ func listServerVersionsRowToHelper(
 ) helper {
 	return helper{
 		RegistryType:        dbServer.RegistryType,
+		RegistryName:        dbServer.RegistryName,
 		ID:                  dbServer.ID,
 		Name:                dbServer.Name,
 		Version:             dbServer.Version,
@@ -90,6 +93,7 @@ func getServerVersionRowToHelper(
 ) helper {
 	return helper{
 		RegistryType:        dbServer.RegistryType,
+		RegistryName:        dbServer.RegistryName,
 		ID:                  dbServer.ID,
 		Name:                dbServer.Name,
 		Version:             dbServer.Version,

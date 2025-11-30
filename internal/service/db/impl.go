@@ -85,6 +85,15 @@ func (*dbService) GetRegistry(
 	return nil, "", service.ErrNotImplemented
 }
 
+// applyPrefixesToServers applies registry name prefixes to server names.
+// This is used for aggregated queries (when PrefixNames is true) to ensure
+// server names are unique across different registries.
+func applyPrefixesToServers(servers []*upstreamv0.ServerJSON, helpers []helper) {
+	for i := range servers {
+		servers[i].Name = service.PrefixServerName(helpers[i].RegistryName, servers[i].Name)
+	}
+}
+
 // ListServers returns all servers in the registry
 func (s *dbService) ListServers(
 	ctx context.Context,
@@ -118,6 +127,9 @@ func (s *dbService) ListServers(
 		params.Next = &nextTime
 	}
 
+	// Capture helpers for potential prefixing after query execution
+	var capturedHelpers []helper
+
 	// Note: this function fetches a list of servers. In case no records are
 	// found, the called function should return an empty slice as it's
 	// customary in Go.
@@ -132,10 +144,23 @@ func (s *dbService) ListServers(
 			helpers[i] = listServersRowToHelper(server)
 		}
 
+		// Capture helpers for prefixing
+		capturedHelpers = helpers
+
 		return helpers, nil
 	}
 
-	return s.sharedListServers(ctx, querierFunc)
+	result, err := s.sharedListServers(ctx, querierFunc)
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply prefixes for aggregated queries
+	if options.PrefixNames {
+		applyPrefixesToServers(result, capturedHelpers)
+	}
+
+	return result, nil
 }
 
 // ListServerVersions implements RegistryService.ListServerVersions
@@ -154,15 +179,26 @@ func (s *dbService) ListServerVersions(
 		return nil, fmt.Errorf("next and prev cannot be set at the same time")
 	}
 
+	// Build params conditionally based on whether this is an aggregated query
 	params := sqlc.ListServerVersionsParams{
-		Name: options.Name,
 		Next: options.Next,
 		Prev: options.Prev,
 		Size: int64(options.Limit),
 	}
-	if options.RegistryName != nil {
+
+	if options.PrefixNames {
+		// Aggregated query: use prefixed_name to search across all registries
+		params.PrefixedName = &options.Name
+		// params.Name stays empty (zero value)
+	} else {
+		// Registry-specific query: use name and registry_name
+		params.Name = options.Name
 		params.RegistryName = options.RegistryName
+		// params.PrefixedName stays nil
 	}
+
+	// Capture helpers for potential prefixing after query execution
+	var capturedHelpers []helper
 
 	// Note: this function fetches a list of server versions. In case no records are
 	// found, the called function should return an empty slice as it's
@@ -178,13 +214,26 @@ func (s *dbService) ListServerVersions(
 			helpers[i] = listServerVersionsRowToHelper(server)
 		}
 
+		// Capture helpers for prefixing
+		capturedHelpers = helpers
+
 		return helpers, nil
 	}
 
-	return s.sharedListServers(ctx, querierFunc)
+	result, err := s.sharedListServers(ctx, querierFunc)
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply prefixes for aggregated queries
+	if options.PrefixNames {
+		applyPrefixesToServers(result, capturedHelpers)
+	}
+
+	return result, nil
 }
 
-// GetServer returns a specific server by name
+// GetServerVersion returns a specific server by name and version
 func (s *dbService) GetServerVersion(
 	ctx context.Context,
 	opts ...service.Option[service.GetServerVersionOptions],
@@ -196,13 +245,24 @@ func (s *dbService) GetServerVersion(
 		}
 	}
 
+	// Build params conditionally based on whether this is an aggregated query
 	params := sqlc.GetServerVersionParams{
-		Name:    options.Name,
 		Version: options.Version,
 	}
-	if options.RegistryName != nil {
+
+	if options.PrefixNames {
+		// Aggregated query: use prefixed_name to search across all registries
+		params.PrefixedName = &options.Name
+		// params.Name stays empty (zero value)
+	} else {
+		// Registry-specific query: use name and registry_name
+		params.Name = options.Name
 		params.RegistryName = options.RegistryName
+		// params.PrefixedName stays nil
 	}
+
+	// Capture helper for potential prefixing after query execution
+	var capturedHelper helper
 
 	// Note: this function fetches a single record given name and version.
 	// In case no record is found, the called function should return an
@@ -213,7 +273,8 @@ func (s *dbService) GetServerVersion(
 			return nil, err
 		}
 
-		return []helper{getServerVersionRowToHelper(server)}, nil
+		capturedHelper = getServerVersionRowToHelper(server)
+		return []helper{capturedHelper}, nil
 	}
 
 	res, err := s.sharedListServers(ctx, querierFunc)
@@ -226,6 +287,11 @@ func (s *dbService) GetServerVersion(
 	// a length result slice other than 1 means there's a bug.
 	if len(res) != 1 {
 		return nil, fmt.Errorf("%w: number of servers returned is not 1", ErrBug)
+	}
+
+	// Apply prefix for aggregated queries
+	if options.PrefixNames {
+		applyPrefixesToServers(res, []helper{capturedHelper})
 	}
 
 	return res[0], nil

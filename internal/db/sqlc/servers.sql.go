@@ -123,6 +123,7 @@ func (q *Queries) GetServerIDsByRegistryNameVersion(ctx context.Context, regID u
 
 const getServerVersion = `-- name: GetServerVersion :one
 SELECT r.reg_type as registry_type,
+       r.name as registry_name,
        s.id,
        s.name,
        s.version,
@@ -141,12 +142,16 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
- WHERE s.name = $1
-   AND s.version = $2
-   AND ($3::text IS NULL OR r.name = $3::text)
+ WHERE (($1::text IS NOT NULL
+          AND r.name || '.' || s.name = $1::text)
+      OR ($1::text IS NULL
+          AND s.name = $2))
+   AND s.version = $3
+   AND ($4::text IS NULL OR r.name = $4::text)
 `
 
 type GetServerVersionParams struct {
+	PrefixedName *string `json:"prefixed_name"`
 	Name         string  `json:"name"`
 	Version      string  `json:"version"`
 	RegistryName *string `json:"registry_name"`
@@ -154,6 +159,7 @@ type GetServerVersionParams struct {
 
 type GetServerVersionRow struct {
 	RegistryType        RegistryType `json:"registry_type"`
+	RegistryName        string       `json:"registry_name"`
 	ID                  uuid.UUID    `json:"id"`
 	Name                string       `json:"name"`
 	Version             string       `json:"version"`
@@ -172,10 +178,16 @@ type GetServerVersionRow struct {
 }
 
 func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error) {
-	row := q.db.QueryRow(ctx, getServerVersion, arg.Name, arg.Version, arg.RegistryName)
+	row := q.db.QueryRow(ctx, getServerVersion,
+		arg.PrefixedName,
+		arg.Name,
+		arg.Version,
+		arg.RegistryName,
+	)
 	var i GetServerVersionRow
 	err := row.Scan(
 		&i.RegistryType,
+		&i.RegistryName,
 		&i.ID,
 		&i.Name,
 		&i.Version,
@@ -563,6 +575,7 @@ func (q *Queries) ListServerRemotes(ctx context.Context, serverIds []uuid.UUID) 
 
 const listServerVersions = `-- name: ListServerVersions :many
 SELECT r.reg_type as registry_type,
+       r.name as registry_name,
        s.id,
        s.name,
        s.version,
@@ -581,17 +594,21 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
- WHERE s.name = $1
-   AND ($2::text IS NULL OR r.name = $2::text)
-   AND (($3::timestamp with time zone IS NULL OR s.created_at > $3)
-    AND ($4::timestamp with time zone IS NULL OR s.created_at < $4))
+ WHERE (($1::text IS NOT NULL
+          AND r.name || '.' || s.name = $1::text)
+      OR ($1::text IS NULL
+          AND s.name = $2))
+   AND ($3::text IS NULL OR r.name = $3::text)
+   AND (($4::timestamp with time zone IS NULL OR s.created_at > $4)
+    AND ($5::timestamp with time zone IS NULL OR s.created_at < $5))
  ORDER BY
- CASE WHEN $3::timestamp with time zone IS NULL THEN s.created_at END ASC,
- CASE WHEN $3::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
- LIMIT $5::bigint
+ CASE WHEN $4::timestamp with time zone IS NULL THEN s.created_at END ASC,
+ CASE WHEN $4::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
+ LIMIT $6::bigint
 `
 
 type ListServerVersionsParams struct {
+	PrefixedName *string    `json:"prefixed_name"`
 	Name         string     `json:"name"`
 	RegistryName *string    `json:"registry_name"`
 	Next         *time.Time `json:"next"`
@@ -601,6 +618,7 @@ type ListServerVersionsParams struct {
 
 type ListServerVersionsRow struct {
 	RegistryType        RegistryType `json:"registry_type"`
+	RegistryName        string       `json:"registry_name"`
 	ID                  uuid.UUID    `json:"id"`
 	Name                string       `json:"name"`
 	Version             string       `json:"version"`
@@ -620,6 +638,7 @@ type ListServerVersionsRow struct {
 
 func (q *Queries) ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error) {
 	rows, err := q.db.Query(ctx, listServerVersions,
+		arg.PrefixedName,
 		arg.Name,
 		arg.RegistryName,
 		arg.Next,
@@ -635,6 +654,7 @@ func (q *Queries) ListServerVersions(ctx context.Context, arg ListServerVersions
 		var i ListServerVersionsRow
 		if err := rows.Scan(
 			&i.RegistryType,
+			&i.RegistryName,
 			&i.ID,
 			&i.Name,
 			&i.Version,
@@ -663,6 +683,7 @@ func (q *Queries) ListServerVersions(ctx context.Context, arg ListServerVersions
 
 const listServers = `-- name: ListServers :many
 SELECT r.reg_type as registry_type,
+       r.name as registry_name,
        s.id,
        s.name,
        s.version,
@@ -707,6 +728,7 @@ type ListServersParams struct {
 
 type ListServersRow struct {
 	RegistryType        RegistryType `json:"registry_type"`
+	RegistryName        string       `json:"registry_name"`
 	ID                  uuid.UUID    `json:"id"`
 	Name                string       `json:"name"`
 	Version             string       `json:"version"`
@@ -740,6 +762,7 @@ func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]Lis
 		var i ListServersRow
 		if err := rows.Scan(
 			&i.RegistryType,
+			&i.RegistryName,
 			&i.ID,
 			&i.Name,
 			&i.Version,

@@ -90,6 +90,7 @@ type Option[
 // ListServersOptions is the options for the ListServers operation
 type ListServersOptions struct {
 	RegistryName *string
+	PrefixNames  bool // true for aggregated endpoints, false for registry-specific
 	Cursor       string
 	Limit        int
 	Search       string
@@ -100,6 +101,7 @@ type ListServersOptions struct {
 // ListServerVersionsOptions is the options for the ListServerVersions operation
 type ListServerVersionsOptions struct {
 	RegistryName *string
+	PrefixNames  bool // true for aggregated endpoints, false for registry-specific
 	Name         string
 	Next         *time.Time
 	Prev         *time.Time
@@ -109,6 +111,7 @@ type ListServerVersionsOptions struct {
 // GetServerVersionOptions is the options for the GetServerVersion operation
 type GetServerVersionOptions struct {
 	RegistryName *string
+	PrefixNames  bool // true for aggregated endpoints, false for registry-specific
 	Name         string
 	Version      string
 }
@@ -273,6 +276,23 @@ func WithLimit[T ListServersOptions | ListServerVersionsOptions](limit int) Opti
 			return fmt.Errorf("invalid option type: %T", o)
 		}
 
+		return nil
+	}
+}
+
+// WithPrefixNames sets the prefix names flag for ListServers, ListServerVersions, or GetServerVersion operations
+func WithPrefixNames[T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions](prefixNames bool) Option[T] {
+	return func(o *T) error {
+		switch o := any(o).(type) {
+		case *ListServersOptions:
+			o.PrefixNames = prefixNames
+		case *ListServerVersionsOptions:
+			o.PrefixNames = prefixNames
+		case *GetServerVersionOptions:
+			o.PrefixNames = prefixNames
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
 		return nil
 	}
 }

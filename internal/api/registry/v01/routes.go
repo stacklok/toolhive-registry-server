@@ -110,6 +110,10 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 	}
 	if registryName != "" {
 		opts = append(opts, service.WithRegistryName[service.ListServersOptions](registryName))
+		opts = append(opts, service.WithPrefixNames[service.ListServersOptions](false))
+	} else {
+		// Aggregated endpoint - apply prefixes
+		opts = append(opts, service.WithPrefixNames[service.ListServersOptions](true))
 	}
 
 	servers, err := routes.service.ListServers(r.Context(), opts...)
@@ -197,6 +201,10 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 	}
 	if registryName != "" {
 		opts = append(opts, service.WithRegistryName[service.ListServerVersionsOptions](registryName))
+		opts = append(opts, service.WithPrefixNames[service.ListServerVersionsOptions](false))
+	} else {
+		// Aggregated endpoint - apply prefixes
+		opts = append(opts, service.WithPrefixNames[service.ListServerVersionsOptions](true))
 	}
 	if serverName != "" {
 		opts = append(opts, service.WithName[service.ListServerVersionsOptions](serverName))
@@ -283,6 +291,10 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 	opts := []service.Option[service.GetServerVersionOptions]{}
 	if registryName != "" {
 		opts = append(opts, service.WithRegistryName[service.GetServerVersionOptions](registryName))
+		opts = append(opts, service.WithPrefixNames[service.GetServerVersionOptions](false))
+	} else {
+		// Aggregated endpoint - apply prefixes
+		opts = append(opts, service.WithPrefixNames[service.GetServerVersionOptions](true))
 	}
 	if serverName != "" {
 		opts = append(opts, service.WithName[service.GetServerVersionOptions](serverName))
