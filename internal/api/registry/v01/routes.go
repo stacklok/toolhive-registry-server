@@ -143,8 +143,10 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 
 // listServers handles GET /registry/v0.1/servers
 //
-// @Summary		List servers
-// @Description	Get a list of available servers in the registry
+// @Summary		List servers from all registries
+// @Description	Get a list of available servers aggregated from all configured registries.
+// @Description	Server names are prefixed with their registry name in the format: {registryName}.{serverName}
+// @Description	Example: "partner-a.io.github.user/awesome-server"
 // @Tags		registry,official
 // @Accept		json
 // @Produce		json
@@ -237,12 +239,14 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 
 // listVersions handles GET /registry/v0.1/servers/{serverName}/versions
 //
-// @Summary		List all versions of an MCP server
-// @Description	Returns all available versions for a specific MCP server, ordered by publication date (newest first)
+// @Summary		List all versions of an MCP server from aggregated registries
+// @Description	Returns all available versions for a specific MCP server, ordered by publication date (newest first).
+// @Description	Server names must include registry prefix in the format: {registryName}.{serverName}
+// @Description	Example serverName: "partner-a.io.github.user%2Fawesome-server" (URL-encoded)
 // @Tags		registry,official
 // @Accept		json
 // @Produce		json
-// @Param		serverName	path		string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
+// @Param		serverName	path		string	true	"URL-encoded prefixed server name (e.g., \"partner-a.io.github.user%2Fawesome-server\")"
 // @Success		200		{object}	upstreamv0.ServerListResponse	"A list of all versions for the server"
 // @Failure		400		{object}	map[string]string	"Bad request"
 // @Failure		404		{object}	map[string]string	"Server not found"
@@ -322,14 +326,16 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 
 // getVersion handles GET /registry/v0.1/servers/{serverName}/versions/{version}
 //
-// @Summary		Get specific MCP server version
+// @Summary		Get specific MCP server version from aggregated registries
 // @Description	Returns detailed information about a specific version of an MCP server.
+// @Description	Server names must include registry prefix in the format: {registryName}.{serverName}
 // @Description	Use the special version `latest` to get the latest version.
+// @Description	Example serverName: "partner-a.io.github.user%2Fawesome-server" (URL-encoded)
 // @Tags		registry,official
 // @Accept		json
 // @Produce		json
-// @Param		serverName	path	string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
-// @Param		version		path	string	true	"URL-encoded version to retrieve (e.g., \"1.0.0\")"
+// @Param		serverName	path	string	true	"URL-encoded prefixed server name (e.g., \"partner-a.io.github.user%2Fawesome-server\")"
+// @Param		version		path	string	true	"URL-encoded version to retrieve (e.g., \"1.0.0\" or \"latest\")"
 // @Success		200		{object}	upstreamv0.ServerResponse	"Detailed server information"
 // @Failure		400		{object}	map[string]string	"Bad request"
 // @Failure		404		{object}	map[string]string	"Server or version not found"

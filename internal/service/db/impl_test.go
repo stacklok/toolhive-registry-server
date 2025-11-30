@@ -904,6 +904,888 @@ func TestNew(t *testing.T) {
 	}
 }
 
+// setupMultiRegistryTestData creates multiple registries with servers for testing prefix behavior
+//
+//nolint:thelper // We want to see these lines in the test output
+func setupMultiRegistryTestData(t *testing.T, pool *pgxpool.Pool) {
+	ctx := context.Background()
+	queries := sqlc.New(pool)
+
+	now := time.Now().UTC()
+
+	// Create first registry "registry-alpha"
+	alphaRegID, err := queries.InsertRegistry(
+		ctx,
+		sqlc.InsertRegistryParams{
+			Name:    "registry-alpha",
+			RegType: sqlc.RegistryTypeREMOTE,
+		},
+	)
+	require.NoError(t, err)
+
+	// Create servers in registry-alpha
+	for i, version := range []string{"1.0.0", "2.0.0"} {
+		createdAt := now.Add(time.Duration(i) * time.Hour)
+		_, err := queries.InsertServerVersion(
+			ctx,
+			sqlc.InsertServerVersionParams{
+				Name:        "shared-server",
+				Version:     version,
+				RegID:       alphaRegID,
+				Description: ptr.String("Server in registry-alpha"),
+				Title:       ptr.String("Shared Server Alpha"),
+				CreatedAt:   &createdAt,
+				UpdatedAt:   &createdAt,
+			},
+		)
+		require.NoError(t, err)
+	}
+
+	// Create unique server in registry-alpha
+	createdAt := now.Add(3 * time.Hour)
+	_, err = queries.InsertServerVersion(
+		ctx,
+		sqlc.InsertServerVersionParams{
+			Name:        "unique-alpha-server",
+			Version:     "1.0.0",
+			RegID:       alphaRegID,
+			Description: ptr.String("Unique server in registry-alpha"),
+			Title:       ptr.String("Unique Alpha Server"),
+			CreatedAt:   &createdAt,
+			UpdatedAt:   &createdAt,
+		},
+	)
+	require.NoError(t, err)
+
+	// Create second registry "registry-beta"
+	betaRegID, err := queries.InsertRegistry(
+		ctx,
+		sqlc.InsertRegistryParams{
+			Name:    "registry-beta",
+			RegType: sqlc.RegistryTypeREMOTE,
+		},
+	)
+	require.NoError(t, err)
+
+	// Create server with same name in registry-beta
+	createdAt = now.Add(4 * time.Hour)
+	_, err = queries.InsertServerVersion(
+		ctx,
+		sqlc.InsertServerVersionParams{
+			Name:        "shared-server",
+			Version:     "1.0.0",
+			RegID:       betaRegID,
+			Description: ptr.String("Server in registry-beta"),
+			Title:       ptr.String("Shared Server Beta"),
+			CreatedAt:   &createdAt,
+			UpdatedAt:   &createdAt,
+		},
+	)
+	require.NoError(t, err)
+
+	// Create unique server in registry-beta
+	createdAt = now.Add(5 * time.Hour)
+	_, err = queries.InsertServerVersion(
+		ctx,
+		sqlc.InsertServerVersionParams{
+			Name:        "unique-beta-server",
+			Version:     "1.0.0",
+			RegID:       betaRegID,
+			Description: ptr.String("Unique server in registry-beta"),
+			Title:       ptr.String("Unique Beta Server"),
+			CreatedAt:   &createdAt,
+			UpdatedAt:   &createdAt,
+		},
+	)
+	require.NoError(t, err)
+}
+
+func TestListServers_WithPrefixNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *pgxpool.Pool)
+		options      []service.Option[service.ListServersOptions]
+		validateFunc func(*testing.T, []*upstreamv0.ServerJSON, error)
+	}{
+		{
+			name: "aggregated query prefixes server names with registry name",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithPrefixNames[service.ListServersOptions](true),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotEmpty(t, servers)
+
+				// All server names should be prefixed with their registry name
+				for _, server := range servers {
+					require.NotEmpty(t, server.Name)
+					// Server names should contain a dot (registry prefix separator)
+					require.Contains(t, server.Name, ".",
+						"server name should be prefixed: %s", server.Name)
+				}
+
+				// Check specific prefixed names exist
+				serverNames := make([]string, len(servers))
+				for i, s := range servers {
+					serverNames[i] = s.Name
+				}
+				require.Contains(t, serverNames, "registry-alpha.shared-server")
+				require.Contains(t, serverNames, "registry-alpha.unique-alpha-server")
+				require.Contains(t, serverNames, "registry-beta.shared-server")
+				require.Contains(t, serverNames, "registry-beta.unique-beta-server")
+			},
+		},
+		{
+			name: "prefix format is registryName.serverName",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithPrefixNames[service.ListServersOptions](true),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotEmpty(t, servers)
+
+				// Verify prefix format for each server
+				for _, server := range servers {
+					// The format should be registryName.serverName
+					// The first dot separates registry name from server name
+					dotIndex := -1
+					for i, c := range server.Name {
+						if c == '.' {
+							dotIndex = i
+							break
+						}
+					}
+					require.Greater(t, dotIndex, 0,
+						"server name should have prefix with dot separator: %s", server.Name)
+
+					prefix := server.Name[:dotIndex]
+					require.True(t, prefix == "registry-alpha" || prefix == "registry-beta",
+						"prefix should be a valid registry name, got: %s", prefix)
+				}
+			},
+		},
+		{
+			name: "aggregated query with empty database returns empty list",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) {
+				// No data setup - empty database
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithPrefixNames[service.ListServersOptions](true),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.Empty(t, servers)
+			},
+		},
+		{
+			name: "single registry with prefix names enabled",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool) // Uses single "test-registry"
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithPrefixNames[service.ListServersOptions](true),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotEmpty(t, servers)
+
+				// All server names should be prefixed with "test-registry"
+				for _, server := range servers {
+					require.True(t,
+						len(server.Name) > len("test-registry.") &&
+							server.Name[:14] == "test-registry.",
+						"server name should be prefixed with 'test-registry.': %s", server.Name)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc.pool)
+
+			servers, err := svc.ListServers(context.Background(), tt.options...)
+			tt.validateFunc(t, servers, err)
+		})
+	}
+}
+
+func TestListServers_WithoutPrefixNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *pgxpool.Pool)
+		options      []service.Option[service.ListServersOptions]
+		validateFunc func(*testing.T, []*upstreamv0.ServerJSON, error)
+	}{
+		{
+			name: "registry-specific query returns unprefixed server names",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithRegistryName[service.ListServersOptions]("registry-alpha"),
+				service.WithPrefixNames[service.ListServersOptions](false),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotEmpty(t, servers)
+
+				// Server names should NOT have registry prefix
+				serverNames := make([]string, len(servers))
+				for i, s := range servers {
+					serverNames[i] = s.Name
+				}
+
+				// Should contain original names without prefix
+				require.Contains(t, serverNames, "shared-server")
+				require.Contains(t, serverNames, "unique-alpha-server")
+
+				// Should NOT contain prefixed names
+				for _, name := range serverNames {
+					require.NotContains(t, name, "registry-alpha.",
+						"server name should not be prefixed: %s", name)
+					require.NotContains(t, name, "registry-beta.",
+						"server name should not be prefixed: %s", name)
+				}
+			},
+		},
+		{
+			name: "default behavior without PrefixNames option returns unprefixed names",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithRegistryName[service.ListServersOptions]("test-registry"),
+				// Note: PrefixNames defaults to false
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotEmpty(t, servers)
+
+				// Server names should be unprefixed
+				serverNames := make([]string, len(servers))
+				for i, s := range servers {
+					serverNames[i] = s.Name
+				}
+				require.Contains(t, serverNames, "test-server-1")
+				require.Contains(t, serverNames, "test-server-2")
+			},
+		},
+		{
+			name: "explicit PrefixNames=false returns unprefixed names",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithRegistryName[service.ListServersOptions]("test-registry"),
+				service.WithPrefixNames[service.ListServersOptions](false),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotEmpty(t, servers)
+
+				// Server names should be unprefixed (original names)
+				for _, server := range servers {
+					require.NotContains(t, server.Name, "test-registry.",
+						"server name should not be prefixed: %s", server.Name)
+				}
+			},
+		},
+		{
+			name: "non-existent registry returns empty list",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithRegistryName[service.ListServersOptions]("nonexistent-registry"),
+				service.WithPrefixNames[service.ListServersOptions](false),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.Empty(t, servers)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc.pool)
+
+			servers, err := svc.ListServers(context.Background(), tt.options...)
+			tt.validateFunc(t, servers, err)
+		})
+	}
+}
+
+func TestListServerVersions_WithPrefixNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *pgxpool.Pool)
+		options      []service.Option[service.ListServerVersionsOptions]
+		validateFunc func(*testing.T, []*upstreamv0.ServerJSON, error)
+	}{
+		{
+			name: "aggregated query with prefixed name searches and returns prefixed results",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.ListServerVersionsOptions]{
+				// Use prefixed name for aggregated query
+				service.WithName[service.ListServerVersionsOptions]("registry-alpha.shared-server"),
+				service.WithPrefixNames[service.ListServerVersionsOptions](true),
+				service.WithLimit[service.ListServerVersionsOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotEmpty(t, servers)
+
+				// All returned server names should be prefixed
+				for _, server := range servers {
+					require.Equal(t, "registry-alpha.shared-server", server.Name,
+						"server name should match prefixed query name")
+				}
+
+				// Should return both versions from registry-alpha
+				versions := make([]string, len(servers))
+				for i, s := range servers {
+					versions[i] = s.Version
+				}
+				require.Contains(t, versions, "1.0.0")
+				require.Contains(t, versions, "2.0.0")
+			},
+		},
+		{
+			name: "prefixed query for unique server returns prefixed name",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.ListServerVersionsOptions]{
+				service.WithName[service.ListServerVersionsOptions]("registry-beta.unique-beta-server"),
+				service.WithPrefixNames[service.ListServerVersionsOptions](true),
+				service.WithLimit[service.ListServerVersionsOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.Len(t, servers, 1)
+				require.Equal(t, "registry-beta.unique-beta-server", servers[0].Name)
+				require.Equal(t, "1.0.0", servers[0].Version)
+			},
+		},
+		{
+			name: "prefixed query for non-existent server returns empty",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.ListServerVersionsOptions]{
+				service.WithName[service.ListServerVersionsOptions]("registry-alpha.nonexistent-server"),
+				service.WithPrefixNames[service.ListServerVersionsOptions](true),
+				service.WithLimit[service.ListServerVersionsOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.Empty(t, servers)
+			},
+		},
+		{
+			name: "prefixed query with wrong registry prefix returns empty",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.ListServerVersionsOptions]{
+				// unique-alpha-server only exists in registry-alpha, not registry-beta
+				service.WithName[service.ListServerVersionsOptions]("registry-beta.unique-alpha-server"),
+				service.WithPrefixNames[service.ListServerVersionsOptions](true),
+				service.WithLimit[service.ListServerVersionsOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.Empty(t, servers)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc.pool)
+
+			servers, err := svc.ListServerVersions(context.Background(), tt.options...)
+			tt.validateFunc(t, servers, err)
+		})
+	}
+}
+
+func TestListServerVersions_WithoutPrefixNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *pgxpool.Pool)
+		options      []service.Option[service.ListServerVersionsOptions]
+		validateFunc func(*testing.T, []*upstreamv0.ServerJSON, error)
+	}{
+		{
+			name: "registry-specific query uses name and registry_name params",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.ListServerVersionsOptions]{
+				service.WithName[service.ListServerVersionsOptions]("shared-server"),
+				service.WithRegistryName[service.ListServerVersionsOptions]("registry-alpha"),
+				service.WithPrefixNames[service.ListServerVersionsOptions](false),
+				service.WithLimit[service.ListServerVersionsOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotEmpty(t, servers)
+
+				// Server names should NOT be prefixed
+				for _, server := range servers {
+					require.Equal(t, "shared-server", server.Name,
+						"server name should remain unprefixed")
+				}
+
+				// Should return versions from registry-alpha only
+				versions := make([]string, len(servers))
+				for i, s := range servers {
+					versions[i] = s.Version
+				}
+				require.Contains(t, versions, "1.0.0")
+				require.Contains(t, versions, "2.0.0")
+				require.Len(t, servers, 2)
+			},
+		},
+		{
+			name: "registry-specific query returns only servers from specified registry",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.ListServerVersionsOptions]{
+				service.WithName[service.ListServerVersionsOptions]("shared-server"),
+				service.WithRegistryName[service.ListServerVersionsOptions]("registry-beta"),
+				service.WithPrefixNames[service.ListServerVersionsOptions](false),
+				service.WithLimit[service.ListServerVersionsOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.Len(t, servers, 1)
+
+				// Server name should NOT be prefixed
+				require.Equal(t, "shared-server", servers[0].Name)
+				require.Equal(t, "1.0.0", servers[0].Version)
+			},
+		},
+		{
+			name: "default PrefixNames (false) returns unprefixed names",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServerVersionsOptions]{
+				service.WithName[service.ListServerVersionsOptions]("test-server-1"),
+				// No PrefixNames option - defaults to false
+				service.WithLimit[service.ListServerVersionsOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.Len(t, servers, 3)
+
+				// All should have unprefixed name
+				for _, server := range servers {
+					require.Equal(t, "test-server-1", server.Name)
+				}
+			},
+		},
+		{
+			name: "non-existent server in specific registry returns empty",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.ListServerVersionsOptions]{
+				// unique-alpha-server doesn't exist in registry-beta
+				service.WithName[service.ListServerVersionsOptions]("unique-alpha-server"),
+				service.WithRegistryName[service.ListServerVersionsOptions]("registry-beta"),
+				service.WithPrefixNames[service.ListServerVersionsOptions](false),
+				service.WithLimit[service.ListServerVersionsOptions](20),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.Empty(t, servers)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc.pool)
+
+			servers, err := svc.ListServerVersions(context.Background(), tt.options...)
+			tt.validateFunc(t, servers, err)
+		})
+	}
+}
+
+func TestGetServerVersion_WithPrefixNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *pgxpool.Pool)
+		options      []service.Option[service.GetServerVersionOptions]
+		validateFunc func(*testing.T, *upstreamv0.ServerJSON, error)
+	}{
+		{
+			name: "aggregated query with prefixed name returns prefixed result",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				service.WithName[service.GetServerVersionOptions]("registry-alpha.shared-server"),
+				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+				service.WithPrefixNames[service.GetServerVersionOptions](true),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, server)
+				require.Equal(t, "registry-alpha.shared-server", server.Name)
+				require.Equal(t, "1.0.0", server.Version)
+				require.Equal(t, "Server in registry-alpha", server.Description)
+			},
+		},
+		{
+			name: "aggregated query distinguishes servers with same name in different registries",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				service.WithName[service.GetServerVersionOptions]("registry-beta.shared-server"),
+				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+				service.WithPrefixNames[service.GetServerVersionOptions](true),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, server)
+				require.Equal(t, "registry-beta.shared-server", server.Name)
+				require.Equal(t, "1.0.0", server.Version)
+				// This should be from registry-beta, not registry-alpha
+				require.Equal(t, "Server in registry-beta", server.Description)
+			},
+		},
+		{
+			name: "prefixed query for unique server returns correct result",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				service.WithName[service.GetServerVersionOptions]("registry-alpha.unique-alpha-server"),
+				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+				service.WithPrefixNames[service.GetServerVersionOptions](true),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, server)
+				require.Equal(t, "registry-alpha.unique-alpha-server", server.Name)
+				require.Equal(t, "1.0.0", server.Version)
+			},
+		},
+		{
+			name: "prefixed query for non-existent server returns error",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				service.WithName[service.GetServerVersionOptions]("registry-alpha.nonexistent"),
+				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+				service.WithPrefixNames[service.GetServerVersionOptions](true),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON, err error) {
+				require.Error(t, err)
+				require.Nil(t, server)
+			},
+		},
+		{
+			name: "prefixed query with wrong registry prefix returns error",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				// unique-alpha-server only exists in registry-alpha
+				service.WithName[service.GetServerVersionOptions]("registry-beta.unique-alpha-server"),
+				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+				service.WithPrefixNames[service.GetServerVersionOptions](true),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON, err error) {
+				require.Error(t, err)
+				require.Nil(t, server)
+			},
+		},
+		{
+			name: "prefixed query for non-existent version returns error",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				service.WithName[service.GetServerVersionOptions]("registry-alpha.shared-server"),
+				service.WithVersion[service.GetServerVersionOptions]("999.999.999"),
+				service.WithPrefixNames[service.GetServerVersionOptions](true),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON, err error) {
+				require.Error(t, err)
+				require.Nil(t, server)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc.pool)
+
+			server, err := svc.GetServerVersion(context.Background(), tt.options...)
+			tt.validateFunc(t, server, err)
+		})
+	}
+}
+
+func TestGetServerVersion_WithoutPrefixNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *pgxpool.Pool)
+		options      []service.Option[service.GetServerVersionOptions]
+		validateFunc func(*testing.T, *upstreamv0.ServerJSON, error)
+	}{
+		{
+			name: "registry-specific query uses name and registry_name params",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				service.WithName[service.GetServerVersionOptions]("shared-server"),
+				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+				service.WithRegistryName[service.GetServerVersionOptions]("registry-alpha"),
+				service.WithPrefixNames[service.GetServerVersionOptions](false),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, server)
+				// Server name should NOT be prefixed
+				require.Equal(t, "shared-server", server.Name)
+				require.Equal(t, "1.0.0", server.Version)
+				require.Equal(t, "Server in registry-alpha", server.Description)
+			},
+		},
+		{
+			name: "registry-specific query returns server from correct registry",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				service.WithName[service.GetServerVersionOptions]("shared-server"),
+				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+				service.WithRegistryName[service.GetServerVersionOptions]("registry-beta"),
+				service.WithPrefixNames[service.GetServerVersionOptions](false),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, server)
+				// Server name should NOT be prefixed
+				require.Equal(t, "shared-server", server.Name)
+				require.Equal(t, "1.0.0", server.Version)
+				// Should be from registry-beta
+				require.Equal(t, "Server in registry-beta", server.Description)
+			},
+		},
+		{
+			name: "default PrefixNames (false) returns unprefixed name",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				service.WithName[service.GetServerVersionOptions]("test-server-1"),
+				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+				// No PrefixNames option - defaults to false
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, server)
+				require.Equal(t, "test-server-1", server.Name)
+				require.Equal(t, "1.0.0", server.Version)
+			},
+		},
+		{
+			name: "server not found in specific registry returns error",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				// unique-alpha-server doesn't exist in registry-beta
+				service.WithName[service.GetServerVersionOptions]("unique-alpha-server"),
+				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+				service.WithRegistryName[service.GetServerVersionOptions]("registry-beta"),
+				service.WithPrefixNames[service.GetServerVersionOptions](false),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON, err error) {
+				require.Error(t, err)
+				require.Nil(t, server)
+			},
+		},
+		{
+			name: "version not found in specific registry returns error",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				service.WithName[service.GetServerVersionOptions]("shared-server"),
+				service.WithVersion[service.GetServerVersionOptions]("999.999.999"),
+				service.WithRegistryName[service.GetServerVersionOptions]("registry-alpha"),
+				service.WithPrefixNames[service.GetServerVersionOptions](false),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON, err error) {
+				require.Error(t, err)
+				require.Nil(t, server)
+			},
+		},
+		{
+			name: "non-existent registry returns error",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupMultiRegistryTestData(t, pool)
+			},
+			options: []service.Option[service.GetServerVersionOptions]{
+				service.WithName[service.GetServerVersionOptions]("shared-server"),
+				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+				service.WithRegistryName[service.GetServerVersionOptions]("nonexistent-registry"),
+				service.WithPrefixNames[service.GetServerVersionOptions](false),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON, err error) {
+				require.Error(t, err)
+				require.Nil(t, server)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc.pool)
+
+			server, err := svc.GetServerVersion(context.Background(), tt.options...)
+			tt.validateFunc(t, server, err)
+		})
+	}
+}
+
 func TestPublishServerVersion(t *testing.T) {
 	t.Parallel()
 

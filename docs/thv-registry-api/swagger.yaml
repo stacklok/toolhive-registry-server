@@ -951,7 +951,10 @@ paths:
       - official
   /registry/v0.1/servers:
     get:
-      description: Get a list of available servers in the registry
+      description: |-
+        Get a list of available servers aggregated from all configured registries.
+        Server names are prefixed with their registry name in the format: {registryName}.{serverName}
+        Example: "partner-a.io.github.user/awesome-server"
       parameters:
       - description: Pagination cursor for retrieving next set of results
         in: query
@@ -994,16 +997,18 @@ paths:
                   type: string
                 type: object
           description: Bad request
-      summary: List servers
+      summary: List servers from all registries
       tags:
       - registry
       - official
   /registry/v0.1/servers/{serverName}/versions:
     get:
-      description: Returns all available versions for a specific MCP server, ordered
-        by publication date (newest first)
+      description: |-
+        Returns all available versions for a specific MCP server, ordered by publication date (newest first).
+        Server names must include registry prefix in the format: {registryName}.{serverName}
+        Example serverName: "partner-a.io.github.user%2Fawesome-server" (URL-encoded)
       parameters:
-      - description: URL-encoded server name (e.g., \
+      - description: URL-encoded prefixed server name (e.g., \
         in: path
         name: serverName
         required: true
@@ -1037,7 +1042,7 @@ paths:
                   type: string
                 type: object
           description: Server not found
-      summary: List all versions of an MCP server
+      summary: List all versions of an MCP server from aggregated registries
       tags:
       - registry
       - official
@@ -1045,9 +1050,11 @@ paths:
     get:
       description: |-
         Returns detailed information about a specific version of an MCP server.
+        Server names must include registry prefix in the format: {registryName}.{serverName}
         Use the special version `latest` to get the latest version.
+        Example serverName: "partner-a.io.github.user%2Fawesome-server" (URL-encoded)
       parameters:
-      - description: URL-encoded server name (e.g., \
+      - description: URL-encoded prefixed server name (e.g., \
         in: path
         name: serverName
         required: true
@@ -1087,7 +1094,7 @@ paths:
                   type: string
                 type: object
           description: Server or version not found
-      summary: Get specific MCP server version
+      summary: Get specific MCP server version from aggregated registries
       tags:
       - registry
       - official

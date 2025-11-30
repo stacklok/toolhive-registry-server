@@ -734,6 +734,309 @@ func TestURLEncodingInRoutes(t *testing.T) {
 	}
 }
 
+func TestListServers_SetsPrefixNamesCorrectly(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		path             string
+		wantPrefixNames  bool
+		wantRegistryName *string
+		wantStatus       int
+	}{
+		{
+			name:             "aggregated endpoint sets PrefixNames=true",
+			path:             "/v0.1/servers",
+			wantPrefixNames:  true,
+			wantRegistryName: nil,
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "registry-specific endpoint sets PrefixNames=false",
+			path:             "/my-registry/v0.1/servers",
+			wantPrefixNames:  false,
+			wantRegistryName: ptrString("my-registry"),
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "aggregated endpoint with query params sets PrefixNames=true",
+			path:             "/v0.1/servers?search=test&limit=10",
+			wantPrefixNames:  true,
+			wantRegistryName: nil,
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "registry-specific endpoint with query params sets PrefixNames=false",
+			path:             "/foo-registry/v0.1/servers?search=test&limit=10",
+			wantPrefixNames:  false,
+			wantRegistryName: ptrString("foo-registry"),
+			wantStatus:       http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+
+			// Capture the options passed to ListServers
+			var capturedOpts service.ListServersOptions
+			mockSvc.EXPECT().ListServers(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ interface{}, opts ...service.Option[service.ListServersOptions]) ([]*upstreamv0.ServerJSON, error) {
+					// Apply options to capture the final state
+					for _, opt := range opts {
+						err := opt(&capturedOpts)
+						require.NoError(t, err)
+					}
+					return []*upstreamv0.ServerJSON{}, nil
+				}).Times(1)
+
+			req, err := http.NewRequest("GET", tt.path, nil)
+			require.NoError(t, err)
+
+			router := Router(mockSvc)
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.wantStatus, rr.Code)
+			assert.Equal(t, tt.wantPrefixNames, capturedOpts.PrefixNames,
+				"PrefixNames should be %v for path %s", tt.wantPrefixNames, tt.path)
+
+			if tt.wantRegistryName == nil {
+				assert.Nil(t, capturedOpts.RegistryName,
+					"RegistryName should be nil for aggregated endpoint")
+			} else {
+				require.NotNil(t, capturedOpts.RegistryName,
+					"RegistryName should not be nil for registry-specific endpoint")
+				assert.Equal(t, *tt.wantRegistryName, *capturedOpts.RegistryName,
+					"RegistryName should match")
+			}
+		})
+	}
+}
+
+// TestListVersions_SetsPrefixNamesCorrectly tests that the ListVersions handler sets PrefixNames
+// correctly based on whether it's an aggregated endpoint or registry-specific endpoint.
+func TestListVersions_SetsPrefixNamesCorrectly(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		path             string
+		wantPrefixNames  bool
+		wantRegistryName *string
+		wantServerName   string
+		wantStatus       int
+	}{
+		{
+			name:             "aggregated endpoint sets PrefixNames=true",
+			path:             "/v0.1/servers/test-server/versions",
+			wantPrefixNames:  true,
+			wantRegistryName: nil,
+			wantServerName:   "test-server",
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "registry-specific endpoint sets PrefixNames=false",
+			path:             "/my-registry/v0.1/servers/test-server/versions",
+			wantPrefixNames:  false,
+			wantRegistryName: ptrString("my-registry"),
+			wantServerName:   "test-server",
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "aggregated endpoint with URL-encoded server name sets PrefixNames=true",
+			path:             "/v0.1/servers/org%2Fserver-name/versions",
+			wantPrefixNames:  true,
+			wantRegistryName: nil,
+			wantServerName:   "org/server-name",
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "registry-specific endpoint with URL-encoded server name sets PrefixNames=false",
+			path:             "/foo-registry/v0.1/servers/org%2Fserver-name/versions",
+			wantPrefixNames:  false,
+			wantRegistryName: ptrString("foo-registry"),
+			wantServerName:   "org/server-name",
+			wantStatus:       http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+
+			// Capture the options passed to ListServerVersions
+			var capturedOpts service.ListServerVersionsOptions
+			mockSvc.EXPECT().ListServerVersions(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ interface{}, opts ...service.Option[service.ListServerVersionsOptions]) ([]*upstreamv0.ServerJSON, error) {
+					// Apply options to capture the final state
+					for _, opt := range opts {
+						err := opt(&capturedOpts)
+						require.NoError(t, err)
+					}
+					return []*upstreamv0.ServerJSON{}, nil
+				}).Times(1)
+
+			req, err := http.NewRequest("GET", tt.path, nil)
+			require.NoError(t, err)
+
+			router := Router(mockSvc)
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.wantStatus, rr.Code)
+			assert.Equal(t, tt.wantPrefixNames, capturedOpts.PrefixNames,
+				"PrefixNames should be %v for path %s", tt.wantPrefixNames, tt.path)
+			assert.Equal(t, tt.wantServerName, capturedOpts.Name,
+				"Name should match the server name from path")
+
+			if tt.wantRegistryName == nil {
+				assert.Nil(t, capturedOpts.RegistryName,
+					"RegistryName should be nil for aggregated endpoint")
+			} else {
+				require.NotNil(t, capturedOpts.RegistryName,
+					"RegistryName should not be nil for registry-specific endpoint")
+				assert.Equal(t, *tt.wantRegistryName, *capturedOpts.RegistryName,
+					"RegistryName should match")
+			}
+		})
+	}
+}
+
+// TestGetVersion_SetsPrefixNamesCorrectly tests that the GetVersion handler sets PrefixNames
+// correctly based on whether it's an aggregated endpoint or registry-specific endpoint.
+func TestGetVersion_SetsPrefixNamesCorrectly(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		path             string
+		wantPrefixNames  bool
+		wantRegistryName *string
+		wantServerName   string
+		wantVersion      string
+		wantStatus       int
+	}{
+		{
+			name:             "aggregated endpoint sets PrefixNames=true",
+			path:             "/v0.1/servers/test-server/versions/1.0.0",
+			wantPrefixNames:  true,
+			wantRegistryName: nil,
+			wantServerName:   "test-server",
+			wantVersion:      "1.0.0",
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "registry-specific endpoint sets PrefixNames=false",
+			path:             "/my-registry/v0.1/servers/test-server/versions/1.0.0",
+			wantPrefixNames:  false,
+			wantRegistryName: ptrString("my-registry"),
+			wantServerName:   "test-server",
+			wantVersion:      "1.0.0",
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "aggregated endpoint with latest version sets PrefixNames=true",
+			path:             "/v0.1/servers/test-server/versions/latest",
+			wantPrefixNames:  true,
+			wantRegistryName: nil,
+			wantServerName:   "test-server",
+			wantVersion:      "latest",
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "registry-specific endpoint with latest version sets PrefixNames=false",
+			path:             "/foo-registry/v0.1/servers/test-server/versions/latest",
+			wantPrefixNames:  false,
+			wantRegistryName: ptrString("foo-registry"),
+			wantServerName:   "test-server",
+			wantVersion:      "latest",
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "aggregated endpoint with URL-encoded server name sets PrefixNames=true",
+			path:             "/v0.1/servers/org%2Fserver-name/versions/2.0.0",
+			wantPrefixNames:  true,
+			wantRegistryName: nil,
+			wantServerName:   "org/server-name",
+			wantVersion:      "2.0.0",
+			wantStatus:       http.StatusOK,
+		},
+		{
+			name:             "registry-specific endpoint with URL-encoded server name sets PrefixNames=false",
+			path:             "/bar-registry/v0.1/servers/org%2Fserver-name/versions/2.0.0",
+			wantPrefixNames:  false,
+			wantRegistryName: ptrString("bar-registry"),
+			wantServerName:   "org/server-name",
+			wantVersion:      "2.0.0",
+			wantStatus:       http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+
+			// Capture the options passed to GetServerVersion
+			var capturedOpts service.GetServerVersionOptions
+			mockSvc.EXPECT().GetServerVersion(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ interface{}, opts ...service.Option[service.GetServerVersionOptions]) (*upstreamv0.ServerJSON, error) {
+					// Apply options to capture the final state
+					for _, opt := range opts {
+						err := opt(&capturedOpts)
+						require.NoError(t, err)
+					}
+					return &upstreamv0.ServerJSON{
+						Name:    tt.wantServerName,
+						Version: tt.wantVersion,
+					}, nil
+				}).Times(1)
+
+			req, err := http.NewRequest("GET", tt.path, nil)
+			require.NoError(t, err)
+
+			router := Router(mockSvc)
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.wantStatus, rr.Code)
+			assert.Equal(t, tt.wantPrefixNames, capturedOpts.PrefixNames,
+				"PrefixNames should be %v for path %s", tt.wantPrefixNames, tt.path)
+			assert.Equal(t, tt.wantServerName, capturedOpts.Name,
+				"Name should match the server name from path")
+			assert.Equal(t, tt.wantVersion, capturedOpts.Version,
+				"Version should match the version from path")
+
+			if tt.wantRegistryName == nil {
+				assert.Nil(t, capturedOpts.RegistryName,
+					"RegistryName should be nil for aggregated endpoint")
+			} else {
+				require.NotNil(t, capturedOpts.RegistryName,
+					"RegistryName should not be nil for registry-specific endpoint")
+				assert.Equal(t, *tt.wantRegistryName, *capturedOpts.RegistryName,
+					"RegistryName should match")
+			}
+		})
+	}
+}
+
+// ptrString is a helper function to create a pointer to a string
+func ptrString(s string) *string {
+	return &s
+}
+
 func TestDeleteVersion(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
