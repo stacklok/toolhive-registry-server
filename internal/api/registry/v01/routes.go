@@ -173,15 +173,20 @@ func (routes *Routes) listServers(w http.ResponseWriter, r *http.Request) {
 // @Failure		400		{object}	map[string]string	"Bad request"
 // @Router		/registry/{registryName}/v0.1/servers [get]
 func (routes *Routes) listServersWithRegistryName(w http.ResponseWriter, r *http.Request) {
-	registryName := chi.URLParam(r, "registryName")
+	registryName, err := common.GetAndValidateURLParam(r, "registryName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	routes.handleListServers(w, r, registryName)
 }
 
 // handleListVersions is a shared helper that handles listing versions with an optional registry name.
 func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request, registryName string) {
-	serverName := chi.URLParam(r, "serverName")
-	if strings.TrimSpace(serverName) == "" {
-		common.WriteErrorResponse(w, "Server name is required", http.StatusBadRequest)
+	serverName, err := common.GetAndValidateURLParam(r, "serverName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -252,16 +257,26 @@ func (routes *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 // @Failure		404		{object}	map[string]string	"Server not found"
 // @Router		/registry/{registryName}/v0.1/servers/{serverName}/versions [get]
 func (routes *Routes) listVersionsWithRegistryName(w http.ResponseWriter, r *http.Request) {
-	registryName := chi.URLParam(r, "registryName")
+	registryName, err := common.GetAndValidateURLParam(r, "registryName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	routes.handleListVersions(w, r, registryName)
 }
 
 // handleGetVersion is a shared helper that handles getting a version with an optional registry name.
 func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, registryName string) {
-	serverName := chi.URLParam(r, "serverName")
-	version := chi.URLParam(r, "version")
-	if strings.TrimSpace(serverName) == "" || strings.TrimSpace(version) == "" {
-		common.WriteErrorResponse(w, "Server name and version are required", http.StatusBadRequest)
+	serverName, err := common.GetAndValidateURLParam(r, "serverName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	version, err := common.GetAndValidateURLParam(r, "version")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -327,7 +342,12 @@ func (routes *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 // @Failure		404				{object}	map[string]string	"Server or version not found"
 // @Router		/registry/{registryName}/v0.1/servers/{serverName}/versions/{version} [get]
 func (routes *Routes) getVersionWithRegistryName(w http.ResponseWriter, r *http.Request) {
-	registryName := chi.URLParam(r, "registryName")
+	registryName, err := common.GetAndValidateURLParam(r, "registryName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	routes.handleGetVersion(w, r, registryName)
 }
 
@@ -348,28 +368,26 @@ func (routes *Routes) getVersionWithRegistryName(w http.ResponseWriter, r *http.
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /{registryName}/v0.1/servers/{serverName}/versions/{version} [delete]
 func (routes *Routes) deleteVersionWithRegistryName(w http.ResponseWriter, r *http.Request) {
-	// Extract URL parameters
-	registryName := chi.URLParam(r, "registryName")
-	serverName := chi.URLParam(r, "serverName")
-	version := chi.URLParam(r, "version")
-
-	if strings.TrimSpace(registryName) == "" {
-		common.WriteErrorResponse(w, "Registry name is required", http.StatusBadRequest)
+	registryName, err := common.GetAndValidateURLParam(r, "registryName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if strings.TrimSpace(serverName) == "" {
-		common.WriteErrorResponse(w, "Server name is required", http.StatusBadRequest)
+	serverName, err := common.GetAndValidateURLParam(r, "serverName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if strings.TrimSpace(version) == "" {
-		common.WriteErrorResponse(w, "Version is required", http.StatusBadRequest)
+	version, err := common.GetAndValidateURLParam(r, "version")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Call service layer
-	err := routes.service.DeleteServerVersion(
+	err = routes.service.DeleteServerVersion(
 		r.Context(),
 		service.WithRegistryName[service.DeleteServerVersionOptions](registryName),
 		service.WithName[service.DeleteServerVersionOptions](serverName),
@@ -412,11 +430,9 @@ func (routes *Routes) deleteVersionWithRegistryName(w http.ResponseWriter, r *ht
 // @Failure      500           {object}  map[string]string         "Internal server error"
 // @Router       /{registryName}/v0.1/publish [post]
 func (routes *Routes) publishWithRegistryName(w http.ResponseWriter, r *http.Request) {
-	// Extract URL parameters
-	registryName := chi.URLParam(r, "registryName")
-
-	if strings.TrimSpace(registryName) == "" {
-		common.WriteErrorResponse(w, "Registry name is required", http.StatusBadRequest)
+	registryName, err := common.GetAndValidateURLParam(r, "registryName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
