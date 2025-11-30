@@ -33,9 +33,10 @@ thv-registry-api serve [flags]
 ### Options
 
 ```
-      --address string   Address to listen on (default ":8080")
-      --config string    Path to configuration file (YAML format, required)
-  -h, --help             help for serve
+      --address string     Address to listen on (default ":8080")
+      --auth-mode string   Override auth mode from config (anonymous or oauth)
+      --config string      Path to configuration file (YAML format, required)
+  -h, --help               help for serve
 ```
 
 ### Options inherited from parent commands

@@ -27,6 +27,10 @@ func TestNewAuthMiddleware(t *testing.T) {
 		return mocks.NewMocktokenValidatorInterface(ctrl), nil
 	}
 
+	// Note: These tests assume that auth mode has already been resolved by resolveAuthMode()
+	// in serve.go before NewAuthMiddleware is called. This means:
+	// - Mode is never empty (always resolved to anonymous or oauth)
+	// - Only valid modes (anonymous, oauth) are passed
 	tests := []struct {
 		name             string
 		config           *config.AuthConfig
@@ -35,19 +39,13 @@ func TestNewAuthMiddleware(t *testing.T) {
 		wantHandler      bool // whether handler should be non-nil
 	}{
 		{
-			name:             "nil config returns anonymous",
+			name:             "nil config returns error (auth required by default)",
 			config:           nil,
 			validatorFactory: DefaultValidatorFactory,
-			wantHandler:      false,
+			wantErr:          "auth configuration is required",
 		},
 		{
-			name:             "empty mode returns anonymous",
-			config:           &config.AuthConfig{Mode: ""},
-			validatorFactory: DefaultValidatorFactory,
-			wantHandler:      false,
-		},
-		{
-			name:             "explicit anonymous mode",
+			name:             "anonymous mode succeeds",
 			config:           &config.AuthConfig{Mode: config.AuthModeAnonymous},
 			validatorFactory: DefaultValidatorFactory,
 			wantHandler:      false,
@@ -56,7 +54,13 @@ func TestNewAuthMiddleware(t *testing.T) {
 			name:             "unsupported mode returns error",
 			config:           &config.AuthConfig{Mode: "custom"},
 			validatorFactory: DefaultValidatorFactory,
-			wantErr:          "unsupported auth mode",
+			wantErr:          "invalid auth.mode",
+		},
+		{
+			name:             "empty mode returns error (should be resolved before calling)",
+			config:           &config.AuthConfig{Mode: ""},
+			validatorFactory: DefaultValidatorFactory,
+			wantErr:          "invalid auth.mode",
 		},
 		{
 			name: "oauth mode with no providers returns error",
@@ -67,10 +71,10 @@ func TestNewAuthMiddleware(t *testing.T) {
 				},
 			},
 			validatorFactory: mockValidatorFactory,
-			wantErr:          "at least one provider",
+			wantErr:          "auth.oauth.providers is required",
 		},
 		{
-			name: "oauth mode with valid provider",
+			name: "oauth mode with valid provider succeeds",
 			config: &config.AuthConfig{
 				Mode: config.AuthModeOAuth,
 				OAuth: &config.OAuthConfig{

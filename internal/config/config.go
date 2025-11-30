@@ -196,12 +196,17 @@ const (
 
 	// AuthModeOAuth requires OAuth/OIDC authentication
 	AuthModeOAuth AuthMode = "oauth"
+
+	// DefaultAuthMode is the auth mode used when not explicitly configured.
+	// OAuth is the default for a secure-by-default posture.
+	DefaultAuthMode AuthMode = AuthModeOAuth
 )
 
 // AuthConfig defines authentication configuration for the registry server
 type AuthConfig struct {
 	// Mode specifies the authentication mode (anonymous or oauth)
-	// Defaults to "anonymous" if not specified
+	// Defaults to "oauth" if not specified (security-by-default).
+	// Use "anonymous" to explicitly disable authentication for development.
 	Mode AuthMode `yaml:"mode,omitempty"`
 
 	// PublicPaths defines additional paths that bypass authentication
@@ -318,11 +323,12 @@ func (p *OAuthProviderConfig) validateProvider(index int) error {
 	return nil
 }
 
-// Validate performs validation on the auth configuration
+// Validate performs validation on the auth configuration.
+// This method assumes Mode has already been resolved to a valid value
+// (either explicitly set or defaulted by resolveAuthMode in serve.go).
 func (a *AuthConfig) Validate() error {
-	// Validate mode - empty defaults to anonymous
 	switch a.Mode {
-	case AuthModeAnonymous, "":
+	case AuthModeAnonymous:
 		// Anonymous mode doesn't require OAuth config
 		return nil
 	case AuthModeOAuth:
@@ -551,12 +557,7 @@ func (c *Config) validate() error {
 	}
 
 	// Validate storage configuration
-	if err := c.validateStorageConfig(); err != nil {
-		return err
-	}
-
-	// Validate auth configuration if present
-	return c.validateAuth()
+	return c.validateStorageConfig()
 }
 
 // validateRegistryConfig validates a single registry configuration
@@ -692,17 +693,6 @@ func (c *Config) validateStorageConfig() error {
 	}
 
 	// File storage validation is minimal - baseDir is optional with default
-
-	return nil
-}
-
-// validateAuth validates the auth configuration if present
-func (c *Config) validateAuth() error {
-	if c.Auth != nil {
-		if err := c.Auth.Validate(); err != nil {
-			return err
-		}
-	}
 
 	return nil
 }

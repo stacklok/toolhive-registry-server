@@ -36,6 +36,10 @@ func TestNewRegistryAppBuilder(t *testing.T) {
 				},
 			},
 		},
+		// Auth is required by default; use anonymous mode for tests
+		Auth: &config.AuthConfig{
+			Mode: config.AuthModeAnonymous,
+		},
 	}
 
 	built, err := baseConfig(WithConfig(cfg))
@@ -107,6 +111,10 @@ func createValidTestConfig() *config.Config {
 					Interval: "30m",
 				},
 			},
+		},
+		// Auth is required by default; use anonymous mode for tests
+		Auth: &config.AuthConfig{
+			Mode: config.AuthModeAnonymous,
 		},
 	}
 }
