@@ -167,6 +167,9 @@ registries:
 #   - SQL query capabilities
 #   - Transactional updates
 
+auth:
+  mode: anonymous
+
 database:
   # Database server hostname or IP address (Required)
   host: localhost

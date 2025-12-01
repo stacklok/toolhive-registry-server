@@ -48,6 +48,9 @@ registries:
     #     exclude:
     #       - "experimental"
 
+auth:
+  mode: anonymous
+
 # Optional: PostgreSQL database configuration
 # Uncomment to store registry data in a database instead of local files
 # For development, you can use environment variable for password:

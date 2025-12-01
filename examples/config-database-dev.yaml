@@ -45,6 +45,9 @@ registries:
       # More frequent syncs for development
       interval: "5m"
 
+auth:
+  mode: anonymous
+
 # PostgreSQL database configuration for development
 # Uses two-user security model: separate users for operations and migrations
 database:

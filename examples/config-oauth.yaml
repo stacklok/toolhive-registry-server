@@ -1,10 +1,11 @@
-# Example configuration for syncing from the ToolHive Git repository
+# Example configuration for syncing from the ToolHive Git repository with OAuth authentication
 #
 # This configuration pulls registry data from the official ToolHive repository
 # and syncs it to the local storage every 30 minutes.
+# All API endpoints require OAuth/OIDC authentication.
 #
 # Usage:
-#   thv-registry-api serve --config examples/config-git.yaml
+#   thv-registry-api serve --config examples/config-oauth.yaml
 
 # Registry name/identifier (optional, defaults to "default")
 registryName: toolhive
@@ -37,8 +38,52 @@ registries:
       # Sync interval (valid duration: 1m, 5m, 30m, 1h, 24h, etc.)
       interval: "30m"
 
+# OAuth/OIDC authentication configuration
 auth:
-  mode: anonymous
+  mode: oauth
+
+  # Additional paths that bypass authentication (optional)
+  # These extend the default public paths (health, docs, swagger, well-known)
+  # publicPaths:
+  #   - /custom/public
+  #   - /metrics
+
+  # OAuth/OIDC specific configuration
+  oauth:
+    # URL identifying this protected resource (RFC 9728)
+    # Used in /.well-known/oauth-protected-resource endpoint
+    resourceUrl: https://registry.example.com
+
+    # Protection space identifier for WWW-Authenticate header (optional)
+    # Defaults to "mcp-registry"
+    realm: mcp-registry
+
+    # OAuth scopes supported by this resource (optional)
+    # Defaults to ["mcp-registry:read", "mcp-registry:write"]
+    scopesSupported:
+      - mcp-registry:read
+      - mcp-registry:write
+
+    # OAuth/OIDC providers (at least one required)
+    # Multiple providers can be configured (e.g., external IDP + Kubernetes)
+    providers:
+      # Example: External OIDC provider (e.g., Keycloak, Auth0, Okta)
+      - name: my-idp
+        # OIDC issuer URL (must be HTTPS in production)
+        issuerUrl: https://idp.example.com
+        # Expected audience claim in the token (REQUIRED)
+        audience: api://registry
+        # OAuth client ID for token introspection (optional)
+        # clientId: registry-client
+        # Path to file containing client secret (optional)
+        # clientSecretFile: /run/secrets/oauth_client_secret
+
+      # Example: Kubernetes in-cluster authentication
+      - name: kubernetes
+        issuerUrl: https://kubernetes.default.svc
+        audience: https://kubernetes.default.svc
+        # Path to CA certificate for verifying Kubernetes API server TLS
+        caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
 # Optional: PostgreSQL database configuration
 # Uncomment to store registry data in a database instead of local files
@@ -74,3 +119,4 @@ auth:
 #     exclude:
 #       - "experimental"
 #       - "beta"
+

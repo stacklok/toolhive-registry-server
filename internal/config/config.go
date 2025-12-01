@@ -2,6 +2,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -557,7 +558,12 @@ func (c *Config) validate() error {
 	}
 
 	// Validate storage configuration
-	return c.validateStorageConfig()
+	if err := c.validateStorageConfig(); err != nil {
+		return err
+	}
+
+	// Validate auth configuration if present
+	return c.validateAuth()
 }
 
 // validateRegistryConfig validates a single registry configuration
@@ -738,4 +744,16 @@ func (r *RegistryConfig) GetType() string {
 		return SourceTypeManaged
 	}
 	return ""
+}
+
+// validateAuth validates the auth configuration if present
+func (c *Config) validateAuth() error {
+	if c.Auth == nil {
+		return errors.New("auth configuration is required")
+	}
+	if err := c.Auth.Validate(); err != nil {
+		return fmt.Errorf("invalid auth configuration: %w", err)
+	}
+
+	return nil
 }
