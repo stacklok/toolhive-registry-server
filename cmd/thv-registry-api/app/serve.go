@@ -43,6 +43,7 @@ const (
 func init() {
 	serveCmd.Flags().String("address", ":8080", "Address to listen on")
 	serveCmd.Flags().String("config", "", "Path to configuration file (YAML format, required)")
+	serveCmd.Flags().String("auth-mode", "", "Override auth mode from config (anonymous or oauth)")
 
 	err := viper.BindPFlag("address", serveCmd.Flags().Lookup("address"))
 	if err != nil {
@@ -59,7 +60,7 @@ func init() {
 	}
 }
 
-func runServe(_ *cobra.Command, _ []string) error {
+func runServe(cmd *cobra.Command, _ []string) error {
 	ctx := context.Background()
 
 	// Initialize controller-runtime logger to suppress warnings
@@ -73,6 +74,11 @@ func runServe(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
+
+	// Resolve auth mode: apply override if specified, then apply default if still empty
+	// Priority: flag > config file > default
+	authModeOverride, _ := cmd.Flags().GetString("auth-mode")
+	resolveAuthMode(cfg, authModeOverride)
 
 	logger.Infof("Loaded configuration from %s (registry: %s, %d registries configured)",
 		configPath, cfg.GetRegistryName(), len(cfg.Registries))
@@ -166,4 +172,28 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 	}
 
 	return nil
+}
+
+// resolveAuthMode resolves the final auth mode after all configuration sources have been combined.
+// It applies the override if provided, then applies the default if mode is still empty.
+// Validation of the mode value is handled by NewAuthMiddleware.
+//
+// Priority: flag > config file > default
+func resolveAuthMode(cfg *config.Config, override string) {
+	// Ensure Auth config exists
+	if cfg.Auth == nil {
+		cfg.Auth = &config.AuthConfig{}
+	}
+
+	// Apply override if provided (from --auth-mode flag)
+	if override != "" {
+		cfg.Auth.Mode = config.AuthMode(override)
+		logger.Infof("Auth mode overridden to: %s", override)
+	}
+
+	// Apply default if mode is still empty
+	if cfg.Auth.Mode == "" {
+		cfg.Auth.Mode = config.DefaultAuthMode
+		logger.Infof("Auth mode defaulting to: %s", config.DefaultAuthMode)
+	}
 }

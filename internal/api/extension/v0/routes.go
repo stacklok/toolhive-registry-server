@@ -51,7 +51,9 @@ func Router(svc service.RegistryService) http.Handler {
 // @Accept		json
 // @Produce		json
 // @Success		200	{object}	service.RegistryListResponse	"List of registries"
+// @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Failure		500	{object}	map[string]string	"Internal server error"
+// @Security	BearerAuth
 // @Router		/extension/v0/registries [get]
 func (r *Routes) listRegistries(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
@@ -83,9 +85,11 @@ func (r *Routes) listRegistries(w http.ResponseWriter, req *http.Request) {
 // @Param		registryName	path	string	true	"Registry Name"
 // @Success		200	{object}	service.RegistryInfo	"Registry details"
 // @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Failure		404	{object}	map[string]string	"Registry not found"
 // @Failure		500	{object}	map[string]string	"Internal server error"
 // @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
 // @Router		/extension/v0/registries/{registryName} [get]
 func (r *Routes) getRegistry(w http.ResponseWriter, req *http.Request) {
 	registryName, err := common.GetAndValidateURLParam(req, "registryName")
@@ -121,7 +125,9 @@ func (r *Routes) getRegistry(w http.ResponseWriter, req *http.Request) {
 // @Produce		json
 // @Param		registryName	path	string	true	"Registry Name"
 // @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
 // @Router		/extension/v0/registries/{registryName} [put]
 func (*Routes) upsertRegistry(w http.ResponseWriter, r *http.Request) {
 	_, err := common.GetAndValidateURLParam(r, "registryName")
@@ -142,7 +148,9 @@ func (*Routes) upsertRegistry(w http.ResponseWriter, r *http.Request) {
 // @Produce		json
 // @Param		registryName	path	string	true	"Registry Name"
 // @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
 // @Router		/extension/v0/registries/{registryName} [delete]
 func (*Routes) deleteRegistry(w http.ResponseWriter, r *http.Request) {
 	_, err := common.GetAndValidateURLParam(r, "registryName")
@@ -165,7 +173,9 @@ func (*Routes) deleteRegistry(w http.ResponseWriter, r *http.Request) {
 // @Param		serverName		path	string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
 // @Param		version			path	string	true	"URL-encoded version to retrieve (e.g., \"1.0.0\")"
 // @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
 // @Router		/extension/v0/registries/{registryName}/servers/{serverName}/versions/{version} [put]
 func (*Routes) upsertVersion(w http.ResponseWriter, r *http.Request) {
 	_, err := common.GetAndValidateURLParam(r, "registryName")

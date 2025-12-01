@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/database"
@@ -174,4 +175,31 @@ func TestRunMigrations(t *testing.T) {
 			require.False(t, dirty)
 		})
 	}
+}
+
+func TestResolveAuthMode(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil Auth defaults to oauth", func(t *testing.T) {
+		t.Parallel()
+		cfg := &config.Config{}
+		resolveAuthMode(cfg, "")
+		assert.Equal(t, config.DefaultAuthMode, cfg.Auth.Mode)
+	})
+
+	t.Run("override wins over config", func(t *testing.T) {
+		t.Parallel()
+		cfg := &config.Config{Auth: &config.AuthConfig{Mode: config.AuthModeOAuth}}
+		resolveAuthMode(cfg, "anonymous")
+		assert.Equal(t, config.AuthModeAnonymous, cfg.Auth.Mode)
+	})
+
+	t.Run("invalid mode is passed through for later validation", func(t *testing.T) {
+		t.Parallel()
+		cfg := &config.Config{}
+		resolveAuthMode(cfg, "invalid")
+		// resolveAuthMode no longer validates - it just sets the value
+		// Validation happens in NewAuthMiddleware
+		assert.Equal(t, config.AuthMode("invalid"), cfg.Auth.Mode)
+	})
 }
