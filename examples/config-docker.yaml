@@ -33,9 +33,9 @@ registries:
 
     # Local file configuration
     # Use file source for docker-compose demo
-    # The sample registry file is mounted at /registry-sample.json
+    # The registry file is available in the mounted examples directory
     file:
-      path: /registry-sample.json
+      path: /examples/upstream-registry.json
 
     # Per-registry automatic synchronization policy
     syncPolicy:
