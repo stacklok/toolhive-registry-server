@@ -42,6 +42,9 @@ registries:
       # Check for file changes every 5 minutes
       interval: "5m"
 
+auth:
+  mode: anonymous
+
 # PostgreSQL database configuration
 # Uses two-user security model: separate users for operations and migrations
 database:

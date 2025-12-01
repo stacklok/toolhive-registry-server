@@ -29,7 +29,10 @@ func TestLoadConfig(t *testing.T) {
     filter:
       tags:
         include: ["database", "production"]
-        exclude: ["experimental", "deprecated", "beta"]`,
+        exclude: ["experimental", "deprecated", "beta"]
+auth:
+  mode: anonymous
+`,
 			wantConfig: &Config{
 				Registries: []RegistryConfig{
 					{
@@ -48,6 +51,9 @@ func TestLoadConfig(t *testing.T) {
 						},
 					},
 				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
 			},
 			wantErr: false,
 		},
@@ -62,7 +68,10 @@ func TestLoadConfig(t *testing.T) {
     filter:
       tags:
         include: []
-        exclude: []`,
+        exclude: []
+auth:
+  mode: anonymous
+`,
 			wantConfig: &Config{
 				Registries: []RegistryConfig{
 					{
@@ -81,6 +90,9 @@ func TestLoadConfig(t *testing.T) {
 						},
 					},
 				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
 			},
 			wantErr: false,
 		},
@@ -94,7 +106,10 @@ func TestLoadConfig(t *testing.T) {
       interval: "15m"
     filter:
       tags:
-        include: ["api", "backend", "frontend"]`,
+        include: ["api", "backend", "frontend"]
+auth:
+  mode: anonymous
+`,
 			wantConfig: &Config{
 				Registries: []RegistryConfig{
 					{
@@ -113,6 +128,9 @@ func TestLoadConfig(t *testing.T) {
 						},
 					},
 				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
 			},
 			wantErr: false,
 		},
@@ -126,7 +144,10 @@ func TestLoadConfig(t *testing.T) {
       interval: "5m"
     filter:
       tags:
-        exclude: ["test", "debug", "experimental"]`,
+        exclude: ["test", "debug", "experimental"]
+auth:
+  mode: anonymous
+`,
 			wantConfig: &Config{
 				Registries: []RegistryConfig{
 					{
@@ -144,6 +165,9 @@ func TestLoadConfig(t *testing.T) {
 							},
 						},
 					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
 				},
 			},
 			wantErr: false,
@@ -214,6 +238,9 @@ func TestConfigStructure(t *testing.T) {
 				},
 			},
 		},
+		Auth: &AuthConfig{
+			Mode: AuthModeAnonymous,
+		},
 	}
 
 	// Create a temporary directory and file
@@ -230,7 +257,10 @@ func TestConfigStructure(t *testing.T) {
     filter:
       tags:
         include: ["prod", "stable"]
-        exclude: ["beta", "alpha"]`
+        exclude: ["beta", "alpha"]
+auth:
+  mode: anonymous
+`
 
 	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
 	require.NoError(t, err)
@@ -265,6 +295,9 @@ func TestConfigValidate(t *testing.T) {
 						},
 					},
 				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
 			},
 			wantErr: false,
 		},
@@ -281,6 +314,9 @@ func TestConfigValidate(t *testing.T) {
 						},
 					},
 				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
 			},
 			wantErr: true,
 			errMsg:  "name is required",
@@ -295,6 +331,9 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
 				},
 			},
 			wantErr: true,
@@ -312,6 +351,9 @@ func TestConfigValidate(t *testing.T) {
 						},
 					},
 				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
 			},
 			wantErr: true,
 			errMsg:  "file.path is required",
@@ -327,6 +369,9 @@ func TestConfigValidate(t *testing.T) {
 						},
 						SyncPolicy: &SyncPolicyConfig{},
 					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
 				},
 			},
 			wantErr: true,
@@ -346,6 +391,9 @@ func TestConfigValidate(t *testing.T) {
 						},
 					},
 				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
 			},
 			wantErr: true,
 			errMsg:  "syncPolicy.interval must be a valid duration",
@@ -360,6 +408,9 @@ func TestConfigValidate(t *testing.T) {
 			name: "empty_registries",
 			config: &Config{
 				Registries: []RegistryConfig{},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
 			},
 			wantErr: true,
 			errMsg:  "at least one registry must be configured",
@@ -377,6 +428,9 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
 				},
 			},
 			wantErr: false,
@@ -404,6 +458,9 @@ func TestConfigValidate(t *testing.T) {
 						},
 					},
 				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
 			},
 			wantErr: true,
 			errMsg:  "duplicate registry name",
@@ -422,6 +479,9 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
 				},
 			},
 			wantErr: true,
@@ -444,6 +504,9 @@ func TestConfigValidate(t *testing.T) {
 						},
 					},
 				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
 			},
 			wantErr: true,
 			errMsg:  "only one of git, api, file, or managed configuration may be specified",
@@ -457,6 +520,9 @@ func TestConfigValidate(t *testing.T) {
 						Managed: &ManagedConfig{},
 						// No SyncPolicy required for managed registries
 					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
 				},
 			},
 			wantErr: false,
@@ -473,6 +539,9 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
 				},
 			},
 			wantErr: false,
@@ -491,6 +560,9 @@ func TestConfigValidate(t *testing.T) {
 							},
 						},
 					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
 				},
 			},
 			wantErr: false,
@@ -579,6 +651,9 @@ func TestConfigValidate(t *testing.T) {
 						},
 					},
 				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
 			},
 			wantErr: false,
 		},
@@ -598,6 +673,9 @@ func TestConfigValidate(t *testing.T) {
 				},
 				FileStorage: &FileStorageConfig{
 					BaseDir: "/custom/data",
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
 				},
 			},
 			wantErr: false,
@@ -621,6 +699,9 @@ func TestConfigValidate(t *testing.T) {
 					Port:     5432,
 					User:     "testuser",
 					Database: "testdb",
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
 				},
 			},
 			wantErr: false,
@@ -1187,6 +1268,8 @@ func TestLoadConfigWithDatabase(t *testing.T) {
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
+auth:
+  mode: anonymous
 database:
   host: localhost
   port: 5432
@@ -1203,6 +1286,9 @@ database:
 							Interval: "30m",
 						},
 					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -1221,6 +1307,8 @@ database:
       path: /data/registry.json
     syncPolicy:
       interval: "1h"
+auth:
+  mode: anonymous
 database:
   host: db.example.com
   port: 5433
@@ -1243,6 +1331,9 @@ database:
 						},
 					},
 				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
 				Database: &DatabaseConfig{
 					Host:            "db.example.com",
 					Port:            5433,
@@ -1264,7 +1355,10 @@ database:
     file:
       path: /data/registry.json
     syncPolicy:
-      interval: "30m"`,
+      interval: "30m"
+auth:
+  mode: anonymous
+`,
 			wantConfig: &Config{
 				Registries: []RegistryConfig{
 					{
@@ -1276,6 +1370,9 @@ database:
 							Interval: "30m",
 						},
 					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
 				},
 				Database: nil,
 			},
@@ -1328,12 +1425,7 @@ func TestAuthConfigLoading(t *testing.T) {
       path: /data/registry.json
     syncPolicy:
       interval: "30m"`,
-			check: func(t *testing.T, cfg *Config) {
-				t.Helper()
-				require.Len(t, cfg.Registries, 1)
-				assert.Equal(t, "test-registry", cfg.Registries[0].Name)
-				assert.Nil(t, cfg.Auth)
-			},
+			check: nil,
 		},
 		{
 			name: "oauth with providers is parsed correctly",
@@ -1353,8 +1445,8 @@ auth:
       - name: okta
         issuerUrl: https://dev-12345.okta.com
         audience: api://mcp-registry`,
+			//nolint:thelper // We want to see errors here
 			check: func(t *testing.T, cfg *Config) {
-				t.Helper()
 				require.NotNil(t, cfg.Auth)
 				assert.Equal(t, AuthModeOAuth, cfg.Auth.Mode)
 				require.NotNil(t, cfg.Auth.OAuth)
@@ -1373,8 +1465,8 @@ auth:
       interval: "30m"
 auth:
   mode: anonymous`,
+			//nolint:thelper // We want to see errors here
 			check: func(t *testing.T, cfg *Config) {
-				t.Helper()
 				require.NotNil(t, cfg.Auth)
 				assert.Equal(t, AuthModeAnonymous, cfg.Auth.Mode)
 			},
@@ -1389,11 +1481,7 @@ auth:
       interval: "30m"
 auth:
   mode: ""`,
-			check: func(t *testing.T, cfg *Config) {
-				t.Helper()
-				require.NotNil(t, cfg.Auth)
-				assert.Equal(t, AuthMode(""), cfg.Auth.Mode)
-			},
+			check: nil,
 		},
 	}
 
@@ -1407,6 +1495,11 @@ auth:
 			require.NoError(t, err)
 
 			cfg, err := LoadConfig(WithConfigPath(configPath))
+			if tt.check == nil {
+				require.Error(t, err)
+				return
+			}
+
 			require.NoError(t, err)
 			tt.check(t, cfg)
 		})

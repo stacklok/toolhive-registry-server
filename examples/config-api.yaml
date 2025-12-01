@@ -36,6 +36,9 @@ registries:
       # Less frequent for upstream API to be respectful of external services
       interval: "1h"
 
+auth:
+  mode: anonymous
+
 # Optional: PostgreSQL database configuration
 # Uncomment to store registry data in a database instead of local files
 # database:
