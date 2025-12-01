@@ -98,8 +98,8 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 
 	for i, reg := range registryConfigs {
 		regIDs[i] = nameToID[reg.Name]
-		isManaged := reg.GetType() == config.SourceTypeManaged
-		syncStatuses[i], errorMsgs[i] = getInitialSyncStatus(isManaged)
+		isNonSynced := reg.IsNonSyncedRegistry()
+		syncStatuses[i], errorMsgs[i] = getInitialSyncStatus(isNonSynced, reg.GetType())
 	}
 
 	// Bulk initialize sync statuses (ON CONFLICT DO NOTHING)
@@ -389,15 +389,19 @@ func mapConfigTypeToDBType(configType string) (sqlc.RegistryType, error) {
 		return sqlc.RegistryTypeFILE, nil
 	case config.SourceTypeManaged:
 		return sqlc.RegistryTypeMANAGED, nil
+	case config.SourceTypeKubernetes:
+		return sqlc.RegistryTypeKUBERNETES, nil
 	default:
 		return "", fmt.Errorf("unrecognized registry type: %s", configType)
 	}
 }
 
-// getInitialSyncStatus returns the initial sync status and error message for a registry
-func getInitialSyncStatus(isManaged bool) (sqlc.SyncStatus, string) {
-	if isManaged {
-		return sqlc.SyncStatusCOMPLETED, "Managed registry (data managed via API)"
+// getInitialSyncStatus returns the initial sync status and error message for a registry.
+// Non-synced registries (managed and kubernetes) start with COMPLETED status since they don't
+// sync from external sources. Synced registries start with FAILED to trigger initial sync.
+func getInitialSyncStatus(isNonSynced bool, regType string) (sqlc.SyncStatus, string) {
+	if isNonSynced {
+		return sqlc.SyncStatusCOMPLETED, fmt.Sprintf("Non-synced registry (type: %s)", regType)
 	}
 	return sqlc.SyncStatusFAILED, "No previous sync status found"
 }

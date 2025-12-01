@@ -26,6 +26,10 @@ const (
 	// SourceTypeManaged is the type for registries directly managed via API
 	// Managed registries do not sync from external sources
 	SourceTypeManaged = "managed"
+
+	// SourceTypeKubernetes is the type for registries that query Kubernetes deployments
+	// Kubernetes registries discover MCP servers from running Kubernetes resources
+	SourceTypeKubernetes = "kubernetes"
 )
 
 // StorageType is an enum of supported storage backends for registry data.
@@ -108,17 +112,18 @@ type RegistryConfig struct {
 	Format string `yaml:"format"`
 
 	// Type-specific configurations (only one should be set)
-	Git     *GitConfig     `yaml:"git,omitempty"`
-	API     *APIConfig     `yaml:"api,omitempty"`
-	File    *FileConfig    `yaml:"file,omitempty"`
-	Managed *ManagedConfig `yaml:"managed,omitempty"`
+	Git        *GitConfig        `yaml:"git,omitempty"`
+	API        *APIConfig        `yaml:"api,omitempty"`
+	File       *FileConfig       `yaml:"file,omitempty"`
+	Managed    *ManagedConfig    `yaml:"managed,omitempty"`
+	Kubernetes *KubernetesConfig `yaml:"kubernetes,omitempty"`
 
 	// Per-registry sync policy
-	// Note: Not applicable for managed registries (will be ignored if Managed is set)
+	// Note: Not applicable for non-synced registries (managed and kubernetes) - will be ignored if set
 	SyncPolicy *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
 
 	// Per-registry filtering rules
-	// Note: Not applicable for managed registries (will be ignored if Managed is set)
+	// Note: Not applicable for non-synced registries (managed and kubernetes) - will be ignored if set
 	Filter *FilterConfig `yaml:"filter,omitempty"`
 }
 
@@ -164,6 +169,11 @@ type FileConfig struct {
 type ManagedConfig struct {
 	// Future fields can be added here as needed
 }
+
+// KubernetesConfig defines configuration for Kubernetes-based registries
+// Kubernetes registries discover MCP servers from running Kubernetes resources
+// No configuration is actually needed here.
+type KubernetesConfig struct{}
 
 // SyncPolicyConfig defines synchronization settings
 type SyncPolicyConfig struct {
@@ -575,13 +585,13 @@ func (*Config) validateRegistryConfig(reg *RegistryConfig, index int) error {
 		return err
 	}
 
-	// Managed registries don't require sync policy or filter
-	// If syncPolicy or filter are set for managed registries, they will be silently ignored
-	if reg.Managed != nil {
+	// Non-synced registries (managed and kubernetes) don't require sync policy or filter
+	// If syncPolicy or filter are set for these registries, they will be silently ignored
+	if reg.IsNonSyncedRegistry() {
 		return nil
 	}
 
-	// Non-managed registries require sync policy
+	// Synced registries require sync policy
 	if err := validateSyncPolicy(reg.SyncPolicy, prefix); err != nil {
 		return err
 	}
@@ -619,12 +629,15 @@ func validateSourceTypeCount(reg *RegistryConfig, prefix string) error {
 	if reg.Managed != nil {
 		configCount++
 	}
+	if reg.Kubernetes != nil {
+		configCount++
+	}
 
 	if configCount == 0 {
-		return fmt.Errorf("%s: one of git, api, file, or managed configuration must be specified", prefix)
+		return fmt.Errorf("%s: one of git, api, file, managed, or kubernetes configuration must be specified", prefix)
 	}
 	if configCount > 1 {
-		return fmt.Errorf("%s: only one of git, api, file, or managed configuration may be specified", prefix)
+		return fmt.Errorf("%s: only one of git, api, file, managed, or kubernetes configuration may be specified", prefix)
 	}
 
 	return nil
@@ -743,7 +756,18 @@ func (r *RegistryConfig) GetType() string {
 	if r.Managed != nil {
 		return SourceTypeManaged
 	}
+	if r.Kubernetes != nil {
+		return SourceTypeKubernetes
+	}
 	return ""
+}
+
+// IsNonSyncedRegistry returns true if the registry type doesn't sync from external sources.
+// This includes managed registries (manipulated via API) and kubernetes registries (query live deployments).
+// Non-synced registries do not require sync policy configuration and skip the sync loop.
+func (r *RegistryConfig) IsNonSyncedRegistry() bool {
+	regType := r.GetType()
+	return regType == SourceTypeManaged || regType == SourceTypeKubernetes
 }
 
 // validateAuth validates the auth configuration if present

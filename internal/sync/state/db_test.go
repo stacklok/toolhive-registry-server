@@ -99,19 +99,29 @@ func TestGetInitialSyncStatus(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		isManaged      bool
+		isNonSynced    bool
+		regType        string
 		wantStatus     sqlc.SyncStatus
 		wantErrMessage string
 	}{
 		{
 			name:           "managed registry returns COMPLETED",
-			isManaged:      true,
+			isNonSynced:    true,
+			regType:        config.SourceTypeManaged,
 			wantStatus:     sqlc.SyncStatusCOMPLETED,
-			wantErrMessage: "Managed registry (data managed via API)",
+			wantErrMessage: "Non-synced registry (type: managed)",
 		},
 		{
-			name:           "non-managed registry returns FAILED",
-			isManaged:      false,
+			name:           "kubernetes registry returns COMPLETED",
+			isNonSynced:    true,
+			regType:        config.SourceTypeKubernetes,
+			wantStatus:     sqlc.SyncStatusCOMPLETED,
+			wantErrMessage: "Non-synced registry (type: kubernetes)",
+		},
+		{
+			name:           "synced registry returns FAILED",
+			isNonSynced:    false,
+			regType:        config.SourceTypeGit,
 			wantStatus:     sqlc.SyncStatusFAILED,
 			wantErrMessage: "No previous sync status found",
 		},
@@ -121,7 +131,7 @@ func TestGetInitialSyncStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotStatus, gotMessage := getInitialSyncStatus(tt.isManaged)
+			gotStatus, gotMessage := getInitialSyncStatus(tt.isNonSynced, tt.regType)
 			assert.Equal(t, tt.wantStatus, gotStatus)
 			assert.Equal(t, tt.wantErrMessage, gotMessage)
 		})
@@ -524,6 +534,7 @@ func TestMapConfigTypeToDBType_AllSourceTypes(t *testing.T) {
 		config.SourceTypeAPI,
 		config.SourceTypeFile,
 		config.SourceTypeManaged,
+		config.SourceTypeKubernetes,
 	}
 
 	for _, sourceType := range sourceTypes {
@@ -538,6 +549,7 @@ func TestMapConfigTypeToDBType_AllSourceTypes(t *testing.T) {
 				sqlc.RegistryTypeMANAGED,
 				sqlc.RegistryTypeFILE,
 				sqlc.RegistryTypeREMOTE,
+				sqlc.RegistryTypeKUBERNETES,
 			}, result)
 		})
 	}

@@ -501,6 +501,116 @@ func TestStart_MixedManagedAndNonManagedRegistries(t *testing.T) {
 	assert.NotContains(t, coord.registrySyncs, managedRegistry)
 }
 
+func TestStart_SkipsKubernetesRegistries(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockManager := syncmocks.NewMockManager(ctrl)
+	mockStateSvc := statemocks.NewMockRegistryStateService(ctrl)
+
+	cfg := &config.Config{
+		RegistryName: "global-registry",
+		Registries: []config.RegistryConfig{
+			{Name: "kubernetes-registry", Kubernetes: &config.KubernetesConfig{}},
+		},
+	}
+
+	// Mock Initialize being called
+	mockStateSvc.EXPECT().
+		Initialize(gomock.Any(), cfg.Registries).
+		Return(nil)
+
+	// UpdateStatusAtomically should NOT be called for kubernetes registries
+	// since no sync loop is started
+
+	coord := &defaultCoordinator{
+		manager:       mockManager,
+		config:        cfg,
+		statusSvc:     mockStateSvc,
+		registrySyncs: make(map[string]*registrySync),
+		done:          make(chan struct{}),
+	}
+
+	// Start and cancel immediately
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := coord.Start(ctx)
+	assert.NoError(t, err)
+
+	// Verify no sync loop was started for the kubernetes registry
+	assert.Empty(t, coord.registrySyncs)
+}
+
+func TestStart_MixedSyncedAndNonSyncedRegistries(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockManager := syncmocks.NewMockManager(ctrl)
+	mockStateSvc := statemocks.NewMockRegistryStateService(ctrl)
+
+	gitRegistry := "git-registry"
+	managedRegistry := "managed-registry"
+	kubernetesRegistry := "kubernetes-registry"
+	cfg := &config.Config{
+		RegistryName: "global-registry",
+		Registries: []config.RegistryConfig{
+			{Name: gitRegistry, Git: &config.GitConfig{Repository: "https://example.com"}},
+			{Name: managedRegistry, Managed: &config.ManagedConfig{}},
+			{Name: kubernetesRegistry, Kubernetes: &config.KubernetesConfig{}},
+		},
+	}
+
+	// Mock Initialize being called
+	mockStateSvc.EXPECT().
+		Initialize(gomock.Any(), cfg.Registries).
+		Return(nil)
+
+	// Only the git registry should have sync checks
+	mockStateSvc.EXPECT().
+		UpdateStatusAtomically(gomock.Any(), gitRegistry, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, fn func(*status.SyncStatus) bool) (bool, error) {
+			testStatus := &status.SyncStatus{Phase: status.SyncPhaseComplete}
+			mockManager.EXPECT().
+				ShouldSync(gomock.Any(), gomock.Any(), testStatus, false).
+				Return(sync.ReasonUpToDateWithPolicy).
+				AnyTimes()
+			return fn(testStatus), nil
+		}).
+		AnyTimes()
+
+	// No sync checks for managed or kubernetes registries
+
+	coord := &defaultCoordinator{
+		manager:       mockManager,
+		config:        cfg,
+		statusSvc:     mockStateSvc,
+		registrySyncs: make(map[string]*registrySync),
+		done:          make(chan struct{}),
+	}
+
+	// Start and cancel quickly
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	err := coord.Start(ctx)
+	assert.NoError(t, err)
+
+	// Verify only the git registry has a sync loop
+	coord.mu.RLock()
+	defer coord.mu.RUnlock()
+	assert.Contains(t, coord.registrySyncs, gitRegistry)
+	assert.NotContains(t, coord.registrySyncs, managedRegistry)
+	assert.NotContains(t, coord.registrySyncs, kubernetesRegistry)
+}
+
 func TestRunRegistrySync_PerformsInitialAndPeriodicSync(t *testing.T) {
 	t.Parallel()
 

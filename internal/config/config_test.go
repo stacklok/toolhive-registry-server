@@ -337,7 +337,7 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "one of git, api, file, or managed configuration must be specified",
+			errMsg:  "one of git, api, file, managed, or kubernetes configuration must be specified",
 		},
 		{
 			name: "missing_file_path",
@@ -509,7 +509,7 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "only one of git, api, file, or managed configuration may be specified",
+			errMsg:  "only one of git, api, file, managed, or kubernetes configuration may be specified",
 		},
 		{
 			name: "valid_managed_registry_no_sync_policy",
@@ -568,6 +568,62 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "valid_kubernetes_registry_no_sync_policy",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name:       "kubernetes-registry",
+						Kubernetes: &KubernetesConfig{},
+						// No SyncPolicy required for kubernetes registries
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid_kubernetes_registry_with_ignored_sync_policy",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name:       "kubernetes-registry",
+						Kubernetes: &KubernetesConfig{},
+						// SyncPolicy is silently ignored for kubernetes registries
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid_kubernetes_registry_with_ignored_filter",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name:       "kubernetes-registry",
+						Kubernetes: &KubernetesConfig{},
+						// Filter is silently ignored for kubernetes registries
+						Filter: &FilterConfig{
+							Tags: &TagFilterConfig{
+								Include: []string{"test"},
+							},
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "managed_and_file_source_specified",
 			config: &Config{
 				Registries: []RegistryConfig{
@@ -584,7 +640,7 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "only one of git, api, file, or managed configuration may be specified",
+			errMsg:  "only one of git, api, file, managed, or kubernetes configuration may be specified",
 		},
 		{
 			name: "managed_and_git_source_specified",
@@ -603,7 +659,7 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "only one of git, api, file, or managed configuration may be specified",
+			errMsg:  "only one of git, api, file, managed, or kubernetes configuration may be specified",
 		},
 		{
 			name: "managed_and_api_source_specified",
@@ -622,7 +678,7 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "only one of git, api, file, or managed configuration may be specified",
+			errMsg:  "only one of git, api, file, managed, or kubernetes configuration may be specified",
 		},
 		{
 			name: "mixed_managed_and_synced_registries",
@@ -1772,6 +1828,14 @@ func TestRegistryConfig_GetType(t *testing.T) {
 			expectedType: SourceTypeManaged,
 		},
 		{
+			name: "kubernetes type",
+			registryConf: &RegistryConfig{
+				Name:       "kubernetes-registry",
+				Kubernetes: &KubernetesConfig{},
+			},
+			expectedType: SourceTypeKubernetes,
+		},
+		{
 			name: "no type configured returns empty string",
 			registryConf: &RegistryConfig{
 				Name: "invalid-registry",
@@ -1785,6 +1849,78 @@ func TestRegistryConfig_GetType(t *testing.T) {
 			t.Parallel()
 			result := tt.registryConf.GetType()
 			assert.Equal(t, tt.expectedType, result)
+		})
+	}
+}
+
+func TestRegistryConfig_IsNonSyncedRegistry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		registryConf *RegistryConfig
+		expected     bool
+	}{
+		{
+			name: "git type is synced",
+			registryConf: &RegistryConfig{
+				Name: "git-registry",
+				Git: &GitConfig{
+					Repository: "https://github.com/example/repo.git",
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "api type is synced",
+			registryConf: &RegistryConfig{
+				Name: "api-registry",
+				API: &APIConfig{
+					Endpoint: "https://api.example.com",
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "file type is synced",
+			registryConf: &RegistryConfig{
+				Name: "file-registry",
+				File: &FileConfig{
+					Path: "/data/registry.json",
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "managed type is non-synced",
+			registryConf: &RegistryConfig{
+				Name:    "managed-registry",
+				Managed: &ManagedConfig{},
+			},
+			expected: true,
+		},
+		{
+			name: "kubernetes type is non-synced",
+			registryConf: &RegistryConfig{
+				Name:       "kubernetes-registry",
+				Kubernetes: &KubernetesConfig{},
+			},
+			expected: true,
+		},
+		{
+			name: "no type configured is synced (needs validation to catch)",
+			registryConf: &RegistryConfig{
+				Name: "invalid-registry",
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := tt.registryConf.IsNonSyncedRegistry()
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
