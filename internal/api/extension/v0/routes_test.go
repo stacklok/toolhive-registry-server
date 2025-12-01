@@ -42,21 +42,21 @@ func TestUpsertVersion(t *testing.T) {
 			path:       "/registries/%20/servers/test-server-123/versions/1.0.0",
 			method:     "PUT",
 			wantStatus: http.StatusBadRequest,
-			wantError:  "Registry name is required",
+			wantError:  "registryName cannot be empty",
 		},
 		{
 			name:       "upsert version - empty server name",
 			path:       "/registries/foo/servers/%20/versions/1.0.0",
 			method:     "PUT",
 			wantStatus: http.StatusBadRequest,
-			wantError:  "Server ID is required",
+			wantError:  "serverName cannot be empty",
 		},
 		{
 			name:       "upsert version - empty version",
 			path:       "/registries/foo/servers/test-server-123/versions/%20",
 			method:     "PUT",
 			wantStatus: http.StatusBadRequest,
-			wantError:  "Version is required",
+			wantError:  "version cannot be empty",
 		},
 		{
 			name:       "upsert version - with special characters",
@@ -97,6 +97,196 @@ func TestUpsertVersion(t *testing.T) {
 				require.NoError(t, err)
 				assert.Contains(t, response, "error")
 				assert.Equal(t, tt.wantError, response["error"])
+			}
+		})
+	}
+}
+
+func TestURLEncodingInExtensionRoutes(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockSvc := mocks.NewMockRegistryService(ctrl)
+	router := Router(mockSvc)
+
+	tests := []struct {
+		name        string
+		path        string
+		method      string
+		wantStatus  int
+		wantError   string
+		description string
+	}{
+		// UpsertVersion endpoint tests
+		{
+			name:        "upsert version - URL encoded slash in registry name",
+			path:        "/registries/test%2Fregistry/servers/my-server/versions/1.0.0",
+			method:      "PUT",
+			description: "Should decode test%2Fregistry to test/registry",
+			wantStatus:  http.StatusNotImplemented,
+		},
+		{
+			name:        "upsert version - URL encoded slash in server name",
+			path:        "/registries/foo/servers/test%2Fserver/versions/1.0.0",
+			method:      "PUT",
+			description: "Should decode test%2Fserver to test/server",
+			wantStatus:  http.StatusNotImplemented,
+		},
+		{
+			name:        "upsert version - URL encoded slash in version",
+			path:        "/registries/foo/servers/my-server/versions/1.0%2F0",
+			method:      "PUT",
+			description: "Should decode version with slash",
+			wantStatus:  http.StatusNotImplemented,
+		},
+		{
+			name:        "upsert version - URL encoded at symbol",
+			path:        "/registries/foo/servers/test%40v1/versions/1.0.0",
+			method:      "PUT",
+			description: "Should decode @ symbol in server name",
+			wantStatus:  http.StatusNotImplemented,
+		},
+		{
+			name:        "upsert version - multiple URL encoded chars",
+			path:        "/registries/test%2Fregistry/servers/server%40v1/versions/1.0%2B0",
+			method:      "PUT",
+			description: "Should decode multiple encoded characters",
+			wantStatus:  http.StatusNotImplemented,
+		},
+		{
+			name:        "upsert version - URL encoded space in registry",
+			path:        "/registries/test%20registry/servers/my-server/versions/1.0.0",
+			method:      "PUT",
+			description: "Should reject whitespace in registry",
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "registryName cannot contain whitespace",
+		},
+		{
+			name:        "upsert version - URL encoded tab in server",
+			path:        "/registries/foo/servers/test%09server/versions/1.0.0",
+			method:      "PUT",
+			description: "Should reject tab character in server",
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "serverName cannot contain whitespace",
+		},
+		{
+			name:        "upsert version - URL encoded newline in version",
+			path:        "/registries/foo/servers/my-server/versions/1.0%0A0",
+			method:      "PUT",
+			description: "Should reject newline in version",
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "version cannot contain whitespace",
+		},
+		{
+			name:        "upsert version - empty encoded registry",
+			path:        "/registries/%20%20/servers/my-server/versions/1.0.0",
+			method:      "PUT",
+			description: "Should reject empty registry",
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "registryName cannot be empty",
+		},
+		{
+			name:        "upsert version - empty encoded server",
+			path:        "/registries/foo/servers/%09/versions/1.0.0",
+			method:      "PUT",
+			description: "Should reject empty server",
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "serverName cannot be empty",
+		},
+		{
+			name:        "upsert version - empty encoded version",
+			path:        "/registries/foo/servers/my-server/versions/%0D",
+			method:      "PUT",
+			description: "Should reject empty version",
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "version cannot be empty",
+		},
+
+		// UpsertRegistry endpoint tests
+		{
+			name:        "upsert registry - URL encoded slash",
+			path:        "/registries/test%2Fregistry",
+			method:      "PUT",
+			description: "Should decode registry name with slash",
+			wantStatus:  http.StatusNotImplemented,
+		},
+		{
+			name:        "upsert registry - URL encoded at symbol",
+			path:        "/registries/test%40registry",
+			method:      "PUT",
+			description: "Should decode @ symbol",
+			wantStatus:  http.StatusNotImplemented,
+		},
+		{
+			name:        "upsert registry - URL encoded space",
+			path:        "/registries/test%20registry",
+			method:      "PUT",
+			description: "Should reject whitespace",
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "registryName cannot contain whitespace",
+		},
+		{
+			name:        "upsert registry - empty encoded",
+			path:        "/registries/%20%09",
+			method:      "PUT",
+			description: "Should reject empty registry",
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "registryName cannot be empty",
+		},
+
+		// DeleteRegistry endpoint tests
+		{
+			name:        "delete registry - URL encoded slash",
+			path:        "/registries/test%2Fregistry",
+			method:      "DELETE",
+			description: "Should decode registry name",
+			wantStatus:  http.StatusNotImplemented,
+		},
+		{
+			name:        "delete registry - whitespace",
+			path:        "/registries/test%0Aregistry",
+			method:      "DELETE",
+			description: "Should reject newline character",
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "registryName cannot contain whitespace",
+		},
+		{
+			name:        "delete registry - empty",
+			path:        "/registries/%20",
+			method:      "DELETE",
+			description: "Should reject empty registry",
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "registryName cannot be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req, err := http.NewRequest(tt.method, tt.path, nil)
+			require.NoError(t, err)
+
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.wantStatus, rr.Code, "Status code mismatch for %s", tt.description)
+
+			if tt.wantStatus == http.StatusBadRequest && tt.wantError != "" {
+				var response map[string]string
+				err = json.Unmarshal(rr.Body.Bytes(), &response)
+				require.NoError(t, err)
+				assert.Contains(t, response, "error")
+				assert.Equal(t, tt.wantError, response["error"], "Error message mismatch")
+			}
+
+			if tt.wantStatus == http.StatusNotImplemented {
+				var response map[string]string
+				err = json.Unmarshal(rr.Body.Bytes(), &response)
+				require.NoError(t, err)
+				assert.Contains(t, response, "error")
+				// Verify we get the expected "not implemented" message
+				assert.Contains(t, response["error"], "not supported", "Should return not supported message")
 			}
 		})
 	}
@@ -257,7 +447,7 @@ func TestGetRegistry(t *testing.T) {
 			path:       "/registries/%20",
 			method:     "GET",
 			wantStatus: http.StatusBadRequest,
-			wantError:  "Registry name is required",
+			wantError:  "registryName cannot be empty",
 		},
 		{
 			name:   "get registry - not implemented in file mode",
@@ -356,7 +546,7 @@ func TestUpsertRegistry(t *testing.T) {
 			path:       "/registries/%20",
 			method:     "PUT",
 			wantStatus: http.StatusBadRequest,
-			wantError:  "Registry name is required",
+			wantError:  "registryName cannot be empty",
 		},
 		{
 			name:       "upsert registry - with special characters",
@@ -430,7 +620,7 @@ func TestDeleteRegistry(t *testing.T) {
 			path:       "/registries/%20",
 			method:     "DELETE",
 			wantStatus: http.StatusBadRequest,
-			wantError:  "Registry name is required",
+			wantError:  "registryName cannot be empty",
 		},
 		{
 			name:       "delete registry - with special characters",

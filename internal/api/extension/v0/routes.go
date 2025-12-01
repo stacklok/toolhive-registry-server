@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -89,9 +88,9 @@ func (r *Routes) listRegistries(w http.ResponseWriter, req *http.Request) {
 // @Failure		501	{object}	map[string]string	"Not implemented"
 // @Router		/extension/v0/registries/{registryName} [get]
 func (r *Routes) getRegistry(w http.ResponseWriter, req *http.Request) {
-	registryName := chi.URLParam(req, "registryName")
-	if strings.TrimSpace(registryName) == "" {
-		common.WriteErrorResponse(w, "Registry name is required", http.StatusBadRequest)
+	registryName, err := common.GetAndValidateURLParam(req, "registryName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -125,9 +124,9 @@ func (r *Routes) getRegistry(w http.ResponseWriter, req *http.Request) {
 // @Failure		501	{object}	map[string]string	"Not implemented"
 // @Router		/extension/v0/registries/{registryName} [put]
 func (*Routes) upsertRegistry(w http.ResponseWriter, r *http.Request) {
-	registryName := chi.URLParam(r, "registryName")
-	if strings.TrimSpace(registryName) == "" {
-		common.WriteErrorResponse(w, "Registry name is required", http.StatusBadRequest)
+	_, err := common.GetAndValidateURLParam(r, "registryName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -146,9 +145,9 @@ func (*Routes) upsertRegistry(w http.ResponseWriter, r *http.Request) {
 // @Failure		501	{object}	map[string]string	"Not implemented"
 // @Router		/extension/v0/registries/{registryName} [delete]
 func (*Routes) deleteRegistry(w http.ResponseWriter, r *http.Request) {
-	registryName := chi.URLParam(r, "registryName")
-	if strings.TrimSpace(registryName) == "" {
-		common.WriteErrorResponse(w, "Registry name is required", http.StatusBadRequest)
+	_, err := common.GetAndValidateURLParam(r, "registryName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -169,20 +168,21 @@ func (*Routes) deleteRegistry(w http.ResponseWriter, r *http.Request) {
 // @Failure		501	{object}	map[string]string	"Not implemented"
 // @Router		/extension/v0/registries/{registryName}/servers/{serverName}/versions/{version} [put]
 func (*Routes) upsertVersion(w http.ResponseWriter, r *http.Request) {
-	registryName := chi.URLParam(r, "registryName")
-	serverName := chi.URLParam(r, "serverName")
-	version := chi.URLParam(r, "version")
+	_, err := common.GetAndValidateURLParam(r, "registryName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	if strings.TrimSpace(registryName) == "" {
-		common.WriteErrorResponse(w, "Registry name is required", http.StatusBadRequest)
+	_, err = common.GetAndValidateURLParam(r, "serverName")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(serverName) == "" {
-		common.WriteErrorResponse(w, "Server ID is required", http.StatusBadRequest)
-		return
-	}
-	if strings.TrimSpace(version) == "" {
-		common.WriteErrorResponse(w, "Version is required", http.StatusBadRequest)
+
+	_, err = common.GetAndValidateURLParam(r, "version")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
