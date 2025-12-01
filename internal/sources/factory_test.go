@@ -55,6 +55,15 @@ func TestDefaultRegistryHandlerFactory_CreateHandler(t *testing.T) {
 			expectedType: &apiRegistryHandler{},
 		},
 		{
+			name: "kubernetes source type not yet implemented",
+			registryConfig: &config.RegistryConfig{
+				Name:       "test-kubernetes",
+				Kubernetes: &config.KubernetesConfig{},
+			},
+			expectError:   true,
+			errorContains: "kubernetes source type is not yet implemented",
+		},
+		{
 			name: "no source type configured",
 			registryConfig: &config.RegistryConfig{
 				Name: "test-invalid",

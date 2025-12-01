@@ -121,7 +121,25 @@ func TestFileStateService_Initialize(t *testing.T) {
 				m.EXPECT().SaveStatus(gomock.Any(), "managed-registry", gomock.Any()).DoAndReturn(
 					func(_ context.Context, _ string, s *status.SyncStatus) error {
 						assert.Equal(t, status.SyncPhaseComplete, s.Phase)
-						assert.Equal(t, "Managed registry (data managed via API)", s.Message)
+						assert.Equal(t, "Non-synced registry (type: managed)", s.Message)
+						return nil
+					})
+			},
+			wantErr: false,
+		},
+		{
+			name: "initializes kubernetes registry with Complete status",
+			registryConfigs: []config.RegistryConfig{
+				{Name: "kubernetes-registry", Kubernetes: &config.KubernetesConfig{}},
+			},
+			setupMocks: func(m *statusmocks.MockStatusPersistence) {
+				// Return empty status indicating no file existed
+				m.EXPECT().LoadStatus(gomock.Any(), "kubernetes-registry").Return(&status.SyncStatus{}, nil)
+				// Should save default status with Complete phase
+				m.EXPECT().SaveStatus(gomock.Any(), "kubernetes-registry", gomock.Any()).DoAndReturn(
+					func(_ context.Context, _ string, s *status.SyncStatus) error {
+						assert.Equal(t, status.SyncPhaseComplete, s.Phase)
+						assert.Equal(t, "Non-synced registry (type: kubernetes)", s.Message)
 						return nil
 					})
 			},
@@ -152,6 +170,38 @@ func TestFileStateService_Initialize(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "handles mixed synced and non-synced registries including kubernetes",
+			registryConfigs: []config.RegistryConfig{
+				{Name: "git-registry", Git: &config.GitConfig{Repository: "https://example.com"}},
+				{Name: "managed-registry", Managed: &config.ManagedConfig{}},
+				{Name: "kubernetes-registry", Kubernetes: &config.KubernetesConfig{}},
+			},
+			setupMocks: func(m *statusmocks.MockStatusPersistence) {
+				// Git registry - empty status gets Failed
+				m.EXPECT().LoadStatus(gomock.Any(), "git-registry").Return(&status.SyncStatus{}, nil)
+				m.EXPECT().SaveStatus(gomock.Any(), "git-registry", gomock.Any()).DoAndReturn(
+					func(_ context.Context, _ string, s *status.SyncStatus) error {
+						assert.Equal(t, status.SyncPhaseFailed, s.Phase)
+						return nil
+					})
+				// Managed registry - empty status gets Complete
+				m.EXPECT().LoadStatus(gomock.Any(), "managed-registry").Return(&status.SyncStatus{}, nil)
+				m.EXPECT().SaveStatus(gomock.Any(), "managed-registry", gomock.Any()).DoAndReturn(
+					func(_ context.Context, _ string, s *status.SyncStatus) error {
+						assert.Equal(t, status.SyncPhaseComplete, s.Phase)
+						return nil
+					})
+				// Kubernetes registry - empty status gets Complete
+				m.EXPECT().LoadStatus(gomock.Any(), "kubernetes-registry").Return(&status.SyncStatus{}, nil)
+				m.EXPECT().SaveStatus(gomock.Any(), "kubernetes-registry", gomock.Any()).DoAndReturn(
+					func(_ context.Context, _ string, s *status.SyncStatus) error {
+						assert.Equal(t, status.SyncPhaseComplete, s.Phase)
+						return nil
+					})
+			},
+			wantErr: false,
+		},
+		{
 			name: "managed registry with load error gets Complete status",
 			registryConfigs: []config.RegistryConfig{
 				{Name: "managed-registry", Managed: &config.ManagedConfig{}},
@@ -159,6 +209,17 @@ func TestFileStateService_Initialize(t *testing.T) {
 			setupMocks: func(m *statusmocks.MockStatusPersistence) {
 				// Load error should initialize with Complete for managed registries
 				m.EXPECT().LoadStatus(gomock.Any(), "managed-registry").Return(nil, errors.New("load error"))
+			},
+			wantErr: false,
+		},
+		{
+			name: "kubernetes registry with load error gets Complete status",
+			registryConfigs: []config.RegistryConfig{
+				{Name: "kubernetes-registry", Kubernetes: &config.KubernetesConfig{}},
+			},
+			setupMocks: func(m *statusmocks.MockStatusPersistence) {
+				// Load error should initialize with Complete for kubernetes registries
+				m.EXPECT().LoadStatus(gomock.Any(), "kubernetes-registry").Return(nil, errors.New("load error"))
 			},
 			wantErr: false,
 		},
@@ -653,14 +714,16 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 	tests := []struct {
 		name         string
 		registryName string
-		isManaged    bool
+		isNonSynced  bool
+		regType      string
 		setupMocks   func(*statusmocks.MockStatusPersistence)
 		verifyCached func(*testing.T, *status.SyncStatus)
 	}{
 		{
 			name:         "loads existing complete status",
 			registryName: "registry1",
-			isManaged:    false,
+			isNonSynced:  false,
+			regType:      config.SourceTypeGit,
 			setupMocks: func(m *statusmocks.MockStatusPersistence) {
 				m.EXPECT().LoadStatus(gomock.Any(), "registry1").Return(&status.SyncStatus{
 					Phase:        status.SyncPhaseComplete,
@@ -679,7 +742,8 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 		{
 			name:         "handles load error and initializes defaults",
 			registryName: "registry1",
-			isManaged:    false,
+			isNonSynced:  false,
+			regType:      config.SourceTypeGit,
 			setupMocks: func(m *statusmocks.MockStatusPersistence) {
 				m.EXPECT().LoadStatus(gomock.Any(), "registry1").Return(nil, errors.New("load error"))
 				// No SaveStatus call expected - the default status with Phase="Failed" won't trigger a save
@@ -693,7 +757,8 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 		{
 			name:         "initializes empty status (first run)",
 			registryName: "new-registry",
-			isManaged:    false,
+			isNonSynced:  false,
+			regType:      config.SourceTypeGit,
 			setupMocks: func(m *statusmocks.MockStatusPersistence) {
 				// Return empty status (no phase, no LastSyncTime)
 				m.EXPECT().LoadStatus(gomock.Any(), "new-registry").Return(&status.SyncStatus{}, nil)
@@ -714,7 +779,8 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 		{
 			name:         "resets interrupted sync (status=Syncing)",
 			registryName: "registry1",
-			isManaged:    false,
+			isNonSynced:  false,
+			regType:      config.SourceTypeGit,
 			setupMocks: func(m *statusmocks.MockStatusPersistence) {
 				m.EXPECT().LoadStatus(gomock.Any(), "registry1").Return(&status.SyncStatus{
 					Phase:        status.SyncPhaseSyncing,
@@ -742,7 +808,8 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 		{
 			name:         "handles save error for empty status gracefully",
 			registryName: "registry1",
-			isManaged:    false,
+			isNonSynced:  false,
+			regType:      config.SourceTypeGit,
 			setupMocks: func(m *statusmocks.MockStatusPersistence) {
 				m.EXPECT().LoadStatus(gomock.Any(), "registry1").Return(&status.SyncStatus{}, nil)
 				m.EXPECT().SaveStatus(gomock.Any(), "registry1", gomock.Any()).Return(errors.New("save error"))
@@ -757,7 +824,8 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 		{
 			name:         "handles save error for interrupted sync gracefully",
 			registryName: "registry1",
-			isManaged:    false,
+			isNonSynced:  false,
+			regType:      config.SourceTypeGit,
 			setupMocks: func(m *statusmocks.MockStatusPersistence) {
 				m.EXPECT().LoadStatus(gomock.Any(), "registry1").Return(&status.SyncStatus{
 					Phase: status.SyncPhaseSyncing,
@@ -775,50 +843,53 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 		{
 			name:         "managed registry with load error initializes with Complete status",
 			registryName: "managed-registry",
-			isManaged:    true,
+			isNonSynced:  true,
+			regType:      config.SourceTypeManaged,
 			setupMocks: func(m *statusmocks.MockStatusPersistence) {
 				m.EXPECT().LoadStatus(gomock.Any(), "managed-registry").Return(nil, errors.New("load error"))
 			},
 			verifyCached: func(t *testing.T, s *status.SyncStatus) {
 				t.Helper()
 				assert.Equal(t, status.SyncPhaseComplete, s.Phase)
-				assert.Equal(t, "Managed registry (data managed via API)", s.Message)
+				assert.Equal(t, "Non-synced registry (type: managed)", s.Message)
 			},
 		},
 		{
 			name:         "managed registry with empty status initializes with Complete",
 			registryName: "managed-registry",
-			isManaged:    true,
+			isNonSynced:  true,
+			regType:      config.SourceTypeManaged,
 			setupMocks: func(m *statusmocks.MockStatusPersistence) {
 				m.EXPECT().LoadStatus(gomock.Any(), "managed-registry").Return(&status.SyncStatus{}, nil)
 				m.EXPECT().SaveStatus(gomock.Any(), "managed-registry", gomock.Any()).DoAndReturn(
 					func(_ context.Context, _ string, s *status.SyncStatus) error {
 						assert.Equal(t, status.SyncPhaseComplete, s.Phase)
-						assert.Equal(t, "Managed registry (data managed via API)", s.Message)
+						assert.Equal(t, "Non-synced registry (type: managed)", s.Message)
 						return nil
 					})
 			},
 			verifyCached: func(t *testing.T, s *status.SyncStatus) {
 				t.Helper()
 				assert.Equal(t, status.SyncPhaseComplete, s.Phase)
-				assert.Equal(t, "Managed registry (data managed via API)", s.Message)
+				assert.Equal(t, "Non-synced registry (type: managed)", s.Message)
 			},
 		},
 		{
 			name:         "managed registry with Syncing status is NOT reset",
 			registryName: "managed-registry",
-			isManaged:    true,
+			isNonSynced:  true,
+			regType:      config.SourceTypeManaged,
 			setupMocks: func(m *statusmocks.MockStatusPersistence) {
 				m.EXPECT().LoadStatus(gomock.Any(), "managed-registry").Return(&status.SyncStatus{
 					Phase:       status.SyncPhaseSyncing,
 					Message:     "In progress",
 					ServerCount: 10,
 				}, nil)
-				// No SaveStatus call expected - managed registries don't reset Syncing status
+				// No SaveStatus call expected - non-synced registries don't reset Syncing status
 			},
 			verifyCached: func(t *testing.T, s *status.SyncStatus) {
 				t.Helper()
-				// Should keep the Syncing status for managed registries
+				// Should keep the Syncing status for non-synced registries
 				assert.Equal(t, status.SyncPhaseSyncing, s.Phase)
 				assert.Equal(t, "In progress", s.Message)
 				assert.Equal(t, 10, s.ServerCount)
@@ -827,7 +898,8 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 		{
 			name:         "managed registry loads existing status correctly",
 			registryName: "managed-registry",
-			isManaged:    true,
+			isNonSynced:  true,
+			regType:      config.SourceTypeManaged,
 			setupMocks: func(m *statusmocks.MockStatusPersistence) {
 				m.EXPECT().LoadStatus(gomock.Any(), "managed-registry").Return(&status.SyncStatus{
 					Phase:        status.SyncPhaseComplete,
@@ -841,6 +913,62 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 				assert.Equal(t, status.SyncPhaseComplete, s.Phase)
 				assert.Equal(t, "API managed", s.Message)
 				assert.Equal(t, 15, s.ServerCount)
+			},
+		},
+		// Kubernetes registry test cases
+		{
+			name:         "kubernetes registry with load error initializes with Complete status",
+			registryName: "kubernetes-registry",
+			isNonSynced:  true,
+			regType:      config.SourceTypeKubernetes,
+			setupMocks: func(m *statusmocks.MockStatusPersistence) {
+				m.EXPECT().LoadStatus(gomock.Any(), "kubernetes-registry").Return(nil, errors.New("load error"))
+			},
+			verifyCached: func(t *testing.T, s *status.SyncStatus) {
+				t.Helper()
+				assert.Equal(t, status.SyncPhaseComplete, s.Phase)
+				assert.Equal(t, "Non-synced registry (type: kubernetes)", s.Message)
+			},
+		},
+		{
+			name:         "kubernetes registry with empty status initializes with Complete",
+			registryName: "kubernetes-registry",
+			isNonSynced:  true,
+			regType:      config.SourceTypeKubernetes,
+			setupMocks: func(m *statusmocks.MockStatusPersistence) {
+				m.EXPECT().LoadStatus(gomock.Any(), "kubernetes-registry").Return(&status.SyncStatus{}, nil)
+				m.EXPECT().SaveStatus(gomock.Any(), "kubernetes-registry", gomock.Any()).DoAndReturn(
+					func(_ context.Context, _ string, s *status.SyncStatus) error {
+						assert.Equal(t, status.SyncPhaseComplete, s.Phase)
+						assert.Equal(t, "Non-synced registry (type: kubernetes)", s.Message)
+						return nil
+					})
+			},
+			verifyCached: func(t *testing.T, s *status.SyncStatus) {
+				t.Helper()
+				assert.Equal(t, status.SyncPhaseComplete, s.Phase)
+				assert.Equal(t, "Non-synced registry (type: kubernetes)", s.Message)
+			},
+		},
+		{
+			name:         "kubernetes registry with Syncing status is NOT reset",
+			registryName: "kubernetes-registry",
+			isNonSynced:  true,
+			regType:      config.SourceTypeKubernetes,
+			setupMocks: func(m *statusmocks.MockStatusPersistence) {
+				m.EXPECT().LoadStatus(gomock.Any(), "kubernetes-registry").Return(&status.SyncStatus{
+					Phase:       status.SyncPhaseSyncing,
+					Message:     "In progress",
+					ServerCount: 10,
+				}, nil)
+				// No SaveStatus call expected - non-synced registries don't reset Syncing status
+			},
+			verifyCached: func(t *testing.T, s *status.SyncStatus) {
+				t.Helper()
+				// Should keep the Syncing status for non-synced registries
+				assert.Equal(t, status.SyncPhaseSyncing, s.Phase)
+				assert.Equal(t, "In progress", s.Message)
+				assert.Equal(t, 10, s.ServerCount)
 			},
 		},
 	}
@@ -861,7 +989,7 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 			ctx := context.Background()
 
 			// Call the private method
-			service.loadOrInitializeRegistryStatus(ctx, tt.registryName, tt.isManaged)
+			service.loadOrInitializeRegistryStatus(ctx, tt.registryName, tt.isNonSynced, tt.regType)
 
 			// Verify the cached status
 			cached := service.cachedStatuses[tt.registryName]

@@ -80,12 +80,12 @@ func (c *defaultCoordinator) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize registry sync status: %w", err)
 	}
 
-	// Start sync loop for each registry (skip managed registries)
+	// Start sync loop for each registry (skip non-synced registries like managed and kubernetes)
 	for _, regCfg := range c.config.Registries {
 
-		// Skip managed registries - they don't sync from external sources
-		if regCfg.GetType() == config.SourceTypeManaged {
-			logger.Infof("Registry '%s': Skipping sync loop (managed registry)", regCfg.Name)
+		// Skip non-synced registries - they don't sync from external sources
+		if regCfg.IsNonSyncedRegistry() {
+			logger.Infof("Registry '%s': Skipping sync loop (non-synced registry type: %s)", regCfg.Name, regCfg.GetType())
 			continue
 		}
 

@@ -57,9 +57,10 @@ func (ns NullIconTheme) Value() (driver.Value, error) {
 type RegistryType string
 
 const (
-	RegistryTypeMANAGED RegistryType = "MANAGED"
-	RegistryTypeFILE    RegistryType = "FILE"
-	RegistryTypeREMOTE  RegistryType = "REMOTE"
+	RegistryTypeMANAGED    RegistryType = "MANAGED"
+	RegistryTypeFILE       RegistryType = "FILE"
+	RegistryTypeREMOTE     RegistryType = "REMOTE"
+	RegistryTypeKUBERNETES RegistryType = "KUBERNETES"
 )
 
 func (e *RegistryType) Scan(src interface{}) error {

@@ -30,7 +30,7 @@ func NewFileStateService(statusPersistence status.StatusPersistence) RegistrySta
 
 func (f *fileStateService) Initialize(ctx context.Context, registryConfigs []config.RegistryConfig) error {
 	for _, conf := range registryConfigs {
-		f.loadOrInitializeRegistryStatus(ctx, conf.Name, conf.GetType() == config.SourceTypeManaged)
+		f.loadOrInitializeRegistryStatus(ctx, conf.Name, conf.IsNonSyncedRegistry(), conf.GetType())
 	}
 	return nil
 }
@@ -105,17 +105,18 @@ func (f *fileStateService) UpdateSyncStatus(ctx context.Context, registryName st
 func (f *fileStateService) loadOrInitializeRegistryStatus(
 	ctx context.Context,
 	registryName string,
-	isManaged bool,
+	isNonSynced bool,
+	regType string,
 ) {
 	syncStatus, err := f.statusPersistence.LoadStatus(ctx, registryName)
 	if err != nil {
 		logger.Warnf("Registry '%s': Failed to load sync status, initializing with defaults: %v", registryName, err)
 
-		// Managed registries get a different default status
-		if isManaged {
+		// Non-synced registries (managed and kubernetes) get a different default status
+		if isNonSynced {
 			syncStatus = &status.SyncStatus{
 				Phase:   status.SyncPhaseComplete,
-				Message: "Managed registry (data managed via API)",
+				Message: fmt.Sprintf("Non-synced registry (type: %s)", regType),
 			}
 		} else {
 			syncStatus = &status.SyncStatus{
@@ -135,10 +136,10 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 	if syncStatus.Phase == "" && syncStatus.LastSyncTime == nil {
 		logger.Infof("Registry '%s': No previous sync status found, initializing with defaults", registryName)
 
-		// Managed registries get a different default status
-		if isManaged {
+		// Non-synced registries (managed and kubernetes) get a different default status
+		if isNonSynced {
 			syncStatus.Phase = status.SyncPhaseComplete
-			syncStatus.Message = "Managed registry (data managed via API)"
+			syncStatus.Message = fmt.Sprintf("Non-synced registry (type: %s)", regType)
 		} else {
 			syncStatus.Phase = status.SyncPhaseFailed
 			syncStatus.Message = "No previous sync status found"
@@ -148,8 +149,8 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 		if err := f.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
 			logger.Warnf("Registry '%s': Failed to persist default sync status: %v", registryName, err)
 		}
-	} else if syncStatus.Phase == status.SyncPhaseSyncing && !isManaged {
-		// If status was left in Syncing state (only for non-managed registries),
+	} else if syncStatus.Phase == status.SyncPhaseSyncing && !isNonSynced {
+		// If status was left in Syncing state (only for synced registries),
 		// it means the previous run was interrupted. Reset it to Failed so the sync will be triggered
 		logger.Warnf("Registry '%s': Previous sync was interrupted (status=Syncing), resetting to Failed", registryName)
 		syncStatus.Phase = status.SyncPhaseFailed
@@ -161,8 +162,8 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 	}
 
 	// Log the loaded/initialized status
-	if isManaged {
-		logger.Infof("Registry '%s': Managed registry - data managed via API", registryName)
+	if isNonSynced {
+		logger.Infof("Registry '%s': Non-synced registry (type: %s)", registryName, regType)
 	} else if syncStatus.LastSyncTime != nil {
 		logger.Infof("Registry '%s': Loaded sync status: phase=%s, last sync at %s, %d servers",
 			registryName, syncStatus.Phase, syncStatus.LastSyncTime.Format(time.RFC3339), syncStatus.ServerCount)
