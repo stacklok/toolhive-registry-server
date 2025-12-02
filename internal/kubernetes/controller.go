@@ -6,6 +6,8 @@ import (
 	"time"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -13,12 +15,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 )
 
 // MCPServerReconciler reconciles MCPServer objects
@@ -27,23 +28,38 @@ type MCPServerReconciler struct {
 	scheme       *runtime.Scheme
 	requeueAfter time.Duration
 	syncWriter   writer.SyncWriter
+	registryName string
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
 	// Fetch the MCPServer instance
 	registry, err := getMCPServerList(ctx, r.client, req.Namespace)
 	if err != nil {
+		logger.Error(err, "failed to get MCPServer list")
 		return ctrl.Result{}, err
 	}
 
-	if err := r.syncWriter.Store(ctx, req.Namespace, registry); err != nil {
+	logger.Info("MCP servers list fetched successfully",
+		"registry", r.registryName,
+		"count", len(registry.Data.Servers),
+	)
+
+	if err := r.syncWriter.Store(ctx, r.registryName, registry); err != nil {
+		logger.Error(err, "failed to store MCPServer list")
 		return ctrl.Result{
 			Requeue:      true,
 			RequeueAfter: r.requeueAfter,
 		}, err
 	}
+
+	logger.Info("MCP servers stored successfully",
+		"registry", r.registryName,
+		"count", len(registry.Data.Servers),
+	)
 
 	return ctrl.Result{}, nil
 }
@@ -104,11 +120,11 @@ func makeDeleteObjectPredicate[T client.Object](
 	}
 }
 
-// enqueueMCPServerRequests returns an event handler that enqueues a reconcile request
+// enqueueMCPServerRequests is an event handler that enqueues a reconcile request
 // for the namespace where the watched object resides. This allows VirtualMCPServer and
 // MCPRemoteProxy changes to trigger the same reconciliation logic as MCPServer changes.
-func enqueueMCPServerRequests() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
+var enqueueMCPServerRequests = handler.EnqueueRequestsFromMapFunc(
+	func(_ context.Context, obj client.Object) []reconcile.Request {
 		return []reconcile.Request{
 			{
 				NamespacedName: types.NamespacedName{
@@ -117,8 +133,8 @@ func enqueueMCPServerRequests() handler.EventHandler {
 				},
 			},
 		}
-	})
-}
+	},
+)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -134,8 +150,8 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.MCPServer{}, builder.WithPredicates(annotationPredicate)).
-		Watches(&mcpv1alpha1.VirtualMCPServer{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
-		Watches(&mcpv1alpha1.MCPRemoteProxy{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
+		Watches(&mcpv1alpha1.VirtualMCPServer{}, enqueueMCPServerRequests, builder.WithPredicates(annotationPredicate)).
+		Watches(&mcpv1alpha1.MCPRemoteProxy{}, enqueueMCPServerRequests, builder.WithPredicates(annotationPredicate)).
 		Complete(r)
 }
 
@@ -159,11 +175,26 @@ func getMCPServerList(ctx context.Context, c client.Client, namespace string) (*
 	}
 
 	var serverJSONs []upstreamv0.ServerJSON
-	for i := range mcpServerList.Items {
-		mcpServer := &mcpServerList.Items[i]
-		serverJSON, err := extractServer(mcpServer)
+	for _, mcpServer := range mcpServerList.Items {
+		serverJSON, err := extractServer(&mcpServer)
 		if err != nil {
-			return nil, fmt.Errorf("failed to extract ServerJSON: %w", err)
+			return nil, fmt.Errorf("failed to extract ServerJSON for MCPServer %s: %w", mcpServer.Name, err)
+		}
+		serverJSONs = append(serverJSONs, *serverJSON)
+	}
+
+	for _, vmcpServer := range vmcpServerList.Items {
+		serverJSON, err := extractVirtualMCPServer(&vmcpServer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to extract ServerJSON for VirtualMCPServer %s: %w", vmcpServer.Name, err)
+		}
+		serverJSONs = append(serverJSONs, *serverJSON)
+	}
+
+	for _, mcpRemoteProxy := range mcpRemoteProxyList.Items {
+		serverJSON, err := extractMCPRemoteProxy(&mcpRemoteProxy)
+		if err != nil {
+			return nil, fmt.Errorf("failed to extract ServerJSON for MCPRemoteProxy %s: %w", mcpRemoteProxy.Name, err)
 		}
 		serverJSONs = append(serverJSONs, *serverJSON)
 	}

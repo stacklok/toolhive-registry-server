@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
@@ -160,6 +162,84 @@ func TestWithAddress(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, cfg.address)
+		})
+	}
+}
+
+func TestWithRegistryName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		registryName string
+		want         string
+		wantErr      bool
+	}{
+		{
+			name:         "valid registry name",
+			registryName: "my-registry",
+			want:         "my-registry",
+			wantErr:      false,
+		},
+		{
+			name:         "valid registry name with underscores",
+			registryName: "my_registry_v1",
+			want:         "my_registry_v1",
+			wantErr:      false,
+		},
+		{
+			name:         "valid registry name with numbers",
+			registryName: "registry-123",
+			want:         "registry-123",
+			wantErr:      false,
+		},
+		{
+			name:         "valid long registry name",
+			registryName: "my-very-long-registry-name-with-many-segments",
+			want:         "my-very-long-registry-name-with-many-segments",
+			wantErr:      false,
+		},
+		{
+			name:         "invalid empty registry name",
+			registryName: "",
+			want:         "",
+			wantErr:      true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opt := kubernetes.WithRegistryName(tt.registryName)
+
+			// Get the Option function type to extract the parameter type
+			optionFuncType := reflect.TypeOf(opt)
+			// Option is func(*mcpServerReconcilerOptions) error
+			// Get the element type of the first parameter
+			paramType := optionFuncType.In(0).Elem()
+
+			// Create a new instance of the struct
+			optionsValue := reflect.New(paramType)
+
+			// Call the option function
+			results := reflect.ValueOf(opt).Call([]reflect.Value{optionsValue})
+			errVal := results[0]
+			var err error
+			if !errVal.IsNil() {
+				err = errVal.Interface().(error)
+			}
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+
+			// Use reflection to get the registryName field
+			registryNameField := optionsValue.Elem().FieldByName("registryName")
+			require.True(t, registryNameField.IsValid(), "registryName field should exist")
+			got := registryNameField.String()
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

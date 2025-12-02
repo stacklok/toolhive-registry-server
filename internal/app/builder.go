@@ -307,20 +307,19 @@ func buildSyncComponents(
 			syncWriter,
 		)
 
-		if b.config.Registries != nil {
-			for _, reg := range b.config.Registries {
-				if reg.GetType() == config.SourceTypeKubernetes {
-					_, err := kubernetes.NewMCPServerReconciler(
-						ctx,
-						kubernetes.WithSyncWriter(syncWriter),
-						// TODO make it configurable
-						kubernetes.WithNamespaces("toolhive-system"),
-					)
-					if err != nil {
-						return nil, fmt.Errorf("failed to create kubernetes reconciler: %w", err)
-					}
-					break
+		for _, reg := range b.config.Registries {
+			if reg.GetType() == config.SourceTypeKubernetes {
+				_, err := kubernetes.NewMCPServerReconciler(
+					ctx,
+					kubernetes.WithSyncWriter(syncWriter),
+					kubernetes.WithRegistryName(reg.Name),
+					// TODO make it configurable
+					kubernetes.WithNamespaces("toolhive-system"),
+				)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create kubernetes reconciler: %w", err)
 				}
+				break
 			}
 		}
 	}

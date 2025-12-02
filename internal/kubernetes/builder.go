@@ -5,20 +5,20 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
+	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 )
 
 const (
-	defaultRegistryExportAnnotation      = "toolhive.stacklok.dev/registry-export"
-	defaultRegistryURLAnnotation         = "toolhive.stacklok.dev/registry-url"
-	defaultRegistryDescriptionAnnotation = "toolhive.stacklok.dev/registry-description"
-	defaultRegistryTierAnnotation        = "toolhive.stacklok.dev/registry-tier"
+	defaultRegistryExportAnnotation      = "toolhive.stacklok.dev/registry/export"
+	defaultRegistryURLAnnotation         = "toolhive.stacklok.dev/registry/server-url"
+	defaultRegistryDescriptionAnnotation = "toolhive.stacklok.dev/registry/server-description"
 
 	defaultRequeueAfter = 10 * time.Second
 
@@ -29,10 +29,13 @@ type mcpServerReconcilerOptions struct {
 	namespaces   []string
 	requeueAfter time.Duration
 	syncWriter   writer.SyncWriter
+	registryName string
 }
 
+// Option is a function that sets an option for the MCPServerReconciler.
 type Option func(*mcpServerReconcilerOptions) error
 
+// WithNamespaces sets the namespaces to watch.
 func WithNamespaces(namespaces ...string) Option {
 	return func(o *mcpServerReconcilerOptions) error {
 		if o.namespaces == nil {
@@ -43,6 +46,7 @@ func WithNamespaces(namespaces ...string) Option {
 	}
 }
 
+// WithRequeueAfter sets the requeue after duration.
 func WithRequeueAfter(requeueAfter time.Duration) Option {
 	return func(o *mcpServerReconcilerOptions) error {
 		if requeueAfter <= 0 {
@@ -53,6 +57,7 @@ func WithRequeueAfter(requeueAfter time.Duration) Option {
 	}
 }
 
+// WithSyncWriter sets the sync writer.
 func WithSyncWriter(sw writer.SyncWriter) Option {
 	return func(o *mcpServerReconcilerOptions) error {
 		if sw == nil {
@@ -63,12 +68,24 @@ func WithSyncWriter(sw writer.SyncWriter) Option {
 	}
 }
 
+// WithRegistryName sets the registry name. This is used to identify the
+// registry in the sync writer.
+func WithRegistryName(name string) Option {
+	return func(o *mcpServerReconcilerOptions) error {
+		if name == "" {
+			return fmt.Errorf("registry name is required")
+		}
+		o.registryName = name
+		return nil
+	}
+}
+
 // NewMCPServerReconciler creates a new MCPServerReconciler.
 func NewMCPServerReconciler(
 	ctx context.Context,
 	opts ...Option,
 ) (ctrl.Manager, error) {
-	log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	o := &mcpServerReconcilerOptions{
 		namespaces:   []string{},
@@ -83,6 +100,9 @@ func NewMCPServerReconciler(
 
 	if o.syncWriter == nil {
 		return nil, fmt.Errorf("sync writer is required")
+	}
+	if o.registryName == "" {
+		return nil, fmt.Errorf("registry name is required")
 	}
 
 	defaultNamespaces := map[string]cache.Config{}
@@ -117,6 +137,7 @@ func NewMCPServerReconciler(
 	controller := &MCPServerReconciler{
 		requeueAfter: o.requeueAfter,
 		syncWriter:   o.syncWriter,
+		registryName: o.registryName,
 	}
 
 	if err := controller.SetupWithManager(mgr); err != nil {
@@ -125,7 +146,7 @@ func NewMCPServerReconciler(
 
 	go func() {
 		if err := mgr.Start(ctx); err != nil {
-			log.Error(err, "failed to start manager")
+			logger.Error(err, "failed to start manager")
 		}
 	}()
 
