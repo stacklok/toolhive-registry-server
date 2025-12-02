@@ -56,14 +56,16 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./examples/config-docker.yaml:/config.yaml:ro
-      - ./examples/upstream-registry.json:/registry-sample.json:ro
+      # Mount entire examples directory - all configs and registry files available
+      - ./examples:/examples:ro
       - registry_data:/app/data
       # Mount pgpass file for database credentials
       # The file should contain entries for both db_app and db_migrator users
       # Mounted to user 1001's home directory
       - ./docker/pgpass:/home/appuser/.pgpass:ro
-    command: ["serve", "--config", "/config.yaml", "--address", ":8080"]
+    # Use CONFIG_FILE env var to switch between configs (defaults to config-docker.yaml)
+    # Examples: CONFIG_FILE=config-docker-dual.yaml docker-compose up
+    command: ["serve", "--config", "/examples/${CONFIG_FILE:-config-docker.yaml}", "--address", ":8080"]
     environment:
       - LOG_LEVEL=debug
       # Point to the pgpass file for PostgreSQL authentication

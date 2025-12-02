@@ -1,0 +1,49 @@
+# Dual-registry configuration for Docker Compose
+#
+# This configuration demonstrates merging data from multiple registry sources.
+# The API server will combine servers from both registries and serve them
+# through the unified MCP Registry API.
+#
+# Usage:
+#   CONFIG_FILE=config-docker-dual.yaml docker-compose up
+#
+# This example shows:
+# - Loading from two different file formats (upstream and toolhive)
+# - Different sync intervals for each registry
+# - How the server merges data from multiple sources
+
+registryName: dual-registry-demo
+
+# Two file-based registries with different formats
+registries:
+  # Registry 1: Upstream format (MCP standard)
+  - name: upstream-servers
+    format: upstream
+    file:
+      path: /examples/upstream-registry.json  # All examples files are mounted
+    syncPolicy:
+      interval: "30s"  # Quick sync for testing
+
+  # Registry 2: ToolHive format (legacy)
+  - name: toolhive-servers
+    format: toolhive
+    file:
+      path: /examples/toolhive-registry.json  # All examples files are mounted
+    syncPolicy:
+      interval: "45s"  # Different interval
+
+# Authentication configuration
+auth:
+  mode: anonymous
+
+# PostgreSQL database configuration
+database:
+  host: postgres
+  port: 5432
+  user: db_app
+  migrationUser: db_migrator
+  database: registry
+  sslMode: disable
+  maxOpenConns: 10
+  maxIdleConns: 2
+  connMaxLifetime: "30m"
