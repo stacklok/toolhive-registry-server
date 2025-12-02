@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	defaultRegistryExportAnnotation      = "toolhive.stacklok.dev/registry/export"
-	defaultRegistryURLAnnotation         = "toolhive.stacklok.dev/registry/server-url"
-	defaultRegistryDescriptionAnnotation = "toolhive.stacklok.dev/registry/server-description"
+	defaultRegistryExportAnnotation      = "toolhive.stacklok.dev/registry-export"
+	defaultRegistryURLAnnotation         = "toolhive.stacklok.dev/registry-url"
+	defaultRegistryDescriptionAnnotation = "toolhive.stacklok.dev/registry-description"
 
 	defaultRequeueAfter = 10 * time.Second
 

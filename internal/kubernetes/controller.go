@@ -123,18 +123,20 @@ func makeDeleteObjectPredicate[T client.Object](
 // enqueueMCPServerRequests is an event handler that enqueues a reconcile request
 // for the namespace where the watched object resides. This allows VirtualMCPServer and
 // MCPRemoteProxy changes to trigger the same reconciliation logic as MCPServer changes.
-var enqueueMCPServerRequests = handler.EnqueueRequestsFromMapFunc(
-	func(_ context.Context, obj client.Object) []reconcile.Request {
-		return []reconcile.Request{
-			{
-				NamespacedName: types.NamespacedName{
-					Name:      obj.GetName(),
-					Namespace: obj.GetNamespace(),
+func enqueueMCPServerRequests() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(
+		func(_ context.Context, obj client.Object) []reconcile.Request {
+			return []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      obj.GetName(),
+						Namespace: obj.GetNamespace(),
+					},
 				},
-			},
-		}
-	},
-)
+			}
+		},
+	)
+}
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -150,8 +152,8 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.MCPServer{}, builder.WithPredicates(annotationPredicate)).
-		Watches(&mcpv1alpha1.VirtualMCPServer{}, enqueueMCPServerRequests, builder.WithPredicates(annotationPredicate)).
-		Watches(&mcpv1alpha1.MCPRemoteProxy{}, enqueueMCPServerRequests, builder.WithPredicates(annotationPredicate)).
+		Watches(&mcpv1alpha1.VirtualMCPServer{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
+		Watches(&mcpv1alpha1.MCPRemoteProxy{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
 		Complete(r)
 }
 
