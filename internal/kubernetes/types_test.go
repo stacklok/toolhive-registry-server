@@ -330,8 +330,7 @@ func TestExtractPackages(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result, err := extractPackages(tt.mcpServer)
-			require.NoError(t, err)
+			result := extractPackages(tt.mcpServer)
 
 			require.Len(t, result, tt.wantCount)
 			if tt.wantCount > 0 {

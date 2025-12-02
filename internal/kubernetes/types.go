@@ -23,10 +23,7 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 	}
 
 	// Extract packages from MCPServer spec (using the container image)
-	packages, err := extractPackages(mcpServer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract packages: %w", err)
-	}
+	packages := extractPackages(mcpServer)
 	serverJSON.Packages = packages
 
 	annotations := mcpServer.GetAnnotations()
@@ -160,7 +157,7 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 
 // extractPackages extracts packages from MCPServer spec
 // MCPServer uses container images, so we create an OCI package from the image
-func extractPackages(mcpServer *mcpv1alpha1.MCPServer) ([]model.Package, error) {
+func extractPackages(mcpServer *mcpv1alpha1.MCPServer) []model.Package {
 	var packages []model.Package
 
 	transportType := mcpServer.Spec.Transport
@@ -176,10 +173,7 @@ func extractPackages(mcpServer *mcpv1alpha1.MCPServer) ([]model.Package, error) 
 		}
 	}
 
-	version, err := parseImageTagOrDigest(mcpServer.Spec.Image)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse image tag or digest: %w", err)
-	}
+	version := parseImageTagOrDigest(mcpServer.Spec.Image)
 	packageModel := model.Package{
 		RegistryType: "oci",
 		Identifier:   mcpServer.Spec.Image,
@@ -190,13 +184,13 @@ func extractPackages(mcpServer *mcpv1alpha1.MCPServer) ([]model.Package, error) 
 	}
 	packages = append(packages, packageModel)
 
-	return packages, nil
+	return packages
 }
 
 // parseImageTagOrDigest is a rudimentary parser that parses the tag or digest
 // from an image string. It returns the tag or digest, or an error if the image
 // is invalid.
-func parseImageTagOrDigest(image string) (string, error) {
+func parseImageTagOrDigest(image string) string {
 	var potentialTag string
 	var potentialDigest string
 
@@ -211,11 +205,11 @@ func parseImageTagOrDigest(image string) (string, error) {
 	}
 
 	if potentialDigest != "" {
-		return potentialDigest, nil
+		return potentialDigest
 	}
 	if potentialTag != "" {
-		return potentialTag, nil
+		return potentialTag
 	}
 
-	return "latest", nil
+	return "latest"
 }
