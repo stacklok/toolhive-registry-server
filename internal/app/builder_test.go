@@ -621,7 +621,7 @@ func TestBuildSyncComponents(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			coord, err := buildSyncComponents(tt.config, nil)
+			coord, err := buildSyncComponents(context.Background(), tt.config, nil)
 
 			if tt.wantErr {
 				require.Error(t, err)
