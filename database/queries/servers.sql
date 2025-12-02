@@ -21,6 +21,11 @@ SELECT r.reg_type as registry_type,
  WHERE (sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next)::timestamp with time zone)
    AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR s.created_at < sqlc.narg(prev)::timestamp with time zone)
    AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
+   AND (sqlc.narg(search)::text IS NULL OR (
+       LOWER(s.name) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
+       OR LOWER(s.title) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
+       OR LOWER(s.description) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
+   ))
  ORDER BY
  -- next page sorting
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN r.reg_type END ASC,
