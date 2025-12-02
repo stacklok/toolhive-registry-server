@@ -32,6 +32,10 @@ registries:
     syncPolicy:
       interval: "45s"  # Different interval
 
+# Authentication configuration
+auth:
+  mode: anonymous
+
 # PostgreSQL database configuration
 database:
   host: postgres
