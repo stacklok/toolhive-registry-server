@@ -684,6 +684,11 @@ SELECT r.reg_type as registry_type,
  WHERE ($1::timestamp with time zone IS NULL OR s.created_at > $1::timestamp with time zone)
    AND ($2::timestamp with time zone IS NULL OR s.created_at < $2::timestamp with time zone)
    AND ($3::text IS NULL OR r.name = $3::text)
+   AND ($4::text IS NULL OR (
+       LOWER(s.name) LIKE LOWER('%' || $4::text || '%')
+       OR LOWER(s.title) LIKE LOWER('%' || $4::text || '%')
+       OR LOWER(s.description) LIKE LOWER('%' || $4::text || '%')
+   ))
  ORDER BY
  -- next page sorting
  CASE WHEN $1::timestamp with time zone IS NULL THEN r.reg_type END ASC,
@@ -695,13 +700,14 @@ SELECT r.reg_type as registry_type,
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.name END DESC,
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.created_at END DESC,
  CASE WHEN $2::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
- LIMIT $4::bigint
+ LIMIT $5::bigint
 `
 
 type ListServersParams struct {
 	Next         *time.Time `json:"next"`
 	Prev         *time.Time `json:"prev"`
 	RegistryName *string    `json:"registry_name"`
+	Search       *string    `json:"search"`
 	Size         int64      `json:"size"`
 }
 
@@ -729,6 +735,7 @@ func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]Lis
 		arg.Next,
 		arg.Prev,
 		arg.RegistryName,
+		arg.Search,
 		arg.Size,
 	)
 	if err != nil {

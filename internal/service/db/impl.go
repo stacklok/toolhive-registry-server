@@ -21,6 +21,13 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
+const (
+	// DefaultPageSize is the default number of items per page
+	DefaultPageSize = 50
+	// MaxPageSize is the maximum allowed items per page
+	MaxPageSize = 1000
+)
+
 var (
 	// ErrBug is returned when a server is not found
 	ErrBug = errors.New("bug")
@@ -91,7 +98,7 @@ func (s *dbService) ListServers(
 	opts ...service.Option[service.ListServersOptions],
 ) ([]*upstreamv0.ServerJSON, error) {
 	options := &service.ListServersOptions{
-		Limit: 50, // default limit
+		Limit: DefaultPageSize, // default limit
 	}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
@@ -99,11 +106,19 @@ func (s *dbService) ListServers(
 		}
 	}
 
+	// Cap the limit at MaxPageSize to prevent potential DoS
+	if options.Limit > MaxPageSize {
+		options.Limit = MaxPageSize
+	}
+
 	params := sqlc.ListServersParams{
 		Size: int64(options.Limit),
 	}
 	if options.RegistryName != nil {
 		params.RegistryName = options.RegistryName
+	}
+	if options.Search != "" {
+		params.Search = &options.Search
 	}
 
 	if options.Cursor != "" {
@@ -143,7 +158,9 @@ func (s *dbService) ListServerVersions(
 	ctx context.Context,
 	opts ...service.Option[service.ListServerVersionsOptions],
 ) ([]*upstreamv0.ServerJSON, error) {
-	options := &service.ListServerVersionsOptions{}
+	options := &service.ListServerVersionsOptions{
+		Limit: DefaultPageSize, // default limit
+	}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
 			return nil, err
@@ -152,6 +169,11 @@ func (s *dbService) ListServerVersions(
 
 	if options.Next != nil && options.Prev != nil {
 		return nil, fmt.Errorf("next and prev cannot be set at the same time")
+	}
+
+	// Cap the limit at MaxPageSize to prevent potential DoS
+	if options.Limit > MaxPageSize {
+		options.Limit = MaxPageSize
 	}
 
 	params := sqlc.ListServerVersionsParams{
@@ -674,7 +696,7 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 
 	// List all registries (no pagination for now)
 	params := sqlc.ListRegistriesParams{
-		Size: 1000, // Maximum number of registries to return
+		Size: MaxPageSize, // Maximum number of registries to return
 	}
 
 	registries, err := querier.ListRegistries(ctx, params)

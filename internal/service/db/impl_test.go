@@ -240,6 +240,130 @@ func TestListServers(t *testing.T) {
 				require.Len(t, servers, 0)
 			},
 		},
+		{
+			name: "list servers with search by name",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithSearch("server-1"),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
+				require.Len(t, servers, 3) // Should find all 3 versions of test-server-1
+				for _, server := range servers {
+					require.Equal(t, "test-server-1", server.Name)
+				}
+			},
+		},
+		{
+			name: "list servers with search by title",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithSearch("Test Server 2"),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
+				require.Len(t, servers, 1) // Should find only test-server-2
+				require.Equal(t, "test-server-2", servers[0].Name)
+			},
+		},
+		{
+			name: "list servers with search by description",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithSearch("server 2 description"),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
+				require.Len(t, servers, 1) // Should find only test-server-2
+				require.Equal(t, "test-server-2", servers[0].Name)
+			},
+		},
+		{
+			name: "list servers with case-insensitive search",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithSearch("SERVER-1"), // Uppercase
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
+				require.Len(t, servers, 3) // Should still find test-server-1 versions
+				for _, server := range servers {
+					require.Equal(t, "test-server-1", server.Name)
+				}
+			},
+		},
+		{
+			name: "list servers with partial search match",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithSearch("server"), // Partial match
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
+				require.Len(t, servers, 4) // Should find all servers (both test-server-1 and test-server-2)
+			},
+		},
+		{
+			name: "list servers with search no matches",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithSearch("nonexistent"),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
+				require.Len(t, servers, 0) // Should find no servers
+			},
+		},
+		{
+			name: "list servers with search and registry filter",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithSearch("server-1"),
+				service.WithRegistryName[service.ListServersOptions]("test-registry"),
+				service.WithCursor(createCursor(-1 * time.Hour)),
+				service.WithLimit[service.ListServersOptions](10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
+				require.Len(t, servers, 3) // Should find test-server-1 versions in test-registry
+				for _, server := range servers {
+					require.Equal(t, "test-server-1", server.Name)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
