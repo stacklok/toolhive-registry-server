@@ -217,5 +217,5 @@ func parseImageTagOrDigest(image string) (string, error) {
 		return potentialTag, nil
 	}
 
-	return "", fmt.Errorf("invalid image: %s", image)
+	return "latest", nil
 }
