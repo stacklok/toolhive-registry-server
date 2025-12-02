@@ -25,6 +25,17 @@ const (
 	leaderElectionID = "toolhive-registry-server-leader-election"
 )
 
+// hasRequiredRegistryAnnotations checks if the given annotations map contains
+// all required annotations for registry export (description and URL).
+func hasRequiredRegistryAnnotations(annotations map[string]string) bool {
+	if annotations == nil {
+		return false
+	}
+	_, hasDesc := annotations[defaultRegistryDescriptionAnnotation]
+	_, hasURL := annotations[defaultRegistryURLAnnotation]
+	return hasDesc && hasURL
+}
+
 type mcpServerReconcilerOptions struct {
 	namespaces   []string
 	requeueAfter time.Duration
