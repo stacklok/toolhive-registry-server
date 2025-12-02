@@ -18,6 +18,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
 	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory"
@@ -122,7 +123,7 @@ func NewRegistryApp(
 	}
 
 	// Build sync components
-	syncCoordinator, err := buildSyncComponents(cfg, pool)
+	syncCoordinator, err := buildSyncComponents(ctx, cfg, pool)
 	if err != nil {
 		poolCleanup()
 		return nil, fmt.Errorf("failed to build sync components: %w", err)
@@ -268,6 +269,7 @@ func WithRegistryProvider(provider service.RegistryDataProvider) RegistryAppOpti
 
 // buildSyncComponents builds sync manager, coordinator, and related components
 func buildSyncComponents(
+	ctx context.Context,
 	b *registryAppConfig,
 	pool *pgxpool.Pool,
 ) (coordinator.Coordinator, error) {
@@ -304,6 +306,22 @@ func buildSyncComponents(
 			b.registryHandlerFactory,
 			syncWriter,
 		)
+
+		for _, reg := range b.config.Registries {
+			if reg.GetType() == config.SourceTypeKubernetes {
+				_, err := kubernetes.NewMCPServerReconciler(
+					ctx,
+					kubernetes.WithSyncWriter(syncWriter),
+					kubernetes.WithRegistryName(reg.Name),
+					// TODO make it configurable
+					kubernetes.WithNamespaces("toolhive-system"),
+				)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create kubernetes reconciler: %w", err)
+				}
+				break
+			}
+		}
 	}
 
 	// Create state service using factory
