@@ -279,3 +279,72 @@ func TestWithRegistryName(t *testing.T) {
 		})
 	}
 }
+
+func TestHasRequiredRegistryAnnotations(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		want        bool
+	}{
+		{
+			name: "has both required annotations",
+			annotations: map[string]string{
+				defaultRegistryDescriptionAnnotation: "A test server",
+				defaultRegistryURLAnnotation:         "https://example.com/mcp",
+			},
+			want: true,
+		},
+		{
+			name: "has both required annotations with extra annotations",
+			annotations: map[string]string{
+				defaultRegistryDescriptionAnnotation: "A test server",
+				defaultRegistryURLAnnotation:         "https://example.com/mcp",
+				"some-other-annotation":              "value",
+			},
+			want: true,
+		},
+		{
+			name: "missing description annotation",
+			annotations: map[string]string{
+				defaultRegistryURLAnnotation: "https://example.com/mcp",
+			},
+			want: false,
+		},
+		{
+			name: "missing URL annotation",
+			annotations: map[string]string{
+				defaultRegistryDescriptionAnnotation: "A test server",
+			},
+			want: false,
+		},
+		{
+			name:        "missing both annotations",
+			annotations: map[string]string{},
+			want:        false,
+		},
+		{
+			name:        "nil annotations",
+			annotations: nil,
+			want:        false,
+		},
+		{
+			name: "empty values still count as present",
+			annotations: map[string]string{
+				defaultRegistryDescriptionAnnotation: "",
+				defaultRegistryURLAnnotation:         "",
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := hasRequiredRegistryAnnotations(tt.annotations)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

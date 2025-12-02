@@ -178,6 +178,9 @@ func getMCPServerList(ctx context.Context, c client.Client, namespace string) (*
 
 	var serverJSONs []upstreamv0.ServerJSON
 	for _, mcpServer := range mcpServerList.Items {
+		if !hasRequiredRegistryAnnotations(mcpServer.GetAnnotations()) {
+			continue
+		}
 		serverJSON, err := extractServer(&mcpServer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to extract ServerJSON for MCPServer %s: %w", mcpServer.Name, err)
@@ -186,6 +189,9 @@ func getMCPServerList(ctx context.Context, c client.Client, namespace string) (*
 	}
 
 	for _, vmcpServer := range vmcpServerList.Items {
+		if !hasRequiredRegistryAnnotations(vmcpServer.GetAnnotations()) {
+			continue
+		}
 		serverJSON, err := extractVirtualMCPServer(&vmcpServer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to extract ServerJSON for VirtualMCPServer %s: %w", vmcpServer.Name, err)
@@ -194,6 +200,9 @@ func getMCPServerList(ctx context.Context, c client.Client, namespace string) (*
 	}
 
 	for _, mcpRemoteProxy := range mcpRemoteProxyList.Items {
+		if !hasRequiredRegistryAnnotations(mcpRemoteProxy.GetAnnotations()) {
+			continue
+		}
 		serverJSON, err := extractMCPRemoteProxy(&mcpRemoteProxy)
 		if err != nil {
 			return nil, fmt.Errorf("failed to extract ServerJSON for MCPRemoteProxy %s: %w", mcpRemoteProxy.Name, err)
