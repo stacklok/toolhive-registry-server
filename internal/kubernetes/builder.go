@@ -11,6 +11,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 const (
@@ -101,6 +102,10 @@ func NewMCPServerReconciler(
 		Cache: cache.Options{
 			// if nil, defaults to all namespaces
 			DefaultNamespaces: defaultNamespaces,
+		},
+		// disable metrics server
+		Metrics: metricsserver.Options{
+			BindAddress: "0",
 		},
 	}
 

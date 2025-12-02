@@ -7,11 +7,14 @@ import (
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
@@ -101,6 +104,22 @@ func makeDeleteObjectPredicate[T client.Object](
 	}
 }
 
+// enqueueMCPServerRequests returns an event handler that enqueues a reconcile request
+// for the namespace where the watched object resides. This allows VirtualMCPServer and
+// MCPRemoteProxy changes to trigger the same reconciliation logic as MCPServer changes.
+func enqueueMCPServerRequests() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
+		return []reconcile.Request{
+			{
+				NamespacedName: types.NamespacedName{
+					Name:      obj.GetName(),
+					Namespace: obj.GetNamespace(),
+				},
+			},
+		}
+	})
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Predicate to filter only registry export ConfigMaps
@@ -115,8 +134,8 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.MCPServer{}, builder.WithPredicates(annotationPredicate)).
-		For(&mcpv1alpha1.VirtualMCPServer{}, builder.WithPredicates(annotationPredicate)).
-		For(&mcpv1alpha1.MCPRemoteProxy{}, builder.WithPredicates(annotationPredicate)).
+		Watches(&mcpv1alpha1.VirtualMCPServer{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
+		Watches(&mcpv1alpha1.MCPRemoteProxy{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
 		Complete(r)
 }
 
