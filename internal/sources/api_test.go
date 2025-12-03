@@ -59,13 +59,31 @@ info:
   version: 1.0.0
 openapi: 3.1.0
 `))
+					case "/v0.1/servers":
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte(`{
+							"servers": [
+								{
+									"server": {
+										"name": "test-server",
+										"description": "A test MCP server"
+									},
+									"_meta": {}
+								}
+							],
+							"metadata": {
+								"nextCursor": "",
+								"count": 1
+							}
+						}`))
 					default:
 						w.WriteHeader(http.StatusNotFound)
 					}
 				}))
 			})
 
-			It("should detect upstream format", func() {
+			It("should detect upstream format and fetch successfully", func() {
 				registryConfig := &config.RegistryConfig{
 					Name:   "test-registry",
 					Format: config.SourceFormatUpstream,
@@ -73,10 +91,12 @@ openapi: 3.1.0
 						Endpoint: mockServer.URL,
 					},
 				}
-				// Should detect as upstream but fail fetch (Phase 2 not implemented)
-				_, err := handler.FetchRegistry(ctx, registryConfig)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("upstream MCP Registry API support not yet implemented"))
+				result, err := handler.FetchRegistry(ctx, registryConfig)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).NotTo(BeNil())
+				Expect(result.ServerCount).To(Equal(1))
+				Expect(result.Format).To(Equal(config.SourceFormatUpstream))
+				Expect(result.Registry.Data.Servers[0].Name).To(Equal("test-server"))
 			})
 		})
 

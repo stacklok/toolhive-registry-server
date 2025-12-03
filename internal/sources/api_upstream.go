@@ -1,14 +1,39 @@
 package sources
 
+// TODO: Future optimization - Incremental sync support
+// Currently this implementation fetches all servers on every sync (full replacement).
+// Future enhancement should:
+// - Add updatedSince parameter to FetchRegistry (use /v0.1/servers?updated_since={timestamp})
+// - Modify storage layer to support UPSERT/merge instead of full replacement
+// - Optimize CurrentHash to avoid full fetch (use ETag/Last-Modified headers)
+// This would significantly reduce bandwidth and processing for large registries.
+// See: https://github.com/stacklok/toolhive-registry-server/issues/XXX (create issue)
+
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
+	"time"
 
+	v0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 	"gopkg.in/yaml.v3"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
+)
+
+const (
+	// maxPaginationPages is the maximum number of pages to fetch to prevent infinite loops
+	maxPaginationPages = 1000
+
+	// maxServers is the maximum number of servers to fetch to prevent memory exhaustion
+	maxServers = 100000
 )
 
 // upstreamAPIHandler handles registry data from upstream MCP Registry API endpoints
@@ -73,20 +98,140 @@ func (h *upstreamAPIHandler) Validate(ctx context.Context, endpoint string) erro
 }
 
 // FetchRegistry retrieves registry data from the upstream MCP Registry API endpoint
-// Phase 2: Not yet implemented - will support pagination and format conversion
-func (*upstreamAPIHandler) FetchRegistry(_ context.Context, _ *config.RegistryConfig) (*FetchResult, error) {
-	return nil, fmt.Errorf("upstream MCP Registry API support not yet implemented (Phase 2)")
+// It fetches all servers via pagination and converts them to ToolHive's UpstreamRegistry format
+func (h *upstreamAPIHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
+	logger := log.FromContext(ctx)
+	baseURL := getBaseURL(regCfg)
+
+	// Fetch all servers via pagination
+	servers, err := h.fetchAllServers(ctx, baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch servers: %w", err)
+	}
+
+	logger.Info("Fetched all servers from upstream API", "count", len(servers))
+
+	// Convert to UpstreamRegistry format
+	upstreamReg := h.buildUpstreamRegistry(servers)
+
+	// Calculate hash
+	hash, err := h.calculateHash(upstreamReg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate hash: %w", err)
+	}
+
+	// Return as FetchResult
+	return NewFetchResult(upstreamReg, hash, config.SourceFormatUpstream), nil
 }
 
 // CurrentHash returns the current hash of the API response
-// Phase 2: Not yet implemented
-func (*upstreamAPIHandler) CurrentHash(_ context.Context, _ *config.RegistryConfig) (string, error) {
-	return "", fmt.Errorf("upstream MCP Registry API support not yet implemented (Phase 2)")
+// TODO: Optimize this - could use HEAD request, ETag header, or last-modified header
+// For now, perform full fetch to get hash (simple but consistent with git/file handlers)
+func (h *upstreamAPIHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
+	result, err := h.FetchRegistry(ctx, regCfg)
+	if err != nil {
+		return "", err
+	}
+	return result.Hash, nil
 }
 
-// TODO Phase 2 implementation:
-// - Implement pagination support with cursor handling
-// - Fetch /v0/servers with limit/cursor parameters
-// - Convert upstream ServerDetail format to ToolHive ImageMetadata
-// - Handle version-specific endpoints /v0/servers/{name}/versions
-// - Support authentication (Bearer tokens, API keys)
+// fetchAllServers performs paginated fetching and returns all ServerJSON objects
+func (h *upstreamAPIHandler) fetchAllServers(ctx context.Context, baseURL string) ([]v0.ServerJSON, error) {
+	logger := log.FromContext(ctx)
+	allServers := []v0.ServerJSON{}
+	cursor := ""
+	pageCount := 0
+
+	for {
+		pageCount++
+
+		// Security: Prevent infinite pagination loops
+		if pageCount > maxPaginationPages {
+			return nil, fmt.Errorf("pagination exceeded maximum pages (%d), possible infinite loop or malicious upstream", maxPaginationPages)
+		}
+
+		// Build URL with pagination
+		requestURL := fmt.Sprintf("%s/v0.1/servers?limit=100", baseURL)
+		if cursor != "" {
+			// Security: URL-encode cursor to prevent injection attacks
+			requestURL = fmt.Sprintf("%s&cursor=%s", requestURL, url.QueryEscape(cursor))
+		}
+
+		logger.V(1).Info("Fetching page", "page", pageCount, "url", requestURL)
+
+		// Fetch page
+		data, err := h.httpClient.Get(ctx, requestURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch page %d: %w", pageCount, err)
+		}
+
+		// Parse response
+		var response v0.ServerListResponse
+		if err := json.Unmarshal(data, &response); err != nil {
+			return nil, fmt.Errorf("failed to parse response page %d: %w", pageCount, err)
+		}
+
+		logger.V(1).Info("Parsed page", "page", pageCount, "serversInPage", len(response.Servers))
+
+		// Security: Prevent memory exhaustion from too many servers
+		if len(allServers)+len(response.Servers) > maxServers {
+			return nil, fmt.Errorf("total servers (%d) would exceed maximum (%d), possible DoS attack",
+				len(allServers)+len(response.Servers), maxServers)
+		}
+
+		// Extract ServerJSON from each ServerResponse
+		for _, serverResp := range response.Servers {
+			allServers = append(allServers, serverResp.Server)
+		}
+
+		// Check if there are more pages
+		if response.Metadata.NextCursor == "" {
+			logger.Info("Pagination complete", "totalPages", pageCount, "totalServers", len(allServers))
+			break
+		}
+
+		cursor = response.Metadata.NextCursor
+	}
+
+	return allServers, nil
+}
+
+// buildUpstreamRegistry converts []ServerJSON to ToolHive's UpstreamRegistry format
+func (*upstreamAPIHandler) buildUpstreamRegistry(servers []v0.ServerJSON) *toolhivetypes.UpstreamRegistry {
+	return &toolhivetypes.UpstreamRegistry{
+		Schema:  registry.UpstreamRegistrySchemaURL,
+		Version: registry.UpstreamRegistryVersion,
+		Meta: toolhivetypes.UpstreamMeta{
+			LastUpdated: time.Now().UTC().Format(time.RFC3339),
+		},
+		Data: toolhivetypes.UpstreamData{
+			Servers: servers,
+			Groups:  []toolhivetypes.UpstreamGroup{},
+		},
+	}
+}
+
+// calculateHash computes SHA256 hash of the serialized registry
+func (*upstreamAPIHandler) calculateHash(reg *toolhivetypes.UpstreamRegistry) (string, error) {
+	// Serialize to JSON
+	data, err := json.Marshal(reg)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal registry: %w", err)
+	}
+
+	// Compute SHA256
+	hash := sha256.Sum256(data)
+	return fmt.Sprintf("%x", hash), nil
+}
+
+// getBaseURL extracts and normalizes the base URL from the registry configuration
+func getBaseURL(regCfg *config.RegistryConfig) string {
+	baseURL := regCfg.API.Endpoint
+
+	// Remove trailing slash
+	if len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {
+		baseURL = baseURL[:len(baseURL)-1]
+	}
+
+	return baseURL
+}

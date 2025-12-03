@@ -39,17 +39,26 @@ registries:
 auth:
   mode: anonymous
 
-# Optional: PostgreSQL database configuration
-# Uncomment to store registry data in a database instead of local files
-# database:
-#   host: localhost
-#   port: 5432
-#   user: thv_user
-#   # Use passwordFile for production (recommended)
-#   passwordFile: /run/secrets/db_password
-#   # Or set THV_DATABASE_PASSWORD environment variable
-#   database: toolhive_registry
-#   sslMode: require
+# PostgreSQL database configuration
+# Store registry data in database instead of local files
+database:
+  # For docker-compose: use service name 'postgres'
+  # For local development: use 'localhost'
+  host: postgres
+  port: 5432
+  # Application user with limited privileges (SELECT, INSERT, UPDATE, DELETE)
+  user: db_app
+  # Migration user with elevated privileges (CREATE, ALTER, DROP)
+  migrationUser: db_migrator
+  # Credentials are provided via pgpass file (see docker-compose.yaml)
+  database: registry
+  # For docker-compose: disable SSL for local network
+  # For production: use 'require' or 'verify-full'
+  sslMode: disable
+  # Connection pool settings
+  maxOpenConns: 10
+  maxIdleConns: 2
+  connMaxLifetime: "30m"
 
 # Optional: Filter configuration to include/exclude specific servers
 # This is especially useful when syncing from upstream to curate
