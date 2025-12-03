@@ -296,10 +296,19 @@ info:
 		})
 
 		Context("Successful fetch with pagination", func() {
+			var requestCount int
+			var receivedCursors []string
+
 			BeforeEach(func() {
+				requestCount = 0
+				receivedCursors = []string{}
+
 				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == serversAPIPath {
+						requestCount++
 						cursor := r.URL.Query().Get("cursor")
+						receivedCursors = append(receivedCursors, cursor)
+
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
 						switch cursor {
@@ -357,6 +366,10 @@ info:
 				Expect(result.Registry.Data.Servers).To(HaveLen(2))
 				Expect(result.Registry.Data.Servers[0].Name).To(Equal("server-1"))
 				Expect(result.Registry.Data.Servers[1].Name).To(Equal("server-2"))
+
+				// Verify pagination mechanics
+				Expect(requestCount).To(Equal(2), "should make exactly 2 requests")
+				Expect(receivedCursors).To(Equal([]string{"", "page2"}), "should receive correct cursor sequence")
 			})
 		})
 

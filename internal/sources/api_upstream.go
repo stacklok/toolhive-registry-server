@@ -178,7 +178,7 @@ func (h *upstreamAPIHandler) fetchAllServers(ctx context.Context, baseURL string
 
 		// Security: Prevent memory exhaustion from too many servers
 		if len(allServers)+len(response.Servers) > maxServers {
-			return nil, fmt.Errorf("total servers (%d) would exceed maximum (%d), possible DoS attack",
+			return nil, fmt.Errorf("total servers (%d) would exceed maximum (%d), could cause out of service",
 				len(allServers)+len(response.Servers), maxServers)
 		}
 
