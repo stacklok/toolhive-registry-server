@@ -3,10 +3,10 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
-	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/database"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
@@ -49,7 +49,7 @@ func runMigrateDown(cmd *cobra.Command, _ []string) error {
 	// Prompt user for confirmation if not using --yes flag
 	if !yes {
 		if !confirmMigrationDown(numSteps, cfg.Database) {
-			logger.Infof("Migration cancelled by user")
+			slog.Info("Migration cancelled by user")
 			return nil
 		}
 	}
@@ -61,7 +61,7 @@ func runMigrateDown(cmd *cobra.Command, _ []string) error {
 	}
 	defer func() {
 		if closeErr := conn.Close(ctx); closeErr != nil {
-			logger.Errorf("Error closing database connection: %v", closeErr)
+			slog.Error("Error closing database connection", "error", closeErr)
 		}
 	}()
 
@@ -100,9 +100,13 @@ func parseMigrateDownFlags(cmd *cobra.Command) (uint, bool, string, error) {
 }
 
 func confirmMigrationDown(numSteps uint, dbCfg *config.DatabaseConfig) bool {
-	logger.Warnf("WARNING: This will revert %d migration(s) from database: %s@%s:%d/%s",
-		numSteps, dbCfg.GetMigrationUser(), dbCfg.Host, dbCfg.Port, dbCfg.Database)
-	logger.Warnf("WARNING: This operation may result in DATA LOSS")
+	slog.Warn("WARNING: This will revert migrations from database",
+		"num_steps", numSteps,
+		"user", dbCfg.GetMigrationUser(),
+		"host", dbCfg.Host,
+		"port", dbCfg.Port,
+		"database", dbCfg.Database)
+	slog.Warn("WARNING: This operation may result in DATA LOSS")
 	fmt.Print("Are you sure you want to continue? Type 'yes' to proceed: ")
 	var response string
 	if _, err := fmt.Scanln(&response); err != nil {
@@ -112,7 +116,7 @@ func confirmMigrationDown(numSteps uint, dbCfg *config.DatabaseConfig) bool {
 }
 
 func executeMigrationDown(ctx context.Context, conn *pgx.Conn, connString string, numSteps uint) error {
-	logger.Infof("Reverting %d database migration(s)...", numSteps)
+	slog.Info("Reverting database migrations", "num_steps", numSteps)
 	//nolint:gosec // numSteps is validated to be within safe range
 	if err := database.MigrateDown(ctx, conn, int(numSteps)); err != nil {
 		return fmt.Errorf("failed to revert migrations: %w", err)
@@ -121,11 +125,11 @@ func executeMigrationDown(ctx context.Context, conn *pgx.Conn, connString string
 	// Get current version
 	version, dirty, err := database.GetVersion(connString)
 	if err != nil {
-		logger.Warnf("Unable to get migration version: %v", err)
+		slog.Warn("Unable to get migration version", "error", err)
 	} else if dirty {
-		logger.Warnf("Database is in a dirty state at version %d", version)
+		slog.Warn("Database is in a dirty state", "version", version)
 	} else {
-		logger.Infof("Migrations reverted successfully. Current version: %d", version)
+		slog.Info("Migrations reverted successfully", "version", version)
 	}
 
 	return nil

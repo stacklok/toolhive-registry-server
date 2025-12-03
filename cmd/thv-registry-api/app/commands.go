@@ -4,10 +4,10 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/versions"
 )
@@ -21,11 +21,8 @@ data in Kubernetes.`,
 	Run: func(cmd *cobra.Command, _ []string) {
 		// If no subcommand is provided, print help
 		if err := cmd.Help(); err != nil {
-			logger.Errorf("Error displaying help: %v", err)
+			slog.Error("Error displaying help", "error", err)
 		}
-	},
-	PersistentPreRun: func(_ *cobra.Command, _ []string) {
-		logger.Initialize()
 	},
 }
 
@@ -35,7 +32,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().Bool("debug", false, "Enable debug mode")
 	err := viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
 	if err != nil {
-		logger.Errorf("Error binding debug flag: %v", err)
+		slog.Error("Error binding debug flag", "error", err)
 	}
 
 	// Add subcommands
@@ -54,20 +51,24 @@ var versionCmd = &cobra.Command{
 		info := versions.GetVersionInfo()
 		format, err := cmd.Flags().GetString("format")
 		if err != nil {
-			logger.Errorf("Error retrieving format flag: %v", err)
+			slog.Error("Error retrieving format flag", "error", err)
 			return
 		}
 
 		if format == "json" {
 			output, err := json.MarshalIndent(info, "", "  ")
 			if err != nil {
-				logger.Errorf("Error formatting version info as JSON: %v", err)
+				slog.Error("Error formatting version info as JSON", "error", err)
 				return
 			}
 			fmt.Println(string(output))
 		} else {
-			logger.Infof("thv-registry-api version %s (commit: %s, built: %s, go: %s, platform: %s)",
-				info.Version, info.Commit, info.BuildDate, info.GoVersion, info.Platform)
+			slog.Info("thv-registry-api version",
+				"version", info.Version,
+				"commit", info.Commit,
+				"built", info.BuildDate,
+				"go", info.GoVersion,
+				"platform", info.Platform)
 		}
 	},
 }

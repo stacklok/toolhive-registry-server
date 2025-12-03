@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
-	"github.com/stacklok/toolhive/pkg/logger"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
@@ -719,7 +719,9 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 		if err != nil {
 			// It's okay if sync record doesn't exist yet (registry may not have been synced)
 			if !errors.Is(err, pgx.ErrNoRows) {
-				logger.Warnf("Failed to get sync status for registry %s: %v", reg.Name, err)
+				slog.Warn("Failed to get sync status for registry",
+					"registry", reg.Name,
+					"error", err)
 			}
 			// Leave SyncStatus as nil if not found or error
 			info.SyncStatus = nil
@@ -805,7 +807,9 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 	if err != nil {
 		// It's okay if sync record doesn't exist yet (registry may not have been synced)
 		if !errors.Is(err, pgx.ErrNoRows) {
-			logger.Warnf("Failed to get sync status for registry %s: %v", registry.Name, err)
+			slog.Warn("Failed to get sync status for registry",
+				"registry", registry.Name,
+				"error", err)
 		}
 		// Leave SyncStatus as nil if not found or error
 		info.SyncStatus = nil

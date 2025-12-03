@@ -3,11 +3,11 @@ package filtering
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
@@ -54,18 +54,16 @@ func NewFilterService(nameFilter NameFilter, tagFilter TagFilter) FilterService 
 // 4. Only include servers that pass both name and tag filters
 // 5. Return the filtered registry
 func (s *defaultFilterService) ApplyFilters(
-	ctx context.Context,
+	_ context.Context,
 	reg *toolhivetypes.UpstreamRegistry,
 	filter *config.FilterConfig) (*toolhivetypes.UpstreamRegistry, error) {
-	ctxLogger := log.FromContext(ctx)
-
 	// If no filter is specified, return original registry
 	if filter == nil {
-		ctxLogger.Info("No filter specified, returning original registry")
+		slog.Info("No filter specified, returning original registry")
 		return reg, nil
 	}
 
-	ctxLogger.Info("Applying registry filters",
+	slog.Info("Applying registry filters",
 		"originalServerCount", len(reg.Data.Servers))
 
 	// Create a new filtered registry with same metadata
@@ -110,20 +108,20 @@ func (s *defaultFilterService) ApplyFilters(
 		if included {
 			filteredRegistry.Data.Servers = append(filteredRegistry.Data.Servers, server)
 			includedCount++
-			ctxLogger.Info("Including container server",
+			slog.Info("Including container server",
 				"name", serverName,
 				"tags", tags,
 				"reason", reason)
 		} else {
 			excludedCount++
-			ctxLogger.Info("Excluding container server",
+			slog.Info("Excluding container server",
 				"name", serverName,
 				"tags", tags,
 				"reason", reason)
 		}
 	}
 
-	ctxLogger.Info("Registry filtering completed",
+	slog.Info("Registry filtering completed",
 		"includedServers", includedCount,
 		"excludedServers", excludedCount,
 		"filteredServerCount", len(filteredRegistry.Data.Servers))

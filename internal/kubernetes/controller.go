@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
@@ -15,7 +16,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -34,29 +34,27 @@ type MCPServerReconciler struct {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
 	// Fetch the MCPServer instance
 	registry, err := getMCPServerList(ctx, r.client, req.Namespace)
 	if err != nil {
-		logger.Error(err, "failed to get MCPServer list")
+		slog.Error("Failed to get MCPServer list", "error", err)
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("MCP servers list fetched successfully",
+	slog.Info("MCP servers list fetched successfully",
 		"registry", r.registryName,
 		"count", len(registry.Data.Servers),
 	)
 
 	if err := r.syncWriter.Store(ctx, r.registryName, registry); err != nil {
-		logger.Error(err, "failed to store MCPServer list")
+		slog.Error("Failed to store MCPServer list", "error", err)
 		return ctrl.Result{
 			Requeue:      true,
 			RequeueAfter: r.requeueAfter,
 		}, err
 	}
 
-	logger.Info("MCP servers stored successfully",
+	slog.Info("MCP servers stored successfully",
 		"registry", r.registryName,
 		"count", len(registry.Data.Servers),
 	)

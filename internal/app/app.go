@@ -5,10 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
-
-	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
@@ -31,12 +30,12 @@ func (app *RegistryApp) Start() error {
 	// Start sync coordinator in background
 	go func() {
 		if err := app.components.SyncCoordinator.Start(app.ctx); err != nil {
-			logger.Errorf("Sync coordinator failed: %v", err)
+			slog.Error("Sync coordinator failed", "error", err)
 		}
 	}()
 
 	// Start HTTP server (blocks until stopped)
-	logger.Infof("Server listening on %s", app.httpServer.Addr)
+	slog.Info("Server listening", "address", app.httpServer.Addr)
 	if err := app.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("HTTP server failed: %w", err)
 	}
@@ -47,11 +46,11 @@ func (app *RegistryApp) Start() error {
 // Stop gracefully stops the application with the given timeout
 // It stops the sync coordinator and then shuts down the HTTP server
 func (app *RegistryApp) Stop(timeout time.Duration) error {
-	logger.Info("Shutting down server...")
+	slog.Info("Shutting down server")
 
 	// Stop sync coordinator first
 	if err := app.components.SyncCoordinator.Stop(); err != nil {
-		logger.Errorf("Failed to stop sync coordinator: %v", err)
+		slog.Error("Failed to stop sync coordinator", "error", err)
 	}
 
 	// Cancel the application context
@@ -67,7 +66,7 @@ func (app *RegistryApp) Stop(timeout time.Duration) error {
 		return fmt.Errorf("server forced to shutdown: %w", err)
 	}
 
-	logger.Info("Server shutdown complete")
+	slog.Info("Server shutdown complete")
 	return nil
 }
 

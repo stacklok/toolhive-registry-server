@@ -3,12 +3,12 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/stacklok/toolhive/pkg/logger"
 	"github.com/stacklok/toolhive/pkg/versions"
 	"github.com/swaggo/swag/v2"
 
@@ -89,12 +89,12 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(ww, r)
 
-		logger.Debugf("HTTP %s %s %d %s %s",
-			r.Method,
-			r.URL.Path,
-			ww.Status(),
-			time.Since(start),
-			middleware.GetReqID(r.Context()),
+		slog.Debug("HTTP request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", ww.Status(),
+			"duration", time.Since(start),
+			"request_id", middleware.GetReqID(r.Context()),
 		)
 	})
 }
@@ -117,7 +117,7 @@ func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
 			"error": "Failed to read OpenAPI specification: " + err.Error(),
 		}
 		if encodeErr := json.NewEncoder(w).Encode(errorResp); encodeErr != nil {
-			logger.Errorf("Failed to encode OpenAPI error response: %v", encodeErr)
+			slog.Error("Failed to encode OpenAPI error response", "error", encodeErr)
 		}
 		return
 	}
@@ -159,7 +159,7 @@ func readinessHandler(svc service.RegistryService) http.HandlerFunc {
 				"error": "RegistryService not ready: " + err.Error(),
 			}
 			if encodeErr := json.NewEncoder(w).Encode(errorResp); encodeErr != nil {
-				logger.Errorf("Failed to encode readiness error response: %v", encodeErr)
+				slog.Error("Failed to encode readiness error response", "error", encodeErr)
 			}
 			return
 		}
@@ -193,6 +193,6 @@ func versionHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		logger.Errorf("Failed to encode version info: %v", err)
+		slog.Error("Failed to encode version info", "error", err)
 	}
 }

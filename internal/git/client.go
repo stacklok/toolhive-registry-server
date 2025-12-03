@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"runtime"
 
 	"github.com/go-git/go-billy/v5/memfs"
@@ -11,7 +12,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/cache"
 	"github.com/go-git/go-git/v5/storage/filesystem"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Client defines the interface for Git operations
@@ -151,28 +151,27 @@ func (*defaultGitClient) GetFileContent(repoInfo *RepositoryInfo, path string) (
 }
 
 // Cleanup removes local repository directory
-func (*defaultGitClient) Cleanup(ctx context.Context, repoInfo *RepositoryInfo) error {
-	logger := log.FromContext(ctx)
+func (*defaultGitClient) Cleanup(_ context.Context, repoInfo *RepositoryInfo) error {
 	if repoInfo == nil || repoInfo.Repository == nil {
 		return fmt.Errorf("repository is nil")
 	}
 
 	// 1. Clear object cache explicitly
 	if repoInfo.objectCache != nil {
-		logger.V(1).Info("Clearing object cache")
+		slog.Debug("Clearing object cache")
 		repoInfo.objectCache.Clear()
 	}
 
 	// 2. Clear worktree filesystem
 	worktree, err := repoInfo.Repository.Worktree()
 	if err == nil && worktree.Filesystem != nil {
-		logger.V(1).Info("Clearing worktree filesystem")
+		slog.Debug("Clearing worktree filesystem")
 		_ = util.RemoveAll(worktree.Filesystem, "/")
 	}
 
 	// 3. Clear storer filesystem (memfs)
 	if repoInfo.storerFilesystem != nil {
-		logger.V(1).Info("Clearing storer filesystem")
+		slog.Debug("Clearing storer filesystem")
 		_ = util.RemoveAll(repoInfo.storerFilesystem, "/")
 	}
 

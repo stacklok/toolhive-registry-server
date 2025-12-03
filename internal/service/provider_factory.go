@@ -3,8 +3,7 @@ package service
 
 import (
 	"fmt"
-
-	"github.com/stacklok/toolhive/pkg/logger"
+	"log/slog"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
@@ -46,7 +45,7 @@ func (f *defaultRegistryProviderFactory) CreateProvider(cfg *config.Config) (Reg
 	case config.StorageTypeDatabase:
 		// Database provider is not yet implemented
 		// When implemented, this will create a database-backed provider
-		logger.Warn("database storage type not yet supported, falling back to file storage")
+		slog.Warn("Database storage type not yet supported, falling back to file storage")
 		return NewFileRegistryDataProvider(f.storageManager, cfg), nil
 	default:
 		return nil, fmt.Errorf("unsupported storage type: %s", storageType)

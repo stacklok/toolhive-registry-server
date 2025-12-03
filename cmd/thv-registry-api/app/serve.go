@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,9 +12,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/stacklok/toolhive/pkg/logger"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/stacklok/toolhive-registry-server/database"
 	registryapp "github.com/stacklok/toolhive-registry-server/internal/app"
@@ -47,24 +45,24 @@ func init() {
 
 	err := viper.BindPFlag("address", serveCmd.Flags().Lookup("address"))
 	if err != nil {
-		logger.Fatalf("Failed to bind address flag: %v", err)
+		slog.Error("Failed to bind address flag", "error", err)
+		os.Exit(1)
 	}
 	err = viper.BindPFlag("config", serveCmd.Flags().Lookup("config"))
 	if err != nil {
-		logger.Fatalf("Failed to bind config flag: %v", err)
+		slog.Error("Failed to bind config flag", "error", err)
+		os.Exit(1)
 	}
 
 	// Mark config as required
 	if err := serveCmd.MarkFlagRequired("config"); err != nil {
-		logger.Fatalf("Failed to mark config flag as required: %v", err)
+		slog.Error("Failed to mark config flag as required", "error", err)
+		os.Exit(1)
 	}
 }
 
 func runServe(cmd *cobra.Command, _ []string) error {
 	ctx := context.Background()
-
-	// Initialize controller-runtime logger to suppress warnings
-	log.SetLogger(zap.New(zap.UseDevMode(false)))
 
 	// Load and validate configuration
 	configPath := viper.GetString("config")
@@ -80,12 +78,14 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	authModeOverride, _ := cmd.Flags().GetString("auth-mode")
 	resolveAuthMode(cfg, authModeOverride)
 
-	logger.Infof("Loaded configuration from %s (registry: %s, %d registries configured)",
-		configPath, cfg.GetRegistryName(), len(cfg.Registries))
+	slog.Info("Loaded configuration",
+		"config_path", configPath,
+		"registry_name", cfg.GetRegistryName(),
+		"registry_count", len(cfg.Registries))
 
 	// Run database migrations if database is configured
 	if cfg.Database != nil {
-		logger.Infof("Database configuration found, running migrations...")
+		slog.Info("Database configuration found, running migrations")
 		if err := runMigrations(ctx, cfg); err != nil {
 			return fmt.Errorf("failed to run database migrations: %w", err)
 		}
@@ -102,12 +102,13 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to build application: %w", err)
 	}
 
-	logger.Infof("Starting registry API server on %s", address)
+	slog.Info("Starting registry API server", "address", address)
 
 	// Start application in goroutine
 	go func() {
 		if err := app.Start(); err != nil {
-			logger.Fatalf("Application failed: %v", err)
+			slog.Error("Application failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -126,7 +127,7 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 	connString := cfg.Database.GetMigrationConnectionString()
 
 	// Log which user is running migrations
-	logger.Infof("Running migrations as user: %s", cfg.Database.GetMigrationUser())
+	slog.Info("Running migrations", "user", cfg.Database.GetMigrationUser())
 
 	// Connect to database
 	conn, err := pgx.Connect(ctx, connString)
@@ -135,7 +136,7 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 	}
 	defer func() {
 		if closeErr := conn.Close(ctx); closeErr != nil {
-			logger.Errorf("Error closing database connection: %v", closeErr)
+			slog.Error("Error closing database connection", "error", closeErr)
 		}
 	}()
 
@@ -151,12 +152,12 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil {
-			logger.Errorf("Error rolling back transaction: %v", err)
+			slog.Error("Error rolling back transaction", "error", err)
 		}
 	}()
 
 	// Run migrations
-	logger.Infof("Applying database migrations...")
+	slog.Info("Applying database migrations")
 	if err := database.MigrateUp(ctx, tx.Conn()); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
@@ -164,11 +165,11 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 	// Get and log current version
 	version, dirty, err := database.GetVersion(connString)
 	if err != nil {
-		logger.Warnf("Unable to get migration version: %v", err)
+		slog.Warn("Unable to get migration version", "error", err)
 	} else if dirty {
-		logger.Warnf("Database is in a dirty state at version %d", version)
+		slog.Warn("Database is in a dirty state", "version", version)
 	} else {
-		logger.Infof("Database migrations completed successfully. Current version: %d", version)
+		slog.Info("Database migrations completed successfully", "version", version)
 	}
 
 	return nil
@@ -188,12 +189,12 @@ func resolveAuthMode(cfg *config.Config, override string) {
 	// Apply override if provided (from --auth-mode flag)
 	if override != "" {
 		cfg.Auth.Mode = config.AuthMode(override)
-		logger.Infof("Auth mode overridden to: %s", override)
+		slog.Info("Auth mode overridden", "mode", override)
 	}
 
 	// Apply default if mode is still empty
 	if cfg.Auth.Mode == "" {
 		cfg.Auth.Mode = config.DefaultAuthMode
-		logger.Infof("Auth mode defaulting to: %s", config.DefaultAuthMode)
+		slog.Info("Auth mode defaulting", "mode", config.DefaultAuthMode)
 	}
 }
