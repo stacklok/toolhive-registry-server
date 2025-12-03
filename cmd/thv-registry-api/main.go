@@ -33,7 +33,7 @@ func getLogLevel() slog.Level {
 
 func main() {
 	// Setup structured JSON logging with slog
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	handler := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level:     getLogLevel(),
 		AddSource: false, // Can be enabled for debugging
 	})
