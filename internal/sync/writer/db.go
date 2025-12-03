@@ -461,9 +461,9 @@ func bulkInsertRemotes(
 
 	// Track seen remotes to deduplicate by (server_id, transport, transport_url)
 	type remoteKey struct {
-		serverID uuid.UUID
+		serverID  uuid.UUID
 		transport string
-		url string
+		url       string
 	}
 	seenRemotes := make(map[remoteKey]bool)
 	skippedCount := 0
@@ -478,9 +478,9 @@ func bulkInsertRemotes(
 		for _, remote := range server.Remotes {
 			// Check for duplicate remote
 			key := remoteKey{
-				serverID: serverID,
+				serverID:  serverID,
 				transport: remote.Type,
-				url: remote.URL,
+				url:       remote.URL,
 			}
 
 			if seenRemotes[key] {

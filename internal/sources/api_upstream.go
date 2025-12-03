@@ -147,7 +147,10 @@ func (h *upstreamAPIHandler) fetchAllServers(ctx context.Context, baseURL string
 
 		// Security: Prevent infinite pagination loops
 		if pageCount > maxPaginationPages {
-			return nil, fmt.Errorf("pagination exceeded maximum pages (%d), possible infinite loop or malicious upstream", maxPaginationPages)
+			return nil, fmt.Errorf(
+				"pagination exceeded maximum pages (%d), possible infinite loop or malicious upstream",
+				maxPaginationPages,
+			)
 		}
 
 		// Build URL with pagination
