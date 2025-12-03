@@ -135,33 +135,38 @@ All configuration is done via YAML files. The server requires a `--config` flag 
 # Registry name/identifier (optional, defaults to "default")
 registryName: my-registry
 
-# Data source configuration (required)
-source:
-  # Source type: git, api, or file
-  type: git
+# Registries configuration - multiple registries can be configured
+registries:
+  - name: toolhive
+    # Data format: toolhive (native) or upstream (MCP registry format)
+    format: toolhive
 
-  # Data format: toolhive (native) or upstream (MCP registry format)
-  format: toolhive
+    # Source-specific configuration (one of: git, api, file, managed, kubernetes)
+    git:
+      repository: https://github.com/stacklok/toolhive.git
+      branch: main
+      path: pkg/registry/data/registry.json
 
-  # Source-specific configuration
-  git:
-    repository: https://github.com/stacklok/toolhive.git
-    branch: main
-    path: pkg/registry/data/registry.json
+    # Per-registry automatic sync policy
+    # Note: Not applicable for managed and kubernetes registries
+    syncPolicy:
+      # Sync interval (e.g., "30m", "1h", "24h")
+      interval: "30m"
 
-# Automatic sync policy (required)
-syncPolicy:
-  # Sync interval (e.g., "30m", "1h", "24h")
-  interval: "30m"
+    # Optional: Per-registry server filtering
+    # Note: Not applicable for managed and kubernetes registries
+    filter:
+      names:
+        include: ["official/*"]
+        exclude: ["*/deprecated"]
+      tags:
+        include: ["production"]
+        exclude: ["experimental"]
 
-# Optional: Server filtering
-filter:
-  names:
-    include: ["official/*"]
-    exclude: ["*/deprecated"]
-  tags:
-    include: ["production"]
-    exclude: ["experimental"]
+# Optional: Authentication configuration
+# Defaults to OAuth mode if not specified (secure-by-default)
+auth:
+  mode: anonymous  # Use "anonymous" for development, "oauth" for production
 
 # Optional: Database configuration
 database:
@@ -173,6 +178,10 @@ database:
   maxOpenConns: 25
   maxIdleConns: 5
   connMaxLifetime: "5m"
+
+# Optional: File storage configuration
+fileStorage:
+  baseDir: ./data  # Defaults to "./data" if not specified
 ```
 
 ### Command-line Flags
@@ -184,22 +193,36 @@ database:
 
 ### Data Sources
 
-The server supports three data source types:
+The server supports five registry types:
 
 1. **Git Repository** - Clone and sync from Git repositories
    - Supports branch, tag, or commit pinning
    - Ideal for version-controlled registries
+   - Automatic background synchronization
    - Example: [config-git.yaml](examples/config-git.yaml)
 
 2. **API Endpoint** - Sync from upstream MCP Registry APIs
    - Supports federation and aggregation scenarios
    - Format conversion from upstream to ToolHive format
+   - Automatic background synchronization
    - Example: [config-api.yaml](examples/config-api.yaml)
 
 3. **Local File** - Read from filesystem
    - Ideal for local development and testing
    - Supports mounted volumes in containers
+   - Automatic background synchronization
    - Example: [config-file.yaml](examples/config-file.yaml)
+
+4. **Managed** - Directly managed via API
+   - No external data source
+   - Create, update, and delete servers through API calls
+   - No background synchronization (on-demand only)
+   - Ideal for custom, dynamically-managed registries
+
+5. **Kubernetes** - Discover MCP servers from Kubernetes deployments
+   - Queries running Kubernetes resources
+   - No background synchronization (on-demand only)
+   - Ideal for cluster-local service discovery
 
 For complete configuration examples and advanced options, see [examples/README.md](examples/README.md).
 
@@ -462,15 +485,17 @@ metadata:
 data:
   config.yaml: |
     registryName: my-registry
-    source:
-      type: git
-      format: toolhive
-      git:
-        repository: https://github.com/stacklok/toolhive.git
-        branch: main
-        path: pkg/registry/data/registry.json
-    syncPolicy:
-      interval: "15m"
+    registries:
+      - name: toolhive
+        format: toolhive
+        git:
+          repository: https://github.com/stacklok/toolhive.git
+          branch: main
+          path: pkg/registry/data/registry.json
+        syncPolicy:
+          interval: "15m"
+    auth:
+      mode: anonymous
     database:
       host: postgres.default.svc.cluster.local
       port: 5432
@@ -549,14 +574,14 @@ spec:
 
 ## Authentication
 
-The server supports OAuth 2.0/OIDC authentication to protect API endpoints. Authentication is optional and defaults to anonymous mode.
+The server supports OAuth 2.0/OIDC authentication to protect API endpoints. The server defaults to OAuth mode for security-by-default. For development environments, you can explicitly set `mode: anonymous`.
 
 ### Authentication Modes
 
 | Mode | Description |
 |------|-------------|
-| `anonymous` | No authentication required (default) |
-| `oauth` | OAuth 2.0/OIDC token validation |
+| `anonymous` | No authentication required (for development) |
+| `oauth` | OAuth 2.0/OIDC token validation (default) |
 
 ### Multi-Provider Support
 
@@ -681,28 +706,26 @@ task migrate-down CONFIG=examples/config-database-dev.yaml NUM_STEPS=1
 ### Project Structure
 
 ```
-cmd/thv-registry-api/
-├── api/                 # REST API implementation
-│   └── v1/              # API v1 handlers and routes
-├── app/                 # CLI commands and application setup
-├── internal/service/    # Legacy service layer (being refactored)
-│   ├── file_provider.go     # File-based registry provider
-│   ├── k8s_provider.go      # Kubernetes provider
-│   └── service.go           # Core service implementation
-└── main.go              # Application entry point
+cmd/thv-registry-api/    # Main application
+├── app/                 # CLI commands (serve, migrate, prime-db, version)
+└── main.go
 
-pkg/
+internal/                # Internal packages
+├── api/                 # HTTP API handlers (Registry v0.1, Extension v0)
+├── auth/                # OAuth/OIDC authentication
 ├── config/              # Configuration loading and validation
-├── sources/             # Data source handlers
-│   ├── git.go               # Git repository source
-│   ├── api.go               # API endpoint source
-│   ├── file.go              # File system source
-│   ├── factory.go           # Registry handler factory
-│   └── storage_manager.go   # Storage abstraction
-├── sync/                # Sync manager and coordination
-│   └── manager.go           # Background sync logic
-└── status/              # Sync status tracking
-    └── persistence.go       # Status file persistence
+├── db/                  # Database access layer (sqlc generated)
+├── service/             # Business logic layer (DB and in-memory providers)
+├── sources/             # Data source handlers (Git, API, File)
+├── sync/                # Background sync coordination
+├── filtering/           # Registry entry filtering
+├── git/                 # Git operations
+├── kubernetes/          # Kubernetes resource discovery
+└── registry/            # Registry data models
+
+database/                # Database schema and queries
+├── migrations/          # SQL migrations
+└── queries/             # SQL queries for sqlc
 
 examples/                # Example configurations
 ```
@@ -711,16 +734,31 @@ examples/                # Example configurations
 
 The server follows a clean architecture pattern with the following layers:
 
-1. **API Layer** (`cmd/thv-registry-api/api`): HTTP handlers implementing the MCP Registry API
-2. **Service Layer** (`cmd/thv-registry-api/internal/service`): Legacy business logic (being refactored)
-3. **Configuration Layer** (`pkg/config`): YAML configuration loading and validation
-4. **Registry Handler Layer** (`pkg/sources`): Pluggable data source implementations
+1. **API Layer** (`internal/api`): HTTP handlers implementing the MCP Registry API
+   - `registry/v01`: MCP Registry API v0.1 endpoints
+   - `extension/v0`: Extension API endpoints
+   - OAuth/OIDC authentication middleware
+
+2. **Service Layer** (`internal/service`): Business logic and data access
+   - `db`: Database-backed implementation using PostgreSQL
+   - `inmemory`: In-memory implementation for development
+   - Provider factory pattern for pluggable backends
+
+3. **Configuration Layer** (`internal/config`): YAML configuration loading and validation
+
+4. **Data Source Layer** (`internal/sources`): Pluggable registry data source implementations
    - `GitRegistryHandler`: Clones Git repositories and extracts registry files
    - `APIRegistryHandler`: Fetches from upstream MCP Registry APIs
    - `FileRegistryHandler`: Reads from local filesystem
-5. **Sync Manager** (`pkg/sync`): Coordinates automatic registry synchronization
-6. **Storage Layer** (`pkg/sources`): Persists registry data to local storage
-7. **Status Tracking** (`pkg/status`): Tracks and persists sync status
+
+5. **Sync Layer** (`internal/sync`): Background synchronization coordination
+   - Sync coordinator for scheduled updates
+   - State management for sync operations
+   - Registry writer abstraction
+
+6. **Database Layer** (`internal/db`, `database/`): PostgreSQL storage
+   - Generated code from sqlc for type-safe queries
+   - Migration management with sql-migrate
 
 ### Testing
 
@@ -771,15 +809,17 @@ metadata:
 data:
   config.yaml: |
     registryName: my-registry
-    source:
-      type: git
-      format: toolhive
-      git:
-        repository: https://github.com/stacklok/toolhive.git
-        branch: main
-        path: pkg/registry/data/registry.json
-    syncPolicy:
-      interval: "15m"
+    registries:
+      - name: toolhive
+        format: toolhive
+        git:
+          repository: https://github.com/stacklok/toolhive.git
+          branch: main
+          path: pkg/registry/data/registry.json
+        syncPolicy:
+          interval: "15m"
+    auth:
+      mode: anonymous
 ```
 
 ### Docker
