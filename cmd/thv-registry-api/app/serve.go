@@ -127,7 +127,13 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 	connString := cfg.Database.GetMigrationConnectionString()
 
 	// Log which user is running migrations
-	slog.Info("Running migrations", "user", cfg.Database.GetMigrationUser())
+	slog.Info("Running migrations as user", "user", cfg.Database.GetMigrationUser())
+
+	// Get current version before migrations
+	currentVersion, _, versionErr := database.GetVersion(connString)
+	if versionErr == nil {
+		slog.Info("Current database schema version", "version", currentVersion)
+	}
 
 	// Connect to database
 	conn, err := pgx.Connect(ctx, connString)
@@ -157,19 +163,24 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 	}()
 
 	// Run migrations
-	slog.Info("Applying database migrations")
+	slog.Info("Applying database migrations...")
 	if err := database.MigrateUp(ctx, tx.Conn()); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
-	// Get and log current version
+	// Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit migration transaction: %w", err)
+	}
+
+	// Get and log new version
 	version, dirty, err := database.GetVersion(connString)
 	if err != nil {
 		slog.Warn("Unable to get migration version", "error", err)
 	} else if dirty {
 		slog.Warn("Database is in a dirty state", "version", version)
 	} else {
-		slog.Info("Database migrations completed successfully", "version", version)
+		slog.Info("Database migrations completed successfully. Current version", "version", version)
 	}
 
 	return nil

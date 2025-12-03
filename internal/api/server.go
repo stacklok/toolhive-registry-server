@@ -89,12 +89,23 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(ww, r)
 
-		slog.Debug("HTTP request",
+		// Determine log level based on status code
+		status := ww.Status()
+		duration := time.Since(start)
+		logLevel := slog.LevelInfo
+		if status >= 500 {
+			logLevel = slog.LevelError
+		} else if status >= 400 {
+			logLevel = slog.LevelWarn
+		}
+
+		slog.Log(r.Context(), logLevel, "HTTP request",
 			"method", r.Method,
 			"path", r.URL.Path,
-			"status", ww.Status(),
-			"duration", time.Since(start),
+			"status", status,
+			"duration_ms", duration.Milliseconds(),
 			"request_id", middleware.GetReqID(r.Context()),
+			"remote_addr", r.RemoteAddr,
 		)
 	})
 }
@@ -153,6 +164,9 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 func readinessHandler(svc service.RegistryService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := svc.CheckReadiness(r.Context()); err != nil {
+			slog.Warn("Readiness check failed",
+				"error", err,
+				"remote_addr", r.RemoteAddr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			errorResp := map[string]string{

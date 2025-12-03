@@ -116,19 +116,28 @@ func (m *multiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, err := auth.ExtractBearerToken(r)
 		if err != nil {
-			slog.Debug("Token extraction failed", "error", err)
+			slog.Warn("Token extraction failed",
+				"error", err,
+				"remote_addr", r.RemoteAddr,
+				"path", r.URL.Path)
 			m.writeError(w, http.StatusUnauthorized, errorCodeInvalidRequest, "missing or malformed authorization header")
 			return
 		}
 
 		result := m.validateToken(r.Context(), token)
 		if result.Error != nil {
-			slog.Debug("Token validation failed", "error", result.Error)
+			slog.Warn("Token validation failed",
+				"error", result.Error,
+				"remote_addr", r.RemoteAddr,
+				"path", r.URL.Path)
 			m.writeError(w, http.StatusUnauthorized, errorCodeInvalidToken, "token validation failed")
 			return
 		}
 
-		slog.Debug("Token validated successfully", "provider", result.Provider)
+		slog.Info("Authentication successful",
+			"provider", result.Provider,
+			"remote_addr", r.RemoteAddr,
+			"path", r.URL.Path)
 		// TODO: Store claims in request context for downstream handlers (needed for authorization/scope enforcement)
 		next.ServeHTTP(w, r)
 	})
