@@ -428,6 +428,15 @@ func bulkInsertRemotes(
 	var remoteRows [][]any
 	serverIDs := make(map[uuid.UUID]bool)
 
+	// Track seen remotes to deduplicate by (server_id, transport, transport_url)
+	type remoteKey struct {
+		serverID  uuid.UUID
+		transport string
+		url       string
+	}
+	seenRemotes := make(map[remoteKey]bool)
+	skippedCount := 0
+
 	for _, server := range servers {
 		serverID, ok := serverIDMap[serverKey(server.Name, server.Version)]
 		if !ok {
@@ -436,6 +445,20 @@ func bulkInsertRemotes(
 		serverIDs[serverID] = true
 
 		for _, remote := range server.Remotes {
+			// Check for duplicate remote
+			key := remoteKey{
+				serverID:  serverID,
+				transport: remote.Type,
+				url:       remote.URL,
+			}
+
+			if seenRemotes[key] {
+				// Skip duplicate - already processed this remote
+				skippedCount++
+				continue
+			}
+			seenRemotes[key] = true
+
 			remoteRows = append(remoteRows, []any{
 				serverID,
 				remote.Type,
@@ -443,6 +466,12 @@ func bulkInsertRemotes(
 				extractKeyValueNames(remote.Headers),
 			})
 		}
+	}
+
+	// Log if duplicates were found
+	if skippedCount > 0 {
+		// TODO: Use structured logging when available
+		_ = skippedCount // Placeholder
 	}
 
 	if len(remoteRows) == 0 {

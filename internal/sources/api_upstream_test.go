@@ -12,7 +12,10 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
 )
 
-const upstreamOpenapiPath = "/openapi.yaml"
+const (
+	upstreamOpenapiPath = "/openapi.yaml"
+	serversAPIPath      = "/v0.1/servers"
+)
 
 var _ = Describe("UpstreamAPIHandler", func() {
 	var (
@@ -245,19 +248,174 @@ info:
 	Describe("FetchRegistry", func() {
 		var registryConfig *config.RegistryConfig
 
-		BeforeEach(func() {
-			registryConfig = &config.RegistryConfig{
-				Name: "test-registry",
-				API:  &config.APIConfig{},
-			}
+		Context("Successful fetch with single page", func() {
+			BeforeEach(func() {
+				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == serversAPIPath {
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte(`{
+							"servers": [
+								{
+									"server": {
+										"name": "test-server",
+										"description": "A test server"
+									},
+									"_meta": {}
+								}
+							],
+							"metadata": {
+								"nextCursor": "",
+								"count": 1
+							}
+						}`))
+					} else {
+						w.WriteHeader(http.StatusNotFound)
+					}
+				}))
+				registryConfig = &config.RegistryConfig{
+					Name:   "test-registry",
+					Format: config.SourceFormatUpstream,
+					API: &config.APIConfig{
+						Endpoint: mockServer.URL,
+					},
+				}
+			})
+
+			It("should fetch servers successfully", func() {
+				result, err := handler.FetchRegistry(ctx, registryConfig)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).NotTo(BeNil())
+				Expect(result.ServerCount).To(Equal(1))
+				Expect(result.Format).To(Equal(config.SourceFormatUpstream))
+				Expect(result.Hash).NotTo(BeEmpty())
+				Expect(result.Registry).NotTo(BeNil())
+				Expect(result.Registry.Data.Servers).To(HaveLen(1))
+				Expect(result.Registry.Data.Servers[0].Name).To(Equal("test-server"))
+			})
 		})
 
-		Context("Phase 2 not implemented", func() {
-			It("should return not implemented error", func() {
+		Context("Successful fetch with pagination", func() {
+			var requestCount int
+			var receivedCursors []string
+
+			BeforeEach(func() {
+				requestCount = 0
+				receivedCursors = []string{}
+
+				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == serversAPIPath {
+						requestCount++
+						cursor := r.URL.Query().Get("cursor")
+						receivedCursors = append(receivedCursors, cursor)
+
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						switch cursor {
+						case "":
+							_, _ = w.Write([]byte(`{
+								"servers": [
+									{
+										"server": {
+											"name": "server-1",
+											"description": "First server"
+										},
+										"_meta": {}
+									}
+								],
+								"metadata": {
+									"nextCursor": "page2",
+									"count": 1
+								}
+							}`))
+						case "page2":
+							_, _ = w.Write([]byte(`{
+								"servers": [
+									{
+										"server": {
+											"name": "server-2",
+											"description": "Second server"
+										},
+										"_meta": {}
+									}
+								],
+								"metadata": {
+									"nextCursor": "",
+									"count": 1
+								}
+							}`))
+						}
+					} else {
+						w.WriteHeader(http.StatusNotFound)
+					}
+				}))
+				registryConfig = &config.RegistryConfig{
+					Name:   "test-registry",
+					Format: config.SourceFormatUpstream,
+					API: &config.APIConfig{
+						Endpoint: mockServer.URL,
+					},
+				}
+			})
+
+			It("should fetch all pages and combine servers", func() {
+				result, err := handler.FetchRegistry(ctx, registryConfig)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).NotTo(BeNil())
+				Expect(result.ServerCount).To(Equal(2))
+				Expect(result.Registry.Data.Servers).To(HaveLen(2))
+				Expect(result.Registry.Data.Servers[0].Name).To(Equal("server-1"))
+				Expect(result.Registry.Data.Servers[1].Name).To(Equal("server-2"))
+
+				// Verify pagination mechanics
+				Expect(requestCount).To(Equal(2), "should make exactly 2 requests")
+				Expect(receivedCursors).To(Equal([]string{"", "page2"}), "should receive correct cursor sequence")
+			})
+		})
+
+		Context("HTTP error during fetch", func() {
+			BeforeEach(func() {
+				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusInternalServerError)
+				}))
+				registryConfig = &config.RegistryConfig{
+					Name:   "test-registry",
+					Format: config.SourceFormatUpstream,
+					API: &config.APIConfig{
+						Endpoint: mockServer.URL,
+					},
+				}
+			})
+
+			It("should return error on HTTP failure", func() {
 				_, err := handler.FetchRegistry(ctx, registryConfig)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("not yet implemented"))
-				Expect(err.Error()).To(ContainSubstring("Phase 2"))
+				Expect(err.Error()).To(ContainSubstring("failed to fetch servers"))
+			})
+		})
+
+		Context("Invalid JSON response", func() {
+			BeforeEach(func() {
+				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == serversAPIPath {
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte(`{invalid json`))
+					}
+				}))
+				registryConfig = &config.RegistryConfig{
+					Name:   "test-registry",
+					Format: config.SourceFormatUpstream,
+					API: &config.APIConfig{
+						Endpoint: mockServer.URL,
+					},
+				}
+			})
+
+			It("should return error on invalid JSON", func() {
+				_, err := handler.FetchRegistry(ctx, registryConfig)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("failed to parse response"))
 			})
 		})
 	})
@@ -265,19 +423,66 @@ info:
 	Describe("CurrentHash", func() {
 		var registryConfig *config.RegistryConfig
 
-		BeforeEach(func() {
-			registryConfig = &config.RegistryConfig{
-				Name: "test-registry",
-				API:  &config.APIConfig{},
-			}
+		Context("Successful hash calculation", func() {
+			BeforeEach(func() {
+				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == serversAPIPath {
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte(`{
+							"servers": [
+								{
+									"server": {
+										"name": "test-server",
+										"description": "A test server"
+									},
+									"_meta": {}
+								}
+							],
+							"metadata": {
+								"nextCursor": "",
+								"count": 1
+							}
+						}`))
+					} else {
+						w.WriteHeader(http.StatusNotFound)
+					}
+				}))
+				registryConfig = &config.RegistryConfig{
+					Name:   "test-registry",
+					Format: config.SourceFormatUpstream,
+					API: &config.APIConfig{
+						Endpoint: mockServer.URL,
+					},
+				}
+			})
+
+			It("should return hash matching FetchRegistry", func() {
+				hash, err := handler.CurrentHash(ctx, registryConfig)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hash).NotTo(BeEmpty())
+				// Should be a valid SHA256 hex string (64 characters)
+				Expect(hash).To(HaveLen(64))
+			})
 		})
 
-		Context("Phase 2 not implemented", func() {
-			It("should return not implemented error", func() {
+		Context("Error propagation", func() {
+			BeforeEach(func() {
+				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusInternalServerError)
+				}))
+				registryConfig = &config.RegistryConfig{
+					Name:   "test-registry",
+					Format: config.SourceFormatUpstream,
+					API: &config.APIConfig{
+						Endpoint: mockServer.URL,
+					},
+				}
+			})
+
+			It("should propagate fetch errors", func() {
 				_, err := handler.CurrentHash(ctx, registryConfig)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("not yet implemented"))
-				Expect(err.Error()).To(ContainSubstring("Phase 2"))
 			})
 		})
 	})
