@@ -369,7 +369,7 @@ func buildServiceComponents(
 		}
 
 		// Create in-memory service (reads from file storage)
-		inMemorySvc, err := inmemory.New(ctx, b.registryProvider)
+		inMemorySvc, err := inmemory.New(ctx, b.registryProvider, inmemory.WithConfig(b.config))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create in-memory registry service: %w", err)
 		}
