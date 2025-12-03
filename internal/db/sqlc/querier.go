@@ -52,11 +52,13 @@ type Querier interface {
 	ListAllRegistryNames(ctx context.Context) ([]string, error)
 	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error)
 	ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow, error)
+	ListRegistrySyncsByLastUpdate(ctx context.Context) ([]ListRegistrySyncsByLastUpdateRow, error)
 	ListServerPackages(ctx context.Context, serverIds []uuid.UUID) ([]McpServerPackage, error)
 	ListServerRemotes(ctx context.Context, serverIds []uuid.UUID) ([]McpServerRemote, error)
 	ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error)
 	ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error)
 	UpdateRegistrySync(ctx context.Context, arg UpdateRegistrySyncParams) error
+	UpdateRegistrySyncStatusByName(ctx context.Context, arg UpdateRegistrySyncStatusByNameParams) error
 	UpsertIconsFromTemp(ctx context.Context) error
 	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (uuid.UUID, error)
 	UpsertPackagesFromTemp(ctx context.Context) error

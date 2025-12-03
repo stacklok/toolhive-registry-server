@@ -223,6 +223,70 @@ func (q *Queries) ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow
 	return items, nil
 }
 
+const listRegistrySyncsByLastUpdate = `-- name: ListRegistrySyncsByLastUpdate :many
+SELECT r.name,
+       rs.id,
+       rs.reg_id,
+       rs.sync_status,
+       rs.error_msg,
+       rs.started_at,
+       rs.ended_at,
+       rs.attempt_count,
+       rs.last_sync_hash,
+       rs.last_applied_filter_hash,
+       rs.server_count
+FROM registry_sync rs
+INNER JOIN registry r ON rs.reg_id = r.id
+ORDER BY rs.ended_at ASC NULLS FIRST, r.name ASC
+FOR UPDATE OF rs SKIP LOCKED
+`
+
+type ListRegistrySyncsByLastUpdateRow struct {
+	Name                  string     `json:"name"`
+	ID                    uuid.UUID  `json:"id"`
+	RegID                 uuid.UUID  `json:"reg_id"`
+	SyncStatus            SyncStatus `json:"sync_status"`
+	ErrorMsg              *string    `json:"error_msg"`
+	StartedAt             *time.Time `json:"started_at"`
+	EndedAt               *time.Time `json:"ended_at"`
+	AttemptCount          int64      `json:"attempt_count"`
+	LastSyncHash          *string    `json:"last_sync_hash"`
+	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
+	ServerCount           int64      `json:"server_count"`
+}
+
+func (q *Queries) ListRegistrySyncsByLastUpdate(ctx context.Context) ([]ListRegistrySyncsByLastUpdateRow, error) {
+	rows, err := q.db.Query(ctx, listRegistrySyncsByLastUpdate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRegistrySyncsByLastUpdateRow{}
+	for rows.Next() {
+		var i ListRegistrySyncsByLastUpdateRow
+		if err := rows.Scan(
+			&i.Name,
+			&i.ID,
+			&i.RegID,
+			&i.SyncStatus,
+			&i.ErrorMsg,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.AttemptCount,
+			&i.LastSyncHash,
+			&i.LastAppliedFilterHash,
+			&i.ServerCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateRegistrySync = `-- name: UpdateRegistrySync :exec
 UPDATE registry_sync SET
     sync_status = $1,
@@ -245,6 +309,24 @@ func (q *Queries) UpdateRegistrySync(ctx context.Context, arg UpdateRegistrySync
 		arg.EndedAt,
 		arg.ID,
 	)
+	return err
+}
+
+const updateRegistrySyncStatusByName = `-- name: UpdateRegistrySyncStatusByName :exec
+UPDATE registry_sync
+SET sync_status = $1,
+    started_at = $2
+WHERE reg_id = (SELECT id FROM registry WHERE name = $3)
+`
+
+type UpdateRegistrySyncStatusByNameParams struct {
+	SyncStatus SyncStatus `json:"sync_status"`
+	StartedAt  *time.Time `json:"started_at"`
+	Name       string     `json:"name"`
+}
+
+func (q *Queries) UpdateRegistrySyncStatusByName(ctx context.Context, arg UpdateRegistrySyncStatusByNameParams) error {
+	_, err := q.db.Exec(ctx, updateRegistrySyncStatusByName, arg.SyncStatus, arg.StartedAt, arg.Name)
 	return err
 }
 

@@ -21,7 +21,7 @@ func TestNewDBStateService(t *testing.T) {
 	require.NotNil(t, service)
 
 	// Verify it's the correct type
-	dbService, ok := service.(*dbStatusService)
+	dbService, ok := service.(*DBStatusService)
 	require.True(t, ok)
 	assert.Nil(t, dbService.pool)
 }

@@ -637,6 +637,8 @@ func TestBuildSyncComponents(t *testing.T) {
 					syncManager: pkgsync.NewDefaultSyncManager(
 						sources.NewRegistryHandlerFactory(),
 						sources.NewFileStorageManager(tempDir),
+						nil,
+						nil,
 					),
 				}
 			}(),

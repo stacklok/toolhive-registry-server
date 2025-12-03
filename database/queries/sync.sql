@@ -118,3 +118,26 @@ SELECT
     unnest(sqlc.arg(sync_statuses)::sync_status[]),
     unnest(sqlc.arg(error_msgs)::text[])
 ON CONFLICT (reg_id) DO NOTHING;
+
+-- name: ListRegistrySyncsByLastUpdate :many
+SELECT r.name,
+       rs.id,
+       rs.reg_id,
+       rs.sync_status,
+       rs.error_msg,
+       rs.started_at,
+       rs.ended_at,
+       rs.attempt_count,
+       rs.last_sync_hash,
+       rs.last_applied_filter_hash,
+       rs.server_count
+FROM registry_sync rs
+INNER JOIN registry r ON rs.reg_id = r.id
+ORDER BY rs.ended_at ASC NULLS FIRST, r.name ASC
+FOR UPDATE OF rs SKIP LOCKED;
+
+-- name: UpdateRegistrySyncStatusByName :exec
+UPDATE registry_sync
+SET sync_status = sqlc.arg(sync_status),
+    started_at = sqlc.arg(started_at)
+WHERE reg_id = (SELECT id FROM registry WHERE name = sqlc.arg(name));

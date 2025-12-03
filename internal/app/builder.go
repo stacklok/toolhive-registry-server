@@ -296,6 +296,12 @@ func buildSyncComponents(
 		b.statusPersistence = status.NewFileStatusPersistence(b.dataDir)
 	}
 
+	// Create state service using factory (needed by sync manager)
+	stateService, err := state.NewStateService(b.config, b.statusPersistence, pool)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create state service: %w", err)
+	}
+
 	// Build sync manager using factory
 	if b.syncManager == nil {
 		syncWriter, err := writer.NewSyncWriter(b.config, b.storageManager, pool)
@@ -305,6 +311,8 @@ func buildSyncComponents(
 		b.syncManager = pkgsync.NewDefaultSyncManager(
 			b.registryHandlerFactory,
 			syncWriter,
+			stateService,
+			b.config,
 		)
 
 		for _, reg := range b.config.Registries {
@@ -322,12 +330,6 @@ func buildSyncComponents(
 				break
 			}
 		}
-	}
-
-	// Create state service using factory
-	stateService, err := state.NewStateService(b.config, b.statusPersistence, pool)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create state service: %w", err)
 	}
 
 	// Create coordinator
