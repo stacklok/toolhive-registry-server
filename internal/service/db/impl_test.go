@@ -78,7 +78,7 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 		_, err := queries.InsertServerVersion(
 			ctx,
 			sqlc.InsertServerVersionParams{
-				Name:                "test-server-1",
+				Name:                "com.example/test-server-1",
 				Version:             version,
 				RegID:               regID,
 				Description:         ptr.String("Test server 1 description"),
@@ -102,7 +102,7 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	_, err = queries.InsertServerVersion(
 		ctx,
 		sqlc.InsertServerVersionParams{
-			Name:                "test-server-2",
+			Name:                "com.example/test-server-2",
 			Version:             "1.0.0",
 			RegID:               regID,
 			Description:         ptr.String("Test server 2 description"),
@@ -253,9 +253,9 @@ func TestListServers(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 3) // Should find all 3 versions of test-server-1
+				require.Len(t, servers, 3) // Should find all 3 versions of com.example/test-server-1
 				for _, server := range servers {
-					require.Equal(t, "test-server-1", server.Name)
+					require.Equal(t, "com.example/test-server-1", server.Name)
 				}
 			},
 		},
@@ -272,8 +272,8 @@ func TestListServers(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 1) // Should find only test-server-2
-				require.Equal(t, "test-server-2", servers[0].Name)
+				require.Len(t, servers, 1) // Should find only com.example/test-server-2
+				require.Equal(t, "com.example/test-server-2", servers[0].Name)
 			},
 		},
 		{
@@ -289,8 +289,8 @@ func TestListServers(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 1) // Should find only test-server-2
-				require.Equal(t, "test-server-2", servers[0].Name)
+				require.Len(t, servers, 1) // Should find only com.example/test-server-2
+				require.Equal(t, "com.example/test-server-2", servers[0].Name)
 			},
 		},
 		{
@@ -306,9 +306,9 @@ func TestListServers(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 3) // Should still find test-server-1 versions
+				require.Len(t, servers, 3) // Should still find com.example/test-server-1 versions
 				for _, server := range servers {
-					require.Equal(t, "test-server-1", server.Name)
+					require.Equal(t, "com.example/test-server-1", server.Name)
 				}
 			},
 		},
@@ -325,7 +325,7 @@ func TestListServers(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 4) // Should find all servers (both test-server-1 and test-server-2)
+				require.Len(t, servers, 4) // Should find all servers (both com.example/test-server-1 and com.example/test-server-2)
 			},
 		},
 		{
@@ -358,9 +358,9 @@ func TestListServers(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 3) // Should find test-server-1 versions in test-registry
+				require.Len(t, servers, 3) // Should find com.example/test-server-1 versions in test-registry
 				for _, server := range servers {
-					require.Equal(t, "test-server-1", server.Name)
+					require.Equal(t, "com.example/test-server-1", server.Name)
 				}
 			},
 		},
@@ -405,7 +405,7 @@ func TestListServerVersions(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("test-server-1"),
+				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
 				service.WithLimit[service.ListServerVersionsOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -413,7 +413,7 @@ func TestListServerVersions(t *testing.T) {
 				require.Len(t, servers, 3)
 				// Verify all are the same server name
 				for _, server := range servers {
-					require.Equal(t, "test-server-1", server.Name)
+					require.Equal(t, "com.example/test-server-1", server.Name)
 				}
 				// Verify versions are present
 				versions := make([]string, len(servers))
@@ -432,7 +432,7 @@ func TestListServerVersions(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("test-server-1"),
+				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
 				service.WithLimit[service.ListServerVersionsOptions](2),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -447,7 +447,7 @@ func TestListServerVersions(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("non-existent-server"),
+				service.WithName[service.ListServerVersionsOptions]("com.example/non-existent-server"),
 				service.WithLimit[service.ListServerVersionsOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -462,7 +462,7 @@ func TestListServerVersions(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("test-server-1"),
+				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
 				func(opts *service.ListServerVersionsOptions) error {
 					// Set nextTime to 30 minutes from now, so only versions created at +1h and +2h are returned
 					nextTime := time.Now().Add(30 * time.Minute).UTC()
@@ -483,7 +483,7 @@ func TestListServerVersions(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("test-server-1"),
+				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
 				func(opts *service.ListServerVersionsOptions) error {
 					prevTime := time.Now().Add(1 * time.Hour).UTC()
 					opts.Prev = &prevTime
@@ -514,7 +514,7 @@ func TestListServerVersions(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("test-server-1"),
+				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
 				service.WithRegistryName[service.ListServerVersionsOptions]("test-registry"),
 				service.WithLimit[service.ListServerVersionsOptions](10),
 			},
@@ -523,7 +523,7 @@ func TestListServerVersions(t *testing.T) {
 				require.Len(t, servers, 3)
 				// Verify all are the same server name
 				for _, server := range servers {
-					require.Equal(t, "test-server-1", server.Name)
+					require.Equal(t, "com.example/test-server-1", server.Name)
 				}
 				// Verify versions are present
 				versions := make([]string, len(servers))
@@ -542,7 +542,7 @@ func TestListServerVersions(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("test-server-1"),
+				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
 				service.WithRegistryName[service.ListServerVersionsOptions]("non-existent-registry"),
 				service.WithLimit[service.ListServerVersionsOptions](10),
 			},
@@ -592,13 +592,13 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("test-server-1"),
+				service.WithName[service.GetServerVersionOptions]("com.example/test-server-1"),
 				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON) {
 				require.NotNil(t, server)
-				require.Equal(t, "test-server-1", server.Name)
+				require.Equal(t, "com.example/test-server-1", server.Name)
 				require.Equal(t, "1.0.0", server.Version)
 				require.Equal(t, "Test server 1 description", server.Description)
 				require.Equal(t, "Test Server 1", server.Title)
@@ -613,13 +613,13 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("test-server-1"),
+				service.WithName[service.GetServerVersionOptions]("com.example/test-server-1"),
 				service.WithVersion[service.GetServerVersionOptions]("2.0.0"),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON) {
 				require.NotNil(t, server)
-				require.Equal(t, "test-server-1", server.Name)
+				require.Equal(t, "com.example/test-server-1", server.Name)
 				require.Equal(t, "2.0.0", server.Version)
 			},
 		},
@@ -630,7 +630,7 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("non-existent-server"),
+				service.WithName[service.GetServerVersionOptions]("com.example/non-existent-server"),
 				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
 			},
 		},
@@ -641,7 +641,7 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("test-server-1"),
+				service.WithName[service.GetServerVersionOptions]("com.example/test-server-1"),
 				service.WithVersion[service.GetServerVersionOptions]("999.999.999"),
 			},
 		},
@@ -663,7 +663,7 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("test-server-1"),
+				service.WithName[service.GetServerVersionOptions]("com.example/test-server-1"),
 				service.WithVersion[service.GetServerVersionOptions](""), // Empty version should error
 			},
 		},
@@ -674,13 +674,13 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("test-server-2"),
+				service.WithName[service.GetServerVersionOptions]("com.example/test-server-2"),
 				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON) {
 				require.NotNil(t, server)
-				require.Equal(t, "test-server-2", server.Name)
+				require.Equal(t, "com.example/test-server-2", server.Name)
 				require.Equal(t, "1.0.0", server.Version)
 				require.Equal(t, "Test server 2 description", server.Description)
 			},
@@ -707,7 +707,7 @@ func TestGetServerVersion(t *testing.T) {
 				serverID, err := queries.InsertServerVersion(
 					ctx,
 					sqlc.InsertServerVersionParams{
-						Name:                "test-server-with-packages",
+						Name:                "com.test/server-with-packages",
 						Version:             "1.0.0",
 						RegID:               regID,
 						Description:         ptr.String("Test server with packages and remotes"),
@@ -759,13 +759,13 @@ func TestGetServerVersion(t *testing.T) {
 				require.NoError(t, err)
 			},
 			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("test-server-with-packages"),
+				service.WithName[service.GetServerVersionOptions]("com.test/server-with-packages"),
 				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON) {
 				require.NotNil(t, server)
-				require.Equal(t, "test-server-with-packages", server.Name)
+				require.Equal(t, "com.test/server-with-packages", server.Name)
 				require.Equal(t, "1.0.0", server.Version)
 				require.Equal(t, "Test server with packages and remotes", server.Description)
 				require.Equal(t, "Test Server With Packages", server.Title)
@@ -795,14 +795,14 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("test-server-1"),
+				service.WithName[service.GetServerVersionOptions]("com.example/test-server-1"),
 				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
 				service.WithRegistryName[service.GetServerVersionOptions]("test-registry"),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON) {
 				require.NotNil(t, server)
-				require.Equal(t, "test-server-1", server.Name)
+				require.Equal(t, "com.example/test-server-1", server.Name)
 				require.Equal(t, "1.0.0", server.Version)
 				require.Equal(t, "Test server 1 description", server.Description)
 				require.Equal(t, "Test Server 1", server.Title)
@@ -815,7 +815,7 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("test-server-1"),
+				service.WithName[service.GetServerVersionOptions]("com.example/test-server-1"),
 				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
 				service.WithRegistryName[service.GetServerVersionOptions]("non-existent-registry"),
 			},
@@ -1057,7 +1057,7 @@ func TestPublishServerVersion(t *testing.T) {
 				return &reg
 			},
 			serverData: &upstreamv0.ServerJSON{
-				Name:        "test-server",
+				Name:        "com.example/test-server",
 				Version:     "1.0.0",
 				Description: "Test server description",
 				Title:       "Test Server",
@@ -1067,7 +1067,7 @@ func TestPublishServerVersion(t *testing.T) {
 				t.Helper()
 				require.NoError(t, err)
 				require.NotNil(t, result)
-				require.Equal(t, "test-server", result.Name)
+				require.Equal(t, "com.example/test-server", result.Name)
 				require.Equal(t, "1.0.0", result.Version)
 				require.Equal(t, "Test server description", result.Description)
 				require.Equal(t, "Test Server", result.Title)
@@ -1091,7 +1091,7 @@ func TestPublishServerVersion(t *testing.T) {
 				return &reg
 			},
 			serverData: &upstreamv0.ServerJSON{
-				Name:        "server-with-meta",
+				Name:        "com.test/server-with-meta",
 				Version:     "2.0.0",
 				Description: "Server with metadata",
 				Title:       "Meta Server",
@@ -1112,7 +1112,7 @@ func TestPublishServerVersion(t *testing.T) {
 				t.Helper()
 				require.NoError(t, err)
 				require.NotNil(t, result)
-				require.Equal(t, "server-with-meta", result.Name)
+				require.Equal(t, "com.test/server-with-meta", result.Name)
 				require.Equal(t, "2.0.0", result.Version)
 				require.NotNil(t, result.Repository)
 				require.Equal(t, "https://github.com/example/server", result.Repository.URL)
@@ -1136,7 +1136,7 @@ func TestPublishServerVersion(t *testing.T) {
 				return &reg
 			},
 			serverData: &upstreamv0.ServerJSON{
-				Name:        "server-with-packages-remotes",
+				Name:        "org.example/server-with-packages-remotes",
 				Version:     "3.0.0",
 				Description: "Server with packages and remotes",
 				Title:       "Full Server",
@@ -1170,7 +1170,7 @@ func TestPublishServerVersion(t *testing.T) {
 				t.Helper()
 				require.NoError(t, err)
 				require.NotNil(t, result)
-				require.Equal(t, "server-with-packages-remotes", result.Name)
+				require.Equal(t, "org.example/server-with-packages-remotes", result.Name)
 				require.Equal(t, "3.0.0", result.Version)
 				require.Len(t, result.Packages, 1)
 				require.Equal(t, "npm", result.Packages[0].RegistryType)
@@ -1187,7 +1187,7 @@ func TestPublishServerVersion(t *testing.T) {
 				return nil
 			},
 			serverData: &upstreamv0.ServerJSON{
-				Name:        "test-server",
+				Name:        "com.example/test-server",
 				Version:     "1.0.0",
 				Description: "Test",
 			},
@@ -1218,7 +1218,7 @@ func TestPublishServerVersion(t *testing.T) {
 				return &reg
 			},
 			serverData: &upstreamv0.ServerJSON{
-				Name:        "test-server",
+				Name:        "com.example/test-server",
 				Version:     "1.0.0",
 				Description: "Test",
 			},
@@ -1247,7 +1247,7 @@ func TestPublishServerVersion(t *testing.T) {
 				// Insert a server version
 				now := time.Now()
 				_, err = queries.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
-					Name:        "existing-server",
+					Name:        "com.example/existing-server",
 					Version:     "1.0.0",
 					RegID:       regID,
 					CreatedAt:   &now,
@@ -1261,7 +1261,7 @@ func TestPublishServerVersion(t *testing.T) {
 				return &reg
 			},
 			serverData: &upstreamv0.ServerJSON{
-				Name:        "existing-server",
+				Name:        "com.example/existing-server",
 				Version:     "1.0.0",
 				Description: "Duplicate",
 			},

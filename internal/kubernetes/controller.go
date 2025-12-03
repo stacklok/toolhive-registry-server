@@ -181,7 +181,12 @@ func getMCPServerList(ctx context.Context, c client.Client, namespace string) (*
 		}
 		serverJSON, err := extractServer(&mcpServer)
 		if err != nil {
-			return nil, fmt.Errorf("failed to extract ServerJSON for MCPServer %s: %w", mcpServer.Name, err)
+			slog.Warn("Failed to extract ServerJSON from K8s resource, skipping",
+				"type", "MCPServer",
+				"namespace", mcpServer.Namespace,
+				"name", mcpServer.Name,
+				"error", err)
+			continue
 		}
 		serverJSONs = append(serverJSONs, *serverJSON)
 	}
@@ -192,7 +197,12 @@ func getMCPServerList(ctx context.Context, c client.Client, namespace string) (*
 		}
 		serverJSON, err := extractVirtualMCPServer(&vmcpServer)
 		if err != nil {
-			return nil, fmt.Errorf("failed to extract ServerJSON for VirtualMCPServer %s: %w", vmcpServer.Name, err)
+			slog.Warn("Failed to extract ServerJSON from K8s resource, skipping",
+				"type", "VirtualMCPServer",
+				"namespace", vmcpServer.Namespace,
+				"name", vmcpServer.Name,
+				"error", err)
+			continue
 		}
 		serverJSONs = append(serverJSONs, *serverJSON)
 	}
@@ -203,7 +213,12 @@ func getMCPServerList(ctx context.Context, c client.Client, namespace string) (*
 		}
 		serverJSON, err := extractMCPRemoteProxy(&mcpRemoteProxy)
 		if err != nil {
-			return nil, fmt.Errorf("failed to extract ServerJSON for MCPRemoteProxy %s: %w", mcpRemoteProxy.Name, err)
+			slog.Warn("Failed to extract ServerJSON from K8s resource, skipping",
+				"type", "MCPRemoteProxy",
+				"namespace", mcpRemoteProxy.Namespace,
+				"name", mcpRemoteProxy.Name,
+				"error", err)
+			continue
 		}
 		serverJSONs = append(serverJSONs, *serverJSON)
 	}

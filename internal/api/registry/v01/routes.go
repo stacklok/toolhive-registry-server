@@ -4,6 +4,7 @@ package v01
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/api/common"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/internal/validators"
 )
 
 // Routes handles HTTP requests for registry API v0.1 endpoints.
@@ -188,7 +190,7 @@ func (routes *Routes) listServersWithRegistryName(w http.ResponseWriter, r *http
 
 // handleListVersions is a shared helper that handles listing versions with an optional registry name.
 func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request, registryName string) {
-	serverName, err := common.GetAndValidateURLParam(r, "serverName")
+	serverName, err := common.GetAndValidateServerNameParam(r, "serverName")
 	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
@@ -276,7 +278,7 @@ func (routes *Routes) listVersionsWithRegistryName(w http.ResponseWriter, r *htt
 
 // handleGetVersion is a shared helper that handles getting a version with an optional registry name.
 func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, registryName string) {
-	serverName, err := common.GetAndValidateURLParam(r, "serverName")
+	serverName, err := common.GetAndValidateServerNameParam(r, "serverName")
 	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
@@ -388,7 +390,7 @@ func (routes *Routes) deleteVersionWithRegistryName(w http.ResponseWriter, r *ht
 		return
 	}
 
-	serverName, err := common.GetAndValidateURLParam(r, "serverName")
+	serverName, err := common.GetAndValidateServerNameParam(r, "serverName")
 	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
@@ -459,9 +461,9 @@ func (routes *Routes) publishWithRegistryName(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Validate required fields
-	if strings.TrimSpace(serverData.Name) == "" {
-		common.WriteErrorResponse(w, "Server name is required", http.StatusBadRequest)
+	// Validate server name format (reverse-DNS)
+	if _, err := validators.ValidateServerName(serverData.Name); err != nil {
+		common.WriteErrorResponse(w, fmt.Sprintf("Invalid server name: %v", err), http.StatusBadRequest)
 		return
 	}
 

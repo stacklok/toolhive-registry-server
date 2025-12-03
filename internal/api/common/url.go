@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/stacklok/toolhive-registry-server/internal/validators"
 )
 
 // GetAndValidateURLParam extracts, decodes, and validates a URL parameter from the request.
@@ -36,4 +38,22 @@ func GetAndValidateURLParam(r *http.Request, paramName string) (string, error) {
 	}
 
 	return decoded, nil
+}
+
+// GetAndValidateServerNameParam extracts and validates a server name from URL params.
+// Validates reverse-DNS format: namespace/name
+func GetAndValidateServerNameParam(r *http.Request, paramName string) (string, error) {
+	// First do standard URL param validation
+	decoded, err := GetAndValidateURLParam(r, paramName)
+	if err != nil {
+		return "", err
+	}
+
+	// Then validate server name format
+	validName, err := validators.ValidateServerName(decoded)
+	if err != nil {
+		return "", fmt.Errorf("invalid server name format: %w", err)
+	}
+
+	return validName, nil
 }

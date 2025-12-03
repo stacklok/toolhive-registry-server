@@ -13,12 +13,18 @@ import (
 //
 //nolint:unparam
 func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, error) {
+	// Generate reverse-DNS formatted server name
+	serverName, err := GenerateServerName(mcpServer.Namespace, mcpServer.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate server name: %w", err)
+	}
+
 	// Build the ServerJSON from MCPServer spec
 	// Note: MCPServer is a Kubernetes deployment resource, so we extract
 	// what information is available and create a minimal ServerJSON
 	serverJSON := &upstreamv0.ServerJSON{
 		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-		Name:    mcpServer.Name,
+		Name:    serverName,
 		Version: "1.0.0", // Default version, could be extracted from annotations or labels
 	}
 
@@ -67,12 +73,18 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 //
 //nolint:unparam
 func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*upstreamv0.ServerJSON, error) {
+	// Generate reverse-DNS formatted server name
+	serverName, err := GenerateServerName(virtualMCPServer.Namespace, virtualMCPServer.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate server name: %w", err)
+	}
+
 	// Build the ServerJSON from VirtualMCPServer spec
 	// Note: VirtualMCPServer is a Kubernetes deployment resource, so we extract
 	// what information is available and create a minimal ServerJSON
 	serverJSON := &upstreamv0.ServerJSON{
 		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-		Name:    virtualMCPServer.Name,
+		Name:    serverName,
 		Version: "1.0.0", // Default version, could be extracted from annotations or labels
 	}
 
@@ -114,12 +126,18 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 //
 //nolint:unparam
 func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstreamv0.ServerJSON, error) {
+	// Generate reverse-DNS formatted server name
+	serverName, err := GenerateServerName(mcpRemoteProxy.Namespace, mcpRemoteProxy.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate server name: %w", err)
+	}
+
 	// Build the ServerJSON from MCPRemoteProxy spec
 	// Note: MCPRemoteProxy is a Kubernetes deployment resource, so we extract
 	// what information is available and create a minimal ServerJSON
 	serverJSON := &upstreamv0.ServerJSON{
 		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-		Name:    mcpRemoteProxy.Name,
+		Name:    serverName,
 		Version: "1.0.0", // Default version, could be extracted from annotations or labels
 	}
 
@@ -151,6 +169,15 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 			URL:  transportURL,
 		},
 	}
+
+	// Initialize metadata
+	serverJSON.Meta = &upstreamv0.ServerMeta{
+		PublisherProvided: make(map[string]interface{}),
+	}
+	// Add Kubernetes metadata to publisher provided metadata
+	serverJSON.Meta.PublisherProvided["kubernetes_namespace"] = mcpRemoteProxy.Namespace
+	serverJSON.Meta.PublisherProvided["kubernetes_name"] = mcpRemoteProxy.Name
+	serverJSON.Meta.PublisherProvided["kubernetes_uid"] = string(mcpRemoteProxy.UID)
 
 	return serverJSON, nil
 }
