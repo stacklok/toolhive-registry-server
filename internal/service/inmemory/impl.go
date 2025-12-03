@@ -14,6 +14,7 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
@@ -22,10 +23,14 @@ import (
 type regSvc struct {
 	mu               sync.RWMutex // Protects registryData, lastFetch
 	registryProvider service.RegistryDataProvider
+	config           *config.Config // Config for registry validation
 
-	registryData *toolhivetypes.UpstreamRegistry
+	// Map of registry name -> registry data
+	// Each entry corresponds to one registry from config.Registries
+	registryData map[string]*toolhivetypes.UpstreamRegistry
 
-	lastFetch     time.Time
+	// Map of registry name -> last fetch time for per-registry caching
+	lastFetch     map[string]time.Time
 	cacheDuration time.Duration
 }
 
@@ -38,6 +43,13 @@ type Option func(*regSvc)
 func WithCacheDuration(duration time.Duration) Option {
 	return func(s *regSvc) {
 		s.cacheDuration = duration
+	}
+}
+
+// WithConfig sets the config for registry validation
+func WithConfig(cfg *config.Config) Option {
+	return func(s *regSvc) {
+		s.config = cfg
 	}
 }
 
@@ -55,6 +67,9 @@ func New(
 
 	s := &regSvc{
 		registryProvider: registryProvider,
+		config:           nil, // Will be set by WithConfig if provided
+		registryData:     make(map[string]*toolhivetypes.UpstreamRegistry),
+		lastFetch:        make(map[string]time.Time),
 		cacheDuration:    30 * time.Second, // Default cache duration
 	}
 
@@ -72,24 +87,59 @@ func New(
 	return s, nil
 }
 
-// loadRegistryData loads registry data using the configured provider.
+// loadRegistryDataLocked loads registry data using the configured provider.
 // Caller must hold s.mu write lock.
 func (s *regSvc) loadRegistryDataLocked(ctx context.Context) error {
 	if s.registryProvider == nil {
 		return fmt.Errorf("registry data provider not initialized")
 	}
 
+	// Get the merged data from the provider (legacy behavior)
 	data, err := s.registryProvider.GetRegistryData(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get registry data: %w", err)
 	}
 
-	s.registryData = data
-	s.lastFetch = time.Now()
+	// For each registry in config, initialize its entry
+	if s.config != nil {
+		for _, regCfg := range s.config.Registries {
+			if regCfg.GetType() == config.SourceTypeManaged {
+				// MANAGED registries start empty if not already initialized
+				if _, exists := s.registryData[regCfg.Name]; !exists {
+					s.registryData[regCfg.Name] = &toolhivetypes.UpstreamRegistry{
+						Schema:  registry.UpstreamRegistrySchemaURL,
+						Version: registry.UpstreamRegistryVersion,
+						Meta:    toolhivetypes.UpstreamMeta{},
+						Data: toolhivetypes.UpstreamData{
+							Servers: make([]upstreamv0.ServerJSON, 0),
+							Groups:  make([]toolhivetypes.UpstreamGroup, 0),
+						},
+					}
+					s.lastFetch[regCfg.Name] = time.Now()
+				}
+			} else {
+				// FILE/GIT/API registries get the loaded data
+				// For simplicity in this initial version, all non-managed registries share the merged data
+				// TODO: In future, storage manager should return per-registry data
+				s.registryData[regCfg.Name] = data
+				s.lastFetch[regCfg.Name] = time.Now()
+			}
+		}
+	} else {
+		// Fallback: no config, use provider's registry name
+		defaultName := s.registryProvider.GetRegistryName()
+		s.registryData[defaultName] = data
+		s.lastFetch[defaultName] = time.Now()
+	}
 
-	// Count total servers (both container and remote)
-	totalServers := len(data.Data.Servers)
-	slog.Info("Loaded registry data", "server_count", totalServers)
+	serverCount := 0
+	for _, regData := range s.registryData {
+		if regData != nil {
+			serverCount += len(regData.Data.Servers)
+		}
+	}
+	slog.InfoContext(ctx, "Loaded registry data", "server_count", serverCount, "registry_count", len(s.registryData))
+
 	return nil
 }
 
@@ -108,15 +158,15 @@ func (s *regSvc) refreshDataIfNeeded(ctx context.Context) error {
 
 	// Check if refresh is needed with read lock first
 	s.mu.RLock()
-	needsRefresh := time.Since(s.lastFetch) > s.cacheDuration
-	hasData := s.registryData != nil
+	needsRefresh := s.needsRefresh()
+	hasData := len(s.registryData) > 0
 	s.mu.RUnlock()
 
 	if needsRefresh {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		// Double-check after acquiring write lock
-		if time.Since(s.lastFetch) > s.cacheDuration {
+		if s.needsRefresh() {
 			if err := s.loadRegistryDataLocked(ctx); err != nil {
 				slog.Warn("Failed to refresh registry data", "error", err)
 				// Continue with stale data if available
@@ -129,12 +179,45 @@ func (s *regSvc) refreshDataIfNeeded(ctx context.Context) error {
 	return nil
 }
 
+// needsRefresh checks if any registry data needs to be refreshed.
+// Caller must hold at least s.mu read lock.
+func (s *regSvc) needsRefresh() bool {
+	// If no data at all, needs refresh
+	if len(s.registryData) == 0 {
+		return true
+	}
+
+	// Check if any non-managed registry has expired cache
+	if s.config != nil {
+		for _, regCfg := range s.config.Registries {
+			// MANAGED registries don't need refresh from external sources
+			if regCfg.GetType() == config.SourceTypeManaged {
+				continue
+			}
+
+			lastFetch, exists := s.lastFetch[regCfg.Name]
+			if !exists || time.Since(lastFetch) > s.cacheDuration {
+				return true
+			}
+		}
+	} else {
+		// No config, check the default registry
+		defaultName := s.registryProvider.GetRegistryName()
+		lastFetch, exists := s.lastFetch[defaultName]
+		if !exists || time.Since(lastFetch) > s.cacheDuration {
+			return true
+		}
+	}
+
+	return false
+}
+
 // CheckReadiness implements RegistryService.CheckReadiness
 func (s *regSvc) CheckReadiness(ctx context.Context) error {
 	// Check if we have registry data loaded when a provider is configured
 	if s.registryProvider != nil {
 		s.mu.RLock()
-		hasData := s.registryData != nil
+		hasData := len(s.registryData) > 0
 		s.mu.RUnlock()
 
 		if !hasData {
@@ -162,8 +245,16 @@ func (s *regSvc) GetRegistry(ctx context.Context) (*toolhivetypes.UpstreamRegist
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if s.registryData == nil {
-		// Return an empty registry if no data is loaded
+	// Merge all registry data into a single response
+	mergedRegistry := s.getMergedRegistryLocked()
+
+	return mergedRegistry, source, nil
+}
+
+// getMergedRegistryLocked merges all registry data into a single response.
+// Caller must hold s.mu read lock.
+func (s *regSvc) getMergedRegistryLocked() *toolhivetypes.UpstreamRegistry {
+	if len(s.registryData) == 0 {
 		return &toolhivetypes.UpstreamRegistry{
 			Schema:  registry.UpstreamRegistrySchemaURL,
 			Version: registry.UpstreamRegistryVersion,
@@ -174,10 +265,38 @@ func (s *regSvc) GetRegistry(ctx context.Context) (*toolhivetypes.UpstreamRegist
 				Servers: make([]upstreamv0.ServerJSON, 0),
 				Groups:  make([]toolhivetypes.UpstreamGroup, 0),
 			},
-		}, source, nil
+		}
 	}
 
-	return s.registryData, source, nil
+	// Merge all servers and groups from all registries
+	var allServers []upstreamv0.ServerJSON
+	var allGroups []toolhivetypes.UpstreamGroup
+
+	for _, regData := range s.registryData {
+		if regData != nil {
+			allServers = append(allServers, regData.Data.Servers...)
+			allGroups = append(allGroups, regData.Data.Groups...)
+		}
+	}
+
+	if allServers == nil {
+		allServers = make([]upstreamv0.ServerJSON, 0)
+	}
+	if allGroups == nil {
+		allGroups = make([]toolhivetypes.UpstreamGroup, 0)
+	}
+
+	return &toolhivetypes.UpstreamRegistry{
+		Schema:  registry.UpstreamRegistrySchemaURL,
+		Version: registry.UpstreamRegistryVersion,
+		Meta: toolhivetypes.UpstreamMeta{
+			LastUpdated: time.Now().Format(time.RFC3339),
+		},
+		Data: toolhivetypes.UpstreamData{
+			Servers: allServers,
+			Groups:  allGroups,
+		},
+	}
 }
 
 // ListServers implements RegistryService.ListServers
@@ -206,19 +325,29 @@ func (s *regSvc) ListServers(
 // listServersLocked performs the actual server listing logic.
 // Caller must hold s.mu read lock.
 func (s *regSvc) listServersLocked(options *service.ListServersOptions) ([]*upstreamv0.ServerJSON, error) {
-	// Return empty slice if no data
-	if s.registryData == nil {
-		return []*upstreamv0.ServerJSON{}, nil
-	}
+	// Collect servers from relevant registries
+	var allServers []upstreamv0.ServerJSON
 
-	// Filter by registry name if provided
-	registryName := s.registryProvider.GetRegistryName()
-	if options.RegistryName != nil && *options.RegistryName != registryName {
-		return []*upstreamv0.ServerJSON{}, nil
+	if options.RegistryName != nil && *options.RegistryName != "" {
+		// Filter by specific registry
+		regData, exists := s.registryData[*options.RegistryName]
+		if !exists {
+			return []*upstreamv0.ServerJSON{}, nil
+		}
+		if regData != nil {
+			allServers = regData.Data.Servers
+		}
+	} else {
+		// Merge all registries
+		for _, regData := range s.registryData {
+			if regData != nil {
+				allServers = append(allServers, regData.Data.Servers...)
+			}
+		}
 	}
 
 	// Collect and filter servers
-	servers := s.collectAndFilterServers(options.Search)
+	servers := s.collectAndFilterServers(allServers, options.Search)
 
 	// Apply cursor pagination
 	servers, err := s.applyCursorPagination(servers, options.Cursor)
@@ -235,11 +364,10 @@ func (s *regSvc) listServersLocked(options *service.ListServersOptions) ([]*upst
 }
 
 // collectAndFilterServers collects servers and optionally filters by search term.
-// Caller must hold s.mu read lock.
-func (s *regSvc) collectAndFilterServers(search string) []*upstreamv0.ServerJSON {
+func (s *regSvc) collectAndFilterServers(allServers []upstreamv0.ServerJSON, search string) []*upstreamv0.ServerJSON {
 	var servers []*upstreamv0.ServerJSON
-	for i := range s.registryData.Data.Servers {
-		server := &s.registryData.Data.Servers[i]
+	for i := range allServers {
+		server := &allServers[i]
 		if search != "" && !s.serverMatchesSearch(server, search) {
 			continue
 		}
@@ -289,25 +417,63 @@ func (s *regSvc) ListServerVersions(
 		}
 	}
 
-	// Return empty slice if no data
-	if s.registryData == nil {
-		return []*upstreamv0.ServerJSON{}, nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.listServerVersionsLocked(options), nil
+}
+
+// listServerVersionsLocked performs the actual server version listing logic.
+// Caller must hold s.mu read lock.
+func (s *regSvc) listServerVersionsLocked(
+	options *service.ListServerVersionsOptions,
+) []*upstreamv0.ServerJSON {
+	// Get servers from specific registry or all registries
+	allServers := s.collectServersForRegistry(options.RegistryName)
+
+	// Filter by name if provided
+	servers := s.filterServersByName(allServers, options.Name)
+
+	// Apply limit if provided
+	if options.Limit > 0 && len(servers) > options.Limit {
+		servers = servers[:options.Limit]
 	}
 
-	// Filter by registry name if provided
-	registryName := s.registryProvider.GetRegistryName()
-	if options.RegistryName != nil && *options.RegistryName != registryName {
-		// Registry name doesn't match, return empty slice
-		return []*upstreamv0.ServerJSON{}, nil
+	return servers
+}
+
+// collectServersForRegistry collects servers from the specified registry or all registries.
+// Caller must hold s.mu read lock.
+func (s *regSvc) collectServersForRegistry(registryName *string) []upstreamv0.ServerJSON {
+	var allServers []upstreamv0.ServerJSON
+
+	if registryName != nil && *registryName != "" {
+		regData, exists := s.registryData[*registryName]
+		if !exists {
+			return []upstreamv0.ServerJSON{}
+		}
+		if regData != nil {
+			allServers = regData.Data.Servers
+		}
+	} else {
+		for _, regData := range s.registryData {
+			if regData != nil {
+				allServers = append(allServers, regData.Data.Servers...)
+			}
+		}
 	}
 
-	// Collect servers matching the name (all versions)
+	return allServers
+}
+
+// filterServersByName filters servers by name and returns pointers to matching servers.
+func (*regSvc) filterServersByName(allServers []upstreamv0.ServerJSON, name string) []*upstreamv0.ServerJSON {
 	var servers []*upstreamv0.ServerJSON
-	for i := range s.registryData.Data.Servers {
-		server := &s.registryData.Data.Servers[i]
+	for i := range allServers {
+		server := &allServers[i]
 
 		// Filter by name if provided
-		if options.Name != "" && server.Name != options.Name {
+		if name != "" && server.Name != name {
 			continue
 		}
 
@@ -319,12 +485,7 @@ func (s *regSvc) ListServerVersions(
 		servers = []*upstreamv0.ServerJSON{}
 	}
 
-	// Apply limit if provided
-	if options.Limit > 0 && len(servers) > options.Limit {
-		servers = servers[:options.Limit]
-	}
-
-	return servers, nil
+	return servers
 }
 
 // GetServerVersion implements RegistryService.GetServerVersion
@@ -343,17 +504,32 @@ func (s *regSvc) GetServerVersion(
 		}
 	}
 
-	if s.registryData == nil {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Get servers from specific registry or all registries
+	var allServers []upstreamv0.ServerJSON
+	if options.RegistryName != nil && *options.RegistryName != "" {
+		regData, exists := s.registryData[*options.RegistryName]
+		if !exists {
+			return nil, service.ErrServerNotFound
+		}
+		if regData != nil {
+			allServers = regData.Data.Servers
+		}
+	} else {
+		for _, regData := range s.registryData {
+			if regData != nil {
+				allServers = append(allServers, regData.Data.Servers...)
+			}
+		}
+	}
+
+	if len(allServers) == 0 {
 		return nil, service.ErrServerNotFound
 	}
 
-	// Filter by registry name if provided
-	registryName := s.registryProvider.GetRegistryName()
-	if options.RegistryName != nil && *options.RegistryName != registryName {
-		return nil, service.ErrServerNotFound
-	}
-
-	return s.getServerByNameAndVersion(options.Name, options.Version)
+	return s.getServerByNameAndVersion(allServers, options.Name, options.Version)
 }
 
 // PublishServerVersion implements RegistryService.PublishServerVersion
@@ -373,36 +549,37 @@ func (s *regSvc) PublishServerVersion(
 		return nil, fmt.Errorf("server data is required")
 	}
 
+	// Validate that this is a managed registry (before acquiring lock for better performance)
+	if _, err := s.validateManagedRegistry(options.RegistryName); err != nil {
+		return nil, err
+	}
+
 	serverData := options.ServerData
 
 	// Acquire write lock
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Initialize registryData if nil
-	if s.registryData == nil {
-		s.registryData = &toolhivetypes.UpstreamRegistry{
+	// Get the specific registry data
+	regData, exists := s.registryData[options.RegistryName]
+	if !exists {
+		// Initialize if it doesn't exist (shouldn't happen after validation, but be safe)
+		regData = &toolhivetypes.UpstreamRegistry{
 			Schema:  registry.UpstreamRegistrySchemaURL,
 			Version: registry.UpstreamRegistryVersion,
-			Meta: toolhivetypes.UpstreamMeta{
-				LastUpdated: time.Now().Format(time.RFC3339),
-			},
+			Meta:    toolhivetypes.UpstreamMeta{},
 			Data: toolhivetypes.UpstreamData{
 				Servers: make([]upstreamv0.ServerJSON, 0),
 				Groups:  make([]toolhivetypes.UpstreamGroup, 0),
 			},
 		}
-	}
-
-	// Check registry name matches
-	registryName := s.registryProvider.GetRegistryName()
-	if options.RegistryName != registryName {
-		return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, options.RegistryName)
+		s.registryData[options.RegistryName] = regData
+		s.lastFetch[options.RegistryName] = time.Now()
 	}
 
 	// Check for duplicate name+version
-	for i := range s.registryData.Data.Servers {
-		existing := &s.registryData.Data.Servers[i]
+	for i := range regData.Data.Servers {
+		existing := &regData.Data.Servers[i]
 		if existing.Name == serverData.Name && existing.Version == serverData.Version {
 			return nil, fmt.Errorf("%w: %s@%s",
 				service.ErrVersionAlreadyExists, serverData.Name, serverData.Version)
@@ -410,7 +587,7 @@ func (s *regSvc) PublishServerVersion(
 	}
 
 	// Append the new server
-	s.registryData.Data.Servers = append(s.registryData.Data.Servers, *serverData)
+	regData.Data.Servers = append(regData.Data.Servers, *serverData)
 
 	slog.InfoContext(ctx, "Server version published to in-memory registry",
 		"registry", options.RegistryName,
@@ -434,25 +611,26 @@ func (s *regSvc) DeleteServerVersion(
 		}
 	}
 
+	// Validate that this is a managed registry (before acquiring lock for better performance)
+	if _, err := s.validateManagedRegistry(options.RegistryName); err != nil {
+		return err
+	}
+
 	// Acquire write lock
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.registryData == nil {
+	// Get the specific registry data
+	regData, exists := s.registryData[options.RegistryName]
+	if !exists || regData == nil {
 		return fmt.Errorf("%w: %s@%s",
 			service.ErrServerNotFound, options.ServerName, options.Version)
 	}
 
-	// Check registry name matches
-	registryName := s.registryProvider.GetRegistryName()
-	if options.RegistryName != registryName {
-		return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, options.RegistryName)
-	}
-
 	// Find and remove the server
 	found := false
-	filtered := make([]upstreamv0.ServerJSON, 0, len(s.registryData.Data.Servers))
-	for _, server := range s.registryData.Data.Servers {
+	filtered := make([]upstreamv0.ServerJSON, 0, len(regData.Data.Servers))
+	for _, server := range regData.Data.Servers {
 		if server.Name == options.ServerName && server.Version == options.Version {
 			found = true
 			continue // Skip this server (delete it)
@@ -465,7 +643,7 @@ func (s *regSvc) DeleteServerVersion(
 			service.ErrServerNotFound, options.ServerName, options.Version)
 	}
 
-	s.registryData.Data.Servers = filtered
+	regData.Data.Servers = filtered
 
 	slog.InfoContext(ctx, "Server version deleted from in-memory registry",
 		"registry", options.RegistryName,
@@ -477,28 +655,118 @@ func (s *regSvc) DeleteServerVersion(
 
 // ListRegistries returns all configured registries
 func (s *regSvc) ListRegistries(_ context.Context) ([]service.RegistryInfo, error) {
-	registryInfo := s.buildRegistryInfo()
-	return []service.RegistryInfo{registryInfo}, nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]service.RegistryInfo, 0, len(s.registryData))
+
+	for registryName := range s.registryData {
+		// Find the registry config for type info
+		regType := s.getRegistryType(registryName)
+
+		timestamp := s.lastFetch[registryName]
+		if timestamp.IsZero() {
+			timestamp = time.Now()
+		}
+
+		result = append(result, service.RegistryInfo{
+			Name:       registryName,
+			Type:       regType,
+			SyncStatus: nil, // We don't track sync status in-memory
+			CreatedAt:  timestamp,
+			UpdatedAt:  timestamp,
+		})
+	}
+
+	return result, nil
 }
 
 // GetRegistryByName returns a single registry by name
 func (s *regSvc) GetRegistryByName(_ context.Context, name string) (*service.RegistryInfo, error) {
-	registryName := s.registryProvider.GetRegistryName()
-	if name != registryName {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	_, exists := s.registryData[name]
+	if !exists {
 		return nil, service.ErrRegistryNotFound
 	}
 
-	registryInfo := s.buildRegistryInfo()
-	return &registryInfo, nil
+	// Find the registry config for type info
+	regType := s.getRegistryType(name)
+
+	timestamp := s.lastFetch[name]
+	if timestamp.IsZero() {
+		timestamp = time.Now()
+	}
+
+	return &service.RegistryInfo{
+		Name:       name,
+		Type:       regType,
+		SyncStatus: nil,
+		CreatedAt:  timestamp,
+		UpdatedAt:  timestamp,
+	}, nil
+}
+
+// getRegistryType returns the type of the registry from config or infers it from source.
+// Caller must hold s.mu read lock.
+func (s *regSvc) getRegistryType(registryName string) string {
+	// First, try to get type from config
+	if s.config != nil {
+		for _, regCfg := range s.config.Registries {
+			if regCfg.Name == registryName {
+				return strings.ToUpper(regCfg.GetType())
+			}
+		}
+	}
+
+	// Fallback: infer from provider source
+	if s.registryProvider != nil {
+		source := s.registryProvider.GetSource()
+		if strings.HasPrefix(source, "git:") {
+			return "GIT"
+		}
+		if strings.HasPrefix(source, "http:") || strings.HasPrefix(source, "https:") {
+			return "REMOTE"
+		}
+	}
+
+	return "FILE" // default
+}
+
+// validateManagedRegistry validates that the registry exists and is a managed registry.
+// Returns ErrRegistryNotFound if the registry doesn't exist, or ErrNotManagedRegistry if it's not MANAGED type.
+func (s *regSvc) validateManagedRegistry(registryName string) (*config.RegistryConfig, error) {
+	if s.config == nil {
+		return nil, fmt.Errorf("config not available for registry validation")
+	}
+
+	// Find the registry in config
+	for i := range s.config.Registries {
+		reg := &s.config.Registries[i]
+		if reg.Name == registryName {
+			// Check if it's a MANAGED registry
+			if reg.GetType() != config.SourceTypeManaged {
+				return nil, fmt.Errorf("%w: registry %s has type %s",
+					service.ErrNotManagedRegistry, registryName, reg.GetType())
+			}
+			return reg, nil
+		}
+	}
+
+	return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
 }
 
 // getServerByNameAndVersion returns a server by name and optionally by version.
 // If version is empty, returns the first matching server.
-func (s *regSvc) getServerByNameAndVersion(name, version string) (*upstreamv0.ServerJSON, error) {
+func (*regSvc) getServerByNameAndVersion(
+	allServers []upstreamv0.ServerJSON,
+	name, version string,
+) (*upstreamv0.ServerJSON, error) {
 	var firstMatch *upstreamv0.ServerJSON
 
-	for i := range s.registryData.Data.Servers {
-		server := &s.registryData.Data.Servers[i]
+	for i := range allServers {
+		server := &allServers[i]
 		if server.Name != name {
 			continue
 		}
@@ -552,34 +820,6 @@ func (*regSvc) serverMatchesSearch(server *upstreamv0.ServerJSON, search string)
 	}
 
 	return false
-}
-
-// buildRegistryInfo creates a RegistryInfo from the provider configuration
-func (s *regSvc) buildRegistryInfo() service.RegistryInfo {
-	registryName := s.registryProvider.GetRegistryName()
-	source := s.registryProvider.GetSource()
-
-	// Determine registry type based on source prefix
-	registryType := "FILE"
-	if strings.HasPrefix(source, "git:") {
-		registryType = "GIT"
-	} else if strings.HasPrefix(source, "http:") || strings.HasPrefix(source, "https:") {
-		registryType = "REMOTE"
-	}
-
-	// Use lastFetch as a reasonable timestamp (when data was loaded)
-	timestamp := s.lastFetch
-	if timestamp.IsZero() {
-		timestamp = time.Now()
-	}
-
-	return service.RegistryInfo{
-		Name:       registryName,
-		Type:       registryType,
-		SyncStatus: nil, // We don't track sync status in-memory
-		CreatedAt:  timestamp,
-		UpdatedAt:  timestamp,
-	}
 }
 
 // decodeCursor decodes a base64-encoded cursor string to an index position.

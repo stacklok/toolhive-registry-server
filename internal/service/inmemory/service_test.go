@@ -12,17 +12,48 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
 
+// testManagedConfig creates a config with a managed registry for testing write operations
+func testManagedConfig(registryName string) *config.Config {
+	return &config.Config{
+		Registries: []config.RegistryConfig{
+			{
+				Name:    registryName,
+				Managed: &config.ManagedConfig{},
+			},
+		},
+	}
+}
+
+// testFileConfig creates a config with a file registry for testing read operations
+//
+//nolint:unparam // registryName is always "test-registry" but keeping param for consistency with testManagedConfig
+func testFileConfig(registryName string) *config.Config {
+	return &config.Config{
+		Registries: []config.RegistryConfig{
+			{
+				Name: registryName,
+				File: &config.FileConfig{Path: "/path/to/registry.json"},
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "1h",
+				},
+			},
+		},
+	}
+}
+
 func TestService_GetRegistry(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name           string
 		setupMocks     func(*mocks.MockRegistryDataProvider)
+		config         *config.Config
 		expectedError  string
 		expectedSource string
 		validateResult func(*testing.T, *toolhivetypes.UpstreamRegistry)
@@ -40,7 +71,9 @@ func TestService_GetRegistry(t *testing.T) {
 				)
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
 				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
+				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:         testFileConfig("test-registry"),
 			expectedSource: "file:/path/to/registry.json",
 			validateResult: func(t *testing.T, r *toolhivetypes.UpstreamRegistry) {
 				t.Helper()
@@ -54,7 +87,9 @@ func TestService_GetRegistry(t *testing.T) {
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(nil, errors.New("file not found")).Times(2) // Once during NewService, once during GetRegistry
 				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
+				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:         testFileConfig("test-registry"),
 			expectedSource: "file:/path/to/registry.json",
 			validateResult: func(t *testing.T, r *toolhivetypes.UpstreamRegistry) {
 				t.Helper()
@@ -75,7 +110,12 @@ func TestService_GetRegistry(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := inmemory.New(context.Background(), mockProvider)
+			var opts []inmemory.Option
+			if tt.config != nil {
+				opts = append(opts, inmemory.WithConfig(tt.config))
+			}
+
+			svc, err := inmemory.New(context.Background(), mockProvider, opts...)
 			require.NoError(t, err)
 
 			upstreamRegistry, source, err := svc.GetRegistry(context.Background())
@@ -98,21 +138,26 @@ func TestService_CheckReadiness(t *testing.T) {
 	tests := []struct {
 		name          string
 		setupMocks    func(*mocks.MockRegistryDataProvider)
+		config        *config.Config
 		expectedError string
 	}{
 		{
 			name: "ready with successful data load",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).Times(1) // Only during NewService, CheckReadiness uses cached data
+				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).Times(1)
+				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			expectedError: "",
 		},
 		{
 			name: "not ready when provider fails",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(nil, errors.New("connection failed")).Times(2)
+				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			expectedError: "registry data not available: failed to get registry data: connection failed",
 		},
 	}
@@ -126,7 +171,12 @@ func TestService_CheckReadiness(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := inmemory.New(context.Background(), mockProvider)
+			var opts []inmemory.Option
+			if tt.config != nil {
+				opts = append(opts, inmemory.WithConfig(tt.config))
+			}
+
+			svc, err := inmemory.New(context.Background(), mockProvider, opts...)
 			require.NoError(t, err)
 
 			err = svc.CheckReadiness(context.Background())
@@ -145,6 +195,7 @@ func TestService_ListServers(t *testing.T) {
 	tests := []struct {
 		name            string
 		setupMocks      func(*mocks.MockRegistryDataProvider)
+		config          *config.Config
 		options         []service.Option[service.ListServersOptions]
 		expectedCount   int
 		validateServers func(*testing.T, []*upstreamv0.ServerJSON)
@@ -171,6 +222,7 @@ func TestService_ListServers(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			expectedCount: 3,
 			validateServers: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
 				t.Helper()
@@ -190,6 +242,7 @@ func TestService_ListServers(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			expectedCount: 0,
 		},
 		{
@@ -214,6 +267,7 @@ func TestService_ListServers(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			options:       []service.Option[service.ListServersOptions]{service.WithLimit[service.ListServersOptions](2)},
 			expectedCount: 2,
 		},
@@ -235,6 +289,7 @@ func TestService_ListServers(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			options:       []service.Option[service.ListServersOptions]{service.WithSearch("weather")},
 			expectedCount: 1,
 			validateServers: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
@@ -256,6 +311,7 @@ func TestService_ListServers(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			options:       []service.Option[service.ListServersOptions]{service.WithRegistryName[service.ListServersOptions]("other-registry")},
 			expectedCount: 0,
 		},
@@ -270,7 +326,12 @@ func TestService_ListServers(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := inmemory.New(context.Background(), mockProvider)
+			var opts []inmemory.Option
+			if tt.config != nil {
+				opts = append(opts, inmemory.WithConfig(tt.config))
+			}
+
+			svc, err := inmemory.New(context.Background(), mockProvider, opts...)
 			require.NoError(t, err)
 
 			servers, err := svc.ListServers(context.Background(), tt.options...)
@@ -291,6 +352,7 @@ func TestService_GetServer(t *testing.T) {
 		serverName     string
 		version        string
 		setupMocks     func(*mocks.MockRegistryDataProvider)
+		config         *config.Config
 		expectedError  string
 		validateServer func(*testing.T, upstreamv0.ServerJSON)
 	}{
@@ -309,6 +371,7 @@ func TestService_GetServer(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config: testFileConfig("test-registry"),
 			validateServer: func(t *testing.T, s upstreamv0.ServerJSON) {
 				t.Helper()
 				assert.Equal(t, "test-server", s.Name)
@@ -323,6 +386,7 @@ func TestService_GetServer(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			expectedError: "server not found",
 		},
 		{
@@ -342,6 +406,7 @@ func TestService_GetServer(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config: testFileConfig("test-registry"),
 			validateServer: func(t *testing.T, s upstreamv0.ServerJSON) {
 				t.Helper()
 				assert.Equal(t, "test-server", s.Name)
@@ -365,6 +430,7 @@ func TestService_GetServer(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			expectedError: "server not found",
 		},
 	}
@@ -378,17 +444,22 @@ func TestService_GetServer(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := inmemory.New(context.Background(), mockProvider)
+			var opts []inmemory.Option
+			if tt.config != nil {
+				opts = append(opts, inmemory.WithConfig(tt.config))
+			}
+
+			svc, err := inmemory.New(context.Background(), mockProvider, opts...)
 			require.NoError(t, err)
 
-			opts := []service.Option[service.GetServerVersionOptions]{
+			getOpts := []service.Option[service.GetServerVersionOptions]{
 				service.WithName[service.GetServerVersionOptions](tt.serverName),
 			}
 			if tt.version != "" {
-				opts = append(opts, service.WithVersion[service.GetServerVersionOptions](tt.version))
+				getOpts = append(getOpts, service.WithVersion[service.GetServerVersionOptions](tt.version))
 			}
 
-			server, err := svc.GetServerVersion(context.Background(), opts...)
+			server, err := svc.GetServerVersion(context.Background(), getOpts...)
 
 			if tt.expectedError != "" {
 				assert.EqualError(t, err, tt.expectedError)
@@ -410,6 +481,7 @@ func TestService_WithCacheDuration(t *testing.T) {
 		name          string
 		cacheDuration time.Duration
 		setupMocks    func(*mocks.MockRegistryDataProvider)
+		config        *config.Config
 		callCount     int
 	}{
 		{
@@ -420,7 +492,9 @@ func TestService_WithCacheDuration(t *testing.T) {
 				testRegistry := registry.NewTestUpstreamRegistry()
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).Times(2)
 				m.EXPECT().GetSource().Return("test-source").AnyTimes()
+				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:    testFileConfig("test-registry"),
 			callCount: 2,
 		},
 	}
@@ -434,10 +508,16 @@ func TestService_WithCacheDuration(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
+			var opts []inmemory.Option
+			opts = append(opts, inmemory.WithCacheDuration(tt.cacheDuration))
+			if tt.config != nil {
+				opts = append(opts, inmemory.WithConfig(tt.config))
+			}
+
 			svc, err := inmemory.New(
 				context.Background(),
 				mockProvider,
-				inmemory.WithCacheDuration(tt.cacheDuration),
+				opts...,
 			)
 			require.NoError(t, err)
 
@@ -460,6 +540,7 @@ func TestService_ListServerVersions(t *testing.T) {
 	tests := []struct {
 		name            string
 		setupMocks      func(*mocks.MockRegistryDataProvider)
+		config          *config.Config
 		options         []service.Option[service.ListServerVersionsOptions]
 		expectedCount   int
 		validateServers func(*testing.T, []*upstreamv0.ServerJSON)
@@ -483,6 +564,7 @@ func TestService_ListServerVersions(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			options:       []service.Option[service.ListServerVersionsOptions]{service.WithName[service.ListServerVersionsOptions]("test-server")},
 			expectedCount: 1,
 			validateServers: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
@@ -506,6 +588,7 @@ func TestService_ListServerVersions(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			expectedCount: 2,
 		},
 		{
@@ -527,6 +610,7 @@ func TestService_ListServerVersions(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			options:       []service.Option[service.ListServerVersionsOptions]{service.WithLimit[service.ListServerVersionsOptions](2)},
 			expectedCount: 2,
 		},
@@ -543,6 +627,7 @@ func TestService_ListServerVersions(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			options:       []service.Option[service.ListServerVersionsOptions]{service.WithRegistryName[service.ListServerVersionsOptions]("other-registry")},
 			expectedCount: 0,
 		},
@@ -557,7 +642,12 @@ func TestService_ListServerVersions(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := inmemory.New(context.Background(), mockProvider)
+			var opts []inmemory.Option
+			if tt.config != nil {
+				opts = append(opts, inmemory.WithConfig(tt.config))
+			}
+
+			svc, err := inmemory.New(context.Background(), mockProvider, opts...)
 			require.NoError(t, err)
 
 			servers, err := svc.ListServerVersions(context.Background(), tt.options...)
@@ -576,6 +666,7 @@ func TestService_ListRegistries(t *testing.T) {
 	tests := []struct {
 		name              string
 		setupMocks        func(*mocks.MockRegistryDataProvider)
+		config            *config.Config
 		expectedCount     int
 		validateRegisties func(*testing.T, []service.RegistryInfo)
 	}{
@@ -587,6 +678,7 @@ func TestService_ListRegistries(t *testing.T) {
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			expectedCount: 1,
 			validateRegisties: func(t *testing.T, registries []service.RegistryInfo) {
 				t.Helper()
@@ -603,6 +695,19 @@ func TestService_ListRegistries(t *testing.T) {
 				m.EXPECT().GetRegistryName().Return("git-registry").AnyTimes()
 				m.EXPECT().GetSource().Return("git:https://github.com/example/registry.git").AnyTimes()
 			},
+			config: &config.Config{
+				Registries: []config.RegistryConfig{
+					{
+						Name: "git-registry",
+						Git: &config.GitConfig{
+							Repository: "https://github.com/example/registry.git",
+						},
+						SyncPolicy: &config.SyncPolicyConfig{
+							Interval: "1h",
+						},
+					},
+				},
+			},
 			expectedCount: 1,
 			validateRegisties: func(t *testing.T, registries []service.RegistryInfo) {
 				t.Helper()
@@ -618,11 +723,24 @@ func TestService_ListRegistries(t *testing.T) {
 				m.EXPECT().GetRegistryName().Return("remote-registry").AnyTimes()
 				m.EXPECT().GetSource().Return("https://example.com/registry.json").AnyTimes()
 			},
+			config: &config.Config{
+				Registries: []config.RegistryConfig{
+					{
+						Name: "remote-registry",
+						API: &config.APIConfig{
+							Endpoint: "https://example.com",
+						},
+						SyncPolicy: &config.SyncPolicyConfig{
+							Interval: "1h",
+						},
+					},
+				},
+			},
 			expectedCount: 1,
 			validateRegisties: func(t *testing.T, registries []service.RegistryInfo) {
 				t.Helper()
 				assert.Equal(t, "remote-registry", registries[0].Name)
-				assert.Equal(t, "REMOTE", registries[0].Type)
+				assert.Equal(t, "API", registries[0].Type)
 			},
 		},
 	}
@@ -636,7 +754,12 @@ func TestService_ListRegistries(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := inmemory.New(context.Background(), mockProvider)
+			var opts []inmemory.Option
+			if tt.config != nil {
+				opts = append(opts, inmemory.WithConfig(tt.config))
+			}
+
+			svc, err := inmemory.New(context.Background(), mockProvider, opts...)
 			require.NoError(t, err)
 
 			registries, err := svc.ListRegistries(context.Background())
@@ -656,6 +779,7 @@ func TestService_GetRegistryByName(t *testing.T) {
 		name             string
 		registryName     string
 		setupMocks       func(*mocks.MockRegistryDataProvider)
+		config           *config.Config
 		expectedError    string
 		validateRegistry func(*testing.T, *service.RegistryInfo)
 	}{
@@ -668,6 +792,7 @@ func TestService_GetRegistryByName(t *testing.T) {
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
 			},
+			config: testFileConfig("test-registry"),
 			validateRegistry: func(t *testing.T, reg *service.RegistryInfo) {
 				t.Helper()
 				assert.Equal(t, "test-registry", reg.Name)
@@ -682,6 +807,7 @@ func TestService_GetRegistryByName(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config:        testFileConfig("test-registry"),
 			expectedError: "registry not found",
 		},
 	}
@@ -695,7 +821,12 @@ func TestService_GetRegistryByName(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := inmemory.New(context.Background(), mockProvider)
+			var opts []inmemory.Option
+			if tt.config != nil {
+				opts = append(opts, inmemory.WithConfig(tt.config))
+			}
+
+			svc, err := inmemory.New(context.Background(), mockProvider, opts...)
 			require.NoError(t, err)
 
 			reg, err := svc.GetRegistryByName(context.Background(), tt.registryName)
@@ -718,13 +849,15 @@ func TestService_PublishServerVersion(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name           string
+		registryName   string
 		setupMocks     func(*mocks.MockRegistryDataProvider)
 		options        []service.Option[service.PublishServerVersionOptions]
 		expectedError  string
 		validateServer func(*testing.T, *upstreamv0.ServerJSON)
 	}{
 		{
-			name: "successful publish new server",
+			name:         "successful publish new server",
+			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry()
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
@@ -746,7 +879,8 @@ func TestService_PublishServerVersion(t *testing.T) {
 			},
 		},
 		{
-			name: "publish to empty registry initializes data",
+			name:         "publish to empty registry initializes data",
+			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				// Return nil to simulate empty/uninitialized registry
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(nil, errors.New("no data")).AnyTimes()
@@ -767,7 +901,8 @@ func TestService_PublishServerVersion(t *testing.T) {
 			},
 		},
 		{
-			name: "publish with wrong registry name fails",
+			name:         "publish with wrong registry name fails",
+			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry()
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
@@ -783,7 +918,8 @@ func TestService_PublishServerVersion(t *testing.T) {
 			expectedError: "registry not found: wrong-registry",
 		},
 		{
-			name: "publish without server data fails",
+			name:         "publish without server data fails",
+			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry()
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
@@ -805,7 +941,11 @@ func TestService_PublishServerVersion(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := inmemory.New(context.Background(), mockProvider)
+			svc, err := inmemory.New(
+				context.Background(),
+				mockProvider,
+				inmemory.WithConfig(testManagedConfig(tt.registryName)),
+			)
 			require.NoError(t, err)
 
 			server, err := svc.PublishServerVersion(context.Background(), tt.options...)
@@ -831,18 +971,25 @@ func TestService_PublishServerVersion_Duplicate(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
-	testRegistry := registry.NewTestUpstreamRegistry(
-		registry.WithServers(
-			registry.NewTestServer("existing-server",
-				registry.WithServerVersion("1.0.0"),
-				registry.WithDescription("Existing server"),
-			),
-		),
-	)
+	testRegistry := registry.NewTestUpstreamRegistry()
 	mockProvider.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 	mockProvider.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 
-	svc, err := inmemory.New(context.Background(), mockProvider)
+	svc, err := inmemory.New(
+		context.Background(),
+		mockProvider,
+		inmemory.WithConfig(testManagedConfig("test-registry")),
+	)
+	require.NoError(t, err)
+
+	// First publish should succeed
+	_, err = svc.PublishServerVersion(context.Background(),
+		service.WithRegistryName[service.PublishServerVersionOptions]("test-registry"),
+		service.WithServerData(&upstreamv0.ServerJSON{
+			Name:    "existing-server",
+			Version: "1.0.0",
+		}),
+	)
 	require.NoError(t, err)
 
 	// Try to publish a server with the same name and version
@@ -862,26 +1009,17 @@ func TestService_DeleteServerVersion(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
+		registryName  string
 		setupMocks    func(*mocks.MockRegistryDataProvider)
 		options       []service.Option[service.DeleteServerVersionOptions]
 		expectedError string
 		verifyDelete  func(*testing.T, service.RegistryService)
 	}{
 		{
-			name: "successful delete",
+			name:         "successful delete",
+			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry(
-					registry.WithServers(
-						registry.NewTestServer("server-to-delete",
-							registry.WithServerVersion("1.0.0"),
-							registry.WithOCIPackage("test:1.0.0"),
-						),
-						registry.NewTestServer("other-server",
-							registry.WithServerVersion("1.0.0"),
-							registry.WithOCIPackage("other:1.0.0"),
-						),
-					),
-				)
+				testRegistry := registry.NewTestUpstreamRegistry()
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
@@ -900,15 +1038,10 @@ func TestService_DeleteServerVersion(t *testing.T) {
 			},
 		},
 		{
-			name: "delete with wrong registry name fails",
+			name:         "delete with wrong registry name fails",
+			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry(
-					registry.WithServers(
-						registry.NewTestServer("server",
-							registry.WithServerVersion("1.0.0"),
-						),
-					),
-				)
+				testRegistry := registry.NewTestUpstreamRegistry()
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
@@ -930,8 +1063,34 @@ func TestService_DeleteServerVersion(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := inmemory.New(context.Background(), mockProvider)
+			svc, err := inmemory.New(
+				context.Background(),
+				mockProvider,
+				inmemory.WithConfig(testManagedConfig(tt.registryName)),
+			)
 			require.NoError(t, err)
+
+			// For the successful delete test, we need to first publish the servers
+			if tt.verifyDelete != nil {
+				// Publish the servers that we want to test delete with
+				_, err = svc.PublishServerVersion(context.Background(),
+					service.WithRegistryName[service.PublishServerVersionOptions](tt.registryName),
+					service.WithServerData(&upstreamv0.ServerJSON{
+						Name:    "server-to-delete",
+						Version: "1.0.0",
+					}),
+				)
+				require.NoError(t, err)
+
+				_, err = svc.PublishServerVersion(context.Background(),
+					service.WithRegistryName[service.PublishServerVersionOptions](tt.registryName),
+					service.WithServerData(&upstreamv0.ServerJSON{
+						Name:    "other-server",
+						Version: "1.0.0",
+					}),
+				)
+				require.NoError(t, err)
+			}
 
 			err = svc.DeleteServerVersion(context.Background(), tt.options...)
 
@@ -954,17 +1113,15 @@ func TestService_DeleteServerVersion_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
-	testRegistry := registry.NewTestUpstreamRegistry(
-		registry.WithServers(
-			registry.NewTestServer("existing-server",
-				registry.WithServerVersion("1.0.0"),
-			),
-		),
-	)
+	testRegistry := registry.NewTestUpstreamRegistry()
 	mockProvider.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 	mockProvider.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 
-	svc, err := inmemory.New(context.Background(), mockProvider)
+	svc, err := inmemory.New(
+		context.Background(),
+		mockProvider,
+		inmemory.WithConfig(testManagedConfig("test-registry")),
+	)
 	require.NoError(t, err)
 
 	// Try to delete a non-existent server
@@ -983,6 +1140,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 	tests := []struct {
 		name            string
 		setupMocks      func(*mocks.MockRegistryDataProvider)
+		config          *config.Config
 		options         []service.Option[service.ListServersOptions]
 		expectedCount   int
 		expectedError   string
@@ -1010,6 +1168,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config: testFileConfig("test-registry"),
 			// Use EncodeCursor(2) which generates base64("2") = "Mg==" to skip first 2 servers
 			options:       []service.Option[service.ListServersOptions]{service.WithCursor(inmemory.EncodeCursor(2))},
 			expectedCount: 2,
@@ -1041,6 +1200,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config: testFileConfig("test-registry"),
 			// Cursor "MQ==" is base64("1"), skip first 1, then limit to 2
 			options: []service.Option[service.ListServersOptions]{
 				service.WithCursor("MQ=="),
@@ -1066,6 +1226,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config: testFileConfig("test-registry"),
 			// Cursor "MTAw" is base64("100"), way beyond the 1 server we have
 			options:       []service.Option[service.ListServersOptions]{service.WithCursor("MTAw")},
 			expectedCount: 0,
@@ -1083,6 +1244,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config: testFileConfig("test-registry"),
 			// Invalid base64
 			options:       []service.Option[service.ListServersOptions]{service.WithCursor("not-valid-base64!!!")},
 			expectedError: "invalid cursor format",
@@ -1100,6 +1262,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
+			config: testFileConfig("test-registry"),
 			// "YWJj" is base64("abc"), which is not a number
 			options:       []service.Option[service.ListServersOptions]{service.WithCursor("YWJj")},
 			expectedError: "invalid cursor format",
@@ -1115,7 +1278,12 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 			tt.setupMocks(mockProvider)
 
-			svc, err := inmemory.New(context.Background(), mockProvider)
+			var opts []inmemory.Option
+			if tt.config != nil {
+				opts = append(opts, inmemory.WithConfig(tt.config))
+			}
+
+			svc, err := inmemory.New(context.Background(), mockProvider, opts...)
 			require.NoError(t, err)
 
 			servers, err := svc.ListServers(context.Background(), tt.options...)
