@@ -86,21 +86,6 @@ func (mr *MockRegistryStateServiceMockRecorder) ListSyncStatuses(ctx any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSyncStatuses", reflect.TypeOf((*MockRegistryStateService)(nil).ListSyncStatuses), ctx)
 }
 
-// UpdateStatusAtomically mocks base method.
-func (m *MockRegistryStateService) UpdateStatusAtomically(ctx context.Context, registryName string, testAndUpdateFn func(*status.SyncStatus) bool) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateStatusAtomically", ctx, registryName, testAndUpdateFn)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpdateStatusAtomically indicates an expected call of UpdateStatusAtomically.
-func (mr *MockRegistryStateServiceMockRecorder) UpdateStatusAtomically(ctx, registryName, testAndUpdateFn any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatusAtomically", reflect.TypeOf((*MockRegistryStateService)(nil).UpdateStatusAtomically), ctx, registryName, testAndUpdateFn)
-}
-
 // UpdateSyncStatus mocks base method.
 func (m *MockRegistryStateService) UpdateSyncStatus(ctx context.Context, registryName string, syncStatus *status.SyncStatus) error {
 	m.ctrl.T.Helper()

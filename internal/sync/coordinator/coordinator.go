@@ -4,13 +4,20 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sync"
+	"math/rand/v2"
 	"time"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
+)
+
+const (
+	// basePollingInterval is the base interval at which the coordinator checks for sync jobs
+	basePollingInterval = 2 * time.Minute
+	// pollingJitter is the maximum random offset (±30 seconds) applied to the polling interval
+	pollingJitter = 30 * time.Second
 )
 
 // Coordinator manages background synchronization scheduling and execution for multiple registries
@@ -23,26 +30,14 @@ type Coordinator interface {
 	Stop() error
 }
 
-// registrySync manages sync state for a single registry
-type registrySync struct {
-	config     *config.RegistryConfig
-	cancelFunc context.CancelFunc
-	done       chan struct{}
-}
-
 // defaultCoordinator is the default implementation of Coordinator
 type defaultCoordinator struct {
 	manager pkgsync.Manager
 	config  *config.Config
 
-	// Thread-safe status management (per-registry)
-	mu sync.RWMutex
-
 	// Lifecycle management
-	registrySyncs map[string]*registrySync
-	cancelFunc    context.CancelFunc
-	done          chan struct{}
-	wg            sync.WaitGroup
+	cancelFunc context.CancelFunc
+	done       chan struct{}
 
 	statusSvc state.RegistryStateService
 }
@@ -54,12 +49,20 @@ func New(
 	cfg *config.Config,
 ) Coordinator {
 	return &defaultCoordinator{
-		manager:       manager,
-		statusSvc:     statusSvc,
-		config:        cfg,
-		registrySyncs: make(map[string]*registrySync),
-		done:          make(chan struct{}),
+		manager:   manager,
+		statusSvc: statusSvc,
+		config:    cfg,
+		done:      make(chan struct{}),
 	}
+}
+
+// calculatePollingInterval returns the base polling interval with a random jitter applied.
+// The jitter is ±30 seconds to prevent all instances from polling the database simultaneously.
+func calculatePollingInterval() time.Duration {
+	// Generate a random offset between -pollingJitter and +pollingJitter
+	//nolint:gosec // G404: Non-cryptographic randomness is sufficient for polling jitter
+	jitterOffset := time.Duration(rand.Int64N(int64(2*pollingJitter))) - pollingJitter
+	return basePollingInterval + jitterOffset
 }
 
 // Start begins background sync coordination for all registries
@@ -79,131 +82,105 @@ func (c *defaultCoordinator) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize registry sync status: %w", err)
 	}
 
-	// Start sync loop for each registry (skip non-synced registries like managed and kubernetes)
-	for _, regCfg := range c.config.Registries {
+	// Calculate polling interval with jitter to prevent thundering herd
+	pollingInterval := calculatePollingInterval()
+	slog.Info("Configured coordinator sync interval",
+		"base_interval", basePollingInterval,
+		"actual_interval", pollingInterval)
 
-		// Skip non-synced registries - they don't sync from external sources
-		if regCfg.IsNonSyncedRegistry() {
-			slog.Info("Skipping sync loop for non-synced registry",
-				"registry", regCfg.Name,
-				"type", regCfg.GetType())
-			continue
+	// Create ticker for periodic sync checks
+	ticker := time.NewTicker(pollingInterval)
+	defer ticker.Stop()
+
+	// Perform initial sync check
+	c.processNextSyncJob(coordCtx)
+
+	// Run the coordinator loop
+	for {
+		select {
+		case <-ticker.C:
+			c.processNextSyncJob(coordCtx)
+
+			// Recalculate interval with new jitter for next iteration
+			ticker.Reset(calculatePollingInterval())
+		case <-coordCtx.Done():
+			slog.Info("Sync coordinator stopping")
+			return nil
 		}
-
-		c.startRegistrySync(coordCtx, &regCfg)
 	}
-
-	// Wait for context cancellation
-	<-coordCtx.Done()
-
-	// Wait for all registry sync goroutines to finish
-	c.wg.Wait()
-
-	return nil
 }
 
-// Stop gracefully stops the coordinator and all registry sync loops
+// Stop gracefully stops the coordinator
 func (c *defaultCoordinator) Stop() error {
 	if c.cancelFunc != nil {
-		slog.Info("Stopping sync coordinator for all registries")
+		slog.Info("Stopping sync coordinator")
 		c.cancelFunc()
-		// Wait for coordinator to finish (which waits for all registry syncs)
+		// Wait for coordinator to finish
 		<-c.done
 	}
 	return nil
 }
 
-// startRegistrySync starts a sync loop for a specific registry
-func (c *defaultCoordinator) startRegistrySync(parentCtx context.Context, regCfg *config.RegistryConfig) {
-	registryName := regCfg.Name
-
-	// Create cancellable context for this registry
-	regCtx, cancel := context.WithCancel(parentCtx)
-
-	// Store registry sync info
-	c.mu.Lock()
-	c.registrySyncs[registryName] = &registrySync{
-		config:     regCfg,
-		cancelFunc: cancel,
-		done:       make(chan struct{}),
-	}
-	c.mu.Unlock()
-
-	// Increment wait group
-	c.wg.Add(1)
-
-	// Start sync goroutine for this registry
-	go func() {
-		defer c.wg.Done()
-		defer close(c.registrySyncs[registryName].done)
-
-		c.runRegistrySync(regCtx, regCfg)
-	}()
-}
-
-// runRegistrySync runs the sync loop for a specific registry
-func (c *defaultCoordinator) runRegistrySync(ctx context.Context, regCfg *config.RegistryConfig) {
-	registryName := regCfg.Name
-	slog.Info("Starting sync loop", "registry", registryName)
-
-	// Get sync interval from registry policy
-	interval := getSyncInterval(regCfg.SyncPolicy)
-	slog.Info("Configured sync interval", "registry", registryName, "interval", interval)
-
-	// Create ticker for periodic sync
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	// Perform initial sync check
-	c.checkRegistrySync(ctx, regCfg, "initial")
-
-	// Continue with periodic sync
-	for {
-		select {
-		case <-ticker.C:
-			c.checkRegistrySync(ctx, regCfg, "periodic")
-		case <-ctx.Done():
-			slog.Info("Sync loop stopping", "registry", registryName)
-			return
+// processNextSyncJob gets the next job and processes it if available
+func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
+	// Get the next sync job using the predicate to check if sync is needed
+	regCfg, err := c.manager.GetNextSyncJob(ctx, func(syncStatus *status.SyncStatus) bool {
+		// Only process registries that are not currently syncing
+		if syncStatus.Phase == status.SyncPhaseSyncing {
+			return false
 		}
-	}
-}
 
-// checkRegistrySync performs a sync check and updates status accordingly for a specific registry
-func (c *defaultCoordinator) checkRegistrySync(ctx context.Context, regCfg *config.RegistryConfig, _ string) {
-	registryName := regCfg.Name
-	var attemptCount int
+		// Use the manager's ShouldSync logic to determine if this registry needs syncing
+		// We need the registry config to call ShouldSync, so we'll check this below
+		return true
+	})
 
-	// Check if we should sync, and set the status as an atomic operation.
-	// If we are not ready to sync, then do nothing.
-	// The lock is logically cleared by updating the status on completion (or error).
-	statusUpdated, err := c.statusSvc.UpdateStatusAtomically(
-		ctx,
-		registryName,
-		func(syncStatus *status.SyncStatus) bool {
-			// TODO: Maybe `ShouldSync` should live here, not manager?
-			reason := c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
-			if reason.ShouldSync() {
-				syncStatus.Phase = status.SyncPhaseSyncing
-				syncStatus.Message = "Sync in progress"
-				now := time.Now()
-				syncStatus.LastAttempt = &now
-				syncStatus.AttemptCount++
-				attemptCount = syncStatus.AttemptCount
-			}
-			return reason.ShouldSync()
-		},
-	)
 	if err != nil {
-		slog.Warn("Error checking sync status",
-			"registry", regCfg.Name,
-			"error", err)
-	}
-
-	// Registry is either not ready for a sync, or sync is in progress already.
-	if !statusUpdated {
+		slog.Error("Error getting next sync job", "error", err)
 		return
 	}
+
+	// No job available
+	if regCfg == nil {
+		return
+	}
+
+	// Skip non-synced registries - they don't sync from external sources
+	if regCfg.IsNonSyncedRegistry() {
+		slog.Debug("Skipping sync for non-synced registry",
+			"registry", regCfg.Name,
+			"type", regCfg.GetType())
+		return
+	}
+
+	// Get the current sync status to pass to ShouldSync
+	syncStatus, err := c.statusSvc.GetSyncStatus(ctx, regCfg.Name)
+	if err != nil {
+		slog.Error("Error getting sync status", "registry", regCfg.Name, "error", err)
+		return
+	}
+
+	// Double-check with ShouldSync before proceeding
+	reason := c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
+	if !reason.ShouldSync() {
+		slog.Debug("Registry does not need sync",
+			"registry", regCfg.Name,
+			"reason", reason.String())
+		// Update status back to not syncing since we're not going to sync
+		syncStatus.Phase = status.SyncPhaseComplete
+		if updateErr := c.statusSvc.UpdateSyncStatus(ctx, regCfg.Name, syncStatus); updateErr != nil {
+			slog.Error("Error updating sync status", "registry", regCfg.Name, "error", updateErr)
+		}
+		return
+	}
+
+	// Perform the sync
+	c.performRegistrySync(ctx, regCfg)
+}
+
+// performRegistrySync executes the sync operation for a registry
+func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *config.RegistryConfig) {
+	registryName := regCfg.Name
 
 	// Set up the final status update in a defer block to ensure that we always
 	// clean up the status of the sync at the end of this function.
@@ -220,10 +197,9 @@ func (c *defaultCoordinator) checkRegistrySync(ctx context.Context, regCfg *conf
 		}
 	}()
 
-	slog.Info("Starting sync operation",
-		"registry", registryName,
-		"attempt", attemptCount)
-	// Perform sync (outside lock - this can take a long time)
+	slog.Info("Starting sync operation", "registry", registryName)
+
+	// Perform sync
 	result, syncErr := c.manager.PerformSync(ctx, regCfg)
 
 	// Update status based on result

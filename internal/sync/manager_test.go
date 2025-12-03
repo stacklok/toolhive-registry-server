@@ -26,7 +26,7 @@ func TestNewDefaultSyncManager(t *testing.T) {
 	registryHandlerFactory := sources.NewRegistryHandlerFactory()
 	storageManager := sources.NewFileStorageManager("/tmp/test-storage")
 
-	syncManager := NewDefaultSyncManager(registryHandlerFactory, storageManager)
+	syncManager := NewDefaultSyncManager(registryHandlerFactory, storageManager, nil, nil)
 
 	assert.NotNil(t, syncManager)
 	assert.IsType(t, &defaultSyncManager{}, syncManager)
@@ -123,7 +123,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 
 			registryHandlerFactory := sources.NewRegistryHandlerFactory()
 			storageManager := sources.NewFileStorageManager("/tmp/test-storage")
-			syncManager := NewDefaultSyncManager(registryHandlerFactory, storageManager)
+			syncManager := NewDefaultSyncManager(registryHandlerFactory, storageManager, nil, nil)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -276,7 +276,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 					Times(1)
 			}
 
-			syncManager := NewDefaultSyncManager(registryHandlerFactory, mockStorageManager)
+			syncManager := NewDefaultSyncManager(registryHandlerFactory, mockStorageManager, nil, nil)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
