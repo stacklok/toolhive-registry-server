@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	thvauth "github.com/stacklok/toolhive/pkg/auth"
-	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
@@ -38,7 +38,7 @@ func NewAuthMiddleware(
 
 	switch cfg.Mode {
 	case config.AuthModeAnonymous:
-		logger.Infof("auth: anonymous mode")
+		slog.Info("Auth mode configured", "mode", "anonymous")
 		return anonymousMiddleware, nil, nil
 	case config.AuthModeOAuth:
 		return createOAuthMiddleware(ctx, cfg, factory)
@@ -96,7 +96,7 @@ func createOAuthMiddleware(
 		return nil, nil, fmt.Errorf("failed to create protected resource handler: %w", err)
 	}
 
-	logger.Infof("auth: OAuth mode")
+	slog.Info("Auth mode configured", "mode", "OAuth")
 
 	return m.Middleware, handler, nil
 }

@@ -3,9 +3,9 @@ package writer
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
@@ -24,15 +24,16 @@ func NewSyncWriter(cfg *config.Config, storageManager sources.StorageManager, po
 		if pool == nil {
 			return nil, fmt.Errorf("database pool is required for database storage type")
 		}
-		logger.Info("Creating database-backed sync writer")
+		slog.Info("Creating database-backed sync writer")
 		return NewDBSyncWriter(pool)
 	case config.StorageTypeFile:
 		// StorageManager implements the SyncWriter interface via its Store method
-		logger.Info("Using file-based storage manager as sync writer")
+		slog.Info("Using file-based storage manager as sync writer")
 		return storageManager, nil
 	default:
 		// Default to file-based storage for unknown types
-		logger.Infof("Unknown storage type %s, defaulting to file-based storage", cfg.GetStorageType())
+		slog.Info("Unknown storage type, defaulting to file-based storage",
+			"storage_type", cfg.GetStorageType())
 		return storageManager, nil
 	}
 }

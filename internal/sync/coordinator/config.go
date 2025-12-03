@@ -1,9 +1,8 @@
 package coordinator
 
 import (
+	"log/slog"
 	"time"
-
-	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
@@ -15,7 +14,9 @@ func getSyncInterval(policy *config.SyncPolicyConfig) time.Duration {
 		if interval, err := time.ParseDuration(policy.Interval); err == nil {
 			return interval
 		}
-		logger.Warnf("Invalid sync interval '%s', using default: 1m", policy.Interval)
+		slog.Warn("Invalid sync interval, using default",
+			"interval", policy.Interval,
+			"default", "1m")
 	}
 
 	// Default to 1 minute if no valid interval

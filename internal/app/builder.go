@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"os"
@@ -13,7 +14,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
@@ -273,7 +273,7 @@ func buildSyncComponents(
 	b *registryAppConfig,
 	pool *pgxpool.Pool,
 ) (coordinator.Coordinator, error) {
-	logger.Info("Initializing sync components")
+	slog.Info("Initializing sync components")
 
 	// Build registry handler factory
 	if b.registryHandlerFactory == nil {
@@ -332,7 +332,7 @@ func buildSyncComponents(
 
 	// Create coordinator
 	syncCoordinator := coordinator.New(b.syncManager, stateService, b.config)
-	logger.Info("Sync components initialized successfully")
+	slog.Info("Sync components initialized successfully")
 
 	return syncCoordinator, nil
 }
@@ -343,7 +343,7 @@ func buildServiceComponents(
 	b *registryAppConfig,
 	pool *pgxpool.Pool,
 ) (service.RegistryService, error) {
-	logger.Info("Initializing service components")
+	slog.Info("Initializing service components")
 
 	if b.config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
@@ -365,7 +365,7 @@ func buildServiceComponents(
 				return nil, fmt.Errorf("failed to create registry provider: %w", err)
 			}
 			b.registryProvider = provider
-			logger.Infof("Created registry data provider using storage manager")
+			slog.Info("Created registry data provider using storage manager")
 		}
 
 		// Create in-memory service (reads from file storage)
@@ -373,7 +373,7 @@ func buildServiceComponents(
 		if err != nil {
 			return nil, fmt.Errorf("failed to create in-memory registry service: %w", err)
 		}
-		logger.Info("Created in-memory registry service")
+		slog.Info("Created in-memory registry service")
 
 		svc = inMemorySvc
 	case config.StorageTypeDatabase:
@@ -386,14 +386,14 @@ func buildServiceComponents(
 		if err != nil {
 			return nil, fmt.Errorf("failed to create database service: %w", err)
 		}
-		logger.Info("Created database-backed registry service")
+		slog.Info("Created database-backed registry service")
 
 		svc = databaseSvc
 	default:
 		return nil, fmt.Errorf("unknown storage type: %s", storageType)
 	}
 
-	logger.Info("Service components initialized successfully")
+	slog.Info("Service components initialized successfully")
 	return svc, nil
 }
 
@@ -492,7 +492,7 @@ func buildHTTPServer(
 	b *registryAppConfig,
 	svc service.RegistryService,
 ) (*http.Server, error) {
-	logger.Info("Initializing HTTP server")
+	slog.Info("Initializing HTTP server")
 
 	// Use default middlewares if not provided
 	if b.middlewares == nil {
@@ -525,6 +525,6 @@ func buildHTTPServer(
 		IdleTimeout:  b.idleTimeout,
 	}
 
-	logger.Infof("HTTP server configured on %s", b.address)
+	slog.Info("HTTP server configured", "address", b.address)
 	return server, nil
 }

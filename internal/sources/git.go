@@ -4,10 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"log/slog"
 	"runtime"
 	"time"
-
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	git2 "github.com/stacklok/toolhive-registry-server/internal/git"
@@ -90,9 +89,8 @@ func (h *gitRegistryHandler) fetchRegistryData(ctx context.Context, regCfg *conf
 	}
 
 	// Clone the repository with timing and metrics
-	logger := log.FromContext(ctx)
 	startTime := time.Now()
-	logger.Info("Starting git clone",
+	slog.Info("Starting git clone",
 		"repository", cloneConfig.URL,
 		"branch", cloneConfig.Branch,
 		"tag", cloneConfig.Tag,
@@ -105,13 +103,14 @@ func (h *gitRegistryHandler) fetchRegistryData(ctx context.Context, regCfg *conf
 	cloneDuration := time.Since(startTime)
 
 	if err != nil {
-		logger.Error(err, "Git clone failed",
+		slog.Error("Git clone failed",
+			"error", err,
 			"repository", cloneConfig.URL,
 			"duration", cloneDuration.String())
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
 
-	logger.Info("Git clone completed",
+	slog.Info("Git clone completed",
 		"repository", cloneConfig.URL,
 		"duration", cloneDuration.String(),
 		"branch", repoInfo.Branch)
@@ -120,9 +119,9 @@ func (h *gitRegistryHandler) fetchRegistryData(ctx context.Context, regCfg *conf
 	defer func() {
 		if cleanupErr := h.gitClient.Cleanup(ctx, repoInfo); cleanupErr != nil {
 			// Log error but don't fail the operation
-			log.FromContext(ctx).Error(cleanupErr, "Failed to cleanup repository")
+			slog.Error("Failed to cleanup repository", "error", cleanupErr)
 		}
-		logMemoryStatsAfterOperation(ctx, &memBefore)
+		logMemoryStatsAfterOperation(&memBefore)
 	}()
 
 	// Get file content from repository
@@ -173,7 +172,7 @@ func (h *gitRegistryHandler) CurrentHash(ctx context.Context, regCfg *config.Reg
 }
 
 // logMemoryStatsAfterOperation logs the memory stats after an operation
-func logMemoryStatsAfterOperation(ctx context.Context, memBefore *runtime.MemStats) {
+func logMemoryStatsAfterOperation(memBefore *runtime.MemStats) {
 	// Log memory stats after cleanup and GC
 	var memAfter runtime.MemStats
 	runtime.ReadMemStats(&memAfter)
@@ -198,7 +197,7 @@ func logMemoryStatsAfterOperation(ctx context.Context, memBefore *runtime.MemSta
 	heapReleasedMB := memAfter.HeapReleased / (1024 * 1024) // Bytes returned to OS
 	heapIdleMB := memAfter.HeapIdle / (1024 * 1024)         // Bytes in idle spans
 
-	log.FromContext(ctx).Info("Memory stats after operation",
+	slog.Info("Memory stats after operation",
 		"alloc_mb", allocAfterMB,
 		"delta_mb", deltaMB,
 		"sys_mb", sysMB,

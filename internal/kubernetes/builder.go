@@ -3,13 +3,13 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
@@ -96,8 +96,6 @@ func NewMCPServerReconciler(
 	ctx context.Context,
 	opts ...Option,
 ) (ctrl.Manager, error) {
-	logger := log.FromContext(ctx)
-
 	o := &mcpServerReconcilerOptions{
 		namespaces:   []string{},
 		requeueAfter: defaultRequeueAfter,
@@ -157,7 +155,7 @@ func NewMCPServerReconciler(
 
 	go func() {
 		if err := mgr.Start(ctx); err != nil {
-			logger.Error(err, "failed to start manager")
+			slog.Error("Failed to start manager", "error", err)
 		}
 	}()
 

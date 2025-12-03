@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/stacklok/toolhive/pkg/auth"
-	"github.com/stacklok/toolhive/pkg/logger"
 )
 
 // errAllProvidersFailed indicates all providers failed during sequential fallback
@@ -116,19 +116,28 @@ func (m *multiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, err := auth.ExtractBearerToken(r)
 		if err != nil {
-			logger.Debugf("auth: token extraction failed: %v", err)
+			slog.Warn("Token extraction failed",
+				"error", err,
+				"remote_addr", r.RemoteAddr,
+				"path", r.URL.Path)
 			m.writeError(w, http.StatusUnauthorized, errorCodeInvalidRequest, "missing or malformed authorization header")
 			return
 		}
 
 		result := m.validateToken(r.Context(), token)
 		if result.Error != nil {
-			logger.Debugf("auth: token validation failed: %v", result.Error)
+			slog.Warn("Token validation failed",
+				"error", result.Error,
+				"remote_addr", r.RemoteAddr,
+				"path", r.URL.Path)
 			m.writeError(w, http.StatusUnauthorized, errorCodeInvalidToken, "token validation failed")
 			return
 		}
 
-		logger.Debugf("auth: token validated using provider %q", result.Provider)
+		slog.Info("Authentication successful",
+			"provider", result.Provider,
+			"remote_addr", r.RemoteAddr,
+			"path", r.URL.Path)
 		// TODO: Store claims in request context for downstream handlers (needed for authorization/scope enforcement)
 		next.ServeHTTP(w, r)
 	})
@@ -145,7 +154,7 @@ func (m *multiProviderMiddleware) validateToken(ctx context.Context, token strin
 				Provider: nv.Name,
 				Error:    err,
 			})
-			logger.Debugf("auth: provider %q failed to validate token: %v", nv.Name, err)
+			slog.Debug("Provider failed to validate token", "provider", nv.Name, "error", err)
 			continue
 		}
 
@@ -204,7 +213,7 @@ func (m *multiProviderMiddleware) writeError(w http.ResponseWriter, status int, 
 	}
 
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		logger.Errorf("auth: failed to encode error response: %v", err)
+		slog.Error("Failed to encode error response", "error", err)
 	}
 }
 

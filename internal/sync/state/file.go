@@ -3,10 +3,9 @@ package state
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
-
-	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
@@ -110,7 +109,9 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 ) {
 	syncStatus, err := f.statusPersistence.LoadStatus(ctx, registryName)
 	if err != nil {
-		logger.Warnf("Registry '%s': Failed to load sync status, initializing with defaults: %v", registryName, err)
+		slog.Warn("Failed to load sync status, initializing with defaults",
+			"registry", registryName,
+			"error", err)
 
 		// Non-synced registries (managed and kubernetes) get a different default status
 		if isNonSynced {
@@ -134,7 +135,7 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 
 	// Check if this is a new status (no file existed)
 	if syncStatus.Phase == "" && syncStatus.LastSyncTime == nil {
-		logger.Infof("Registry '%s': No previous sync status found, initializing with defaults", registryName)
+		slog.Info("No previous sync status found, initializing with defaults", "registry", registryName)
 
 		// Non-synced registries (managed and kubernetes) get a different default status
 		if isNonSynced {
@@ -147,28 +148,40 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 
 		// Persist the default status immediately
 		if err := f.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
-			logger.Warnf("Registry '%s': Failed to persist default sync status: %v", registryName, err)
+			slog.Warn("Failed to persist default sync status",
+				"registry", registryName,
+				"error", err)
 		}
 	} else if syncStatus.Phase == status.SyncPhaseSyncing && !isNonSynced {
 		// If status was left in Syncing state (only for synced registries),
 		// it means the previous run was interrupted. Reset it to Failed so the sync will be triggered
-		logger.Warnf("Registry '%s': Previous sync was interrupted (status=Syncing), resetting to Failed", registryName)
+		slog.Warn("Previous sync was interrupted (status=Syncing), resetting to Failed", "registry", registryName)
 		syncStatus.Phase = status.SyncPhaseFailed
 		syncStatus.Message = "Previous sync was interrupted"
 		// Persist the corrected status
 		if err := f.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
-			logger.Warnf("Registry '%s': Failed to persist corrected sync status: %v", registryName, err)
+			slog.Warn("Failed to persist corrected sync status",
+				"registry", registryName,
+				"error", err)
 		}
 	}
 
 	// Log the loaded/initialized status
 	if isNonSynced {
-		logger.Infof("Registry '%s': Non-synced registry (type: %s)", registryName, regType)
+		slog.Info("Non-synced registry",
+			"registry", registryName,
+			"type", regType)
 	} else if syncStatus.LastSyncTime != nil {
-		logger.Infof("Registry '%s': Loaded sync status: phase=%s, last sync at %s, %d servers",
-			registryName, syncStatus.Phase, syncStatus.LastSyncTime.Format(time.RFC3339), syncStatus.ServerCount)
+		slog.Info("Loaded sync status",
+			"registry", registryName,
+			"phase", syncStatus.Phase,
+			"last_sync", syncStatus.LastSyncTime.Format(time.RFC3339),
+			"server_count", syncStatus.ServerCount)
 	} else {
-		logger.Infof("Registry '%s': Sync status: phase=%s, no previous sync", registryName, syncStatus.Phase)
+		slog.Info("Sync status initialized",
+			"registry", registryName,
+			"phase", syncStatus.Phase,
+			"message", "no previous sync")
 	}
 
 	// Store in cached status

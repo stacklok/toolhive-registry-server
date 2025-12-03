@@ -3,12 +3,12 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/stacklok/toolhive/pkg/logger"
 	"github.com/stacklok/toolhive/pkg/versions"
 	"github.com/swaggo/swag/v2"
 
@@ -89,12 +89,23 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(ww, r)
 
-		logger.Debugf("HTTP %s %s %d %s %s",
-			r.Method,
-			r.URL.Path,
-			ww.Status(),
-			time.Since(start),
-			middleware.GetReqID(r.Context()),
+		// Determine log level based on status code
+		status := ww.Status()
+		duration := time.Since(start)
+		logLevel := slog.LevelInfo
+		if status >= 500 {
+			logLevel = slog.LevelError
+		} else if status >= 400 {
+			logLevel = slog.LevelWarn
+		}
+
+		slog.Log(r.Context(), logLevel, "HTTP request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", status,
+			"duration_ms", duration.Milliseconds(),
+			"request_id", middleware.GetReqID(r.Context()),
+			"remote_addr", r.RemoteAddr,
 		)
 	})
 }
@@ -117,7 +128,7 @@ func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
 			"error": "Failed to read OpenAPI specification: " + err.Error(),
 		}
 		if encodeErr := json.NewEncoder(w).Encode(errorResp); encodeErr != nil {
-			logger.Errorf("Failed to encode OpenAPI error response: %v", encodeErr)
+			slog.Error("Failed to encode OpenAPI error response", "error", encodeErr)
 		}
 		return
 	}
@@ -153,13 +164,16 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 func readinessHandler(svc service.RegistryService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := svc.CheckReadiness(r.Context()); err != nil {
+			slog.Warn("Readiness check failed",
+				"error", err,
+				"remote_addr", r.RemoteAddr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			errorResp := map[string]string{
 				"error": "RegistryService not ready: " + err.Error(),
 			}
 			if encodeErr := json.NewEncoder(w).Encode(errorResp); encodeErr != nil {
-				logger.Errorf("Failed to encode readiness error response: %v", encodeErr)
+				slog.Error("Failed to encode readiness error response", "error", encodeErr)
 			}
 			return
 		}
@@ -193,6 +207,6 @@ func versionHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		logger.Errorf("Failed to encode version info: %v", err)
+		slog.Error("Failed to encode version info", "error", err)
 	}
 }

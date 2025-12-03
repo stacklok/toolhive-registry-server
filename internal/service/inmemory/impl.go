@@ -4,10 +4,10 @@ package inmemory
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
-	"github.com/stacklok/toolhive/pkg/logger"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
@@ -60,7 +60,7 @@ func New(
 
 	// Load initial data
 	if err := s.loadRegistryData(ctx); err != nil {
-		logger.Warnf("Failed to load initial registry data: %v", err)
+		slog.Warn("Failed to load initial registry data", "error", err)
 		// Don't fail regSvc creation, allow it to retry later
 	}
 
@@ -83,7 +83,7 @@ func (s *regSvc) loadRegistryData(ctx context.Context) error {
 
 	// Count total servers (both container and remote)
 	totalServers := len(data.Data.Servers)
-	logger.Infof("Loaded registry data: %d servers", totalServers)
+	slog.Info("Loaded registry data", "server_count", totalServers)
 	return nil
 }
 
@@ -95,7 +95,7 @@ func (s *regSvc) refreshDataIfNeeded(ctx context.Context) error {
 
 	if time.Since(s.lastFetch) > s.cacheDuration {
 		if err := s.loadRegistryData(ctx); err != nil {
-			logger.Warnf("Failed to refresh registry data: %v", err)
+			slog.Warn("Failed to refresh registry data", "error", err)
 			// Continue with stale data if available
 			if s.registryData == nil {
 				return err
@@ -122,7 +122,7 @@ func (s *regSvc) CheckReadiness(ctx context.Context) error {
 // GetRegistry implements RegistryService.GetRegistry
 func (s *regSvc) GetRegistry(ctx context.Context) (*toolhivetypes.UpstreamRegistry, string, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
-		logger.Warnf("Failed to refresh data: %v", err)
+		slog.Warn("Failed to refresh data", "error", err)
 	}
 
 	// Get source information from the provider
@@ -155,7 +155,7 @@ func (s *regSvc) ListServers(
 	_ ...service.Option[service.ListServersOptions],
 ) ([]*upstreamv0.ServerJSON, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
-		logger.Warnf("Failed to refresh data: %v", err)
+		slog.Warn("Failed to refresh data", "error", err)
 	}
 
 	if s.registryData != nil {
@@ -175,7 +175,7 @@ func (s *regSvc) ListServerVersions(
 	_ ...service.Option[service.ListServerVersionsOptions],
 ) ([]*upstreamv0.ServerJSON, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
-		logger.Warnf("Failed to refresh data: %v", err)
+		slog.Warn("Failed to refresh data", "error", err)
 	}
 
 	return nil, service.ErrNotImplemented
@@ -187,7 +187,7 @@ func (s *regSvc) GetServerVersion(
 	opts ...service.Option[service.GetServerVersionOptions],
 ) (*upstreamv0.ServerJSON, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
-		logger.Warnf("Failed to refresh data: %v", err)
+		slog.Warn("Failed to refresh data", "error", err)
 	}
 
 	options := &service.GetServerVersionOptions{}

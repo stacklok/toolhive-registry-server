@@ -6,15 +6,16 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
-	"github.com/stacklok/toolhive/pkg/logger"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
@@ -111,6 +112,12 @@ func (s *dbService) ListServers(
 		options.Limit = MaxPageSize
 	}
 
+	slog.DebugContext(ctx, "ListServers query",
+		"limit", options.Limit,
+		"registry", options.RegistryName,
+		"search", options.Search,
+		"request_id", middleware.GetReqID(ctx))
+
 	params := sqlc.ListServersParams{
 		Size: int64(options.Limit),
 	}
@@ -150,7 +157,13 @@ func (s *dbService) ListServers(
 		return helpers, nil
 	}
 
-	return s.sharedListServers(ctx, querierFunc)
+	results, err := s.sharedListServers(ctx, querierFunc)
+	if err == nil {
+		slog.DebugContext(ctx, "ListServers completed",
+			"count", len(results),
+			"request_id", middleware.GetReqID(ctx))
+	}
+	return results, err
 }
 
 // ListServerVersions implements RegistryService.ListServerVersions
@@ -505,6 +518,12 @@ func (s *dbService) PublishServerVersion(
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	slog.InfoContext(ctx, "Server version published",
+		"registry", options.RegistryName,
+		"server", serverData.Name,
+		"version", serverData.Version,
+		"request_id", middleware.GetReqID(ctx))
+
 	// Fetch the inserted server to return it
 	result, err := s.GetServerVersion(ctx,
 		service.WithRegistryName[service.GetServerVersionOptions](options.RegistryName),
@@ -584,6 +603,12 @@ func (s *dbService) DeleteServerVersion(
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
+
+	slog.InfoContext(ctx, "Server version deleted",
+		"registry", options.RegistryName,
+		"server", options.ServerName,
+		"version", options.Version,
+		"request_id", middleware.GetReqID(ctx))
 
 	return nil
 }
@@ -719,7 +744,9 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 		if err != nil {
 			// It's okay if sync record doesn't exist yet (registry may not have been synced)
 			if !errors.Is(err, pgx.ErrNoRows) {
-				logger.Warnf("Failed to get sync status for registry %s: %v", reg.Name, err)
+				slog.Warn("Failed to get sync status for registry",
+					"registry", reg.Name,
+					"error", err)
 			}
 			// Leave SyncStatus as nil if not found or error
 			info.SyncStatus = nil
@@ -805,7 +832,9 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 	if err != nil {
 		// It's okay if sync record doesn't exist yet (registry may not have been synced)
 		if !errors.Is(err, pgx.ErrNoRows) {
-			logger.Warnf("Failed to get sync status for registry %s: %v", registry.Name, err)
+			slog.Warn("Failed to get sync status for registry",
+				"registry", registry.Name,
+				"error", err)
 		}
 		// Leave SyncStatus as nil if not found or error
 		info.SyncStatus = nil

@@ -3,9 +3,8 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
-
-	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
@@ -50,7 +49,7 @@ func newProtectedResourceHandler(
 
 		data, err := json.Marshal(metadata)
 		if err != nil {
-			logger.Errorf("auth: failed to encode protected resource metadata: %v", err)
+			slog.Error("Failed to encode protected resource metadata", "error", err)
 			http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
 			return
 		}

@@ -3,10 +3,9 @@ package coordinator
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
-
-	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
@@ -65,14 +64,14 @@ func New(
 
 // Start begins background sync coordination for all registries
 func (c *defaultCoordinator) Start(ctx context.Context) error {
-	logger.Infof("Starting background sync coordinator for %d registries", len(c.config.Registries))
+	slog.Info("Starting background sync coordinator", "registry_count", len(c.config.Registries))
 
 	// Create cancellable context for this coordinator
 	coordCtx, cancel := context.WithCancel(ctx)
 	c.cancelFunc = cancel
 	defer func() {
 		close(c.done)
-		logger.Info("Background sync coordinator shutting down")
+		slog.Info("Background sync coordinator shutting down")
 	}()
 
 	// Load or initialize sync status for all registries
@@ -85,7 +84,9 @@ func (c *defaultCoordinator) Start(ctx context.Context) error {
 
 		// Skip non-synced registries - they don't sync from external sources
 		if regCfg.IsNonSyncedRegistry() {
-			logger.Infof("Registry '%s': Skipping sync loop (non-synced registry type: %s)", regCfg.Name, regCfg.GetType())
+			slog.Info("Skipping sync loop for non-synced registry",
+				"registry", regCfg.Name,
+				"type", regCfg.GetType())
 			continue
 		}
 
@@ -104,7 +105,7 @@ func (c *defaultCoordinator) Start(ctx context.Context) error {
 // Stop gracefully stops the coordinator and all registry sync loops
 func (c *defaultCoordinator) Stop() error {
 	if c.cancelFunc != nil {
-		logger.Info("Stopping sync coordinator for all registries...")
+		slog.Info("Stopping sync coordinator for all registries")
 		c.cancelFunc()
 		// Wait for coordinator to finish (which waits for all registry syncs)
 		<-c.done
@@ -143,11 +144,11 @@ func (c *defaultCoordinator) startRegistrySync(parentCtx context.Context, regCfg
 // runRegistrySync runs the sync loop for a specific registry
 func (c *defaultCoordinator) runRegistrySync(ctx context.Context, regCfg *config.RegistryConfig) {
 	registryName := regCfg.Name
-	logger.Infof("Registry '%s': Starting sync loop", registryName)
+	slog.Info("Starting sync loop", "registry", registryName)
 
 	// Get sync interval from registry policy
 	interval := getSyncInterval(regCfg.SyncPolicy)
-	logger.Infof("Registry '%s': Configured sync interval: %v", registryName, interval)
+	slog.Info("Configured sync interval", "registry", registryName, "interval", interval)
 
 	// Create ticker for periodic sync
 	ticker := time.NewTicker(interval)
@@ -162,7 +163,7 @@ func (c *defaultCoordinator) runRegistrySync(ctx context.Context, regCfg *config
 		case <-ticker.C:
 			c.checkRegistrySync(ctx, regCfg, "periodic")
 		case <-ctx.Done():
-			logger.Infof("Registry '%s': Sync loop stopping", registryName)
+			slog.Info("Sync loop stopping", "registry", registryName)
 			return
 		}
 	}
@@ -194,7 +195,9 @@ func (c *defaultCoordinator) checkRegistrySync(ctx context.Context, regCfg *conf
 		},
 	)
 	if err != nil {
-		logger.Warnf("error while checking sync status of registry %s: %v", regCfg.Name, err)
+		slog.Warn("Error checking sync status",
+			"registry", regCfg.Name,
+			"error", err)
 	}
 
 	// Registry is either not ready for a sync, or sync is in progress already.
@@ -211,11 +214,15 @@ func (c *defaultCoordinator) checkRegistrySync(ctx context.Context, regCfg *conf
 	}
 	defer func() {
 		if err := c.statusSvc.UpdateSyncStatus(ctx, registryName, syncStatus); err != nil {
-			logger.Errorf("error while updating status of registry %s: %v", registryName, err)
+			slog.Error("Error updating sync status",
+				"registry", registryName,
+				"error", err)
 		}
 	}()
 
-	logger.Infof("Registry '%s': Starting sync operation (attempt %d)", registryName, attemptCount)
+	slog.Info("Starting sync operation",
+		"registry", registryName,
+		"attempt", attemptCount)
 	// Perform sync (outside lock - this can take a long time)
 	result, syncErr := c.manager.PerformSync(ctx, regCfg)
 
@@ -224,7 +231,9 @@ func (c *defaultCoordinator) checkRegistrySync(ctx context.Context, regCfg *conf
 	if syncErr != nil {
 		syncStatus.Phase = status.SyncPhaseFailed
 		syncStatus.Message = syncErr.Message
-		logger.Errorf("Registry '%s': Sync failed: %v", registryName, err)
+		slog.Error("Sync failed",
+			"registry", registryName,
+			"error", syncErr.Message)
 	} else {
 		syncStatus.Phase = status.SyncPhaseComplete
 		syncStatus.Message = "Sync completed successfully"
@@ -236,6 +245,9 @@ func (c *defaultCoordinator) checkRegistrySync(ctx context.Context, regCfg *conf
 		if len(hashPreview) > 8 {
 			hashPreview = hashPreview[:8]
 		}
-		logger.Infof("Registry '%s': Sync completed successfully: %d servers, hash=%s", registryName, result.ServerCount, hashPreview)
+		slog.Info("Sync completed successfully",
+			"registry", registryName,
+			"server_count", result.ServerCount,
+			"hash", hashPreview)
 	}
 }

@@ -3,10 +3,10 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
-	"github.com/stacklok/toolhive/pkg/logger"
 
 	"github.com/stacklok/toolhive-registry-server/database"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
@@ -51,15 +51,18 @@ func runMigrateUp(cmd *cobra.Command, _ []string) error {
 
 	// Prompt user if not using --yes flag
 	if !yes {
-		logger.Infof("About to apply migrations to database: %s@%s:%d/%s",
-			cfg.Database.GetMigrationUser(), cfg.Database.Host, cfg.Database.Port, cfg.Database.Database)
+		slog.Info("About to apply migrations to database",
+			"user", cfg.Database.GetMigrationUser(),
+			"host", cfg.Database.Host,
+			"port", cfg.Database.Port,
+			"database", cfg.Database.Database)
 		fmt.Print("Continue? (yes/no): ")
 		var response string
 		if _, err := fmt.Scanln(&response); err != nil {
 			return fmt.Errorf("failed to read user input: %w", err)
 		}
 		if response != "yes" && response != "y" {
-			logger.Infof("Migration cancelled by user")
+			slog.Info("Migration cancelled by user")
 			return nil
 		}
 	}
@@ -71,12 +74,12 @@ func runMigrateUp(cmd *cobra.Command, _ []string) error {
 	}
 	defer func() {
 		if closeErr := conn.Close(ctx); closeErr != nil {
-			logger.Errorf("Error closing database connection: %v", closeErr)
+			slog.Error("Error closing database connection", "error", closeErr)
 		}
 	}()
 
 	// Run migrations
-	logger.Infof("Applying database migrations...")
+	slog.Info("Applying database migrations")
 	if err := database.MigrateUp(ctx, conn); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
@@ -84,11 +87,11 @@ func runMigrateUp(cmd *cobra.Command, _ []string) error {
 	// Get current version
 	version, dirty, err := database.GetVersion(connString)
 	if err != nil {
-		logger.Warnf("Unable to get migration version: %v", err)
+		slog.Warn("Unable to get migration version", "error", err)
 	} else if dirty {
-		logger.Warnf("Database is in a dirty state at version %d", version)
+		slog.Warn("Database is in a dirty state", "version", version)
 	} else {
-		logger.Infof("Migrations applied successfully. Current version: %d", version)
+		slog.Info("Migrations applied successfully", "version", version)
 	}
 
 	return nil

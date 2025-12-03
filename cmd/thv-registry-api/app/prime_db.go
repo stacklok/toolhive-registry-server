@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"text/template"
@@ -12,7 +13,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/stacklok/toolhive/pkg/logger"
 	"golang.org/x/term"
 
 	"github.com/stacklok/toolhive-registry-server/database"
@@ -46,12 +46,14 @@ func init() {
 
 	err := viper.BindPFlag("config", primeDbCmd.Flags().Lookup("config"))
 	if err != nil {
-		logger.Fatalf("Failed to bind config flag: %v", err)
+		slog.Error("Failed to bind config flag", "error", err)
+		os.Exit(1)
 	}
 
 	// Mark config as required
 	if err := primeDbCmd.MarkFlagRequired("config"); err != nil {
-		logger.Fatalf("Failed to mark config flag as required: %v", err)
+		slog.Error("Failed to mark config flag as required", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -73,7 +75,7 @@ func runPrimeDb(cmd *cobra.Command, args []string) error {
 
 	var reader io.Reader
 	if term.IsTerminal(int(os.Stdin.Fd())) {
-		logger.Infof("Reading password from terminal...")
+		slog.Info("Reading password from terminal")
 		passwordReader, err := readerFromTerminal()
 		if err != nil {
 			return fmt.Errorf("failed to read password: %w", err)
@@ -126,7 +128,7 @@ func executePrimeSQL(ctx context.Context, primeSQL string, configPath string) er
 	}
 	defer func() {
 		if closeErr := conn.Close(ctx); closeErr != nil {
-			logger.Errorf("Error closing database connection: %v", closeErr)
+			slog.Error("Error closing database connection", "error", closeErr)
 		}
 	}()
 
@@ -142,7 +144,7 @@ func executePrimeSQL(ctx context.Context, primeSQL string, configPath string) er
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && err != pgx.ErrTxClosed {
-			logger.Errorf("failed to rollback transaction: %v", err)
+			slog.Error("Failed to rollback transaction", "error", err)
 		}
 	}()
 
@@ -154,7 +156,7 @@ func executePrimeSQL(ctx context.Context, primeSQL string, configPath string) er
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	logger.Infof("Database primed successfully", fixedRoleName)
+	slog.Info("Database primed successfully", "role", fixedRoleName)
 	return nil
 }
 

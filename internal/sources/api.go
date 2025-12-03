@@ -3,8 +3,7 @@ package sources
 import (
 	"context"
 	"fmt"
-
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	"log/slog"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
@@ -54,8 +53,6 @@ func (*apiRegistryHandler) Validate(regCfg *config.RegistryConfig) error {
 // FetchRegistry retrieves registry data from the API endpoint
 // It validates the Upstream format and delegates to the appropriate handler
 func (h *apiRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
-	logger := log.FromContext(ctx)
-
 	// Validate registry configuration
 	if err := h.Validate(regCfg); err != nil {
 		return nil, fmt.Errorf("registry validation failed: %w", err)
@@ -67,7 +64,7 @@ func (h *apiRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.R
 		return nil, fmt.Errorf("upstream format validation failed: %w", err)
 	}
 
-	logger.Info("Validated Upstream format, delegating to handler")
+	slog.Info("Validated Upstream format, delegating to handler")
 
 	// Delegate to the appropriate handler
 	return handler.FetchRegistry(ctx, regCfg)
@@ -95,16 +92,15 @@ func (h *apiRegistryHandler) validateUstreamFormat(
 	ctx context.Context,
 	regCfg *config.RegistryConfig,
 ) (*upstreamAPIHandler, error) {
-	logger := log.FromContext(ctx)
 	endpoint := h.getBaseURL(regCfg)
 
 	// Try upstream format (/openapi.yaml)
 	upstreamErr := h.upstreamHandler.Validate(ctx, endpoint)
 	if upstreamErr == nil {
-		logger.Info("Validated as upstream MCP Registry format")
+		slog.Info("Validated as upstream MCP Registry format")
 		return h.upstreamHandler, nil
 	}
-	logger.V(1).Info("Upstream format validation failed", "error", upstreamErr.Error())
+	slog.Debug("Upstream format validation failed", "error", upstreamErr.Error())
 
 	return nil, fmt.Errorf("unable to validate Upstream format")
 }
