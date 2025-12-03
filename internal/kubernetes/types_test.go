@@ -54,7 +54,7 @@ func TestExtractServer(t *testing.T) {
 				},
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-			wantName:    "test-server",
+			wantName:    "com.toolhive.k8s.default/test-server",
 			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
@@ -145,7 +145,7 @@ func TestExtractServer(t *testing.T) {
 				},
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-			wantName:    "full-server",
+			wantName:    "com.toolhive.k8s.custom-ns/full-server",
 			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
@@ -380,7 +380,7 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				},
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-			wantName:    "test-vmcp-server",
+			wantName:    "com.toolhive.k8s.default/test-vmcp-server",
 			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
@@ -449,7 +449,7 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				},
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-			wantName:    "vmcp-server",
+			wantName:    "com.toolhive.k8s.production/vmcp-server",
 			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
@@ -528,12 +528,15 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				},
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-			wantName:    "test-proxy",
+			wantName:    "com.toolhive.k8s.default/test-proxy",
 			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
 				assert.Equal(t, "A test MCP Remote Proxy", sj.Description)
+				assert.Equal(t, "default", sj.Meta.PublisherProvided["kubernetes_namespace"])
+				assert.Equal(t, "test-proxy", sj.Meta.PublisherProvided["kubernetes_name"])
+				assert.NotEmpty(t, sj.Meta.PublisherProvided["kubernetes_uid"])
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/proxy", sj.Remotes[0].URL)
@@ -594,12 +597,15 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				},
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-			wantName:    "proxy-server",
+			wantName:    "com.toolhive.k8s.custom-ns/proxy-server",
 			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
 				assert.Equal(t, "Proxy with description", sj.Description)
+				assert.Equal(t, "custom-ns", sj.Meta.PublisherProvided["kubernetes_namespace"])
+				assert.Equal(t, "proxy-server", sj.Meta.PublisherProvided["kubernetes_name"])
+				assert.NotEmpty(t, sj.Meta.PublisherProvided["kubernetes_uid"])
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://proxy.example.com", sj.Remotes[0].URL)

@@ -188,7 +188,7 @@ func TestListVersions(t *testing.T) {
 	}{
 		{
 			name: "list versions - valid server name",
-			path: "/v0.1/servers/test-server/versions",
+			path: "/v0.1/servers/com.example%2Ftest-server/versions",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().ListServerVersions(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
 			},
@@ -208,7 +208,7 @@ func TestListVersions(t *testing.T) {
 		},
 		{
 			name: "list versions with registry name - valid server name",
-			path: "/foo/v0.1/servers/test-server/versions",
+			path: "/foo/v0.1/servers/com.example%2Ftest-server/versions",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().ListServerVersions(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
 			},
@@ -267,7 +267,7 @@ func TestGetVersion(t *testing.T) {
 	}{
 		{
 			name: "get version - valid server and version",
-			path: "/v0.1/servers/test-server/versions/1.0.0",
+			path: "/v0.1/servers/com.example%2Ftest-server/versions/1.0.0",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().GetServerVersion(gomock.Any(), gomock.Any()).Return(&upstreamv0.ServerJSON{}, nil).AnyTimes()
 			},
@@ -275,7 +275,7 @@ func TestGetVersion(t *testing.T) {
 		},
 		{
 			name: "get version - latest",
-			path: "/v0.1/servers/test-server/versions/latest",
+			path: "/v0.1/servers/com.example%2Ftest-server/versions/latest",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().GetServerVersion(gomock.Any(), gomock.Any()).Return(&upstreamv0.ServerJSON{}, nil).AnyTimes()
 			},
@@ -289,7 +289,7 @@ func TestGetVersion(t *testing.T) {
 		},
 		{
 			name:       "get version - empty version",
-			path:       "/v0.1/servers/test-server/versions/",
+			path:       "/v0.1/servers/com.example%2Ftest-server/versions/",
 			setupMocks: func(_ *mocks.MockRegistryService) {},
 			wantStatus: http.StatusNotFound,
 		},
@@ -301,13 +301,13 @@ func TestGetVersion(t *testing.T) {
 		},
 		{
 			name:       "get version - empty version",
-			path:       "/v0.1/servers/test-server/versions/%20",
+			path:       "/v0.1/servers/com.example%2Ftest-server/versions/%20",
 			setupMocks: func(_ *mocks.MockRegistryService) {},
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name: "get version with registry name - valid server and version",
-			path: "/foo/v0.1/servers/test-server/versions/1.0.0",
+			path: "/foo/v0.1/servers/com.example%2Ftest-server/versions/1.0.0",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().GetServerVersion(gomock.Any(), gomock.Any()).Return(&upstreamv0.ServerJSON{}, nil).AnyTimes()
 			},
@@ -315,7 +315,7 @@ func TestGetVersion(t *testing.T) {
 		},
 		{
 			name: "get version with registry name - latest",
-			path: "/foo/v0.1/servers/test-server/versions/latest",
+			path: "/foo/v0.1/servers/com.example%2Ftest-server/versions/latest",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().GetServerVersion(gomock.Any(), gomock.Any()).Return(&upstreamv0.ServerJSON{}, nil).AnyTimes()
 			},
@@ -329,7 +329,7 @@ func TestGetVersion(t *testing.T) {
 		},
 		{
 			name:       "get version with registry name - empty version",
-			path:       "/foo/v0.1/servers/test-server/versions/",
+			path:       "/foo/v0.1/servers/com.example%2Ftest-server/versions/",
 			setupMocks: func(_ *mocks.MockRegistryService) {},
 			wantStatus: http.StatusNotFound,
 		},
@@ -341,7 +341,7 @@ func TestGetVersion(t *testing.T) {
 		},
 		{
 			name:       "get version with registry name - empty version",
-			path:       "/foo/v0.1/servers/test-server/versions/%20",
+			path:       "/foo/v0.1/servers/com.example%2Ftest-server/versions/%20",
 			setupMocks: func(_ *mocks.MockRegistryService) {},
 			wantStatus: http.StatusBadRequest,
 		},
@@ -403,11 +403,11 @@ func TestPublish(t *testing.T) {
 		{
 			name: "publish with registry name - success",
 			path: "/foo/v0.1/publish",
-			body: `{"name":"test/server","version":"1.0.0","description":"Test server"}`,
+			body: `{"name":"com.example/test-server","version":"1.0.0","description":"Test server"}`,
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
 					Return(&upstreamv0.ServerJSON{
-						Name:        "test/server",
+						Name:        "com.example/test-server",
 						Version:     "1.0.0",
 						Description: "Test server",
 					}, nil)
@@ -417,7 +417,7 @@ func TestPublish(t *testing.T) {
 		{
 			name: "publish - version already exists",
 			path: "/foo/v0.1/publish",
-			body: `{"name":"test/server","version":"1.0.0"}`,
+			body: `{"name":"com.example/test-server","version":"1.0.0"}`,
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
 					Return(nil, service.ErrVersionAlreadyExists)
@@ -428,7 +428,7 @@ func TestPublish(t *testing.T) {
 		{
 			name: "publish - registry not found",
 			path: "/nonexistent/v0.1/publish",
-			body: `{"name":"test/server","version":"1.0.0"}`,
+			body: `{"name":"com.example/test-server","version":"1.0.0"}`,
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
 					Return(nil, service.ErrRegistryNotFound)
@@ -439,7 +439,7 @@ func TestPublish(t *testing.T) {
 		{
 			name: "publish - not a managed registry",
 			path: "/remote-registry/v0.1/publish",
-			body: `{"name":"test/server","version":"1.0.0"}`,
+			body: `{"name":"com.example/test-server","version":"1.0.0"}`,
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
 					Return(nil, service.ErrNotManagedRegistry)
@@ -453,12 +453,12 @@ func TestPublish(t *testing.T) {
 			body:          `{"version":"1.0.0"}`,
 			setupMocks:    func(_ *mocks.MockRegistryService) {},
 			wantStatus:    http.StatusBadRequest,
-			expectedError: "Server name is required",
+			expectedError: "server name cannot be empty",
 		},
 		{
 			name:          "publish - missing version",
 			path:          "/foo/v0.1/publish",
-			body:          `{"name":"test/server"}`,
+			body:          `{"name":"com.example/test-server"}`,
 			setupMocks:    func(_ *mocks.MockRegistryService) {},
 			wantStatus:    http.StatusBadRequest,
 			expectedError: "Server version is required",
@@ -469,12 +469,12 @@ func TestPublish(t *testing.T) {
 			body:          `{"name":"   ","version":"1.0.0"}`,
 			setupMocks:    func(_ *mocks.MockRegistryService) {},
 			wantStatus:    http.StatusBadRequest,
-			expectedError: "Server name is required",
+			expectedError: "server name cannot be empty",
 		},
 		{
 			name:          "publish - empty version",
 			path:          "/foo/v0.1/publish",
-			body:          `{"name":"test/server","version":"   "}`,
+			body:          `{"name":"com.example/test-server","version":"   "}`,
 			setupMocks:    func(_ *mocks.MockRegistryService) {},
 			wantStatus:    http.StatusBadRequest,
 			expectedError: "Server version is required",
@@ -506,7 +506,7 @@ func TestPublish(t *testing.T) {
 				var response upstreamv0.ServerJSON
 				err = json.Unmarshal(rr.Body.Bytes(), &response)
 				require.NoError(t, err)
-				assert.Equal(t, "test/server", response.Name)
+				assert.Equal(t, "com.example/test-server", response.Name)
 				assert.Equal(t, "1.0.0", response.Version)
 			} else {
 				var response map[string]string
@@ -546,34 +546,28 @@ func TestURLEncodingInRoutes(t *testing.T) {
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:        "list versions - URL encoded at symbol",
+			name:        "list versions - URL encoded at symbol (invalid)",
 			path:        "/v0.1/servers/test%40v1/versions",
-			description: "Should decode test%40v1 to test@v1",
-			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServerVersions(gomock.Any(), gomock.Any()).
-					Return([]*upstreamv0.ServerJSON{}, nil)
-			},
-			wantStatus: http.StatusOK,
+			description: "Should reject @ symbol in server name",
+			setupMocks:  func(_ *mocks.MockRegistryService) {},
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "invalid server name format: server name must be in format 'dns-namespace/name' (e.g., 'com.example.api/server')",
 		},
 		{
-			name:        "list versions - URL encoded colon",
+			name:        "list versions - URL encoded colon (invalid)",
 			path:        "/v0.1/servers/test%3Aserver/versions",
-			description: "Should decode test%3Aserver to test:server",
-			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServerVersions(gomock.Any(), gomock.Any()).
-					Return([]*upstreamv0.ServerJSON{}, nil)
-			},
-			wantStatus: http.StatusOK,
+			description: "Should reject colon in server name",
+			setupMocks:  func(_ *mocks.MockRegistryService) {},
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "invalid server name format: server name must be in format 'dns-namespace/name' (e.g., 'com.example.api/server')",
 		},
 		{
-			name:        "list versions - multiple URL encoded chars",
+			name:        "list versions - multiple URL encoded chars (invalid)",
 			path:        "/v0.1/servers/test%2Fserver%40v1%2B2/versions",
-			description: "Should decode complex encoding",
-			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServerVersions(gomock.Any(), gomock.Any()).
-					Return([]*upstreamv0.ServerJSON{}, nil)
-			},
-			wantStatus: http.StatusOK,
+			description: "Should reject invalid characters in name part",
+			setupMocks:  func(_ *mocks.MockRegistryService) {},
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "invalid server name format: name 'server@v1+2' is invalid. Name must start and end with alphanumeric characters, and may contain dots, underscores, and hyphens in the middle",
 		},
 		{
 			name:        "list versions - URL encoded space in middle",
@@ -621,7 +615,7 @@ func TestURLEncodingInRoutes(t *testing.T) {
 		},
 		{
 			name:        "get version - URL encoded slash in version",
-			path:        "/v0.1/servers/test-server/versions/1.0%2F0",
+			path:        "/v0.1/servers/com.example%2Ftest-server/versions/1.0%2F0",
 			description: "Should decode version properly",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().GetServerVersion(gomock.Any(), gomock.Any()).
@@ -631,7 +625,7 @@ func TestURLEncodingInRoutes(t *testing.T) {
 		},
 		{
 			name:        "get version - URL encoded at in version",
-			path:        "/v0.1/servers/test-server/versions/v1%40latest",
+			path:        "/v0.1/servers/com.example%2Ftest-server/versions/v1%40latest",
 			description: "Should decode version with @ symbol",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().GetServerVersion(gomock.Any(), gomock.Any()).
@@ -649,7 +643,7 @@ func TestURLEncodingInRoutes(t *testing.T) {
 		},
 		{
 			name:        "get version - URL encoded space in version",
-			path:        "/v0.1/servers/test-server/versions/1.0%20.0",
+			path:        "/v0.1/servers/com.example%2Ftest-server/versions/1.0%20.0",
 			description: "Should reject whitespace in version",
 			setupMocks:  func(_ *mocks.MockRegistryService) {},
 			wantStatus:  http.StatusBadRequest,
@@ -665,7 +659,7 @@ func TestURLEncodingInRoutes(t *testing.T) {
 		},
 		{
 			name:        "get version - empty encoded version",
-			path:        "/v0.1/servers/test-server/versions/%09",
+			path:        "/v0.1/servers/com.example%2Ftest-server/versions/%09",
 			description: "Should reject empty version",
 			setupMocks:  func(_ *mocks.MockRegistryService) {},
 			wantStatus:  http.StatusBadRequest,
@@ -675,7 +669,7 @@ func TestURLEncodingInRoutes(t *testing.T) {
 		// With registry name prefix
 		{
 			name:        "with registry - URL encoded slash in registry name",
-			path:        "/test%2Fregistry/v0.1/servers/my-server/versions",
+			path:        "/test%2Fregistry/v0.1/servers/org.example%2Fmy-server/versions",
 			description: "Should decode registry name properly",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().ListServerVersions(gomock.Any(), gomock.Any()).
@@ -685,7 +679,7 @@ func TestURLEncodingInRoutes(t *testing.T) {
 		},
 		{
 			name:        "with registry - URL encoded space in registry",
-			path:        "/test%20registry/v0.1/servers/my-server/versions",
+			path:        "/test%20registry/v0.1/servers/org.example%2Fmy-server/versions",
 			description: "Should reject whitespace in registry name",
 			setupMocks:  func(_ *mocks.MockRegistryService) {},
 			wantStatus:  http.StatusBadRequest,
@@ -693,7 +687,7 @@ func TestURLEncodingInRoutes(t *testing.T) {
 		},
 		{
 			name:        "with registry - empty encoded registry",
-			path:        "/%20/v0.1/servers/my-server/versions",
+			path:        "/%20/v0.1/servers/org.example%2Fmy-server/versions",
 			description: "Should reject empty registry name",
 			setupMocks:  func(_ *mocks.MockRegistryService) {},
 			wantStatus:  http.StatusBadRequest,
@@ -757,7 +751,7 @@ func TestDeleteVersion(t *testing.T) {
 		},
 		{
 			name: "delete - server not found",
-			path: "/foo/v0.1/servers/nonexistent/versions/1.0.0",
+			path: "/foo/v0.1/servers/com.example%2Fnonexistent/versions/1.0.0",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().DeleteServerVersion(gomock.Any(), gomock.Any()).
 					Return(service.ErrServerNotFound)
@@ -767,7 +761,7 @@ func TestDeleteVersion(t *testing.T) {
 		},
 		{
 			name: "delete - registry not found",
-			path: "/nonexistent/v0.1/servers/test/versions/1.0.0",
+			path: "/nonexistent/v0.1/servers/com.example%2Ftest-server/versions/1.0.0",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().DeleteServerVersion(gomock.Any(), gomock.Any()).
 					Return(service.ErrRegistryNotFound)
@@ -777,7 +771,7 @@ func TestDeleteVersion(t *testing.T) {
 		},
 		{
 			name: "delete - not a managed registry",
-			path: "/remote-registry/v0.1/servers/test/versions/1.0.0",
+			path: "/remote-registry/v0.1/servers/com.example%2Ftest-server/versions/1.0.0",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().DeleteServerVersion(gomock.Any(), gomock.Any()).
 					Return(service.ErrNotManagedRegistry)
@@ -787,7 +781,7 @@ func TestDeleteVersion(t *testing.T) {
 		},
 		{
 			name:          "delete - empty registry name",
-			path:          "/%20/v0.1/servers/test/versions/1.0.0",
+			path:          "/%20/v0.1/servers/com.example%2Ftest-server/versions/1.0.0",
 			setupMocks:    func(_ *mocks.MockRegistryService) {},
 			wantStatus:    http.StatusBadRequest,
 			expectedError: "registryName cannot be empty",
@@ -801,7 +795,7 @@ func TestDeleteVersion(t *testing.T) {
 		},
 		{
 			name:          "delete - empty version",
-			path:          "/foo/v0.1/servers/test/versions/%20",
+			path:          "/foo/v0.1/servers/com.example%2Ftest-server/versions/%20",
 			setupMocks:    func(_ *mocks.MockRegistryService) {},
 			wantStatus:    http.StatusBadRequest,
 			expectedError: "version cannot be empty",

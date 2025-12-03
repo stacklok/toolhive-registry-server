@@ -20,6 +20,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/internal/validators"
 )
 
 const (
@@ -457,6 +458,11 @@ func (s *dbService) PublishServerVersion(
 	}
 
 	serverData := options.ServerData
+
+	// Defensive check: validate server name format (should never fail if API layer is correct)
+	if !validators.IsValidServerName(serverData.Name) {
+		return nil, fmt.Errorf("invalid server name format: %s", serverData.Name)
+	}
 
 	// Begin transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
