@@ -1,0 +1,105 @@
+# Test configuration for validating filter functionality
+#
+# This config tests different filter scenarios:
+# - Name inclusion/exclusion with glob patterns
+# - Tag inclusion/exclusion
+# - Multiple filter combinations
+#
+# IMPORTANT: Name filters use glob patterns (filepath.Match):
+# - * matches any characters EXCEPT path separator /
+# - To match across path components use */ or */*
+# - Server names include prefixes like: io.github.stacklok/server-name
+#
+# Usage:
+#   thv-registry-api serve --config examples/config-filter-test.yaml
+#   CONFIG_FILE=config-filter-test.yaml docker-compose up
+
+registryName: filter-test-registry
+
+registries:
+  # Test 1: Include only database-related servers by name pattern
+  - name: database-servers
+    format: toolhive
+    file:
+      path: /examples/toolhive-registry.json
+    syncPolicy:
+      interval: "30s"
+    filter:
+      names:
+        include:
+          - "*/*-mysql-*"     # Matches: io.github.stacklok/adb-mysql-mcp-server
+          - "*/genai-*"       # Matches: io.github.stacklok/genai-toolbox
+        exclude:
+          - "*/*-mcp-server"  # Excludes: io.github.stacklok/adb-mysql-mcp-server
+      # Result: Should only include genai-toolbox (included by */genai-* but not excluded)
+
+  # Test 2: Filter by tags - only security and database servers
+  - name: security-and-database
+    format: toolhive
+    file:
+      path: /examples/toolhive-registry.json
+    syncPolicy:
+      interval: "30s"
+    filter:
+      tags:
+        include:
+          - "security"      # Should match: crowdstrike-falcon
+          - "database"      # Should match: adb-mysql-mcp-server, genai-toolbox
+        exclude:
+          - "mysql"         # Should exclude servers with mysql tag
+      # Result: Should include crowdstrike-falcon and genai-toolbox (has database but not mysql-specific)
+
+  # Test 3: Complex filter - GitHub/GitLab servers excluding certain tags
+  - name: version-control
+    format: toolhive
+    file:
+      path: /examples/toolhive-registry.json
+    syncPolicy:
+      interval: "30s"
+    filter:
+      names:
+        include:
+          - "*/git*"          # Matches: io.github.stacklok/github, io.github.stacklok/gitlab
+      tags:
+        exclude:
+          - "wiki"            # GitLab has wiki tag, should be excluded
+      # Result: Should only include github (gitlab excluded due to wiki tag)
+
+  # Test 4: Wildcard patterns with proper prefix
+  - name: dev-tools
+    format: toolhive
+    file:
+      path: /examples/toolhive-registry.json
+    syncPolicy:
+      interval: "30s"
+    filter:
+      names:
+        include:
+          - "*/aws-*"         # Should match: io.github.stacklok/aws-api
+          - "*/chrome-*"      # Should match: io.github.stacklok/chrome-devtools-mcp
+          - "*/fetch"         # Should match: io.github.stacklok/fetch
+      # Result: Should include aws-api, chrome-devtools-mcp, and fetch
+
+  # Test 5: No filters - should include all servers for comparison
+  - name: all-servers
+    format: toolhive
+    file:
+      path: /examples/toolhive-registry.json
+    syncPolicy:
+      interval: "30s"
+    # No filter - should include all 12 servers
+
+auth:
+  mode: anonymous
+
+# PostgreSQL database configuration for Docker Compose
+database:
+  host: postgres  # Docker service name
+  port: 5432
+  user: db_app
+  migrationUser: db_migrator
+  database: registry
+  sslMode: disable
+  maxOpenConns: 10
+  maxIdleConns: 2
+  connMaxLifetime: "30m"
