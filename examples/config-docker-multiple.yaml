@@ -1,0 +1,90 @@
+# Docker Compose configuration for testing multiple registry sources
+#
+# This configuration demonstrates how to aggregate data from multiple
+# registry sources (file-based, API, Git) into a single registry server.
+# It's useful for testing the server's ability to merge and serve data
+# from different providers.
+#
+# Usage:
+#   CONFIG_FILE=config-docker-multiple.yaml docker-compose up
+#
+# This config is Docker Compose-specific with:
+#   - Database host set to 'postgres' (Docker service name)
+#   - Volume paths matching Docker Compose mounts
+#   - Shorter sync intervals for testing
+
+registryName: multi-source-registry
+
+# Multiple registries from different sources
+registries:
+  # File-based registry with ToolHive format
+  - name: toolhive-file
+    format: toolhive
+    file:
+      # Path to mounted file in Docker container
+      path: /examples/toolhive-registry.json
+    syncPolicy:
+      interval: "30s"  # Short interval for testing
+
+  # File-based registry with upstream format
+  - name: upstream-file
+    format: upstream
+    file:
+      path: /examples/upstream-registry.json
+    syncPolicy:
+      interval: "30s"
+
+  # API-based registry from MCP official registry with filtering
+  - name: mcp-api
+    format: upstream
+    api:
+      endpoint: https://registry.modelcontextprotocol.io
+    syncPolicy:
+      interval: "5m"  # Slightly longer to be respectful of rate limits
+    # Optional: Per-registry filter to curate servers from upstream
+    # filter:
+    #   names:
+    #     include:
+    #       - "@modelcontextprotocol/*"
+    #       - "anthropic/*"
+    #     exclude:
+    #       - "*/experimental"
+    #   tags:
+    #     include:
+    #       - "official"
+    #       - "stable"
+
+  # Git-based registry from ToolHive repository with different filtering
+  - name: toolhive-git
+    format: toolhive
+    git:
+      repository: https://github.com/stacklok/toolhive.git
+      branch: main
+      path: pkg/registry/data/registry.json
+    syncPolicy:
+      interval: "5m"  # Longer interval for Git operations
+    # Optional: Per-registry filter for ToolHive servers
+    # filter:
+    #   names:
+    #     include:
+    #       - "stacklok/*"
+    #     exclude:
+    #       - "*/deprecated"
+    #   tags:
+    #     include:
+    #       - "production"
+
+auth:
+  mode: anonymous
+
+# PostgreSQL database configuration for Docker Compose
+database:
+  host: postgres  # Docker service name
+  port: 5432
+  user: db_app
+  migrationUser: db_migrator
+  database: registry
+  sslMode: disable
+  maxOpenConns: 10
+  maxIdleConns: 2
+  connMaxLifetime: "30m"
