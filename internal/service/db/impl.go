@@ -464,64 +464,9 @@ func (s *dbService) PublishServerVersion(
 		return nil, fmt.Errorf("invalid server name format: %s", serverData.Name)
 	}
 
-	// Begin transaction
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   pgx.Serializable,
-		AccessMode: pgx.ReadWrite,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		err := tx.Rollback(ctx)
-		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			_ = err
-		}
-	}()
-
-	querier := sqlc.New(tx)
-
-	// Validate registry exists and is managed
-	registry, err := validateManagedRegistry(ctx, querier, options.RegistryName)
-	if err != nil {
+	// Execute the publish operation in a transaction
+	if err := s.executePublishTransaction(ctx, options.RegistryName, serverData); err != nil {
 		return nil, err
-	}
-
-	// Insert the server version
-	serverID, err := insertServerVersionData(ctx, querier, serverData, registry.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Insert packages
-	if err := insertServerPackages(ctx, querier, serverID, serverData.Packages); err != nil {
-		return nil, err
-	}
-
-	// Insert remotes
-	if err := insertServerRemotes(ctx, querier, serverID, serverData.Remotes); err != nil {
-		return nil, err
-	}
-
-	// Insert icons
-	if err := insertServerIcons(ctx, querier, serverID, serverData.Icons); err != nil {
-		return nil, err
-	}
-
-	// Upsert latest server version pointer
-	_, err = querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
-		RegID:    registry.ID,
-		Name:     serverData.Name,
-		Version:  serverData.Version,
-		ServerID: serverID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to upsert latest server version: %w", err)
-	}
-
-	// Commit transaction
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	slog.InfoContext(ctx, "Server version published",
@@ -541,6 +486,90 @@ func (s *dbService) PublishServerVersion(
 	}
 
 	return result, nil
+}
+
+// executePublishTransaction executes the publish operation within a transaction
+func (s *dbService) executePublishTransaction(
+	ctx context.Context,
+	registryName string,
+	serverData *upstreamv0.ServerJSON,
+) error {
+	// Begin transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.Serializable,
+		AccessMode: pgx.ReadWrite,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			_ = err
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	// Validate registry exists and is managed
+	registry, err := validateManagedRegistry(ctx, querier, registryName)
+	if err != nil {
+		return err
+	}
+
+	// Insert server and related data
+	if err := s.insertServerData(ctx, querier, serverData, registry.ID); err != nil {
+		return err
+	}
+
+	// Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// insertServerData inserts the server version and all related data
+func (*dbService) insertServerData(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	serverData *upstreamv0.ServerJSON,
+	registryID uuid.UUID,
+) error {
+	// Insert the server version
+	serverID, err := insertServerVersionData(ctx, querier, serverData, registryID)
+	if err != nil {
+		return err
+	}
+
+	// Insert packages
+	if err := insertServerPackages(ctx, querier, serverID, serverData.Packages); err != nil {
+		return err
+	}
+
+	// Insert remotes
+	if err := insertServerRemotes(ctx, querier, serverID, serverData.Remotes); err != nil {
+		return err
+	}
+
+	// Insert icons
+	if err := insertServerIcons(ctx, querier, serverID, serverData.Icons); err != nil {
+		return err
+	}
+
+	// Upsert latest server version pointer
+	_, err = querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
+		RegID:    registryID,
+		Name:     serverData.Name,
+		Version:  serverData.Version,
+		ServerID: serverID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to upsert latest server version: %w", err)
+	}
+
+	return nil
 }
 
 // DeleteServerVersion removes a server version from a managed registry
