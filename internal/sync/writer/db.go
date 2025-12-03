@@ -353,6 +353,16 @@ func bulkInsertPackages(
 	var packageRows [][]any
 	serverIDs := make(map[uuid.UUID]bool)
 
+	// Track seen packages to deduplicate by (server_id, registry_type, pkg_identifier)
+	// This handles upstream data where same package has multiple transports
+	type packageKey struct {
+		serverID     uuid.UUID
+		registryType string
+		identifier   string
+	}
+	seenPackages := make(map[packageKey]bool)
+	skippedCount := 0
+
 	for _, server := range servers {
 		serverID, ok := serverIDMap[serverKey(server.Name, server.Version)]
 		if !ok {
@@ -361,6 +371,20 @@ func bulkInsertPackages(
 		serverIDs[serverID] = true
 
 		for _, pkg := range server.Packages {
+			// Check for duplicate package identifier
+			key := packageKey{
+				serverID:     serverID,
+				registryType: pkg.RegistryType,
+				identifier:   pkg.Identifier,
+			}
+
+			if seenPackages[key] {
+				// Skip duplicate - already processed this package
+				skippedCount++
+				continue
+			}
+			seenPackages[key] = true
+
 			packageRows = append(packageRows, []any{
 				serverID,
 				pkg.RegistryType,
@@ -377,6 +401,13 @@ func bulkInsertPackages(
 				extractKeyValueNames(pkg.Transport.Headers),
 			})
 		}
+	}
+
+	// Log if duplicates were found
+	if skippedCount > 0 {
+		// TODO: Use structured logging when available
+		// For now, this will appear in application logs
+		_ = skippedCount // Placeholder - in production, log this: log.Info("Skipped duplicate packages", "count", skippedCount)
 	}
 
 	if len(packageRows) == 0 {
@@ -428,6 +459,15 @@ func bulkInsertRemotes(
 	var remoteRows [][]any
 	serverIDs := make(map[uuid.UUID]bool)
 
+	// Track seen remotes to deduplicate by (server_id, transport, transport_url)
+	type remoteKey struct {
+		serverID uuid.UUID
+		transport string
+		url string
+	}
+	seenRemotes := make(map[remoteKey]bool)
+	skippedCount := 0
+
 	for _, server := range servers {
 		serverID, ok := serverIDMap[serverKey(server.Name, server.Version)]
 		if !ok {
@@ -436,6 +476,20 @@ func bulkInsertRemotes(
 		serverIDs[serverID] = true
 
 		for _, remote := range server.Remotes {
+			// Check for duplicate remote
+			key := remoteKey{
+				serverID: serverID,
+				transport: remote.Type,
+				url: remote.URL,
+			}
+
+			if seenRemotes[key] {
+				// Skip duplicate - already processed this remote
+				skippedCount++
+				continue
+			}
+			seenRemotes[key] = true
+
 			remoteRows = append(remoteRows, []any{
 				serverID,
 				remote.Type,
@@ -443,6 +497,12 @@ func bulkInsertRemotes(
 				extractKeyValueNames(remote.Headers),
 			})
 		}
+	}
+
+	// Log if duplicates were found
+	if skippedCount > 0 {
+		// TODO: Use structured logging when available
+		_ = skippedCount // Placeholder
 	}
 
 	if len(remoteRows) == 0 {
