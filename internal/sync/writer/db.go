@@ -353,16 +353,6 @@ func bulkInsertPackages(
 	var packageRows [][]any
 	serverIDs := make(map[uuid.UUID]bool)
 
-	// Track seen packages to deduplicate by (server_id, registry_type, pkg_identifier)
-	// This handles upstream data where same package has multiple transports
-	type packageKey struct {
-		serverID     uuid.UUID
-		registryType string
-		identifier   string
-	}
-	seenPackages := make(map[packageKey]bool)
-	skippedCount := 0
-
 	for _, server := range servers {
 		serverID, ok := serverIDMap[serverKey(server.Name, server.Version)]
 		if !ok {
@@ -371,20 +361,6 @@ func bulkInsertPackages(
 		serverIDs[serverID] = true
 
 		for _, pkg := range server.Packages {
-			// Check for duplicate package identifier
-			key := packageKey{
-				serverID:     serverID,
-				registryType: pkg.RegistryType,
-				identifier:   pkg.Identifier,
-			}
-
-			if seenPackages[key] {
-				// Skip duplicate - already processed this package
-				skippedCount++
-				continue
-			}
-			seenPackages[key] = true
-
 			packageRows = append(packageRows, []any{
 				serverID,
 				pkg.RegistryType,
@@ -401,13 +377,6 @@ func bulkInsertPackages(
 				extractKeyValueNames(pkg.Transport.Headers),
 			})
 		}
-	}
-
-	// Log if duplicates were found
-	if skippedCount > 0 {
-		// TODO: Use structured logging when available
-		// For now, this will appear in application logs
-		_ = skippedCount // Placeholder - in production, log this: log.Info("Skipped duplicate packages", "count", skippedCount)
 	}
 
 	if len(packageRows) == 0 {
