@@ -15,6 +15,7 @@
 [![Coverage Status][coveralls-img]][coveralls]
 [![License: Apache 2.0][license-img]][license]
 [![Star on GitHub][stars-img]][stars] [![Discord][discord-img]][discord]
+
 # ToolHive Registry API Server
 
 **A standards-compliant MCP Registry API server for ToolHive**
@@ -23,94 +24,157 @@ The ToolHive Registry API (`thv-registry-api`) implements the official [Model Co
 
 ---
 
+## Table of Contents
+
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Core Concepts](#core-concepts)
+  - [Data Sources](#data-sources)
+  - [Architecture](#architecture)
+- [API Endpoints](#api-endpoints)
+- [Configuration](#configuration)
+- [Deployment](#deployment)
+- [Development](#development)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+
 ## Features
 
 - **Standards-compliant**: Implements the official MCP Registry API specification
-- **Multiple data sources**: Git repositories, API endpoints, and local files
+- **Multiple data sources**: Git repositories, API endpoints, local files, managed registries, and Kubernetes discovery
 - **Automatic synchronization**: Background sync with configurable intervals and retry logic
+- **OAuth 2.0/OIDC authentication**: Secure by default with multi-provider support
+- **PostgreSQL backend**: Optional database storage with automatic migrations
 - **Container-ready**: Designed for deployment in Kubernetes clusters
-- **Flexible deployment**: Works standalone or as part of ToolHive infrastructure
-- **Production-ready**: Built-in health checks, graceful shutdown, and sync status persistence
+- **Production-ready**: Built-in health checks, graceful shutdown, and observability
 
 ## Quick Start
 
 ### Prerequisites
 
-- Go 1.23 or later
+- Go 1.23 or later (for building from source)
 - [Task](https://taskfile.dev) for build automation
+- PostgreSQL 16+ (optional, for database backend)
 
-### Building the binary
+### Build and Run
 
 ```bash
 # Build the binary
 task build
-```
 
-### Running the Server
-
-All configuration is done via YAML configuration files. See the [examples/](examples/) directory for sample configurations.
-
-**Quick start with Git source:**
-```bash
+# Run with Git source
 thv-registry-api serve --config examples/config-git.yaml
-```
 
-**With local file:**
-```bash
+# Run with local file
 thv-registry-api serve --config examples/config-file.yaml
 ```
 
-**With API endpoint:**
+The server starts on `http://localhost:8080` by default.
+
+### Docker Quick Start
+
 ```bash
-thv-registry-api serve --config examples/config-api.yaml
+# Using Docker Compose (includes PostgreSQL)
+docker-compose up
+
+# Access the API
+curl http://localhost:8080/registry/v0.1/servers
 ```
 
-The server starts on port 8080 by default. Use `--address :PORT` to customize.
+### What Happens on Startup
 
-**What happens when the server starts:**
-1. Loads configuration from the specified YAML file
-2. Runs database migrations automatically (if database is configured)
-3. Immediately fetches registry data from the configured source
+1. Loads configuration from YAML file
+2. Runs database migrations automatically (if configured)
+3. Immediately fetches registry data from configured sources
 4. Starts background sync coordinator for automatic updates
-5. Serves MCP Registry API endpoints on the configured address
+5. Serves MCP Registry API endpoints
 
-For detailed configuration options and examples, see the [examples/README.md](examples/README.md).
+## Core Concepts
 
-### Available Commands
+### Data Sources
 
-The `thv-registry-api` CLI provides the following commands:
+The server supports five registry types, each suited for different use cases:
 
-```bash
-# Start the API server
-thv-registry-api serve --config config.yaml [--address :8080]
+| Type | Description | Use Case | Sync |
+|------|-------------|----------|------|
+| **Git** | Clone from Git repositories | Version-controlled registries | ✅ Auto |
+| **API** | Fetch from upstream MCP Registry APIs | Federation and aggregation | ✅ Auto |
+| **File** | Read from local filesystem | Development and testing | ✅ Auto |
+| **Managed** | Managed via API calls | Dynamic, API-controlled registries | ❌ On-demand |
+| **Kubernetes** | Discover from K8s deployments | Cluster-local service discovery | ❌ On-demand |
 
-# Manually run database migrations
-thv-registry-api migrate up --config config.yaml [--yes]
-thv-registry-api migrate down --config config.yaml --num-steps N [--yes]
+**Configuration example:**
 
-# Display version information
-thv-registry-api version [--format json]
-
-# Show help
-thv-registry-api --help
-thv-registry-api <command> --help
+```yaml
+registries:
+  - name: toolhive
+    format: toolhive
+    git:
+      repository: https://github.com/stacklok/toolhive.git
+      branch: main
+      path: pkg/registry/data/registry.json
+    syncPolicy:
+      interval: "30m"
 ```
 
-See the [Database Migrations](#database-migrations) section for more details on using migration commands.
+See [Configuration Guide](docs/configuration.md) for complete details.
+
+### Architecture
+
+The server follows clean architecture with clear separation of concerns:
+
+```
+┌─────────────────────────────────────────────┐
+│  API Layer (Chi Router)                     │
+│  ├─ Registry API v0.1                       │
+│  ├─ Extension API v0                        │
+│  └─ OAuth/OIDC Middleware                   │
+└─────────────────────────────────────────────┘
+                    │
+┌─────────────────────────────────────────────┐
+│  Service Layer                              │
+│  ├─ DB Service (PostgreSQL)                 │
+│  └─ In-Memory Service                       │
+└─────────────────────────────────────────────┘
+                    │
+┌─────────────────────────────────────────────┐
+│  Data Source Layer                          │
+│  ├─ Git Handler                             │
+│  ├─ API Handler                             │
+│  ├─ File Handler                            │
+│  ├─ Managed Handler                         │
+│  └─ Kubernetes Handler                      │
+└─────────────────────────────────────────────┘
+                    │
+┌─────────────────────────────────────────────┐
+│  Sync Layer (Background Coordinator)        │
+└─────────────────────────────────────────────┘
+```
+
+**Key directories:**
+- `internal/api/` - HTTP API handlers
+- `internal/service/` - Business logic
+- `internal/sources/` - Data source handlers
+- `internal/sync/` - Background synchronization
+- `internal/auth/` - OAuth/OIDC authentication
+- `internal/db/` - Database access (sqlc generated)
+- `database/` - SQL migrations and queries
 
 ## API Endpoints
 
-The server implements the MCP Registry API v0.1:
-
 ### Registry API (v0.1)
+
+Standard MCP Registry API endpoints:
 
 - `GET /registry/v0.1/servers` - List all available MCP servers
 - `GET /registry/v0.1/servers/{name}/versions` - List all versions of a server
 - `GET /registry/v0.1/servers/{name}/versions/{version}` - Get a specific server version
-- `DELETE /registry/{registryName}/v0.1/servers/{name}/versions/{version}` - Delete a server version from a managed registry
+- `DELETE /registry/{registryName}/v0.1/servers/{name}/versions/{version}` - Delete a server version (managed registries only)
 - `POST /registry/v0.1/publish` - Publish a server (not yet implemented)
 
 ### Extension API (v0)
+
+ToolHive-specific extensions:
 
 - `GET /extension/v0/registries` - List all registries (not yet implemented)
 - `GET /extension/v0/registries/{name}` - Get registry details (not yet implemented)
@@ -122,558 +186,92 @@ The server implements the MCP Registry API v0.1:
 - `GET /health` - Health check
 - `GET /readiness` - Readiness check
 - `GET /version` - Version information
+- `GET /.well-known/oauth-protected-resource` - OAuth discovery (RFC 9728)
 
 See the [MCP Registry API specification](https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/api/openapi.yaml) for full API details.
 
 ## Configuration
 
-All configuration is done via YAML files. The server requires a `--config` flag pointing to a YAML configuration file.
+All configuration is done via YAML files. The server requires a `--config` flag.
 
-### Configuration File Structure
+### Basic Example
 
 ```yaml
-# Registry name/identifier (optional, defaults to "default")
 registryName: my-registry
 
-# Registries configuration - multiple registries can be configured
 registries:
   - name: toolhive
-    # Data format: toolhive (native) or upstream (MCP registry format)
     format: toolhive
-
-    # Source-specific configuration (one of: git, api, file, managed, kubernetes)
     git:
       repository: https://github.com/stacklok/toolhive.git
       branch: main
       path: pkg/registry/data/registry.json
-
-    # Per-registry automatic sync policy
-    # Note: Not applicable for managed and kubernetes registries
     syncPolicy:
-      # Sync interval (e.g., "30m", "1h", "24h")
       interval: "30m"
 
-    # Optional: Per-registry server filtering
-    # Note: Not applicable for managed and kubernetes registries
-    filter:
-      names:
-        include: ["official/*"]
-        exclude: ["*/deprecated"]
-      tags:
-        include: ["production"]
-        exclude: ["experimental"]
-
-# Optional: Authentication configuration
-# Defaults to OAuth mode if not specified (secure-by-default)
 auth:
-  mode: anonymous  # Use "anonymous" for development, "oauth" for production
+  mode: anonymous  # Use "oauth" for production
 
-# Optional: Database configuration
-database:
+database:  # Optional
   host: localhost
   port: 5432
   user: registry
   database: registry
-  sslMode: require
-  maxOpenConns: 25
-  maxIdleConns: 5
-  connMaxLifetime: "5m"
-
-# Optional: File storage configuration
-fileStorage:
-  baseDir: ./data  # Defaults to "./data" if not specified
 ```
 
-### Command-line Flags
+### 📖 Complete Guides
 
-| Flag | Description | Required | Default |
-|------|-------------|----------|---------|
-| `--config` | Path to YAML configuration file | Yes | - |
-| `--address` | Server listen address | No | `:8080` |
+- **[Configuration Reference](docs/configuration.md)** - Complete configuration options
+- **[Database Setup](docs/database.md)** - PostgreSQL configuration, migrations, and security
+- **[Authentication](docs/authentication.md)** - OAuth/OIDC setup and security
 
-### Data Sources
+### Configuration Examples
 
-The server supports five registry types:
+See [examples/](examples/) directory for complete working examples:
+- `config-git.yaml` - Git repository source
+- `config-api.yaml` - API endpoint source
+- `config-file.yaml` - Local file source
+- `config-database-dev.yaml` - With database (development)
+- `config-database-prod.yaml` - With database (production)
+- `config-docker.yaml` - For Docker Compose
 
-1. **Git Repository** - Clone and sync from Git repositories
-   - Supports branch, tag, or commit pinning
-   - Ideal for version-controlled registries
-   - Automatic background synchronization
-   - Example: [config-git.yaml](examples/config-git.yaml)
+## Deployment
 
-2. **API Endpoint** - Sync from upstream MCP Registry APIs
-   - Supports federation and aggregation scenarios
-   - Format conversion from upstream to ToolHive format
-   - Automatic background synchronization
-   - Example: [config-api.yaml](examples/config-api.yaml)
+### Docker Compose
 
-3. **Local File** - Read from filesystem
-   - Ideal for local development and testing
-   - Supports mounted volumes in containers
-   - Automatic background synchronization
-   - Example: [config-file.yaml](examples/config-file.yaml)
-
-4. **Managed** - Directly managed via API
-   - No external data source
-   - Create, update, and delete servers through API calls
-   - No background synchronization (on-demand only)
-   - Ideal for custom, dynamically-managed registries
-
-5. **Kubernetes** - Discover MCP servers from Kubernetes deployments
-   - Queries running Kubernetes resources
-   - No background synchronization (on-demand only)
-   - Ideal for cluster-local service discovery
-
-For complete configuration examples and advanced options, see [examples/README.md](examples/README.md).
-
-### Database Configuration
-
-The server optionally supports PostgreSQL database connectivity for storing registry state and metadata.
-
-#### Configuration Fields
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `host` | string | Yes | - | Database server hostname or IP address |
-| `port` | int | Yes | - | Database server port |
-| `user` | string | Yes | - | Database username for normal operations |
-| `passwordFile` | string | No* | - | Path to file containing the database password |
-| `migrationUser` | string | No | `user` | Database username for running migrations (should have elevated privileges) |
-| `migrationPasswordFile` | string | No | `passwordFile` | Path to file containing the migration user's password |
-| `database` | string | Yes | - | Database name |
-| `sslMode` | string | No | `require` | SSL mode (`disable`, `require`, `verify-ca`, `verify-full`) |
-| `maxOpenConns` | int | No | `25` | Maximum number of open connections to the database |
-| `maxIdleConns` | int | No | `5` | Maximum number of idle connections in the pool |
-| `connMaxLifetime` | string | No | `5m` | Maximum lifetime of a connection (e.g., "1h", "30m") |
-
-\* Password configuration is required but has multiple sources (see Password Security below)
-
-#### Password Security
-
-The server supports secure password management with separate credentials for normal operations and migrations.
-
-**Normal Operations Password (for `user`):**
-
-1. **Postgres Password File** (Recommended for production):
-
-The server supports PostgreSQL's standard pgpass file for password management.
-
-**pgpass file format:**
-```
-hostname:port:database:username:password
-```
-**Example pgpass file with two users:**
-```bash
-# Create pgpass file with credentials for both users
-cat > ~/.pgpass <<EOF
-localhost:5432:toolhive_registry:db_app:app_password
-localhost:5432:toolhive_registry:db_migrator:migration_password
-EOF
-# Set secure permissions (REQUIRED - pgx will ignore files with wrong permissions)
-chmod 600 ~/.pgpass
-```
-
-**Custom pgpass location:**
-```bash
-# Use PGPASSFILE environment variable for custom location
-export PGPASSFILE=/run/secrets/pgpass
-thv-registry-api serve --config config.yaml
-```
-
-2. **Environment Variable**:
-   - Set `THV_DATABASE_PASSWORD` environment variable
-   - Used if `passwordFile` is not specified
-   - Example:
-     ```bash
-     export THV_DATABASE_PASSWORD="your-secure-password"
-     thv-registry-api serve --config config.yaml
-     ```
-
-**Migration User Password (for `migrationUser`):**
-
-1. **Migration Password File**:
-   - Set `migrationPasswordFile` to the path of a file containing the migration user's password
-   - Falls back to `passwordFile` if not specified
-   - Example:
-     ```yaml
-     database:
-       migrationUser: db_migrator
-       migrationPasswordFile: /secrets/db-migration-password
-     ```
-
-2. **Environment Variable**:
-   - Set `THV_DATABASE_MIGRATION_PASSWORD` environment variable
-   - Falls back to `THV_DATABASE_PASSWORD` if not specified
-   - Example:
-     ```bash
-     export THV_DATABASE_MIGRATION_PASSWORD="migration-user-password"
-     thv-registry-api serve --config config.yaml
-     ```
-
-**Security Best Practices:**
-- Use separate users for migrations (with elevated privileges) and normal operations (read-only or limited)
-- Never commit passwords directly in configuration files
-- Use password files with restricted permissions (e.g., `chmod 400`)
-- In Kubernetes, mount passwords from Secrets
-- Rotate passwords regularly
-
-#### Connection Pooling
-
-The server uses connection pooling for efficient database resource management:
-
-- **MaxOpenConns**: Limits concurrent database connections to prevent overwhelming the database
-- **MaxIdleConns**: Maintains idle connections for faster query execution
-- **ConnMaxLifetime**: Automatically closes and recreates connections to prevent connection leaks
-
-Tune these values based on your workload:
-- High-traffic scenarios: Increase `maxOpenConns` and `maxIdleConns`
-- Resource-constrained environments: Decrease pool sizes
-- Long-running services: Set shorter `connMaxLifetime` (e.g., "1h")
-
-#### Database Migrations
-
-The server includes built-in database migration support to manage the database schema.
-
-**Automatic migrations on startup:**
-
-When you start the server with `serve`, database migrations run automatically if database configuration is present in your config file. This ensures your database schema is always up to date.
-
-The only thing necessary is granting the role `toolhive_registry_server` to
-the database user you want, for example
-
-```sql
-BEGIN;
-
-DO $$
-DECLARE
-  username TEXT := 'thvr_user';
-  password TEXT := 'custom-password';
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
-    CREATE ROLE toolhive_registry_server;
-    RAISE NOTICE 'Role toolhive_registry_server created';
-  END IF;
-
-  IF NOT EXISTS (SELECT FROM pg_user WHERE usename = username) THEN
-    EXECUTE format('CREATE USER %I WITH PASSWORD %L', username, password);
-    RAISE NOTICE 'User % created', username;
-  END IF;
-
-  EXECUTE format('GRANT toolhive_registry_server TO %I', username);
-  RAISE NOTICE 'Role toolhive_registry_server granted to %', username;
-END
-$$;
-
-COMMIT;
-```
-
-To help with that, you can run the `prime-db` subcommand to configure a user with
-the correct role as follows.
-
-```sh
-thv-registry-api prime-db --config examples/config-database-dev.yaml
-...
-```
-
-By default, the password is read from input, but it is also possible to pipe
-it via shell via `echo "mypassword" | thv-registry-api prime-db --config ...`.
-
-Alternatively, the SQL script that would be executed can be printed to standard
-output without touching the database.
-
-```sh
-thv-registry-api prime-db --config examples/config-database-dev.yaml --dry-run
-```
-
-Once done, you start the server as follows
+Quick start with PostgreSQL:
 
 ```bash
-# Migrations run automatically when database is configured
-thv-registry-api serve --config examples/config-database-dev.yaml
+docker-compose up
 ```
 
-**Manual migration commands (optional):**
+See [Docker Deployment Guide](docs/deployment-docker.md) for details.
 
-You can also run migrations manually using the CLI commands:
+### Kubernetes
+
+Basic deployment:
 
 ```bash
-# Apply all pending migrations
-thv-registry-api migrate up --config examples/config-database-dev.yaml
-
-# Apply migrations non-interactively (useful for CI/CD)
-thv-registry-api migrate up --config config.yaml --yes
-
-# Revert last migration (requires --num-steps for safety)
-thv-registry-api migrate down --config config.yaml --num-steps 1
-
-# View migration help
-thv-registry-api migrate --help
+kubectl apply -f examples/kubernetes/
 ```
 
-**Running migrations with Task:**
+See [Kubernetes Deployment Guide](docs/deployment-kubernetes.md) for production setup.
+
+### Standalone Binary
 
 ```bash
-# Apply migrations (development)
-export THV_DATABASE_PASSWORD="devpassword"
-task migrate-up CONFIG=examples/config-database-dev.yaml
+# Linux/macOS
+./bin/thv-registry-api serve --config config.yaml
 
-# Revert migrations (specify number of steps for safety)
-task migrate-down CONFIG=examples/config-database-dev.yaml NUM_STEPS=1
+# With environment variables
+export THV_DATABASE_PASSWORD="secure-password"
+./bin/thv-registry-api serve --config config.yaml
 ```
 
-**Migration workflow:**
+### 📖 Deployment Guides
 
-1. **Configure database**: Create a config file with database settings (see [examples/config-database-dev.yaml](examples/config-database-dev.yaml))
-2. **Set password**: Either set `THV_DATABASE_PASSWORD` env var or use `passwordFile` in config
-3. **Start server**: Run `serve` command - migrations will run automatically
-
-**Example: Local development setup**
-
-```bash
-# 1. Start PostgreSQL (example with Docker)
-docker run -d --name postgres \
-  -e POSTGRES_USER=thv_user \
-  -e POSTGRES_PASSWORD=devpassword \
-  -e POSTGRES_DB=toolhive_registry \
-  -p 5432:5432 \
-  postgres:16
-
-# 2. Set password environment variable
-export THV_DATABASE_PASSWORD="devpassword"
-
-# 3. Start the server (migrations run automatically)
-thv-registry-api serve --config examples/config-database-dev.yaml
-```
-
-**Example: Production deployment**
-
-```bash
-# 1. Create password file
-echo "your-secure-password" > /run/secrets/db_password
-chmod 400 /run/secrets/db_password
-
-# 2. Start the server (migrations run automatically)
-thv-registry-api serve --config examples/config-database-prod.yaml
-```
-
-**Safety features:**
-
-- `migrate down` requires `--num-steps` flag to prevent accidental full rollback
-- Interactive confirmation prompts (bypass with `--yes` flag)
-- Strong warnings displayed for destructive operations
-- Configuration validation before connecting to database
-
-For complete examples, see:
-- [examples/config-database-dev.yaml](examples/config-database-dev.yaml) - Development configuration
-- [examples/config-database-prod.yaml](examples/config-database-prod.yaml) - Production configuration
-
-#### Example Kubernetes Deployment with Database
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: registry-db-password
-type: Opaque
-stringData:
-  password: your-secure-password
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: registry-api-config
-data:
-  config.yaml: |
-    registryName: my-registry
-    registries:
-      - name: toolhive
-        format: toolhive
-        git:
-          repository: https://github.com/stacklok/toolhive.git
-          branch: main
-          path: pkg/registry/data/registry.json
-        syncPolicy:
-          interval: "15m"
-    auth:
-      mode: anonymous
-    database:
-      host: postgres.default.svc.cluster.local
-      port: 5432
-      user: registry
-      passwordFile: /secrets/db-password
-      database: registry
-      sslMode: require
-      maxOpenConns: 25
-      maxIdleConns: 5
-      connMaxLifetime: "5m"
----
-# Run migrations as a Kubernetes Job before deploying the server
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: registry-migrate
-spec:
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-      - name: migrate
-        image: ghcr.io/stacklok/toolhive/thv-registry-api:latest
-        args:
-        - migrate
-        - up
-        - --config=/etc/registry/config.yaml
-        - --yes
-        volumeMounts:
-        - name: config
-          mountPath: /etc/registry
-        - name: db-password
-          mountPath: /secrets
-          readOnly: true
-      volumes:
-      - name: config
-        configMap:
-          name: registry-api-config
-      - name: db-password
-        secret:
-          secretName: registry-db-password
-          items:
-          - key: password
-            path: db-password
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: registry-api
-spec:
-  template:
-    spec:
-      containers:
-      - name: registry-api
-        image: ghcr.io/stacklok/toolhive/thv-registry-api:latest
-        args:
-        - serve
-        - --config=/etc/registry/config.yaml
-        volumeMounts:
-        - name: config
-          mountPath: /etc/registry
-        - name: db-password
-          mountPath: /secrets
-          readOnly: true
-      volumes:
-      - name: config
-        configMap:
-          name: registry-api-config
-      - name: db-password
-        secret:
-          secretName: registry-db-password
-          items:
-          - key: password
-            path: db-password
-```
-
-## Authentication
-
-The server supports OAuth 2.0/OIDC authentication to protect API endpoints. The server defaults to OAuth mode for security-by-default. For development environments, you can explicitly set `mode: anonymous`.
-
-### Authentication Modes
-
-| Mode | Description |
-|------|-------------|
-| `anonymous` | No authentication required (for development) |
-| `oauth` | OAuth 2.0/OIDC token validation (default) |
-
-### Multi-Provider Support
-
-The server supports multiple OAuth providers with sequential fallback. When a token is received:
-
-1. The token is validated against each provider in order
-2. If validation succeeds with any provider, the request is authenticated
-3. If all providers fail, the request is rejected with 401 Unauthorized
-
-This enables supporting both Kubernetes service accounts and external identity providers simultaneously.
-
-### Configuration
-
-```yaml
-auth:
-  # Authentication mode: anonymous (default) or oauth
-  mode: oauth
-
-  # Additional paths that bypass authentication (optional)
-  # These extend the default public paths listed below
-  # publicPaths:
-  #   - /custom/public
-
-  # OAuth/OIDC configuration (required when mode is "oauth")
-  oauth:
-    # URL identifying this protected resource (RFC 9728)
-    # Used in /.well-known/oauth-protected-resource endpoint
-    resourceUrl: https://registry.example.com
-
-    # Protection space identifier for WWW-Authenticate header (optional)
-    # Defaults to "mcp-registry"
-    # realm: mcp-registry
-
-    # OAuth scopes supported by this resource (optional)
-    # Defaults to ["mcp-registry:read", "mcp-registry:write"]
-    # scopesSupported:
-    #   - custom:read
-    #   - custom:write
-
-    # OAuth/OIDC providers (at least one required)
-    providers:
-      - name: my-idp
-        issuerUrl: https://idp.example.com
-        audience: api://registry
-
-      - name: kubernetes
-        issuerUrl: https://kubernetes.default.svc
-        audience: https://kubernetes.default.svc
-        caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-```
-
-### Default Public Paths
-
-The following endpoints are always accessible without authentication:
-
-- `/health` - Health check endpoint
-- `/readiness` - Readiness probe endpoint
-- `/version` - Version information
-- `/.well-known/*` - OAuth discovery endpoints (RFC 9728)
-
-Additional public paths can be configured using the `publicPaths` option.
-
-### Provider Configuration
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | Yes | Unique identifier for this provider |
-| `issuerUrl` | Yes | OIDC issuer URL (must be HTTPS in production) |
-| `audience` | Yes | Expected audience claim in the token |
-| `clientId` | No | OAuth client ID for token introspection |
-| `clientSecretFile` | No | Path to file containing client secret |
-| `caCertPath` | No | Path to CA certificate for TLS verification |
-
-### RFC 9728 Protected Resource Metadata
-
-When OAuth is enabled, the server exposes an RFC 9728 compliant discovery endpoint:
-
-```
-GET /.well-known/oauth-protected-resource
-```
-
-Response:
-```json
-{
-  "resource": "https://registry.example.com",
-  "authorization_servers": ["https://idp.example.com"],
-  "bearer_methods_supported": ["header"],
-  "scopes_supported": ["mcp-registry:read", "mcp-registry:write"]
-}
-```
-
-This endpoint allows OAuth clients to automatically discover authentication requirements.
+- **[Docker & Docker Compose](docs/deployment-docker.md)** - Container deployment
+- **[Kubernetes](docs/deployment-kubernetes.md)** - K8s deployment, HA, and production best practices
 
 ## Development
 
@@ -683,10 +281,7 @@ This endpoint allows OAuth clients to automatically discover authentication requ
 # Build the binary
 task build
 
-# Run linting
-task lint
-
-# Fix linting issues automatically
+# Run linting (auto-fix)
 task lint-fix
 
 # Run tests
@@ -698,10 +293,30 @@ task gen
 # Build container image
 task build-image
 
-# Database migrations
+# Run database migrations
 task migrate-up CONFIG=examples/config-database-dev.yaml
-task migrate-down CONFIG=examples/config-database-dev.yaml NUM_STEPS=1
+
+# Regenerate documentation
+task docs
+
+# All checks (lint + test + build)
+task all
 ```
+
+### Testing
+
+```bash
+# Generate mocks before testing
+task gen
+
+# Run all tests
+task test
+
+# Run specific test
+go test ./internal/service/... -v
+```
+
+The project uses table-driven tests with mocks generated via `go.uber.org/mock`.
 
 ### Project Structure
 
@@ -711,16 +326,16 @@ cmd/thv-registry-api/    # Main application
 └── main.go
 
 internal/                # Internal packages
-├── api/                 # HTTP API handlers (Registry v0.1, Extension v0)
+├── api/                 # HTTP API handlers
 ├── auth/                # OAuth/OIDC authentication
-├── config/              # Configuration loading and validation
-├── db/                  # Database access layer (sqlc generated)
-├── service/             # Business logic layer (DB and in-memory providers)
-├── sources/             # Data source handlers (Git, API, File)
+├── config/              # Configuration loading
+├── db/                  # Database access (sqlc generated)
+├── service/             # Business logic
+├── sources/             # Data source handlers
 ├── sync/                # Background sync coordination
 ├── filtering/           # Registry entry filtering
 ├── git/                 # Git operations
-├── kubernetes/          # Kubernetes resource discovery
+├── kubernetes/          # Kubernetes discovery
 └── registry/            # Registry data models
 
 database/                # Database schema and queries
@@ -728,218 +343,41 @@ database/                # Database schema and queries
 └── queries/             # SQL queries for sqlc
 
 examples/                # Example configurations
+docs/                    # Documentation
 ```
 
-### Architecture
+## Documentation
 
-The server follows a clean architecture pattern with the following layers:
+### 📚 Complete Documentation
 
-1. **API Layer** (`internal/api`): HTTP handlers implementing the MCP Registry API
-   - `registry/v01`: MCP Registry API v0.1 endpoints
-   - `extension/v0`: Extension API endpoints
-   - OAuth/OIDC authentication middleware
+- **[Configuration Reference](docs/configuration.md)** - All configuration options
+- **[Database Setup](docs/database.md)** - PostgreSQL setup and migrations
+- **[Authentication](docs/authentication.md)** - OAuth/OIDC security
+- **[Kubernetes Deployment](docs/deployment-kubernetes.md)** - K8s deployment guide
+- **[Docker Deployment](docs/deployment-docker.md)** - Docker & Docker Compose
+- **[API Documentation](docs/thv-registry-api/)** - Auto-generated OpenAPI docs
+- **[CLI Reference](docs/cli/)** - Command-line interface docs
+- **[Examples](examples/)** - Working configuration examples
+- **[CLAUDE.md](CLAUDE.md)** - AI assistant guidance for contributors
 
-2. **Service Layer** (`internal/service`): Business logic and data access
-   - `db`: Database-backed implementation using PostgreSQL
-   - `inmemory`: In-memory implementation for development
-   - Provider factory pattern for pluggable backends
+### Common Tasks
 
-3. **Configuration Layer** (`internal/config`): YAML configuration loading and validation
-
-4. **Data Source Layer** (`internal/sources`): Pluggable registry data source implementations
-   - `GitRegistryHandler`: Clones Git repositories and extracts registry files
-   - `APIRegistryHandler`: Fetches from upstream MCP Registry APIs
-   - `FileRegistryHandler`: Reads from local filesystem
-
-5. **Sync Layer** (`internal/sync`): Background synchronization coordination
-   - Sync coordinator for scheduled updates
-   - State management for sync operations
-   - Registry writer abstraction
-
-6. **Database Layer** (`internal/db`, `database/`): PostgreSQL storage
-   - Generated code from sqlc for type-safe queries
-   - Migration management with sql-migrate
-
-### Testing
-
-The project uses table-driven tests with mocks generated via `go.uber.org/mock`:
-
-```bash
-# Generate mocks before testing
-task gen
-
-# Run all tests
-task test
-```
-
-## Deployment
-
-### Kubernetes
-
-The Registry API is designed to run as a sidecar container alongside the ToolHive Operator's MCPRegistry controller. Example deployment:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: registry-api
-spec:
-  template:
-    spec:
-      containers:
-      - name: registry-api
-        image: ghcr.io/stacklok/toolhive/thv-registry-api:latest
-        args:
-        - serve
-        - --config=/etc/registry/config.yaml
-        ports:
-        - containerPort: 8080
-        volumeMounts:
-        - name: config
-          mountPath: /etc/registry
-      volumes:
-      - name: config
-        configMap:
-          name: registry-api-config
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: registry-api-config
-data:
-  config.yaml: |
-    registryName: my-registry
-    registries:
-      - name: toolhive
-        format: toolhive
-        git:
-          repository: https://github.com/stacklok/toolhive.git
-          branch: main
-          path: pkg/registry/data/registry.json
-        syncPolicy:
-          interval: "15m"
-    auth:
-      mode: anonymous
-```
-
-### Docker
-
-```bash
-# Build the image
-task build-image
-
-# Run with Git source
-docker run -v $(pwd)/examples:/config \
-  ghcr.io/stacklok/toolhive/thv-registry-api:latest \
-  serve --config /config/config-git.yaml
-
-# Run with file source (mount local registry file)
-docker run -v $(pwd)/examples:/config \
-  -v /path/to/registry.json:/data/registry.json \
-  ghcr.io/stacklok/toolhive/thv-registry-api:latest \
-  serve --config /config/config-file.yaml
-
-# Run with database password from environment variable
-docker run -v $(pwd)/examples:/config \
-  -e THV_DATABASE_PASSWORD=your-password \
-  ghcr.io/stacklok/toolhive/thv-registry-api:latest \
-  serve --config /config/config-database-dev.yaml
-```
-
-### Docker Compose
-
-A complete Docker Compose setup is provided in the repository root that includes PostgreSQL and the API server with automatic migrations.
-
-**Quick start:**
-
-```bash
-# Start all services (PostgreSQL + API with automatic migrations)
-docker-compose up
-
-# Run in detached mode
-docker-compose up -d
-
-# View logs
-docker-compose logs -f registry-api
-
-# Stop all services
-docker-compose down
-
-# Stop and remove volumes (WARNING: deletes database data)
-docker-compose down -v
-```
-
-**Architecture:**
-
-The docker-compose.yaml includes two services:
-1. **postgres** - PostgreSQL 18 database server
-2. **registry-api** - Main API server (runs migrations automatically on startup)
-
-**Service startup flow:**
-```
-postgres (healthy) → registry-api (runs migrations, then starts)
-```
-
-**Configuration:**
-
-- Config file: `examples/config-docker.yaml`
-- Sample data: `examples/registry-sample.json`
-- Database passwords: Set via environment variables in docker-compose.yaml
-  - `THV_DATABASE_PASSWORD`: Application user password
-  - `THV_DATABASE_MIGRATION_PASSWORD`: Migration user password
-
-The setup demonstrates:
-- Database-backed registry storage with separate users for migrations and operations
-- Automatic schema migrations on startup using elevated privileges
-- Normal operations using limited database privileges (principle of least privilege)
-- File-based data source (for demo purposes)
-- Proper service dependencies and health checks
-
-**Accessing the API:**
-
-Once running, the API is available at http://localhost:8080
-
-```bash
-# List all servers
-curl http://localhost:8080/registry/v0.1/servers
-
-# Get specific server version
-curl http://localhost:8080/registry/v0.1/servers/example%2Ffilesystem/versions/latest
-```
-
-**Customization:**
-
-To use your own registry data:
-1. Edit `examples/registry-sample.json` with your MCP servers
-2. Or change the source configuration in `examples/config-docker.yaml`
-3. Restart: `docker-compose restart registry-api`
-
-**Database access:**
-
-The Docker Compose setup creates three database users:
-- `registry`: Superuser (for administration)
-- `db_migrator`: Migration user with schema modification privileges
-- `db_app`: Application user with limited data access privileges
-
-To connect to the PostgreSQL database directly:
-
-```bash
-# As superuser (for administration)
-docker exec -it toolhive-registry-postgres psql -U registry -d registry
-
-# As application user
-docker exec -it toolhive-registry-postgres psql -U db_app -d registry
-
-# From host machine
-PGPASSWORD=registry_password psql -h localhost -U registry -d registry
-PGPASSWORD=app_password psql -h localhost -U db_app -d registry
-```
+| I want to... | See... |
+|--------------|--------|
+| Get started quickly | [Quick Start](#quick-start) |
+| Configure the server | [Configuration Reference](docs/configuration.md) |
+| Set up PostgreSQL | [Database Setup](docs/database.md) |
+| Enable authentication | [Authentication Guide](docs/authentication.md) |
+| Deploy to Kubernetes | [Kubernetes Guide](docs/deployment-kubernetes.md) |
+| Use Docker Compose | [Docker Guide](docs/deployment-docker.md) |
+| Contribute code | [Contributing](#contributing) |
 
 ## Integration with ToolHive
 
 The Registry API server works seamlessly with the ToolHive ecosystem:
 
 - **ToolHive Operator**: Automatically deployed as part of MCPRegistry resources
+- **ToolHive CLI**: Discover and install MCP servers from registries
 
 See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for more details.
 
@@ -947,21 +385,45 @@ See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for more d
 
 We welcome contributions! Please see:
 
-- [Contributing Guide](./CONTRIBUTING.md)
-- [Code of Conduct](./CODE_OF_CONDUCT.md)
-- [Security Policy](./SECURITY.md)
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
+- **[Code of Conduct](CODE_OF_CONDUCT.md)** - Community guidelines
+- **[Security Policy](SECURITY.md)** - Report security vulnerabilities
+- **[CLAUDE.md](CLAUDE.md)** - AI assistant guidance for development
 
 ### Development Guidelines
 
 - Run `task lint-fix` before committing
 - Ensure tests pass with `task test`
 - Follow Go standard project layout
-- Use mockgen for test mocks, not hand-written mocks
-- See [CLAUDE.md](./CLAUDE.md) for AI assistant guidance
+- Use mockgen for test mocks (never hand-written)
+- Write table-driven tests
+- Keep documentation up to date
+
+### Quick Start for Contributors
+
+```bash
+# Clone the repository
+git clone https://github.com/stacklok/toolhive-registry-server.git
+cd toolhive-registry-server
+
+# Install dependencies
+go mod download
+
+# Run all checks
+task all
+
+# Make your changes...
+
+# Run tests
+task gen
+task test
+
+# Submit PR
+```
 
 ## License
 
-This project is licensed under the [Apache 2.0 License](./LICENSE).
+This project is licensed under the [Apache 2.0 License](LICENSE).
 
 ---
 
