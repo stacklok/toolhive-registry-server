@@ -31,9 +31,10 @@ var (
 // - Total length: 3-200 characters
 //
 // Examples of valid names:
-//   - com.example/server
-//   - org.stacklok.toolhive/my-server
-//   - io.github.user/test_server
+//   - com.toolhive.k8s.default/weather-service (K8s auto-discovered)
+//   - com.example/server (manually published)
+//   - org.stacklok.toolhive/my-server (manually published)
+//   - com.example/test_server (manually published - underscores allowed in name part)
 //
 // Examples of invalid names:
 //   - my-server (missing slash)
