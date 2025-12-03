@@ -18,9 +18,9 @@
 
 # ToolHive Registry API Server
 
-**A standards-compliant MCP Registry API server for ToolHive**
+**The central metadata hub for enterprise MCP governance and discovery**
 
-The ToolHive Registry API (`thv-registry-api`) implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). It provides a standardized REST API for discovering and accessing MCP servers from multiple backend sources.
+The ToolHive Registry API (`thv-registry-api`) implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). It serves as the centralized metadata engine for the ToolHive platform, enabling enterprises to curate, discover, and govern MCP servers with security and auditability built-in.
 
 ---
 
@@ -40,12 +40,25 @@ The ToolHive Registry API (`thv-registry-api`) implements the official [Model Co
 
 ## Features
 
-- **Standards-compliant**: Implements the official MCP Registry API specification
-- **Multiple data sources**: Git repositories, API endpoints, local files, managed registries, and Kubernetes discovery
+### Enterprise Governance & Security
+- **OAuth 2.0/OIDC authentication**: Integrate with enterprise identity providers (Okta, Auth0, Azure AD)
+- **Multi-provider support**: Combine corporate SSO with Kubernetes service accounts
+- **Secure by default**: OAuth mode enabled by default, with granular access control
+- **Audit trail**: Track MCP discovery and access through centralized metadata
+
+### Flexible Registry Sources
+- **Curated registries**: Aggregate multiple sources into a unified catalog
+- **Upstream verified**: Sync from public MCP registries implementing the standard API
+- **File-based registries**: Support both ToolHive and upstream `server.json` formats
+- **Internal custom MCPs**: Manage organization-specific MCP servers
+- **Kubernetes discovery**: Automatically discover MCPs deployed in your clusters
 - **Automatic synchronization**: Background sync with configurable intervals and retry logic
-- **OAuth 2.0/OIDC authentication**: Secure by default with multi-provider support
-- **PostgreSQL backend**: Optional database storage with automatic migrations
-- **Container-ready**: Designed for deployment in Kubernetes clusters
+
+### Enterprise Integration
+- **Central metadata hub**: Powers the ToolHive Enterprise UI with MCP metadata
+- **ToolHive Operator integration**: Provides metadata for Kubernetes-native MCP deployment
+- **PostgreSQL backend**: Scalable database storage with automatic migrations
+- **Standards-compliant**: Implements the official MCP Registry API specification
 - **Production-ready**: Built-in health checks, graceful shutdown, and observability
 
 ## Quick Start
@@ -93,18 +106,33 @@ curl http://localhost:8080/registry/v0.1/servers
 
 ### Data Sources
 
-The server supports five registry types, each suited for different use cases:
+The Registry Server enables enterprises to curate MCP catalogs from multiple sources, creating a unified view for developers and knowledge workers:
 
-| Type | Description | Use Case | Sync |
-|------|-------------|----------|------|
-| **Git** | Clone from Git repositories | Version-controlled registries | ✅ Auto |
-| **API** | Fetch from upstream MCP Registry APIs | Federation and aggregation | ✅ Auto |
-| **File** | Read from local filesystem | Development and testing | ✅ Auto |
-| **Managed** | Managed via API calls | Dynamic, API-controlled registries | ❌ On-demand |
-| **Kubernetes** | Discover from K8s deployments | Cluster-local service discovery | ❌ On-demand |
+| Type | Description | Enterprise Use Case | Sync |
+|------|-------------|---------------------|------|
+| **API** | Upstream MCP Registry APIs | Official MCP Registry (registry.modelcontextprotocol.io) or any registry implementing the upstream specification | ✅ Auto |
+| **Git** | Clone from Git repositories | Version-controlled internal registries | ✅ Auto |
+| **File** | Read from local filesystem | Simple curated lists in ToolHive or upstream format | ✅ Auto |
+| **Managed** | API-managed registry | Internal custom MCPs (dynamically managed) | ❌ On-demand |
+| **Kubernetes** | Discover from K8s deployments | Organization-deployed MCPs (live discovery) | ❌ On-demand |
+
+**Key capability**: Configure multiple registries simultaneously to create a federated catalog that combines:
+- Official MCP Registry (registry.modelcontextprotocol.io) or any registry implementing the upstream specification
+- Internal organization-specific MCPs
+- Kubernetes-deployed MCPs
+- Custom curated collections
 
 **Configuration example:**
 
+```yaml
+registries:
+  - name: local
+    format: toolhive
+    file:
+      path: /data/registry.json
+```
+
+For Git-based registries:
 ```yaml
 registries:
   - name: toolhive
@@ -162,24 +190,39 @@ The server follows clean architecture with clear separation of concerns:
 
 ## API Endpoints
 
-### Registry API (v0.1)
+The server provides two types of registry endpoints to support different use cases:
 
-Standard MCP Registry API endpoints:
+### 1. Aggregated Registry Endpoints (Read-Only)
 
-- `GET /registry/v0.1/servers` - List all available MCP servers
+**Unified view across all configured registries** - ideal for enterprise-wide discovery:
+
+- `GET /registry/v0.1/servers` - List all MCP servers from all registries
 - `GET /registry/v0.1/servers/{name}/versions` - List all versions of a server
 - `GET /registry/v0.1/servers/{name}/versions/{version}` - Get a specific server version
-- `DELETE /registry/{registryName}/v0.1/servers/{name}/versions/{version}` - Delete a server version (managed registries only)
-- `POST /registry/v0.1/publish` - Publish a server (not yet implemented)
+
+### 2. Per-Registry Endpoints (Standards-Compliant)
+
+**Individual registry access** - fully compatible with upstream MCP Registry API specification:
+
+**Read operations (all registry types):**
+- `GET /registry/{registryName}/v0.1/servers` - List servers from a specific registry
+- `GET /registry/{registryName}/v0.1/servers/{name}/versions` - List versions from a specific registry
+- `GET /registry/{registryName}/v0.1/servers/{name}/versions/{version}` - Get specific version from a specific registry
+
+**Write operations (managed registries only):**
+- `POST /registry/{registryName}/v0.1/publish` - Publish a server to a managed registry
+- `DELETE /registry/{registryName}/v0.1/servers/{name}/versions/{version}` - Delete a server version from a managed registry
+
+**Note:** Write operations (POST, DELETE) are only supported for `managed` registry types. Git, API, File, and Kubernetes registries are read-only through the API.
 
 ### Extension API (v0)
 
-ToolHive-specific extensions:
+ToolHive-specific extensions for querying registry status:
 
-- `GET /extension/v0/registries` - List all registries (not yet implemented)
-- `GET /extension/v0/registries/{name}` - Get registry details (not yet implemented)
-- `PUT /extension/v0/registries/{name}` - Create or update a registry (not yet implemented)
-- `DELETE /extension/v0/registries/{name}` - Delete a registry (not yet implemented)
+- `GET /extension/v0/registries` - List all configured registries with status (requires database mode)
+- `GET /extension/v0/registries/{name}` - Get registry details and sync status (requires database mode)
+
+**Note:** Dynamic registry and server management endpoints (PUT/DELETE operations) are not yet implemented.
 
 ### Operational Endpoints
 
@@ -187,6 +230,12 @@ ToolHive-specific extensions:
 - `GET /readiness` - Readiness check
 - `GET /version` - Version information
 - `GET /.well-known/oauth-protected-resource` - OAuth discovery (RFC 9728)
+
+### Use Cases
+
+- **Aggregated endpoints**: Enterprise UI showing unified catalog of all MCPs
+- **Per-registry endpoints**: Direct access to specific registries (e.g., only upstream verified MCPs)
+- **Extension API**: Query registry status and configuration
 
 See the [MCP Registry API specification](https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/api/openapi.yaml) for full API details.
 
@@ -200,23 +249,30 @@ All configuration is done via YAML files. The server requires a `--config` flag.
 registryName: my-registry
 
 registries:
-  - name: toolhive
+  - name: local
     format: toolhive
-    git:
-      repository: https://github.com/stacklok/toolhive.git
-      branch: main
-      path: pkg/registry/data/registry.json
-    syncPolicy:
-      interval: "30m"
+    file:
+      path: /data/registry.json
 
 auth:
   mode: anonymous  # Use "oauth" for production
 
-database:  # Optional
-  host: localhost
-  port: 5432
-  user: registry
-  database: registry
+# Optional: Add more registries
+# - name: toolhive
+#   format: toolhive
+#   git:
+#     repository: https://github.com/stacklok/toolhive.git
+#     branch: main
+#     path: pkg/registry/data/registry.json
+#   syncPolicy:
+#     interval: "30m"
+
+# Optional: Database backend
+# database:
+#   host: localhost
+#   port: 5432
+#   user: registry
+#   database: registry
 ```
 
 ### 📖 Complete Guides
@@ -374,12 +430,27 @@ docs/                    # Documentation
 
 ## Integration with ToolHive
 
-The Registry API server works seamlessly with the ToolHive ecosystem:
+The Registry API server is the central metadata engine of the ToolHive platform:
 
-- **ToolHive Operator**: Automatically deployed as part of MCPRegistry resources
-- **ToolHive CLI**: Discover and install MCP servers from registries
+### Enterprise UI Integration
+- **Metadata source**: Provides MCP details (name, description, URL, version, branding)
+- **Server status**: Reports sync status and availability for each registry
+- **Discovery experience**: Powers the catalog browsing and search in the Enterprise UI
+- **Authentication**: Enforces OAuth/OIDC access control from your identity provider
 
-See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for more details.
+### ToolHive Operator Integration
+- **Deployment metadata**: Operator references registry data when deploying MCPs to Kubernetes
+- **Automated discovery**: Kubernetes-deployed MCPs automatically appear in the registry
+- **Custom Resource binding**: MCPRegistry CRDs are backed by Registry Server data
+- **Lifecycle management**: Tracks deployed MCP versions and configurations
+
+### Security & Governance
+- **Centralized control**: Single source of truth for approved MCPs
+- **Identity integration**: Seamless integration with Okta, Auth0, Azure AD, and other providers
+- **Kubernetes-native**: All MCP execution stays within your Kubernetes boundary
+- **Audit trail**: Track MCP discovery and consumption patterns
+
+See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for the complete platform architecture.
 
 ## Contributing
 
