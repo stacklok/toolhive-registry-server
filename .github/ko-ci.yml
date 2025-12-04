@@ -1,3 +1,6 @@
+# Use distroless/static which includes CA certificates for TLS verification
+defaultBaseImage: gcr.io/distroless/static:nonroot
+
 builds:
   - id: thv-registry-api
     dir: ./cmd/thv-registry-api

@@ -30,6 +30,10 @@ GOOS=linux GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o main ./cmd/thv-registr
 # Use minimal base image to package the binary
 FROM registry.access.redhat.com/ubi10/ubi-minimal:10.1-1764604111
 
+# Install CA certificates for TLS verification
+RUN microdnf install -y ca-certificates && \
+    microdnf clean all
+
 COPY --from=builder /workspace/main /
 COPY LICENSE /licenses/LICENSE
 

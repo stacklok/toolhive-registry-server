@@ -1,0 +1,2 @@
+# Use distroless/static which includes CA certificates for TLS verification
+defaultBaseImage: gcr.io/distroless/static:nonroot
