@@ -24,8 +24,9 @@ var serveCmd = &cobra.Command{
 	Long: `Start the registry API server to serve MCP registry data.
 
 The server requires a configuration file (--config) that specifies:
-- Registry name and data source (Git, API, or File)
-- Sync policy and filtering rules
+- Registry name and data sources (Git, API, File, Managed, or Kubernetes)
+- Sync policy and filtering rules (per registry)
+- Authentication configuration
 - All other operational settings
 
 If database configuration is present, migrations will run automatically on startup.
