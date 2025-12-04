@@ -36,8 +36,9 @@ This command:
 - Reads the password from STDIN
 
 The command uses the --config option to connect to the database.`,
-	Args: cobra.ExactArgs(1),
-	RunE: runPrimeDb,
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
+	RunE:         runPrimeDb,
 }
 
 func init() {

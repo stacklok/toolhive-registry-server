@@ -18,7 +18,8 @@ var migrateUpCmd = &cobra.Command{
 	Long: `Apply all pending database migrations to bring the schema up to date.
 This command will read the database connection parameters from the config file
 and apply all migrations that haven't been run yet.`,
-	RunE: runMigrateUp,
+	SilenceUsage: true,
+	RunE:         runMigrateUp,
 }
 
 func runMigrateUp(cmd *cobra.Command, _ []string) error {
