@@ -156,11 +156,23 @@ type APIConfig struct {
 	Endpoint string `yaml:"endpoint"`
 }
 
-// FileConfig defines local file source configuration
+// FileConfig defines file source configuration
+// Supports both local files and URL-hosted files
 type FileConfig struct {
 	// Path is the path to the registry.json file on the local filesystem
 	// Can be absolute or relative to the working directory
-	Path string `yaml:"path"`
+	// Mutually exclusive with URL - exactly one must be specified
+	Path string `yaml:"path,omitempty"`
+
+	// URL is the HTTP/HTTPS URL to fetch the registry file from
+	// Mutually exclusive with Path - exactly one must be specified
+	// HTTPS is required unless the host is localhost or THV_REGISTRY_INSECURE_URL=true
+	URL string `yaml:"url,omitempty"`
+
+	// Timeout is the timeout for HTTP requests when using URL
+	// Defaults to 30s if not specified
+	// Only applicable when URL is set
+	Timeout string `yaml:"timeout,omitempty"`
 }
 
 // ManagedConfig defines configuration for managed registries
@@ -681,9 +693,50 @@ func validateAPIConfig(api *APIConfig, format string, prefix string) error {
 
 // validateFileConfig validates File-specific configuration
 func validateFileConfig(file *FileConfig, prefix string) error {
-	if file.Path == "" {
-		return fmt.Errorf("%s: file.path is required", prefix)
+	// Exactly one of Path or URL must be specified
+	hasPath := file.Path != ""
+	hasURL := file.URL != ""
+
+	if !hasPath && !hasURL {
+		return fmt.Errorf("%s: file.path or file.url is required", prefix)
 	}
+	if hasPath && hasURL {
+		return fmt.Errorf("%s: file.path and file.url are mutually exclusive", prefix)
+	}
+
+	// Validate URL if specified
+	if hasURL {
+		if err := validateFileURL(file.URL, prefix); err != nil {
+			return err
+		}
+
+		// Validate timeout if specified
+		if file.Timeout != "" {
+			if _, err := time.ParseDuration(file.Timeout); err != nil {
+				return fmt.Errorf("%s: file.timeout must be a valid duration (e.g., '30s', '1m'): %w", prefix, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateFileURL validates the URL for file sources
+func validateFileURL(rawURL string, prefix string) error {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("%s: file.url is invalid: %w", prefix, err)
+	}
+
+	if !parsedURL.IsAbs() || parsedURL.Host == "" {
+		return fmt.Errorf("%s: file.url must be an absolute URL with host", prefix)
+	}
+
+	// Only allow HTTP and HTTPS schemes
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("%s: file.url must use http or https scheme", prefix)
+	}
+
 	return nil
 }
 

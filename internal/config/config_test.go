@@ -340,7 +340,7 @@ func TestConfigValidate(t *testing.T) {
 			errMsg:  "one of git, api, file, managed, or kubernetes configuration must be specified",
 		},
 		{
-			name: "missing_file_path",
+			name: "missing_file_path_or_url",
 			config: &Config{
 				Registries: []RegistryConfig{
 					{
@@ -356,7 +356,134 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "file.path is required",
+			errMsg:  "file.path or file.url is required",
+		},
+		{
+			name: "file_path_and_url_mutually_exclusive",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							Path: "/data/registry.json",
+							URL:  "https://example.com/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: true,
+			errMsg:  "file.path and file.url are mutually exclusive",
+		},
+		{
+			name: "valid_file_url",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							URL: "https://example.com/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid_file_url_with_timeout",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							URL:     "https://example.com/registry.json",
+							Timeout: "1m",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid_file_url_timeout",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							URL:     "https://example.com/registry.json",
+							Timeout: "invalid",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: true,
+			errMsg:  "file.timeout must be a valid duration",
+		},
+		{
+			name: "invalid_file_url_scheme",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							URL: "ftp://example.com/registry.json",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: true,
+			errMsg:  "file.url must use http or https scheme",
+		},
+		{
+			name: "invalid_file_url_no_host",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "test-registry",
+						File: &FileConfig{
+							URL: "/path/to/file",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: true,
+			errMsg:  "file.url must be an absolute URL with host",
 		},
 		{
 			name: "missing_sync_interval",
