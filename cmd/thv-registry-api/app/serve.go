@@ -159,9 +159,7 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
-		if err := tx.Rollback(ctx); err != nil {
-			slog.Error("Error rolling back transaction", "error", err)
-		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	// Run migrations
