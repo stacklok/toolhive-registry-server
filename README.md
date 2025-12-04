@@ -219,8 +219,8 @@ The server provides two types of registry endpoints to support different use cas
 
 ToolHive-specific extensions for querying registry status:
 
-- `GET /extension/v0/registries` - List all configured registries with status (requires database mode)
-- `GET /extension/v0/registries/{name}` - Get registry details and sync status (requires database mode)
+- `GET /extension/v0/registries` - List all configured registries with status
+- `GET /extension/v0/registries/{name}` - Get registry details and sync status
 
 **Note:** Dynamic registry and server management endpoints (PUT/DELETE operations) are not yet implemented.
 
