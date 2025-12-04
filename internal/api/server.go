@@ -84,6 +84,12 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 // LoggingMiddleware logs HTTP requests
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip logging for health and readiness endpoints
+		if r.URL.Path == "/health" || r.URL.Path == "/readiness" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		start := time.Now()
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 
