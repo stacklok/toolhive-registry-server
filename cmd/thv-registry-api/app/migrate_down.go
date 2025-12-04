@@ -20,7 +20,8 @@ WARNING: This operation may result in data loss. Use with caution.
 
 By default, this command requires the --num-steps flag to specify how many
 migrations to revert. This is a safety measure to prevent accidental data loss.`,
-	RunE: runMigrateDown,
+	SilenceUsage: true,
+	RunE:         runMigrateDown,
 }
 
 func runMigrateDown(cmd *cobra.Command, _ []string) error {

@@ -32,7 +32,8 @@ The server requires a configuration file (--config) that specifies:
 If database configuration is present, migrations will run automatically on startup.
 
 See examples/ directory for sample configurations.`,
-	RunE: runServe,
+	SilenceUsage: true,
+	RunE:         runServe,
 }
 
 const (
