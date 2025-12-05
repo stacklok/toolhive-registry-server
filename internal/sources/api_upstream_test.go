@@ -4,9 +4,10 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"testing"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
@@ -17,29 +18,19 @@ const (
 	serversAPIPath      = "/v0.1/servers"
 )
 
-var _ = Describe("UpstreamAPIHandler", func() {
-	var (
-		handler    *upstreamAPIHandler
-		ctx        context.Context
-		mockServer *httptest.Server
-	)
+func TestUpstreamAPIHandler_Validate(t *testing.T) {
+	t.Parallel()
 
-	BeforeEach(func() {
-		httpClient := httpclient.NewDefaultClient(0)
-		handler = NewUpstreamAPIHandler(httpClient)
-		ctx = context.Background()
-	})
-
-	AfterEach(func() {
-		if mockServer != nil {
-			mockServer.Close()
-		}
-	})
-
-	Describe("Validate", func() {
-		Context("Valid Upstream MCP Registry API", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tests := []struct {
+		name          string
+		setupServer   func() *httptest.Server
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name: "valid upstream MCP registry API",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
@@ -61,49 +52,37 @@ paths:
 						w.WriteHeader(http.StatusNotFound)
 					}
 				}))
-			})
-
-			It("should validate successfully", func() {
-				err := handler.Validate(ctx, mockServer.URL)
-				Expect(err).NotTo(HaveOccurred())
-			})
-		})
-
-		Context("Missing /openapi.yaml endpoint", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			},
+			expectError: false,
+		},
+		{
+			name: "missing /openapi.yaml endpoint",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusNotFound)
 				}))
-			})
-
-			It("should fail validation", func() {
-				err := handler.Validate(ctx, mockServer.URL)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("failed to fetch /openapi.yaml"))
-			})
-		})
-
-		Context("Invalid YAML", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			},
+			expectError:   true,
+			errorContains: "failed to fetch /openapi.yaml",
+		},
+		{
+			name: "invalid YAML in /openapi.yaml",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
 						_, _ = w.Write([]byte(`{invalid: yaml: [unclosed`))
 					}
 				}))
-			})
-
-			It("should fail validation", func() {
-				err := handler.Validate(ctx, mockServer.URL)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("failed to parse /openapi.yaml"))
-			})
-		})
-
-		Context("Missing info section", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			},
+			expectError:   true,
+			errorContains: "failed to parse /openapi.yaml",
+		},
+		{
+			name: "missing info section in OpenAPI spec",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
@@ -116,18 +95,14 @@ paths:
 `))
 					}
 				}))
-			})
-
-			It("should fail validation", func() {
-				err := handler.Validate(ctx, mockServer.URL)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("missing 'info' section"))
-			})
-		})
-
-		Context("Missing version field", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			},
+			expectError:   true,
+			errorContains: "missing 'info' section",
+		},
+		{
+			name: "missing version field in info section",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
@@ -139,18 +114,14 @@ info:
 `))
 					}
 				}))
-			})
-
-			It("should fail validation", func() {
-				err := handler.Validate(ctx, mockServer.URL)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("missing 'version' field"))
-			})
-		})
-
-		Context("Wrong version", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			},
+			expectError:   true,
+			errorContains: "missing 'version' field",
+		},
+		{
+			name: "wrong version (not 1.0.0)",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
@@ -163,18 +134,14 @@ info:
 `))
 					}
 				}))
-			})
-
-			It("should fail validation", func() {
-				err := handler.Validate(ctx, mockServer.URL)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("version is 2.0.0, expected 1.0.0"))
-			})
-		})
-
-		Context("Missing description field", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			},
+			expectError:   true,
+			errorContains: "version is 2.0.0, expected 1.0.0",
+		},
+		{
+			name: "missing description field in info section",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
@@ -186,18 +153,14 @@ info:
 `))
 					}
 				}))
-			})
-
-			It("should fail validation", func() {
-				err := handler.Validate(ctx, mockServer.URL)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("missing 'description' field"))
-			})
-		})
-
-		Context("Description without GitHub URL", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			},
+			expectError:   true,
+			errorContains: "missing 'description' field",
+		},
+		{
+			name: "description without expected GitHub URL",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
@@ -210,18 +173,14 @@ info:
 `))
 					}
 				}))
-			})
-
-			It("should fail validation", func() {
-				err := handler.Validate(ctx, mockServer.URL)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("does not contain expected GitHub URL"))
-			})
-		})
-
-		Context("Version as number instead of string", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			},
+			expectError:   true,
+			errorContains: "does not contain expected GitHub URL",
+		},
+		{
+			name: "version as number instead of string (YAML parses 1.0 as float)",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == upstreamOpenapiPath {
 						w.Header().Set("Content-Type", "application/x-yaml")
 						w.WriteHeader(http.StatusOK)
@@ -234,23 +193,52 @@ info:
 `))
 					}
 				}))
-			})
+			},
+			expectError:   true,
+			errorContains: "missing 'version' field",
+		},
+	}
 
-			It("should fail validation", func() {
-				err := handler.Validate(ctx, mockServer.URL)
-				Expect(err).To(HaveOccurred())
-				// YAML will parse 1.0 as float, not string
-				Expect(err.Error()).To(ContainSubstring("missing 'version' field"))
-			})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockServer := tt.setupServer()
+			defer mockServer.Close()
+
+			httpClient := httpclient.NewDefaultClient(0)
+			handler := NewUpstreamAPIHandler(httpClient)
+			ctx := context.Background()
+
+			err := handler.Validate(ctx, mockServer.URL)
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+			} else {
+				require.NoError(t, err)
+			}
 		})
-	})
+	}
+}
 
-	Describe("FetchRegistry", func() {
-		var registryConfig *config.RegistryConfig
+func TestUpstreamAPIHandler_FetchRegistry(t *testing.T) {
+	t.Parallel()
 
-		Context("Successful fetch with single page", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tests := []struct {
+		name               string
+		setupServer        func() *httptest.Server
+		expectError        bool
+		errorContains      string
+		expectedCount      int
+		expectedFormat     string
+		expectedServerName string
+		verifyHash         bool
+	}{
+		{
+			name: "successful fetch with single page",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == serversAPIPath {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
@@ -273,159 +261,178 @@ info:
 						w.WriteHeader(http.StatusNotFound)
 					}
 				}))
-				registryConfig = &config.RegistryConfig{
-					Name:   "test-registry",
-					Format: config.SourceFormatUpstream,
-					API: &config.APIConfig{
-						Endpoint: mockServer.URL,
-					},
-				}
-			})
-
-			It("should fetch servers successfully", func() {
-				result, err := handler.FetchRegistry(ctx, registryConfig)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(result).NotTo(BeNil())
-				Expect(result.ServerCount).To(Equal(1))
-				Expect(result.Format).To(Equal(config.SourceFormatUpstream))
-				Expect(result.Hash).NotTo(BeEmpty())
-				Expect(result.Registry).NotTo(BeNil())
-				Expect(result.Registry.Data.Servers).To(HaveLen(1))
-				Expect(result.Registry.Data.Servers[0].Name).To(Equal("test-server"))
-			})
-		})
-
-		Context("Successful fetch with pagination", func() {
-			var requestCount int
-			var receivedCursors []string
-
-			BeforeEach(func() {
-				requestCount = 0
-				receivedCursors = []string{}
-
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == serversAPIPath {
-						requestCount++
-						cursor := r.URL.Query().Get("cursor")
-						receivedCursors = append(receivedCursors, cursor)
-
-						w.Header().Set("Content-Type", "application/json")
-						w.WriteHeader(http.StatusOK)
-						switch cursor {
-						case "":
-							_, _ = w.Write([]byte(`{
-								"servers": [
-									{
-										"server": {
-											"name": "server-1",
-											"description": "First server"
-										},
-										"_meta": {}
-									}
-								],
-								"metadata": {
-									"nextCursor": "page2",
-									"count": 1
-								}
-							}`))
-						case "page2":
-							_, _ = w.Write([]byte(`{
-								"servers": [
-									{
-										"server": {
-											"name": "server-2",
-											"description": "Second server"
-										},
-										"_meta": {}
-									}
-								],
-								"metadata": {
-									"nextCursor": "",
-									"count": 1
-								}
-							}`))
-						}
-					} else {
-						w.WriteHeader(http.StatusNotFound)
-					}
-				}))
-				registryConfig = &config.RegistryConfig{
-					Name:   "test-registry",
-					Format: config.SourceFormatUpstream,
-					API: &config.APIConfig{
-						Endpoint: mockServer.URL,
-					},
-				}
-			})
-
-			It("should fetch all pages and combine servers", func() {
-				result, err := handler.FetchRegistry(ctx, registryConfig)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(result).NotTo(BeNil())
-				Expect(result.ServerCount).To(Equal(2))
-				Expect(result.Registry.Data.Servers).To(HaveLen(2))
-				Expect(result.Registry.Data.Servers[0].Name).To(Equal("server-1"))
-				Expect(result.Registry.Data.Servers[1].Name).To(Equal("server-2"))
-
-				// Verify pagination mechanics
-				Expect(requestCount).To(Equal(2), "should make exactly 2 requests")
-				Expect(receivedCursors).To(Equal([]string{"", "page2"}), "should receive correct cursor sequence")
-			})
-		})
-
-		Context("HTTP error during fetch", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			},
+			expectError:        false,
+			expectedCount:      1,
+			expectedFormat:     config.SourceFormatUpstream,
+			expectedServerName: "test-server",
+			verifyHash:         true,
+		},
+		{
+			name: "HTTP error during fetch (500)",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusInternalServerError)
 				}))
-				registryConfig = &config.RegistryConfig{
-					Name:   "test-registry",
-					Format: config.SourceFormatUpstream,
-					API: &config.APIConfig{
-						Endpoint: mockServer.URL,
-					},
-				}
-			})
-
-			It("should return error on HTTP failure", func() {
-				_, err := handler.FetchRegistry(ctx, registryConfig)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("failed to fetch servers"))
-			})
-		})
-
-		Context("Invalid JSON response", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			},
+			expectError:   true,
+			errorContains: "failed to fetch servers",
+		},
+		{
+			name: "invalid JSON response",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == serversAPIPath {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
 						_, _ = w.Write([]byte(`{invalid json`))
 					}
 				}))
-				registryConfig = &config.RegistryConfig{
-					Name:   "test-registry",
-					Format: config.SourceFormatUpstream,
-					API: &config.APIConfig{
-						Endpoint: mockServer.URL,
-					},
-				}
-			})
+			},
+			expectError:   true,
+			errorContains: "failed to parse response",
+		},
+	}
 
-			It("should return error on invalid JSON", func() {
-				_, err := handler.FetchRegistry(ctx, registryConfig)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("failed to parse response"))
-			})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockServer := tt.setupServer()
+			defer mockServer.Close()
+
+			httpClient := httpclient.NewDefaultClient(0)
+			handler := NewUpstreamAPIHandler(httpClient)
+			ctx := context.Background()
+
+			registryConfig := &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatUpstream,
+				API: &config.APIConfig{
+					Endpoint: mockServer.URL,
+				},
+			}
+
+			result, err := handler.FetchRegistry(ctx, registryConfig)
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			assert.Equal(t, tt.expectedCount, result.ServerCount)
+			assert.Equal(t, tt.expectedFormat, result.Format)
+			require.NotNil(t, result.Registry)
+			require.Len(t, result.Registry.Data.Servers, tt.expectedCount)
+
+			if tt.expectedServerName != "" {
+				assert.Equal(t, tt.expectedServerName, result.Registry.Data.Servers[0].Name)
+			}
+
+			if tt.verifyHash {
+				assert.NotEmpty(t, result.Hash)
+			}
 		})
-	})
+	}
+}
 
-	Describe("CurrentHash", func() {
-		var registryConfig *config.RegistryConfig
+func TestUpstreamAPIHandler_FetchRegistry_Pagination(t *testing.T) {
+	t.Parallel()
 
-		Context("Successful hash calculation", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var requestCount int
+	var receivedCursors []string
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == serversAPIPath {
+			requestCount++
+			cursor := r.URL.Query().Get("cursor")
+			receivedCursors = append(receivedCursors, cursor)
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			switch cursor {
+			case "":
+				_, _ = w.Write([]byte(`{
+					"servers": [
+						{
+							"server": {
+								"name": "server-1",
+								"description": "First server"
+							},
+							"_meta": {}
+						}
+					],
+					"metadata": {
+						"nextCursor": "page2",
+						"count": 1
+					}
+				}`))
+			case "page2":
+				_, _ = w.Write([]byte(`{
+					"servers": [
+						{
+							"server": {
+								"name": "server-2",
+								"description": "Second server"
+							},
+							"_meta": {}
+						}
+					],
+					"metadata": {
+						"nextCursor": "",
+						"count": 1
+					}
+				}`))
+			}
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mockServer.Close()
+
+	httpClient := httpclient.NewDefaultClient(0)
+	handler := NewUpstreamAPIHandler(httpClient)
+	ctx := context.Background()
+
+	registryConfig := &config.RegistryConfig{
+		Name:   "test-registry",
+		Format: config.SourceFormatUpstream,
+		API: &config.APIConfig{
+			Endpoint: mockServer.URL,
+		},
+	}
+
+	result, err := handler.FetchRegistry(ctx, registryConfig)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 2, result.ServerCount)
+	require.Len(t, result.Registry.Data.Servers, 2)
+	assert.Equal(t, "server-1", result.Registry.Data.Servers[0].Name)
+	assert.Equal(t, "server-2", result.Registry.Data.Servers[1].Name)
+
+	// Verify pagination mechanics
+	assert.Equal(t, 2, requestCount, "should make exactly 2 requests")
+	assert.Equal(t, []string{"", "page2"}, receivedCursors, "should receive correct cursor sequence")
+}
+
+func TestUpstreamAPIHandler_CurrentHash(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		setupServer   func() *httptest.Server
+		expectError   bool
+		errorContains string
+		verifyHash    bool
+	}{
+		{
+			name: "successful hash calculation",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == serversAPIPath {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
@@ -448,42 +455,266 @@ info:
 						w.WriteHeader(http.StatusNotFound)
 					}
 				}))
-				registryConfig = &config.RegistryConfig{
-					Name:   "test-registry",
-					Format: config.SourceFormatUpstream,
-					API: &config.APIConfig{
-						Endpoint: mockServer.URL,
-					},
-				}
-			})
-
-			It("should return hash matching FetchRegistry", func() {
-				hash, err := handler.CurrentHash(ctx, registryConfig)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(hash).NotTo(BeEmpty())
-				// Should be a valid SHA256 hex string (64 characters)
-				Expect(hash).To(HaveLen(64))
-			})
-		})
-
-		Context("Error propagation", func() {
-			BeforeEach(func() {
-				mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			},
+			expectError: false,
+			verifyHash:  true,
+		},
+		{
+			name: "error propagation on HTTP failure",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusInternalServerError)
 				}))
-				registryConfig = &config.RegistryConfig{
-					Name:   "test-registry",
-					Format: config.SourceFormatUpstream,
-					API: &config.APIConfig{
-						Endpoint: mockServer.URL,
-					},
-				}
-			})
+			},
+			expectError: true,
+		},
+	}
 
-			It("should propagate fetch errors", func() {
-				_, err := handler.CurrentHash(ctx, registryConfig)
-				Expect(err).To(HaveOccurred())
-			})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockServer := tt.setupServer()
+			defer mockServer.Close()
+
+			httpClient := httpclient.NewDefaultClient(0)
+			handler := NewUpstreamAPIHandler(httpClient)
+			ctx := context.Background()
+
+			registryConfig := &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatUpstream,
+				API: &config.APIConfig{
+					Endpoint: mockServer.URL,
+				},
+			}
+
+			hash, err := handler.CurrentHash(ctx, registryConfig)
+
+			if tt.expectError {
+				require.Error(t, err)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			if tt.verifyHash {
+				assert.NotEmpty(t, hash)
+				// Should be a valid SHA256 hex string (64 characters)
+				assert.Len(t, hash, 64)
+			}
 		})
-	})
-})
+	}
+}
+
+func TestUpstreamAPIHandler_HashConsistency(t *testing.T) {
+	t.Parallel()
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == serversAPIPath {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"servers": [
+					{
+						"server": {
+							"name": "test-server",
+							"description": "A test server"
+						},
+						"_meta": {}
+					}
+				],
+				"metadata": {
+					"nextCursor": "",
+					"count": 1
+				}
+			}`))
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mockServer.Close()
+
+	httpClient := httpclient.NewDefaultClient(0)
+	handler := NewUpstreamAPIHandler(httpClient)
+	ctx := context.Background()
+
+	registryConfig := &config.RegistryConfig{
+		Name:   "test-registry",
+		Format: config.SourceFormatUpstream,
+		API: &config.APIConfig{
+			Endpoint: mockServer.URL,
+		},
+	}
+
+	// Get hash via CurrentHash
+	hash1, err := handler.CurrentHash(ctx, registryConfig)
+	require.NoError(t, err)
+
+	// Get hash via FetchRegistry
+	result, err := handler.FetchRegistry(ctx, registryConfig)
+	require.NoError(t, err)
+
+	// Both should return the same hash for the same data
+	assert.Equal(t, hash1, result.Hash, "CurrentHash and FetchRegistry should return the same hash")
+}
+
+func TestUpstreamAPIHandler_EmptyServers(t *testing.T) {
+	t.Parallel()
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == serversAPIPath {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"servers": [],
+				"metadata": {
+					"nextCursor": "",
+					"count": 0
+				}
+			}`))
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mockServer.Close()
+
+	httpClient := httpclient.NewDefaultClient(0)
+	handler := NewUpstreamAPIHandler(httpClient)
+	ctx := context.Background()
+
+	registryConfig := &config.RegistryConfig{
+		Name:   "test-registry",
+		Format: config.SourceFormatUpstream,
+		API: &config.APIConfig{
+			Endpoint: mockServer.URL,
+		},
+	}
+
+	result, err := handler.FetchRegistry(ctx, registryConfig)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 0, result.ServerCount)
+	assert.Empty(t, result.Registry.Data.Servers)
+}
+
+func TestUpstreamAPIHandler_MultiplePages(t *testing.T) {
+	t.Parallel()
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == serversAPIPath {
+			cursor := r.URL.Query().Get("cursor")
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			switch cursor {
+			case "":
+				_, _ = w.Write([]byte(`{
+					"servers": [
+						{"server": {"name": "server-1", "description": "First"}, "_meta": {}},
+						{"server": {"name": "server-2", "description": "Second"}, "_meta": {}}
+					],
+					"metadata": {"nextCursor": "page2", "count": 2}
+				}`))
+			case "page2":
+				_, _ = w.Write([]byte(`{
+					"servers": [
+						{"server": {"name": "server-3", "description": "Third"}, "_meta": {}},
+						{"server": {"name": "server-4", "description": "Fourth"}, "_meta": {}}
+					],
+					"metadata": {"nextCursor": "page3", "count": 2}
+				}`))
+			case "page3":
+				_, _ = w.Write([]byte(`{
+					"servers": [
+						{"server": {"name": "server-5", "description": "Fifth"}, "_meta": {}}
+					],
+					"metadata": {"nextCursor": "", "count": 1}
+				}`))
+			}
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mockServer.Close()
+
+	httpClient := httpclient.NewDefaultClient(0)
+	handler := NewUpstreamAPIHandler(httpClient)
+	ctx := context.Background()
+
+	registryConfig := &config.RegistryConfig{
+		Name:   "test-registry",
+		Format: config.SourceFormatUpstream,
+		API: &config.APIConfig{
+			Endpoint: mockServer.URL,
+		},
+	}
+
+	result, err := handler.FetchRegistry(ctx, registryConfig)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 5, result.ServerCount)
+	require.Len(t, result.Registry.Data.Servers, 5)
+
+	expectedNames := []string{"server-1", "server-2", "server-3", "server-4", "server-5"}
+	for i, name := range expectedNames {
+		assert.Equal(t, name, result.Registry.Data.Servers[i].Name)
+	}
+}
+
+func TestNewUpstreamAPIHandler(t *testing.T) {
+	t.Parallel()
+
+	httpClient := httpclient.NewDefaultClient(0)
+	handler := NewUpstreamAPIHandler(httpClient)
+
+	require.NotNil(t, handler, "NewUpstreamAPIHandler should return a non-nil handler")
+}
+
+func TestUpstreamAPIHandler_HTTPErrorCodes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		statusCode int
+	}{
+		{"400 Bad Request", http.StatusBadRequest},
+		{"401 Unauthorized", http.StatusUnauthorized},
+		{"403 Forbidden", http.StatusForbidden},
+		{"404 Not Found", http.StatusNotFound},
+		{"500 Internal Server Error", http.StatusInternalServerError},
+		{"502 Bad Gateway", http.StatusBadGateway},
+		{"503 Service Unavailable", http.StatusServiceUnavailable},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.statusCode)
+			}))
+			defer mockServer.Close()
+
+			httpClient := httpclient.NewDefaultClient(0)
+			handler := NewUpstreamAPIHandler(httpClient)
+			ctx := context.Background()
+
+			registryConfig := &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatUpstream,
+				API: &config.APIConfig{
+					Endpoint: mockServer.URL,
+				},
+			}
+
+			_, err := handler.FetchRegistry(ctx, registryConfig)
+
+			require.Error(t, err)
+		})
+	}
+}
