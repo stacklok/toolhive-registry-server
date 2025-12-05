@@ -144,6 +144,16 @@ jobs:
       id-token: write
     uses: ./.github/workflows/image-build-and-publish.yml
 
+  update-docs-website:
+    name: Trigger Docs Website Rebuild
+    needs: [ release-binaries ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Deploy Hook
+        run: |
+          echo "Triggering docs website rebuild to refresh the API spec..."
+          curl -f -X POST "${{ secrets.DOCS_VERCEL_DEPLOY_HOOK }}" || exit 1
+
 #  provenance:
 #    name: Generate provenance (SLSA3)
 #    needs:
