@@ -16,11 +16,11 @@
 [![License: Apache 2.0][license-img]][license]
 [![Star on GitHub][stars-img]][stars] [![Discord][discord-img]][discord]
 
-# ToolHive Registry API Server
+# ToolHive Registry Server
 
 **The central metadata hub for enterprise MCP governance and discovery**
 
-The ToolHive Registry API (`thv-registry-api`) implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). It serves as the centralized metadata engine for the ToolHive platform, enabling enterprises to curate, discover, and govern MCP servers with security and auditability built-in.
+The ToolHive Registry Server (`thv-registry-api`) implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). It serves as the centralized metadata engine for the ToolHive platform, enabling enterprises to curate, discover, and govern MCP servers with security and auditability built-in.
 
 ---
 
