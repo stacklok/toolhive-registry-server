@@ -220,84 +220,6 @@ func (d *dbStatusService) UpdateSyncStatus(ctx context.Context, registryName str
 	return err
 }
 
-func (d *dbStatusService) UpdateStatusAtomically(
-	ctx context.Context,
-	registryName string,
-	testAndUpdateFn func(syncStatus *status.SyncStatus) bool,
-) (bool, error) {
-	// Start a transaction
-	tx, err := d.pool.Begin(ctx)
-	if err != nil {
-		return false, err
-	}
-	defer tx.Rollback(ctx)
-
-	// Create queries with transaction
-	queries := sqlc.New(d.pool).WithTx(tx)
-
-	// Get the current sync status
-	registrySync, err := queries.GetRegistrySyncByName(ctx, registryName)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return false, ErrRegistryNotFound
-		}
-		return false, err
-	}
-
-	// Convert to status.SyncStatus
-	syncStatus := dbSyncToStatus(registrySync)
-
-	// Apply the test and update function
-	shouldUpdate := testAndUpdateFn(syncStatus)
-
-	// If the function modified the status, update it in the database
-	if shouldUpdate {
-		// Prepare nullable string fields
-		var errorMsg *string
-		if syncStatus.Message != "" {
-			errorMsg = &syncStatus.Message
-		}
-
-		var lastSyncHash *string
-		if syncStatus.LastSyncHash != "" {
-			lastSyncHash = &syncStatus.LastSyncHash
-		}
-
-		var lastAppliedFilterHash *string
-		if syncStatus.LastAppliedFilterHash != "" {
-			lastAppliedFilterHash = &syncStatus.LastAppliedFilterHash
-		}
-
-		// Update using the upsert query
-		err = queries.UpsertRegistrySyncByName(ctx, sqlc.UpsertRegistrySyncByNameParams{
-			Name:                  registryName,
-			SyncStatus:            syncPhaseToDBStatus(syncStatus.Phase),
-			ErrorMsg:              errorMsg,
-			StartedAt:             syncStatus.LastAttempt,
-			EndedAt:               syncStatus.LastSyncTime,
-			AttemptCount:          int64(syncStatus.AttemptCount),
-			LastSyncHash:          lastSyncHash,
-			LastAppliedFilterHash: lastAppliedFilterHash,
-			ServerCount:           int64(syncStatus.ServerCount),
-		})
-		if err != nil {
-			return false, err
-		}
-
-		// Commit the transaction
-		if err := tx.Commit(ctx); err != nil {
-			return false, err
-		}
-	} else {
-		// No update needed, just commit (or rollback is fine too)
-		if err := tx.Commit(ctx); err != nil {
-			return false, err
-		}
-	}
-
-	return shouldUpdate, nil
-}
-
 // dbSyncToStatus converts a database RegistrySync to a status.SyncStatus
 func dbSyncToStatus(dbSync sqlc.RegistrySync) *status.SyncStatus {
 	syncStatus := &status.SyncStatus{
@@ -326,6 +248,32 @@ func dbSyncToStatus(dbSync sqlc.RegistrySync) *status.SyncStatus {
 
 // dbSyncRowToStatus converts a ListRegistrySyncsRow to a status.SyncStatus
 func dbSyncRowToStatus(row sqlc.ListRegistrySyncsRow) *status.SyncStatus {
+	syncStatus := &status.SyncStatus{
+		Phase:        dbSyncStatusToPhase(row.SyncStatus),
+		LastAttempt:  row.StartedAt,
+		LastSyncTime: row.EndedAt,
+		AttemptCount: int(row.AttemptCount),
+		ServerCount:  int(row.ServerCount),
+	}
+
+	// Set message from error_msg if present
+	if row.ErrorMsg != nil {
+		syncStatus.Message = *row.ErrorMsg
+	}
+
+	// Set hash fields if present
+	if row.LastSyncHash != nil {
+		syncStatus.LastSyncHash = *row.LastSyncHash
+	}
+	if row.LastAppliedFilterHash != nil {
+		syncStatus.LastAppliedFilterHash = *row.LastAppliedFilterHash
+	}
+
+	return syncStatus
+}
+
+// dbSyncRowByLastUpdateToStatus converts a ListRegistrySyncsByLastUpdateRow to a status.SyncStatus
+func dbSyncRowByLastUpdateToStatus(row sqlc.ListRegistrySyncsByLastUpdateRow) *status.SyncStatus {
 	syncStatus := &status.SyncStatus{
 		Phase:        dbSyncStatusToPhase(row.SyncStatus),
 		LastAttempt:  row.StartedAt,
@@ -404,4 +352,76 @@ func getInitialSyncStatus(isNonSynced bool, regType string) (sqlc.SyncStatus, st
 		return sqlc.SyncStatusCOMPLETED, fmt.Sprintf("Non-synced registry (type: %s)", regType)
 	}
 	return sqlc.SyncStatusFAILED, "No previous sync status found"
+}
+
+func (d *dbStatusService) GetNextSyncJob(
+	ctx context.Context,
+	cfg *config.Config,
+	predicate func(*status.SyncStatus) bool,
+) (*config.RegistryConfig, error) {
+	// Start a transaction
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Create queries with transaction
+	queries := sqlc.New(d.pool).WithTx(tx)
+
+	// List all registries ordered by last update (ended_at) in ascending order
+	// Using FOR UPDATE SKIP LOCKED to prevent race conditions
+	registries, err := queries.ListRegistrySyncsByLastUpdate(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list registries: %w", err)
+	}
+
+	// Build a map of registry names to configs for quick lookup
+	// TODO: In future we should move these into the DB so we can do all this through SQL.
+	configMap := make(map[string]*config.RegistryConfig)
+	for i := range cfg.Registries {
+		configMap[cfg.Registries[i].Name] = &cfg.Registries[i]
+	}
+
+	// Iterate through registries and find one that matches the predicate
+	for _, reg := range registries {
+		syncStatus := dbSyncRowByLastUpdateToStatus(reg)
+
+		// Check if this registry matches the predicate
+		if predicate(syncStatus) {
+			// Update the registry to IN_PROGRESS state
+			now := time.Now()
+			err = queries.UpdateRegistrySyncStatusByName(ctx, sqlc.UpdateRegistrySyncStatusByNameParams{
+				Name:       reg.Name,
+				SyncStatus: sqlc.SyncStatusINPROGRESS,
+				StartedAt:  &now,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to update registry status: %w", err)
+			}
+
+			// Find the matching registry configuration
+			regCfg, ok := configMap[reg.Name]
+			if !ok {
+				// Registry exists in DB but not in config - this shouldn't happen
+				// but handle gracefully by continuing to next registry
+				continue
+			}
+
+			// Commit the transaction
+			if err := tx.Commit(ctx); err != nil {
+				return nil, fmt.Errorf("failed to commit transaction: %w", err)
+			}
+
+			// Return the registry configuration
+			return regCfg, nil
+		}
+	}
+
+	// No matching registry found - commit transaction and return nil
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil, nil
 }

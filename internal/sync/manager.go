@@ -164,7 +164,9 @@ type defaultSyncManager struct {
 
 // NewDefaultSyncManager creates a new defaultSyncManager
 func NewDefaultSyncManager(
-	registryHandlerFactory sources.RegistryHandlerFactory, syncWriter writer.SyncWriter) Manager {
+	registryHandlerFactory sources.RegistryHandlerFactory,
+	syncWriter writer.SyncWriter,
+) Manager {
 	return &defaultSyncManager{
 		registryHandlerFactory: registryHandlerFactory,
 		writer:                 syncWriter,

@@ -63,32 +63,6 @@ func (f *fileStateService) GetSyncStatus(_ context.Context, registryName string)
 	return &statusCopy, nil
 }
 
-func (f *fileStateService) UpdateStatusAtomically(
-	ctx context.Context,
-	registryName string,
-	testAndUpdateFn func(syncStatus *status.SyncStatus) bool,
-) (bool, error) {
-	// This method duplicates code from GetSyncStatus and UpdateSyncStatus
-	// I have duplicated the code due to the triviality of the logic.
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	// Get the sync status from cache
-	syncStatus, exists := f.cachedStatuses[registryName]
-	if !exists || syncStatus == nil {
-		return false, fmt.Errorf("sync status for registry %s not found", registryName)
-	}
-
-	shouldUpdate := testAndUpdateFn(syncStatus)
-	if shouldUpdate {
-		if err := f.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
-			return false, err
-		}
-		f.cachedStatuses[registryName] = syncStatus
-	}
-	return shouldUpdate, nil
-}
-
 func (f *fileStateService) UpdateSyncStatus(ctx context.Context, registryName string, syncStatus *status.SyncStatus) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -188,4 +162,78 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 	f.mu.Lock()
 	f.cachedStatuses[registryName] = syncStatus
 	f.mu.Unlock()
+}
+
+func (f *fileStateService) GetNextSyncJob(
+	ctx context.Context,
+	cfg *config.Config,
+	predicate func(*status.SyncStatus) bool,
+) (*config.RegistryConfig, error) {
+	// Grab the lock to ensure atomic operation
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// Build a map of registry names to configs for quick lookup
+	configMap := make(map[string]*config.RegistryConfig)
+	for i := range cfg.Registries {
+		configMap[cfg.Registries[i].Name] = &cfg.Registries[i]
+	}
+
+	// Create a sortable list of registries with their sync status
+	// Sort by LastSyncTime (ended_at equivalent) in ascending order, nil first
+	type registryWithStatus struct {
+		name       string
+		syncStatus *status.SyncStatus
+		lastUpdate *time.Time
+	}
+
+	var registries []registryWithStatus
+	for name, syncStatus := range f.cachedStatuses {
+		// Only consider registries that are in the config
+		if _, exists := configMap[name]; exists {
+			registries = append(registries, registryWithStatus{
+				name:       name,
+				syncStatus: syncStatus,
+				lastUpdate: syncStatus.LastSyncTime,
+			})
+		}
+	}
+
+	// Sort by last update time (ascending, nil first)
+	// Using a simple bubble sort since the list is typically small
+	for i := 0; i < len(registries); i++ {
+		for j := i + 1; j < len(registries); j++ {
+			// nil times come first
+			if registries[i].lastUpdate != nil &&
+				(registries[j].lastUpdate == nil ||
+					registries[j].lastUpdate.Before(*registries[i].lastUpdate)) {
+				registries[i], registries[j] = registries[j], registries[i]
+			}
+		}
+	}
+
+	// Iterate through sorted registries and find one that matches the predicate
+	for _, reg := range registries {
+		// Check if this registry matches the predicate
+		if predicate(reg.syncStatus) {
+			// Update the registry to IN_PROGRESS state
+			reg.syncStatus.Phase = status.SyncPhaseSyncing
+			now := time.Now()
+			reg.syncStatus.LastAttempt = &now
+
+			// Persist the updated status
+			if err := f.statusPersistence.SaveStatus(ctx, reg.name, reg.syncStatus); err != nil {
+				return nil, fmt.Errorf("failed to update registry status: %w", err)
+			}
+
+			// Update the cached status
+			f.cachedStatuses[reg.name] = reg.syncStatus
+
+			// Return the matching registry configuration
+			return configMap[reg.name], nil
+		}
+	}
+
+	// No matching registry found
+	return nil, nil
 }
