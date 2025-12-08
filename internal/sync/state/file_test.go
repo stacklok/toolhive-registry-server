@@ -29,7 +29,7 @@ func TestNewFileStateService(t *testing.T) {
 	require.NotNil(t, service)
 
 	// Verify it's the correct type
-	fileService, ok := service.(*FileStateService)
+	fileService, ok := service.(*fileStateService)
 	require.True(t, ok)
 	assert.Equal(t, mockPersistence, fileService.statusPersistence)
 	assert.NotNil(t, fileService.cachedStatuses)
@@ -236,7 +236,7 @@ func TestFileStateService_Initialize(t *testing.T) {
 				tt.setupMocks(mockPersistence)
 			}
 
-			service := NewFileStateService(mockPersistence).(*FileStateService)
+			service := NewFileStateService(mockPersistence).(*fileStateService)
 			ctx := context.Background()
 
 			err := service.Initialize(ctx, tt.registryConfigs)
@@ -325,7 +325,7 @@ func TestFileStateService_ListSyncStatuses(t *testing.T) {
 			defer ctrl.Finish()
 
 			mockPersistence := statusmocks.NewMockStatusPersistence(ctrl)
-			service := NewFileStateService(mockPersistence).(*FileStateService)
+			service := NewFileStateService(mockPersistence).(*fileStateService)
 			service.cachedStatuses = tt.cachedStatuses
 
 			ctx := context.Background()
@@ -420,7 +420,7 @@ func TestFileStateService_GetSyncStatus(t *testing.T) {
 			defer ctrl.Finish()
 
 			mockPersistence := statusmocks.NewMockStatusPersistence(ctrl)
-			service := NewFileStateService(mockPersistence).(*FileStateService)
+			service := NewFileStateService(mockPersistence).(*fileStateService)
 			service.cachedStatuses = tt.cachedStatuses
 
 			ctx := context.Background()
@@ -511,7 +511,7 @@ func TestFileStateService_UpdateSyncStatus(t *testing.T) {
 				tt.setupMocks(mockPersistence)
 			}
 
-			service := NewFileStateService(mockPersistence).(*FileStateService)
+			service := NewFileStateService(mockPersistence).(*fileStateService)
 			ctx := context.Background()
 
 			err := service.UpdateSyncStatus(ctx, tt.registryName, tt.newStatus)
@@ -813,7 +813,7 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 				tt.setupMocks(mockPersistence)
 			}
 
-			service := NewFileStateService(mockPersistence).(*FileStateService)
+			service := NewFileStateService(mockPersistence).(*fileStateService)
 			ctx := context.Background()
 
 			// Call the private method
@@ -836,7 +836,7 @@ func TestFileStateService_DeepCopyBehavior(t *testing.T) {
 	t.Cleanup(func() { ctrl.Finish() })
 
 	mockPersistence := statusmocks.NewMockStatusPersistence(ctrl)
-	service := NewFileStateService(mockPersistence).(*FileStateService)
+	service := NewFileStateService(mockPersistence).(*fileStateService)
 
 	// Set up initial status
 	syncTime := time.Now()

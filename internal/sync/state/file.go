@@ -11,8 +11,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 )
 
-// FileStateService is the file-backed implementation of RegistryStateService
-type FileStateService struct {
+type fileStateService struct {
 	statusPersistence status.StatusPersistence
 
 	// Thread-safe status management (per-registry)
@@ -22,22 +21,20 @@ type FileStateService struct {
 
 // NewFileStateService creates a new file-based registry state service
 func NewFileStateService(statusPersistence status.StatusPersistence) RegistryStateService {
-	return &FileStateService{
+	return &fileStateService{
 		statusPersistence: statusPersistence,
 		cachedStatuses:    make(map[string]*status.SyncStatus),
 	}
 }
 
-// Initialize populates the state store with the set of registries
-func (f *FileStateService) Initialize(ctx context.Context, registryConfigs []config.RegistryConfig) error {
+func (f *fileStateService) Initialize(ctx context.Context, registryConfigs []config.RegistryConfig) error {
 	for _, conf := range registryConfigs {
 		f.loadOrInitializeRegistryStatus(ctx, conf.Name, conf.IsNonSyncedRegistry(), conf.GetType())
 	}
 	return nil
 }
 
-// ListSyncStatuses lists all available sync statuses
-func (f *FileStateService) ListSyncStatuses(_ context.Context) (map[string]*status.SyncStatus, error) {
+func (f *fileStateService) ListSyncStatuses(_ context.Context) (map[string]*status.SyncStatus, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -52,8 +49,7 @@ func (f *FileStateService) ListSyncStatuses(_ context.Context) (map[string]*stat
 	return result, nil
 }
 
-// GetSyncStatus lists the status of the named registry
-func (f *FileStateService) GetSyncStatus(_ context.Context, registryName string) (*status.SyncStatus, error) {
+func (f *fileStateService) GetSyncStatus(_ context.Context, registryName string) (*status.SyncStatus, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -67,8 +63,7 @@ func (f *FileStateService) GetSyncStatus(_ context.Context, registryName string)
 	return &statusCopy, nil
 }
 
-// UpdateSyncStatus overrides the value of the named registry with the syncStatus parameter
-func (f *FileStateService) UpdateSyncStatus(ctx context.Context, registryName string, syncStatus *status.SyncStatus) error {
+func (f *fileStateService) UpdateSyncStatus(ctx context.Context, registryName string, syncStatus *status.SyncStatus) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
@@ -80,7 +75,7 @@ func (f *FileStateService) UpdateSyncStatus(ctx context.Context, registryName st
 	return nil
 }
 
-func (f *FileStateService) loadOrInitializeRegistryStatus(
+func (f *fileStateService) loadOrInitializeRegistryStatus(
 	ctx context.Context,
 	registryName string,
 	isNonSynced bool,
@@ -169,9 +164,7 @@ func (f *FileStateService) loadOrInitializeRegistryStatus(
 	f.mu.Unlock()
 }
 
-// GetNextSyncJob returns the next registry configuration that needs syncing
-// It uses a mutex lock to atomically find and mark a registry as IN_PROGRESS
-func (f *FileStateService) GetNextSyncJob(
+func (f *fileStateService) GetNextSyncJob(
 	ctx context.Context,
 	cfg *config.Config,
 	predicate func(*status.SyncStatus) bool,

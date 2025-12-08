@@ -43,21 +43,6 @@ func (m *MockManager) EXPECT() *MockManagerMockRecorder {
 	return m.recorder
 }
 
-// GetNextSyncJob mocks base method.
-func (m *MockManager) GetNextSyncJob(ctx context.Context, predicate func(*status.SyncStatus) bool) (*config.RegistryConfig, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetNextSyncJob", ctx, predicate)
-	ret0, _ := ret[0].(*config.RegistryConfig)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetNextSyncJob indicates an expected call of GetNextSyncJob.
-func (mr *MockManagerMockRecorder) GetNextSyncJob(ctx, predicate any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextSyncJob", reflect.TypeOf((*MockManager)(nil).GetNextSyncJob), ctx, predicate)
-}
-
 // PerformSync mocks base method.
 func (m *MockManager) PerformSync(ctx context.Context, regCfg *config.RegistryConfig) (*sync.Result, *sync.Error) {
 	m.ctrl.T.Helper()

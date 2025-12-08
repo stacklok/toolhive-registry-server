@@ -42,6 +42,21 @@ func (m *MockRegistryStateService) EXPECT() *MockRegistryStateServiceMockRecorde
 	return m.recorder
 }
 
+// GetNextSyncJob mocks base method.
+func (m *MockRegistryStateService) GetNextSyncJob(ctx context.Context, cfg *config.Config, predicate func(*status.SyncStatus) bool) (*config.RegistryConfig, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNextSyncJob", ctx, cfg, predicate)
+	ret0, _ := ret[0].(*config.RegistryConfig)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetNextSyncJob indicates an expected call of GetNextSyncJob.
+func (mr *MockRegistryStateServiceMockRecorder) GetNextSyncJob(ctx, cfg, predicate any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextSyncJob", reflect.TypeOf((*MockRegistryStateService)(nil).GetNextSyncJob), ctx, cfg, predicate)
+}
+
 // GetSyncStatus mocks base method.
 func (m *MockRegistryStateService) GetSyncStatus(ctx context.Context, registryName string) (*status.SyncStatus, error) {
 	m.ctrl.T.Helper()

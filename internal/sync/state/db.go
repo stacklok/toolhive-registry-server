@@ -15,8 +15,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 )
 
-// DBStatusService is the database-backed implementation of RegistryStateService
-type DBStatusService struct {
+type dbStatusService struct {
 	pool *pgxpool.Pool
 }
 
@@ -25,13 +24,12 @@ var ErrRegistryNotFound = errors.New("registry not found")
 
 // NewDBStateService creates a new database-backed registry state service
 func NewDBStateService(pool *pgxpool.Pool) RegistryStateService {
-	return &DBStatusService{
+	return &dbStatusService{
 		pool: pool,
 	}
 }
 
-// Initialize populates the state store with the set of registries
-func (d *DBStatusService) Initialize(ctx context.Context, registryConfigs []config.RegistryConfig) error {
+func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []config.RegistryConfig) error {
 	// Start a transaction for atomicity
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
@@ -156,8 +154,7 @@ func validateRegistryTypes(ctx context.Context, queries *sqlc.Queries, names []s
 	return nil
 }
 
-// ListSyncStatuses lists all available sync statuses
-func (d *DBStatusService) ListSyncStatuses(ctx context.Context) (map[string]*status.SyncStatus, error) {
+func (d *dbStatusService) ListSyncStatuses(ctx context.Context) (map[string]*status.SyncStatus, error) {
 	queries := sqlc.New(d.pool)
 
 	rows, err := queries.ListRegistrySyncs(ctx)
@@ -174,8 +171,7 @@ func (d *DBStatusService) ListSyncStatuses(ctx context.Context) (map[string]*sta
 	return result, nil
 }
 
-// GetSyncStatus lists the status of the named registry
-func (d *DBStatusService) GetSyncStatus(ctx context.Context, registryName string) (*status.SyncStatus, error) {
+func (d *dbStatusService) GetSyncStatus(ctx context.Context, registryName string) (*status.SyncStatus, error) {
 	queries := sqlc.New(d.pool)
 
 	registrySync, err := queries.GetRegistrySyncByName(ctx, registryName)
@@ -189,8 +185,7 @@ func (d *DBStatusService) GetSyncStatus(ctx context.Context, registryName string
 	return dbSyncToStatus(registrySync), nil
 }
 
-// UpdateSyncStatus overrides the value of the named registry with the syncStatus parameter
-func (d *DBStatusService) UpdateSyncStatus(ctx context.Context, registryName string, syncStatus *status.SyncStatus) error {
+func (d *dbStatusService) UpdateSyncStatus(ctx context.Context, registryName string, syncStatus *status.SyncStatus) error {
 	queries := sqlc.New(d.pool)
 
 	// Prepare nullable string fields
@@ -359,9 +354,7 @@ func getInitialSyncStatus(isNonSynced bool, regType string) (sqlc.SyncStatus, st
 	return sqlc.SyncStatusFAILED, "No previous sync status found"
 }
 
-// GetNextSyncJob returns the next registry configuration that needs syncing
-// It uses a transaction to atomically find and mark a registry as IN_PROGRESS
-func (d *DBStatusService) GetNextSyncJob(
+func (d *dbStatusService) GetNextSyncJob(
 	ctx context.Context,
 	cfg *config.Config,
 	predicate func(*status.SyncStatus) bool,

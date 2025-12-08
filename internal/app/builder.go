@@ -311,8 +311,6 @@ func buildSyncComponents(
 		b.syncManager = pkgsync.NewDefaultSyncManager(
 			b.registryHandlerFactory,
 			syncWriter,
-			stateService,
-			b.config,
 		)
 
 		for _, reg := range b.config.Registries {

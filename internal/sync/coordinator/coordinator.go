@@ -124,7 +124,7 @@ func (c *defaultCoordinator) Stop() error {
 // processNextSyncJob gets the next job and processes it if available
 func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
 	// Get the next sync job using the predicate to check if sync is needed
-	regCfg, err := c.manager.GetNextSyncJob(ctx, func(syncStatus *status.SyncStatus) bool {
+	regCfg, err := c.statusSvc.GetNextSyncJob(ctx, c.config, func(syncStatus *status.SyncStatus) bool {
 		// Only process registries that are not currently syncing
 		if syncStatus.Phase == status.SyncPhaseSyncing {
 			return false

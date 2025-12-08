@@ -13,7 +13,6 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/filtering"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 )
 
@@ -139,10 +138,6 @@ type Manager interface {
 
 	// PerformSync executes the complete sync operation for a specific registry
 	PerformSync(ctx context.Context, regCfg *config.RegistryConfig) (*Result, *Error)
-
-	// GetNextSyncJob returns the next registry configuration that needs syncing
-	// The predicate function is used to filter registries based on their sync status
-	GetNextSyncJob(ctx context.Context, predicate func(*status.SyncStatus) bool) (*config.RegistryConfig, error)
 }
 
 // DataChangeDetector detects changes in source data
@@ -165,16 +160,12 @@ type defaultSyncManager struct {
 	filterService          filtering.FilterService
 	dataChangeDetector     DataChangeDetector
 	automaticSyncChecker   AutomaticSyncChecker
-	stateService           state.RegistryStateService
-	config                 *config.Config
 }
 
 // NewDefaultSyncManager creates a new defaultSyncManager
 func NewDefaultSyncManager(
 	registryHandlerFactory sources.RegistryHandlerFactory,
 	syncWriter writer.SyncWriter,
-	stateService state.RegistryStateService,
-	cfg *config.Config,
 ) Manager {
 	return &defaultSyncManager{
 		registryHandlerFactory: registryHandlerFactory,
@@ -182,8 +173,6 @@ func NewDefaultSyncManager(
 		filterService:          filtering.NewDefaultFilterService(),
 		dataChangeDetector:     &defaultDataChangeDetector{registryHandlerFactory: registryHandlerFactory},
 		automaticSyncChecker:   &defaultAutomaticSyncChecker{},
-		stateService:           stateService,
-		config:                 cfg,
 	}
 }
 
@@ -317,24 +306,6 @@ func (s *defaultSyncManager) PerformSync(
 	}
 
 	return syncResult, nil
-}
-
-// GetNextSyncJob returns the next registry configuration that needs syncing
-func (s *defaultSyncManager) GetNextSyncJob(
-	ctx context.Context, predicate func(*status.SyncStatus) bool,
-) (*config.RegistryConfig, error) {
-	// Try DB service first
-	if dbService, ok := s.stateService.(*state.DBStatusService); ok {
-		return dbService.GetNextSyncJob(ctx, s.config, predicate)
-	}
-
-	// Try file service
-	if fileService, ok := s.stateService.(*state.FileStateService); ok {
-		return fileService.GetNextSyncJob(ctx, s.config, predicate)
-	}
-
-	// Unknown state service type
-	return nil, fmt.Errorf("GetNextSyncJob not supported for state service type %T", s.stateService)
 }
 
 // fetchAndProcessRegistryData handles registry handler creation, validation, fetch, and filtering
