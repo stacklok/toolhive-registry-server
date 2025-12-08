@@ -278,6 +278,7 @@ auth:
 ### 📖 Complete Guides
 
 - **[Configuration Reference](docs/configuration.md)** - Complete configuration options
+- **[Environment Variables](docs/environment-variables.md)** - Using environment variables for configuration
 - **[Database Setup](docs/database.md)** - PostgreSQL configuration, migrations, and security
 - **[Authentication](docs/authentication.md)** - OAuth/OIDC setup and security
 
@@ -320,7 +321,8 @@ See [Kubernetes Deployment Guide](docs/deployment-kubernetes.md) for production 
 ./bin/thv-registry-api serve --config config.yaml
 
 # With environment variables
-export THV_DATABASE_PASSWORD="secure-password"
+export THV_DATABASE_HOST=postgres.example.com
+export THV_AUTH_MODE=anonymous
 ./bin/thv-registry-api serve --config config.yaml
 ```
 
@@ -407,6 +409,7 @@ docs/                    # Documentation
 ### 📚 Complete Documentation
 
 - **[Configuration Reference](docs/configuration.md)** - All configuration options
+- **[Environment Variables](docs/environment-variables.md)** - Using environment variables for configuration
 - **[Database Setup](docs/database.md)** - PostgreSQL setup and migrations
 - **[Authentication](docs/authentication.md)** - OAuth/OIDC security
 - **[Kubernetes Deployment](docs/deployment-kubernetes.md)** - K8s deployment guide

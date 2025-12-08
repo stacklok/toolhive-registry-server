@@ -7,15 +7,31 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	"github.com/spf13/viper"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/app"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
-// getLogLevel parses the LOG_LEVEL environment variable and returns the corresponding slog.Level.
-// Defaults to slog.LevelInfo if LOG_LEVEL is not set or invalid.
+// getLogLevel parses the THV_LOG_LEVEL environment variable and returns the corresponding slog.Level.
+// Falls back to LOG_LEVEL for backward compatibility.
+// Defaults to slog.LevelInfo if neither is set or if the value is invalid.
 func getLogLevel() slog.Level {
-	levelStr := os.Getenv("LOG_LEVEL")
+	// Create a Viper instance for application-level config
+	v := viper.New()
+	v.SetEnvPrefix(config.EnvPrefix)
+	v.AutomaticEnv()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	// Try THV_LOG_LEVEL first (via Viper with THV prefix)
+	levelStr := v.GetString("LOG_LEVEL")
+
+	// Fall back to LOG_LEVEL without prefix for backward compatibility
+	if levelStr == "" {
+		levelStr = os.Getenv("LOG_LEVEL")
+	}
+
 	switch strings.ToLower(levelStr) {
 	case "debug":
 		return slog.LevelDebug

@@ -2078,3 +2078,285 @@ func TestDatabaseConfigPgpassDelegation(t *testing.T) {
 	migrationConnStr := dbConfig.GetMigrationConnectionString()
 	assert.Equal(t, "postgres://migratoruser@localhost:5432/testdb?sslmode=require", migrationConnStr)
 }
+
+// TestEnvPrefix verifies the environment variable prefix constant is correctly defined
+func TestEnvPrefix(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "THV", EnvPrefix, "EnvPrefix should be THV")
+}
+
+// TestViperEnvOverrideRegistryName tests that THV_REGISTRYNAME can override the registryName
+// Note: Environment variable tests cannot be run in parallel because they share the same
+// environment namespace, even when using different prefixes
+func TestViperEnvOverrideRegistryName(t *testing.T) {
+	// Create a temporary config file
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	yamlContent := `registryName: original-name
+registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
+auth:
+  mode: anonymous
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
+	require.NoError(t, err)
+
+	// Set environment variable override
+	t.Setenv("THV_REGISTRYNAME", "overridden-name")
+
+	// Load config
+	cfg, err := LoadConfig(WithConfigPath(configPath))
+	require.NoError(t, err)
+
+	// Verify the environment variable override took effect
+	assert.Equal(t, "overridden-name", cfg.RegistryName)
+}
+
+// TestViperEnvOverrideDatabaseHost tests that THV_DATABASE_HOST can override database.host
+func TestViperEnvOverrideDatabaseHost(t *testing.T) {
+	// Create a temporary config file
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	yamlContent := `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
+auth:
+  mode: anonymous
+database:
+  host: original-host
+  port: 5432
+  user: testuser
+  database: testdb
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
+	require.NoError(t, err)
+
+	// Set environment variable override
+	t.Setenv("THV_DATABASE_HOST", "overridden-host")
+
+	// Load config
+	cfg, err := LoadConfig(WithConfigPath(configPath))
+	require.NoError(t, err)
+
+	// Verify the environment variable override took effect
+	require.NotNil(t, cfg.Database)
+	assert.Equal(t, "overridden-host", cfg.Database.Host)
+}
+
+// TestViperEnvOverrideDatabasePort tests that THV_DATABASE_PORT can override database.port
+func TestViperEnvOverrideDatabasePort(t *testing.T) {
+	// Create a temporary config file
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	yamlContent := `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
+auth:
+  mode: anonymous
+database:
+  host: localhost
+  port: 5432
+  user: testuser
+  database: testdb
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
+	require.NoError(t, err)
+
+	// Set environment variable override
+	t.Setenv("THV_DATABASE_PORT", "5433")
+
+	// Load config
+	cfg, err := LoadConfig(WithConfigPath(configPath))
+	require.NoError(t, err)
+
+	// Verify the environment variable override took effect
+	require.NotNil(t, cfg.Database)
+	assert.Equal(t, 5433, cfg.Database.Port)
+}
+
+// TestViperEnvOverrideAuthMode tests that THV_AUTH_MODE can override auth.mode
+func TestViperEnvOverrideAuthMode(t *testing.T) {
+	// Create a temporary config file
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	yamlContent := `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
+auth:
+  mode: oauth
+  oauth:
+    providers:
+      - name: test
+        issuerUrl: https://example.com
+        audience: api://test
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
+	require.NoError(t, err)
+
+	// Set environment variable override to anonymous
+	t.Setenv("THV_AUTH_MODE", "anonymous")
+
+	// Load config
+	cfg, err := LoadConfig(WithConfigPath(configPath))
+	require.NoError(t, err)
+
+	// Verify the environment variable override took effect
+	require.NotNil(t, cfg.Auth)
+	assert.Equal(t, AuthModeAnonymous, cfg.Auth.Mode)
+}
+
+// TestViperConfigPrecedence tests that environment variables take precedence over config file values
+func TestViperConfigPrecedence(t *testing.T) {
+	// Create a temporary config file with all values set
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	yamlContent := `registryName: file-registry-name
+registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
+auth:
+  mode: anonymous
+database:
+  host: file-host
+  port: 5432
+  user: file-user
+  database: file-db
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
+	require.NoError(t, err)
+
+	// Set multiple environment variable overrides
+	t.Setenv("THV_REGISTRYNAME", "env-registry-name")
+	t.Setenv("THV_DATABASE_HOST", "env-host")
+	t.Setenv("THV_DATABASE_USER", "env-user")
+
+	// Load config
+	cfg, err := LoadConfig(WithConfigPath(configPath))
+	require.NoError(t, err)
+
+	// Verify that environment variable overrides took precedence
+	assert.Equal(t, "env-registry-name", cfg.RegistryName)
+	require.NotNil(t, cfg.Database)
+	assert.Equal(t, "env-host", cfg.Database.Host)
+	assert.Equal(t, "env-user", cfg.Database.User)
+
+	// Values not overridden should keep their file values
+	assert.Equal(t, 5432, cfg.Database.Port)
+	assert.Equal(t, "file-db", cfg.Database.Database)
+}
+
+// TestViperLoadConfigWithExistingExampleFiles tests loading each example config file
+func TestViperLoadConfigWithExistingExampleFiles(t *testing.T) {
+	t.Parallel()
+
+	// Get the project root to find examples directory
+	// This assumes tests run from project root or internal/config
+	projectRoot := "../.."
+	examplesDir := filepath.Join(projectRoot, "examples")
+
+	// Check if examples directory exists
+	if _, err := os.Stat(examplesDir); os.IsNotExist(err) {
+		t.Skip("Examples directory not found, skipping example config tests")
+	}
+
+	// List of example configs that should load successfully (with anonymous auth)
+	// Some configs require OAuth which would fail validation without providers
+	anonymousConfigs := []string{
+		"config-file.yaml",
+		"config-git.yaml",
+		"config-api.yaml",
+		"config-complete.yaml",
+		"config-database-dev.yaml",
+		"config-database-passwordfile.yaml",
+		"config-database-prod.yaml",
+		"config-docker.yaml",
+		"config-docker-dual.yaml",
+		"config-docker-multiple.yaml",
+		"config-filter-test.yaml",
+	}
+
+	for _, configFile := range anonymousConfigs {
+		t.Run(configFile, func(t *testing.T) {
+			t.Parallel()
+			configPath := filepath.Join(examplesDir, configFile)
+
+			// Skip if file doesn't exist
+			if _, err := os.Stat(configPath); os.IsNotExist(err) {
+				t.Skipf("Config file %s not found", configFile)
+			}
+
+			// Load config - should not error for anonymous configs
+			cfg, err := LoadConfig(WithConfigPath(configPath))
+			require.NoError(t, err, "Failed to load %s", configFile)
+			require.NotNil(t, cfg)
+
+			// Verify basic structure
+			assert.NotEmpty(t, cfg.Registries, "Config %s should have at least one registry", configFile)
+		})
+	}
+}
+
+// TestViperValidationStillWorks tests that validation errors still occur even with Viper
+func TestViperValidationStillWorks(t *testing.T) {
+	t.Parallel()
+	// Create a temporary config file with invalid config (missing registries)
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	yamlContent := `registryName: test
+registries: []
+auth:
+  mode: anonymous
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
+	require.NoError(t, err)
+
+	// Load config - should fail validation
+	_, err = LoadConfig(WithConfigPath(configPath))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "at least one registry must be configured")
+}
+
+// TestViperInvalidYAML tests that invalid YAML still returns an error
+func TestViperInvalidYAML(t *testing.T) {
+	t.Parallel()
+	// Create a temporary config file with invalid YAML
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	yamlContent := `registries: [invalid yaml`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
+	require.NoError(t, err)
+
+	// Load config - should fail to parse
+	_, err = LoadConfig(WithConfigPath(configPath))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read config file")
+}
+
+// TestViperConfigFileNotFound tests error handling when config file doesn't exist
+func TestViperConfigFileNotFound(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "nonexistent.yaml")
+
+	// Load config - should fail to find file
+	_, err := LoadConfig(WithConfigPath(configPath))
+	require.Error(t, err)
+	// The error should indicate the file couldn't be read
+	assert.Contains(t, err.Error(), "failed to evaluate symlinks")
+}

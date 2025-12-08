@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"github.com/spf13/viper"
 )
 
 const (
@@ -30,6 +30,10 @@ const (
 	// SourceTypeKubernetes is the type for registries that query Kubernetes deployments
 	// Kubernetes registries discover MCP servers from running Kubernetes resources
 	SourceTypeKubernetes = "kubernetes"
+
+	// EnvPrefix is the prefix used for environment variables that override config values.
+	// For example, THV_REGISTRY_NAME overrides registryName in the config file.
+	EnvPrefix = "THV"
 )
 
 // StorageType is an enum of supported storage backends for registry data.
@@ -486,7 +490,9 @@ func (d *DatabaseConfig) GetMigrationConnectionString() string {
 	)
 }
 
-// LoadConfig loads and parses configuration from a YAML file
+// LoadConfig loads and parses configuration from a YAML file with environment variable support.
+// Configuration values can be overridden using environment variables with the THV_ prefix.
+// Nested keys use underscores as separators (e.g., THV_DATABASE_HOST for database.host).
 func LoadConfig(opts ...Option) (*Config, error) {
 	loaderCfg := &loaderConfig{}
 	for _, opt := range opts {
@@ -501,16 +507,33 @@ func LoadConfig(opts ...Option) (*Config, error) {
 		return nil, fmt.Errorf("path is required")
 	}
 
-	// Read the entire file into memory
-	data, err := os.ReadFile(loaderCfg.path)
-	if err != nil {
+	// Create a new Viper instance (don't use global)
+	v := viper.New()
+
+	// Set config file path
+	v.SetConfigFile(loaderCfg.path)
+
+	// Configure environment variable support
+	// All env vars use the THV_ prefix (e.g., THV_REGISTRY_NAME, THV_DATABASE_HOST)
+	v.SetEnvPrefix(EnvPrefix)
+
+	// Enable automatic environment variable binding
+	// This allows any config value to be overridden via environment variables
+	v.AutomaticEnv()
+
+	// Replace dots with underscores for nested keys
+	// e.g., database.host becomes THV_DATABASE_HOST
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	// Read config file
+	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Parse YAML content
+	// Unmarshal into struct
 	var config Config
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+	if err := v.Unmarshal(&config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
 	// Validate the config
