@@ -16,6 +16,17 @@ const (
 	SyncPhaseFailed SyncPhase = "Failed"
 )
 
+// CreationType represents how a registry was created
+type CreationType string
+
+const (
+	// CreationTypeAPI means the registry was created via the API
+	CreationTypeAPI CreationType = "API"
+
+	// CreationTypeCONFIG means the registry was created from configuration
+	CreationTypeCONFIG CreationType = "CONFIG"
+)
+
 // SyncStatus represents the current state of registry synchronization
 type SyncStatus struct {
 	// Phase represents the current synchronization phase
@@ -42,4 +53,8 @@ type SyncStatus struct {
 
 	// ServerCount is the total number of servers in the registry
 	ServerCount int `yaml:"serverCount,omitempty"`
+
+	// CreationType indicates how this registry was created (API or CONFIG)
+	// This prevents config-based sync from overwriting API-created registries
+	CreationType CreationType `yaml:"creationType,omitempty"`
 }

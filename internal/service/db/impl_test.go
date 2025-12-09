@@ -63,8 +63,9 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	regID, err := queries.InsertRegistry(
 		ctx,
 		sqlc.InsertRegistryParams{
-			Name:    "test-registry",
-			RegType: sqlc.RegistryTypeREMOTE,
+			Name:         "test-registry",
+			RegType:      sqlc.RegistryTypeREMOTE,
+			CreationType: sqlc.CreationTypeCONFIG,
 		},
 	)
 	require.NoError(t, err)
@@ -696,8 +697,9 @@ func TestGetServerVersion(t *testing.T) {
 				regID, err := queries.InsertRegistry(
 					ctx,
 					sqlc.InsertRegistryParams{
-						Name:    "test-registry-with-packages",
-						RegType: sqlc.RegistryTypeREMOTE,
+						Name:         "test-registry-with-packages",
+						RegType:      sqlc.RegistryTypeREMOTE,
+						CreationType: sqlc.CreationTypeCONFIG,
 					},
 				)
 				require.NoError(t, err)
@@ -1047,14 +1049,24 @@ func TestPublishServerVersion(t *testing.T) {
 
 				// Create a MANAGED registry
 				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
-					Name:    "test-registry",
-					RegType: sqlc.RegistryTypeMANAGED,
+					Name:         "test-registry",
+					RegType:      sqlc.RegistryTypeMANAGED,
+					CreationType: sqlc.CreationTypeCONFIG,
 				})
 				require.NoError(t, err)
 
-				reg, err := queries.GetRegistry(ctx, regID)
+				regRow, err := queries.GetRegistry(ctx, regID)
 				require.NoError(t, err)
-				return &reg
+				// Convert row to Registry struct
+				reg := &sqlc.Registry{
+					ID:           regRow.ID,
+					Name:         regRow.Name,
+					RegType:      regRow.RegType,
+					CreationType: regRow.CreationType,
+					CreatedAt:    regRow.CreatedAt,
+					UpdatedAt:    regRow.UpdatedAt,
+				}
+				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.example/test-server",
@@ -1081,14 +1093,24 @@ func TestPublishServerVersion(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
-					Name:    "test-registry-meta",
-					RegType: sqlc.RegistryTypeMANAGED,
+					Name:         "test-registry-meta",
+					RegType:      sqlc.RegistryTypeMANAGED,
+					CreationType: sqlc.CreationTypeCONFIG,
 				})
 				require.NoError(t, err)
 
-				reg, err := queries.GetRegistry(ctx, regID)
+				regRow, err := queries.GetRegistry(ctx, regID)
 				require.NoError(t, err)
-				return &reg
+				// Convert row to Registry struct
+				reg := &sqlc.Registry{
+					ID:           regRow.ID,
+					Name:         regRow.Name,
+					RegType:      regRow.RegType,
+					CreationType: regRow.CreationType,
+					CreatedAt:    regRow.CreatedAt,
+					UpdatedAt:    regRow.UpdatedAt,
+				}
+				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.test/server-with-meta",
@@ -1126,14 +1148,24 @@ func TestPublishServerVersion(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
-					Name:    "test-registry-full",
-					RegType: sqlc.RegistryTypeMANAGED,
+					Name:         "test-registry-full",
+					RegType:      sqlc.RegistryTypeMANAGED,
+					CreationType: sqlc.CreationTypeCONFIG,
 				})
 				require.NoError(t, err)
 
-				reg, err := queries.GetRegistry(ctx, regID)
+				regRow, err := queries.GetRegistry(ctx, regID)
 				require.NoError(t, err)
-				return &reg
+				// Convert row to Registry struct
+				reg := &sqlc.Registry{
+					ID:           regRow.ID,
+					Name:         regRow.Name,
+					RegType:      regRow.RegType,
+					CreationType: regRow.CreationType,
+					CreatedAt:    regRow.CreatedAt,
+					UpdatedAt:    regRow.UpdatedAt,
+				}
+				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "org.example/server-with-packages-remotes",
@@ -1208,14 +1240,24 @@ func TestPublishServerVersion(t *testing.T) {
 
 				// Create a REMOTE (non-managed) registry
 				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
-					Name:    "remote-registry",
-					RegType: sqlc.RegistryTypeREMOTE,
+					Name:         "remote-registry",
+					RegType:      sqlc.RegistryTypeREMOTE,
+					CreationType: sqlc.CreationTypeCONFIG,
 				})
 				require.NoError(t, err)
 
-				reg, err := queries.GetRegistry(ctx, regID)
+				regRow, err := queries.GetRegistry(ctx, regID)
 				require.NoError(t, err)
-				return &reg
+				// Convert row to Registry struct
+				reg := &sqlc.Registry{
+					ID:           regRow.ID,
+					Name:         regRow.Name,
+					RegType:      regRow.RegType,
+					CreationType: regRow.CreationType,
+					CreatedAt:    regRow.CreatedAt,
+					UpdatedAt:    regRow.UpdatedAt,
+				}
+				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.example/test-server",
@@ -1239,8 +1281,9 @@ func TestPublishServerVersion(t *testing.T) {
 
 				// Create a MANAGED registry
 				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
-					Name:    "test-registry-dup",
-					RegType: sqlc.RegistryTypeMANAGED,
+					Name:         "test-registry-dup",
+					RegType:      sqlc.RegistryTypeMANAGED,
+					CreationType: sqlc.CreationTypeCONFIG,
 				})
 				require.NoError(t, err)
 
@@ -1256,9 +1299,18 @@ func TestPublishServerVersion(t *testing.T) {
 				})
 				require.NoError(t, err)
 
-				reg, err := queries.GetRegistry(ctx, regID)
+				regRow, err := queries.GetRegistry(ctx, regID)
 				require.NoError(t, err)
-				return &reg
+				// Convert row to Registry struct
+				reg := &sqlc.Registry{
+					ID:           regRow.ID,
+					Name:         regRow.Name,
+					RegType:      regRow.RegType,
+					CreationType: regRow.CreationType,
+					CreatedAt:    regRow.CreatedAt,
+					UpdatedAt:    regRow.UpdatedAt,
+				}
+				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.example/existing-server",

@@ -12,6 +12,48 @@ import (
 	"github.com/google/uuid"
 )
 
+type CreationType string
+
+const (
+	CreationTypeAPI    CreationType = "API"
+	CreationTypeCONFIG CreationType = "CONFIG"
+)
+
+func (e *CreationType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CreationType(s)
+	case string:
+		*e = CreationType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CreationType: %T", src)
+	}
+	return nil
+}
+
+type NullCreationType struct {
+	CreationType CreationType `json:"creation_type"`
+	Valid        bool         `json:"valid"` // Valid is true if CreationType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCreationType) Scan(value interface{}) error {
+	if value == nil {
+		ns.CreationType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CreationType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCreationType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CreationType), nil
+}
+
 type IconTheme string
 
 const (
@@ -197,11 +239,12 @@ type McpServerRemote struct {
 }
 
 type Registry struct {
-	ID        uuid.UUID    `json:"id"`
-	Name      string       `json:"name"`
-	RegType   RegistryType `json:"reg_type"`
-	CreatedAt *time.Time   `json:"created_at"`
-	UpdatedAt *time.Time   `json:"updated_at"`
+	ID           uuid.UUID    `json:"id"`
+	Name         string       `json:"name"`
+	RegType      RegistryType `json:"reg_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
+	CreationType CreationType `json:"creation_type"`
 }
 
 type RegistrySync struct {

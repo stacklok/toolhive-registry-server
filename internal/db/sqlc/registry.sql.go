@@ -16,24 +16,28 @@ const bulkUpsertRegistries = `-- name: BulkUpsertRegistries :many
 INSERT INTO registry (
     name,
     reg_type,
+    creation_type,
     created_at,
     updated_at
 )
 SELECT
     unnest($1::text[]),
     unnest($2::registry_type[]),
-    unnest($3::timestamp with time zone[]),
-    unnest($4::timestamp with time zone[])
+    unnest($3::creation_type[]),
+    unnest($4::timestamp with time zone[]),
+    unnest($5::timestamp with time zone[])
 ON CONFLICT (name) DO UPDATE SET
     updated_at = EXCLUDED.updated_at
+WHERE registry.creation_type = 'CONFIG'
 RETURNING id, name
 `
 
 type BulkUpsertRegistriesParams struct {
-	Names      []string       `json:"names"`
-	RegTypes   []RegistryType `json:"reg_types"`
-	CreatedAts []time.Time    `json:"created_ats"`
-	UpdatedAts []time.Time    `json:"updated_ats"`
+	Names         []string       `json:"names"`
+	RegTypes      []RegistryType `json:"reg_types"`
+	CreationTypes []CreationType `json:"creation_types"`
+	CreatedAts    []time.Time    `json:"created_ats"`
+	UpdatedAts    []time.Time    `json:"updated_ats"`
 }
 
 type BulkUpsertRegistriesRow struct {
@@ -45,6 +49,7 @@ func (q *Queries) BulkUpsertRegistries(ctx context.Context, arg BulkUpsertRegist
 	rows, err := q.db.Query(ctx, bulkUpsertRegistries,
 		arg.Names,
 		arg.RegTypes,
+		arg.CreationTypes,
 		arg.CreatedAts,
 		arg.UpdatedAts,
 	)
@@ -67,7 +72,9 @@ func (q *Queries) BulkUpsertRegistries(ctx context.Context, arg BulkUpsertRegist
 }
 
 const deleteRegistriesNotInList = `-- name: DeleteRegistriesNotInList :exec
-DELETE FROM registry WHERE id NOT IN (SELECT unnest($1::uuid[]))
+DELETE FROM registry
+WHERE id NOT IN (SELECT unnest($1::uuid[]))
+  AND creation_type = 'CONFIG'
 `
 
 func (q *Queries) DeleteRegistriesNotInList(ctx context.Context, ids []uuid.UUID) error {
@@ -84,23 +91,77 @@ func (q *Queries) DeleteRegistry(ctx context.Context, name string) error {
 	return err
 }
 
+const getAPIRegistriesByNames = `-- name: GetAPIRegistriesByNames :many
+SELECT id, name, reg_type, creation_type, created_at, updated_at
+FROM registry
+WHERE name = ANY($1::text[])
+  AND creation_type = 'API'
+`
+
+type GetAPIRegistriesByNamesRow struct {
+	ID           uuid.UUID    `json:"id"`
+	Name         string       `json:"name"`
+	RegType      RegistryType `json:"reg_type"`
+	CreationType CreationType `json:"creation_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
+}
+
+func (q *Queries) GetAPIRegistriesByNames(ctx context.Context, names []string) ([]GetAPIRegistriesByNamesRow, error) {
+	rows, err := q.db.Query(ctx, getAPIRegistriesByNames, names)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAPIRegistriesByNamesRow{}
+	for rows.Next() {
+		var i GetAPIRegistriesByNamesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.RegType,
+			&i.CreationType,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getRegistry = `-- name: GetRegistry :one
 SELECT id,
        name,
        reg_type,
+       creation_type,
        created_at,
        updated_at
   FROM registry
  WHERE id = $1
 `
 
-func (q *Queries) GetRegistry(ctx context.Context, id uuid.UUID) (Registry, error) {
+type GetRegistryRow struct {
+	ID           uuid.UUID    `json:"id"`
+	Name         string       `json:"name"`
+	RegType      RegistryType `json:"reg_type"`
+	CreationType CreationType `json:"creation_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
+}
+
+func (q *Queries) GetRegistry(ctx context.Context, id uuid.UUID) (GetRegistryRow, error) {
 	row := q.db.QueryRow(ctx, getRegistry, id)
-	var i Registry
+	var i GetRegistryRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.RegType,
+		&i.CreationType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -111,19 +172,30 @@ const getRegistryByName = `-- name: GetRegistryByName :one
 SELECT id,
        name,
        reg_type,
+       creation_type,
        created_at,
        updated_at
   FROM registry
  WHERE name = $1
 `
 
-func (q *Queries) GetRegistryByName(ctx context.Context, name string) (Registry, error) {
+type GetRegistryByNameRow struct {
+	ID           uuid.UUID    `json:"id"`
+	Name         string       `json:"name"`
+	RegType      RegistryType `json:"reg_type"`
+	CreationType CreationType `json:"creation_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
+}
+
+func (q *Queries) GetRegistryByName(ctx context.Context, name string) (GetRegistryByNameRow, error) {
 	row := q.db.QueryRow(ctx, getRegistryByName, name)
-	var i Registry
+	var i GetRegistryByNameRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.RegType,
+		&i.CreationType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -134,27 +206,31 @@ const insertRegistry = `-- name: InsertRegistry :one
 INSERT INTO registry (
     name,
     reg_type,
+    creation_type,
     created_at,
     updated_at
 ) VALUES (
     $1,
     $2,
     $3,
-    $4
+    $4,
+    $5
 ) RETURNING id
 `
 
 type InsertRegistryParams struct {
-	Name      string       `json:"name"`
-	RegType   RegistryType `json:"reg_type"`
-	CreatedAt *time.Time   `json:"created_at"`
-	UpdatedAt *time.Time   `json:"updated_at"`
+	Name         string       `json:"name"`
+	RegType      RegistryType `json:"reg_type"`
+	CreationType CreationType `json:"creation_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
 }
 
 func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertRegistry,
 		arg.Name,
 		arg.RegType,
+		arg.CreationType,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -191,6 +267,7 @@ const listRegistries = `-- name: ListRegistries :many
 SELECT id,
        name,
        reg_type,
+       creation_type,
        created_at,
        updated_at
   FROM registry
@@ -212,19 +289,29 @@ type ListRegistriesParams struct {
 	Size int64      `json:"size"`
 }
 
-func (q *Queries) ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error) {
+type ListRegistriesRow struct {
+	ID           uuid.UUID    `json:"id"`
+	Name         string       `json:"name"`
+	RegType      RegistryType `json:"reg_type"`
+	CreationType CreationType `json:"creation_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
+}
+
+func (q *Queries) ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]ListRegistriesRow, error) {
 	rows, err := q.db.Query(ctx, listRegistries, arg.Next, arg.Prev, arg.Size)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Registry{}
+	items := []ListRegistriesRow{}
 	for rows.Next() {
-		var i Registry
+		var i ListRegistriesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
 			&i.RegType,
+			&i.CreationType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -242,13 +329,15 @@ const upsertRegistry = `-- name: UpsertRegistry :one
 INSERT INTO registry (
     name,
     reg_type,
+    creation_type,
     created_at,
     updated_at
 ) VALUES (
     $1,
     $2,
     $3,
-    $4
+    $4,
+    $5
 )
 ON CONFLICT (name) DO UPDATE SET
     updated_at = EXCLUDED.updated_at
@@ -256,16 +345,18 @@ RETURNING id
 `
 
 type UpsertRegistryParams struct {
-	Name      string       `json:"name"`
-	RegType   RegistryType `json:"reg_type"`
-	CreatedAt *time.Time   `json:"created_at"`
-	UpdatedAt *time.Time   `json:"updated_at"`
+	Name         string       `json:"name"`
+	RegType      RegistryType `json:"reg_type"`
+	CreationType CreationType `json:"creation_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
 }
 
 func (q *Queries) UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, upsertRegistry,
 		arg.Name,
 		arg.RegType,
+		arg.CreationType,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

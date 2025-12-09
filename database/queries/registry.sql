@@ -2,6 +2,7 @@
 SELECT id,
        name,
        reg_type,
+       creation_type,
        created_at,
        updated_at
   FROM registry
@@ -20,6 +21,7 @@ SELECT id,
 SELECT id,
        name,
        reg_type,
+       creation_type,
        created_at,
        updated_at
   FROM registry
@@ -29,6 +31,7 @@ SELECT id,
 SELECT id,
        name,
        reg_type,
+       creation_type,
        created_at,
        updated_at
   FROM registry
@@ -38,11 +41,13 @@ SELECT id,
 INSERT INTO registry (
     name,
     reg_type,
+    creation_type,
     created_at,
     updated_at
 ) VALUES (
     sqlc.arg(name),
     sqlc.arg(reg_type),
+    sqlc.arg(creation_type),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 ) RETURNING id;
@@ -51,11 +56,13 @@ INSERT INTO registry (
 INSERT INTO registry (
     name,
     reg_type,
+    creation_type,
     created_at,
     updated_at
 ) VALUES (
     sqlc.arg(name),
     sqlc.arg(reg_type),
+    sqlc.arg(creation_type),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 )
@@ -67,23 +74,34 @@ RETURNING id;
 INSERT INTO registry (
     name,
     reg_type,
+    creation_type,
     created_at,
     updated_at
 )
 SELECT
     unnest(sqlc.arg(names)::text[]),
     unnest(sqlc.arg(reg_types)::registry_type[]),
+    unnest(sqlc.arg(creation_types)::creation_type[]),
     unnest(sqlc.arg(created_ats)::timestamp with time zone[]),
     unnest(sqlc.arg(updated_ats)::timestamp with time zone[])
 ON CONFLICT (name) DO UPDATE SET
     updated_at = EXCLUDED.updated_at
+WHERE registry.creation_type = 'CONFIG'
 RETURNING id, name;
 
 -- name: DeleteRegistriesNotInList :exec
-DELETE FROM registry WHERE id NOT IN (SELECT unnest(sqlc.arg(ids)::uuid[]));
+DELETE FROM registry
+WHERE id NOT IN (SELECT unnest(sqlc.arg(ids)::uuid[]))
+  AND creation_type = 'CONFIG';
 
 -- name: DeleteRegistry :exec
 DELETE FROM registry WHERE name = sqlc.arg(name);
 
 -- name: ListAllRegistryNames :many
 SELECT name FROM registry ORDER BY name;
+
+-- name: GetAPIRegistriesByNames :many
+SELECT id, name, reg_type, creation_type, created_at, updated_at
+FROM registry
+WHERE name = ANY(sqlc.arg(names)::text[])
+  AND creation_type = 'API';

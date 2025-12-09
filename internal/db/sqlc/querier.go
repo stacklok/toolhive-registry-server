@@ -35,8 +35,9 @@ type Querier interface {
 	DeleteServerRemotesByServerId(ctx context.Context, serverID uuid.UUID) error
 	DeleteServerVersion(ctx context.Context, arg DeleteServerVersionParams) (int64, error)
 	DeleteServersByRegistry(ctx context.Context, regID uuid.UUID) error
-	GetRegistry(ctx context.Context, id uuid.UUID) (Registry, error)
-	GetRegistryByName(ctx context.Context, name string) (Registry, error)
+	GetAPIRegistriesByNames(ctx context.Context, names []string) ([]GetAPIRegistriesByNamesRow, error)
+	GetRegistry(ctx context.Context, id uuid.UUID) (GetRegistryRow, error)
+	GetRegistryByName(ctx context.Context, name string) (GetRegistryByNameRow, error)
 	GetRegistrySync(ctx context.Context, id uuid.UUID) (RegistrySync, error)
 	GetRegistrySyncByName(ctx context.Context, name string) (RegistrySync, error)
 	GetServerIDsByRegistryNameVersion(ctx context.Context, regID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error)
@@ -50,7 +51,7 @@ type Querier interface {
 	InsertServerVersion(ctx context.Context, arg InsertServerVersionParams) (uuid.UUID, error)
 	InsertServerVersionForSync(ctx context.Context, arg InsertServerVersionForSyncParams) (uuid.UUID, error)
 	ListAllRegistryNames(ctx context.Context) ([]string, error)
-	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error)
+	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]ListRegistriesRow, error)
 	ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow, error)
 	ListRegistrySyncsByLastUpdate(ctx context.Context) ([]ListRegistrySyncsByLastUpdateRow, error)
 	ListServerPackages(ctx context.Context, serverIds []uuid.UUID) ([]McpServerPackage, error)

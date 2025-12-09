@@ -20,8 +20,9 @@ func setupRegistry(t *testing.T, queries *Queries) uuid.UUID {
 	regID, err := queries.InsertRegistry(
 		context.Background(),
 		InsertRegistryParams{
-			Name:    "test-registry",
-			RegType: RegistryTypeREMOTE,
+			Name:         "test-registry",
+			RegType:      RegistryTypeREMOTE,
+			CreationType: CreationTypeCONFIG,
 		},
 	)
 	require.NoError(t, err)

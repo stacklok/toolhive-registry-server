@@ -424,7 +424,7 @@ func validateManagedRegistry(
 	querier *sqlc.Queries,
 	registryName string,
 ) (*sqlc.Registry, error) {
-	registry, err := querier.GetRegistryByName(ctx, registryName)
+	registryRow, err := querier.GetRegistryByName(ctx, registryName)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
@@ -432,12 +432,22 @@ func validateManagedRegistry(
 		return nil, fmt.Errorf("failed to get registry: %w", err)
 	}
 
-	if registry.RegType != sqlc.RegistryTypeMANAGED {
+	if registryRow.RegType != sqlc.RegistryTypeMANAGED {
 		return nil, fmt.Errorf("%w: registry %s has type %s",
-			service.ErrNotManagedRegistry, registryName, registry.RegType)
+			service.ErrNotManagedRegistry, registryName, registryRow.RegType)
 	}
 
-	return &registry, nil
+	// Convert row to Registry struct
+	registry := &sqlc.Registry{
+		ID:           registryRow.ID,
+		Name:         registryRow.Name,
+		RegType:      registryRow.RegType,
+		CreationType: registryRow.CreationType,
+		CreatedAt:    registryRow.CreatedAt,
+		UpdatedAt:    registryRow.UpdatedAt,
+	}
+
+	return registry, nil
 }
 
 // PublishServerVersion publishes a server version to a managed registry

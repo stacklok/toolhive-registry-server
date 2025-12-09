@@ -450,7 +450,7 @@ func buildDatabaseConnectionPool(
 // into PostgreSQL array types
 func registerCustomArrayCodecs(ctx context.Context, conn *pgx.Conn) error {
 	// List of enum types that need array codec registration
-	enumTypes := []string{"registry_type", "sync_status", "icon_theme"}
+	enumTypes := []string{"registry_type", "sync_status", "icon_theme", "creation_type"}
 
 	for _, enumName := range enumTypes {
 		// Get the OID for the enum from the database

@@ -53,6 +53,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	// Prepare bulk upsert arrays
 	names := make([]string, len(registryConfigs))
 	regTypes := make([]sqlc.RegistryType, len(registryConfigs))
+	creationTypes := make([]sqlc.CreationType, len(registryConfigs))
 	createdAts := make([]time.Time, len(registryConfigs))
 	updatedAts := make([]time.Time, len(registryConfigs))
 
@@ -63,6 +64,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 			return err
 		}
 		regTypes[i] = regType
+		creationTypes[i] = sqlc.CreationTypeCONFIG
 		createdAts[i] = now
 		updatedAts[i] = now
 	}
@@ -72,15 +74,26 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		return err
 	}
 
+	// Check for API registries that would be overwritten
+	if err := checkForAPIRegistryConflicts(ctx, queries, names); err != nil {
+		return err
+	}
+
 	// Bulk upsert all registries - returns IDs and names
 	upsertedRegistries, err := queries.BulkUpsertRegistries(ctx, sqlc.BulkUpsertRegistriesParams{
-		Names:      names,
-		RegTypes:   regTypes,
-		CreatedAts: createdAts,
-		UpdatedAts: updatedAts,
+		Names:         names,
+		RegTypes:      regTypes,
+		CreationTypes: creationTypes,
+		CreatedAts:    createdAts,
+		UpdatedAts:    updatedAts,
 	})
 	if err != nil {
 		return err
+	}
+
+	// Verify all registries were upserted (sanity check)
+	if len(upsertedRegistries) != len(names) {
+		return fmt.Errorf("expected to upsert %d registries but only %d were returned", len(names), len(upsertedRegistries))
 	}
 
 	// Build map from registry name to ID for sync initialization
@@ -121,6 +134,23 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 
 	// Commit the transaction
 	return tx.Commit(ctx)
+}
+
+// checkForAPIRegistryConflicts verifies that none of the registries being upserted are API-created registries
+func checkForAPIRegistryConflicts(ctx context.Context, queries *sqlc.Queries, names []string) error {
+	apiRegistries, err := queries.GetAPIRegistriesByNames(ctx, names)
+	if err != nil {
+		return fmt.Errorf("failed to check for API registries: %w", err)
+	}
+	if len(apiRegistries) > 0 {
+		// Build list of conflicting registry names
+		conflictNames := make([]string, len(apiRegistries))
+		for i, reg := range apiRegistries {
+			conflictNames[i] = reg.Name
+		}
+		return fmt.Errorf("cannot overwrite API-created registries: %v", conflictNames)
+	}
+	return nil
 }
 
 // validateRegistryTypes checks that registry types haven't changed for existing registries
