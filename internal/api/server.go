@@ -150,12 +150,15 @@ func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
 // @Description	Check if the registry API is healthy
 // @Tags		system
 // @Produce		json
-// @Success		200	{object}	map[string]string
+// @Success		200	{object}	HealthResponse
 // @Router		/health [get]
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
+	response := HealthResponse{Status: "healthy"}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status":"healthy"}`))
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		slog.Error("Failed to encode health response", "error", err)
+	}
 }
 
 // readinessHandler handles readiness check requests
@@ -164,7 +167,7 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 // @Description	Check if the registry API is ready to serve requests
 // @Tags		system
 // @Produce		json
-// @Success		200	{object}	map[string]string
+// @Success		200	{object}	ReadinessResponse
 // @Failure		503	{object}	map[string]string
 // @Router		/readiness [get]
 func readinessHandler(svc service.RegistryService) http.HandlerFunc {
@@ -184,9 +187,12 @@ func readinessHandler(svc service.RegistryService) http.HandlerFunc {
 			return
 		}
 
+		response := ReadinessResponse{Status: "ready"}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ready"}`))
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			slog.Error("Failed to encode readiness response", "error", err)
+		}
 	}
 }
 
@@ -196,17 +202,17 @@ func readinessHandler(svc service.RegistryService) http.HandlerFunc {
 // @Description	Get version information about the registry API
 // @Tags		system
 // @Produce		json
-// @Success		200	{object}	map[string]string
+// @Success		200	{object}	VersionResponse
 // @Router		/version [get]
 func versionHandler(w http.ResponseWriter, _ *http.Request) {
 	info := versions.GetVersionInfo()
 
-	response := map[string]string{
-		"version":    info.Version,
-		"commit":     info.Commit,
-		"build_date": info.BuildDate,
-		"go_version": info.GoVersion,
-		"platform":   info.Platform,
+	response := VersionResponse{
+		Version:   info.Version,
+		Commit:    info.Commit,
+		BuildDate: info.BuildDate,
+		GoVersion: info.GoVersion,
+		Platform:  info.Platform,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

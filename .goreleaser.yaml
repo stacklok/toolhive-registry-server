@@ -31,6 +31,9 @@ archives:
     format_overrides:
       - goos: windows
         formats: [ 'zip' ]
+    files:
+      - docs/thv-registry-api/swagger.yaml
+      - docs/thv-registry-api/swagger.json
 # This section defines whether we want to release the source code too.
 source:
   enabled: true

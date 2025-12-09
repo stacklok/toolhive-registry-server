@@ -141,9 +141,9 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 
 // listServers handles GET /registry/v0.1/servers
 //
-// @Summary		List servers
-// @Description	Get a list of available servers in the registry
-// @Tags		registry,official
+// @Summary		List servers (aggregated)
+// @Description	Get a list of available servers from all registries (aggregated view)
+// @Tags		registry-aggregated
 // @Accept		json
 // @Produce		json
 // @Param		cursor			query	string	false	"Pagination cursor for retrieving next set of results"
@@ -162,9 +162,9 @@ func (routes *Routes) listServers(w http.ResponseWriter, r *http.Request) {
 
 // listServersWithRegistryName handles GET /{registryName}/v0.1/servers
 //
-// @Summary		List servers
-// @Description	Get a list of available servers in the registry
-// @Tags		registry,official
+// @Summary		List servers in specific registry
+// @Description	Get a list of available servers from a specific registry
+// @Tags		registry
 // @Accept		json
 // @Produce		json
 // @Param		registryName	path	string	true	"Registry name"
@@ -235,9 +235,9 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 
 // listVersions handles GET /registry/v0.1/servers/{serverName}/versions
 //
-// @Summary		List all versions of an MCP server
-// @Description	Returns all available versions for a specific MCP server, ordered by publication date (newest first)
-// @Tags		registry,official
+// @Summary		List all versions of an MCP server (aggregated)
+// @Description	Returns all available versions for a specific MCP server from all registries (aggregated view)
+// @Tags		registry-aggregated
 // @Accept		json
 // @Produce		json
 // @Param		serverName	path		string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
@@ -253,9 +253,9 @@ func (routes *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 
 // listVersionsWithRegistryName handles GET /{registryName}/v0.1/servers/{serverName}/versions
 //
-// @Summary		List all versions of an MCP server
-// @Description	Returns all available versions for a specific MCP server, ordered by publication date (newest first)
-// @Tags		registry,official
+// @Summary		List all versions of an MCP server in specific registry
+// @Description	Returns all available versions for a specific MCP server from a specific registry
+// @Tags		registry
 // @Accept		json
 // @Produce		json
 // @Param		registryName	path	string	true	"Registry name"
@@ -320,10 +320,10 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 
 // getVersion handles GET /registry/v0.1/servers/{serverName}/versions/{version}
 //
-// @Summary		Get specific MCP server version
-// @Description	Returns detailed information about a specific version of an MCP server.
+// @Summary		Get specific MCP server version (aggregated)
+// @Description	Returns detailed information about a specific version of an MCP server from all registries.
 // @Description	Use the special version `latest` to get the latest version.
-// @Tags		registry,official
+// @Tags		registry-aggregated
 // @Accept		json
 // @Produce		json
 // @Param		serverName	path	string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
@@ -340,10 +340,10 @@ func (routes *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 
 // getVersionWithRegistryName handles GET /{registryName}/v0.1/servers/{serverName}/versions/{version}
 //
-// @Summary		Get specific MCP server version
-// @Description	Returns detailed information about a specific version of an MCP server.
+// @Summary		Get specific MCP server version in specific registry
+// @Description	Returns detailed information about a specific version of an MCP server from a specific registry.
 // @Description	Use the special version `latest` to get the latest version.
-// @Tags		registry,official
+// @Tags		registry
 // @Accept		json
 // @Produce		json
 // @Param		registryName	path		string	true	"Registry name"
@@ -369,7 +369,7 @@ func (routes *Routes) getVersionWithRegistryName(w http.ResponseWriter, r *http.
 //
 // @Summary      Delete server version from specific registry
 // @Description  Delete a server version from a specific managed registry
-// @Tags         registry,official
+// @Tags         registry
 // @Accept       json
 // @Produce      json
 // @Param        registryName  path  string  true  "Registry name"
@@ -433,7 +433,7 @@ func (routes *Routes) deleteVersionWithRegistryName(w http.ResponseWriter, r *ht
 //
 // @Summary      Publish server to specific registry
 // @Description  Publish a server version to a specific managed registry
-// @Tags         registry,official
+// @Tags         registry
 // @Accept       json
 // @Produce      json
 // @Param        registryName  path      string                    true  "Registry name"
@@ -509,10 +509,10 @@ func (routes *Routes) publishWithRegistryName(w http.ResponseWriter, r *http.Req
 
 // publish handles POST /registry/v0.1/publish
 //
-// @Summary		Publish server
+// @Summary		Publish server (not supported)
 // @Description	Publish a server to the registry. This server does not support publishing via this endpoint.
 // @Description	Use the registry-specific endpoint /{registryName}/v0.1/publish instead.
-// @Tags		registry,official
+// @Tags		registry-aggregated
 // @Accept		json
 // @Produce		json
 // @Failure		401	{object}	map[string]string	"Unauthorized"
