@@ -38,6 +38,17 @@ COPY LICENSE /licenses/LICENSE
 RUN mkdir -p /app/data /home/appuser && \
     chown -R 1001:1001 /app /home/appuser
 
+# Create pgpass file for PostgreSQL authentication
+# Format: hostname:port:database:username:password
+RUN cat > /home/appuser/.pgpass <<'EOF'
+postgres:5432:registry:db_app:app_password
+postgres:5432:registry:db_migrator:migration_password
+EOF
+
+# Set proper ownership and permissions (0600) for pgpass file
+RUN chown 1001:1001 /home/appuser/.pgpass && \
+    chmod 0600 /home/appuser/.pgpass
+
 WORKDIR /app
 
 # Set HOME environment variable for user 1001
