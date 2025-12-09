@@ -167,7 +167,7 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 func (f *fileStateService) GetNextSyncJob(
 	ctx context.Context,
 	cfg *config.Config,
-	predicate func(*status.SyncStatus) bool,
+	predicate func(*config.RegistryConfig, *status.SyncStatus) bool,
 ) (*config.RegistryConfig, error) {
 	// Grab the lock to ensure atomic operation
 	f.mu.Lock()
@@ -214,8 +214,13 @@ func (f *fileStateService) GetNextSyncJob(
 
 	// Iterate through sorted registries and find one that matches the predicate
 	for _, reg := range registries {
+		// Skip non-synced registries - they don't sync from external sources
+		if configMap[reg.name].IsNonSyncedRegistry() {
+			continue
+		}
+
 		// Check if this registry matches the predicate
-		if predicate(reg.syncStatus) {
+		if predicate(configMap[reg.name], reg.syncStatus) {
 			// Update the registry to IN_PROGRESS state
 			reg.syncStatus.Phase = status.SyncPhaseSyncing
 			now := time.Now()

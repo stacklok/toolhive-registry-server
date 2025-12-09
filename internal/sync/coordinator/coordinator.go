@@ -124,17 +124,18 @@ func (c *defaultCoordinator) Stop() error {
 // processNextSyncJob gets the next job and processes it if available
 func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
 	// Get the next sync job using the predicate to check if sync is needed
-	regCfg, err := c.statusSvc.GetNextSyncJob(ctx, c.config, func(syncStatus *status.SyncStatus) bool {
-		// Only process registries that are not currently syncing
-		if syncStatus.Phase == status.SyncPhaseSyncing {
-			return false
-		}
-
-		// Use the manager's ShouldSync logic to determine if this registry needs syncing
-		// We need the registry config to call ShouldSync, so we'll check this below
-		return true
-	})
-
+	regCfg, err := c.statusSvc.GetNextSyncJob(
+		ctx, c.config,
+		func(regCfg *config.RegistryConfig, syncStatus *status.SyncStatus) bool {
+			reason := c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
+			if !reason.ShouldSync() {
+				slog.Debug("Registry does not need sync",
+					"registry", regCfg.Name,
+					"reason", reason.String())
+			}
+			return reason.ShouldSync()
+		},
+	)
 	if err != nil {
 		slog.Error("Error getting next sync job", "error", err)
 		return
@@ -146,33 +147,13 @@ func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
 	}
 
 	// Skip non-synced registries - they don't sync from external sources
-	if regCfg.IsNonSyncedRegistry() {
+	// TODO: REMOVE
+	/*if regCfg.IsNonSyncedRegistry() {
 		slog.Debug("Skipping sync for non-synced registry",
 			"registry", regCfg.Name,
 			"type", regCfg.GetType())
 		return
-	}
-
-	// Get the current sync status to pass to ShouldSync
-	syncStatus, err := c.statusSvc.GetSyncStatus(ctx, regCfg.Name)
-	if err != nil {
-		slog.Error("Error getting sync status", "registry", regCfg.Name, "error", err)
-		return
-	}
-
-	// Double-check with ShouldSync before proceeding
-	reason := c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
-	if !reason.ShouldSync() {
-		slog.Debug("Registry does not need sync",
-			"registry", regCfg.Name,
-			"reason", reason.String())
-		// Update status back to not syncing since we're not going to sync
-		syncStatus.Phase = status.SyncPhaseComplete
-		if updateErr := c.statusSvc.UpdateSyncStatus(ctx, regCfg.Name, syncStatus); updateErr != nil {
-			slog.Error("Error updating sync status", "registry", regCfg.Name, "error", updateErr)
-		}
-		return
-	}
+	}*/
 
 	// Perform the sync
 	c.performRegistrySync(ctx, regCfg)
