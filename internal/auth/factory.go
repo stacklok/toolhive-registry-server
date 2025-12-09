@@ -32,7 +32,8 @@ func NewAuthMiddleware(
 	}
 
 	// Validate the auth configuration
-	if err := cfg.Validate(); err != nil {
+	// Pass false for insecureAllowHTTP since this is already validated during config load
+	if err := cfg.Validate(false); err != nil {
 		return nil, nil, fmt.Errorf("invalid auth configuration: %w", err)
 	}
 

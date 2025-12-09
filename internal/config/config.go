@@ -105,6 +105,11 @@ type Config struct {
 	Database     *DatabaseConfig    `yaml:"database,omitempty"`
 	FileStorage  *FileStorageConfig `yaml:"fileStorage,omitempty"`
 	Auth         *AuthConfig        `yaml:"auth,omitempty"`
+
+	// insecureAllowHTTP allows HTTP URLs for OAuth issuer URLs (development only)
+	// Can be set via THV_INSECURE_URL environment variable
+	// Not loaded from YAML file - environment variable only
+	insecureAllowHTTP bool
 }
 
 // RegistryConfig defines a single registry data source configuration
@@ -316,7 +321,8 @@ func (p *OAuthProviderConfig) GetClientSecret() (string, error) {
 
 // validateProvider validates a single OAuth provider configuration.
 // index is used for error message formatting to identify which provider failed validation.
-func (p *OAuthProviderConfig) validateProvider(index int) error {
+// insecureAllowHTTP allows HTTP URLs for development (when THV_INSECURE_URL is set).
+func (p *OAuthProviderConfig) validateProvider(index int, insecureAllowHTTP bool) error {
 	if p.Name == "" {
 		return fmt.Errorf("auth.oauth.providers[%d].name is required", index)
 	}
@@ -334,11 +340,11 @@ func (p *OAuthProviderConfig) validateProvider(index int) error {
 		return fmt.Errorf("auth.oauth.providers[%d].issuerUrl must be an absolute URL with host", index)
 	}
 
-	// Enforce HTTPS unless THV_REGISTRY_INSECURE_URL=true or localhost
-	if issuerURL.Scheme != "https" && os.Getenv("THV_REGISTRY_INSECURE_URL") != "true" {
+	// Enforce HTTPS unless THV_INSECURE_URL=true or localhost
+	if issuerURL.Scheme != "https" && !insecureAllowHTTP {
 		host := issuerURL.Hostname()
 		if host != "localhost" && host != "127.0.0.1" && host != "::1" {
-			const msg = "must use HTTPS (set THV_REGISTRY_INSECURE_URL=true to allow HTTP)"
+			const msg = "must use HTTPS (set THV_INSECURE_URL=true to allow HTTP)"
 			return fmt.Errorf("auth.oauth.providers[%d].issuerUrl %s", index, msg)
 		}
 	}
@@ -353,7 +359,8 @@ func (p *OAuthProviderConfig) validateProvider(index int) error {
 // Validate performs validation on the auth configuration.
 // This method assumes Mode has already been resolved to a valid value
 // (either explicitly set or defaulted by resolveAuthMode in serve.go).
-func (a *AuthConfig) Validate() error {
+// insecureAllowHTTP allows HTTP URLs for development (when THV_INSECURE_URL is set).
+func (a *AuthConfig) Validate(insecureAllowHTTP bool) error {
 	switch a.Mode {
 	case AuthModeAnonymous:
 		// Anonymous mode doesn't require OAuth config
@@ -369,7 +376,7 @@ func (a *AuthConfig) Validate() error {
 
 		// Validate each provider
 		for i, provider := range a.OAuth.Providers {
-			if err := provider.validateProvider(i); err != nil {
+			if err := provider.validateProvider(i, insecureAllowHTTP); err != nil {
 				return err
 			}
 		}
@@ -535,6 +542,10 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	if err := v.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+
+	// Set insecureAllowHTTP from environment variable (THV_INSECURE_URL)
+	// This is not loaded from YAML - environment variable only for security
+	config.insecureAllowHTTP = v.GetBool("insecure_url")
 
 	// Validate the config
 	if err := config.validate(); err != nil {
@@ -851,7 +862,7 @@ func (c *Config) validateAuth() error {
 	if c.Auth == nil {
 		return errors.New("auth configuration is required")
 	}
-	if err := c.Auth.Validate(); err != nil {
+	if err := c.Auth.Validate(c.insecureAllowHTTP); err != nil {
 		return fmt.Errorf("invalid auth configuration: %w", err)
 	}
 

@@ -237,7 +237,7 @@ database:
 #   - File: No authentication required
 #   - Git: Uses default git credential helper (SSH keys, .netrc, etc.)
 #   - API: Currently no authentication (will be added in future)
-#   - Database: Uses passwordFile (recommended) or THV_DATABASE_PASSWORD env var
+#   - Database: Uses PostgreSQL's pgpass file for password management
 
 # Error Handling:
 #   - Failed syncs are retried at the next configured sync interval

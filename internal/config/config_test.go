@@ -1844,7 +1844,9 @@ func TestAuthConfigValidate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := tt.config.Validate()
+			// Pass false for insecureAllowHTTP in these tests
+			// Tests for insecure URL handling should use true
+			err := tt.config.Validate(false)
 
 			if tt.wantErr {
 				require.Error(t, err)
