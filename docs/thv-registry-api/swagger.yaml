@@ -43,6 +43,36 @@ components:
           description: Number of servers in registry
           type: integer
       type: object
+    internal_api.HealthResponse:
+      properties:
+        status:
+          example: healthy
+          type: string
+      type: object
+    internal_api.ReadinessResponse:
+      properties:
+        status:
+          example: ready
+          type: string
+      type: object
+    internal_api.VersionResponse:
+      properties:
+        build_date:
+          example: "2025-01-15T10:30:00Z"
+          type: string
+        commit:
+          example: abc123def
+          type: string
+        go_version:
+          example: go1.21.5
+          type: string
+        platform:
+          example: linux/amd64
+          type: string
+        version:
+          example: v0.1.0
+          type: string
+      type: object
     model.Argument:
       properties:
         choices:
@@ -462,7 +492,6 @@ paths:
       summary: Publish server to specific registry
       tags:
       - registry
-      - official
   /{registryName}/v0.1/servers/{serverName}/versions/{version}:
     delete:
       description: Delete a server version from a specific managed registry
@@ -538,7 +567,6 @@ paths:
       summary: Delete server version from specific registry
       tags:
       - registry
-      - official
   /extension/v0/registries:
     get:
       description: List all registries
@@ -576,50 +604,6 @@ paths:
       tags:
       - extension
   /extension/v0/registries/{registryName}:
-    delete:
-      description: Delete a registry
-      parameters:
-      - description: Registry Name
-        in: path
-        name: registryName
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "400":
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Bad request
-        "401":
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Unauthorized
-        "501":
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Not implemented
-      security:
-      - BearerAuth: []
-      summary: Delete registry
-      tags:
-      - extension
     get:
       description: Get a registry by name
       parameters:
@@ -686,107 +670,6 @@ paths:
       summary: Get registry
       tags:
       - extension
-    put:
-      description: Create or update a registry
-      parameters:
-      - description: Registry Name
-        in: path
-        name: registryName
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "400":
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Bad request
-        "401":
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Unauthorized
-        "501":
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Not implemented
-      security:
-      - BearerAuth: []
-      summary: Create or update registry
-      tags:
-      - extension
-  /extension/v0/registries/{registryName}/servers/{serverName}/versions/{version}:
-    put:
-      description: Create or update a server in the registry
-      parameters:
-      - description: Registry Name
-        in: path
-        name: registryName
-        required: true
-        schema:
-          type: string
-      - description: URL-encoded server name (e.g., \
-        in: path
-        name: serverName
-        required: true
-        schema:
-          type: string
-      - description: URL-encoded version to retrieve (e.g., \
-        in: path
-        name: version
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "400":
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Bad request
-        "401":
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Unauthorized
-        "501":
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Not implemented
-      security:
-      - BearerAuth: []
-      summary: Create or update server
-      tags:
-      - extension
   /health:
     get:
       description: Check if the registry API is healthy
@@ -795,9 +678,7 @@ paths:
           content:
             application/json:
               schema:
-                additionalProperties:
-                  type: string
-                type: object
+                $ref: '#/components/schemas/internal_api.HealthResponse'
           description: OK
       summary: Health check
       tags:
@@ -831,9 +712,7 @@ paths:
           content:
             application/json:
               schema:
-                additionalProperties:
-                  type: string
-                type: object
+                $ref: '#/components/schemas/internal_api.ReadinessResponse'
           description: OK
         "503":
           content:
@@ -848,7 +727,7 @@ paths:
       - system
   /registry/{registryName}/v0.1/servers:
     get:
-      description: Get a list of available servers in the registry
+      description: Get a list of available servers from a specific registry
       parameters:
       - description: Registry name
         in: path
@@ -907,14 +786,13 @@ paths:
           description: Unauthorized
       security:
       - BearerAuth: []
-      summary: List servers
+      summary: List servers in specific registry
       tags:
       - registry
-      - official
   /registry/{registryName}/v0.1/servers/{serverName}/versions:
     get:
-      description: Returns all available versions for a specific MCP server, ordered
-        by publication date (newest first)
+      description: Returns all available versions for a specific MCP server from a
+        specific registry
       parameters:
       - description: Registry name
         in: path
@@ -966,14 +844,13 @@ paths:
           description: Server not found
       security:
       - BearerAuth: []
-      summary: List all versions of an MCP server
+      summary: List all versions of an MCP server in specific registry
       tags:
       - registry
-      - official
   /registry/{registryName}/v0.1/servers/{serverName}/versions/{version}:
     get:
       description: |-
-        Returns detailed information about a specific version of an MCP server.
+        Returns detailed information about a specific version of an MCP server from a specific registry.
         Use the special version `latest` to get the latest version.
       parameters:
       - description: Registry name
@@ -1032,10 +909,9 @@ paths:
           description: Server or version not found
       security:
       - BearerAuth: []
-      summary: Get specific MCP server version
+      summary: Get specific MCP server version in specific registry
       tags:
       - registry
-      - official
   /registry/v0.1/publish:
     post:
       description: |-
@@ -1065,13 +941,13 @@ paths:
           description: Not implemented
       security:
       - BearerAuth: []
-      summary: Publish server
+      summary: Publish server (not supported)
       tags:
-      - registry
-      - official
+      - registry-aggregated
   /registry/v0.1/servers:
     get:
-      description: Get a list of available servers in the registry
+      description: Get a list of available servers from all registries (aggregated
+        view)
       parameters:
       - description: Pagination cursor for retrieving next set of results
         in: query
@@ -1124,14 +1000,13 @@ paths:
           description: Unauthorized
       security:
       - BearerAuth: []
-      summary: List servers
+      summary: List servers (aggregated)
       tags:
-      - registry
-      - official
+      - registry-aggregated
   /registry/v0.1/servers/{serverName}/versions:
     get:
-      description: Returns all available versions for a specific MCP server, ordered
-        by publication date (newest first)
+      description: Returns all available versions for a specific MCP server from all
+        registries (aggregated view)
       parameters:
       - description: URL-encoded server name (e.g., \
         in: path
@@ -1177,14 +1052,13 @@ paths:
           description: Server not found
       security:
       - BearerAuth: []
-      summary: List all versions of an MCP server
+      summary: List all versions of an MCP server (aggregated)
       tags:
-      - registry
-      - official
+      - registry-aggregated
   /registry/v0.1/servers/{serverName}/versions/{version}:
     get:
       description: |-
-        Returns detailed information about a specific version of an MCP server.
+        Returns detailed information about a specific version of an MCP server from all registries.
         Use the special version `latest` to get the latest version.
       parameters:
       - description: URL-encoded server name (e.g., \
@@ -1237,10 +1111,9 @@ paths:
           description: Server or version not found
       security:
       - BearerAuth: []
-      summary: Get specific MCP server version
+      summary: Get specific MCP server version (aggregated)
       tags:
-      - registry
-      - official
+      - registry-aggregated
   /version:
     get:
       description: Get version information about the registry API
@@ -1249,9 +1122,7 @@ paths:
           content:
             application/json:
               schema:
-                additionalProperties:
-                  type: string
-                type: object
+                $ref: '#/components/schemas/internal_api.VersionResponse'
           description: OK
       summary: Version information
       tags:
