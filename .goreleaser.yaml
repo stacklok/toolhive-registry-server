@@ -31,6 +31,9 @@ archives:
     format_overrides:
       - goos: windows
         formats: [ 'zip' ]
+    files:
+      - docs/thv-registry-api/swagger.yaml
+      - docs/thv-registry-api/swagger.json
 # This section defines whether we want to release the source code too.
 source:
   enabled: true
@@ -46,6 +49,9 @@ release:
   github:
     owner: stacklok
     name: toolhive-registry-server
+  extra_files:
+    - glob: docs/thv-registry-api/swagger.yaml
+    - glob: docs/thv-registry-api/swagger.json
 # This section defines how and which artifacts we want to sign for the release.
 signs:
   - cmd: cosign

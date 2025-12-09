@@ -42,6 +42,21 @@ func (m *MockRegistryStateService) EXPECT() *MockRegistryStateServiceMockRecorde
 	return m.recorder
 }
 
+// GetNextSyncJob mocks base method.
+func (m *MockRegistryStateService) GetNextSyncJob(ctx context.Context, cfg *config.Config, predicate func(*status.SyncStatus) bool) (*config.RegistryConfig, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNextSyncJob", ctx, cfg, predicate)
+	ret0, _ := ret[0].(*config.RegistryConfig)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetNextSyncJob indicates an expected call of GetNextSyncJob.
+func (mr *MockRegistryStateServiceMockRecorder) GetNextSyncJob(ctx, cfg, predicate any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextSyncJob", reflect.TypeOf((*MockRegistryStateService)(nil).GetNextSyncJob), ctx, cfg, predicate)
+}
+
 // GetSyncStatus mocks base method.
 func (m *MockRegistryStateService) GetSyncStatus(ctx context.Context, registryName string) (*status.SyncStatus, error) {
 	m.ctrl.T.Helper()
@@ -84,21 +99,6 @@ func (m *MockRegistryStateService) ListSyncStatuses(ctx context.Context) (map[st
 func (mr *MockRegistryStateServiceMockRecorder) ListSyncStatuses(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSyncStatuses", reflect.TypeOf((*MockRegistryStateService)(nil).ListSyncStatuses), ctx)
-}
-
-// UpdateStatusAtomically mocks base method.
-func (m *MockRegistryStateService) UpdateStatusAtomically(ctx context.Context, registryName string, testAndUpdateFn func(*status.SyncStatus) bool) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateStatusAtomically", ctx, registryName, testAndUpdateFn)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpdateStatusAtomically indicates an expected call of UpdateStatusAtomically.
-func (mr *MockRegistryStateServiceMockRecorder) UpdateStatusAtomically(ctx, registryName, testAndUpdateFn any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatusAtomically", reflect.TypeOf((*MockRegistryStateService)(nil).UpdateStatusAtomically), ctx, registryName, testAndUpdateFn)
 }
 
 // UpdateSyncStatus mocks base method.
