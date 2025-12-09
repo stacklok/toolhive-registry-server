@@ -141,28 +141,43 @@ kubectl -n toolhive logs -l app=registry-api
 
 ## Database Configuration
 
-### Database Secret
+### Database Secret (pgpass file)
 
-Create a secret for database credentials:
+The Registry Server uses PostgreSQL's pgpass file for database authentication. Create a secret containing the pgpass file:
+
+**Create pgpass file:**
+
+```bash
+# Create pgpass file with credentials for both users
+cat > pgpass <<EOF
+postgres-service.database.svc.cluster.local:5432:toolhive_registry:db_app:your-secure-app-password
+postgres-service.database.svc.cluster.local:5432:toolhive_registry:db_migrator:your-secure-migration-password
+EOF
+
+chmod 600 pgpass
+```
+
+**Create Kubernetes secret:**
+
+```bash
+kubectl -n toolhive create secret generic registry-db-pgpass \
+  --from-file=pgpass=pgpass
+
+# Clean up local file
+rm pgpass
+```
+
+Or using YAML:
 
 ```yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: registry-db-credentials
+  name: registry-db-pgpass
   namespace: toolhive
 type: Opaque
-stringData:
-  password: your-secure-app-password
-  migration-password: your-secure-migration-password
-```
-
-Or using kubectl:
-
-```bash
-kubectl -n toolhive create secret generic registry-db-credentials \
-  --from-literal=password=your-secure-app-password \
-  --from-literal=migration-password=your-secure-migration-password
+data:
+  pgpass: <base64-encoded-pgpass-content>
 ```
 
 ### ConfigMap with Database
@@ -197,16 +212,16 @@ data:
     database:
       host: postgres.database.svc.cluster.local
       port: 5432
-      user: registry_app
-      passwordFile: /secrets/db-password
-      migrationUser: registry_migrator
-      migrationPasswordFile: /secrets/db-migration-password
+      user: db_app
+      migrationUser: db_migrator
       database: toolhive_registry
       sslMode: require
       maxOpenConns: 25
       maxIdleConns: 5
       connMaxLifetime: "5m"
 ```
+
+**Note**: Database passwords are provided via the pgpass file mounted from the secret, not in the config.
 
 ### Deployment with Database
 
@@ -238,16 +253,8 @@ spec:
           containerPort: 8080
           protocol: TCP
         env:
-        - name: THV_DATABASE_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: registry-db-credentials
-              key: password
-        - name: THV_DATABASE_MIGRATION_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: registry-db-credentials
-              key: migration-password
+        - name: PGPASSFILE
+          value: /secrets/pgpass
         livenessProbe:
           httpGet:
             path: /health
@@ -268,6 +275,9 @@ spec:
         - name: config
           mountPath: /etc/registry
           readOnly: true
+        - name: pgpass
+          mountPath: /secrets
+          readOnly: true
         resources:
           requests:
             cpu: 100m
@@ -279,6 +289,10 @@ spec:
       - name: config
         configMap:
           name: registry-api-config
+      - name: pgpass
+        secret:
+          secretName: registry-db-pgpass
+          defaultMode: 0600
 ```
 
 ### Optional: Pre-Migration Job
@@ -305,19 +319,23 @@ spec:
         - --config=/etc/registry/config.yaml
         - --yes
         env:
-        - name: THV_DATABASE_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: registry-db-credentials
-              key: migration-password
+        - name: PGPASSFILE
+          value: /secrets/pgpass
         volumeMounts:
         - name: config
           mountPath: /etc/registry
+          readOnly: true
+        - name: pgpass
+          mountPath: /secrets
           readOnly: true
       volumes:
       - name: config
         configMap:
           name: registry-api-config
+      - name: pgpass
+        secret:
+          secretName: registry-db-pgpass
+          defaultMode: 0600
 ```
 
 ## Authentication Setup
@@ -562,7 +580,7 @@ kubectl -n toolhive exec -it deployment/registry-api -- \
   nc -zv postgres.database.svc.cluster.local 5432
 
 # Check environment variables
-kubectl -n toolhive exec -it deployment/registry-api -- env | grep THV_
+kubectl -n toolhive exec -it deployment/registry-api -- env | grep -E 'THV_REGISTRY_|PGPASSFILE'
 ```
 
 ### Migration Failures

@@ -12,7 +12,7 @@ Configuration values are resolved in this order (lowest to highest priority):
 
 1. **Default values** - Hardcoded defaults in the application
 2. **Configuration file** - Values from the YAML config file
-3. **Environment variables** - Values from `THV_*` environment variables
+3. **Environment variables** - Values from `THV_REGISTRY_*` environment variables
 4. **Command-line flags** - Values from CLI flags (e.g., `--address`)
 
 Higher priority sources override lower ones. For example, if `database.host` is set to `localhost` in the YAML file but `THV_REGISTRY_DATABASE_HOST=postgres.example.com` is set, the environment variable value (`postgres.example.com`) will be used.

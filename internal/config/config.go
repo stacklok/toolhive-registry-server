@@ -498,7 +498,7 @@ func (d *DatabaseConfig) GetMigrationConnectionString() string {
 }
 
 // LoadConfig loads and parses configuration from a YAML file with environment variable support.
-// Configuration values can be overridden using environment variables with the THV_ prefix.
+// Configuration values can be overridden using environment variables with the THV_REGISTRY_ prefix.
 // Nested keys use underscores as separators (e.g., THV_REGISTRY_DATABASE_HOST for database.host).
 func LoadConfig(opts ...Option) (*Config, error) {
 	loaderCfg := &loaderConfig{}
@@ -521,7 +521,7 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	v.SetConfigFile(loaderCfg.path)
 
 	// Configure environment variable support
-	// All env vars use the THV_ prefix (e.g., THV_REGISTRY_REGISTRYNAME, THV_REGISTRY_DATABASE_HOST)
+	// All env vars use the THV_REGISTRY_ prefix (e.g., THV_REGISTRY_REGISTRYNAME, THV_REGISTRY_DATABASE_HOST)
 	v.SetEnvPrefix(EnvPrefix)
 
 	// Enable automatic environment variable binding
