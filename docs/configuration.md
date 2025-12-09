@@ -372,17 +372,17 @@ fileStorage:
 
 ## Environment Variables
 
-Configuration values can be overridden using environment variables with the `THV_` prefix. For complete documentation, see [Environment Variables Guide](environment-variables.md).
+Configuration values can be overridden using environment variables with the `THV_REGISTRY_` prefix. For complete documentation, see [Environment Variables Guide](environment-variables.md).
 
 ### Common Configuration Overrides
 
 | Variable | Description |
 |----------|-------------|
-| `THV_DATABASE_HOST` | Override database host |
-| `THV_DATABASE_PORT` | Override database port |
-| `THV_DATABASE_USER` | Override database user |
-| `THV_AUTH_MODE` | Override authentication mode (anonymous or oauth) |
-| `THV_LOG_LEVEL` | Set log level (debug, info, warn, error) |
+| `THV_REGISTRY_DATABASE_HOST` | Override database host |
+| `THV_REGISTRY_DATABASE_PORT` | Override database port |
+| `THV_REGISTRY_DATABASE_USER` | Override database user |
+| `THV_REGISTRY_AUTH_MODE` | Override authentication mode (anonymous or oauth) |
+| `THV_REGISTRY_LOG_LEVEL` | Set log level (debug, info, warn, error) |
 
 ### PostgreSQL Standard
 
@@ -399,7 +399,7 @@ See [Database Configuration](database.md#password-security) for password managem
 | Variable | Description |
 |----------|-------------|
 | `CONFIG_FILE` | Override config file path |
-| `THV_INSECURE_URL` | Allow HTTP URLs for development (default: false) |
+| `THV_REGISTRY_INSECURE_URL` | Allow HTTP URLs for development (default: false) |
 
 ## Examples
 

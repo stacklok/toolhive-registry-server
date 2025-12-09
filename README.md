@@ -321,8 +321,8 @@ See [Kubernetes Deployment Guide](docs/deployment-kubernetes.md) for production 
 ./bin/thv-registry-api serve --config config.yaml
 
 # With environment variables
-export THV_DATABASE_HOST=postgres.example.com
-export THV_AUTH_MODE=anonymous
+export THV_REGISTRY_DATABASE_HOST=postgres.example.com
+export THV_REGISTRY_AUTH_MODE=anonymous
 ./bin/thv-registry-api serve --config config.yaml
 ```
 

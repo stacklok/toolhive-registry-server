@@ -15,28 +15,28 @@ Configuration values are resolved in this order (lowest to highest priority):
 3. **Environment variables** - Values from `THV_*` environment variables
 4. **Command-line flags** - Values from CLI flags (e.g., `--address`)
 
-Higher priority sources override lower ones. For example, if `database.host` is set to `localhost` in the YAML file but `THV_DATABASE_HOST=postgres.example.com` is set, the environment variable value (`postgres.example.com`) will be used.
+Higher priority sources override lower ones. For example, if `database.host` is set to `localhost` in the YAML file but `THV_REGISTRY_DATABASE_HOST=postgres.example.com` is set, the environment variable value (`postgres.example.com`) will be used.
 
 ## Naming Convention
 
-All environment variables use the `THV_` prefix (ToolHive Registry) to avoid conflicts with other applications.
+All environment variables use the `THV_REGISTRY_` prefix (ToolHive Registry) to avoid conflicts with other applications.
 
 ### Rules
 
-1. **Prefix**: All variables start with `THV_`
+1. **Prefix**: All variables start with `THV_REGISTRY_`
 2. **Nested keys**: Use underscores (`_`) to represent nested configuration
 3. **Case**: Environment variables are case-insensitive (but uppercase is conventional)
-4. **Dots to underscores**: Configuration key `database.host` becomes `THV_DATABASE_HOST`
+4. **Dots to underscores**: Configuration key `database.host` becomes `THV_REGISTRY_DATABASE_HOST`
 
 ### Examples
 
 | Configuration Key | Environment Variable | Example Value |
 |-------------------|---------------------|---------------|
-| `registryName` | `THV_REGISTRYNAME` | `production-registry` |
-| `database.host` | `THV_DATABASE_HOST` | `postgres.example.com` |
-| `database.port` | `THV_DATABASE_PORT` | `5432` |
-| `auth.mode` | `THV_AUTH_MODE` | `oauth` |
-| `auth.oauth.realm` | `THV_AUTH_OAUTH_REALM` | `mcp-registry` |
+| `registryName` | `THV_REGISTRY_REGISTRYNAME` | `production-registry` |
+| `database.host` | `THV_REGISTRY_DATABASE_HOST` | `postgres.example.com` |
+| `database.port` | `THV_REGISTRY_DATABASE_PORT` | `5432` |
+| `auth.mode` | `THV_REGISTRY_AUTH_MODE` | `oauth` |
+| `auth.oauth.realm` | `THV_REGISTRY_AUTH_OAUTH_REALM` | `mcp-registry` |
 
 ## Common Configuration Examples
 
@@ -44,40 +44,40 @@ All environment variables use the `THV_` prefix (ToolHive Registry) to avoid con
 
 ```bash
 # Change the listening address (default: :8080)
-export THV_ADDRESS=:9090
+export THV_REGISTRY_ADDRESS=:9090
 
 # Set the registry name
-export THV_REGISTRYNAME=production-registry
+export THV_REGISTRY_REGISTRYNAME=production-registry
 ```
 
 ### Database Configuration
 
 ```bash
 # Database connection settings
-export THV_DATABASE_HOST=postgres.example.com
-export THV_DATABASE_PORT=5432
-export THV_DATABASE_USER=registry_app
-export THV_DATABASE_DATABASE=registry_prod
-export THV_DATABASE_SSLMODE=verify-full
-export THV_DATABASE_MIGRATIONUSER=registry_migrator
+export THV_REGISTRY_DATABASE_HOST=postgres.example.com
+export THV_REGISTRY_DATABASE_PORT=5432
+export THV_REGISTRY_DATABASE_USER=registry_app
+export THV_REGISTRY_DATABASE_DATABASE=registry_prod
+export THV_REGISTRY_DATABASE_SSLMODE=verify-full
+export THV_REGISTRY_DATABASE_MIGRATIONUSER=registry_migrator
 
 # Connection pool settings
-export THV_DATABASE_MAXOPENCONNS=25
-export THV_DATABASE_MAXIDLECONNS=5
-export THV_DATABASE_CONNMAXLIFETIME=1h
+export THV_REGISTRY_DATABASE_MAXOPENCONNS=25
+export THV_REGISTRY_DATABASE_MAXIDLECONNS=5
+export THV_REGISTRY_DATABASE_CONNMAXLIFETIME=1h
 ```
 
-**Note**: Database passwords are managed via PostgreSQL's [`.pgpass` file](https://www.postgresql.org/docs/current/libpq-pgpass.html) or the `PGPASSFILE` environment variable, not through `THV_*` variables.
+**Note**: Database passwords are managed via PostgreSQL's [`.pgpass` file](https://www.postgresql.org/docs/current/libpq-pgpass.html) or the `PGPASSFILE` environment variable, not through `THV_REGISTRY_*` variables.
 
 ### Authentication Configuration
 
 ```bash
 # Set authentication mode
-export THV_AUTH_MODE=oauth  # or "anonymous" for development
+export THV_REGISTRY_AUTH_MODE=oauth  # or "anonymous" for development
 
 # OAuth/OIDC configuration
-export THV_AUTH_OAUTH_RESOURCEURL=https://registry.example.com
-export THV_AUTH_OAUTH_REALM=mcp-registry
+export THV_REGISTRY_AUTH_OAUTH_RESOURCEURL=https://registry.example.com
+export THV_REGISTRY_AUTH_OAUTH_REALM=mcp-registry
 ```
 
 **Note**: OAuth provider configuration (including issuer URLs, audiences, and client secrets) should be specified in the YAML configuration file for security and complexity reasons.
@@ -86,7 +86,7 @@ export THV_AUTH_OAUTH_REALM=mcp-registry
 
 ```bash
 # Set log level (debug, info, warn, error)
-export THV_LOG_LEVEL=debug
+export THV_REGISTRY_LOG_LEVEL=debug
 
 # Or use the unprefixed version (backward compatible)
 export LOG_LEVEL=debug
@@ -100,9 +100,9 @@ Environment variables integrate seamlessly with Docker and Docker Compose:
 
 ```bash
 docker run \
-  -e THV_DATABASE_HOST=postgres \
-  -e THV_DATABASE_PORT=5432 \
-  -e THV_AUTH_MODE=anonymous \
+  -e THV_REGISTRY_DATABASE_HOST=postgres \
+  -e THV_REGISTRY_DATABASE_PORT=5432 \
+  -e THV_REGISTRY_AUTH_MODE=anonymous \
   -v $(pwd)/config.yaml:/config.yaml \
   toolhive-registry-api serve --config /config.yaml
 ```
@@ -116,12 +116,12 @@ services:
   registry:
     image: toolhive-registry-api
     environment:
-      THV_DATABASE_HOST: postgres
-      THV_DATABASE_PORT: 5432
-      THV_DATABASE_USER: registry_app
-      THV_DATABASE_DATABASE: registry
-      THV_AUTH_MODE: anonymous
-      THV_LOG_LEVEL: info
+      THV_REGISTRY_DATABASE_HOST: postgres
+      THV_REGISTRY_DATABASE_PORT: 5432
+      THV_REGISTRY_DATABASE_USER: registry_app
+      THV_REGISTRY_DATABASE_DATABASE: registry
+      THV_REGISTRY_AUTH_MODE: anonymous
+      THV_REGISTRY_LOG_LEVEL: info
     volumes:
       - ./config.yaml:/config.yaml
     command: serve --config /config.yaml
@@ -139,10 +139,10 @@ kind: ConfigMap
 metadata:
   name: registry-config
 data:
-  THV_DATABASE_HOST: "postgres-service"
-  THV_DATABASE_PORT: "5432"
-  THV_AUTH_MODE: "oauth"
-  THV_LOG_LEVEL: "info"
+  THV_REGISTRY_DATABASE_HOST: "postgres-service"
+  THV_REGISTRY_DATABASE_PORT: "5432"
+  THV_REGISTRY_AUTH_MODE: "oauth"
+  THV_REGISTRY_LOG_LEVEL: "info"
 ```
 
 ### Deployment
@@ -203,7 +203,7 @@ metadata:
   name: registry-secrets
 type: Opaque
 stringData:
-  THV_AUTH_MODE: "oauth"
+  THV_REGISTRY_AUTH_MODE: "oauth"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -225,7 +225,7 @@ Override auth mode for local testing:
 
 ```bash
 # Start with anonymous auth for development
-THV_AUTH_MODE=anonymous ./thv-registry-api serve --config config-dev.yaml
+THV_REGISTRY_AUTH_MODE=anonymous ./thv-registry-api serve --config config-dev.yaml
 ```
 
 ### CI/CD Pipeline
@@ -233,12 +233,12 @@ THV_AUTH_MODE=anonymous ./thv-registry-api serve --config config-dev.yaml
 Override database and logging for integration tests:
 
 ```bash
-export THV_DATABASE_HOST=localhost
-export THV_DATABASE_PORT=5432
-export THV_DATABASE_USER=test_user
-export THV_DATABASE_DATABASE=test_registry
-export THV_AUTH_MODE=anonymous
-export THV_LOG_LEVEL=debug
+export THV_REGISTRY_DATABASE_HOST=localhost
+export THV_REGISTRY_DATABASE_PORT=5432
+export THV_REGISTRY_DATABASE_USER=test_user
+export THV_REGISTRY_DATABASE_DATABASE=test_registry
+export THV_REGISTRY_AUTH_MODE=anonymous
+export THV_REGISTRY_LOG_LEVEL=debug
 
 ./thv-registry-api serve --config config-test.yaml
 ```
@@ -249,8 +249,8 @@ Minimal environment overrides with production config:
 
 ```bash
 # Production uses YAML for most config, only override deployment-specific values
-export THV_DATABASE_HOST=postgres-primary.prod.svc.cluster.local
-export THV_LOG_LEVEL=info
+export THV_REGISTRY_DATABASE_HOST=postgres-primary.prod.svc.cluster.local
+export THV_REGISTRY_LOG_LEVEL=info
 
 ./thv-registry-api serve --config config-production.yaml
 ```
@@ -261,16 +261,16 @@ export THV_LOG_LEVEL=info
 
 To understand which configuration source is being used:
 
-1. Enable debug logging: `THV_LOG_LEVEL=debug`
+1. Enable debug logging: `THV_REGISTRY_LOG_LEVEL=debug`
 2. Check server startup logs for configuration values
-3. Verify environment variables are set: `env | grep THV_`
+3. Verify environment variables are set: `env | grep THV_REGISTRY_`
 
 ### Common Issues
 
 **Environment variable not taking effect:**
 - Check the variable name matches the configuration key (use underscores, not dots)
-- Verify the `THV_` prefix is present
-- Ensure the variable is exported: `export THV_DATABASE_HOST=...`
+- Verify the `THV_REGISTRY_` prefix is present
+- Ensure the variable is exported: `export THV_REGISTRY_DATABASE_HOST=...`
 - Remember: YAML values are loaded first, then overridden by env vars
 
 **Configuration validation errors:**

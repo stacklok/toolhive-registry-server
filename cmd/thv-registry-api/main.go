@@ -14,7 +14,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
-// getLogLevel parses the THV_LOG_LEVEL environment variable and returns the corresponding slog.Level.
+// getLogLevel parses the THV_REGISTRY_LOG_LEVEL environment variable and returns the corresponding slog.Level.
 // Falls back to LOG_LEVEL for backward compatibility.
 // Defaults to slog.LevelInfo if neither is set or if the value is invalid.
 func getLogLevel() slog.Level {
@@ -24,7 +24,7 @@ func getLogLevel() slog.Level {
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	// Try THV_LOG_LEVEL first (via Viper with THV prefix)
+	// Try THV_REGISTRY_LOG_LEVEL first (via Viper with THV_REGISTRY prefix)
 	levelStr := v.GetString("LOG_LEVEL")
 
 	// Fall back to LOG_LEVEL without prefix for backward compatibility

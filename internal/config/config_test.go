@@ -2084,10 +2084,10 @@ func TestDatabaseConfigPgpassDelegation(t *testing.T) {
 // TestEnvPrefix verifies the environment variable prefix constant is correctly defined
 func TestEnvPrefix(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "THV", EnvPrefix, "EnvPrefix should be THV")
+	assert.Equal(t, "THV_REGISTRY", EnvPrefix, "EnvPrefix should be THV_REGISTRY")
 }
 
-// TestViperEnvOverrideRegistryName tests that THV_REGISTRYNAME can override the registryName
+// TestViperEnvOverrideRegistryName tests that THV_REGISTRY_REGISTRYNAME can override the registryName
 // Note: Environment variable tests cannot be run in parallel because they share the same
 // environment namespace, even when using different prefixes
 func TestViperEnvOverrideRegistryName(t *testing.T) {
@@ -2108,7 +2108,7 @@ auth:
 	require.NoError(t, err)
 
 	// Set environment variable override
-	t.Setenv("THV_REGISTRYNAME", "overridden-name")
+	t.Setenv("THV_REGISTRY_REGISTRYNAME", "overridden-name")
 
 	// Load config
 	cfg, err := LoadConfig(WithConfigPath(configPath))
@@ -2118,7 +2118,7 @@ auth:
 	assert.Equal(t, "overridden-name", cfg.RegistryName)
 }
 
-// TestViperEnvOverrideDatabaseHost tests that THV_DATABASE_HOST can override database.host
+// TestViperEnvOverrideDatabaseHost tests that THV_REGISTRY_DATABASE_HOST can override database.host
 func TestViperEnvOverrideDatabaseHost(t *testing.T) {
 	// Create a temporary config file
 	tmpDir := t.TempDir()
@@ -2141,7 +2141,7 @@ database:
 	require.NoError(t, err)
 
 	// Set environment variable override
-	t.Setenv("THV_DATABASE_HOST", "overridden-host")
+	t.Setenv("THV_REGISTRY_DATABASE_HOST", "overridden-host")
 
 	// Load config
 	cfg, err := LoadConfig(WithConfigPath(configPath))
@@ -2152,7 +2152,7 @@ database:
 	assert.Equal(t, "overridden-host", cfg.Database.Host)
 }
 
-// TestViperEnvOverrideDatabasePort tests that THV_DATABASE_PORT can override database.port
+// TestViperEnvOverrideDatabasePort tests that THV_REGISTRY_DATABASE_PORT can override database.port
 func TestViperEnvOverrideDatabasePort(t *testing.T) {
 	// Create a temporary config file
 	tmpDir := t.TempDir()
@@ -2175,7 +2175,7 @@ database:
 	require.NoError(t, err)
 
 	// Set environment variable override
-	t.Setenv("THV_DATABASE_PORT", "5433")
+	t.Setenv("THV_REGISTRY_DATABASE_PORT", "5433")
 
 	// Load config
 	cfg, err := LoadConfig(WithConfigPath(configPath))
@@ -2186,7 +2186,7 @@ database:
 	assert.Equal(t, 5433, cfg.Database.Port)
 }
 
-// TestViperEnvOverrideAuthMode tests that THV_AUTH_MODE can override auth.mode
+// TestViperEnvOverrideAuthMode tests that THV_REGISTRY_AUTH_MODE can override auth.mode
 func TestViperEnvOverrideAuthMode(t *testing.T) {
 	// Create a temporary config file
 	tmpDir := t.TempDir()
@@ -2209,7 +2209,7 @@ auth:
 	require.NoError(t, err)
 
 	// Set environment variable override to anonymous
-	t.Setenv("THV_AUTH_MODE", "anonymous")
+	t.Setenv("THV_REGISTRY_AUTH_MODE", "anonymous")
 
 	// Load config
 	cfg, err := LoadConfig(WithConfigPath(configPath))
@@ -2244,9 +2244,9 @@ database:
 	require.NoError(t, err)
 
 	// Set multiple environment variable overrides
-	t.Setenv("THV_REGISTRYNAME", "env-registry-name")
-	t.Setenv("THV_DATABASE_HOST", "env-host")
-	t.Setenv("THV_DATABASE_USER", "env-user")
+	t.Setenv("THV_REGISTRY_REGISTRYNAME", "env-registry-name")
+	t.Setenv("THV_REGISTRY_DATABASE_HOST", "env-host")
+	t.Setenv("THV_REGISTRY_DATABASE_USER", "env-user")
 
 	// Load config
 	cfg, err := LoadConfig(WithConfigPath(configPath))
