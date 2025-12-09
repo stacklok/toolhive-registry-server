@@ -23,6 +23,10 @@ type RegistryStateService interface {
 	// UpdateSyncStatus overrides the value of the named registry with the syncStatus parameter.
 	UpdateSyncStatus(ctx context.Context, registryName string, syncStatus *status.SyncStatus) error
 	// GetNextSyncJob returns the next registry configuration that needs syncing.
-	// The predicate function is used to filter registries based on their sync status.
-	GetNextSyncJob(ctx context.Context, cfg *config.Config, predicate func(*status.SyncStatus) bool) (*config.RegistryConfig, error)
+	// The predicate function is used to filter registries based on their config and sync status.
+	GetNextSyncJob(
+		ctx context.Context,
+		cfg *config.Config,
+		predicate func(*config.RegistryConfig, *status.SyncStatus) bool,
+	) (*config.RegistryConfig, error)
 }

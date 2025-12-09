@@ -357,7 +357,7 @@ func getInitialSyncStatus(isNonSynced bool, regType string) (sqlc.SyncStatus, st
 func (d *dbStatusService) GetNextSyncJob(
 	ctx context.Context,
 	cfg *config.Config,
-	predicate func(*status.SyncStatus) bool,
+	predicate func(*config.RegistryConfig, *status.SyncStatus) bool,
 ) (*config.RegistryConfig, error) {
 	// Start a transaction
 	tx, err := d.pool.Begin(ctx)
@@ -387,8 +387,21 @@ func (d *dbStatusService) GetNextSyncJob(
 	for _, reg := range registries {
 		syncStatus := dbSyncRowByLastUpdateToStatus(reg)
 
+		// Find the matching registry configuration
+		regCfg, ok := configMap[reg.Name]
+		if !ok {
+			// Registry exists in DB but not in config - this shouldn't happen
+			// but handle gracefully by continuing to next registry
+			continue
+		}
+
+		// Skip non-synced registries - they don't sync from external sources
+		if regCfg.IsNonSyncedRegistry() {
+			continue
+		}
+
 		// Check if this registry matches the predicate
-		if predicate(syncStatus) {
+		if predicate(regCfg, syncStatus) {
 			// Update the registry to IN_PROGRESS state
 			now := time.Now()
 			err = queries.UpdateRegistrySyncStatusByName(ctx, sqlc.UpdateRegistrySyncStatusByNameParams{
@@ -398,14 +411,6 @@ func (d *dbStatusService) GetNextSyncJob(
 			})
 			if err != nil {
 				return nil, fmt.Errorf("failed to update registry status: %w", err)
-			}
-
-			// Find the matching registry configuration
-			regCfg, ok := configMap[reg.Name]
-			if !ok {
-				// Registry exists in DB but not in config - this shouldn't happen
-				// but handle gracefully by continuing to next registry
-				continue
 			}
 
 			// Commit the transaction
