@@ -15,7 +15,7 @@
 # - db_migrator: Migration user with elevated privileges (CREATE, ALTER, DROP)
 #
 # Password Management (pgpass file):
-# Passwords are provided via a pgpass file mounted at /root/.pgpass
+# Passwords are provided via a pgpass file built into the container image at /home/appuser/.pgpass
 # The pgpass file format is: hostname:port:database:username:password
 # Example contents:
 #   postgres:5432:registry:db_app:app_password
@@ -59,10 +59,7 @@ services:
       # Mount entire examples directory - all configs and registry files available
       - ./examples:/examples:ro
       - registry_data:/app/data
-      # Mount pgpass file for database credentials
-      # The file should contain entries for both db_app and db_migrator users
-      # Mounted to user 1001's home directory
-      - ./docker/pgpass:/home/appuser/.pgpass:ro
+      # pgpass file is now built into the container image
     # Use CONFIG_FILE env var to switch between configs (defaults to config-docker.yaml)
     # Examples: CONFIG_FILE=config-docker-dual.yaml docker-compose up
     command: ["serve", "--config", "/examples/${CONFIG_FILE:-config-docker.yaml}", "--address", ":8080"]
