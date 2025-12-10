@@ -220,33 +220,33 @@ tasks:
         go run ./cmd/thv-registry-api migrate down --config {{.CONFIG}} --num-steps {{.NUM_STEPS}} --yes
 
   docker-up:
-    desc: Start docker-compose with fresh state (rebuilds image, clears all volumes)
+    desc: Start docker compose with fresh state (rebuilds image, clears all volumes)
     cmds:
       - echo "Stopping and removing all containers and volumes..."
-      - docker-compose down -v
+      - docker compose down -v
       - echo "Building fresh image and starting services..."
-      - docker-compose up --build
+      - docker compose up --build
 
   docker-up-detached:
-    desc: Start docker-compose in detached mode with fresh state
+    desc: Start docker compose in detached mode with fresh state
     cmds:
       - echo "Stopping and removing all containers and volumes..."
-      - docker-compose down -v
+      - docker compose down -v
       - echo "Building fresh image and starting services in background..."
-      - docker-compose up --build -d
+      - docker compose up --build -d
       - echo "Services started. View logs with task docker-logs"
 
   docker-down:
-    desc: Stop docker-compose and remove all containers and volumes
+    desc: Stop docker compose and remove all containers and volumes
     cmds:
-      - docker-compose down -v
+      - docker compose down -v
 
   docker-logs:
-    desc: View docker-compose logs (use FOLLOW=true for tail -f behavior)
+    desc: View docker compose logs (use FOLLOW=true for tail -f behavior)
     cmds:
       - |
         if [ "{{.FOLLOW}}" = "true" ]; then
-          docker-compose logs -f
+          docker compose logs -f
         else
-          docker-compose logs
+          docker compose logs
         fi
