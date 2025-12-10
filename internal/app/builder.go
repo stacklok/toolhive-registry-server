@@ -6,28 +6,20 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
+	"github.com/stacklok/toolhive-registry-server/internal/app/storage"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
-	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
-	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 )
 
 const (
@@ -54,10 +46,8 @@ type registryAppConfig struct {
 
 	// Optional component overrides (primarily for testing)
 	registryHandlerFactory sources.RegistryHandlerFactory
-	storageManager         sources.StorageManager
-	statusPersistence      status.StatusPersistence
 	syncManager            pkgsync.Manager
-	registryProvider       inmemory.RegistryDataProvider
+	storageFactory         storage.Factory // Replaces: storageManager, statusPersistence, registryProvider
 
 	// HTTP server options
 	address        string
@@ -109,30 +99,32 @@ func NewRegistryApp(
 		return nil, fmt.Errorf("failed to build base configuration: %w", err)
 	}
 
-	// Build database pool if needed (used by both sync and service components)
-	var pool *pgxpool.Pool
-	var poolCleanup func()
-	if cfg.config.GetStorageType() == config.StorageTypeDatabase {
-		pool, err = buildDatabaseConnectionPool(ctx, cfg.config)
+	// Create storage factory (single decision point for DB vs File)
+	// This factory creates all storage-dependent components
+	if cfg.storageFactory == nil {
+		cfg.storageFactory, err = storage.NewStorageFactory(ctx, cfg.config, cfg.dataDir)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create database connection pool: %w", err)
+			return nil, fmt.Errorf("failed to create storage factory: %w", err)
 		}
-		poolCleanup = pool.Close
-	} else {
-		poolCleanup = func() {}
 	}
 
-	// Build sync components
-	syncCoordinator, err := buildSyncComponents(ctx, cfg, pool)
+	// Ensure cleanup happens on error
+	var cleanupNeeded = true
+	defer func() {
+		if cleanupNeeded && cfg.storageFactory != nil {
+			cfg.storageFactory.Cleanup()
+		}
+	}()
+
+	// Build sync components using factory
+	syncCoordinator, err := buildSyncComponents(ctx, cfg)
 	if err != nil {
-		poolCleanup()
 		return nil, fmt.Errorf("failed to build sync components: %w", err)
 	}
 
-	// Build service components
-	registryService, err := buildServiceComponents(ctx, cfg, pool)
+	// Build service components using factory
+	registryService, err := buildServiceComponents(ctx, cfg)
 	if err != nil {
-		poolCleanup()
 		return nil, fmt.Errorf("failed to build service components: %w", err)
 	}
 
@@ -154,8 +146,13 @@ func NewRegistryApp(
 	// Create application context
 	appCtx, cancel := context.WithCancel(ctx)
 
+	// Cleanup is now handled by the app, not in defer
+	cleanupNeeded = false
+
 	cancelFunc := func() {
-		poolCleanup()
+		if cfg.storageFactory != nil {
+			cfg.storageFactory.Cleanup()
+		}
 		cancel()
 	}
 
@@ -228,25 +225,17 @@ func WithDataDirectory(dir string) RegistryAppOptions {
 }
 
 // WithRegistryHandlerFactory allows injecting a custom registry handler factory (for testing)
-func WithRegistryHandlerFactory(factory sources.RegistryHandlerFactory) RegistryAppOptions {
+func WithRegistryHandlerFactory(f sources.RegistryHandlerFactory) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
-		cfg.registryHandlerFactory = factory
+		cfg.registryHandlerFactory = f
 		return nil
 	}
 }
 
-// WithStorageManager allows injecting a custom storage manager (for testing)
-func WithStorageManager(sm sources.StorageManager) RegistryAppOptions {
+// WithStorageFactory allows injecting a custom storage factory (for testing)
+func WithStorageFactory(f storage.Factory) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
-		cfg.storageManager = sm
-		return nil
-	}
-}
-
-// WithStatusPersistence allows injecting custom status persistence (for testing)
-func WithStatusPersistence(sp status.StatusPersistence) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.statusPersistence = sp
+		cfg.storageFactory = f
 		return nil
 	}
 }
@@ -259,60 +248,37 @@ func WithSyncManager(sm pkgsync.Manager) RegistryAppOptions {
 	}
 }
 
-// WithRegistryProvider allows injecting a custom registry provider (for testing)
-func WithRegistryProvider(provider inmemory.RegistryDataProvider) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.registryProvider = provider
-		return nil
-	}
-}
-
 // buildSyncComponents builds sync manager, coordinator, and related components
 func buildSyncComponents(
 	ctx context.Context,
 	b *registryAppConfig,
-	pool *pgxpool.Pool,
 ) (coordinator.Coordinator, error) {
 	slog.Info("Initializing sync components")
 
-	// Build registry handler factory
+	// Build registry handler factory (storage-agnostic)
 	if b.registryHandlerFactory == nil {
 		b.registryHandlerFactory = sources.NewRegistryHandlerFactory()
 	}
 
-	// Build storage manager
-	if b.config.GetStorageType() == config.StorageTypeFile && b.storageManager == nil {
-		// Use config's file storage base directory (defaults to "./data")
-		baseDir := b.config.GetFileStorageBaseDir()
-		// Ensure data directory exists
-		if err := os.MkdirAll(baseDir, 0750); err != nil {
-			return nil, fmt.Errorf("failed to create data directory %s: %w", baseDir, err)
-		}
-		b.storageManager = sources.NewFileStorageManager(baseDir)
-	}
-
-	// Build status persistence (now uses dataDir as base path for per-registry status files)
-	if b.config.GetStorageType() == config.StorageTypeFile && b.statusPersistence == nil {
-		b.statusPersistence = status.NewFileStatusPersistence(b.dataDir)
-	}
-
-	// Create state service using factory (needed by sync manager)
-	stateService, err := state.NewStateService(b.config, b.statusPersistence, pool)
+	// Create state service using storage factory
+	stateService, err := b.storageFactory.CreateStateService(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create state service: %w", err)
 	}
 
-	// Build sync manager using factory
+	// Build sync manager using storage factory
 	if b.syncManager == nil {
-		syncWriter, err := writer.NewSyncWriter(b.config, b.storageManager, pool)
+		syncWriter, err := b.storageFactory.CreateSyncWriter(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create sync writer: %w", err)
 		}
+
 		b.syncManager = pkgsync.NewDefaultSyncManager(
 			b.registryHandlerFactory,
 			syncWriter,
 		)
 
+		// Setup Kubernetes reconciler if any registry uses Kubernetes source
 		for _, reg := range b.config.Registries {
 			if reg.GetType() == config.SourceTypeKubernetes {
 				_, err := kubernetes.NewMCPServerReconciler(
@@ -330,7 +296,7 @@ func buildSyncComponents(
 		}
 	}
 
-	// Create coordinator
+	// Create coordinator (storage-agnostic)
 	syncCoordinator := coordinator.New(b.syncManager, stateService, b.config)
 	slog.Info("Sync components initialized successfully")
 
@@ -341,7 +307,6 @@ func buildSyncComponents(
 func buildServiceComponents(
 	ctx context.Context,
 	b *registryAppConfig,
-	pool *pgxpool.Pool,
 ) (service.RegistryService, error) {
 	slog.Info("Initializing service components")
 
@@ -349,133 +314,15 @@ func buildServiceComponents(
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
-	// Determine storage type from config
-	storageType := b.config.GetStorageType()
-
-	// Create service based on storage type
-	var svc service.RegistryService
-	switch storageType {
-	case config.StorageTypeFile:
-		// Build registry provider (reads from synced data via StorageManager)
-		if b.registryProvider == nil {
-			b.registryProvider = inmemory.NewFileRegistryDataProvider(b.storageManager, b.config)
-			slog.Info("Created registry data provider using storage manager")
-		}
-
-		// Create in-memory service (reads from file storage)
-		inMemorySvc, err := inmemory.New(ctx, b.registryProvider, inmemory.WithConfig(b.config))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create in-memory registry service: %w", err)
-		}
-		slog.Info("Created in-memory registry service")
-
-		svc = inMemorySvc
-	case config.StorageTypeDatabase:
-		// Create database-backed service using the pool created earlier
-		if pool == nil {
-			return nil, fmt.Errorf("database pool is required for database storage type")
-		}
-
-		databaseSvc, err := database.New(database.WithConnectionPool(pool))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create database service: %w", err)
-		}
-		slog.Info("Created database-backed registry service")
-
-		svc = databaseSvc
-	default:
-		return nil, fmt.Errorf("unknown storage type: %s", storageType)
+	// Use storage factory to create the service
+	// No storage type checks needed - factory handles everything!
+	svc, err := b.storageFactory.CreateRegistryService(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create registry service: %w", err)
 	}
 
 	slog.Info("Service components initialized successfully")
 	return svc, nil
-}
-
-// buildDatabaseConnectionPool creates a database connection pool
-func buildDatabaseConnectionPool(
-	ctx context.Context,
-	cfg *config.Config,
-) (*pgxpool.Pool, error) {
-	if cfg.Database == nil {
-		return nil, fmt.Errorf("database configuration is required for database storage type")
-	}
-
-	// Get connection string from config (for application user)
-	connStr := cfg.Database.GetConnectionString()
-
-	// Parse connection string into config
-	poolConfig, err := pgxpool.ParseConfig(connStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse database connection string: %w", err)
-	}
-
-	// Configure pool settings from config
-	if cfg.Database.MaxOpenConns > 0 {
-		poolConfig.MaxConns = int32(cfg.Database.MaxOpenConns)
-	}
-	if cfg.Database.MaxIdleConns > 0 {
-		poolConfig.MinConns = int32(cfg.Database.MaxIdleConns)
-	}
-	if cfg.Database.ConnMaxLifetime != "" {
-		lifetime, err := time.ParseDuration(cfg.Database.ConnMaxLifetime)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse connMaxLifetime: %w", err)
-		}
-		poolConfig.MaxConnLifetime = lifetime
-	}
-
-	// Register custom type codecs after connection is established
-	poolConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		// Register array codecs for all custom enum types
-		return registerCustomArrayCodecs(ctx, conn)
-	}
-
-	// Create connection pool
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create database connection pool: %w", err)
-	}
-
-	return pool, nil
-}
-
-// registerCustomArrayCodecs registers codecs for all custom enum array types
-// This is needed because pgx doesn't automatically know how to encode Go slices of custom enum types
-// into PostgreSQL array types
-func registerCustomArrayCodecs(ctx context.Context, conn *pgx.Conn) error {
-	// List of enum types that need array codec registration
-	enumTypes := []string{"registry_type", "sync_status", "icon_theme", "creation_type"}
-
-	for _, enumName := range enumTypes {
-		// Get the OID for the enum from the database
-		var enumOID uint32
-		err := conn.QueryRow(ctx, "SELECT oid FROM pg_type WHERE typname = $1", enumName).Scan(&enumOID)
-		if err != nil {
-			return fmt.Errorf("failed to get %s OID: %w", enumName, err)
-		}
-
-		// Get the OID for the array type (PostgreSQL prefixes array types with _)
-		var arrayOID uint32
-		err = conn.QueryRow(ctx, "SELECT oid FROM pg_type WHERE typname = $1", "_"+enumName).Scan(&arrayOID)
-		if err != nil {
-			return fmt.Errorf("failed to get %s[] array OID: %w", enumName, err)
-		}
-
-		// Register the array codec with proper element type codec
-		conn.TypeMap().RegisterType(&pgtype.Type{
-			Name: enumName + "[]",
-			OID:  arrayOID,
-			Codec: &pgtype.ArrayCodec{
-				ElementType: &pgtype.Type{
-					Name:  enumName,
-					OID:   enumOID,
-					Codec: pgtype.TextCodec{},
-				},
-			},
-		})
-	}
-
-	return nil
 }
 
 // buildHTTPServer builds the HTTP server with router and middleware

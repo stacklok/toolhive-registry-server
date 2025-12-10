@@ -12,16 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/stacklok/toolhive-registry-server/internal/app/storage/mocks"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
-	"github.com/stacklok/toolhive-registry-server/internal/service"
-	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory"
-	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory/mocks"
 	mocksvc "github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
-	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
 )
 
 func TestNewRegistryAppBuilder(t *testing.T) {
@@ -272,30 +268,17 @@ func TestWithRegistryHandlerFactory(t *testing.T) {
 	assert.Equal(t, testFactory, cfg.registryHandlerFactory)
 }
 
-func TestWithStorageManager(t *testing.T) {
+func TestWithStorageFactory(t *testing.T) {
 	t.Parallel()
+	ctrl := gomock.NewController(t)
 	cfg := &registryAppConfig{}
-	// Use nil storage manager for testing - we're just verifying the field is set
-	var testStorageManager sources.StorageManager
+	testFactory := mocks.NewMockFactory(ctrl)
 
-	opt := WithStorageManager(testStorageManager)
+	opt := WithStorageFactory(testFactory)
 	err := opt(cfg)
 
 	require.NoError(t, err)
-	assert.Equal(t, testStorageManager, cfg.storageManager)
-}
-
-func TestWithStatusPersistence(t *testing.T) {
-	t.Parallel()
-	cfg := &registryAppConfig{}
-	// Use nil status persistence for testing - we're just verifying the field is set
-	var testStatusPersistence status.StatusPersistence
-
-	opt := WithStatusPersistence(testStatusPersistence)
-	err := opt(cfg)
-
-	require.NoError(t, err)
-	assert.Equal(t, testStatusPersistence, cfg.statusPersistence)
+	assert.Equal(t, testFactory, cfg.storageFactory)
 }
 
 func TestWithSyncManager(t *testing.T) {
@@ -309,19 +292,6 @@ func TestWithSyncManager(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, testSyncManager, cfg.syncManager)
-}
-
-func TestWithRegistryProvider(t *testing.T) {
-	t.Parallel()
-	cfg := &registryAppConfig{}
-	// Use nil registry provider for testing - we're just verifying the field is set
-	var testRegistryProvider inmemory.RegistryDataProvider
-
-	opt := WithRegistryProvider(testRegistryProvider)
-	err := opt(cfg)
-
-	require.NoError(t, err)
-	assert.Equal(t, testRegistryProvider, cfg.registryProvider)
 }
 
 func TestBuildHTTPServer(t *testing.T) {
@@ -431,294 +401,138 @@ func TestBuildServiceComponents(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	tests := []struct {
-		name       string
-		config     *registryAppConfig
-		setupMocks func(
-			*testing.T,
-			*gomock.Controller,
-		) *mocks.MockRegistryDataProvider
-		wantErr bool
-		verify  func(
-			*testing.T,
-			service.RegistryService,
-			*registryAppConfig,
-			inmemory.RegistryDataProvider,
-		)
-	}{
-		{
-			name: "success with nil registryProvider - creates provider and service",
-			config: &registryAppConfig{
-				config:         createValidTestConfig(),
-				storageManager: sources.NewFileStorageManager(t.TempDir()),
-			},
-			setupMocks: func(
-				t *testing.T,
-				_ *gomock.Controller,
-			) *mocks.MockRegistryDataProvider {
-				t.Helper()
-				return nil
-			},
-			wantErr: false,
-			//nolint:thelper // we want to see these lines
-			verify: func(
-				t *testing.T,
-				_ service.RegistryService,
-				config *registryAppConfig,
-				originalProvider inmemory.RegistryDataProvider,
-			) {
-				assert.NotNil(
-					t,
-					config.registryProvider,
-					"registryProvider should be set when created",
-				)
-				assert.NotEqual(
-					t,
-					originalProvider,
-					config.registryProvider,
-					"provider should be newly created",
-				)
-			},
-		},
-		{
-			name: "success with pre-set registryProvider - skips creation",
-			config: &registryAppConfig{
-				config: createValidTestConfig(),
-			},
-			setupMocks: func(
-				t *testing.T,
-				ctrl *gomock.Controller,
-			) *mocks.MockRegistryDataProvider {
-				t.Helper()
-				mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
-				// service.NewService calls GetRegistryData during initialization
-				mockProvider.EXPECT().GetRegistryData(gomock.Any()).
-					Return(nil, fmt.Errorf("registry file not found")).
-					AnyTimes()
-				return mockProvider
-			},
-			wantErr: false,
-			//nolint:thelper // we want to see these lines
-			verify: func(
-				t *testing.T,
-				_ service.RegistryService,
-				config *registryAppConfig,
-				originalProvider inmemory.RegistryDataProvider,
-			) {
-				assert.Equal(
-					t,
-					originalProvider,
-					config.registryProvider,
-					"provider should remain unchanged when pre-set",
-				)
-			},
-		},
-		{
-			name: "success with pre-set registryProvider",
-			config: &registryAppConfig{
-				config: createValidTestConfig(),
-			},
-			setupMocks: func(
-				t *testing.T,
-				ctrl *gomock.Controller,
-			) *mocks.MockRegistryDataProvider {
-				t.Helper()
-				mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
-				// service.NewService calls GetRegistryData during initialization
-				mockProvider.EXPECT().GetRegistryData(gomock.Any()).
-					Return(nil, fmt.Errorf("registry file not found")).
-					AnyTimes()
-				return mockProvider
-			},
-			wantErr: false,
-			//nolint:thelper // we want to see these lines
-			verify: func(
-				t *testing.T,
-				_ service.RegistryService,
-				config *registryAppConfig,
-				originalProvider inmemory.RegistryDataProvider,
-			) {
-				assert.Equal(
-					t,
-					originalProvider,
-					config.registryProvider,
-					"provider should remain unchanged when pre-set",
-				)
-			},
-		},
-		{
-			name: "error when config is nil - factory.CreateProvider fails",
-			config: &registryAppConfig{
-				config:         nil,
-				storageManager: sources.NewFileStorageManager(t.TempDir()),
-			},
-			setupMocks: func(
-				t *testing.T,
-				_ *gomock.Controller,
-			) *mocks.MockRegistryDataProvider {
-				t.Helper()
-				return nil
-			},
-			wantErr: true,
-		},
-	}
+	t.Run("success with storage factory", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockFactory := mocks.NewMockFactory(ctrl)
+		mockSvc := mocksvc.NewMockRegistryService(ctrl)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
+		mockFactory.EXPECT().
+			CreateRegistryService(gomock.Any()).
+			Return(mockSvc, nil)
 
-			mockRegProvider := tt.setupMocks(t, ctrl)
-			if mockRegProvider != nil {
-				tt.config.registryProvider = mockRegProvider
-			}
+		cfg := &registryAppConfig{
+			config:         createValidTestConfig(),
+			storageFactory: mockFactory,
+		}
 
-			// Store original provider to check if it was set
-			originalProvider := tt.config.registryProvider
+		svc, err := buildServiceComponents(ctx, cfg)
 
-			svc, err := buildServiceComponents(ctx, tt.config, nil)
+		require.NoError(t, err)
+		require.NotNil(t, svc)
+		assert.Equal(t, mockSvc, svc)
+	})
 
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Nil(t, svc)
-				return
-			}
+	t.Run("error when config is nil", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockFactory := mocks.NewMockFactory(ctrl)
 
-			require.NoError(t, err)
-			require.NotNil(t, svc)
+		// No expectations - config check happens before factory call
 
-			if tt.verify != nil {
-				tt.verify(t, svc, tt.config, originalProvider)
-			}
-		})
-	}
+		cfg := &registryAppConfig{
+			config:         nil,
+			storageFactory: mockFactory,
+		}
+
+		svc, err := buildServiceComponents(ctx, cfg)
+
+		require.Error(t, err)
+		assert.Nil(t, svc)
+	})
+
+	t.Run("error when factory fails", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockFactory := mocks.NewMockFactory(ctrl)
+
+		mockFactory.EXPECT().
+			CreateRegistryService(gomock.Any()).
+			Return(nil, fmt.Errorf("factory creation failed"))
+
+		cfg := &registryAppConfig{
+			config:         createValidTestConfig(),
+			storageFactory: mockFactory,
+		}
+
+		svc, err := buildServiceComponents(ctx, cfg)
+
+		require.Error(t, err)
+		assert.Nil(t, svc)
+	})
 }
 
 func TestBuildSyncComponents(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 
-	tests := []struct {
-		name    string
-		config  *registryAppConfig
-		wantErr bool
-		verify  func(*testing.T, coordinator.Coordinator, *registryAppConfig)
-	}{
-		{
-			name: "success with all nil components - creates defaults",
-			config: &registryAppConfig{
-				config:                 createValidTestConfig(),
-				dataDir:                t.TempDir(),
-				statusFile:             t.TempDir() + "/status.json",
-				registryHandlerFactory: nil,
-				storageManager:         nil,
-				statusPersistence:      nil,
-				syncManager:            nil,
-			},
-			wantErr: false,
-			//nolint:thelper // we want to see these lines
-			verify: func(t *testing.T, coord coordinator.Coordinator, cfg *registryAppConfig) {
-				assert.NotNil(t, coord, "coordinator should be created")
-				assert.NotNil(t, cfg.registryHandlerFactory, "registryHandlerFactory should be created")
-				assert.NotNil(t, cfg.storageManager, "storageManager should be created")
-				assert.NotNil(t, cfg.statusPersistence, "statusPersistence should be created")
-				assert.NotNil(t, cfg.syncManager, "syncManager should be created")
-			},
-		},
-		{
-			name: "success with all pre-set components - uses provided ones",
-			config: func() *registryAppConfig {
-				tempDir := t.TempDir()
-				return &registryAppConfig{
-					config:                 createValidTestConfig(),
-					dataDir:                tempDir,
-					statusFile:             tempDir + "/status.json",
-					registryHandlerFactory: sources.NewRegistryHandlerFactory(),
-					storageManager:         sources.NewFileStorageManager(tempDir),
-					statusPersistence:      status.NewFileStatusPersistence(tempDir + "/status.json"),
-					syncManager: pkgsync.NewDefaultSyncManager(
-						sources.NewRegistryHandlerFactory(),
-						sources.NewFileStorageManager(tempDir),
-					),
-				}
-			}(),
-			wantErr: false,
-			//nolint:thelper // we want to see these lines
-			verify: func(t *testing.T, coord coordinator.Coordinator, cfg *registryAppConfig) {
-				assert.NotNil(t, coord, "coordinator should be created")
-				// Verify that the original components are still set (not replaced)
-				assert.NotNil(t, cfg.registryHandlerFactory, "registryHandlerFactory should remain set")
-				assert.NotNil(t, cfg.storageManager, "storageManager should remain set")
-				assert.NotNil(t, cfg.statusPersistence, "statusPersistence should remain set")
-				assert.NotNil(t, cfg.syncManager, "syncManager should remain set")
-			},
-		},
-		{
-			name: "success with mixed nil and pre-set components",
-			config: func() *registryAppConfig {
-				tempDir := t.TempDir()
-				return &registryAppConfig{
-					config:                 createValidTestConfig(),
-					dataDir:                tempDir,
-					statusFile:             tempDir + "/status.json",
-					registryHandlerFactory: sources.NewRegistryHandlerFactory(), // pre-set
-					storageManager:         nil,                                 // will be created
-					statusPersistence:      nil,                                 // will be created
-					syncManager:            nil,                                 // will be created
-				}
-			}(),
-			wantErr: false,
-			//nolint:thelper // we want to see these lines
-			verify: func(t *testing.T, coord coordinator.Coordinator, cfg *registryAppConfig) {
-				assert.NotNil(t, coord, "coordinator should be created")
-				assert.NotNil(t, cfg.registryHandlerFactory, "pre-set registryHandlerFactory should remain")
-				assert.NotNil(t, cfg.storageManager, "storageManager should be created")
-				assert.NotNil(t, cfg.statusPersistence, "statusPersistence should be created")
-				assert.NotNil(t, cfg.syncManager, "syncManager should be created")
-			},
-		},
-		{
-			name: "error when data directory creation fails",
-			config: func() *registryAppConfig {
-				cfg := createValidTestConfig()
-				// Set an invalid base directory path that should fail
-				cfg.FileStorage = &config.FileStorageConfig{
-					BaseDir: "/dev/null/invalid/path",
-				}
-				return &registryAppConfig{
-					config:                 cfg,
-					dataDir:                "/tmp", // This is not used anymore, config takes precedence
-					statusFile:             "/tmp/status.json",
-					registryHandlerFactory: nil,
-					storageManager:         nil, // This will trigger directory creation
-					statusPersistence:      nil,
-					syncManager:            nil,
-				}
-			}(),
-			wantErr: true,
-		},
-	}
+	t.Run("success with mock factory", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockFactory := mocks.NewMockFactory(ctrl)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+		mockFactory.EXPECT().
+			CreateStateService(gomock.Any()).
+			Return(nil, nil)
 
-			coord, err := buildSyncComponents(context.Background(), tt.config, nil)
+		mockFactory.EXPECT().
+			CreateSyncWriter(gomock.Any()).
+			Return(nil, nil)
 
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Nil(t, coord)
-				return
-			}
+		cfg := &registryAppConfig{
+			config:         createValidTestConfig(),
+			storageFactory: mockFactory,
+		}
 
-			require.NoError(t, err)
-			require.NotNil(t, coord)
+		coord, err := buildSyncComponents(ctx, cfg)
 
-			if tt.verify != nil {
-				tt.verify(t, coord, tt.config)
-			}
-		})
-	}
+		require.NoError(t, err)
+		require.NotNil(t, coord)
+	})
+
+	t.Run("error when state service creation fails", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockFactory := mocks.NewMockFactory(ctrl)
+
+		mockFactory.EXPECT().
+			CreateStateService(gomock.Any()).
+			Return(nil, fmt.Errorf("state service creation failed"))
+
+		cfg := &registryAppConfig{
+			config:         createValidTestConfig(),
+			storageFactory: mockFactory,
+		}
+
+		coord, err := buildSyncComponents(ctx, cfg)
+
+		require.Error(t, err)
+		assert.Nil(t, coord)
+	})
+
+	t.Run("error when sync writer creation fails", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockFactory := mocks.NewMockFactory(ctrl)
+
+		mockFactory.EXPECT().
+			CreateStateService(gomock.Any()).
+			Return(nil, nil)
+
+		mockFactory.EXPECT().
+			CreateSyncWriter(gomock.Any()).
+			Return(nil, fmt.Errorf("sync writer creation failed"))
+
+		cfg := &registryAppConfig{
+			config:         createValidTestConfig(),
+			storageFactory: mockFactory,
+		}
+
+		coord, err := buildSyncComponents(ctx, cfg)
+
+		require.Error(t, err)
+		assert.Nil(t, coord)
+	})
 }
 
 func TestNewRegistryApp(t *testing.T) {
