@@ -13,7 +13,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
+	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory/mocks"
 )
 
 func TestValidateManagedRegistry(t *testing.T) {

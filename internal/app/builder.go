@@ -57,7 +57,7 @@ type registryAppConfig struct {
 	storageManager         sources.StorageManager
 	statusPersistence      status.StatusPersistence
 	syncManager            pkgsync.Manager
-	registryProvider       service.RegistryDataProvider
+	registryProvider       inmemory.RegistryDataProvider
 
 	// HTTP server options
 	address        string
@@ -260,7 +260,7 @@ func WithSyncManager(sm pkgsync.Manager) RegistryAppOptions {
 }
 
 // WithRegistryProvider allows injecting a custom registry provider (for testing)
-func WithRegistryProvider(provider service.RegistryDataProvider) RegistryAppOptions {
+func WithRegistryProvider(provider inmemory.RegistryDataProvider) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
 		cfg.registryProvider = provider
 		return nil
@@ -358,13 +358,7 @@ func buildServiceComponents(
 	case config.StorageTypeFile:
 		// Build registry provider (reads from synced data via StorageManager)
 		if b.registryProvider == nil {
-			// StorageManager was already built in buildSyncComponents
-			factory := service.NewRegistryProviderFactory(b.storageManager)
-			provider, err := factory.CreateProvider(b.config)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create registry provider: %w", err)
-			}
-			b.registryProvider = provider
+			b.registryProvider = inmemory.NewFileRegistryDataProvider(b.storageManager, b.config)
 			slog.Info("Created registry data provider using storage manager")
 		}
 

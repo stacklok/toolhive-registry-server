@@ -15,7 +15,9 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
+	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory"
+	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory/mocks"
+	mocksvc "github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
@@ -313,7 +315,7 @@ func TestWithRegistryProvider(t *testing.T) {
 	t.Parallel()
 	cfg := &registryAppConfig{}
 	// Use nil registry provider for testing - we're just verifying the field is set
-	var testRegistryProvider service.RegistryDataProvider
+	var testRegistryProvider inmemory.RegistryDataProvider
 
 	opt := WithRegistryProvider(testRegistryProvider)
 	err := opt(cfg)
@@ -329,7 +331,7 @@ func TestBuildHTTPServer(t *testing.T) {
 	tests := []struct {
 		name           string
 		config         *registryAppConfig
-		setupMock      func(*mocks.MockRegistryService)
+		setupMock      func(*mocksvc.MockRegistryService)
 		wantAddr       string
 		wantReadTO     time.Duration
 		wantWriteTO    time.Duration
@@ -346,7 +348,7 @@ func TestBuildHTTPServer(t *testing.T) {
 				writeTimeout:   15 * time.Second,
 				idleTimeout:    60 * time.Second,
 			},
-			setupMock:      func(_ *mocks.MockRegistryService) {},
+			setupMock:      func(_ *mocksvc.MockRegistryService) {},
 			wantAddr:       ":8080",
 			wantReadTO:     10 * time.Second,
 			wantWriteTO:    15 * time.Second,
@@ -365,7 +367,7 @@ func TestBuildHTTPServer(t *testing.T) {
 				writeTimeout:   10 * time.Second,
 				idleTimeout:    30 * time.Second,
 			},
-			setupMock:      func(_ *mocks.MockRegistryService) {},
+			setupMock:      func(_ *mocksvc.MockRegistryService) {},
 			wantAddr:       ":9090",
 			wantReadTO:     5 * time.Second,
 			wantWriteTO:    10 * time.Second,
@@ -382,7 +384,7 @@ func TestBuildHTTPServer(t *testing.T) {
 				writeTimeout:   30 * time.Second,
 				idleTimeout:    120 * time.Second,
 			},
-			setupMock:      func(_ *mocks.MockRegistryService) {},
+			setupMock:      func(_ *mocksvc.MockRegistryService) {},
 			wantAddr:       "127.0.0.1:3000",
 			wantReadTO:     20 * time.Second,
 			wantWriteTO:    30 * time.Second,
@@ -397,7 +399,7 @@ func TestBuildHTTPServer(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockSvc := mocks.NewMockRegistryService(ctrl)
+			mockSvc := mocksvc.NewMockRegistryService(ctrl)
 			tt.setupMock(mockSvc)
 
 			// Set auth middleware in config for tests
@@ -441,7 +443,7 @@ func TestBuildServiceComponents(t *testing.T) {
 			*testing.T,
 			service.RegistryService,
 			*registryAppConfig,
-			service.RegistryDataProvider,
+			inmemory.RegistryDataProvider,
 		)
 	}{
 		{
@@ -463,7 +465,7 @@ func TestBuildServiceComponents(t *testing.T) {
 				t *testing.T,
 				_ service.RegistryService,
 				config *registryAppConfig,
-				originalProvider service.RegistryDataProvider,
+				originalProvider inmemory.RegistryDataProvider,
 			) {
 				assert.NotNil(
 					t,
@@ -501,7 +503,7 @@ func TestBuildServiceComponents(t *testing.T) {
 				t *testing.T,
 				_ service.RegistryService,
 				config *registryAppConfig,
-				originalProvider service.RegistryDataProvider,
+				originalProvider inmemory.RegistryDataProvider,
 			) {
 				assert.Equal(
 					t,
@@ -534,7 +536,7 @@ func TestBuildServiceComponents(t *testing.T) {
 				t *testing.T,
 				_ service.RegistryService,
 				config *registryAppConfig,
-				originalProvider service.RegistryDataProvider,
+				originalProvider inmemory.RegistryDataProvider,
 			) {
 				assert.Equal(
 					t,
