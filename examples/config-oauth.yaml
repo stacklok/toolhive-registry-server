@@ -91,11 +91,10 @@ auth:
 #   host: localhost
 #   port: 5432
 #   user: thv_user
-#   # Use passwordFile for production (recommended)
-#   passwordFile: /run/secrets/db_password
-#   # Or set THV_DATABASE_PASSWORD environment variable
 #   database: toolhive_registry
 #   sslMode: require
+#   # Passwords are managed via PostgreSQL's pgpass file
+#   # See: https://www.postgresql.org/docs/current/libpq-pgpass.html
 
 # Optional: Filter configuration to include/exclude specific servers
 # filter:

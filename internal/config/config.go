@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"github.com/spf13/viper"
 )
 
 const (
@@ -30,6 +30,10 @@ const (
 	// SourceTypeKubernetes is the type for registries that query Kubernetes deployments
 	// Kubernetes registries discover MCP servers from running Kubernetes resources
 	SourceTypeKubernetes = "kubernetes"
+
+	// EnvPrefix is the prefix used for environment variables that override config values.
+	// For example, THV_REGISTRY_REGISTRYNAME overrides registryName in the config file.
+	EnvPrefix = "THV_REGISTRY"
 )
 
 // StorageType is an enum of supported storage backends for registry data.
@@ -101,6 +105,11 @@ type Config struct {
 	Database     *DatabaseConfig    `yaml:"database,omitempty"`
 	FileStorage  *FileStorageConfig `yaml:"fileStorage,omitempty"`
 	Auth         *AuthConfig        `yaml:"auth,omitempty"`
+
+	// insecureAllowHTTP allows HTTP URLs for OAuth issuer URLs (development only)
+	// Can be set via THV_REGISTRY_INSECURE_URL environment variable
+	// Not loaded from YAML file - environment variable only
+	insecureAllowHTTP bool
 }
 
 // RegistryConfig defines a single registry data source configuration
@@ -312,7 +321,8 @@ func (p *OAuthProviderConfig) GetClientSecret() (string, error) {
 
 // validateProvider validates a single OAuth provider configuration.
 // index is used for error message formatting to identify which provider failed validation.
-func (p *OAuthProviderConfig) validateProvider(index int) error {
+// insecureAllowHTTP allows HTTP URLs for development (when THV_REGISTRY_INSECURE_URL is set).
+func (p *OAuthProviderConfig) validateProvider(index int, insecureAllowHTTP bool) error {
 	if p.Name == "" {
 		return fmt.Errorf("auth.oauth.providers[%d].name is required", index)
 	}
@@ -331,7 +341,7 @@ func (p *OAuthProviderConfig) validateProvider(index int) error {
 	}
 
 	// Enforce HTTPS unless THV_REGISTRY_INSECURE_URL=true or localhost
-	if issuerURL.Scheme != "https" && os.Getenv("THV_REGISTRY_INSECURE_URL") != "true" {
+	if issuerURL.Scheme != "https" && !insecureAllowHTTP {
 		host := issuerURL.Hostname()
 		if host != "localhost" && host != "127.0.0.1" && host != "::1" {
 			const msg = "must use HTTPS (set THV_REGISTRY_INSECURE_URL=true to allow HTTP)"
@@ -349,7 +359,8 @@ func (p *OAuthProviderConfig) validateProvider(index int) error {
 // Validate performs validation on the auth configuration.
 // This method assumes Mode has already been resolved to a valid value
 // (either explicitly set or defaulted by resolveAuthMode in serve.go).
-func (a *AuthConfig) Validate() error {
+// insecureAllowHTTP allows HTTP URLs for development (when THV_REGISTRY_INSECURE_URL is set).
+func (a *AuthConfig) Validate(insecureAllowHTTP bool) error {
 	switch a.Mode {
 	case AuthModeAnonymous:
 		// Anonymous mode doesn't require OAuth config
@@ -365,7 +376,7 @@ func (a *AuthConfig) Validate() error {
 
 		// Validate each provider
 		for i, provider := range a.OAuth.Providers {
-			if err := provider.validateProvider(i); err != nil {
+			if err := provider.validateProvider(i, insecureAllowHTTP); err != nil {
 				return err
 			}
 		}
@@ -486,7 +497,9 @@ func (d *DatabaseConfig) GetMigrationConnectionString() string {
 	)
 }
 
-// LoadConfig loads and parses configuration from a YAML file
+// LoadConfig loads and parses configuration from a YAML file with environment variable support.
+// Configuration values can be overridden using environment variables with the THV_REGISTRY_ prefix.
+// Nested keys use underscores as separators (e.g., THV_REGISTRY_DATABASE_HOST for database.host).
 func LoadConfig(opts ...Option) (*Config, error) {
 	loaderCfg := &loaderConfig{}
 	for _, opt := range opts {
@@ -501,17 +514,38 @@ func LoadConfig(opts ...Option) (*Config, error) {
 		return nil, fmt.Errorf("path is required")
 	}
 
-	// Read the entire file into memory
-	data, err := os.ReadFile(loaderCfg.path)
-	if err != nil {
+	// Create a new Viper instance (don't use global)
+	v := viper.New()
+
+	// Set config file path
+	v.SetConfigFile(loaderCfg.path)
+
+	// Configure environment variable support
+	// All env vars use the THV_REGISTRY_ prefix (e.g., THV_REGISTRY_REGISTRYNAME, THV_REGISTRY_DATABASE_HOST)
+	v.SetEnvPrefix(EnvPrefix)
+
+	// Enable automatic environment variable binding
+	// This allows any config value to be overridden via environment variables
+	v.AutomaticEnv()
+
+	// Replace dots with underscores for nested keys
+	// e.g., database.host becomes THV_REGISTRY_DATABASE_HOST
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	// Read config file
+	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Parse YAML content
+	// Unmarshal into struct
 	var config Config
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+	if err := v.Unmarshal(&config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+
+	// Set insecureAllowHTTP from environment variable (THV_REGISTRY_INSECURE_URL)
+	// This is not loaded from YAML - environment variable only for security
+	config.insecureAllowHTTP = v.GetBool("insecure_url")
 
 	// Validate the config
 	if err := config.validate(); err != nil {
@@ -828,7 +862,7 @@ func (c *Config) validateAuth() error {
 	if c.Auth == nil {
 		return errors.New("auth configuration is required")
 	}
-	if err := c.Auth.Validate(); err != nil {
+	if err := c.Auth.Validate(c.insecureAllowHTTP); err != nil {
 		return fmt.Errorf("invalid auth configuration: %w", err)
 	}
 

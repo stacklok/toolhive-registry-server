@@ -53,8 +53,8 @@ auth:
 
 # Optional: PostgreSQL database configuration
 # Uncomment to store registry data in a database instead of local files
-# For development, you can use environment variable for password:
-#   export THV_DATABASE_PASSWORD="devpassword"
+# Passwords are managed via PostgreSQL's pgpass file (~/.pgpass or $PGPASSFILE)
+# See: https://www.postgresql.org/docs/current/libpq-pgpass.html
 # database:
 #   host: localhost
 #   port: 5432

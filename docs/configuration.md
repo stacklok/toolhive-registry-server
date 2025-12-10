@@ -344,9 +344,7 @@ database:
   host: localhost
   port: 5432
   user: registry_app
-  passwordFile: /secrets/db-password          # Optional
   migrationUser: registry_migrator            # Optional
-  migrationPasswordFile: /secrets/db-migration-password  # Optional
   database: toolhive_registry
   sslMode: require                            # disable, require, verify-ca, verify-full
   maxOpenConns: 25                            # Optional
@@ -354,10 +352,8 @@ database:
   connMaxLifetime: "5m"                       # Optional
 ```
 
-**Password priority:**
-1. Environment variable (`THV_DATABASE_PASSWORD`)
-2. pgpass file (`~/.pgpass` or `$PGPASSFILE`)
-3. `passwordFile` in config
+**Password management:**
+Passwords are provided via PostgreSQL's standard pgpass file (`~/.pgpass` or `$PGPASSFILE`). See [Database Configuration](database.md#password-security) for details.
 
 ## File Storage
 
@@ -376,30 +372,34 @@ fileStorage:
 
 ## Environment Variables
 
-Configuration values can be overridden or supplemented with environment variables.
+Configuration values can be overridden using environment variables with the `THV_REGISTRY_` prefix. For complete documentation, see [Environment Variables Guide](environment-variables.md).
 
-### Database Passwords
+### Common Configuration Overrides
 
 | Variable | Description |
 |----------|-------------|
-| `THV_DATABASE_PASSWORD` | Database password for normal operations |
-| `THV_DATABASE_MIGRATION_PASSWORD` | Database password for migrations |
+| `THV_REGISTRY_DATABASE_HOST` | Override database host |
+| `THV_REGISTRY_DATABASE_PORT` | Override database port |
+| `THV_REGISTRY_DATABASE_USER` | Override database user |
+| `THV_REGISTRY_AUTH_MODE` | Override authentication mode (anonymous or oauth) |
+| `THV_REGISTRY_LOG_LEVEL` | Set log level (debug, info, warn, error) |
 
 ### PostgreSQL Standard
+
+Database passwords are managed via PostgreSQL's pgpass file:
 
 | Variable | Description |
 |----------|-------------|
 | `PGPASSFILE` | Path to pgpass file (default: `~/.pgpass`) |
-| `PGHOST` | Database host |
-| `PGPORT` | Database port |
-| `PGDATABASE` | Database name |
-| `PGUSER` | Database user |
+
+See [Database Configuration](database.md#password-security) for password management details.
 
 ### Other
 
 | Variable | Description |
 |----------|-------------|
 | `CONFIG_FILE` | Override config file path |
+| `THV_REGISTRY_INSECURE_URL` | Allow HTTP URLs for development (default: false) |
 
 ## Examples
 

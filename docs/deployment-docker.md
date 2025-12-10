@@ -51,11 +51,18 @@ docker run -d \
 #### With Database
 
 ```bash
+# Create pgpass file with database credentials
+cat > ~/.pgpass <<EOF
+postgres:5432:registry:db_app:app_password
+EOF
+chmod 600 ~/.pgpass
+
 docker run -d \
   --name registry-api \
   -p 8080:8080 \
   -v $(pwd)/examples:/config:ro \
-  -e THV_DATABASE_PASSWORD=your-password \
+  -v ~/.pgpass:/root/.pgpass:ro \
+  -e PGPASSFILE=/root/.pgpass \
   ghcr.io/stacklok/toolhive/thv-registry-api:latest \
   serve --config /config/config-database-dev.yaml
 ```
@@ -70,7 +77,8 @@ docker run \
   --name registry-api                   # Container name
   -p 8080:8080                         # Port mapping
   -v $(pwd)/config:/config:ro          # Config volume (read-only)
-  -e THV_DATABASE_PASSWORD=pass        # Environment variable
+  -v ~/.pgpass:/root/.pgpass:ro        # Mount pgpass file
+  -e PGPASSFILE=/root/.pgpass          # Point to pgpass file
   --restart unless-stopped              # Restart policy
   --health-cmd='curl -f http://localhost:8080/health || exit 1' \
   --health-interval=30s                 # Health check
@@ -120,9 +128,9 @@ postgres (healthy) → registry-api (runs migrations, then starts)
 Default setup uses:
 - **Config file**: `examples/config-docker.yaml`
 - **Sample data**: `examples/registry-sample.json`
-- **Database passwords**: Set via environment variables in docker-compose.yaml
-  - `THV_DATABASE_PASSWORD`: Application user password
-  - `THV_DATABASE_MIGRATION_PASSWORD`: Migration user password
+- **Database passwords**: Managed via pgpass file (`docker/pgpass`) mounted into the container
+  - `PGPASSFILE` environment variable points to the mounted pgpass file
+  - Contains credentials for both application and migration users
 
 ### Docker Compose File
 
@@ -181,16 +189,23 @@ docker-compose restart registry-api
 
 #### Changing Database Credentials
 
-Update environment variables in `docker-compose.yaml`:
+1. Update the pgpass file (`docker/pgpass`) with new credentials:
 
-```yaml
-environment:
-  - THV_DATABASE_PASSWORD=new-app-password
-  - THV_DATABASE_MIGRATION_PASSWORD=new-migration-password
-  - POSTGRES_PASSWORD=new-postgres-password
+```bash
+# Edit docker/pgpass
+postgres:5432:registry:db_app:new-app-password
+postgres:5432:registry:db_migrator:new-migration-password
 ```
 
-Recreate services:
+2. Update PostgreSQL superuser password in `docker-compose.yaml`:
+
+```yaml
+postgres:
+  environment:
+    - POSTGRES_PASSWORD=new-postgres-password
+```
+
+3. Recreate services:
 ```bash
 docker-compose down
 docker-compose up -d
