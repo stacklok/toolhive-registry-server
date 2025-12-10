@@ -1,10 +1,12 @@
 package config
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/stacklok/toolhive-registry-server/examples"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -2264,52 +2266,58 @@ database:
 }
 
 // TestViperLoadConfigWithExistingExampleFiles tests loading each example config file
+// using the embedded filesystem from examples directory
 func TestViperLoadConfigWithExistingExampleFiles(t *testing.T) {
 	t.Parallel()
 
-	// Get the project root to find examples directory
-	// This assumes tests run from project root or internal/config
-	projectRoot := "../.."
-	examplesDir := filepath.Join(projectRoot, "examples")
-
-	// Check if examples directory exists
-	if _, err := os.Stat(examplesDir); os.IsNotExist(err) {
-		t.Skip("Examples directory not found, skipping example config tests")
+	// Find all config-*.yaml files in the embedded filesystem
+	matches, err := fs.Glob(examples.ConfigFS, "config-*.yaml")
+	if err != nil {
+		t.Fatalf("Failed to find config files: %v", err)
 	}
 
-	// List of example configs that should load successfully (with anonymous auth)
-	// Some configs require OAuth which would fail validation without providers
-	anonymousConfigs := []string{
-		"config-file.yaml",
-		"config-git.yaml",
-		"config-api.yaml",
-		"config-complete.yaml",
-		"config-database-dev.yaml",
-		"config-database-passwordfile.yaml",
-		"config-database-prod.yaml",
-		"config-docker.yaml",
-		"config-docker-dual.yaml",
-		"config-docker-multiple.yaml",
-		"config-filter-test.yaml",
+	if len(matches) == 0 {
+		t.Fatal("No config-*.yaml files found in embedded filesystem")
 	}
 
-	for _, configFile := range anonymousConfigs {
-		t.Run(configFile, func(t *testing.T) {
+	for _, configPath := range matches {
+		t.Run(filepath.Base(configPath), func(t *testing.T) {
 			t.Parallel()
-			configPath := filepath.Join(examplesDir, configFile)
 
-			// Skip if file doesn't exist
-			if _, err := os.Stat(configPath); os.IsNotExist(err) {
-				t.Skipf("Config file %s not found", configFile)
+			// Read the file from embedded filesystem
+			data, err := examples.ConfigFS.ReadFile(configPath)
+			if err != nil {
+				t.Fatalf("Failed to read file: %v", err)
 			}
 
-			// Load config - should not error for anonymous configs
-			cfg, err := LoadConfig(WithConfigPath(configPath))
-			require.NoError(t, err, "Failed to load %s", configFile)
-			require.NotNil(t, cfg)
+			// Write to temporary file for LoadConfig to read
+			tmpFile, err := os.CreateTemp("", "config-*.yaml")
+			if err != nil {
+				t.Fatalf("Failed to create temp file: %v", err)
+			}
+			defer os.Remove(tmpFile.Name())
+			defer tmpFile.Close()
+
+			if _, err := tmpFile.Write(data); err != nil {
+				t.Fatalf("Failed to write temp file: %v", err)
+			}
+			if err := tmpFile.Close(); err != nil {
+				t.Fatalf("Failed to close temp file: %v", err)
+			}
+
+			// Load and validate configuration using LoadConfig
+			cfg, err := LoadConfig(WithConfigPath(tmpFile.Name()))
+			if err != nil {
+				t.Fatalf("Failed to load configuration: %v", err)
+			}
+
+			// Ensure config is not nil (LoadConfig validates internally)
+			if cfg == nil {
+				t.Fatal("LoadConfig returned nil config")
+			}
 
 			// Verify basic structure
-			assert.NotEmpty(t, cfg.Registries, "Config %s should have at least one registry", configFile)
+			assert.NotEmpty(t, cfg.Registries, "Config %s should have at least one registry", configPath)
 		})
 	}
 }

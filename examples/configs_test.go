@@ -1,7 +1,6 @@
 package examples
 
 import (
-	"embed"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,14 +9,11 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
-//go:embed config-*.yaml
-var configFS embed.FS
-
 func TestConfigFiles(t *testing.T) {
 	t.Parallel()
 
 	// Find all config-*.yaml files in the embedded filesystem
-	matches, err := fs.Glob(configFS, "config-*.yaml")
+	matches, err := fs.Glob(ConfigFS, "config-*.yaml")
 	if err != nil {
 		t.Fatalf("Failed to find config files: %v", err)
 	}
@@ -31,7 +27,7 @@ func TestConfigFiles(t *testing.T) {
 			t.Parallel()
 
 			// Read the file from embedded filesystem
-			data, err := configFS.ReadFile(configPath)
+			data, err := ConfigFS.ReadFile(configPath)
 			if err != nil {
 				t.Fatalf("Failed to read file: %v", err)
 			}
