@@ -94,22 +94,39 @@ A complete Docker Compose setup is provided that includes PostgreSQL and the API
 
 ### Quick Start
 
-```bash
-# Start all services (PostgreSQL + API with automatic migrations)
-docker-compose up
+**Recommended: Use Task commands for fresh state**
 
-# Run in detached mode
-docker-compose up -d
+```bash
+# Start with fresh state (rebuilds image, clears volumes)
+task docker-up
+
+# Or detached mode
+task docker-up-detached
 
 # View logs
-docker-compose logs -f registry-api
+task docker-logs           # All logs
+FOLLOW=true task docker-logs  # Tail logs
 
-# Stop all services
-docker-compose down
-
-# Stop and remove volumes (WARNING: deletes database data)
-docker-compose down -v
+# Stop and clean up
+task docker-down
 ```
+
+**Alternative: Direct docker-compose**
+
+```bash
+# Start services (may have stale state)
+docker-compose up
+
+# For fresh start, you must manually rebuild and clean:
+docker-compose down -v && docker-compose up --build
+```
+
+> **Important:** The `task docker-up` commands automatically ensure fresh state by:
+> - Rebuilding the registry-api image from source
+> - Clearing the postgres_data volume (fresh database)
+> - Clearing the registry_data volume (no cached sync state)
+>
+> This prevents subtle bugs from stale migrations, old code, or cached data.
 
 ### Architecture
 
