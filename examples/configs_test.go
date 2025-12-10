@@ -1,3 +1,5 @@
+// Package examples provides test configuration files and utilities
+// for validating configuration examples.
 package examples
 
 import (

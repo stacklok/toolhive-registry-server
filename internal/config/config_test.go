@@ -1,12 +1,10 @@
 package config
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/stacklok/toolhive-registry-server/examples"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -2263,63 +2261,6 @@ database:
 	// Values not overridden should keep their file values
 	assert.Equal(t, 5432, cfg.Database.Port)
 	assert.Equal(t, "file-db", cfg.Database.Database)
-}
-
-// TestViperLoadConfigWithExistingExampleFiles tests loading each example config file
-// using the embedded filesystem from examples directory
-func TestViperLoadConfigWithExistingExampleFiles(t *testing.T) {
-	t.Parallel()
-
-	// Find all config-*.yaml files in the embedded filesystem
-	matches, err := fs.Glob(examples.ConfigFS, "config-*.yaml")
-	if err != nil {
-		t.Fatalf("Failed to find config files: %v", err)
-	}
-
-	if len(matches) == 0 {
-		t.Fatal("No config-*.yaml files found in embedded filesystem")
-	}
-
-	for _, configPath := range matches {
-		t.Run(filepath.Base(configPath), func(t *testing.T) {
-			t.Parallel()
-
-			// Read the file from embedded filesystem
-			data, err := examples.ConfigFS.ReadFile(configPath)
-			if err != nil {
-				t.Fatalf("Failed to read file: %v", err)
-			}
-
-			// Write to temporary file for LoadConfig to read
-			tmpFile, err := os.CreateTemp("", "config-*.yaml")
-			if err != nil {
-				t.Fatalf("Failed to create temp file: %v", err)
-			}
-			defer os.Remove(tmpFile.Name())
-			defer tmpFile.Close()
-
-			if _, err := tmpFile.Write(data); err != nil {
-				t.Fatalf("Failed to write temp file: %v", err)
-			}
-			if err := tmpFile.Close(); err != nil {
-				t.Fatalf("Failed to close temp file: %v", err)
-			}
-
-			// Load and validate configuration using LoadConfig
-			cfg, err := LoadConfig(WithConfigPath(tmpFile.Name()))
-			if err != nil {
-				t.Fatalf("Failed to load configuration: %v", err)
-			}
-
-			// Ensure config is not nil (LoadConfig validates internally)
-			if cfg == nil {
-				t.Fatal("LoadConfig returned nil config")
-			}
-
-			// Verify basic structure
-			assert.NotEmpty(t, cfg.Registries, "Config %s should have at least one registry", configPath)
-		})
-	}
 }
 
 // TestViperValidationStillWorks tests that validation errors still occur even with Viper
