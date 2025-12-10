@@ -56,15 +56,22 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 
 	// Initialize metadata
 	serverJSON.Meta = &upstreamv0.ServerMeta{
-		PublisherProvided: make(map[string]interface{}),
+		PublisherProvided: make(map[string]any),
 	}
 
 	// Add Kubernetes metadata to publisher provided metadata
-	serverJSON.Meta.PublisherProvided["kubernetes_namespace"] = mcpServer.Namespace
-	serverJSON.Meta.PublisherProvided["kubernetes_name"] = mcpServer.Name
-	serverJSON.Meta.PublisherProvided["kubernetes_uid"] = string(mcpServer.UID)
-	serverJSON.Meta.PublisherProvided["kubernetes_image"] = mcpServer.Spec.Image
-	serverJSON.Meta.PublisherProvided["kubernetes_transport"] = mcpServer.Spec.Transport
+	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
+		transportURL: map[string]any{
+			"metadata": map[string]any{
+				"kubernetes_kind":      mcpServer.Kind,
+				"kubernetes_namespace": mcpServer.Namespace,
+				"kubernetes_name":      mcpServer.Name,
+				"kubernetes_image":     mcpServer.Spec.Image,
+				"kubernetes_uid":       string(mcpServer.UID),
+				"kubernetes_transport": mcpServer.Spec.Transport,
+			},
+		},
+	}
 
 	return serverJSON, nil
 }
@@ -112,12 +119,19 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 
 	// Initialize metadata
 	serverJSON.Meta = &upstreamv0.ServerMeta{
-		PublisherProvided: make(map[string]interface{}),
+		PublisherProvided: make(map[string]any),
 	}
 	// Add Kubernetes metadata to publisher provided metadata
-	serverJSON.Meta.PublisherProvided["kubernetes_namespace"] = virtualMCPServer.Namespace
-	serverJSON.Meta.PublisherProvided["kubernetes_name"] = virtualMCPServer.Name
-	serverJSON.Meta.PublisherProvided["kubernetes_uid"] = string(virtualMCPServer.UID)
+	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
+		transportURL: map[string]any{
+			"metadata": map[string]any{
+				"kubernetes_kind":      virtualMCPServer.Kind,
+				"kubernetes_namespace": virtualMCPServer.Namespace,
+				"kubernetes_name":      virtualMCPServer.Name,
+				"kubernetes_uid":       string(virtualMCPServer.UID),
+			},
+		},
+	}
 
 	return serverJSON, nil
 }
@@ -172,12 +186,19 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 
 	// Initialize metadata
 	serverJSON.Meta = &upstreamv0.ServerMeta{
-		PublisherProvided: make(map[string]interface{}),
+		PublisherProvided: make(map[string]any),
 	}
 	// Add Kubernetes metadata to publisher provided metadata
-	serverJSON.Meta.PublisherProvided["kubernetes_namespace"] = mcpRemoteProxy.Namespace
-	serverJSON.Meta.PublisherProvided["kubernetes_name"] = mcpRemoteProxy.Name
-	serverJSON.Meta.PublisherProvided["kubernetes_uid"] = string(mcpRemoteProxy.UID)
+	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
+		transportURL: map[string]any{
+			"metadata": map[string]any{
+				"kubernetes_kind":      mcpRemoteProxy.Kind,
+				"kubernetes_namespace": mcpRemoteProxy.Namespace,
+				"kubernetes_name":      mcpRemoteProxy.Name,
+				"kubernetes_uid":       string(mcpRemoteProxy.UID),
+			},
+		},
+	}
 
 	return serverJSON, nil
 }

@@ -60,11 +60,20 @@ func TestExtractServer(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
 				assert.Equal(t, "A test MCP server", sj.Description)
-				assert.Equal(t, "default", sj.Meta.PublisherProvided["kubernetes_namespace"])
-				assert.Equal(t, "test-server", sj.Meta.PublisherProvided["kubernetes_name"])
-				assert.Equal(t, "test/image:latest", sj.Meta.PublisherProvided["kubernetes_image"])
-				assert.Equal(t, "stdio", sj.Meta.PublisherProvided["kubernetes_transport"])
-				assert.NotEmpty(t, sj.Meta.PublisherProvided["kubernetes_uid"])
+				assert.NotNil(t, sj.Meta.PublisherProvided["io.github.stacklok"])
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+
+				assert.NotNil(t, ioStacklok["https://example.com/mcp"])
+				mcpMetadata := ioStacklok["https://example.com/mcp"].(map[string]any)
+
+				assert.NotNil(t, mcpMetadata["metadata"])
+				kubernetesMetadata := mcpMetadata["metadata"].(map[string]any)
+
+				assert.Equal(t, "default", kubernetesMetadata["kubernetes_namespace"])
+				assert.Equal(t, "test-server", kubernetesMetadata["kubernetes_name"])
+				assert.Equal(t, "test/image:latest", kubernetesMetadata["kubernetes_image"])
+				assert.Equal(t, "stdio", kubernetesMetadata["kubernetes_transport"])
+				assert.NotEmpty(t, kubernetesMetadata["kubernetes_uid"])
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/mcp", sj.Remotes[0].URL)
@@ -151,10 +160,20 @@ func TestExtractServer(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
 				assert.Equal(t, "Full featured server", sj.Description)
-				assert.Equal(t, "custom-ns", sj.Meta.PublisherProvided["kubernetes_namespace"])
-				assert.Equal(t, "full-server", sj.Meta.PublisherProvided["kubernetes_name"])
-				assert.Equal(t, "registry.example.com/image:tag", sj.Meta.PublisherProvided["kubernetes_image"])
-				assert.Equal(t, "sse", sj.Meta.PublisherProvided["kubernetes_transport"])
+				assert.NotNil(t, sj.Meta.PublisherProvided["io.github.stacklok"])
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+
+				assert.NotNil(t, ioStacklok["https://api.example.com/mcp-server"])
+				mcpMetadata := ioStacklok["https://api.example.com/mcp-server"].(map[string]any)
+
+				assert.NotNil(t, mcpMetadata["metadata"])
+				kubernetesMetadata := mcpMetadata["metadata"].(map[string]any)
+
+				assert.Equal(t, "custom-ns", kubernetesMetadata["kubernetes_namespace"])
+				assert.Equal(t, "full-server", kubernetesMetadata["kubernetes_name"])
+				assert.Equal(t, "registry.example.com/image:tag", kubernetesMetadata["kubernetes_image"])
+				assert.Equal(t, "sse", kubernetesMetadata["kubernetes_transport"])
+				assert.NotEmpty(t, kubernetesMetadata["kubernetes_uid"])
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://api.example.com/mcp-server", sj.Remotes[0].URL)
@@ -386,9 +405,18 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
 				assert.Equal(t, "A test Virtual MCP server", sj.Description)
-				assert.Equal(t, "default", sj.Meta.PublisherProvided["kubernetes_namespace"])
-				assert.Equal(t, "test-vmcp-server", sj.Meta.PublisherProvided["kubernetes_name"])
-				assert.NotEmpty(t, sj.Meta.PublisherProvided["kubernetes_uid"])
+				assert.NotNil(t, sj.Meta.PublisherProvided["io.github.stacklok"])
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+
+				assert.NotNil(t, ioStacklok["https://example.com/vmcp"])
+				mcpMetadata := ioStacklok["https://example.com/vmcp"].(map[string]any)
+
+				assert.NotNil(t, mcpMetadata["metadata"])
+				kubernetesMetadata := mcpMetadata["metadata"].(map[string]any)
+
+				assert.Equal(t, "default", kubernetesMetadata["kubernetes_namespace"])
+				assert.Equal(t, "test-vmcp-server", kubernetesMetadata["kubernetes_name"])
+				assert.NotEmpty(t, kubernetesMetadata["kubernetes_uid"])
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/vmcp", sj.Remotes[0].URL)
@@ -455,8 +483,15 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
 				assert.Equal(t, "Production Virtual MCP server", sj.Description)
-				assert.Equal(t, "production", sj.Meta.PublisherProvided["kubernetes_namespace"])
-				assert.Equal(t, "vmcp-server", sj.Meta.PublisherProvided["kubernetes_name"])
+				assert.NotNil(t, sj.Meta.PublisherProvided["io.github.stacklok"])
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+
+				assert.NotNil(t, ioStacklok["https://api.prod.example.com/vmcp"])
+				mcpMetadata := ioStacklok["https://api.prod.example.com/vmcp"].(map[string]any)
+
+				assert.NotNil(t, mcpMetadata["metadata"])
+				kubernetesMetadata := mcpMetadata["metadata"].(map[string]any)
+				assert.Equal(t, "production", kubernetesMetadata["kubernetes_namespace"])
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, "https://api.prod.example.com/vmcp", sj.Remotes[0].URL)
 			},
@@ -534,9 +569,18 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
 				assert.Equal(t, "A test MCP Remote Proxy", sj.Description)
-				assert.Equal(t, "default", sj.Meta.PublisherProvided["kubernetes_namespace"])
-				assert.Equal(t, "test-proxy", sj.Meta.PublisherProvided["kubernetes_name"])
-				assert.NotEmpty(t, sj.Meta.PublisherProvided["kubernetes_uid"])
+				assert.NotNil(t, sj.Meta.PublisherProvided["io.github.stacklok"])
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+
+				assert.NotNil(t, ioStacklok["https://example.com/proxy"])
+				mcpMetadata := ioStacklok["https://example.com/proxy"].(map[string]any)
+
+				assert.NotNil(t, mcpMetadata["metadata"])
+				kubernetesMetadata := mcpMetadata["metadata"].(map[string]any)
+
+				assert.Equal(t, "default", kubernetesMetadata["kubernetes_namespace"])
+				assert.Equal(t, "test-proxy", kubernetesMetadata["kubernetes_name"])
+				assert.NotEmpty(t, kubernetesMetadata["kubernetes_uid"])
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/proxy", sj.Remotes[0].URL)
@@ -603,9 +647,18 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
 				assert.Equal(t, "Proxy with description", sj.Description)
-				assert.Equal(t, "custom-ns", sj.Meta.PublisherProvided["kubernetes_namespace"])
-				assert.Equal(t, "proxy-server", sj.Meta.PublisherProvided["kubernetes_name"])
-				assert.NotEmpty(t, sj.Meta.PublisherProvided["kubernetes_uid"])
+				assert.NotNil(t, sj.Meta.PublisherProvided["io.github.stacklok"])
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+
+				assert.NotNil(t, ioStacklok["https://proxy.example.com"])
+				mcpMetadata := ioStacklok["https://proxy.example.com"].(map[string]any)
+
+				assert.NotNil(t, mcpMetadata["metadata"])
+				kubernetesMetadata := mcpMetadata["metadata"].(map[string]any)
+
+				assert.Equal(t, "custom-ns", kubernetesMetadata["kubernetes_namespace"])
+				assert.Equal(t, "proxy-server", kubernetesMetadata["kubernetes_name"])
+				assert.NotEmpty(t, kubernetesMetadata["kubernetes_uid"])
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://proxy.example.com", sj.Remotes[0].URL)

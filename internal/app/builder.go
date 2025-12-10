@@ -281,7 +281,7 @@ func buildSyncComponents(
 	}
 
 	// Build storage manager
-	if b.storageManager == nil {
+	if b.config.GetStorageType() == config.StorageTypeFile && b.storageManager == nil {
 		// Use config's file storage base directory (defaults to "./data")
 		baseDir := b.config.GetFileStorageBaseDir()
 		// Ensure data directory exists
@@ -292,7 +292,7 @@ func buildSyncComponents(
 	}
 
 	// Build status persistence (now uses dataDir as base path for per-registry status files)
-	if b.statusPersistence == nil {
+	if b.config.GetStorageType() == config.StorageTypeFile && b.statusPersistence == nil {
 		b.statusPersistence = status.NewFileStatusPersistence(b.dataDir)
 	}
 
