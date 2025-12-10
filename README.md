@@ -87,12 +87,20 @@ The server starts on `http://localhost:8080` by default.
 ### Docker Quick Start
 
 ```bash
-# Using Docker Compose (includes PostgreSQL)
-docker-compose up
+# Using Task (recommended - ensures fresh state)
+task docker-up
+
+# Or detached mode
+task docker-up-detached
 
 # Access the API
 curl http://localhost:8080/registry/v0.1/servers
+
+# Stop and clean up
+task docker-down
 ```
+
+> **Note:** The `task docker-up` command ensures a fresh start by rebuilding the image and clearing all volumes (database + registry data). This prevents stale state issues.
 
 ### What Happens on Startup
 
@@ -296,11 +304,24 @@ See [examples/](examples/) directory for complete working examples:
 
 ### Docker Compose
 
-Quick start with PostgreSQL:
+Quick start with PostgreSQL (ensures fresh state):
 
 ```bash
-docker-compose up
+# Start with fresh state (recommended)
+task docker-up
+
+# Or detached mode
+task docker-up-detached
+
+# View logs
+task docker-logs           # All logs
+FOLLOW=true task docker-logs  # Tail logs
+
+# Stop and clean up
+task docker-down
 ```
+
+> **Note:** Always use `task docker-up` instead of `docker-compose up` directly. The task command ensures fresh state by rebuilding the image and clearing volumes.
 
 See [Docker Deployment Guide](docs/deployment-docker.md) for details.
 
