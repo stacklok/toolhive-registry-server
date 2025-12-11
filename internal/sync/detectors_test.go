@@ -137,15 +137,35 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 		expectError          bool
 	}{
 		{
-			name: "invalid interval format",
+			name: "nil sync status - no sync needed",
 			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
-				SyncPolicy: &config.SyncPolicyConfig{
-					Interval: "invalid-duration",
-				},
+			},
+			status:             nil,
+			expectedSyncNeeded: false,
+			expectError:        false,
+		},
+		{
+			name: "empty sync schedule - no sync needed (non-synced registry)",
+			config: &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatToolHive,
 			},
 			status: &status.SyncStatus{
+				SyncSchedule: "",
+			},
+			expectedSyncNeeded: false,
+			expectError:        false,
+		},
+		{
+			name: "invalid interval format in sync status",
+			config: &config.RegistryConfig{
+				Name:   "test-registry",
+				Format: config.SourceFormatToolHive,
+			},
+			status: &status.SyncStatus{
+				SyncSchedule: "invalid-duration",
 				LastSyncTime: nil,
 			},
 			expectedSyncNeeded: false,
@@ -156,11 +176,9 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
-				SyncPolicy: &config.SyncPolicyConfig{
-					Interval: "1h",
-				},
 			},
 			status: &status.SyncStatus{
+				SyncSchedule: "1h",
 				LastSyncTime: nil,
 			},
 			expectedSyncNeeded: true,
@@ -176,11 +194,9 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
-				SyncPolicy: &config.SyncPolicyConfig{
-					Interval: "30m",
-				},
 			},
 			status: &status.SyncStatus{
+				SyncSchedule: "30m",
 				LastSyncTime: &oneHourAgo, // 1 hour ago
 			},
 			expectedSyncNeeded: true,
@@ -196,11 +212,9 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
-				SyncPolicy: &config.SyncPolicyConfig{
-					Interval: "1h",
-				},
 			},
 			status: &status.SyncStatus{
+				SyncSchedule: "1h",
 				LastAttempt:  &thirtyMinutesAgo, // 30 minutes ago
 				LastSyncTime: &thirtyMinutesAgo, // 30 minutes ago
 			},
@@ -217,11 +231,9 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
-				SyncPolicy: &config.SyncPolicyConfig{
-					Interval: "1h",
-				},
 			},
 			status: &status.SyncStatus{
+				SyncSchedule: "1h",
 				LastSyncTime: &oneHourAgo, // Exactly 1 hour ago
 			},
 			expectedSyncNeeded: true,
@@ -252,11 +264,16 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 				if tt.expectedNextTimeFunc != nil {
 					assert.True(t, tt.expectedNextTimeFunc(nextSyncTime),
 						"Next sync time should be within expected range. Got: %v", nextSyncTime)
-				}
 
-				// Verify nextSyncTime is always in the future (this was the bug we fixed)
-				assert.True(t, nextSyncTime.After(time.Now()),
-					"Next sync time should always be in the future. Got: %v", nextSyncTime)
+					// Verify nextSyncTime is always in the future when sync is configured
+					// (this was the bug we fixed)
+					assert.True(t, nextSyncTime.After(time.Now()),
+						"Next sync time should always be in the future. Got: %v", nextSyncTime)
+				} else {
+					// When no sync schedule is configured, nextSyncTime should be zero
+					assert.True(t, nextSyncTime.IsZero(),
+						"Next sync time should be zero when no schedule is configured. Got: %v", nextSyncTime)
+				}
 			}
 		})
 	}
