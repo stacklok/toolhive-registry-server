@@ -17,6 +17,7 @@ INSERT INTO registry (
     name,
     reg_type,
     creation_type,
+    sync_schedule,
     created_at,
     updated_at
 )
@@ -24,9 +25,11 @@ SELECT
     unnest($1::text[]),
     unnest($2::registry_type[]),
     unnest($3::creation_type[]),
-    unnest($4::timestamp with time zone[]),
-    unnest($5::timestamp with time zone[])
+    unnest($4::text[]),
+    unnest($5::timestamp with time zone[]),
+    unnest($6::timestamp with time zone[])
 ON CONFLICT (name) DO UPDATE SET
+    sync_schedule = EXCLUDED.sync_schedule,
     updated_at = EXCLUDED.updated_at
 WHERE registry.creation_type = 'CONFIG'
 RETURNING id, name
@@ -36,6 +39,7 @@ type BulkUpsertRegistriesParams struct {
 	Names         []string       `json:"names"`
 	RegTypes      []RegistryType `json:"reg_types"`
 	CreationTypes []CreationType `json:"creation_types"`
+	SyncSchedules []string       `json:"sync_schedules"`
 	CreatedAts    []time.Time    `json:"created_ats"`
 	UpdatedAts    []time.Time    `json:"updated_ats"`
 }
@@ -50,6 +54,7 @@ func (q *Queries) BulkUpsertRegistries(ctx context.Context, arg BulkUpsertRegist
 		arg.Names,
 		arg.RegTypes,
 		arg.CreationTypes,
+		arg.SyncSchedules,
 		arg.CreatedAts,
 		arg.UpdatedAts,
 	)
@@ -92,7 +97,7 @@ func (q *Queries) DeleteRegistry(ctx context.Context, name string) error {
 }
 
 const getAPIRegistriesByNames = `-- name: GetAPIRegistriesByNames :many
-SELECT id, name, reg_type, creation_type, created_at, updated_at
+SELECT id, name, reg_type, creation_type, sync_schedule, created_at, updated_at
 FROM registry
 WHERE name = ANY($1::text[])
   AND creation_type = 'API'
@@ -103,6 +108,7 @@ type GetAPIRegistriesByNamesRow struct {
 	Name         string       `json:"name"`
 	RegType      RegistryType `json:"reg_type"`
 	CreationType CreationType `json:"creation_type"`
+	SyncSchedule *string      `json:"sync_schedule"`
 	CreatedAt    *time.Time   `json:"created_at"`
 	UpdatedAt    *time.Time   `json:"updated_at"`
 }
@@ -121,6 +127,7 @@ func (q *Queries) GetAPIRegistriesByNames(ctx context.Context, names []string) (
 			&i.Name,
 			&i.RegType,
 			&i.CreationType,
+			&i.SyncSchedule,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -139,6 +146,7 @@ SELECT id,
        name,
        reg_type,
        creation_type,
+       sync_schedule,
        created_at,
        updated_at
   FROM registry
@@ -150,6 +158,7 @@ type GetRegistryRow struct {
 	Name         string       `json:"name"`
 	RegType      RegistryType `json:"reg_type"`
 	CreationType CreationType `json:"creation_type"`
+	SyncSchedule *string      `json:"sync_schedule"`
 	CreatedAt    *time.Time   `json:"created_at"`
 	UpdatedAt    *time.Time   `json:"updated_at"`
 }
@@ -162,6 +171,7 @@ func (q *Queries) GetRegistry(ctx context.Context, id uuid.UUID) (GetRegistryRow
 		&i.Name,
 		&i.RegType,
 		&i.CreationType,
+		&i.SyncSchedule,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -173,6 +183,7 @@ SELECT id,
        name,
        reg_type,
        creation_type,
+       sync_schedule,
        created_at,
        updated_at
   FROM registry
@@ -184,6 +195,7 @@ type GetRegistryByNameRow struct {
 	Name         string       `json:"name"`
 	RegType      RegistryType `json:"reg_type"`
 	CreationType CreationType `json:"creation_type"`
+	SyncSchedule *string      `json:"sync_schedule"`
 	CreatedAt    *time.Time   `json:"created_at"`
 	UpdatedAt    *time.Time   `json:"updated_at"`
 }
@@ -196,6 +208,7 @@ func (q *Queries) GetRegistryByName(ctx context.Context, name string) (GetRegist
 		&i.Name,
 		&i.RegType,
 		&i.CreationType,
+		&i.SyncSchedule,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -207,6 +220,7 @@ INSERT INTO registry (
     name,
     reg_type,
     creation_type,
+    sync_schedule,
     created_at,
     updated_at
 ) VALUES (
@@ -214,7 +228,8 @@ INSERT INTO registry (
     $2,
     $3,
     $4,
-    $5
+    $5,
+    $6
 ) RETURNING id
 `
 
@@ -222,6 +237,7 @@ type InsertRegistryParams struct {
 	Name         string       `json:"name"`
 	RegType      RegistryType `json:"reg_type"`
 	CreationType CreationType `json:"creation_type"`
+	SyncSchedule *string      `json:"sync_schedule"`
 	CreatedAt    *time.Time   `json:"created_at"`
 	UpdatedAt    *time.Time   `json:"updated_at"`
 }
@@ -231,6 +247,7 @@ func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) 
 		arg.Name,
 		arg.RegType,
 		arg.CreationType,
+		arg.SyncSchedule,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -268,6 +285,7 @@ SELECT id,
        name,
        reg_type,
        creation_type,
+       sync_schedule,
        created_at,
        updated_at
   FROM registry
@@ -294,6 +312,7 @@ type ListRegistriesRow struct {
 	Name         string       `json:"name"`
 	RegType      RegistryType `json:"reg_type"`
 	CreationType CreationType `json:"creation_type"`
+	SyncSchedule *string      `json:"sync_schedule"`
 	CreatedAt    *time.Time   `json:"created_at"`
 	UpdatedAt    *time.Time   `json:"updated_at"`
 }
@@ -312,6 +331,7 @@ func (q *Queries) ListRegistries(ctx context.Context, arg ListRegistriesParams) 
 			&i.Name,
 			&i.RegType,
 			&i.CreationType,
+			&i.SyncSchedule,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -330,6 +350,7 @@ INSERT INTO registry (
     name,
     reg_type,
     creation_type,
+    sync_schedule,
     created_at,
     updated_at
 ) VALUES (
@@ -337,9 +358,11 @@ INSERT INTO registry (
     $2,
     $3,
     $4,
-    $5
+    $5,
+    $6
 )
 ON CONFLICT (name) DO UPDATE SET
+    sync_schedule = EXCLUDED.sync_schedule,
     updated_at = EXCLUDED.updated_at
 RETURNING id
 `
@@ -348,6 +371,7 @@ type UpsertRegistryParams struct {
 	Name         string       `json:"name"`
 	RegType      RegistryType `json:"reg_type"`
 	CreationType CreationType `json:"creation_type"`
+	SyncSchedule *string      `json:"sync_schedule"`
 	CreatedAt    *time.Time   `json:"created_at"`
 	UpdatedAt    *time.Time   `json:"updated_at"`
 }
@@ -357,6 +381,7 @@ func (q *Queries) UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) 
 		arg.Name,
 		arg.RegType,
 		arg.CreationType,
+		arg.SyncSchedule,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

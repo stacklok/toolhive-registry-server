@@ -35,7 +35,8 @@ func (f *fileStateService) Initialize(ctx context.Context, registryConfigs []con
 
 	// Initialize all config-based registries
 	for _, conf := range registryConfigs {
-		f.loadOrInitializeRegistryStatus(ctx, conf.Name, conf.IsNonSyncedRegistry(), conf.GetType())
+		syncSchedule := getSyncScheduleFromConfig(&conf)
+		f.loadOrInitializeRegistryStatus(ctx, conf.Name, conf.IsNonSyncedRegistry(), conf.GetType(), syncSchedule)
 	}
 
 	// Clean up config registries that are no longer in the config
@@ -92,6 +93,7 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 	registryName string,
 	isNonSynced bool,
 	regType string,
+	syncSchedule string,
 ) {
 	syncStatus, err := f.statusPersistence.LoadStatus(ctx, registryName)
 	if err != nil {
@@ -105,12 +107,14 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 				Phase:        status.SyncPhaseComplete,
 				Message:      fmt.Sprintf("Non-synced registry (type: %s)", regType),
 				CreationType: status.CreationTypeCONFIG,
+				SyncSchedule: syncSchedule,
 			}
 		} else {
 			syncStatus = &status.SyncStatus{
 				Phase:        status.SyncPhaseFailed,
 				Message:      "No previous sync status found",
 				CreationType: status.CreationTypeCONFIG,
+				SyncSchedule: syncSchedule,
 			}
 		}
 	}
@@ -120,6 +124,10 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 	 * It assumes that only one process at a time will access the backing
 	 * store. This assumption breaks down if multiple servers share a database.
 	 */
+
+	// Always update sync schedule from config (it may have changed)
+	needsSave := syncStatus.SyncSchedule != syncSchedule
+	syncStatus.SyncSchedule = syncSchedule
 
 	// Check if this is a new status (no file existed)
 	if syncStatus.Phase == "" && syncStatus.LastSyncTime == nil {
@@ -135,13 +143,7 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 		}
 		// Set creation type for new registries
 		syncStatus.CreationType = status.CreationTypeCONFIG
-
-		// Persist the default status immediately
-		if err := f.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
-			slog.Warn("Failed to persist default sync status",
-				"registry", registryName,
-				"error", err)
-		}
+		needsSave = true
 	} else if syncStatus.Phase == status.SyncPhaseSyncing && !isNonSynced {
 		// If status was left in Syncing state (only for synced registries),
 		// it means the previous run was interrupted. Reset it to Failed so the sync will be triggered
@@ -153,19 +155,18 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 		if syncStatus.CreationType == "" {
 			syncStatus.CreationType = status.CreationTypeCONFIG
 		}
-
-		// Persist the corrected status
-		if err := f.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
-			slog.Warn("Failed to persist corrected sync status",
-				"registry", registryName,
-				"error", err)
-		}
+		needsSave = true
 	} else if syncStatus.CreationType == "" {
 		// Backfill creation type for existing registries that don't have it
 		// Assume they are CONFIG type since API type didn't exist before
 		syncStatus.CreationType = status.CreationTypeCONFIG
+		needsSave = true
+	}
+
+	// Persist changes if needed
+	if needsSave {
 		if err := f.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
-			slog.Warn("Failed to persist backfilled creation type",
+			slog.Warn("Failed to persist sync status",
 				"registry", registryName,
 				"error", err)
 		}

@@ -245,6 +245,7 @@ type Registry struct {
 	CreatedAt    *time.Time   `json:"created_at"`
 	UpdatedAt    *time.Time   `json:"updated_at"`
 	CreationType CreationType `json:"creation_type"`
+	SyncSchedule *string      `json:"sync_schedule"`
 }
 
 type RegistrySync struct {
