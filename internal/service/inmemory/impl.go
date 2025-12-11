@@ -22,7 +22,7 @@ import (
 // regSvc implements the RegistryService interface
 type regSvc struct {
 	mu               sync.RWMutex // Protects registryData, lastFetch
-	registryProvider service.RegistryDataProvider
+	registryProvider RegistryDataProvider
 	config           *config.Config // Config for registry validation
 
 	// Map of registry name -> registry data
@@ -58,7 +58,7 @@ func WithConfig(cfg *config.Config) Option {
 // deploymentProvider can be nil if deployed servers functionality is not needed.
 func New(
 	ctx context.Context,
-	registryProvider service.RegistryDataProvider,
+	registryProvider RegistryDataProvider,
 	opts ...Option,
 ) (service.RegistryService, error) {
 	if registryProvider == nil {

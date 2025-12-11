@@ -1,5 +1,4 @@
-// Package service provides the business logic for the MCP registry API
-package service
+package inmemory
 
 import (
 	"context"

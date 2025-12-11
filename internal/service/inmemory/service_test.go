@@ -16,7 +16,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory"
-	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
+	"github.com/stacklok/toolhive-registry-server/internal/service/inmemory/mocks"
 )
 
 // testManagedConfig creates a config with a managed registry for testing write operations

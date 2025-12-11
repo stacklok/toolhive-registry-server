@@ -1,4 +1,4 @@
-package service
+package inmemory
 
 import (
 	"context"
