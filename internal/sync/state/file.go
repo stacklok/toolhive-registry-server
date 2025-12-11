@@ -28,9 +28,21 @@ func NewFileStateService(statusPersistence status.StatusPersistence) RegistrySta
 }
 
 func (f *fileStateService) Initialize(ctx context.Context, registryConfigs []config.RegistryConfig) error {
+	// Check for API registry conflicts before proceeding
+	if err := f.checkForAPIRegistryConflicts(ctx, registryConfigs); err != nil {
+		return err
+	}
+
+	// Initialize all config-based registries
 	for _, conf := range registryConfigs {
 		f.loadOrInitializeRegistryStatus(ctx, conf.Name, conf.IsNonSyncedRegistry(), conf.GetType())
 	}
+
+	// Clean up config registries that are no longer in the config
+	if err := f.cleanupRemovedConfigRegistries(ctx, registryConfigs); err != nil {
+		return fmt.Errorf("failed to cleanup removed registries: %w", err)
+	}
+
 	return nil
 }
 
@@ -90,13 +102,15 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 		// Non-synced registries (managed and kubernetes) get a different default status
 		if isNonSynced {
 			syncStatus = &status.SyncStatus{
-				Phase:   status.SyncPhaseComplete,
-				Message: fmt.Sprintf("Non-synced registry (type: %s)", regType),
+				Phase:        status.SyncPhaseComplete,
+				Message:      fmt.Sprintf("Non-synced registry (type: %s)", regType),
+				CreationType: status.CreationTypeCONFIG,
 			}
 		} else {
 			syncStatus = &status.SyncStatus{
-				Phase:   status.SyncPhaseFailed,
-				Message: "No previous sync status found",
+				Phase:        status.SyncPhaseFailed,
+				Message:      "No previous sync status found",
+				CreationType: status.CreationTypeCONFIG,
 			}
 		}
 	}
@@ -119,6 +133,8 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 			syncStatus.Phase = status.SyncPhaseFailed
 			syncStatus.Message = "No previous sync status found"
 		}
+		// Set creation type for new registries
+		syncStatus.CreationType = status.CreationTypeCONFIG
 
 		// Persist the default status immediately
 		if err := f.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
@@ -132,9 +148,24 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 		slog.Warn("Previous sync was interrupted (status=Syncing), resetting to Failed", "registry", registryName)
 		syncStatus.Phase = status.SyncPhaseFailed
 		syncStatus.Message = "Previous sync was interrupted"
+
+		// Backfill creation type if missing
+		if syncStatus.CreationType == "" {
+			syncStatus.CreationType = status.CreationTypeCONFIG
+		}
+
 		// Persist the corrected status
 		if err := f.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
 			slog.Warn("Failed to persist corrected sync status",
+				"registry", registryName,
+				"error", err)
+		}
+	} else if syncStatus.CreationType == "" {
+		// Backfill creation type for existing registries that don't have it
+		// Assume they are CONFIG type since API type didn't exist before
+		syncStatus.CreationType = status.CreationTypeCONFIG
+		if err := f.statusPersistence.SaveStatus(ctx, registryName, syncStatus); err != nil {
+			slog.Warn("Failed to persist backfilled creation type",
 				"registry", registryName,
 				"error", err)
 		}
@@ -241,4 +272,75 @@ func (f *fileStateService) GetNextSyncJob(
 
 	// No matching registry found
 	return nil, nil
+}
+
+// checkForAPIRegistryConflicts verifies that none of the config registries conflict with API-created registries
+func (f *fileStateService) checkForAPIRegistryConflicts(ctx context.Context, registryConfigs []config.RegistryConfig) error {
+	// Load all existing statuses from disk
+	allStatuses, err := f.statusPersistence.LoadAllStatus(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load existing statuses: %w", err)
+	}
+
+	// Check each config registry
+	var conflictingNames []string
+	for _, conf := range registryConfigs {
+		if existingStatus, exists := allStatuses[conf.Name]; exists {
+			// If the existing registry is API-created, it's a conflict
+			if existingStatus.CreationType == status.CreationTypeAPI {
+				conflictingNames = append(conflictingNames, conf.Name)
+			}
+		}
+	}
+
+	if len(conflictingNames) > 0 {
+		return fmt.Errorf("cannot overwrite API-created registries: %v", conflictingNames)
+	}
+
+	return nil
+}
+
+// cleanupRemovedConfigRegistries removes CONFIG registries that are no longer in the config
+// API registries are preserved
+func (f *fileStateService) cleanupRemovedConfigRegistries(ctx context.Context, registryConfigs []config.RegistryConfig) error {
+	// Load all existing statuses
+	allStatuses, err := f.statusPersistence.LoadAllStatus(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load existing statuses: %w", err)
+	}
+
+	// Build a set of current config registry names
+	configNames := make(map[string]bool)
+	for _, conf := range registryConfigs {
+		configNames[conf.Name] = true
+	}
+
+	// Remove CONFIG registries that are no longer in config
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	for name, syncStatus := range allStatuses {
+		// Skip if registry is still in config
+		if configNames[name] {
+			continue
+		}
+
+		// Only remove CONFIG type registries
+		if syncStatus.CreationType == status.CreationTypeCONFIG {
+			// Remove from cache
+			delete(f.cachedStatuses, name)
+
+			// Note: We don't delete the status file here because the file persistence
+			// doesn't provide a delete method. The file will remain but won't be loaded
+			// on next startup. This is acceptable as the file-based service is primarily
+			// for testing/development.
+			slog.Info("Removed CONFIG registry from cache (no longer in config)", "registry", name)
+		} else {
+			// Keep API registries in cache
+			slog.Info("Preserving API registry (not in config)", "registry", name)
+			f.cachedStatuses[name] = syncStatus
+		}
+	}
+
+	return nil
 }

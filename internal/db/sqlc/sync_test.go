@@ -44,8 +44,9 @@ func TestGetRegistrySync(t *testing.T) {
 				regID, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeREMOTE,
+						Name:         "test-registry",
+						RegType:      RegistryTypeREMOTE,
+						CreationType: CreationTypeCONFIG,
 					},
 				)
 				require.NoError(t, err)
@@ -106,8 +107,9 @@ func TestInsertRegistrySync(t *testing.T) {
 				regID, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeREMOTE,
+						Name:         "test-registry",
+						RegType:      RegistryTypeREMOTE,
+						CreationType: CreationTypeCONFIG,
 					},
 				)
 				require.NoError(t, err)
@@ -134,8 +136,9 @@ func TestInsertRegistrySync(t *testing.T) {
 				regID, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeREMOTE,
+						Name:         "test-registry",
+						RegType:      RegistryTypeREMOTE,
+						CreationType: CreationTypeCONFIG,
 					},
 				)
 				require.NoError(t, err)
@@ -162,8 +165,9 @@ func TestInsertRegistrySync(t *testing.T) {
 				regID, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeREMOTE,
+						Name:         "test-registry",
+						RegType:      RegistryTypeREMOTE,
+						CreationType: CreationTypeCONFIG,
 					},
 				)
 				require.NoError(t, err)
@@ -190,8 +194,9 @@ func TestInsertRegistrySync(t *testing.T) {
 				regID, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeREMOTE,
+						Name:         "test-registry",
+						RegType:      RegistryTypeREMOTE,
+						CreationType: CreationTypeCONFIG,
 					},
 				)
 				require.NoError(t, err)
@@ -218,8 +223,9 @@ func TestInsertRegistrySync(t *testing.T) {
 				regID, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeREMOTE,
+						Name:         "test-registry",
+						RegType:      RegistryTypeREMOTE,
+						CreationType: CreationTypeCONFIG,
 					},
 				)
 				require.NoError(t, err)
@@ -292,8 +298,9 @@ func TestUpdateRegistrySync(t *testing.T) {
 				regID, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeREMOTE,
+						Name:         "test-registry",
+						RegType:      RegistryTypeREMOTE,
+						CreationType: CreationTypeCONFIG,
 					},
 				)
 				require.NoError(t, err)
@@ -344,8 +351,9 @@ func TestUpdateRegistrySync(t *testing.T) {
 				regID, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeREMOTE,
+						Name:         "test-registry",
+						RegType:      RegistryTypeREMOTE,
+						CreationType: CreationTypeCONFIG,
 					},
 				)
 				require.NoError(t, err)
@@ -398,8 +406,9 @@ func TestUpdateRegistrySync(t *testing.T) {
 				regID, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeREMOTE,
+						Name:         "test-registry",
+						RegType:      RegistryTypeREMOTE,
+						CreationType: CreationTypeCONFIG,
 					},
 				)
 				require.NoError(t, err)
@@ -449,8 +458,9 @@ func TestUpdateRegistrySync(t *testing.T) {
 				regID, err := queries.InsertRegistry(
 					context.Background(),
 					InsertRegistryParams{
-						Name:    "test-registry",
-						RegType: RegistryTypeREMOTE,
+						Name:         "test-registry",
+						RegType:      RegistryTypeREMOTE,
+						CreationType: CreationTypeCONFIG,
 					},
 				)
 				require.NoError(t, err)
