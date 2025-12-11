@@ -57,4 +57,8 @@ type SyncStatus struct {
 	// CreationType indicates how this registry was created (API or CONFIG)
 	// This prevents config-based sync from overwriting API-created registries
 	CreationType CreationType `yaml:"creationType,omitempty"`
+
+	// SyncSchedule is the sync interval from configuration (e.g., "30m", "1h")
+	// This field is nullable - non-synced registries (managed, kubernetes) will have an empty value
+	SyncSchedule string `yaml:"syncSchedule,omitempty"`
 }

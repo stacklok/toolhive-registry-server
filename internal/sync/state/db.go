@@ -54,6 +54,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	names := make([]string, len(registryConfigs))
 	regTypes := make([]sqlc.RegistryType, len(registryConfigs))
 	creationTypes := make([]sqlc.CreationType, len(registryConfigs))
+	syncSchedules := make([]string, len(registryConfigs))
 	createdAts := make([]time.Time, len(registryConfigs))
 	updatedAts := make([]time.Time, len(registryConfigs))
 
@@ -65,6 +66,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		}
 		regTypes[i] = regType
 		creationTypes[i] = sqlc.CreationTypeCONFIG
+		syncSchedules[i] = getSyncScheduleFromConfig(&reg)
 		createdAts[i] = now
 		updatedAts[i] = now
 	}
@@ -84,6 +86,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		Names:         names,
 		RegTypes:      regTypes,
 		CreationTypes: creationTypes,
+		SyncSchedules: syncSchedules,
 		CreatedAts:    createdAts,
 		UpdatedAts:    updatedAts,
 	})
@@ -382,6 +385,18 @@ func getInitialSyncStatus(isNonSynced bool, regType string) (sqlc.SyncStatus, st
 		return sqlc.SyncStatusCOMPLETED, fmt.Sprintf("Non-synced registry (type: %s)", regType)
 	}
 	return sqlc.SyncStatusFAILED, "No previous sync status found"
+}
+
+// getSyncScheduleFromConfig extracts the sync schedule interval from a registry config.
+// Returns empty string for non-synced registries (managed, kubernetes) or if no sync policy is configured.
+func getSyncScheduleFromConfig(reg *config.RegistryConfig) string {
+	if reg.IsNonSyncedRegistry() {
+		return ""
+	}
+	if reg.SyncPolicy == nil || reg.SyncPolicy.Interval == "" {
+		return ""
+	}
+	return reg.SyncPolicy.Interval
 }
 
 func (d *dbStatusService) GetNextSyncJob(
