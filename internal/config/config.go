@@ -306,6 +306,11 @@ type OAuthProviderConfig struct {
 	// Required for Kubernetes in-cluster authentication or self-signed certificates
 	// TODO: Add GetCACert() method with path validation when implementing auth middleware
 	CACertPath string `yaml:"caCertPath,omitempty"`
+
+	// IntrospectionURL is the OAuth 2.0 Token Introspection endpoint (RFC 7662)
+	// Used for validating opaque (non-JWT) tokens
+	// If not specified, only JWT tokens can be validated via JWKS
+	IntrospectionURL string `yaml:"introspectionUrl,omitempty"`
 }
 
 // GetClientSecret returns the client secret by reading from the file specified in ClientSecretFile.
