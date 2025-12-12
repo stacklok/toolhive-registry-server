@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 )
@@ -54,7 +55,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	names := make([]string, len(registryConfigs))
 	regTypes := make([]sqlc.RegistryType, len(registryConfigs))
 	creationTypes := make([]sqlc.CreationType, len(registryConfigs))
-	syncSchedules := make([]string, len(registryConfigs))
+	syncSchedules := make([]pgtypes.Interval, len(registryConfigs))
 	createdAts := make([]time.Time, len(registryConfigs))
 	updatedAts := make([]time.Time, len(registryConfigs))
 
@@ -66,7 +67,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		}
 		regTypes[i] = regType
 		creationTypes[i] = sqlc.CreationTypeCONFIG
-		syncSchedules[i] = getSyncScheduleFromConfig(&reg)
+		syncSchedules[i] = getSyncScheduleIntervalFromConfig(&reg)
 		createdAts[i] = now
 		updatedAts[i] = now
 	}
@@ -287,6 +288,7 @@ func dbSyncRowToStatus(row sqlc.ListRegistrySyncsRow) *status.SyncStatus {
 		LastSyncTime: row.EndedAt,
 		AttemptCount: int(row.AttemptCount),
 		ServerCount:  int(row.ServerCount),
+		SyncSchedule: intervalToString(row.SyncSchedule),
 	}
 
 	// Set message from error_msg if present
@@ -313,6 +315,7 @@ func dbSyncRowByLastUpdateToStatus(row sqlc.ListRegistrySyncsByLastUpdateRow) *s
 		LastSyncTime: row.EndedAt,
 		AttemptCount: int(row.AttemptCount),
 		ServerCount:  int(row.ServerCount),
+		SyncSchedule: intervalToString(row.SyncSchedule),
 	}
 
 	// Set message from error_msg if present
@@ -387,16 +390,32 @@ func getInitialSyncStatus(isNonSynced bool, regType string) (sqlc.SyncStatus, st
 	return sqlc.SyncStatusFAILED, "No previous sync status found"
 }
 
-// getSyncScheduleFromConfig extracts the sync schedule interval from a registry config.
-// Returns empty string for non-synced registries (managed, kubernetes) or if no sync policy is configured.
-func getSyncScheduleFromConfig(reg *config.RegistryConfig) string {
-	if reg.IsNonSyncedRegistry() {
+// intervalToString converts a pgtypes.Interval to a duration string (e.g., "30m", "1h").
+// Returns empty string for NULL intervals.
+func intervalToString(interval pgtypes.Interval) string {
+	if !interval.Valid {
 		return ""
+	}
+	return interval.Duration.String()
+}
+
+// getSyncScheduleIntervalFromConfig extracts the sync schedule interval from a registry config.
+// Returns a NULL interval for non-synced registries (managed, kubernetes) or if no sync policy is configured.
+func getSyncScheduleIntervalFromConfig(reg *config.RegistryConfig) pgtypes.Interval {
+	if reg.IsNonSyncedRegistry() {
+		return pgtypes.NewNullInterval()
 	}
 	if reg.SyncPolicy == nil || reg.SyncPolicy.Interval == "" {
-		return ""
+		return pgtypes.NewNullInterval()
 	}
-	return reg.SyncPolicy.Interval
+	// Parse the duration string from config (e.g., "30m", "1h")
+	interval, err := pgtypes.ParseDuration(reg.SyncPolicy.Interval)
+	if err != nil {
+		// If parsing fails, return NULL interval
+		// This shouldn't happen in production as config validation should catch this
+		return pgtypes.NewNullInterval()
+	}
+	return interval
 }
 
 func (d *dbStatusService) GetNextSyncJob(

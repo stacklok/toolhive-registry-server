@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 )
 
 const bulkUpsertRegistries = `-- name: BulkUpsertRegistries :many
@@ -25,7 +26,7 @@ SELECT
     unnest($1::text[]),
     unnest($2::registry_type[]),
     unnest($3::creation_type[]),
-    unnest($4::text[]),
+    unnest($4::interval[]),
     unnest($5::timestamp with time zone[]),
     unnest($6::timestamp with time zone[])
 ON CONFLICT (name) DO UPDATE SET
@@ -36,12 +37,12 @@ RETURNING id, name
 `
 
 type BulkUpsertRegistriesParams struct {
-	Names         []string       `json:"names"`
-	RegTypes      []RegistryType `json:"reg_types"`
-	CreationTypes []CreationType `json:"creation_types"`
-	SyncSchedules []string       `json:"sync_schedules"`
-	CreatedAts    []time.Time    `json:"created_ats"`
-	UpdatedAts    []time.Time    `json:"updated_ats"`
+	Names         []string           `json:"names"`
+	RegTypes      []RegistryType     `json:"reg_types"`
+	CreationTypes []CreationType     `json:"creation_types"`
+	SyncSchedules []pgtypes.Interval `json:"sync_schedules"`
+	CreatedAts    []time.Time        `json:"created_ats"`
+	UpdatedAts    []time.Time        `json:"updated_ats"`
 }
 
 type BulkUpsertRegistriesRow struct {
@@ -104,13 +105,13 @@ WHERE name = ANY($1::text[])
 `
 
 type GetAPIRegistriesByNamesRow struct {
-	ID           uuid.UUID    `json:"id"`
-	Name         string       `json:"name"`
-	RegType      RegistryType `json:"reg_type"`
-	CreationType CreationType `json:"creation_type"`
-	SyncSchedule *string      `json:"sync_schedule"`
-	CreatedAt    *time.Time   `json:"created_at"`
-	UpdatedAt    *time.Time   `json:"updated_at"`
+	ID           uuid.UUID        `json:"id"`
+	Name         string           `json:"name"`
+	RegType      RegistryType     `json:"reg_type"`
+	CreationType CreationType     `json:"creation_type"`
+	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
+	CreatedAt    *time.Time       `json:"created_at"`
+	UpdatedAt    *time.Time       `json:"updated_at"`
 }
 
 func (q *Queries) GetAPIRegistriesByNames(ctx context.Context, names []string) ([]GetAPIRegistriesByNamesRow, error) {
@@ -154,13 +155,13 @@ SELECT id,
 `
 
 type GetRegistryRow struct {
-	ID           uuid.UUID    `json:"id"`
-	Name         string       `json:"name"`
-	RegType      RegistryType `json:"reg_type"`
-	CreationType CreationType `json:"creation_type"`
-	SyncSchedule *string      `json:"sync_schedule"`
-	CreatedAt    *time.Time   `json:"created_at"`
-	UpdatedAt    *time.Time   `json:"updated_at"`
+	ID           uuid.UUID        `json:"id"`
+	Name         string           `json:"name"`
+	RegType      RegistryType     `json:"reg_type"`
+	CreationType CreationType     `json:"creation_type"`
+	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
+	CreatedAt    *time.Time       `json:"created_at"`
+	UpdatedAt    *time.Time       `json:"updated_at"`
 }
 
 func (q *Queries) GetRegistry(ctx context.Context, id uuid.UUID) (GetRegistryRow, error) {
@@ -191,13 +192,13 @@ SELECT id,
 `
 
 type GetRegistryByNameRow struct {
-	ID           uuid.UUID    `json:"id"`
-	Name         string       `json:"name"`
-	RegType      RegistryType `json:"reg_type"`
-	CreationType CreationType `json:"creation_type"`
-	SyncSchedule *string      `json:"sync_schedule"`
-	CreatedAt    *time.Time   `json:"created_at"`
-	UpdatedAt    *time.Time   `json:"updated_at"`
+	ID           uuid.UUID        `json:"id"`
+	Name         string           `json:"name"`
+	RegType      RegistryType     `json:"reg_type"`
+	CreationType CreationType     `json:"creation_type"`
+	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
+	CreatedAt    *time.Time       `json:"created_at"`
+	UpdatedAt    *time.Time       `json:"updated_at"`
 }
 
 func (q *Queries) GetRegistryByName(ctx context.Context, name string) (GetRegistryByNameRow, error) {
@@ -234,12 +235,12 @@ INSERT INTO registry (
 `
 
 type InsertRegistryParams struct {
-	Name         string       `json:"name"`
-	RegType      RegistryType `json:"reg_type"`
-	CreationType CreationType `json:"creation_type"`
-	SyncSchedule *string      `json:"sync_schedule"`
-	CreatedAt    *time.Time   `json:"created_at"`
-	UpdatedAt    *time.Time   `json:"updated_at"`
+	Name         string           `json:"name"`
+	RegType      RegistryType     `json:"reg_type"`
+	CreationType CreationType     `json:"creation_type"`
+	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
+	CreatedAt    *time.Time       `json:"created_at"`
+	UpdatedAt    *time.Time       `json:"updated_at"`
 }
 
 func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) (uuid.UUID, error) {
@@ -308,13 +309,13 @@ type ListRegistriesParams struct {
 }
 
 type ListRegistriesRow struct {
-	ID           uuid.UUID    `json:"id"`
-	Name         string       `json:"name"`
-	RegType      RegistryType `json:"reg_type"`
-	CreationType CreationType `json:"creation_type"`
-	SyncSchedule *string      `json:"sync_schedule"`
-	CreatedAt    *time.Time   `json:"created_at"`
-	UpdatedAt    *time.Time   `json:"updated_at"`
+	ID           uuid.UUID        `json:"id"`
+	Name         string           `json:"name"`
+	RegType      RegistryType     `json:"reg_type"`
+	CreationType CreationType     `json:"creation_type"`
+	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
+	CreatedAt    *time.Time       `json:"created_at"`
+	UpdatedAt    *time.Time       `json:"updated_at"`
 }
 
 func (q *Queries) ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]ListRegistriesRow, error) {
@@ -368,12 +369,12 @@ RETURNING id
 `
 
 type UpsertRegistryParams struct {
-	Name         string       `json:"name"`
-	RegType      RegistryType `json:"reg_type"`
-	CreationType CreationType `json:"creation_type"`
-	SyncSchedule *string      `json:"sync_schedule"`
-	CreatedAt    *time.Time   `json:"created_at"`
-	UpdatedAt    *time.Time   `json:"updated_at"`
+	Name         string           `json:"name"`
+	RegType      RegistryType     `json:"reg_type"`
+	CreationType CreationType     `json:"creation_type"`
+	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
+	CreatedAt    *time.Time       `json:"created_at"`
+	UpdatedAt    *time.Time       `json:"updated_at"`
 }
 
 func (q *Queries) UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (uuid.UUID, error) {

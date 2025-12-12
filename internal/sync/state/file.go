@@ -301,6 +301,19 @@ func (f *fileStateService) checkForAPIRegistryConflicts(ctx context.Context, reg
 	return nil
 }
 
+// getSyncScheduleFromConfig extracts the sync schedule interval from a registry config as a string.
+// Returns empty string for non-synced registries (managed, kubernetes) or if no sync policy is configured.
+// This is used by the file-based state service which stores schedules as strings in YAML.
+func getSyncScheduleFromConfig(reg *config.RegistryConfig) string {
+	if reg.IsNonSyncedRegistry() {
+		return ""
+	}
+	if reg.SyncPolicy == nil || reg.SyncPolicy.Interval == "" {
+		return ""
+	}
+	return reg.SyncPolicy.Interval
+}
+
 // cleanupRemovedConfigRegistries removes CONFIG registries that are no longer in the config
 // API registries are preserved
 func (f *fileStateService) cleanupRemovedConfigRegistries(ctx context.Context, registryConfigs []config.RegistryConfig) error {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 )
 
 type CreationType string
@@ -239,13 +240,13 @@ type McpServerRemote struct {
 }
 
 type Registry struct {
-	ID           uuid.UUID    `json:"id"`
-	Name         string       `json:"name"`
-	RegType      RegistryType `json:"reg_type"`
-	CreatedAt    *time.Time   `json:"created_at"`
-	UpdatedAt    *time.Time   `json:"updated_at"`
-	CreationType CreationType `json:"creation_type"`
-	SyncSchedule *string      `json:"sync_schedule"`
+	ID           uuid.UUID        `json:"id"`
+	Name         string           `json:"name"`
+	RegType      RegistryType     `json:"reg_type"`
+	CreatedAt    *time.Time       `json:"created_at"`
+	UpdatedAt    *time.Time       `json:"updated_at"`
+	CreationType CreationType     `json:"creation_type"`
+	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
 }
 
 type RegistrySync struct {
