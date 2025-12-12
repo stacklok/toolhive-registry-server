@@ -24,9 +24,9 @@ type RegistryStateService interface {
 	UpdateSyncStatus(ctx context.Context, registryName string, syncStatus *status.SyncStatus) error
 	// GetNextSyncJob returns the next registry configuration that needs syncing.
 	// The predicate function is used to filter registries based on their config and sync status.
+	// The registry configs are cached from the Initialize call.
 	GetNextSyncJob(
 		ctx context.Context,
-		cfg *config.Config,
 		predicate func(*config.RegistryConfig, *status.SyncStatus) bool,
 	) (*config.RegistryConfig, error)
 }

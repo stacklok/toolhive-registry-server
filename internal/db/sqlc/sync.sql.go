@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 )
 
 const bulkInitializeRegistrySyncs = `-- name: BulkInitializeRegistrySyncs :exec
@@ -171,24 +172,26 @@ SELECT r.name,
        rs.attempt_count,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
-       rs.server_count
+       rs.server_count,
+       r.sync_schedule
 FROM registry_sync rs
 INNER JOIN registry r ON rs.reg_id = r.id
 ORDER BY rs.started_at DESC, r.name ASC
 `
 
 type ListRegistrySyncsRow struct {
-	Name                  string     `json:"name"`
-	ID                    uuid.UUID  `json:"id"`
-	RegID                 uuid.UUID  `json:"reg_id"`
-	SyncStatus            SyncStatus `json:"sync_status"`
-	ErrorMsg              *string    `json:"error_msg"`
-	StartedAt             *time.Time `json:"started_at"`
-	EndedAt               *time.Time `json:"ended_at"`
-	AttemptCount          int64      `json:"attempt_count"`
-	LastSyncHash          *string    `json:"last_sync_hash"`
-	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
-	ServerCount           int64      `json:"server_count"`
+	Name                  string           `json:"name"`
+	ID                    uuid.UUID        `json:"id"`
+	RegID                 uuid.UUID        `json:"reg_id"`
+	SyncStatus            SyncStatus       `json:"sync_status"`
+	ErrorMsg              *string          `json:"error_msg"`
+	StartedAt             *time.Time       `json:"started_at"`
+	EndedAt               *time.Time       `json:"ended_at"`
+	AttemptCount          int64            `json:"attempt_count"`
+	LastSyncHash          *string          `json:"last_sync_hash"`
+	LastAppliedFilterHash *string          `json:"last_applied_filter_hash"`
+	ServerCount           int64            `json:"server_count"`
+	SyncSchedule          pgtypes.Interval `json:"sync_schedule"`
 }
 
 func (q *Queries) ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow, error) {
@@ -212,6 +215,7 @@ func (q *Queries) ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow
 			&i.LastSyncHash,
 			&i.LastAppliedFilterHash,
 			&i.ServerCount,
+			&i.SyncSchedule,
 		); err != nil {
 			return nil, err
 		}
@@ -234,7 +238,8 @@ SELECT r.name,
        rs.attempt_count,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
-       rs.server_count
+       rs.server_count,
+       r.sync_schedule
 FROM registry_sync rs
 INNER JOIN registry r ON rs.reg_id = r.id
 ORDER BY rs.ended_at ASC NULLS FIRST, r.name ASC
@@ -242,17 +247,18 @@ FOR UPDATE OF rs SKIP LOCKED
 `
 
 type ListRegistrySyncsByLastUpdateRow struct {
-	Name                  string     `json:"name"`
-	ID                    uuid.UUID  `json:"id"`
-	RegID                 uuid.UUID  `json:"reg_id"`
-	SyncStatus            SyncStatus `json:"sync_status"`
-	ErrorMsg              *string    `json:"error_msg"`
-	StartedAt             *time.Time `json:"started_at"`
-	EndedAt               *time.Time `json:"ended_at"`
-	AttemptCount          int64      `json:"attempt_count"`
-	LastSyncHash          *string    `json:"last_sync_hash"`
-	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
-	ServerCount           int64      `json:"server_count"`
+	Name                  string           `json:"name"`
+	ID                    uuid.UUID        `json:"id"`
+	RegID                 uuid.UUID        `json:"reg_id"`
+	SyncStatus            SyncStatus       `json:"sync_status"`
+	ErrorMsg              *string          `json:"error_msg"`
+	StartedAt             *time.Time       `json:"started_at"`
+	EndedAt               *time.Time       `json:"ended_at"`
+	AttemptCount          int64            `json:"attempt_count"`
+	LastSyncHash          *string          `json:"last_sync_hash"`
+	LastAppliedFilterHash *string          `json:"last_applied_filter_hash"`
+	ServerCount           int64            `json:"server_count"`
+	SyncSchedule          pgtypes.Interval `json:"sync_schedule"`
 }
 
 func (q *Queries) ListRegistrySyncsByLastUpdate(ctx context.Context) ([]ListRegistrySyncsByLastUpdateRow, error) {
@@ -276,6 +282,7 @@ func (q *Queries) ListRegistrySyncsByLastUpdate(ctx context.Context) ([]ListRegi
 			&i.LastSyncHash,
 			&i.LastAppliedFilterHash,
 			&i.ServerCount,
+			&i.SyncSchedule,
 		); err != nil {
 			return nil, err
 		}
