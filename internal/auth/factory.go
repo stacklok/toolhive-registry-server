@@ -77,6 +77,7 @@ func createOAuthMiddleware(
 			IssuerURL: p.IssuerURL,
 			ValidatorConfig: thvauth.TokenValidatorConfig{
 				Issuer:           p.IssuerURL,
+				JWKSURL:          p.JwksUrl,
 				Audience:         p.Audience,
 				ClientID:         p.ClientID,
 				ClientSecret:     clientSecret,

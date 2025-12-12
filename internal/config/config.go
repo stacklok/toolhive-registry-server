@@ -288,7 +288,13 @@ type OAuthProviderConfig struct {
 
 	// IssuerURL is the OIDC issuer URL (e.g., https://accounts.google.com)
 	// The JWKS URL will be discovered automatically from .well-known/openid-configuration
+	// unless JwksUrl is explicitly specified
 	IssuerURL string `yaml:"issuerUrl"`
+
+	// JwksUrl is the URL to fetch the JSON Web Key Set (JWKS) from
+	// If specified, OIDC discovery is skipped and this URL is used directly
+	// Example: https://kubernetes.default.svc/openid/v1/jwks
+	JwksUrl string `yaml:"jwksUrl,omitempty"`
 
 	// Audience is the expected audience claim in the token (REQUIRED)
 	// Per RFC 6749 Section 4.1.3, tokens must be validated against expected audience

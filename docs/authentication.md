@@ -158,6 +158,7 @@ Additional public paths can be configured using the `publicPaths` option.
 |-------|----------|-------------|
 | `name` | Yes | Unique identifier for this provider |
 | `issuerUrl` | Yes | OIDC issuer URL (must be HTTPS in production) |
+| `jwksUrl` | No | Direct JWKS URL (skips OIDC discovery if specified) |
 | `audience` | Yes | Expected audience claim in the token |
 | `clientId` | No | OAuth client ID for token introspection |
 | `clientSecretFile` | No | Path to file containing client secret |
@@ -172,10 +173,14 @@ For Kubernetes service account tokens:
 ```yaml
 - name: kubernetes
   issuerUrl: https://kubernetes.default.svc
+  jwksUrl: https://kubernetes.default.svc/openid/v1/jwks  # Skip OIDC discovery
   audience: https://kubernetes.default.svc
   caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
   allowPrivateIP: true  # Required for in-cluster Kubernetes API server
 ```
+
+> **Note:** Using `jwksUrl` is useful in Kubernetes where the OIDC discovery endpoint
+> requires authentication. The JWKS endpoint is typically unauthenticated.
 
 ### External IDP Provider
 

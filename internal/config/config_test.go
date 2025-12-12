@@ -2373,3 +2373,35 @@ auth:
 	require.Len(t, cfg.Auth.OAuth.Providers, 1)
 	assert.True(t, cfg.Auth.OAuth.Providers[0].AllowPrivateIP)
 }
+
+// TestOAuthProviderJwksUrl tests that jwksUrl is correctly parsed for OAuth providers
+func TestOAuthProviderJwksUrl(t *testing.T) {
+	t.Parallel()
+
+	yaml := `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
+auth:
+  mode: oauth
+  oauth:
+    providers:
+      - name: kubernetes
+        issuerUrl: https://kubernetes.default.svc
+        jwksUrl: https://kubernetes.default.svc/openid/v1/jwks
+        audience: https://kubernetes.default.svc`
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	err := os.WriteFile(configPath, []byte(yaml), 0600)
+	require.NoError(t, err)
+
+	cfg, err := LoadConfig(WithConfigPath(configPath))
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Auth)
+	require.NotNil(t, cfg.Auth.OAuth)
+	require.Len(t, cfg.Auth.OAuth.Providers, 1)
+	assert.Equal(t, "https://kubernetes.default.svc/openid/v1/jwks", cfg.Auth.OAuth.Providers[0].JwksUrl)
+}
