@@ -125,7 +125,7 @@ func (c *defaultCoordinator) Stop() error {
 func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
 	// Get the next sync job using the predicate to check if sync is needed
 	regCfg, err := c.statusSvc.GetNextSyncJob(
-		ctx, c.config,
+		ctx,
 		func(regCfg *config.RegistryConfig, syncStatus *status.SyncStatus) bool {
 			reason := c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
 			if !reason.ShouldSync() {
