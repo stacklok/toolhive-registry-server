@@ -311,6 +311,11 @@ type OAuthProviderConfig struct {
 	// Used for validating opaque (non-JWT) tokens
 	// If not specified, only JWT tokens can be validated via JWKS
 	IntrospectionURL string `yaml:"introspectionUrl,omitempty"`
+
+	// AllowPrivateIP allows JWKS/OIDC endpoints on private IP addresses
+	// Required when the OAuth provider (e.g., Kubernetes API server) is running on a private network
+	// Example: Set to true when using https://kubernetes.default.svc as the issuer URL
+	AllowPrivateIP bool `yaml:"allowPrivateIP,omitempty"`
 }
 
 // GetClientSecret returns the client secret by reading from the file specified in ClientSecretFile.

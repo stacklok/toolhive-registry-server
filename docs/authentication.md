@@ -163,6 +163,7 @@ Additional public paths can be configured using the `publicPaths` option.
 | `clientSecretFile` | No | Path to file containing client secret |
 | `caCertPath` | No | Path to CA certificate for TLS verification |
 | `introspectionUrl` | No | Token introspection endpoint (RFC 7662) for opaque tokens |
+| `allowPrivateIP` | No | Allow OIDC endpoints on private IP addresses (required for in-cluster Kubernetes) |
 
 ### Kubernetes Provider
 
@@ -173,6 +174,7 @@ For Kubernetes service account tokens:
   issuerUrl: https://kubernetes.default.svc
   audience: https://kubernetes.default.svc
   caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  allowPrivateIP: true  # Required for in-cluster Kubernetes API server
 ```
 
 ### External IDP Provider

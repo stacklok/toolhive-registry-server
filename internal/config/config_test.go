@@ -2341,3 +2341,35 @@ func TestViperConfigFileNotFound(t *testing.T) {
 	// The error should indicate the file couldn't be read
 	assert.Contains(t, err.Error(), "failed to evaluate symlinks")
 }
+
+// TestOAuthProviderAllowPrivateIP tests that allowPrivateIP is correctly parsed for OAuth providers
+func TestOAuthProviderAllowPrivateIP(t *testing.T) {
+	t.Parallel()
+
+	yaml := `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
+auth:
+  mode: oauth
+  oauth:
+    providers:
+      - name: kubernetes
+        issuerUrl: https://kubernetes.default.svc
+        audience: https://kubernetes.default.svc
+        allowPrivateIP: true`
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	err := os.WriteFile(configPath, []byte(yaml), 0600)
+	require.NoError(t, err)
+
+	cfg, err := LoadConfig(WithConfigPath(configPath))
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Auth)
+	require.NotNil(t, cfg.Auth.OAuth)
+	require.Len(t, cfg.Auth.OAuth.Providers, 1)
+	assert.True(t, cfg.Auth.OAuth.Providers[0].AllowPrivateIP)
+}
