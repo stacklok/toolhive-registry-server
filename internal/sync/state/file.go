@@ -17,6 +17,8 @@ type fileStateService struct {
 	// Thread-safe status management (per-registry)
 	mu             sync.RWMutex
 	cachedStatuses map[string]*status.SyncStatus
+	// registryConfigsMap caches the registry configs by name from the last Initialize call
+	registryConfigsMap map[string]*config.RegistryConfig
 }
 
 // NewFileStateService creates a new file-based registry state service
@@ -28,6 +30,12 @@ func NewFileStateService(statusPersistence status.StatusPersistence) RegistrySta
 }
 
 func (f *fileStateService) Initialize(ctx context.Context, registryConfigs []config.RegistryConfig) error {
+	// Build registry configs map for caching
+	f.registryConfigsMap = make(map[string]*config.RegistryConfig, len(registryConfigs))
+	for i := range registryConfigs {
+		f.registryConfigsMap[registryConfigs[i].Name] = &registryConfigs[i]
+	}
+
 	// Check for API registry conflicts before proceeding
 	if err := f.checkForAPIRegistryConflicts(ctx, registryConfigs); err != nil {
 		return err
@@ -198,18 +206,11 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 
 func (f *fileStateService) GetNextSyncJob(
 	ctx context.Context,
-	cfg *config.Config,
 	predicate func(*config.RegistryConfig, *status.SyncStatus) bool,
 ) (*config.RegistryConfig, error) {
 	// Grab the lock to ensure atomic operation
 	f.mu.Lock()
 	defer f.mu.Unlock()
-
-	// Build a map of registry names to configs for quick lookup
-	configMap := make(map[string]*config.RegistryConfig)
-	for i := range cfg.Registries {
-		configMap[cfg.Registries[i].Name] = &cfg.Registries[i]
-	}
 
 	// Create a sortable list of registries with their sync status
 	// Sort by LastSyncTime (ended_at equivalent) in ascending order, nil first
@@ -221,8 +222,8 @@ func (f *fileStateService) GetNextSyncJob(
 
 	var registries []registryWithStatus
 	for name, syncStatus := range f.cachedStatuses {
-		// Only consider registries that are in the config
-		if _, exists := configMap[name]; exists {
+		// Only consider registries that are in the cached configs
+		if _, exists := f.registryConfigsMap[name]; exists {
 			registries = append(registries, registryWithStatus{
 				name:       name,
 				syncStatus: syncStatus,
@@ -246,13 +247,15 @@ func (f *fileStateService) GetNextSyncJob(
 
 	// Iterate through sorted registries and find one that matches the predicate
 	for _, reg := range registries {
+		regCfg := f.registryConfigsMap[reg.name]
+
 		// Skip non-synced registries - they don't sync from external sources
-		if configMap[reg.name].IsNonSyncedRegistry() {
+		if regCfg.IsNonSyncedRegistry() {
 			continue
 		}
 
 		// Check if this registry matches the predicate
-		if predicate(configMap[reg.name], reg.syncStatus) {
+		if predicate(regCfg, reg.syncStatus) {
 			// Update the registry to IN_PROGRESS state
 			reg.syncStatus.Phase = status.SyncPhaseSyncing
 			now := time.Now()
@@ -267,7 +270,7 @@ func (f *fileStateService) GetNextSyncJob(
 			f.cachedStatuses[reg.name] = reg.syncStatus
 
 			// Return the matching registry configuration
-			return configMap[reg.name], nil
+			return regCfg, nil
 		}
 	}
 

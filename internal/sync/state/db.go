@@ -18,6 +18,8 @@ import (
 
 type dbStatusService struct {
 	pool *pgxpool.Pool
+	// registryConfigsMap caches the registry configs by name from the last Initialize call
+	registryConfigsMap map[string]*config.RegistryConfig
 }
 
 // ErrRegistryNotFound is returned when a registry can't be found.
@@ -31,6 +33,12 @@ func NewDBStateService(pool *pgxpool.Pool) RegistryStateService {
 }
 
 func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []config.RegistryConfig) error {
+	// Build registry configs map for caching
+	d.registryConfigsMap = make(map[string]*config.RegistryConfig, len(registryConfigs))
+	for i := range registryConfigs {
+		d.registryConfigsMap[registryConfigs[i].Name] = &registryConfigs[i]
+	}
+
 	// Start a transaction for atomicity
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
@@ -420,7 +428,6 @@ func getSyncScheduleIntervalFromConfig(reg *config.RegistryConfig) pgtypes.Inter
 
 func (d *dbStatusService) GetNextSyncJob(
 	ctx context.Context,
-	cfg *config.Config,
 	predicate func(*config.RegistryConfig, *status.SyncStatus) bool,
 ) (*config.RegistryConfig, error) {
 	// Start a transaction
@@ -440,19 +447,12 @@ func (d *dbStatusService) GetNextSyncJob(
 		return nil, fmt.Errorf("failed to list registries: %w", err)
 	}
 
-	// Build a map of registry names to configs for quick lookup
-	// TODO: In future we should move these into the DB so we can do all this through SQL.
-	configMap := make(map[string]*config.RegistryConfig)
-	for i := range cfg.Registries {
-		configMap[cfg.Registries[i].Name] = &cfg.Registries[i]
-	}
-
 	// Iterate through registries and find one that matches the predicate
 	for _, reg := range registries {
 		syncStatus := dbSyncRowByLastUpdateToStatus(reg)
 
-		// Find the matching registry configuration
-		regCfg, ok := configMap[reg.Name]
+		// Find the matching registry configuration from cached configs
+		regCfg, ok := d.registryConfigsMap[reg.Name]
 		if !ok {
 			// Registry exists in DB but not in config - this shouldn't happen
 			// but handle gracefully by continuing to next registry
