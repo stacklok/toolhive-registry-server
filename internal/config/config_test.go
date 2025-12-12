@@ -2405,3 +2405,35 @@ auth:
 	require.Len(t, cfg.Auth.OAuth.Providers, 1)
 	assert.Equal(t, "https://kubernetes.default.svc/openid/v1/jwks", cfg.Auth.OAuth.Providers[0].JwksUrl)
 }
+
+// TestOAuthProviderAuthTokenFile tests that authTokenFile is correctly parsed for OAuth providers
+func TestOAuthProviderAuthTokenFile(t *testing.T) {
+	t.Parallel()
+
+	yaml := `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
+auth:
+  mode: oauth
+  oauth:
+    providers:
+      - name: kubernetes
+        issuerUrl: https://kubernetes.default.svc
+        audience: https://kubernetes.default.svc
+        authTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token`
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	err := os.WriteFile(configPath, []byte(yaml), 0600)
+	require.NoError(t, err)
+
+	cfg, err := LoadConfig(WithConfigPath(configPath))
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Auth)
+	require.NotNil(t, cfg.Auth.OAuth)
+	require.Len(t, cfg.Auth.OAuth.Providers, 1)
+	assert.Equal(t, "/var/run/secrets/kubernetes.io/serviceaccount/token", cfg.Auth.OAuth.Providers[0].AuthTokenFile)
+}

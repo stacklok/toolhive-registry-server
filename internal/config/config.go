@@ -310,8 +310,12 @@ type OAuthProviderConfig struct {
 
 	// CACertPath is the path to a CA certificate bundle for verifying the provider's TLS certificate
 	// Required for Kubernetes in-cluster authentication or self-signed certificates
-	// TODO: Add GetCACert() method with path validation when implementing auth middleware
 	CACertPath string `yaml:"caCertPath,omitempty"`
+
+	// AuthTokenFile is the path to a file containing a bearer token for authenticating to OIDC/JWKS endpoints
+	// Useful when the OIDC discovery or JWKS endpoint requires authentication
+	// Example: /var/run/secrets/kubernetes.io/serviceaccount/token
+	AuthTokenFile string `yaml:"authTokenFile,omitempty"`
 
 	// IntrospectionURL is the OAuth 2.0 Token Introspection endpoint (RFC 7662)
 	// Used for validating opaque (non-JWT) tokens

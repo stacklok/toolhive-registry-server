@@ -82,6 +82,7 @@ func createOAuthMiddleware(
 				ClientID:         p.ClientID,
 				ClientSecret:     clientSecret,
 				CACertPath:       p.CACertPath,
+				AuthTokenFile:    p.AuthTokenFile,
 				IntrospectionURL: p.IntrospectionURL,
 				AllowPrivateIP:   p.AllowPrivateIP,
 			},
