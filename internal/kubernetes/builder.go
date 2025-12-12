@@ -2,8 +2,13 @@ package kubernetes
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
@@ -23,6 +28,13 @@ const (
 	defaultRequeueAfter = 10 * time.Second
 
 	leaderElectionID = "toolhive-registry-server-leader-election"
+)
+
+var (
+	// serviceAccountNamespaceFile is the path to the file containing the namespace
+	// of the service account running in a Kubernetes pod.
+	// This is a variable to allow tests to override it.
+	serviceAccountNamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 )
 
 // hasRequiredRegistryAnnotations checks if the given annotations map contains
@@ -55,6 +67,45 @@ func WithNamespaces(namespaces ...string) Option {
 		o.namespaces = append(o.namespaces, namespaces...)
 		return nil
 	}
+}
+
+// WithCurrentNamespace configures the reconciler to watch the namespace
+// of the current Kubernetes pod by reading from the service account namespace file.
+func WithCurrentNamespace() Option {
+	return func(o *mcpServerReconcilerOptions) error {
+		namespace, err := readNamespaceFromFile(serviceAccountNamespaceFile)
+		if err != nil {
+			return err
+		}
+		if o.namespaces == nil {
+			o.namespaces = make([]string, 0)
+		}
+		o.namespaces = append(o.namespaces, namespace)
+		return nil
+	}
+}
+
+// readNamespaceFromFile reads a Kubernetes namespace from the specified file path.
+// It reads at most 256 bytes since Kubernetes namespace names have a maximum length
+// of 253 characters as per DNS subdomain naming rules.
+// See: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names
+func readNamespaceFromFile(path string) (string, error) {
+	f, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		return "", fmt.Errorf("failed to open namespace file: %w", err)
+	}
+	defer f.Close()
+
+	// Read up to 257 bytes to detect if file exceeds the 256 byte limit
+	buf := make([]byte, 257)
+	n, err := f.Read(buf)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", fmt.Errorf("failed to read namespace: %w", err)
+	}
+	if n > 256 {
+		return "", fmt.Errorf("namespace file exceeds maximum size of 256 bytes")
+	}
+	return strings.TrimSpace(string(buf[:n])), nil
 }
 
 // WithRequeueAfter sets the requeue after duration.

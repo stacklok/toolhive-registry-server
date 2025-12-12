@@ -76,11 +76,12 @@ func createOAuthMiddleware(
 			Name:      p.Name,
 			IssuerURL: p.IssuerURL,
 			ValidatorConfig: thvauth.TokenValidatorConfig{
-				Issuer:       p.IssuerURL,
-				Audience:     p.Audience,
-				ClientID:     p.ClientID,
-				ClientSecret: clientSecret,
-				CACertPath:   p.CACertPath,
+				Issuer:           p.IssuerURL,
+				Audience:         p.Audience,
+				ClientID:         p.ClientID,
+				ClientSecret:     clientSecret,
+				CACertPath:       p.CACertPath,
+				IntrospectionURL: p.IntrospectionURL,
 			},
 		}
 		issuerURLs[i] = p.IssuerURL

@@ -2,6 +2,9 @@ package kubernetes
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -86,6 +89,80 @@ func TestWithNamespaces(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, tt.want, tt.initial.namespaces)
 			}
+		})
+	}
+}
+
+func TestWithCurrentNamespace(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		content    string
+		initial    *mcpServerReconcilerOptions
+		want       []string
+		skipCreate bool
+	}{
+		{
+			name:    "single namespace from file",
+			content: "test-namespace",
+			initial: &mcpServerReconcilerOptions{},
+			want:    []string{"test-namespace"},
+		},
+		{
+			name:    "namespace with trailing newline",
+			content: "test-namespace\n",
+			initial: &mcpServerReconcilerOptions{},
+			want:    []string{"test-namespace"},
+		},
+		{
+			name:    "nil initial namespaces",
+			content: "default",
+			initial: &mcpServerReconcilerOptions{namespaces: nil},
+			want:    []string{"default"},
+		},
+		{
+			name:    "append to existing namespaces",
+			content: "current-namespace",
+			initial: &mcpServerReconcilerOptions{namespaces: []string{"existing"}},
+			want:    []string{"existing", "current-namespace"},
+		},
+		{
+			name:       "returns error when namespace file does not exist",
+			initial:    &mcpServerReconcilerOptions{},
+			skipCreate: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			tmpFile := filepath.Join(tmpDir, "namespace")
+
+			if !tt.skipCreate {
+				err := os.WriteFile(tmpFile, []byte(tt.content), 0o600)
+				require.NoError(t, err)
+			}
+
+			// Override the namespace file path for testing
+			originalPath := serviceAccountNamespaceFile
+			serviceAccountNamespaceFile = tmpFile
+			t.Cleanup(func() {
+				serviceAccountNamespaceFile = originalPath
+			})
+
+			opt := WithCurrentNamespace()
+			err := opt(tt.initial)
+
+			if tt.want == nil {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, tt.initial.namespaces)
 		})
 	}
 }
@@ -347,4 +424,76 @@ func TestHasRequiredRegistryAnnotations(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestReadNamespaceFromFile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content string
+		wantNS  string
+		wantErr bool
+	}{
+		{
+			name:    "valid namespace",
+			content: "my-namespace",
+			wantNS:  "my-namespace",
+			wantErr: false,
+		},
+		{
+			name:    "namespace with trailing newline",
+			content: "my-namespace\n",
+			wantNS:  "my-namespace",
+			wantErr: false,
+		},
+		{
+			name:    "namespace with surrounding whitespace",
+			content: "  my-namespace  \n",
+			wantNS:  "my-namespace",
+			wantErr: false,
+		},
+		{
+			name:    "long namespace at max length",
+			content: strings.Repeat("a", 253),
+			wantNS:  strings.Repeat("a", 253),
+			wantErr: false,
+		},
+		{
+			name:    "content exceeding 256 bytes returns error",
+			content: strings.Repeat("b", 300),
+			wantNS:  "",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Create a temp file with the test content
+			tmpDir := t.TempDir()
+			tmpFile := filepath.Join(tmpDir, "namespace")
+			err := os.WriteFile(tmpFile, []byte(tt.content), 0o600)
+			require.NoError(t, err)
+
+			got, err := readNamespaceFromFile(tmpFile)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantNS, got)
+		})
+	}
+
+	t.Run("file does not exist", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := readNamespaceFromFile("/nonexistent/path/namespace")
+
+		require.Error(t, err)
+	})
 }
