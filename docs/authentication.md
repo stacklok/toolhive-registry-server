@@ -162,6 +162,7 @@ Additional public paths can be configured using the `publicPaths` option.
 | `clientId` | No | OAuth client ID for token introspection |
 | `clientSecretFile` | No | Path to file containing client secret |
 | `caCertPath` | No | Path to CA certificate for TLS verification |
+| `introspectionUrl` | No | Token introspection endpoint (RFC 7662) for opaque tokens |
 
 ### Kubernetes Provider
 

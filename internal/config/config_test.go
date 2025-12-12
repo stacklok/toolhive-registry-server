@@ -1639,6 +1639,36 @@ auth:
 			},
 		},
 		{
+			name: "oauth provider with introspection url",
+			yaml: `registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
+auth:
+  mode: oauth
+  oauth:
+    resourceUrl: https://registry.example.com
+    providers:
+      - name: google
+        issuerUrl: https://accounts.google.com
+        audience: my-google-client-id
+        introspectionUrl: https://oauth2.googleapis.com/tokeninfo`,
+			//nolint:thelper // We want to see errors here
+			check: func(t *testing.T, cfg *Config) {
+				require.NotNil(t, cfg.Auth)
+				assert.Equal(t, AuthModeOAuth, cfg.Auth.Mode)
+				require.NotNil(t, cfg.Auth.OAuth)
+				require.Len(t, cfg.Auth.OAuth.Providers, 1)
+				p := cfg.Auth.OAuth.Providers[0]
+				assert.Equal(t, "google", p.Name)
+				assert.Equal(t, "https://accounts.google.com", p.IssuerURL)
+				assert.Equal(t, "my-google-client-id", p.Audience)
+				assert.Equal(t, "https://oauth2.googleapis.com/tokeninfo", p.IntrospectionURL)
+			},
+		},
+		{
 			name: "explicit anonymous mode is parsed correctly",
 			yaml: `registries:
   - name: test-registry
