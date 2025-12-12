@@ -288,7 +288,13 @@ type OAuthProviderConfig struct {
 
 	// IssuerURL is the OIDC issuer URL (e.g., https://accounts.google.com)
 	// The JWKS URL will be discovered automatically from .well-known/openid-configuration
+	// unless JwksUrl is explicitly specified
 	IssuerURL string `yaml:"issuerUrl"`
+
+	// JwksUrl is the URL to fetch the JSON Web Key Set (JWKS) from
+	// If specified, OIDC discovery is skipped and this URL is used directly
+	// Example: https://kubernetes.default.svc/openid/v1/jwks
+	JwksUrl string `yaml:"jwksUrl,omitempty"`
 
 	// Audience is the expected audience claim in the token (REQUIRED)
 	// Per RFC 6749 Section 4.1.3, tokens must be validated against expected audience
@@ -304,13 +310,22 @@ type OAuthProviderConfig struct {
 
 	// CACertPath is the path to a CA certificate bundle for verifying the provider's TLS certificate
 	// Required for Kubernetes in-cluster authentication or self-signed certificates
-	// TODO: Add GetCACert() method with path validation when implementing auth middleware
 	CACertPath string `yaml:"caCertPath,omitempty"`
+
+	// AuthTokenFile is the path to a file containing a bearer token for authenticating to OIDC/JWKS endpoints
+	// Useful when the OIDC discovery or JWKS endpoint requires authentication
+	// Example: /var/run/secrets/kubernetes.io/serviceaccount/token
+	AuthTokenFile string `yaml:"authTokenFile,omitempty"`
 
 	// IntrospectionURL is the OAuth 2.0 Token Introspection endpoint (RFC 7662)
 	// Used for validating opaque (non-JWT) tokens
 	// If not specified, only JWT tokens can be validated via JWKS
 	IntrospectionURL string `yaml:"introspectionUrl,omitempty"`
+
+	// AllowPrivateIP allows JWKS/OIDC endpoints on private IP addresses
+	// Required when the OAuth provider (e.g., Kubernetes API server) is running on a private network
+	// Example: Set to true when using https://kubernetes.default.svc as the issuer URL
+	AllowPrivateIP bool `yaml:"allowPrivateIP,omitempty"`
 }
 
 // GetClientSecret returns the client secret by reading from the file specified in ClientSecretFile.
