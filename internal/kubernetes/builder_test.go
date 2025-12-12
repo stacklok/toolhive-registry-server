@@ -93,6 +93,11 @@ func TestWithNamespaces(t *testing.T) {
 	}
 }
 
+// TestWithCurrentNamespace tests the WithCurrentNamespace option.
+// Note: Subtests cannot use t.Parallel() because they modify the shared
+// package-level variable serviceAccountNamespaceFile, which would cause data races.
+//
+//nolint:tparallel // Subtests modify shared package-level state
 func TestWithCurrentNamespace(t *testing.T) {
 	t.Parallel()
 
@@ -134,10 +139,9 @@ func TestWithCurrentNamespace(t *testing.T) {
 		},
 	}
 
+	//nolint:paralleltest // Subtests modify shared package-level variable serviceAccountNamespaceFile
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			tmpDir := t.TempDir()
 			tmpFile := filepath.Join(tmpDir, "namespace")
 
