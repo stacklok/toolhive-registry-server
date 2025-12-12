@@ -91,7 +91,7 @@ SELECT
     unnest(sqlc.arg(names)::text[]),
     unnest(sqlc.arg(reg_types)::registry_type[]),
     unnest(sqlc.arg(creation_types)::creation_type[]),
-    unnest(sqlc.arg(sync_schedules)::text[]),
+    unnest(sqlc.arg(sync_schedules)::interval[]),
     unnest(sqlc.arg(created_ats)::timestamp with time zone[]),
     unnest(sqlc.arg(updated_ats)::timestamp with time zone[])
 ON CONFLICT (name) DO UPDATE SET

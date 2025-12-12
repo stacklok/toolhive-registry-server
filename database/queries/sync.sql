@@ -58,7 +58,8 @@ SELECT r.name,
        rs.attempt_count,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
-       rs.server_count
+       rs.server_count,
+       r.sync_schedule
 FROM registry_sync rs
 INNER JOIN registry r ON rs.reg_id = r.id
 ORDER BY rs.started_at DESC, r.name ASC;
@@ -130,7 +131,8 @@ SELECT r.name,
        rs.attempt_count,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
-       rs.server_count
+       rs.server_count,
+       r.sync_schedule
 FROM registry_sync rs
 INNER JOIN registry r ON rs.reg_id = r.id
 ORDER BY rs.ended_at ASC NULLS FIRST, r.name ASC
