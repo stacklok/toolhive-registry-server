@@ -286,7 +286,7 @@ func buildSyncComponents(
 					kubernetes.WithSyncWriter(syncWriter),
 					kubernetes.WithRegistryName(reg.Name),
 					// TODO make it configurable
-					kubernetes.WithNamespaces("toolhive-system"),
+					kubernetes.WithCurrentNamespace(),
 				)
 				if err != nil {
 					return nil, fmt.Errorf("failed to create kubernetes reconciler: %w", err)
