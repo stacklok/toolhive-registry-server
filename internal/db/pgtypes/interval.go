@@ -58,6 +58,25 @@ func (i *Interval) Scan(src interface{}) error {
 		i.Duration = time.Duration(microseconds) * time.Microsecond
 		i.Valid = v.Valid
 		return nil
+	case string:
+		// Handle string representation of interval from database
+		// Parse the string using pgtype.Interval's parser
+		var pgInterval pgtype.Interval
+		if err := pgInterval.Scan(v); err != nil {
+			return fmt.Errorf("failed to parse interval string %q: %w", v, err)
+		}
+
+		// Convert to our Interval type using the pgtype.Interval case above
+		microseconds := pgInterval.Microseconds
+		microseconds += int64(pgInterval.Days) * 24 * 60 * 60 * 1000000
+		microseconds += int64(pgInterval.Months) * 30 * 24 * 60 * 60 * 1000000
+
+		i.Duration = time.Duration(microseconds) * time.Microsecond
+		i.Valid = pgInterval.Valid
+		return nil
+	case []byte:
+		// Handle byte slice (some drivers return intervals as []byte)
+		return i.Scan(string(v))
 	default:
 		return fmt.Errorf("cannot scan %T into Interval", src)
 	}

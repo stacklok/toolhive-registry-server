@@ -84,8 +84,50 @@ func TestInterval_Scan(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:  "string: 30 minutes",
+			input: "00:30:00",
+			expected: Interval{
+				Valid:    true,
+				Duration: 30 * time.Minute,
+			},
+			wantErr: false,
+		},
+		{
+			name:  "string: 1 hour",
+			input: "01:00:00",
+			expected: Interval{
+				Valid:    true,
+				Duration: 1 * time.Hour,
+			},
+			wantErr: false,
+		},
+		{
+			name:  "string: 2 hours 15 minutes",
+			input: "02:15:00",
+			expected: Interval{
+				Valid:    true,
+				Duration: 2*time.Hour + 15*time.Minute,
+			},
+			wantErr: false,
+		},
+		{
+			name:  "byte slice: 1 hour",
+			input: []byte("01:00:00"),
+			expected: Interval{
+				Valid:    true,
+				Duration: 1 * time.Hour,
+			},
+			wantErr: false,
+		},
+		{
+			name:     "string: invalid format",
+			input:    "not-an-interval",
+			expected: Interval{},
+			wantErr:  true,
+		},
+		{
 			name:     "unsupported type",
-			input:    "30m",
+			input:    123,
 			expected: Interval{},
 			wantErr:  true,
 		},
