@@ -15,7 +15,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/modelcontextprotocol/registry v1.3.10
 	github.com/spf13/viper v1.21.0
-	github.com/stacklok/toolhive v0.6.12
+	github.com/stacklok/toolhive v0.6.13
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc4
 	github.com/testcontainers/testcontainers-go v0.40.0
