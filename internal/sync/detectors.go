@@ -48,29 +48,30 @@ func (d *defaultDataChangeDetector) IsDataChanged(
 // defaultAutomaticSyncChecker implements AutomaticSyncChecker
 type defaultAutomaticSyncChecker struct{}
 
-// IsIntervalSyncNeeded checks if sync is needed based on time interval for a specific registry
+// IsIntervalSyncNeeded checks if sync is needed based on time interval for a specific registry.
+// The sync schedule is read from the stored SyncStatus rather than from configuration.
+// This ensures the runtime sync logic uses the schedule stored in DB/filesystem during initialization.
 // Returns: (syncNeeded, nextSyncTime, error)
-// nextSyncTime is a future time when the next sync should occur, or zero time if no policy configured
+// nextSyncTime is a future time when the next sync should occur, or zero time if no schedule configured
 func (*defaultAutomaticSyncChecker) IsIntervalSyncNeeded(
-	regCfg *config.RegistryConfig, syncStatus *status.SyncStatus,
+	_ *config.RegistryConfig, syncStatus *status.SyncStatus,
 ) (bool, time.Time, error) {
-	if regCfg.SyncPolicy == nil || regCfg.SyncPolicy.Interval == "" {
+	// Read sync schedule from stored state instead of config
+	// Non-synced registries (managed, kubernetes) will have an empty SyncSchedule
+	if syncStatus == nil || syncStatus.SyncSchedule == "" {
 		return false, time.Time{}, nil
 	}
 
-	// Parse the sync interval
-	interval, err := time.ParseDuration(regCfg.SyncPolicy.Interval)
+	// Parse the sync interval from stored state
+	interval, err := time.ParseDuration(syncStatus.SyncSchedule)
 	if err != nil {
 		return false, time.Time{}, err
 	}
 
 	now := time.Now()
 
-	// Check for last sync time in syncStatus first, then fallback
-	var lastSyncTime *time.Time
-	if syncStatus != nil {
-		lastSyncTime = syncStatus.LastAttempt
-	}
+	// Check for last sync time in syncStatus
+	lastSyncTime := syncStatus.LastAttempt
 
 	// If we don't have a last sync time, sync is needed
 	if lastSyncTime == nil {

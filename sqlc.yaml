@@ -54,3 +54,14 @@ sql:
             go_type:
               type: "string"
               pointer: true
+
+          # Interval types
+          - db_type: "pg_catalog.interval"
+            go_type:
+              import: "github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
+              type: "Interval"
+          - db_type: "pg_catalog.interval"
+            nullable: true
+            go_type:
+              import: "github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
+              type: "Interval"

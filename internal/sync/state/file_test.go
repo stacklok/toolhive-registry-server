@@ -680,6 +680,7 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 		registryName string
 		isNonSynced  bool
 		regType      string
+		syncSchedule string
 		setupMocks   func(*statusmocks.MockStatusPersistence)
 		verifyCached func(*testing.T, *status.SyncStatus)
 	}{
@@ -957,7 +958,7 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 			ctx := context.Background()
 
 			// Call the private method
-			service.loadOrInitializeRegistryStatus(ctx, tt.registryName, tt.isNonSynced, tt.regType)
+			service.loadOrInitializeRegistryStatus(ctx, tt.registryName, tt.isNonSynced, tt.regType, tt.syncSchedule)
 
 			// Verify the cached status
 			cached := service.cachedStatuses[tt.registryName]

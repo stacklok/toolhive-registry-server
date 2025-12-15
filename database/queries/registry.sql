@@ -3,6 +3,7 @@ SELECT id,
        name,
        reg_type,
        creation_type,
+       sync_schedule,
        created_at,
        updated_at
   FROM registry
@@ -22,6 +23,7 @@ SELECT id,
        name,
        reg_type,
        creation_type,
+       sync_schedule,
        created_at,
        updated_at
   FROM registry
@@ -32,6 +34,7 @@ SELECT id,
        name,
        reg_type,
        creation_type,
+       sync_schedule,
        created_at,
        updated_at
   FROM registry
@@ -42,12 +45,14 @@ INSERT INTO registry (
     name,
     reg_type,
     creation_type,
+    sync_schedule,
     created_at,
     updated_at
 ) VALUES (
     sqlc.arg(name),
     sqlc.arg(reg_type),
     sqlc.arg(creation_type),
+    sqlc.narg(sync_schedule),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 ) RETURNING id;
@@ -57,16 +62,19 @@ INSERT INTO registry (
     name,
     reg_type,
     creation_type,
+    sync_schedule,
     created_at,
     updated_at
 ) VALUES (
     sqlc.arg(name),
     sqlc.arg(reg_type),
     sqlc.arg(creation_type),
+    sqlc.narg(sync_schedule),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 )
 ON CONFLICT (name) DO UPDATE SET
+    sync_schedule = EXCLUDED.sync_schedule,
     updated_at = EXCLUDED.updated_at
 RETURNING id;
 
@@ -75,6 +83,7 @@ INSERT INTO registry (
     name,
     reg_type,
     creation_type,
+    sync_schedule,
     created_at,
     updated_at
 )
@@ -82,9 +91,11 @@ SELECT
     unnest(sqlc.arg(names)::text[]),
     unnest(sqlc.arg(reg_types)::registry_type[]),
     unnest(sqlc.arg(creation_types)::creation_type[]),
+    unnest(sqlc.arg(sync_schedules)::interval[]),
     unnest(sqlc.arg(created_ats)::timestamp with time zone[]),
     unnest(sqlc.arg(updated_ats)::timestamp with time zone[])
 ON CONFLICT (name) DO UPDATE SET
+    sync_schedule = EXCLUDED.sync_schedule,
     updated_at = EXCLUDED.updated_at
 WHERE registry.creation_type = 'CONFIG'
 RETURNING id, name;
@@ -101,7 +112,7 @@ DELETE FROM registry WHERE name = sqlc.arg(name);
 SELECT name FROM registry ORDER BY name;
 
 -- name: GetAPIRegistriesByNames :many
-SELECT id, name, reg_type, creation_type, created_at, updated_at
+SELECT id, name, reg_type, creation_type, sync_schedule, created_at, updated_at
 FROM registry
 WHERE name = ANY(sqlc.arg(names)::text[])
   AND creation_type = 'API';
