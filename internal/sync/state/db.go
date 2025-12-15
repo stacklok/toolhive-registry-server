@@ -11,12 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 )
 
 type dbStatusService struct {
 	pool *pgxpool.Pool
+	// registryConfigsMap caches the registry configs by name from the last Initialize call
+	registryConfigsMap map[string]*config.RegistryConfig
 }
 
 // ErrRegistryNotFound is returned when a registry can't be found.
@@ -30,6 +33,12 @@ func NewDBStateService(pool *pgxpool.Pool) RegistryStateService {
 }
 
 func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []config.RegistryConfig) error {
+	// Build registry configs map for caching
+	d.registryConfigsMap = make(map[string]*config.RegistryConfig, len(registryConfigs))
+	for i := range registryConfigs {
+		d.registryConfigsMap[registryConfigs[i].Name] = &registryConfigs[i]
+	}
+
 	// Start a transaction for atomicity
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
@@ -54,6 +63,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	names := make([]string, len(registryConfigs))
 	regTypes := make([]sqlc.RegistryType, len(registryConfigs))
 	creationTypes := make([]sqlc.CreationType, len(registryConfigs))
+	syncSchedules := make([]pgtypes.Interval, len(registryConfigs))
 	createdAts := make([]time.Time, len(registryConfigs))
 	updatedAts := make([]time.Time, len(registryConfigs))
 
@@ -65,6 +75,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		}
 		regTypes[i] = regType
 		creationTypes[i] = sqlc.CreationTypeCONFIG
+		syncSchedules[i] = getSyncScheduleIntervalFromConfig(&reg)
 		createdAts[i] = now
 		updatedAts[i] = now
 	}
@@ -84,6 +95,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		Names:         names,
 		RegTypes:      regTypes,
 		CreationTypes: creationTypes,
+		SyncSchedules: syncSchedules,
 		CreatedAts:    createdAts,
 		UpdatedAts:    updatedAts,
 	})
@@ -284,6 +296,7 @@ func dbSyncRowToStatus(row sqlc.ListRegistrySyncsRow) *status.SyncStatus {
 		LastSyncTime: row.EndedAt,
 		AttemptCount: int(row.AttemptCount),
 		ServerCount:  int(row.ServerCount),
+		SyncSchedule: intervalToString(row.SyncSchedule),
 	}
 
 	// Set message from error_msg if present
@@ -310,6 +323,7 @@ func dbSyncRowByLastUpdateToStatus(row sqlc.ListRegistrySyncsByLastUpdateRow) *s
 		LastSyncTime: row.EndedAt,
 		AttemptCount: int(row.AttemptCount),
 		ServerCount:  int(row.ServerCount),
+		SyncSchedule: intervalToString(row.SyncSchedule),
 	}
 
 	// Set message from error_msg if present
@@ -384,9 +398,36 @@ func getInitialSyncStatus(isNonSynced bool, regType string) (sqlc.SyncStatus, st
 	return sqlc.SyncStatusFAILED, "No previous sync status found"
 }
 
+// intervalToString converts a pgtypes.Interval to a duration string (e.g., "30m", "1h").
+// Returns empty string for NULL intervals.
+func intervalToString(interval pgtypes.Interval) string {
+	if !interval.Valid {
+		return ""
+	}
+	return interval.Duration.String()
+}
+
+// getSyncScheduleIntervalFromConfig extracts the sync schedule interval from a registry config.
+// Returns a NULL interval for non-synced registries (managed, kubernetes) or if no sync policy is configured.
+func getSyncScheduleIntervalFromConfig(reg *config.RegistryConfig) pgtypes.Interval {
+	if reg.IsNonSyncedRegistry() {
+		return pgtypes.NewNullInterval()
+	}
+	if reg.SyncPolicy == nil || reg.SyncPolicy.Interval == "" {
+		return pgtypes.NewNullInterval()
+	}
+	// Parse the duration string from config (e.g., "30m", "1h")
+	interval, err := pgtypes.ParseDuration(reg.SyncPolicy.Interval)
+	if err != nil {
+		// If parsing fails, return NULL interval
+		// This shouldn't happen in production as config validation should catch this
+		return pgtypes.NewNullInterval()
+	}
+	return interval
+}
+
 func (d *dbStatusService) GetNextSyncJob(
 	ctx context.Context,
-	cfg *config.Config,
 	predicate func(*config.RegistryConfig, *status.SyncStatus) bool,
 ) (*config.RegistryConfig, error) {
 	// Start a transaction
@@ -406,19 +447,12 @@ func (d *dbStatusService) GetNextSyncJob(
 		return nil, fmt.Errorf("failed to list registries: %w", err)
 	}
 
-	// Build a map of registry names to configs for quick lookup
-	// TODO: In future we should move these into the DB so we can do all this through SQL.
-	configMap := make(map[string]*config.RegistryConfig)
-	for i := range cfg.Registries {
-		configMap[cfg.Registries[i].Name] = &cfg.Registries[i]
-	}
-
 	// Iterate through registries and find one that matches the predicate
 	for _, reg := range registries {
 		syncStatus := dbSyncRowByLastUpdateToStatus(reg)
 
-		// Find the matching registry configuration
-		regCfg, ok := configMap[reg.Name]
+		// Find the matching registry configuration from cached configs
+		regCfg, ok := d.registryConfigsMap[reg.Name]
 		if !ok {
 			// Registry exists in DB but not in config - this shouldn't happen
 			// but handle gracefully by continuing to next registry
