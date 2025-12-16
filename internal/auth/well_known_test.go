@@ -100,13 +100,6 @@ func TestNewProtectedResourceHandler_ValidationErrors(t *testing.T) {
 		wantErr     string
 	}{
 		{
-			name:        "empty resource URL",
-			resourceURL: "",
-			authServers: []string{"https://auth.example.com"},
-			scopes:      []string{"read"},
-			wantErr:     "resourceURL is required",
-		},
-		{
 			name:        "nil auth servers",
 			resourceURL: "https://api.example.com",
 			authServers: nil,

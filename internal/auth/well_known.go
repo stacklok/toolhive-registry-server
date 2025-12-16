@@ -26,10 +26,6 @@ func newProtectedResourceHandler(
 	authorizationServers []string,
 	scopes []string,
 ) (http.Handler, error) {
-	// Validate required parameters per RFC 9728
-	if resourceURL == "" {
-		return nil, errors.New("resourceURL is required")
-	}
 	if len(authorizationServers) == 0 {
 		return nil, errors.New("at least one authorization server is required")
 	}
