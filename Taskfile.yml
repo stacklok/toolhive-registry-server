@@ -1,6 +1,8 @@
 version: '3'
 
 vars:
+  VERSION_FILE: VERSION
+  CHART_PATH: deploy/charts/toolhive-registry-server
   CONTAINER_RUNTIME:
     sh: |
       if command -v podman >/dev/null 2>&1; then
@@ -250,3 +252,13 @@ tasks:
         else
           docker compose logs
         fi
+
+  release:
+    desc: Create a new release PR
+    interactive: true
+    silent: true
+    env:
+      VERSION_FILE: "{{.VERSION_FILE}}"
+      CHART_PATH: "{{.CHART_PATH}}"
+    cmds:
+      - ./scripts/release.sh
