@@ -201,7 +201,7 @@ type SyncPolicyConfig struct {
 	Interval string `yaml:"interval"`
 }
 
-// FilterConfig defines filtering rules for registry entries
+// FilterConfig defines filtering drules for registry entries
 type FilterConfig struct {
 	Names *NameFilterConfig `yaml:"names,omitempty"`
 	Tags  *TagFilterConfig  `yaml:"tags,omitempty"`

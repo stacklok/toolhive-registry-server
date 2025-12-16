@@ -22,6 +22,12 @@ var (
 	ErrNotManagedRegistry = errors.New("registry is not managed")
 	// ErrVersionAlreadyExists is returned when attempting to publish a version that already exists
 	ErrVersionAlreadyExists = errors.New("version already exists")
+	// ErrConfigRegistry is returned when attempting to modify/delete a CONFIG-created registry via API
+	ErrConfigRegistry = errors.New("cannot modify CONFIG registry via API")
+	// ErrInvalidRegistryConfig is returned when the registry configuration is invalid
+	ErrInvalidRegistryConfig = errors.New("invalid registry configuration")
+	// ErrRegistryAlreadyExists is returned when attempting to create a registry that already exists
+	ErrRegistryAlreadyExists = errors.New("registry already exists")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service
@@ -52,17 +58,39 @@ type RegistryService interface {
 	// ListRegistries returns all configured registries
 	ListRegistries(ctx context.Context) ([]RegistryInfo, error)
 
-	// GetRegistryByName returns a single registry by name
+	// GetRegistryByName returns a single registry by name with full configuration
 	GetRegistryByName(ctx context.Context, name string) (*RegistryInfo, error)
+
+	// CreateRegistry creates a new registry
+	// Returns ErrRegistryAlreadyExists if a registry with the name already exists
+	// Returns ErrInvalidRegistryConfig if the configuration is invalid
+	CreateRegistry(ctx context.Context, name string, config *RegistryCreateRequest) (*RegistryInfo, error)
+
+	// UpdateRegistry updates an existing registry
+	// Returns ErrRegistryNotFound if the registry doesn't exist
+	// Returns ErrConfigRegistry if the registry was created via config file (temporary, until CONFIG deprecated)
+	// Returns ErrInvalidRegistryConfig if the configuration is invalid
+	UpdateRegistry(ctx context.Context, name string, config *RegistryCreateRequest) (*RegistryInfo, error)
+
+	// DeleteRegistry deletes a registry
+	// Returns ErrRegistryNotFound if the registry doesn't exist
+	// Returns ErrConfigRegistry if the registry was created via config file (temporary, until CONFIG deprecated)
+	DeleteRegistry(ctx context.Context, name string) error
 }
 
 // RegistryInfo represents detailed information about a registry
 type RegistryInfo struct {
-	Name       string              `json:"name"`
-	Type       string              `json:"type"` // MANAGED, FILE, REMOTE
-	SyncStatus *RegistrySyncStatus `json:"syncStatus,omitempty"`
-	CreatedAt  time.Time           `json:"createdAt"`
-	UpdatedAt  time.Time           `json:"updatedAt"`
+	Name         string              `json:"name"`
+	Type         string              `json:"type"`                   // MANAGED, FILE, REMOTE, KUBERNETES
+	CreationType CreationType        `json:"creationType,omitempty"` // API or CONFIG
+	SourceType   RegistrySourceType  `json:"sourceType,omitempty"`   // git, api, file, managed, kubernetes
+	Format       string              `json:"format,omitempty"`       // toolhive or upstream
+	SourceConfig interface{}         `json:"sourceConfig,omitempty"` // Type-specific source configuration
+	FilterConfig *FilterConfig       `json:"filterConfig,omitempty"` // Filtering rules
+	SyncSchedule string              `json:"syncSchedule,omitempty"` // Sync interval string
+	SyncStatus   *RegistrySyncStatus `json:"syncStatus,omitempty"`
+	CreatedAt    time.Time           `json:"createdAt"`
+	UpdatedAt    time.Time           `json:"updatedAt"`
 }
 
 // RegistrySyncStatus represents the sync status of a registry

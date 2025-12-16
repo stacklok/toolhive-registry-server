@@ -17,12 +17,11 @@ import (
 
 //nolint:thelper // We want to see these lines in the test output
 func setupRegistry(t *testing.T, queries *Queries) uuid.UUID {
-	regID, err := queries.InsertRegistry(
+	regID, err := queries.InsertConfigRegistry(
 		context.Background(),
-		InsertRegistryParams{
-			Name:         "test-registry",
-			RegType:      RegistryTypeREMOTE,
-			CreationType: CreationTypeCONFIG,
+		InsertConfigRegistryParams{
+			Name:    "test-registry",
+			RegType: RegistryTypeREMOTE,
 		},
 	)
 	require.NoError(t, err)

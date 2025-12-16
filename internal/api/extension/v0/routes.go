@@ -2,6 +2,7 @@
 package v0
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -117,27 +118,112 @@ func (r *Routes) getRegistry(w http.ResponseWriter, req *http.Request) {
 }
 
 // upsertRegistry handles PUT /extension/v0/registries/{registryName}
-// This endpoint is not implemented and not included in OpenAPI spec
-func (*Routes) upsertRegistry(w http.ResponseWriter, r *http.Request) {
-	_, err := common.GetAndValidateURLParam(r, "registryName")
+//
+// @Summary		Create or update registry
+// @Description	Create a new registry or update an existing one. Only registries created via API can be updated.
+// @Tags		extension
+// @Accept		json
+// @Produce		json
+// @Param		registryName	path	string						true	"Registry Name"
+// @Param		body			body	service.RegistryCreateRequest	true	"Registry configuration"
+// @Success		200	{object}	service.RegistryInfo	"Registry updated"
+// @Success		201	{object}	service.RegistryInfo	"Registry created"
+// @Failure		400	{object}	map[string]string	"Bad request - invalid configuration"
+// @Failure		401	{object}	map[string]string	"Unauthorized"
+// @Failure		403	{object}	map[string]string	"Forbidden - cannot modify CONFIG registry"
+// @Failure		500	{object}	map[string]string	"Internal server error"
+// @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
+// @Router		/extension/v0/registries/{registryName} [put]
+func (rt *Routes) upsertRegistry(w http.ResponseWriter, r *http.Request) {
+	registryName, err := common.GetAndValidateURLParam(r, "registryName")
 	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	common.WriteErrorResponse(w, "Creating or updating registry is not supported", http.StatusNotImplemented)
+	if r.Body == nil {
+		common.WriteErrorResponse(w, "Request body is required", http.StatusBadRequest)
+		return
+	}
+
+	var config service.RegistryCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		common.WriteErrorResponse(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+
+	// Try to update first - if registry doesn't exist, create it
+	registry, err := rt.service.UpdateRegistry(ctx, registryName, &config)
+	if err != nil {
+		if errors.Is(err, service.ErrRegistryNotFound) {
+			// Registry doesn't exist, create it
+			registry, err = rt.service.CreateRegistry(ctx, registryName, &config)
+			if err != nil {
+				rt.handleRegistryError(w, err, registryName)
+				return
+			}
+			common.WriteJSONResponse(w, registry, http.StatusCreated)
+			return
+		}
+		rt.handleRegistryError(w, err, registryName)
+		return
+	}
+
+	common.WriteJSONResponse(w, registry, http.StatusOK)
 }
 
 // deleteRegistry handles DELETE /extension/v0/registries/{registryName}
-// This endpoint is not implemented and not included in OpenAPI spec
-func (*Routes) deleteRegistry(w http.ResponseWriter, r *http.Request) {
-	_, err := common.GetAndValidateURLParam(r, "registryName")
+//
+// @Summary		Delete registry
+// @Description	Delete a registry by name. Only registries created via API can be deleted.
+// @Tags		extension
+// @Accept		json
+// @Produce		json
+// @Param		registryName	path	string	true	"Registry Name"
+// @Success		204	"Registry deleted"
+// @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		401	{object}	map[string]string	"Unauthorized"
+// @Failure		403	{object}	map[string]string	"Forbidden - cannot delete CONFIG registry"
+// @Failure		404	{object}	map[string]string	"Registry not found"
+// @Failure		500	{object}	map[string]string	"Internal server error"
+// @Failure		501	{object}	map[string]string	"Not implemented"
+// @Security	BearerAuth
+// @Router		/extension/v0/registries/{registryName} [delete]
+func (rt *Routes) deleteRegistry(w http.ResponseWriter, r *http.Request) {
+	registryName, err := common.GetAndValidateURLParam(r, "registryName")
 	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	common.WriteErrorResponse(w, "Deleting registry is not supported", http.StatusNotImplemented)
+	ctx := r.Context()
+	if err := rt.service.DeleteRegistry(ctx, registryName); err != nil {
+		rt.handleRegistryError(w, err, registryName)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRegistryError handles common registry errors and writes appropriate responses
+func (*Routes) handleRegistryError(w http.ResponseWriter, err error, registryName string) {
+	switch {
+	case errors.Is(err, service.ErrNotImplemented):
+		common.WriteErrorResponse(w, "Registry operations are not supported in file mode", http.StatusNotImplemented)
+	case errors.Is(err, service.ErrRegistryNotFound):
+		common.WriteErrorResponse(w, fmt.Sprintf("Registry %s not found", registryName), http.StatusNotFound)
+	case errors.Is(err, service.ErrConfigRegistry):
+		common.WriteErrorResponse(w, "Cannot modify registry created via config file", http.StatusForbidden)
+	case errors.Is(err, service.ErrInvalidRegistryConfig):
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+	case errors.Is(err, service.ErrRegistryAlreadyExists):
+		common.WriteErrorResponse(w, fmt.Sprintf("Registry %s already exists", registryName), http.StatusConflict)
+	default:
+		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // upsertVersion handles PUT /extension/v0/registries/{registryName}/servers/{serverName}/versions/{version}

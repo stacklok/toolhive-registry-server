@@ -247,6 +247,10 @@ type Registry struct {
 	UpdatedAt    *time.Time       `json:"updated_at"`
 	CreationType CreationType     `json:"creation_type"`
 	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
+	SourceType   *string          `json:"source_type"`
+	Format       *string          `json:"format"`
+	SourceConfig []byte           `json:"source_config"`
+	FilterConfig []byte           `json:"filter_config"`
 }
 
 type RegistrySync struct {

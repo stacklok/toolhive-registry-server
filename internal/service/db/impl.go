@@ -4,6 +4,7 @@ package database
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 	"github.com/modelcontextprotocol/registry/pkg/model"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
+	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/validators"
@@ -777,12 +779,8 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 	// Convert to API response format
 	result := make([]service.RegistryInfo, 0, len(registries))
 	for _, reg := range registries {
-		info := service.RegistryInfo{
-			Name:      reg.Name,
-			Type:      string(reg.RegType), // MANAGED, FILE, REMOTE
-			CreatedAt: *reg.CreatedAt,
-			UpdatedAt: *reg.UpdatedAt,
-		}
+		// Build RegistryInfo with all config fields
+		info := buildRegistryInfoFromListRow(&reg)
 
 		// Fetch sync status from database
 		syncRecord, err := querier.GetRegistrySyncByName(ctx, reg.Name)
@@ -807,7 +805,7 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 			}
 		}
 
-		result = append(result, info)
+		result = append(result, *info)
 	}
 
 	return result, nil
@@ -864,13 +862,8 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 		return nil, fmt.Errorf("failed to get registry: %w", err)
 	}
 
-	// Convert to service type
-	info := service.RegistryInfo{
-		Name:      registry.Name,
-		Type:      string(registry.RegType), // MANAGED, FILE, REMOTE
-		CreatedAt: *registry.CreatedAt,
-		UpdatedAt: *registry.UpdatedAt,
-	}
+	// Build RegistryInfo with all config fields
+	info := buildRegistryInfoFromGetByNameRow(&registry)
 
 	// Fetch sync status from database
 	syncRecord, err := querier.GetRegistrySyncByName(ctx, registry.Name)
@@ -895,5 +888,474 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 		}
 	}
 
-	return &info, nil
+	return info, nil
+}
+
+// CreateRegistry creates a new registry via API
+func (s *dbService) CreateRegistry(
+	ctx context.Context,
+	name string,
+	config *service.RegistryCreateRequest,
+) (*service.RegistryInfo, error) {
+	// Validate configuration
+	if err := service.ValidateRegistryConfig(config); err != nil {
+		return nil, fmt.Errorf("%w: %v", service.ErrInvalidRegistryConfig, err)
+	}
+
+	// Begin transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.Serializable,
+		AccessMode: pgx.ReadWrite,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			_ = err
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	// Check if registry already exists
+	_, err = querier.GetRegistryByName(ctx, name)
+	if err == nil {
+		return nil, fmt.Errorf("%w: %s", service.ErrRegistryAlreadyExists, name)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("failed to check registry existence: %w", err)
+	}
+
+	// Prepare insert parameters
+	now := time.Now()
+	sourceType := string(config.GetSourceType())
+	format := config.Format
+	if format == "" {
+		format = "upstream" // default format
+	}
+
+	sourceConfig := serializeSourceConfigFromRequest(config)
+	filterConfig := serializeFilterConfigFromRequest(config.Filter)
+	syncSchedule := parseSyncScheduleFromRequest(config)
+
+	params := sqlc.InsertAPIRegistryParams{
+		Name:         name,
+		RegType:      mapServiceSourceTypeToDBType(config.GetSourceType()),
+		SourceType:   &sourceType,
+		Format:       &format,
+		SourceConfig: sourceConfig,
+		FilterConfig: filterConfig,
+		SyncSchedule: syncSchedule,
+		CreatedAt:    &now,
+		UpdatedAt:    &now,
+	}
+
+	// Insert the registry
+	registry, err := querier.InsertAPIRegistry(ctx, params)
+	if err != nil {
+		// Check for unique constraint violation
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, fmt.Errorf("%w: %s", service.ErrRegistryAlreadyExists, name)
+		}
+		return nil, fmt.Errorf("failed to insert registry: %w", err)
+	}
+
+	// Initialize sync status for the new registry
+	err = querier.BulkInitializeRegistrySyncs(ctx, sqlc.BulkInitializeRegistrySyncsParams{
+		RegIds:       []uuid.UUID{registry.ID},
+		SyncStatuses: []sqlc.SyncStatus{sqlc.SyncStatusCOMPLETED},
+		ErrorMsgs:    []string{""},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize sync status: %w", err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Registry created",
+		"name", name,
+		"type", registry.RegType,
+		"source_type", sourceType,
+		"request_id", middleware.GetReqID(ctx))
+
+	// Build and return RegistryInfo
+	return buildRegistryInfoFromDBRegistry(&registry), nil
+}
+
+// UpdateRegistry updates an existing API registry
+func (s *dbService) UpdateRegistry(
+	ctx context.Context,
+	name string,
+	config *service.RegistryCreateRequest,
+) (*service.RegistryInfo, error) {
+	// Validate configuration
+	if err := service.ValidateRegistryConfig(config); err != nil {
+		return nil, fmt.Errorf("%w: %v", service.ErrInvalidRegistryConfig, err)
+	}
+
+	// Begin transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.Serializable,
+		AccessMode: pgx.ReadWrite,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			_ = err
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	// Prepare update parameters
+	now := time.Now()
+	sourceType := string(config.GetSourceType())
+	format := config.Format
+	if format == "" {
+		format = "upstream" // default format
+	}
+
+	sourceConfig := serializeSourceConfigFromRequest(config)
+	filterConfig := serializeFilterConfigFromRequest(config.Filter)
+	syncSchedule := parseSyncScheduleFromRequest(config)
+
+	params := sqlc.UpdateAPIRegistryParams{
+		Name:         name,
+		RegType:      mapServiceSourceTypeToDBType(config.GetSourceType()),
+		SourceType:   &sourceType,
+		Format:       &format,
+		SourceConfig: sourceConfig,
+		FilterConfig: filterConfig,
+		SyncSchedule: syncSchedule,
+		UpdatedAt:    &now,
+	}
+
+	// Update the registry (only updates API type registries)
+	registry, err := querier.UpdateAPIRegistry(ctx, params)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Registry not found or is CONFIG type, check which case
+			existing, checkErr := querier.GetRegistryByName(ctx, name)
+			if checkErr != nil {
+				if errors.Is(checkErr, pgx.ErrNoRows) {
+					return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+				}
+				return nil, fmt.Errorf("failed to check registry: %w", checkErr)
+			}
+			// Registry exists but is CONFIG type
+			if existing.CreationType == sqlc.CreationTypeCONFIG {
+				return nil, fmt.Errorf("%w: %s", service.ErrConfigRegistry, name)
+			}
+			// Should not reach here, but return not found just in case
+			return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+		}
+		return nil, fmt.Errorf("failed to update registry: %w", err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Registry updated",
+		"name", name,
+		"type", registry.RegType,
+		"source_type", sourceType,
+		"request_id", middleware.GetReqID(ctx))
+
+	// Build and return RegistryInfo
+	return buildRegistryInfoFromDBRegistry(&registry), nil
+}
+
+// DeleteRegistry deletes an API registry
+func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
+	// Begin transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.Serializable,
+		AccessMode: pgx.ReadWrite,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			_ = err
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	// Delete the registry (only deletes API type registries)
+	rowsAffected, err := querier.DeleteAPIRegistry(ctx, name)
+	if err != nil {
+		return fmt.Errorf("failed to delete registry: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		// Registry not found or is CONFIG type, check which case
+		existing, checkErr := querier.GetRegistryByName(ctx, name)
+		if checkErr != nil {
+			if errors.Is(checkErr, pgx.ErrNoRows) {
+				return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+			}
+			return fmt.Errorf("failed to check registry: %w", checkErr)
+		}
+		// Registry exists but is CONFIG type
+		if existing.CreationType == sqlc.CreationTypeCONFIG {
+			return fmt.Errorf("%w: %s", service.ErrConfigRegistry, name)
+		}
+		// Should not reach here, but return not found just in case
+		return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Registry deleted",
+		"name", name,
+		"request_id", middleware.GetReqID(ctx))
+
+	return nil
+}
+
+// =============================================================================
+// Helper functions for registry CRUD operations
+// =============================================================================
+
+// mapServiceSourceTypeToDBType maps service RegistrySourceType to database RegistryType
+func mapServiceSourceTypeToDBType(sourceType service.RegistrySourceType) sqlc.RegistryType {
+	switch sourceType {
+	case service.SourceTypeManaged:
+		return sqlc.RegistryTypeMANAGED
+	case service.SourceTypeFile:
+		return sqlc.RegistryTypeFILE
+	case service.SourceTypeGit, service.SourceTypeAPI:
+		return sqlc.RegistryTypeREMOTE
+	case service.SourceTypeKubernetes:
+		return sqlc.RegistryTypeKUBERNETES
+	default:
+		return sqlc.RegistryTypeREMOTE
+	}
+}
+
+// serializeSourceConfigFromRequest serializes the source config from request to JSON bytes
+func serializeSourceConfigFromRequest(config *service.RegistryCreateRequest) []byte {
+	if config == nil {
+		return nil
+	}
+
+	sourceConfig := config.GetSourceConfig()
+	if sourceConfig == nil {
+		return nil
+	}
+
+	data, err := json.Marshal(sourceConfig)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+// serializeFilterConfigFromRequest serializes the filter config from request to JSON bytes
+func serializeFilterConfigFromRequest(filter *service.FilterConfig) []byte {
+	if filter == nil {
+		return nil
+	}
+
+	data, err := json.Marshal(filter)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+// parseSyncScheduleFromRequest parses the sync schedule from request to pgtypes.Interval
+func parseSyncScheduleFromRequest(config *service.RegistryCreateRequest) pgtypes.Interval {
+	if config == nil || config.SyncPolicy == nil || config.SyncPolicy.Interval == "" {
+		return pgtypes.NewNullInterval()
+	}
+
+	interval, err := pgtypes.ParseDuration(config.SyncPolicy.Interval)
+	if err != nil {
+		return pgtypes.NewNullInterval()
+	}
+	return interval
+}
+
+// deserializeSourceConfig deserializes source config from JSON bytes based on source type
+func deserializeSourceConfig(sourceType string, data []byte) interface{} {
+	if len(data) == 0 {
+		return nil
+	}
+
+	switch service.RegistrySourceType(sourceType) {
+	case service.SourceTypeGit:
+		var cfg service.GitSourceConfig
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return nil
+		}
+		return &cfg
+	case service.SourceTypeAPI:
+		var cfg service.APISourceConfig
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return nil
+		}
+		return &cfg
+	case service.SourceTypeFile:
+		var cfg service.FileSourceConfig
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return nil
+		}
+		return &cfg
+	case service.SourceTypeManaged:
+		var cfg service.ManagedSourceConfig
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return nil
+		}
+		return &cfg
+	case service.SourceTypeKubernetes:
+		var cfg service.KubernetesConfig
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return nil
+		}
+		return &cfg
+	default:
+		return nil
+	}
+}
+
+// deserializeFilterConfig deserializes filter config from JSON bytes
+func deserializeFilterConfig(data []byte) *service.FilterConfig {
+	if len(data) == 0 {
+		return nil
+	}
+
+	var cfg service.FilterConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil
+	}
+	return &cfg
+}
+
+// buildRegistryInfoFromDBRegistry builds a RegistryInfo from a database Registry
+func buildRegistryInfoFromDBRegistry(registry *sqlc.Registry) *service.RegistryInfo {
+	info := &service.RegistryInfo{
+		Name:         registry.Name,
+		Type:         string(registry.RegType),
+		CreationType: service.CreationType(registry.CreationType),
+	}
+
+	if registry.SourceType != nil {
+		info.SourceType = service.RegistrySourceType(*registry.SourceType)
+	}
+
+	if registry.Format != nil {
+		info.Format = *registry.Format
+	}
+
+	if registry.SourceType != nil {
+		info.SourceConfig = deserializeSourceConfig(*registry.SourceType, registry.SourceConfig)
+	}
+
+	info.FilterConfig = deserializeFilterConfig(registry.FilterConfig)
+
+	if registry.SyncSchedule.Valid {
+		info.SyncSchedule = registry.SyncSchedule.Duration.String()
+	}
+
+	if registry.CreatedAt != nil {
+		info.CreatedAt = *registry.CreatedAt
+	}
+
+	if registry.UpdatedAt != nil {
+		info.UpdatedAt = *registry.UpdatedAt
+	}
+
+	return info
+}
+
+// buildRegistryInfoFromListRow builds a RegistryInfo from a ListRegistriesRow
+func buildRegistryInfoFromListRow(row *sqlc.ListRegistriesRow) *service.RegistryInfo {
+	info := &service.RegistryInfo{
+		Name:         row.Name,
+		Type:         string(row.RegType),
+		CreationType: service.CreationType(row.CreationType),
+	}
+
+	if row.SourceType != nil {
+		info.SourceType = service.RegistrySourceType(*row.SourceType)
+	}
+
+	if row.Format != nil {
+		info.Format = *row.Format
+	}
+
+	if row.SourceType != nil {
+		info.SourceConfig = deserializeSourceConfig(*row.SourceType, row.SourceConfig)
+	}
+
+	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
+
+	if row.SyncSchedule.Valid {
+		info.SyncSchedule = row.SyncSchedule.Duration.String()
+	}
+
+	if row.CreatedAt != nil {
+		info.CreatedAt = *row.CreatedAt
+	}
+
+	if row.UpdatedAt != nil {
+		info.UpdatedAt = *row.UpdatedAt
+	}
+
+	return info
+}
+
+// buildRegistryInfoFromGetByNameRow builds a RegistryInfo from a GetRegistryByNameRow
+func buildRegistryInfoFromGetByNameRow(row *sqlc.GetRegistryByNameRow) *service.RegistryInfo {
+	info := &service.RegistryInfo{
+		Name:         row.Name,
+		Type:         string(row.RegType),
+		CreationType: service.CreationType(row.CreationType),
+	}
+
+	if row.SourceType != nil {
+		info.SourceType = service.RegistrySourceType(*row.SourceType)
+	}
+
+	if row.Format != nil {
+		info.Format = *row.Format
+	}
+
+	if row.SourceType != nil {
+		info.SourceConfig = deserializeSourceConfig(*row.SourceType, row.SourceConfig)
+	}
+
+	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
+
+	if row.SyncSchedule.Valid {
+		info.SyncSchedule = row.SyncSchedule.Duration.String()
+	}
+
+	if row.CreatedAt != nil {
+		info.CreatedAt = *row.CreatedAt
+	}
+
+	if row.UpdatedAt != nil {
+		info.UpdatedAt = *row.UpdatedAt
+	}
+
+	return info
 }

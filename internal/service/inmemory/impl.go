@@ -708,6 +708,29 @@ func (s *regSvc) GetRegistryByName(_ context.Context, name string) (*service.Reg
 	}, nil
 }
 
+// CreateRegistry is not supported in the in-memory implementation
+func (*regSvc) CreateRegistry(
+	_ context.Context,
+	_ string,
+	_ *service.RegistryCreateRequest,
+) (*service.RegistryInfo, error) {
+	return nil, service.ErrNotImplemented
+}
+
+// UpdateRegistry is not supported in the in-memory implementation
+func (*regSvc) UpdateRegistry(
+	_ context.Context,
+	_ string,
+	_ *service.RegistryCreateRequest,
+) (*service.RegistryInfo, error) {
+	return nil, service.ErrNotImplemented
+}
+
+// DeleteRegistry is not supported in the in-memory implementation
+func (*regSvc) DeleteRegistry(_ context.Context, _ string) error {
+	return service.ErrNotImplemented
+}
+
 // getRegistryType returns the type of the registry from config or infers it from source.
 // Caller must hold s.mu read lock.
 func (s *regSvc) getRegistryType(registryName string) string {
