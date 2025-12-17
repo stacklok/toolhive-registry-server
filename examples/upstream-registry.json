@@ -7,7 +7,7 @@
   "data": {
     "servers": [
       {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "io.github.stacklok/adb-mysql-mcp-server",
         "description": "Official MCP server for AnalyticDB for MySQL of Alibaba Cloud",
         "title": "adb-mysql-mcp-server",
@@ -97,7 +97,7 @@
         }
       },
       {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "io.github.stacklok/apollo-mcp-server",
         "description": "Exposes GraphQL operations as MCP tools for AI-driven API orchestration with Apollo",
         "title": "apollo-mcp-server",
@@ -164,7 +164,7 @@
         }
       },
       {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "io.github.stacklok/arxiv-mcp-server",
         "description": "AI assistants search and access arXiv papers through MCP with persistent paper storage",
         "title": "arxiv-mcp-server",
@@ -244,7 +244,7 @@
         }
       },
       {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "io.github.stacklok/aws-api",
         "description": "Enables AI assistants to interact with AWS services and resources through AWS CLI commands",
         "title": "aws-api",
@@ -359,7 +359,7 @@
         }
       },
       {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "io.github.stacklok/browserbase",
         "description": "MCP server for cloud browser automation with Browserbase and Stagehand",
         "title": "browserbase",
@@ -445,7 +445,7 @@
         }
       },
       {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "io.github.stacklok/chrome-devtools-mcp",
         "description": "Control and inspect live Chrome browser from AI coding agents with full DevTools access",
         "title": "chrome-devtools-mcp",
@@ -536,7 +536,7 @@
         }
       },
       {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "io.github.stacklok/crowdstrike-falcon",
         "description": "CrowdStrike Falcon integration for security analysis, detections, incidents, and threat intel",
         "title": "crowdstrike-falcon",
@@ -659,7 +659,7 @@
         }
       },
       {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "io.github.stacklok/fetch",
         "description": "Allows you to fetch content from the web",
         "title": "fetch",
@@ -727,7 +727,7 @@
         }
       },
       {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "io.github.stacklok/filesystem",
         "description": "Allows you to do filesystem operations. Mount paths under /projects using --volume.",
         "title": "filesystem",
@@ -795,7 +795,7 @@
         }
       },
       {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "io.github.stacklok/genai-toolbox",
         "description": "Will be removed soon. Please use database-toolbox instead.",
         "title": "genai-toolbox",
@@ -856,7 +856,7 @@
         }
       },
       {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "io.github.stacklok/github",
         "description": "Provides integration with GitHub's APIs",
         "title": "github",
@@ -990,7 +990,7 @@
         }
       },
       {
-        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "io.github.stacklok/gitlab",
         "description": "Provides integration with a GitLab instance to manage projects, issues, merge requests, and more.",
         "title": "gitlab",
