@@ -5,17 +5,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 )
 
 // ValidateRegistryConfig validates a RegistryCreateRequest
-func ValidateRegistryConfig(config *RegistryCreateRequest) error {
-	if config == nil {
+func ValidateRegistryConfig(req *RegistryCreateRequest) error {
+	if req == nil {
 		return fmt.Errorf("config is required")
 	}
 
 	// Exactly one source type must be set
-	sourceCount := config.CountSourceTypes()
+	sourceCount := req.CountSourceTypes()
 	if sourceCount == 0 {
 		return fmt.Errorf("one of git, api, file, managed, or kubernetes must be specified")
 	}
@@ -24,33 +25,33 @@ func ValidateRegistryConfig(config *RegistryCreateRequest) error {
 	}
 
 	// For synced registries, sync policy is required
-	if !config.IsNonSyncedType() {
-		if config.SyncPolicy == nil || config.SyncPolicy.Interval == "" {
-			return fmt.Errorf("syncPolicy.interval is required for %s registries", config.GetSourceType())
+	if !req.IsNonSyncedType() {
+		if req.SyncPolicy == nil || req.SyncPolicy.Interval == "" {
+			return fmt.Errorf("syncPolicy.interval is required for %s registries", req.GetSourceType())
 		}
-		if _, err := time.ParseDuration(config.SyncPolicy.Interval); err != nil {
+		if _, err := time.ParseDuration(req.SyncPolicy.Interval); err != nil {
 			return fmt.Errorf("invalid sync interval: %w", err)
 		}
 	}
 
 	// Validate format if specified
-	if config.Format != "" && config.Format != "toolhive" && config.Format != "upstream" {
-		return fmt.Errorf("format must be 'toolhive' or 'upstream', got '%s'", config.Format)
+	if req.Format != "" && req.Format != "toolhive" && req.Format != "upstream" {
+		return fmt.Errorf("format must be 'toolhive' or 'upstream', got '%s'", req.Format)
 	}
 
 	// Source-specific validation
-	return validateSourceSpecific(config)
+	return validateSourceSpecific(req)
 }
 
 // validateSourceSpecific validates source-specific configuration
-func validateSourceSpecific(config *RegistryCreateRequest) error {
-	switch config.GetSourceType() {
+func validateSourceSpecific(req *RegistryCreateRequest) error {
+	switch req.GetSourceType() {
 	case SourceTypeGit:
-		return validateGitConfig(config.Git)
+		return validateGitConfig(req.Git)
 	case SourceTypeAPI:
-		return validateAPIConfig(config.API)
+		return validateAPIConfig(req.API)
 	case SourceTypeFile:
-		return validateFileConfig(config.File)
+		return validateFileConfig(req.File)
 	case SourceTypeManaged:
 		// Managed registries have no required fields
 		return nil
@@ -63,7 +64,7 @@ func validateSourceSpecific(config *RegistryCreateRequest) error {
 }
 
 // validateGitConfig validates Git source configuration
-func validateGitConfig(cfg *GitSourceConfig) error {
+func validateGitConfig(cfg *config.GitConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("git config is required")
 	}
@@ -91,7 +92,7 @@ func validateGitConfig(cfg *GitSourceConfig) error {
 }
 
 // validateAPIConfig validates API source configuration
-func validateAPIConfig(cfg *APISourceConfig) error {
+func validateAPIConfig(cfg *config.APIConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("api config is required")
 	}
@@ -104,7 +105,7 @@ func validateAPIConfig(cfg *APISourceConfig) error {
 }
 
 // validateFileConfig validates File source configuration
-func validateFileConfig(cfg *FileSourceConfig) error {
+func validateFileConfig(cfg *config.FileConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("file config is required")
 	}

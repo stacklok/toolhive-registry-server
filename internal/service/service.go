@@ -9,6 +9,8 @@ import (
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
 var (
@@ -64,13 +66,13 @@ type RegistryService interface {
 	// CreateRegistry creates a new registry
 	// Returns ErrRegistryAlreadyExists if a registry with the name already exists
 	// Returns ErrInvalidRegistryConfig if the configuration is invalid
-	CreateRegistry(ctx context.Context, name string, config *RegistryCreateRequest) (*RegistryInfo, error)
+	CreateRegistry(ctx context.Context, name string, req *RegistryCreateRequest) (*RegistryInfo, error)
 
 	// UpdateRegistry updates an existing registry
 	// Returns ErrRegistryNotFound if the registry doesn't exist
 	// Returns ErrConfigRegistry if the registry was created via config file (temporary, until CONFIG deprecated)
 	// Returns ErrInvalidRegistryConfig if the configuration is invalid
-	UpdateRegistry(ctx context.Context, name string, config *RegistryCreateRequest) (*RegistryInfo, error)
+	UpdateRegistry(ctx context.Context, name string, req *RegistryCreateRequest) (*RegistryInfo, error)
 
 	// DeleteRegistry deletes a registry
 	// Returns ErrRegistryNotFound if the registry doesn't exist
@@ -86,17 +88,17 @@ type RegistryService interface {
 
 // RegistryInfo represents detailed information about a registry
 type RegistryInfo struct {
-	Name         string              `json:"name"`
-	Type         string              `json:"type"`                   // MANAGED, FILE, REMOTE, KUBERNETES
-	CreationType CreationType        `json:"creationType,omitempty"` // API or CONFIG
-	SourceType   RegistrySourceType  `json:"sourceType,omitempty"`   // git, api, file, managed, kubernetes
-	Format       string              `json:"format,omitempty"`       // toolhive or upstream
-	SourceConfig interface{}         `json:"sourceConfig,omitempty"` // Type-specific source configuration
-	FilterConfig *FilterConfig       `json:"filterConfig,omitempty"` // Filtering rules
-	SyncSchedule string              `json:"syncSchedule,omitempty"` // Sync interval string
-	SyncStatus   *RegistrySyncStatus `json:"syncStatus,omitempty"`
-	CreatedAt    time.Time           `json:"createdAt"`
-	UpdatedAt    time.Time           `json:"updatedAt"`
+	Name         string               `json:"name"`
+	Type         string               `json:"type"`                   // MANAGED, FILE, REMOTE, KUBERNETES
+	CreationType CreationType         `json:"creationType,omitempty"` // API or CONFIG
+	SourceType   RegistrySourceType   `json:"sourceType,omitempty"`   // git, api, file, managed, kubernetes
+	Format       string               `json:"format,omitempty"`       // toolhive or upstream
+	SourceConfig interface{}          `json:"sourceConfig,omitempty"` // Type-specific source configuration
+	FilterConfig *config.FilterConfig `json:"filterConfig,omitempty"` // Filtering rules
+	SyncSchedule string               `json:"syncSchedule,omitempty"` // Sync interval string
+	SyncStatus   *RegistrySyncStatus  `json:"syncStatus,omitempty"`
+	CreatedAt    time.Time            `json:"createdAt"`
+	UpdatedAt    time.Time            `json:"updatedAt"`
 }
 
 // RegistrySyncStatus represents the sync status of a registry

@@ -67,6 +67,7 @@ INSERT INTO registry (
     source_config,
     filter_config,
     sync_schedule,
+    syncable,
     created_at,
     updated_at
 ) VALUES (
@@ -78,6 +79,7 @@ INSERT INTO registry (
     sqlc.narg(source_config),
     sqlc.narg(filter_config),
     sqlc.narg(sync_schedule),
+    sqlc.arg(syncable),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 ) RETURNING id;
@@ -93,6 +95,7 @@ INSERT INTO registry (
     source_config,
     filter_config,
     sync_schedule,
+    syncable,
     created_at,
     updated_at
 ) VALUES (
@@ -104,6 +107,7 @@ INSERT INTO registry (
     sqlc.narg(source_config),
     sqlc.narg(filter_config),
     sqlc.narg(sync_schedule),
+    sqlc.arg(syncable),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 )
@@ -114,6 +118,7 @@ ON CONFLICT (name) DO UPDATE SET
     source_config = EXCLUDED.source_config,
     filter_config = EXCLUDED.filter_config,
     sync_schedule = EXCLUDED.sync_schedule,
+    syncable = EXCLUDED.syncable,
     updated_at = EXCLUDED.updated_at
 WHERE registry.creation_type = 'CONFIG'
 RETURNING id;
@@ -129,6 +134,7 @@ INSERT INTO registry (
     source_config,
     filter_config,
     sync_schedule,
+    syncable,
     created_at,
     updated_at
 )
@@ -141,6 +147,7 @@ SELECT
     unnest(sqlc.arg(source_configs)::jsonb[]),
     unnest(sqlc.arg(filter_configs)::jsonb[]),
     unnest(sqlc.arg(sync_schedules)::interval[]),
+    unnest(sqlc.arg(syncables)::boolean[]),
     unnest(sqlc.arg(created_ats)::timestamp with time zone[]),
     unnest(sqlc.arg(updated_ats)::timestamp with time zone[])
 ON CONFLICT (name) DO UPDATE SET
@@ -150,6 +157,7 @@ ON CONFLICT (name) DO UPDATE SET
     source_config = EXCLUDED.source_config,
     filter_config = EXCLUDED.filter_config,
     sync_schedule = EXCLUDED.sync_schedule,
+    syncable = EXCLUDED.syncable,
     updated_at = EXCLUDED.updated_at
 WHERE registry.creation_type = 'CONFIG'
 RETURNING id, name;
@@ -181,6 +189,7 @@ INSERT INTO registry (
     source_config,
     filter_config,
     sync_schedule,
+    syncable,
     created_at,
     updated_at
 ) VALUES (
@@ -192,6 +201,7 @@ INSERT INTO registry (
     sqlc.narg(source_config),
     sqlc.narg(filter_config),
     sqlc.narg(sync_schedule),
+    sqlc.arg(syncable),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 ) RETURNING *;
@@ -205,6 +215,7 @@ UPDATE registry SET
     source_config = sqlc.narg(source_config),
     filter_config = sqlc.narg(filter_config),
     sync_schedule = sqlc.narg(sync_schedule),
+    syncable = sqlc.arg(syncable),
     updated_at = sqlc.arg(updated_at)
 WHERE name = sqlc.arg(name)
   AND creation_type = 'API'

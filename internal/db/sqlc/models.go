@@ -251,6 +251,7 @@ type Registry struct {
 	Format       *string          `json:"format"`
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
+	Syncable     bool             `json:"syncable"`
 }
 
 type RegistrySync struct {

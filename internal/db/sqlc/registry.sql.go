@@ -23,6 +23,7 @@ INSERT INTO registry (
     source_config,
     filter_config,
     sync_schedule,
+    syncable,
     created_at,
     updated_at
 )
@@ -35,8 +36,9 @@ SELECT
     unnest($5::jsonb[]),
     unnest($6::jsonb[]),
     unnest($7::interval[]),
-    unnest($8::timestamp with time zone[]),
-    unnest($9::timestamp with time zone[])
+    unnest($8::boolean[]),
+    unnest($9::timestamp with time zone[]),
+    unnest($10::timestamp with time zone[])
 ON CONFLICT (name) DO UPDATE SET
     reg_type = EXCLUDED.reg_type,
     source_type = EXCLUDED.source_type,
@@ -44,6 +46,7 @@ ON CONFLICT (name) DO UPDATE SET
     source_config = EXCLUDED.source_config,
     filter_config = EXCLUDED.filter_config,
     sync_schedule = EXCLUDED.sync_schedule,
+    syncable = EXCLUDED.syncable,
     updated_at = EXCLUDED.updated_at
 WHERE registry.creation_type = 'CONFIG'
 RETURNING id, name
@@ -57,6 +60,7 @@ type BulkUpsertConfigRegistriesParams struct {
 	SourceConfigs [][]byte           `json:"source_configs"`
 	FilterConfigs [][]byte           `json:"filter_configs"`
 	SyncSchedules []pgtypes.Interval `json:"sync_schedules"`
+	Syncables     []bool             `json:"syncables"`
 	CreatedAts    []time.Time        `json:"created_ats"`
 	UpdatedAts    []time.Time        `json:"updated_ats"`
 }
@@ -76,6 +80,7 @@ func (q *Queries) BulkUpsertConfigRegistries(ctx context.Context, arg BulkUpsert
 		arg.SourceConfigs,
 		arg.FilterConfigs,
 		arg.SyncSchedules,
+		arg.Syncables,
 		arg.CreatedAts,
 		arg.UpdatedAts,
 	)
@@ -311,6 +316,7 @@ INSERT INTO registry (
     source_config,
     filter_config,
     sync_schedule,
+    syncable,
     created_at,
     updated_at
 ) VALUES (
@@ -323,8 +329,9 @@ INSERT INTO registry (
     $6,
     $7,
     $8,
-    $9
-) RETURNING id, name, reg_type, created_at, updated_at, creation_type, sync_schedule, source_type, format, source_config, filter_config
+    $9,
+    $10
+) RETURNING id, name, reg_type, created_at, updated_at, creation_type, sync_schedule, source_type, format, source_config, filter_config, syncable
 `
 
 type InsertAPIRegistryParams struct {
@@ -335,6 +342,7 @@ type InsertAPIRegistryParams struct {
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
 	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
+	Syncable     bool             `json:"syncable"`
 	CreatedAt    *time.Time       `json:"created_at"`
 	UpdatedAt    *time.Time       `json:"updated_at"`
 }
@@ -352,6 +360,7 @@ func (q *Queries) InsertAPIRegistry(ctx context.Context, arg InsertAPIRegistryPa
 		arg.SourceConfig,
 		arg.FilterConfig,
 		arg.SyncSchedule,
+		arg.Syncable,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -368,6 +377,7 @@ func (q *Queries) InsertAPIRegistry(ctx context.Context, arg InsertAPIRegistryPa
 		&i.Format,
 		&i.SourceConfig,
 		&i.FilterConfig,
+		&i.Syncable,
 	)
 	return i, err
 }
@@ -383,6 +393,7 @@ INSERT INTO registry (
     source_config,
     filter_config,
     sync_schedule,
+    syncable,
     created_at,
     updated_at
 ) VALUES (
@@ -395,7 +406,8 @@ INSERT INTO registry (
     $6,
     $7,
     $8,
-    $9
+    $9,
+    $10
 ) RETURNING id
 `
 
@@ -407,6 +419,7 @@ type InsertConfigRegistryParams struct {
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
 	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
+	Syncable     bool             `json:"syncable"`
 	CreatedAt    *time.Time       `json:"created_at"`
 	UpdatedAt    *time.Time       `json:"updated_at"`
 }
@@ -424,6 +437,7 @@ func (q *Queries) InsertConfigRegistry(ctx context.Context, arg InsertConfigRegi
 		arg.SourceConfig,
 		arg.FilterConfig,
 		arg.SyncSchedule,
+		arg.Syncable,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -541,10 +555,11 @@ UPDATE registry SET
     source_config = $4,
     filter_config = $5,
     sync_schedule = $6,
-    updated_at = $7
-WHERE name = $8
+    syncable = $7,
+    updated_at = $8
+WHERE name = $9
   AND creation_type = 'API'
-RETURNING id, name, reg_type, created_at, updated_at, creation_type, sync_schedule, source_type, format, source_config, filter_config
+RETURNING id, name, reg_type, created_at, updated_at, creation_type, sync_schedule, source_type, format, source_config, filter_config, syncable
 `
 
 type UpdateAPIRegistryParams struct {
@@ -554,6 +569,7 @@ type UpdateAPIRegistryParams struct {
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
 	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
+	Syncable     bool             `json:"syncable"`
 	UpdatedAt    *time.Time       `json:"updated_at"`
 	Name         string           `json:"name"`
 }
@@ -567,6 +583,7 @@ func (q *Queries) UpdateAPIRegistry(ctx context.Context, arg UpdateAPIRegistryPa
 		arg.SourceConfig,
 		arg.FilterConfig,
 		arg.SyncSchedule,
+		arg.Syncable,
 		arg.UpdatedAt,
 		arg.Name,
 	)
@@ -583,6 +600,7 @@ func (q *Queries) UpdateAPIRegistry(ctx context.Context, arg UpdateAPIRegistryPa
 		&i.Format,
 		&i.SourceConfig,
 		&i.FilterConfig,
+		&i.Syncable,
 	)
 	return i, err
 }
@@ -597,6 +615,7 @@ INSERT INTO registry (
     source_config,
     filter_config,
     sync_schedule,
+    syncable,
     created_at,
     updated_at
 ) VALUES (
@@ -609,7 +628,8 @@ INSERT INTO registry (
     $6,
     $7,
     $8,
-    $9
+    $9,
+    $10
 )
 ON CONFLICT (name) DO UPDATE SET
     reg_type = EXCLUDED.reg_type,
@@ -618,6 +638,7 @@ ON CONFLICT (name) DO UPDATE SET
     source_config = EXCLUDED.source_config,
     filter_config = EXCLUDED.filter_config,
     sync_schedule = EXCLUDED.sync_schedule,
+    syncable = EXCLUDED.syncable,
     updated_at = EXCLUDED.updated_at
 WHERE registry.creation_type = 'CONFIG'
 RETURNING id
@@ -631,6 +652,7 @@ type UpsertConfigRegistryParams struct {
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
 	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
+	Syncable     bool             `json:"syncable"`
 	CreatedAt    *time.Time       `json:"created_at"`
 	UpdatedAt    *time.Time       `json:"updated_at"`
 }
@@ -645,6 +667,7 @@ func (q *Queries) UpsertConfigRegistry(ctx context.Context, arg UpsertConfigRegi
 		arg.SourceConfig,
 		arg.FilterConfig,
 		arg.SyncSchedule,
+		arg.Syncable,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

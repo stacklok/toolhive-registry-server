@@ -19,6 +19,7 @@ import (
 	"github.com/modelcontextprotocol/registry/pkg/model"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -899,10 +900,10 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 func (s *dbService) CreateRegistry(
 	ctx context.Context,
 	name string,
-	config *service.RegistryCreateRequest,
+	req *service.RegistryCreateRequest,
 ) (*service.RegistryInfo, error) {
 	// Validate configuration
-	if err := service.ValidateRegistryConfig(config); err != nil {
+	if err := service.ValidateRegistryConfig(req); err != nil {
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidRegistryConfig, err)
 	}
 
@@ -934,24 +935,26 @@ func (s *dbService) CreateRegistry(
 
 	// Prepare insert parameters
 	now := time.Now()
-	sourceType := string(config.GetSourceType())
-	format := config.Format
+	sourceType := string(req.GetSourceType())
+	format := req.Format
 	if format == "" {
 		format = "upstream" // default format
 	}
 
-	sourceConfig := serializeSourceConfigFromRequest(config)
-	filterConfig := serializeFilterConfigFromRequest(config.Filter)
-	syncSchedule := parseSyncScheduleFromRequest(config)
+	sourceConfig := serializeSourceConfigFromRequest(req)
+	filterConfig := serializeFilterConfigFromRequest(req.Filter)
+	syncSchedule := parseSyncScheduleFromRequest(req)
+	syncable := !req.IsNonSyncedType()
 
 	params := sqlc.InsertAPIRegistryParams{
 		Name:         name,
-		RegType:      mapServiceSourceTypeToDBType(config.GetSourceType()),
+		RegType:      mapServiceSourceTypeToDBType(req.GetSourceType()),
 		SourceType:   &sourceType,
 		Format:       &format,
 		SourceConfig: sourceConfig,
 		FilterConfig: filterConfig,
 		SyncSchedule: syncSchedule,
+		Syncable:     syncable,
 		CreatedAt:    &now,
 		UpdatedAt:    &now,
 	}
@@ -974,7 +977,7 @@ func (s *dbService) CreateRegistry(
 	// - Inline data: FAILED (needs processing, will be updated to COMPLETED after)
 	initialSyncStatus := sqlc.SyncStatusFAILED
 	initialErrorMsg := "No previous sync status found"
-	if config.IsNonSyncedType() && !config.IsInlineData() {
+	if req.IsNonSyncedType() && !req.IsInlineData() {
 		// Only managed/kubernetes start as COMPLETED
 		// Inline data needs processing first
 		initialSyncStatus = sqlc.SyncStatusCOMPLETED
@@ -1008,17 +1011,17 @@ func (s *dbService) CreateRegistry(
 func (s *dbService) UpdateRegistry(
 	ctx context.Context,
 	name string,
-	config *service.RegistryCreateRequest,
+	req *service.RegistryCreateRequest,
 ) (*service.RegistryInfo, error) {
 	// Validate configuration
-	if err := service.ValidateRegistryConfig(config); err != nil {
+	if err := service.ValidateRegistryConfig(req); err != nil {
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidRegistryConfig, err)
 	}
 
 	// For file source types, check if the subtype (path/url/data) is changing
 	// We don't allow changing between path, url, and data - user must delete and recreate
-	if config.GetSourceType() == service.SourceTypeFile {
-		if err := s.validateFileSourceTypeChange(ctx, name, config); err != nil {
+	if req.GetSourceType() == service.SourceTypeFile {
+		if err := s.validateFileSourceTypeChange(ctx, name, req); err != nil {
 			return nil, err
 		}
 	}
@@ -1042,24 +1045,26 @@ func (s *dbService) UpdateRegistry(
 
 	// Prepare update parameters
 	now := time.Now()
-	sourceType := string(config.GetSourceType())
-	format := config.Format
+	sourceType := string(req.GetSourceType())
+	format := req.Format
 	if format == "" {
 		format = "upstream" // default format
 	}
 
-	sourceConfig := serializeSourceConfigFromRequest(config)
-	filterConfig := serializeFilterConfigFromRequest(config.Filter)
-	syncSchedule := parseSyncScheduleFromRequest(config)
+	sourceConfig := serializeSourceConfigFromRequest(req)
+	filterConfig := serializeFilterConfigFromRequest(req.Filter)
+	syncSchedule := parseSyncScheduleFromRequest(req)
+	syncable := !req.IsNonSyncedType()
 
 	params := sqlc.UpdateAPIRegistryParams{
 		Name:         name,
-		RegType:      mapServiceSourceTypeToDBType(config.GetSourceType()),
+		RegType:      mapServiceSourceTypeToDBType(req.GetSourceType()),
 		SourceType:   &sourceType,
 		Format:       &format,
 		SourceConfig: sourceConfig,
 		FilterConfig: filterConfig,
 		SyncSchedule: syncSchedule,
+		Syncable:     syncable,
 		UpdatedAt:    &now,
 	}
 
@@ -1175,12 +1180,12 @@ func mapServiceSourceTypeToDBType(sourceType service.RegistrySourceType) sqlc.Re
 }
 
 // serializeSourceConfigFromRequest serializes the source config from request to JSON bytes
-func serializeSourceConfigFromRequest(config *service.RegistryCreateRequest) []byte {
-	if config == nil {
+func serializeSourceConfigFromRequest(req *service.RegistryCreateRequest) []byte {
+	if req == nil {
 		return nil
 	}
 
-	sourceConfig := config.GetSourceConfig()
+	sourceConfig := req.GetSourceConfig()
 	if sourceConfig == nil {
 		return nil
 	}
@@ -1193,7 +1198,7 @@ func serializeSourceConfigFromRequest(config *service.RegistryCreateRequest) []b
 }
 
 // serializeFilterConfigFromRequest serializes the filter config from request to JSON bytes
-func serializeFilterConfigFromRequest(filter *service.FilterConfig) []byte {
+func serializeFilterConfigFromRequest(filter *config.FilterConfig) []byte {
 	if filter == nil {
 		return nil
 	}
@@ -1206,12 +1211,12 @@ func serializeFilterConfigFromRequest(filter *service.FilterConfig) []byte {
 }
 
 // parseSyncScheduleFromRequest parses the sync schedule from request to pgtypes.Interval
-func parseSyncScheduleFromRequest(config *service.RegistryCreateRequest) pgtypes.Interval {
-	if config == nil || config.SyncPolicy == nil || config.SyncPolicy.Interval == "" {
+func parseSyncScheduleFromRequest(req *service.RegistryCreateRequest) pgtypes.Interval {
+	if req == nil || req.SyncPolicy == nil || req.SyncPolicy.Interval == "" {
 		return pgtypes.NewNullInterval()
 	}
 
-	interval, err := pgtypes.ParseDuration(config.SyncPolicy.Interval)
+	interval, err := pgtypes.ParseDuration(req.SyncPolicy.Interval)
 	if err != nil {
 		return pgtypes.NewNullInterval()
 	}
@@ -1226,31 +1231,31 @@ func deserializeSourceConfig(sourceType string, data []byte) interface{} {
 
 	switch service.RegistrySourceType(sourceType) {
 	case service.SourceTypeGit:
-		var cfg service.GitSourceConfig
+		var cfg config.GitConfig
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return nil
 		}
 		return &cfg
 	case service.SourceTypeAPI:
-		var cfg service.APISourceConfig
+		var cfg config.APIConfig
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return nil
 		}
 		return &cfg
 	case service.SourceTypeFile:
-		var cfg service.FileSourceConfig
+		var cfg config.FileConfig
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return nil
 		}
 		return &cfg
 	case service.SourceTypeManaged:
-		var cfg service.ManagedSourceConfig
+		var cfg config.ManagedConfig
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return nil
 		}
 		return &cfg
 	case service.SourceTypeKubernetes:
-		var cfg service.KubernetesConfig
+		var cfg config.KubernetesConfig
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return nil
 		}
@@ -1261,12 +1266,12 @@ func deserializeSourceConfig(sourceType string, data []byte) interface{} {
 }
 
 // deserializeFilterConfig deserializes filter config from JSON bytes
-func deserializeFilterConfig(data []byte) *service.FilterConfig {
+func deserializeFilterConfig(data []byte) *config.FilterConfig {
 	if len(data) == 0 {
 		return nil
 	}
 
-	var cfg service.FilterConfig
+	var cfg config.FilterConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil
 	}
@@ -1384,16 +1389,19 @@ func buildRegistryInfoFromGetByNameRow(row *sqlc.GetRegistryByNameRow) *service.
 	return info
 }
 
-// ProcessInlineRegistryData processes inline registry data asynchronously.
+// ProcessInlineRegistryData processes inline registry data synchronously.
 // It parses the data, validates it, and stores the servers in the database.
-// This is called in a goroutine after the API returns.
 func (s *dbService) ProcessInlineRegistryData(ctx context.Context, name string, data string, format string) error {
+	// Capture actual start time for accurate timing
+	startTime := time.Now()
+
 	// Parse the inline data using the registry validator
 	validator := sources.NewRegistryDataValidator()
 	registry, err := validator.ValidateData([]byte(data), format)
 	if err != nil {
-		// Update sync status to failed
-		if updateErr := s.updateSyncStatusFailed(ctx, name, fmt.Sprintf("failed to parse registry data: %v", err)); updateErr != nil {
+		// Update sync status to failed with actual timing
+		errMsg := fmt.Sprintf("failed to parse registry data: %v", err)
+		if updateErr := s.updateSyncStatusFailed(ctx, name, errMsg, startTime); updateErr != nil {
 			slog.ErrorContext(ctx, "Failed to update sync status after parse error",
 				"registry", name,
 				"parse_error", err,
@@ -1405,7 +1413,8 @@ func (s *dbService) ProcessInlineRegistryData(ctx context.Context, name string, 
 	// Create a sync writer to store the servers
 	syncWriter, err := writer.NewDBSyncWriter(s.pool)
 	if err != nil {
-		if updateErr := s.updateSyncStatusFailed(ctx, name, fmt.Sprintf("failed to create sync writer: %v", err)); updateErr != nil {
+		errMsg := fmt.Sprintf("failed to create sync writer: %v", err)
+		if updateErr := s.updateSyncStatusFailed(ctx, name, errMsg, startTime); updateErr != nil {
 			slog.ErrorContext(ctx, "Failed to update sync status after writer creation error",
 				"registry", name,
 				"writer_error", err,
@@ -1416,7 +1425,8 @@ func (s *dbService) ProcessInlineRegistryData(ctx context.Context, name string, 
 
 	// Store the servers in the database
 	if err := syncWriter.Store(ctx, name, registry); err != nil {
-		if updateErr := s.updateSyncStatusFailed(ctx, name, fmt.Sprintf("failed to store servers: %v", err)); updateErr != nil {
+		errMsg := fmt.Sprintf("failed to store servers: %v", err)
+		if updateErr := s.updateSyncStatusFailed(ctx, name, errMsg, startTime); updateErr != nil {
 			slog.ErrorContext(ctx, "Failed to update sync status after store error",
 				"registry", name,
 				"store_error", err,
@@ -1425,8 +1435,8 @@ func (s *dbService) ProcessInlineRegistryData(ctx context.Context, name string, 
 		return fmt.Errorf("failed to store inline registry data: %w", err)
 	}
 
-	// Update sync status to completed
-	if err := s.updateSyncStatusCompleted(ctx, name, len(registry.Data.Servers)); err != nil {
+	// Update sync status to completed with actual timing
+	if err := s.updateSyncStatusCompleted(ctx, name, len(registry.Data.Servers), startTime); err != nil {
 		slog.ErrorContext(ctx, "Failed to update sync status to completed",
 			"registry", name,
 			"error", err)
@@ -1440,31 +1450,37 @@ func (s *dbService) ProcessInlineRegistryData(ctx context.Context, name string, 
 	return nil
 }
 
-// updateSyncStatusFailed updates the sync status to failed with an error message
-func (s *dbService) updateSyncStatusFailed(ctx context.Context, name string, errorMsg string) error {
+// updateSyncStatusFailed updates the sync status to failed with an error message.
+// startTime is the time when processing began, endTime is captured when this is called.
+func (s *dbService) updateSyncStatusFailed(
+	ctx context.Context, name string, errorMsg string, startTime time.Time,
+) error {
 	querier := sqlc.New(s.pool)
-	now := time.Now()
+	endTime := time.Now()
 	return querier.UpsertRegistrySyncByName(ctx, sqlc.UpsertRegistrySyncByNameParams{
 		Name:         name,
 		SyncStatus:   sqlc.SyncStatusFAILED,
 		ErrorMsg:     &errorMsg,
-		StartedAt:    &now,
-		EndedAt:      &now,
+		StartedAt:    &startTime,
+		EndedAt:      &endTime,
 		AttemptCount: 1,
 		ServerCount:  0,
 	})
 }
 
-// updateSyncStatusCompleted updates the sync status to completed
-func (s *dbService) updateSyncStatusCompleted(ctx context.Context, name string, serverCount int) error {
+// updateSyncStatusCompleted updates the sync status to completed.
+// startTime is the time when processing began, endTime is captured when this is called.
+func (s *dbService) updateSyncStatusCompleted(
+	ctx context.Context, name string, serverCount int, startTime time.Time,
+) error {
 	querier := sqlc.New(s.pool)
-	now := time.Now()
+	endTime := time.Now()
 	return querier.UpsertRegistrySyncByName(ctx, sqlc.UpsertRegistrySyncByNameParams{
 		Name:         name,
 		SyncStatus:   sqlc.SyncStatusCOMPLETED,
 		ErrorMsg:     nil,
-		StartedAt:    &now,
-		EndedAt:      &now,
+		StartedAt:    &startTime,
+		EndedAt:      &endTime,
 		AttemptCount: 1,
 		ServerCount:  int64(serverCount),
 	})
@@ -1492,7 +1508,7 @@ func (s *dbService) validateFileSourceTypeChange(
 	}
 
 	// Deserialize the existing source config
-	var existingFileConfig service.FileSourceConfig
+	var existingFileConfig config.FileConfig
 	if len(existing.SourceConfig) > 0 {
 		if err := json.Unmarshal(existing.SourceConfig, &existingFileConfig); err != nil {
 			return fmt.Errorf("failed to parse existing file config: %w", err)
@@ -1513,7 +1529,7 @@ func (s *dbService) validateFileSourceTypeChange(
 }
 
 // getFileSourceSubtype returns which file source subtype is being used (path, url, or data)
-func getFileSourceSubtype(cfg *service.FileSourceConfig) string {
+func getFileSourceSubtype(cfg *config.FileConfig) string {
 	if cfg == nil {
 		return unknownSubtype
 	}

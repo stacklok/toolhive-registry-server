@@ -58,18 +58,18 @@ func (mr *MockRegistryServiceMockRecorder) CheckReadiness(ctx any) *gomock.Call 
 }
 
 // CreateRegistry mocks base method.
-func (m *MockRegistryService) CreateRegistry(ctx context.Context, name string, config *service.RegistryCreateRequest) (*service.RegistryInfo, error) {
+func (m *MockRegistryService) CreateRegistry(ctx context.Context, name string, req *service.RegistryCreateRequest) (*service.RegistryInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateRegistry", ctx, name, config)
+	ret := m.ctrl.Call(m, "CreateRegistry", ctx, name, req)
 	ret0, _ := ret[0].(*service.RegistryInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateRegistry indicates an expected call of CreateRegistry.
-func (mr *MockRegistryServiceMockRecorder) CreateRegistry(ctx, name, config any) *gomock.Call {
+func (mr *MockRegistryServiceMockRecorder) CreateRegistry(ctx, name, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRegistry", reflect.TypeOf((*MockRegistryService)(nil).CreateRegistry), ctx, name, config)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRegistry", reflect.TypeOf((*MockRegistryService)(nil).CreateRegistry), ctx, name, req)
 }
 
 // DeleteRegistry mocks base method.
@@ -246,16 +246,16 @@ func (mr *MockRegistryServiceMockRecorder) PublishServerVersion(ctx any, opts ..
 }
 
 // UpdateRegistry mocks base method.
-func (m *MockRegistryService) UpdateRegistry(ctx context.Context, name string, config *service.RegistryCreateRequest) (*service.RegistryInfo, error) {
+func (m *MockRegistryService) UpdateRegistry(ctx context.Context, name string, req *service.RegistryCreateRequest) (*service.RegistryInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateRegistry", ctx, name, config)
+	ret := m.ctrl.Call(m, "UpdateRegistry", ctx, name, req)
 	ret0, _ := ret[0].(*service.RegistryInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateRegistry indicates an expected call of UpdateRegistry.
-func (mr *MockRegistryServiceMockRecorder) UpdateRegistry(ctx, name, config any) *gomock.Call {
+func (mr *MockRegistryServiceMockRecorder) UpdateRegistry(ctx, name, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRegistry", reflect.TypeOf((*MockRegistryService)(nil).UpdateRegistry), ctx, name, config)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRegistry", reflect.TypeOf((*MockRegistryService)(nil).UpdateRegistry), ctx, name, req)
 }

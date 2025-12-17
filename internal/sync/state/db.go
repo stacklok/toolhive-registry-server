@@ -68,6 +68,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	sourceConfigs := make([][]byte, len(registryConfigs))
 	filterConfigs := make([][]byte, len(registryConfigs))
 	syncSchedules := make([]pgtypes.Interval, len(registryConfigs))
+	syncables := make([]bool, len(registryConfigs))
 	createdAts := make([]time.Time, len(registryConfigs))
 	updatedAts := make([]time.Time, len(registryConfigs))
 
@@ -83,6 +84,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		sourceConfigs[i] = serializeSourceConfig(&reg)
 		filterConfigs[i] = serializeFilterConfig(reg.Filter)
 		syncSchedules[i] = getSyncScheduleIntervalFromConfig(&reg)
+		syncables[i] = !reg.IsNonSyncedRegistry()
 		createdAts[i] = now
 		updatedAts[i] = now
 	}
@@ -106,6 +108,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		SourceConfigs: sourceConfigs,
 		FilterConfigs: filterConfigs,
 		SyncSchedules: syncSchedules,
+		Syncables:     syncables,
 		CreatedAts:    createdAts,
 		UpdatedAts:    updatedAts,
 	})
