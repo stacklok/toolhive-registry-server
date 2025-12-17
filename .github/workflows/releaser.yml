@@ -19,19 +19,56 @@
 # Windows, and macOS.
 # The provenance file can be verified using https://github.com/slsa-framework/slsa-verifier.
 # For more information about SLSA and how it improves the supply-chain, visit slsa.dev.
+#
+# Triggered by: GitHub Release published event (from create-release-tag.yml)
 
 name: Release
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
 
 permissions:
   contents: write
 
 jobs:
+  # This job must pass before any other jobs run
+  verify-release:
+    name: Verify Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+      - name: Verify tag matches VERSION file
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+
+          echo "Release tag: $TAG"
+          echo "VERSION file: $VERSION"
+
+          # Tag should be "v" + VERSION (e.g., v1.0.0)
+          EXPECTED_TAG="v${VERSION}"
+
+          if [[ "$TAG" != "$EXPECTED_TAG" ]]; then
+            echo ""
+            echo "❌ VERSION MISMATCH!"
+            echo "  Tag:      $TAG"
+            echo "  Expected: $EXPECTED_TAG (from VERSION file)"
+            echo ""
+            echo "The release tag does not match the VERSION file."
+            echo "This could indicate:"
+            echo "  - VERSION file was not updated correctly"
+            echo "  - Tag was created manually with wrong version"
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ Tag matches VERSION file: $TAG"
+
   compute-build-flags:
     name: Compute Build Flags
+    needs: [verify-release]
     runs-on: ubuntu-latest
     outputs:
       commit-date: ${{ steps.ldflags.outputs.commit-date }}
@@ -43,12 +80,14 @@ jobs:
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
         with:
           fetch-depth: 0
+
       - id: ldflags
         run: |
           echo "commit=$GITHUB_SHA" >> $GITHUB_OUTPUT
           echo "commit-date=$(git log --date=iso8601-strict -1 --pretty=%ct)" >> $GITHUB_OUTPUT
           echo "version=$(git describe --tags --always --dirty)" >> $GITHUB_OUTPUT
           echo "tree-state=$(if git diff --quiet; then echo "clean"; else echo "dirty"; fi)" >> $GITHUB_OUTPUT
+
   release-binaries:
     needs:
       - compute-build-flags
