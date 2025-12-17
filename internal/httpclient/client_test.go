@@ -14,9 +14,9 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
 )
 
-// newTestServer creates a new test server with keep-alives disabled.
+// newTestServer creates a new test server with keep-alive disabled.
 // This prevents flaky tests when running in parallel, as closing a server
-// with keep-alives enabled can affect other tests sharing the HTTP transport.
+// with keep-alive enabled can affect other tests sharing the HTTP transport.
 func newTestServer(handler http.Handler) *httptest.Server {
 	server := httptest.NewServer(handler)
 	server.Config.SetKeepAlivesEnabled(false)
