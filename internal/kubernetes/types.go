@@ -23,7 +23,7 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 	// Note: MCPServer is a Kubernetes deployment resource, so we extract
 	// what information is available and create a minimal ServerJSON
 	serverJSON := &upstreamv0.ServerJSON{
-		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 		Name:    serverName,
 		Version: "1.0.0", // Default version, could be extracted from annotations or labels
 	}
@@ -90,7 +90,7 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 	// Note: VirtualMCPServer is a Kubernetes deployment resource, so we extract
 	// what information is available and create a minimal ServerJSON
 	serverJSON := &upstreamv0.ServerJSON{
-		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 		Name:    serverName,
 		Version: "1.0.0", // Default version, could be extracted from annotations or labels
 	}
@@ -150,7 +150,7 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 	// Note: MCPRemoteProxy is a Kubernetes deployment resource, so we extract
 	// what information is available and create a minimal ServerJSON
 	serverJSON := &upstreamv0.ServerJSON{
-		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 		Name:    serverName,
 		Version: "1.0.0", // Default version, could be extracted from annotations or labels
 	}

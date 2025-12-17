@@ -61,7 +61,7 @@ func WithServers(servers ...upstreamv0.ServerJSON) UpstreamRegistryOption {
 // and applies any provided options
 func NewTestServer(name string, opts ...ServerOption) upstreamv0.ServerJSON {
 	server := upstreamv0.ServerJSON{
-		Schema:      "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+		Schema:      "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 		Name:        name,
 		Description: name + " server",
 		Version:     "1.0.0",

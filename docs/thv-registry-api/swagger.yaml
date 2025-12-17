@@ -288,6 +288,10 @@ components:
         url:
           example: https://api.example.com/mcp
           type: string
+        variables:
+          additionalProperties:
+            $ref: '#/components/schemas/model.Input'
+          type: object
       type: object
     v0.Metadata:
       properties:
@@ -317,7 +321,7 @@ components:
     v0.ServerJSON:
       properties:
         $schema:
-          example: https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json
+          example: https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json
           format: uri
           minLength: 1
           type: string

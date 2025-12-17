@@ -114,7 +114,7 @@ func helperToServer(
 	remotes []sqlc.McpServerRemote,
 ) upstreamv0.ServerJSON {
 	server := upstreamv0.ServerJSON{
-		Schema:      "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+		Schema:      "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 		Name:        dbServer.Name,
 		Description: ptr.ToString(dbServer.Description),
 		Title:       ptr.ToString(dbServer.Title),
