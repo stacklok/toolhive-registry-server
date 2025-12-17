@@ -14,6 +14,15 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
 )
 
+// newTestServer creates a new test server with keep-alives disabled.
+// This prevents flaky tests when running in parallel, as closing a server
+// with keep-alives enabled can affect other tests sharing the HTTP transport.
+func newTestServer(handler http.Handler) *httptest.Server {
+	server := httptest.NewServer(handler)
+	server.Config.SetKeepAlivesEnabled(false)
+	return server
+}
+
 func TestNewDefaultClient(t *testing.T) {
 	t.Parallel()
 
@@ -78,7 +87,7 @@ func TestDefaultClient_Get_SuccessfulRequests(t *testing.T) {
 			var receivedUserAgent string
 			var receivedAccept string
 
-			mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mockServer := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				receivedUserAgent = r.Header.Get("User-Agent")
 				receivedAccept = r.Header.Get("Accept")
 
@@ -157,7 +166,7 @@ func TestDefaultClient_Get_HTTPErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			mockServer := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.statusCode)
 				_, _ = w.Write([]byte(tt.responseBody))
 			}))
@@ -225,7 +234,7 @@ func TestDefaultClient_Get_ContextCancellation(t *testing.T) {
 	t.Run("should respect context cancellation", func(t *testing.T) {
 		t.Parallel()
 
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mockServer := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			time.Sleep(2 * time.Second)
 			w.WriteHeader(http.StatusOK)
 		}))
@@ -243,7 +252,7 @@ func TestDefaultClient_Get_ContextCancellation(t *testing.T) {
 	t.Run("should respect context timeout", func(t *testing.T) {
 		t.Parallel()
 
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mockServer := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			time.Sleep(2 * time.Second)
 			w.WriteHeader(http.StatusOK)
 		}))
@@ -261,7 +270,7 @@ func TestDefaultClient_Get_ContextCancellation(t *testing.T) {
 	t.Run("should succeed with sufficient timeout", func(t *testing.T) {
 		t.Parallel()
 
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mockServer := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("success"))
 		}))
@@ -284,7 +293,7 @@ func TestDefaultClient_Get_ResponseBodyHandling(t *testing.T) {
 	t.Run("should handle empty response body", func(t *testing.T) {
 		t.Parallel()
 
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mockServer := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer mockServer.Close()
@@ -306,7 +315,7 @@ func TestDefaultClient_Get_ResponseBodyHandling(t *testing.T) {
 			largeData[i] = 'a'
 		}
 
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mockServer := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(largeData)
 		}))
@@ -324,7 +333,7 @@ func TestDefaultClient_Get_ResponseBodyHandling(t *testing.T) {
 	t.Run("should successfully handle response at exactly 100MB", func(t *testing.T) {
 		t.Parallel()
 
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mockServer := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			// Write exactly 100MB in 1MB chunks
 			chunk := make([]byte, 1024*1024)
@@ -355,7 +364,7 @@ func TestDefaultClient_Get_SizeLimitExceeded(t *testing.T) {
 		{
 			name: "reject response exceeding 100MB via Content-Length",
 			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				return newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					// Set Content-Length to 101MB
 					w.Header().Set("Content-Length", fmt.Sprintf("%d", 101*1024*1024))
 					w.WriteHeader(http.StatusOK)
@@ -366,7 +375,7 @@ func TestDefaultClient_Get_SizeLimitExceeded(t *testing.T) {
 		{
 			name: "reject response exceeding 100MB by actual content",
 			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				return newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusOK)
 					// Write 101MB of data in chunks
 					chunk := make([]byte, 1024*1024)
@@ -407,7 +416,7 @@ func TestDefaultClient_Get_Headers(t *testing.T) {
 
 		var receivedHeaders http.Header
 
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mockServer := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			receivedHeaders = r.Header.Clone()
 			w.WriteHeader(http.StatusOK)
 		}))
@@ -428,7 +437,7 @@ func TestDefaultClient_Get_Headers(t *testing.T) {
 
 		var receivedMethod string
 
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mockServer := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			receivedMethod = r.Method
 			w.WriteHeader(http.StatusOK)
 		}))

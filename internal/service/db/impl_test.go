@@ -63,8 +63,9 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	regID, err := queries.InsertConfigRegistry(
 		ctx,
 		sqlc.InsertConfigRegistryParams{
-			Name:    "test-registry",
-			RegType: sqlc.RegistryTypeREMOTE,
+			Name:     "test-registry",
+			RegType:  sqlc.RegistryTypeREMOTE,
+			Syncable: true,
 		},
 	)
 	require.NoError(t, err)
@@ -696,8 +697,9 @@ func TestGetServerVersion(t *testing.T) {
 				regID, err := queries.InsertConfigRegistry(
 					ctx,
 					sqlc.InsertConfigRegistryParams{
-						Name:    "test-registry-with-packages",
-						RegType: sqlc.RegistryTypeREMOTE,
+						Name:     "test-registry-with-packages",
+						RegType:  sqlc.RegistryTypeREMOTE,
+						Syncable: true,
 					},
 				)
 				require.NoError(t, err)
@@ -1047,8 +1049,9 @@ func TestPublishServerVersion(t *testing.T) {
 
 				// Create a MANAGED registry
 				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:    "test-registry",
-					RegType: sqlc.RegistryTypeMANAGED,
+					Name:     "test-registry",
+					RegType:  sqlc.RegistryTypeMANAGED,
+					Syncable: false,
 				})
 				require.NoError(t, err)
 
@@ -1089,8 +1092,9 @@ func TestPublishServerVersion(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:    "test-registry-meta",
-					RegType: sqlc.RegistryTypeMANAGED,
+					Name:     "test-registry-meta",
+					RegType:  sqlc.RegistryTypeMANAGED,
+					Syncable: false,
 				})
 				require.NoError(t, err)
 
@@ -1142,8 +1146,9 @@ func TestPublishServerVersion(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:    "test-registry-full",
-					RegType: sqlc.RegistryTypeMANAGED,
+					Name:     "test-registry-full",
+					RegType:  sqlc.RegistryTypeMANAGED,
+					Syncable: false,
 				})
 				require.NoError(t, err)
 
@@ -1232,8 +1237,9 @@ func TestPublishServerVersion(t *testing.T) {
 
 				// Create a REMOTE (non-managed) registry
 				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:    "remote-registry",
-					RegType: sqlc.RegistryTypeREMOTE,
+					Name:     "remote-registry",
+					RegType:  sqlc.RegistryTypeREMOTE,
+					Syncable: true,
 				})
 				require.NoError(t, err)
 
@@ -1271,8 +1277,9 @@ func TestPublishServerVersion(t *testing.T) {
 
 				// Create a MANAGED registry
 				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:    "test-registry-dup",
-					RegType: sqlc.RegistryTypeMANAGED,
+					Name:     "test-registry-dup",
+					RegType:  sqlc.RegistryTypeMANAGED,
+					Syncable: false,
 				})
 				require.NoError(t, err)
 

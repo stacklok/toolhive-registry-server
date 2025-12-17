@@ -56,8 +56,9 @@ func createTestRegistry(t *testing.T, pool *pgxpool.Pool, name string) uuid.UUID
 	queries := sqlc.New(pool)
 
 	regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-		Name:    name,
-		RegType: sqlc.RegistryTypeREMOTE,
+		Name:     name,
+		RegType:  sqlc.RegistryTypeREMOTE,
+		Syncable: true,
 	})
 	require.NoError(t, err)
 

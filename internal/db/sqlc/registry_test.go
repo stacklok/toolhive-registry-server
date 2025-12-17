@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 )
 
 func TestInsertRegistry(t *testing.T) {
@@ -34,6 +35,7 @@ func TestInsertRegistry(t *testing.T) {
 					InsertConfigRegistryParams{
 						Name:      "test-registry",
 						RegType:   RegistryTypeFILE,
+						Syncable:  true,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
@@ -54,6 +56,7 @@ func TestInsertRegistry(t *testing.T) {
 					InsertConfigRegistryParams{
 						Name:      "test-registry",
 						RegType:   RegistryTypeMANAGED,
+						Syncable:  false, // managed registries are not syncable
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
@@ -74,6 +77,7 @@ func TestInsertRegistry(t *testing.T) {
 					InsertConfigRegistryParams{
 						Name:      "test-registry",
 						RegType:   RegistryTypeREMOTE,
+						Syncable:  true,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
@@ -94,6 +98,7 @@ func TestInsertRegistry(t *testing.T) {
 					InsertConfigRegistryParams{
 						Name:      "test-registry",
 						RegType:   RegistryTypeFILE,
+						Syncable:  true,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
@@ -112,6 +117,7 @@ func TestInsertRegistry(t *testing.T) {
 					InsertConfigRegistryParams{
 						Name:      "test-registry",
 						RegType:   RegistryTypeMANAGED,
+						Syncable:  false, // managed registries are not syncable
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
@@ -127,6 +133,7 @@ func TestInsertRegistry(t *testing.T) {
 					InsertConfigRegistryParams{
 						Name:      "test-registry",
 						RegType:   RegistryTypeMANAGED,
+						Syncable:  false, // managed registries are not syncable
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
@@ -183,6 +190,7 @@ func TestListRegistries(t *testing.T) {
 					InsertConfigRegistryParams{
 						Name:      "test-registry",
 						RegType:   RegistryTypeREMOTE,
+						Syncable:  true,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
@@ -214,6 +222,7 @@ func TestListRegistries(t *testing.T) {
 						InsertConfigRegistryParams{
 							Name:      fmt.Sprintf("test-registry-%d", i),
 							RegType:   RegistryTypeREMOTE,
+							Syncable:  true,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
 						},
@@ -248,6 +257,7 @@ func TestListRegistries(t *testing.T) {
 						InsertConfigRegistryParams{
 							Name:      fmt.Sprintf("test-registry-%d", i),
 							RegType:   RegistryTypeREMOTE,
+							Syncable:  true,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
 						},
@@ -288,6 +298,7 @@ func TestListRegistries(t *testing.T) {
 						InsertConfigRegistryParams{
 							Name:      fmt.Sprintf("test-registry-%d", i),
 							RegType:   RegistryTypeREMOTE,
+							Syncable:  true,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
 						},
@@ -328,6 +339,7 @@ func TestListRegistries(t *testing.T) {
 						InsertConfigRegistryParams{
 							Name:      fmt.Sprintf("test-registry-%d", i),
 							RegType:   RegistryTypeREMOTE,
+							Syncable:  true,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
 						},
@@ -396,6 +408,7 @@ func TestGetRegistry(t *testing.T) {
 				id, err := queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
 					Name:      "test-registry",
 					RegType:   RegistryTypeREMOTE,
+					Syncable:  true,
 					CreatedAt: &createdAt,
 					UpdatedAt: &createdAt,
 				})
@@ -446,10 +459,16 @@ func TestBulkUpsertRegistries(t *testing.T) {
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC()
 				result, err := queries.BulkUpsertConfigRegistries(context.Background(), BulkUpsertConfigRegistriesParams{
-					Names:      []string{"reg1", "reg2"},
-					RegTypes:   []RegistryType{RegistryTypeREMOTE, RegistryTypeFILE},
-					CreatedAts: []time.Time{now, now},
-					UpdatedAts: []time.Time{now, now},
+					Names:         []string{"reg1", "reg2"},
+					RegTypes:      []RegistryType{RegistryTypeREMOTE, RegistryTypeFILE},
+					SourceTypes:   []string{"git", "file"},
+					Formats:       []string{"upstream", "upstream"},
+					SourceConfigs: [][]byte{nil, nil},
+					FilterConfigs: [][]byte{nil, nil},
+					SyncSchedules: []pgtypes.Interval{pgtypes.NewNullInterval(), pgtypes.NewNullInterval()},
+					Syncables:     []bool{true, true},
+					CreatedAts:    []time.Time{now, now},
+					UpdatedAts:    []time.Time{now, now},
 				})
 				require.NoError(t, err)
 				require.Len(t, result, 2)
@@ -463,6 +482,7 @@ func TestBulkUpsertRegistries(t *testing.T) {
 				_, err := queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
 					Name:      "config-reg",
 					RegType:   RegistryTypeREMOTE,
+					Syncable:  true,
 					CreatedAt: &now,
 					UpdatedAt: &now,
 				})
@@ -472,10 +492,16 @@ func TestBulkUpsertRegistries(t *testing.T) {
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC().Add(1 * time.Hour)
 				result, err := queries.BulkUpsertConfigRegistries(context.Background(), BulkUpsertConfigRegistriesParams{
-					Names:      []string{"config-reg"},
-					RegTypes:   []RegistryType{RegistryTypeREMOTE},
-					CreatedAts: []time.Time{now},
-					UpdatedAts: []time.Time{now},
+					Names:         []string{"config-reg"},
+					RegTypes:      []RegistryType{RegistryTypeREMOTE},
+					SourceTypes:   []string{"git"},
+					Formats:       []string{"upstream"},
+					SourceConfigs: [][]byte{nil},
+					FilterConfigs: [][]byte{nil},
+					SyncSchedules: []pgtypes.Interval{pgtypes.NewNullInterval()},
+					Syncables:     []bool{true},
+					CreatedAts:    []time.Time{now},
+					UpdatedAts:    []time.Time{now},
 				})
 				require.NoError(t, err)
 				require.Len(t, result, 1)
@@ -490,6 +516,7 @@ func TestBulkUpsertRegistries(t *testing.T) {
 				_, err := queries.InsertAPIRegistry(context.Background(), InsertAPIRegistryParams{
 					Name:      "api-reg",
 					RegType:   RegistryTypeMANAGED,
+					Syncable:  false, // managed registries are not syncable
 					CreatedAt: &now,
 					UpdatedAt: &now,
 				})
@@ -499,10 +526,16 @@ func TestBulkUpsertRegistries(t *testing.T) {
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC().Add(1 * time.Hour)
 				result, err := queries.BulkUpsertConfigRegistries(context.Background(), BulkUpsertConfigRegistriesParams{
-					Names:      []string{"api-reg"},
-					RegTypes:   []RegistryType{RegistryTypeMANAGED},
-					CreatedAts: []time.Time{now},
-					UpdatedAts: []time.Time{now},
+					Names:         []string{"api-reg"},
+					RegTypes:      []RegistryType{RegistryTypeMANAGED},
+					SourceTypes:   []string{"managed"},
+					Formats:       []string{"upstream"},
+					SourceConfigs: [][]byte{nil},
+					FilterConfigs: [][]byte{nil},
+					SyncSchedules: []pgtypes.Interval{pgtypes.NewNullInterval()},
+					Syncables:     []bool{false},
+					CreatedAts:    []time.Time{now},
+					UpdatedAts:    []time.Time{now},
 				})
 				// The upsert should succeed but not update the API registry
 				// Because WHERE clause prevents the update, no rows are returned
@@ -549,6 +582,7 @@ func TestDeleteConfigRegistriesNotInList(t *testing.T) {
 				id1, err := queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
 					Name:      "keep-reg",
 					RegType:   RegistryTypeREMOTE,
+					Syncable:  true,
 					CreatedAt: &now,
 					UpdatedAt: &now,
 				})
@@ -557,6 +591,7 @@ func TestDeleteConfigRegistriesNotInList(t *testing.T) {
 				_, err = queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
 					Name:      "delete-reg",
 					RegType:   RegistryTypeFILE,
+					Syncable:  true,
 					CreatedAt: &now,
 					UpdatedAt: &now,
 				})
@@ -586,6 +621,7 @@ func TestDeleteConfigRegistriesNotInList(t *testing.T) {
 				id1, err := queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
 					Name:      "config-reg",
 					RegType:   RegistryTypeREMOTE,
+					Syncable:  true,
 					CreatedAt: &now,
 					UpdatedAt: &now,
 				})
@@ -594,6 +630,7 @@ func TestDeleteConfigRegistriesNotInList(t *testing.T) {
 				_, err = queries.InsertAPIRegistry(context.Background(), InsertAPIRegistryParams{
 					Name:      "api-reg",
 					RegType:   RegistryTypeMANAGED,
+					Syncable:  false, // managed registries are not syncable
 					CreatedAt: &now,
 					UpdatedAt: &now,
 				})
@@ -648,6 +685,7 @@ func TestGetAPIRegistriesByNames(t *testing.T) {
 				_, err := queries.InsertAPIRegistry(context.Background(), InsertAPIRegistryParams{
 					Name:      "api-reg",
 					RegType:   RegistryTypeMANAGED,
+					Syncable:  false, // managed registries are not syncable
 					CreatedAt: &now,
 					UpdatedAt: &now,
 				})
@@ -656,6 +694,7 @@ func TestGetAPIRegistriesByNames(t *testing.T) {
 				_, err = queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
 					Name:      "config-reg",
 					RegType:   RegistryTypeREMOTE,
+					Syncable:  true,
 					CreatedAt: &now,
 					UpdatedAt: &now,
 				})
@@ -678,6 +717,7 @@ func TestGetAPIRegistriesByNames(t *testing.T) {
 				_, err := queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
 					Name:      "config-reg",
 					RegType:   RegistryTypeREMOTE,
+					Syncable:  true,
 					CreatedAt: &now,
 					UpdatedAt: &now,
 				})
