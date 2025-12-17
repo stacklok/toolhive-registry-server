@@ -198,7 +198,7 @@ git commit -m "Release v${NEW_VERSION}"
 
 # Push branch
 echo "Pushing branch to origin..."
-# git push -u origin "$BRANCH_NAME"
+git push -u origin "$BRANCH_NAME"
 
 # Create PR body
 PR_BODY="## Release v${NEW_VERSION}
@@ -241,12 +241,12 @@ PR_BODY="${PR_BODY}
 
 # Create PR
 echo "Creating pull request..."
-# PR_URL=$(gh pr create \
-#   --title "Release v${NEW_VERSION}" \
-#   --body "$PR_BODY" \
-#   --label "release" \
-#   --head "$BRANCH_NAME" \
-#   --base "main")
+PR_URL=$(gh pr create \
+  --title "Release v${NEW_VERSION}" \
+  --body "$PR_BODY" \
+  --label "release" \
+  --head "$BRANCH_NAME" \
+  --base "main")
 
 # Switch back to main
 echo "Switching back to main branch..."
