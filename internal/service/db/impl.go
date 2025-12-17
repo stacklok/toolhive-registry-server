@@ -32,6 +32,8 @@ const (
 	DefaultPageSize = 50
 	// MaxPageSize is the maximum allowed items per page
 	MaxPageSize = 1000
+	// unknownSubtype is used when a file source subtype cannot be determined
+	unknownSubtype = "unknown"
 )
 
 var (
@@ -823,7 +825,7 @@ func convertSyncPhase(status sqlc.SyncStatus) string {
 	case sqlc.SyncStatusFAILED:
 		return "failed"
 	default:
-		return "unknown"
+		return unknownSubtype
 	}
 }
 
@@ -1011,6 +1013,14 @@ func (s *dbService) UpdateRegistry(
 	// Validate configuration
 	if err := service.ValidateRegistryConfig(config); err != nil {
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidRegistryConfig, err)
+	}
+
+	// For file source types, check if the subtype (path/url/data) is changing
+	// We don't allow changing between path, url, and data - user must delete and recreate
+	if config.GetSourceType() == service.SourceTypeFile {
+		if err := s.validateFileSourceTypeChange(ctx, name, config); err != nil {
+			return nil, err
+		}
 	}
 
 	// Begin transaction
@@ -1458,4 +1468,63 @@ func (s *dbService) updateSyncStatusCompleted(ctx context.Context, name string, 
 		AttemptCount: 1,
 		ServerCount:  int64(serverCount),
 	})
+}
+
+// validateFileSourceTypeChange checks if the file source subtype (path/url/data) is changing
+// and returns an error if so. Users must delete and recreate to change file source subtypes.
+func (s *dbService) validateFileSourceTypeChange(
+	ctx context.Context, name string, newConfig *service.RegistryCreateRequest,
+) error {
+	// Get the existing registry
+	querier := sqlc.New(s.pool)
+	existing, err := querier.GetRegistryByName(ctx, name)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Registry doesn't exist yet, no validation needed
+			return nil
+		}
+		return fmt.Errorf("failed to get existing registry: %w", err)
+	}
+
+	// If the existing registry is not a file type, no validation needed
+	if existing.SourceType == nil || *existing.SourceType != string(service.SourceTypeFile) {
+		return nil
+	}
+
+	// Deserialize the existing source config
+	var existingFileConfig service.FileSourceConfig
+	if len(existing.SourceConfig) > 0 {
+		if err := json.Unmarshal(existing.SourceConfig, &existingFileConfig); err != nil {
+			return fmt.Errorf("failed to parse existing file config: %w", err)
+		}
+	}
+
+	// Determine the existing and new file subtypes
+	existingSubtype := getFileSourceSubtype(&existingFileConfig)
+	newSubtype := getFileSourceSubtype(newConfig.File)
+
+	// Check if the subtype is changing
+	if existingSubtype != newSubtype {
+		return fmt.Errorf("%w: cannot change file source type from '%s' to '%s', delete and recreate the registry instead",
+			service.ErrInvalidRegistryConfig, existingSubtype, newSubtype)
+	}
+
+	return nil
+}
+
+// getFileSourceSubtype returns which file source subtype is being used (path, url, or data)
+func getFileSourceSubtype(cfg *service.FileSourceConfig) string {
+	if cfg == nil {
+		return unknownSubtype
+	}
+	switch {
+	case cfg.Path != "":
+		return "path"
+	case cfg.URL != "":
+		return "url"
+	case cfg.Data != "":
+		return "data"
+	default:
+		return unknownSubtype
+	}
 }
