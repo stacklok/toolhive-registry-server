@@ -91,7 +91,7 @@ type RegistryInfo struct {
 	Name         string               `json:"name"`
 	Type         string               `json:"type"`                   // MANAGED, FILE, REMOTE, KUBERNETES
 	CreationType CreationType         `json:"creationType,omitempty"` // API or CONFIG
-	SourceType   RegistrySourceType   `json:"sourceType,omitempty"`   // git, api, file, managed, kubernetes
+	SourceType   config.SourceType    `json:"sourceType,omitempty"`   // git, api, file, managed, kubernetes
 	Format       string               `json:"format,omitempty"`       // toolhive or upstream
 	SourceConfig interface{}          `json:"sourceConfig,omitempty"` // Type-specific source configuration
 	FilterConfig *config.FilterConfig `json:"filterConfig,omitempty"` // Filtering rules

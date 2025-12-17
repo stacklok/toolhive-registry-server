@@ -5,22 +5,6 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
-// RegistrySourceType represents the type of registry data source
-type RegistrySourceType string
-
-const (
-	// SourceTypeGit indicates a git repository source
-	SourceTypeGit RegistrySourceType = "git"
-	// SourceTypeAPI indicates an API endpoint source
-	SourceTypeAPI RegistrySourceType = "api"
-	// SourceTypeFile indicates a local file or URL source
-	SourceTypeFile RegistrySourceType = "file"
-	// SourceTypeManaged indicates a managed registry (no sync)
-	SourceTypeManaged RegistrySourceType = "managed"
-	// SourceTypeKubernetes indicates a Kubernetes discovery source (no sync)
-	SourceTypeKubernetes RegistrySourceType = "kubernetes"
-)
-
 // CreationType indicates how the registry was created
 type CreationType string
 
@@ -44,18 +28,18 @@ type RegistryCreateRequest struct {
 }
 
 // GetSourceType returns the source type based on which config is set
-func (r *RegistryCreateRequest) GetSourceType() RegistrySourceType {
+func (r *RegistryCreateRequest) GetSourceType() config.SourceType {
 	switch {
 	case r.Git != nil:
-		return SourceTypeGit
+		return config.SourceTypeGit
 	case r.API != nil:
-		return SourceTypeAPI
+		return config.SourceTypeAPI
 	case r.File != nil:
-		return SourceTypeFile
+		return config.SourceTypeFile
 	case r.Managed != nil:
-		return SourceTypeManaged
+		return config.SourceTypeManaged
 	case r.Kubernetes != nil:
-		return SourceTypeKubernetes
+		return config.SourceTypeKubernetes
 	default:
 		return ""
 	}
@@ -86,7 +70,7 @@ func (r *RegistryCreateRequest) CountSourceTypes() int {
 func (r *RegistryCreateRequest) IsNonSyncedType() bool {
 	sourceType := r.GetSourceType()
 	// Managed and Kubernetes don't sync
-	if sourceType == SourceTypeManaged || sourceType == SourceTypeKubernetes {
+	if sourceType == config.SourceTypeManaged || sourceType == config.SourceTypeKubernetes {
 		return true
 	}
 	// File with inline data doesn't sync (processed immediately)
@@ -117,4 +101,15 @@ func (r *RegistryCreateRequest) GetSourceConfig() interface{} {
 	default:
 		return nil
 	}
+}
+
+// DeployedServer represents a deployed MCP server in Kubernetes
+type DeployedServer struct {
+	Name        string `json:"name"`
+	Namespace   string `json:"namespace"`
+	Status      string `json:"status"`
+	Image       string `json:"image"`
+	Transport   string `json:"transport"`
+	Ready       bool   `json:"ready"`
+	EndpointURL string `json:"endpoint_url,omitempty"`
 }

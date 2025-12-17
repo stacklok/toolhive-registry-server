@@ -13,24 +13,29 @@ import (
 	"github.com/spf13/viper"
 )
 
+// SourceType represents the type of registry data source
+type SourceType string
+
 const (
 	// SourceTypeGit is the type for registry data stored in Git repositories
-	SourceTypeGit = "git"
+	SourceTypeGit SourceType = "git"
 
 	// SourceTypeAPI is the type for registry data fetched from API endpoints
-	SourceTypeAPI = "api"
+	SourceTypeAPI SourceType = "api"
 
 	// SourceTypeFile is the type for registry data stored in local files
-	SourceTypeFile = "file"
+	SourceTypeFile SourceType = "file"
 
 	// SourceTypeManaged is the type for registries directly managed via API
 	// Managed registries do not sync from external sources
-	SourceTypeManaged = "managed"
+	SourceTypeManaged SourceType = "managed"
 
 	// SourceTypeKubernetes is the type for registries that query Kubernetes deployments
 	// Kubernetes registries discover MCP servers from running Kubernetes resources
-	SourceTypeKubernetes = "kubernetes"
+	SourceTypeKubernetes SourceType = "kubernetes"
+)
 
+const (
 	// EnvPrefix is the prefix used for environment variables that override config values.
 	// For example, THV_REGISTRY_REGISTRYNAME overrides registryName in the config file.
 	EnvPrefix = "THV_REGISTRY"
@@ -863,7 +868,7 @@ func readSecretFromFile(filePath string) (string, error) {
 }
 
 // GetType returns the inferred type of the registry config based on which field is present
-func (r *RegistryConfig) GetType() string {
+func (r *RegistryConfig) GetType() SourceType {
 	if r.Git != nil {
 		return SourceTypeGit
 	}

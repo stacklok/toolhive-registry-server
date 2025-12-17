@@ -743,7 +743,7 @@ func (s *regSvc) getRegistryType(registryName string) string {
 	if s.config != nil {
 		for _, regCfg := range s.config.Registries {
 			if regCfg.Name == registryName {
-				return strings.ToUpper(regCfg.GetType())
+				return strings.ToUpper(string(regCfg.GetType()))
 			}
 		}
 	}

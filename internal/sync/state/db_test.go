@@ -36,7 +36,7 @@ func TestMapConfigTypeToDBType(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		configType string
+		configType config.SourceType
 		want       sqlc.RegistryType
 		wantErr    bool
 	}{
@@ -66,13 +66,13 @@ func TestMapConfigTypeToDBType(t *testing.T) {
 		},
 		{
 			name:       "returns error for unknown type",
-			configType: "unknown",
+			configType: config.SourceType("unknown"),
 			want:       "",
 			wantErr:    true,
 		},
 		{
 			name:       "returns error for empty string",
-			configType: "",
+			configType: config.SourceType(""),
 			want:       "",
 			wantErr:    true,
 		},
@@ -100,7 +100,7 @@ func TestGetInitialSyncStatus(t *testing.T) {
 	tests := []struct {
 		name           string
 		isNonSynced    bool
-		regType        string
+		regType        config.SourceType
 		wantStatus     sqlc.SyncStatus
 		wantErrMessage string
 	}{
@@ -529,7 +529,7 @@ func TestMapConfigTypeToDBType_AllSourceTypes(t *testing.T) {
 	t.Parallel()
 
 	// Verify all defined source types have mappings
-	sourceTypes := []string{
+	sourceTypes := []config.SourceType{
 		config.SourceTypeGit,
 		config.SourceTypeAPI,
 		config.SourceTypeFile,
@@ -538,7 +538,7 @@ func TestMapConfigTypeToDBType_AllSourceTypes(t *testing.T) {
 	}
 
 	for _, sourceType := range sourceTypes {
-		t.Run(sourceType, func(t *testing.T) {
+		t.Run(string(sourceType), func(t *testing.T) {
 			t.Parallel()
 
 			result, err := mapConfigTypeToDBType(sourceType)

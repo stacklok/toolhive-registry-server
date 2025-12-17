@@ -1946,7 +1946,7 @@ func TestRegistryConfig_GetType(t *testing.T) {
 	tests := []struct {
 		name         string
 		registryConf *RegistryConfig
-		expectedType string
+		expectedType SourceType
 	}{
 		{
 			name: "git type",
@@ -1999,7 +1999,7 @@ func TestRegistryConfig_GetType(t *testing.T) {
 			registryConf: &RegistryConfig{
 				Name: "invalid-registry",
 			},
-			expectedType: "",
+			expectedType: SourceType(""),
 		},
 	}
 

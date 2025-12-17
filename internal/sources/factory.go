@@ -35,6 +35,8 @@ func (*defaultRegistryHandlerFactory) CreateHandler(regCfg *config.RegistryConfi
 		return NewAPIRegistryHandler(), nil
 	case config.SourceTypeFile:
 		return NewFileRegistryHandler(), nil
+	case config.SourceTypeManaged:
+		return nil, fmt.Errorf("managed source type does not require syncing")
 	case config.SourceTypeKubernetes:
 		return nil, fmt.Errorf("kubernetes source type is not yet implemented")
 	default:

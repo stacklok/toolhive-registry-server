@@ -46,16 +46,16 @@ func ValidateRegistryConfig(req *RegistryCreateRequest) error {
 // validateSourceSpecific validates source-specific configuration
 func validateSourceSpecific(req *RegistryCreateRequest) error {
 	switch req.GetSourceType() {
-	case SourceTypeGit:
+	case config.SourceTypeGit:
 		return validateGitConfig(req.Git)
-	case SourceTypeAPI:
+	case config.SourceTypeAPI:
 		return validateAPIConfig(req.API)
-	case SourceTypeFile:
+	case config.SourceTypeFile:
 		return validateFileConfig(req.File)
-	case SourceTypeManaged:
+	case config.SourceTypeManaged:
 		// Managed registries have no required fields
 		return nil
-	case SourceTypeKubernetes:
+	case config.SourceTypeKubernetes:
 		// Kubernetes registries have no required fields
 		return nil
 	default:

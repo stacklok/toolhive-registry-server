@@ -948,7 +948,7 @@ func (s *dbService) CreateRegistry(
 
 	params := sqlc.InsertAPIRegistryParams{
 		Name:         name,
-		RegType:      mapServiceSourceTypeToDBType(req.GetSourceType()),
+		RegType:      mapSourceTypeToDBType(req.GetSourceType()),
 		SourceType:   &sourceType,
 		Format:       &format,
 		SourceConfig: sourceConfig,
@@ -1020,7 +1020,7 @@ func (s *dbService) UpdateRegistry(
 
 	// For file source types, check if the subtype (path/url/data) is changing
 	// We don't allow changing between path, url, and data - user must delete and recreate
-	if req.GetSourceType() == service.SourceTypeFile {
+	if req.GetSourceType() == config.SourceTypeFile {
 		if err := s.validateFileSourceTypeChange(ctx, name, req); err != nil {
 			return nil, err
 		}
@@ -1058,7 +1058,7 @@ func (s *dbService) UpdateRegistry(
 
 	params := sqlc.UpdateAPIRegistryParams{
 		Name:         name,
-		RegType:      mapServiceSourceTypeToDBType(req.GetSourceType()),
+		RegType:      mapSourceTypeToDBType(req.GetSourceType()),
 		SourceType:   &sourceType,
 		Format:       &format,
 		SourceConfig: sourceConfig,
@@ -1163,16 +1163,16 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 // Helper functions for registry CRUD operations
 // =============================================================================
 
-// mapServiceSourceTypeToDBType maps service RegistrySourceType to database RegistryType
-func mapServiceSourceTypeToDBType(sourceType service.RegistrySourceType) sqlc.RegistryType {
+// mapSourceTypeToDBType maps config.SourceType to database RegistryType
+func mapSourceTypeToDBType(sourceType config.SourceType) sqlc.RegistryType {
 	switch sourceType {
-	case service.SourceTypeManaged:
+	case config.SourceTypeManaged:
 		return sqlc.RegistryTypeMANAGED
-	case service.SourceTypeFile:
+	case config.SourceTypeFile:
 		return sqlc.RegistryTypeFILE
-	case service.SourceTypeGit, service.SourceTypeAPI:
+	case config.SourceTypeGit, config.SourceTypeAPI:
 		return sqlc.RegistryTypeREMOTE
-	case service.SourceTypeKubernetes:
+	case config.SourceTypeKubernetes:
 		return sqlc.RegistryTypeKUBERNETES
 	default:
 		return sqlc.RegistryTypeREMOTE
@@ -1229,32 +1229,32 @@ func deserializeSourceConfig(sourceType string, data []byte) interface{} {
 		return nil
 	}
 
-	switch service.RegistrySourceType(sourceType) {
-	case service.SourceTypeGit:
+	switch config.SourceType(sourceType) {
+	case config.SourceTypeGit:
 		var cfg config.GitConfig
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return nil
 		}
 		return &cfg
-	case service.SourceTypeAPI:
+	case config.SourceTypeAPI:
 		var cfg config.APIConfig
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return nil
 		}
 		return &cfg
-	case service.SourceTypeFile:
+	case config.SourceTypeFile:
 		var cfg config.FileConfig
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return nil
 		}
 		return &cfg
-	case service.SourceTypeManaged:
+	case config.SourceTypeManaged:
 		var cfg config.ManagedConfig
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return nil
 		}
 		return &cfg
-	case service.SourceTypeKubernetes:
+	case config.SourceTypeKubernetes:
 		var cfg config.KubernetesConfig
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return nil
@@ -1287,7 +1287,7 @@ func buildRegistryInfoFromDBRegistry(registry *sqlc.Registry) *service.RegistryI
 	}
 
 	if registry.SourceType != nil {
-		info.SourceType = service.RegistrySourceType(*registry.SourceType)
+		info.SourceType = config.SourceType(*registry.SourceType)
 	}
 
 	if registry.Format != nil {
@@ -1324,7 +1324,7 @@ func buildRegistryInfoFromListRow(row *sqlc.ListRegistriesRow) *service.Registry
 	}
 
 	if row.SourceType != nil {
-		info.SourceType = service.RegistrySourceType(*row.SourceType)
+		info.SourceType = config.SourceType(*row.SourceType)
 	}
 
 	if row.Format != nil {
@@ -1361,7 +1361,7 @@ func buildRegistryInfoFromGetByNameRow(row *sqlc.GetRegistryByNameRow) *service.
 	}
 
 	if row.SourceType != nil {
-		info.SourceType = service.RegistrySourceType(*row.SourceType)
+		info.SourceType = config.SourceType(*row.SourceType)
 	}
 
 	if row.Format != nil {
@@ -1503,7 +1503,7 @@ func (s *dbService) validateFileSourceTypeChange(
 	}
 
 	// If the existing registry is not a file type, no validation needed
-	if existing.SourceType == nil || *existing.SourceType != string(service.SourceTypeFile) {
+	if existing.SourceType == nil || *existing.SourceType != string(config.SourceTypeFile) {
 		return nil
 	}
 
