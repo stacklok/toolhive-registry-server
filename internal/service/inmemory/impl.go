@@ -731,6 +731,11 @@ func (*regSvc) DeleteRegistry(_ context.Context, _ string) error {
 	return service.ErrNotImplemented
 }
 
+// ProcessInlineRegistryData is not supported in the in-memory implementation
+func (*regSvc) ProcessInlineRegistryData(_ context.Context, _ string, _ string, _ string) error {
+	return service.ErrNotImplemented
+}
+
 // getRegistryType returns the type of the registry from config or infers it from source.
 // Caller must hold s.mu read lock.
 func (s *regSvc) getRegistryType(registryName string) string {

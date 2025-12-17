@@ -211,6 +211,20 @@ func (mr *MockRegistryServiceMockRecorder) ListServers(ctx any, opts ...any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListServers", reflect.TypeOf((*MockRegistryService)(nil).ListServers), varargs...)
 }
 
+// ProcessInlineRegistryData mocks base method.
+func (m *MockRegistryService) ProcessInlineRegistryData(ctx context.Context, name, data, format string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ProcessInlineRegistryData", ctx, name, data, format)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ProcessInlineRegistryData indicates an expected call of ProcessInlineRegistryData.
+func (mr *MockRegistryServiceMockRecorder) ProcessInlineRegistryData(ctx, name, data, format any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessInlineRegistryData", reflect.TypeOf((*MockRegistryService)(nil).ProcessInlineRegistryData), ctx, name, data, format)
+}
+
 // PublishServerVersion mocks base method.
 func (m *MockRegistryService) PublishServerVersion(ctx context.Context, opts ...service.Option[service.PublishServerVersionOptions]) (*v0.ServerJSON, error) {
 	m.ctrl.T.Helper()

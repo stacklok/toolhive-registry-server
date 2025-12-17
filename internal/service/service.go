@@ -76,6 +76,12 @@ type RegistryService interface {
 	// Returns ErrRegistryNotFound if the registry doesn't exist
 	// Returns ErrConfigRegistry if the registry was created via config file (temporary, until CONFIG deprecated)
 	DeleteRegistry(ctx context.Context, name string) error
+
+	// ProcessInlineRegistryData processes inline registry data asynchronously.
+	// It parses the data, validates it, and stores the servers in the database.
+	// This is called in a goroutine after the API returns.
+	// The registry must already exist with syncStatus = "syncing".
+	ProcessInlineRegistryData(ctx context.Context, name string, data string, format string) error
 }
 
 // RegistryInfo represents detailed information about a registry

@@ -55,9 +55,10 @@ type APISourceConfig struct {
 
 // FileSourceConfig defines file source settings
 type FileSourceConfig struct {
-	Path    string `json:"path,omitempty"`    // Local file path (mutually exclusive with URL)
-	URL     string `json:"url,omitempty"`     // HTTP/HTTPS URL
-	Timeout string `json:"timeout,omitempty"` // Request timeout (e.g., "30s")
+	Path    string `json:"path,omitempty"`    // Local file path (mutually exclusive with URL and Data)
+	URL     string `json:"url,omitempty"`     // HTTP/HTTPS URL (mutually exclusive with Path and Data)
+	Data    string `json:"data,omitempty"`    // Inline registry data as JSON string (mutually exclusive with Path and URL)
+	Timeout string `json:"timeout,omitempty"` // Request timeout for URL (e.g., "30s")
 }
 
 // ManagedSourceConfig defines managed registry settings
@@ -135,7 +136,20 @@ func (r *RegistryCreateRequest) CountSourceTypes() int {
 // IsNonSyncedType returns true if the source type doesn't require syncing
 func (r *RegistryCreateRequest) IsNonSyncedType() bool {
 	sourceType := r.GetSourceType()
-	return sourceType == SourceTypeManaged || sourceType == SourceTypeKubernetes
+	// Managed and Kubernetes don't sync
+	if sourceType == SourceTypeManaged || sourceType == SourceTypeKubernetes {
+		return true
+	}
+	// File with inline data doesn't sync (processed immediately)
+	if r.IsInlineData() {
+		return true
+	}
+	return false
+}
+
+// IsInlineData returns true if this is a file source with inline data
+func (r *RegistryCreateRequest) IsInlineData() bool {
+	return r.File != nil && r.File.Data != ""
 }
 
 // GetSourceConfig returns the active source configuration

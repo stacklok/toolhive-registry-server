@@ -166,17 +166,22 @@ type APIConfig struct {
 }
 
 // FileConfig defines file source configuration
-// Supports both local files and URL-hosted files
+// Supports local files, URL-hosted files, or inline data
 type FileConfig struct {
 	// Path is the path to the registry.json file on the local filesystem
 	// Can be absolute or relative to the working directory
-	// Mutually exclusive with URL - exactly one must be specified
+	// Mutually exclusive with URL and Data - exactly one must be specified
 	Path string `yaml:"path,omitempty"`
 
 	// URL is the HTTP/HTTPS URL to fetch the registry file from
-	// Mutually exclusive with Path - exactly one must be specified
+	// Mutually exclusive with Path and Data - exactly one must be specified
 	// HTTPS is required unless the host is localhost or THV_REGISTRY_INSECURE_URL=true
 	URL string `yaml:"url,omitempty"`
+
+	// Data is the inline registry data as a JSON string
+	// Mutually exclusive with Path and URL - exactly one must be specified
+	// Useful for API-created registries where the data is provided directly
+	Data string `yaml:"data,omitempty" json:"data,omitempty"`
 
 	// Timeout is the timeout for HTTP requests when using URL
 	// Defaults to 30s if not specified
@@ -747,24 +752,32 @@ func validateAPIConfig(api *APIConfig, format string, prefix string) error {
 
 // validateFileConfig validates File-specific configuration
 func validateFileConfig(file *FileConfig, prefix string) error {
-	// Exactly one of Path or URL must be specified
-	hasPath := file.Path != ""
-	hasURL := file.URL != ""
-
-	if !hasPath && !hasURL {
-		return fmt.Errorf("%s: file.path or file.url is required", prefix)
+	// Count how many source options are set (path, url, data are mutually exclusive)
+	sourceCount := 0
+	if file.Path != "" {
+		sourceCount++
 	}
-	if hasPath && hasURL {
-		return fmt.Errorf("%s: file.path and file.url are mutually exclusive", prefix)
+	if file.URL != "" {
+		sourceCount++
+	}
+	if file.Data != "" {
+		sourceCount++
+	}
+
+	if sourceCount == 0 {
+		return fmt.Errorf("%s: file.path, file.url, or file.data is required", prefix)
+	}
+	if sourceCount > 1 {
+		return fmt.Errorf("%s: file.path, file.url, and file.data are mutually exclusive", prefix)
 	}
 
 	// Validate URL if specified
-	if hasURL {
+	if file.URL != "" {
 		if err := validateFileURL(file.URL, prefix); err != nil {
 			return err
 		}
 
-		// Validate timeout if specified
+		// Validate timeout if specified (only applicable for URL)
 		if file.Timeout != "" {
 			if _, err := time.ParseDuration(file.Timeout); err != nil {
 				return fmt.Errorf("%s: file.timeout must be a valid duration (e.g., '30s', '1m'): %w", prefix, err)

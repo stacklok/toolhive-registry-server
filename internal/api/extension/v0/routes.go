@@ -154,6 +154,7 @@ func (rt *Routes) upsertRegistry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
+	isCreate := false
 
 	// Try to update first - if registry doesn't exist, create it
 	registry, err := rt.service.UpdateRegistry(ctx, registryName, &config)
@@ -165,14 +166,39 @@ func (rt *Routes) upsertRegistry(w http.ResponseWriter, r *http.Request) {
 				rt.handleRegistryError(w, err, registryName)
 				return
 			}
-			common.WriteJSONResponse(w, registry, http.StatusCreated)
+			isCreate = true
+		} else {
+			rt.handleRegistryError(w, err, registryName)
 			return
 		}
-		rt.handleRegistryError(w, err, registryName)
-		return
 	}
 
-	common.WriteJSONResponse(w, registry, http.StatusOK)
+	// For inline data registries, process the data synchronously
+	if config.IsInlineData() {
+		format := config.Format
+		if format == "" {
+			format = "upstream"
+		}
+		if err := rt.service.ProcessInlineRegistryData(ctx, registryName, config.File.Data, format); err != nil {
+			// Processing failed - return error to client
+			// The registry was created but data processing failed
+			common.WriteErrorResponse(w, fmt.Sprintf("Failed to process inline data: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Re-fetch registry to get updated sync status
+		registry, err = rt.service.GetRegistryByName(ctx, registryName)
+		if err != nil {
+			common.WriteErrorResponse(w, fmt.Sprintf("Failed to fetch registry after processing: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if isCreate {
+		common.WriteJSONResponse(w, registry, http.StatusCreated)
+	} else {
+		common.WriteJSONResponse(w, registry, http.StatusOK)
+	}
 }
 
 // deleteRegistry handles DELETE /extension/v0/registries/{registryName}

@@ -22,6 +22,8 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/internal/sources"
+	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 	"github.com/stacklok/toolhive-registry-server/internal/validators"
 )
 
@@ -964,10 +966,22 @@ func (s *dbService) CreateRegistry(
 	}
 
 	// Initialize sync status for the new registry
+	// Follow same pattern as CONFIG registries:
+	// - Non-synced (managed, kubernetes): COMPLETED
+	// - Synced (git, api, file): FAILED with "No previous sync status found"
+	// - Inline data: FAILED (needs processing, will be updated to COMPLETED after)
+	initialSyncStatus := sqlc.SyncStatusFAILED
+	initialErrorMsg := "No previous sync status found"
+	if config.IsNonSyncedType() && !config.IsInlineData() {
+		// Only managed/kubernetes start as COMPLETED
+		// Inline data needs processing first
+		initialSyncStatus = sqlc.SyncStatusCOMPLETED
+		initialErrorMsg = fmt.Sprintf("Non-synced registry (type: %s)", sourceType)
+	}
 	err = querier.BulkInitializeRegistrySyncs(ctx, sqlc.BulkInitializeRegistrySyncsParams{
 		RegIds:       []uuid.UUID{registry.ID},
-		SyncStatuses: []sqlc.SyncStatus{sqlc.SyncStatusCOMPLETED},
-		ErrorMsgs:    []string{""},
+		SyncStatuses: []sqlc.SyncStatus{initialSyncStatus},
+		ErrorMsgs:    []string{initialErrorMsg},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize sync status: %w", err)
@@ -1358,4 +1372,90 @@ func buildRegistryInfoFromGetByNameRow(row *sqlc.GetRegistryByNameRow) *service.
 	}
 
 	return info
+}
+
+// ProcessInlineRegistryData processes inline registry data asynchronously.
+// It parses the data, validates it, and stores the servers in the database.
+// This is called in a goroutine after the API returns.
+func (s *dbService) ProcessInlineRegistryData(ctx context.Context, name string, data string, format string) error {
+	// Parse the inline data using the registry validator
+	validator := sources.NewRegistryDataValidator()
+	registry, err := validator.ValidateData([]byte(data), format)
+	if err != nil {
+		// Update sync status to failed
+		if updateErr := s.updateSyncStatusFailed(ctx, name, fmt.Sprintf("failed to parse registry data: %v", err)); updateErr != nil {
+			slog.ErrorContext(ctx, "Failed to update sync status after parse error",
+				"registry", name,
+				"parse_error", err,
+				"update_error", updateErr)
+		}
+		return fmt.Errorf("failed to parse inline registry data: %w", err)
+	}
+
+	// Create a sync writer to store the servers
+	syncWriter, err := writer.NewDBSyncWriter(s.pool)
+	if err != nil {
+		if updateErr := s.updateSyncStatusFailed(ctx, name, fmt.Sprintf("failed to create sync writer: %v", err)); updateErr != nil {
+			slog.ErrorContext(ctx, "Failed to update sync status after writer creation error",
+				"registry", name,
+				"writer_error", err,
+				"update_error", updateErr)
+		}
+		return fmt.Errorf("failed to create sync writer: %w", err)
+	}
+
+	// Store the servers in the database
+	if err := syncWriter.Store(ctx, name, registry); err != nil {
+		if updateErr := s.updateSyncStatusFailed(ctx, name, fmt.Sprintf("failed to store servers: %v", err)); updateErr != nil {
+			slog.ErrorContext(ctx, "Failed to update sync status after store error",
+				"registry", name,
+				"store_error", err,
+				"update_error", updateErr)
+		}
+		return fmt.Errorf("failed to store inline registry data: %w", err)
+	}
+
+	// Update sync status to completed
+	if err := s.updateSyncStatusCompleted(ctx, name, len(registry.Data.Servers)); err != nil {
+		slog.ErrorContext(ctx, "Failed to update sync status to completed",
+			"registry", name,
+			"error", err)
+		// Don't return error here - the data was successfully stored
+	}
+
+	slog.InfoContext(ctx, "Inline registry data processed successfully",
+		"registry", name,
+		"server_count", len(registry.Data.Servers))
+
+	return nil
+}
+
+// updateSyncStatusFailed updates the sync status to failed with an error message
+func (s *dbService) updateSyncStatusFailed(ctx context.Context, name string, errorMsg string) error {
+	querier := sqlc.New(s.pool)
+	now := time.Now()
+	return querier.UpsertRegistrySyncByName(ctx, sqlc.UpsertRegistrySyncByNameParams{
+		Name:         name,
+		SyncStatus:   sqlc.SyncStatusFAILED,
+		ErrorMsg:     &errorMsg,
+		StartedAt:    &now,
+		EndedAt:      &now,
+		AttemptCount: 1,
+		ServerCount:  0,
+	})
+}
+
+// updateSyncStatusCompleted updates the sync status to completed
+func (s *dbService) updateSyncStatusCompleted(ctx context.Context, name string, serverCount int) error {
+	querier := sqlc.New(s.pool)
+	now := time.Now()
+	return querier.UpsertRegistrySyncByName(ctx, sqlc.UpsertRegistrySyncByNameParams{
+		Name:         name,
+		SyncStatus:   sqlc.SyncStatusCOMPLETED,
+		ErrorMsg:     nil,
+		StartedAt:    &now,
+		EndedAt:      &now,
+		AttemptCount: 1,
+		ServerCount:  int64(serverCount),
+	})
 }

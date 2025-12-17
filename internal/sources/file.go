@@ -49,7 +49,8 @@ func (*fileRegistryHandler) Validate(regCfg *config.RegistryConfig) error {
 		return fmt.Errorf("file configuration is required")
 	}
 
-	// Exactly one of Path or URL must be specified
+	// For sync-able file sources, exactly one of Path or URL must be specified
+	// Note: Data (inline data) is handled separately via API and not synced
 	hasPath := regCfg.File.Path != ""
 	hasURL := regCfg.File.URL != ""
 

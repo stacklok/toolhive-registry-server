@@ -356,7 +356,7 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "file.path or file.url is required",
+			errMsg:  "file.path, file.url, or file.data is required",
 		},
 		{
 			name: "file_path_and_url_mutually_exclusive",
@@ -378,7 +378,7 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "file.path and file.url are mutually exclusive",
+			errMsg:  "file.path, file.url, and file.data are mutually exclusive",
 		},
 		{
 			name: "valid_file_url",

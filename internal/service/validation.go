@@ -4,6 +4,8 @@ package service
 import (
 	"fmt"
 	"time"
+
+	"github.com/stacklok/toolhive-registry-server/internal/sources"
 )
 
 // ValidateRegistryConfig validates a RegistryCreateRequest
@@ -107,19 +109,71 @@ func validateFileConfig(cfg *FileSourceConfig) error {
 		return fmt.Errorf("file config is required")
 	}
 
-	if cfg.Path == "" && cfg.URL == "" {
-		return fmt.Errorf("file.path or file.url is required")
+	// Count how many source options are set (path, url, data are mutually exclusive)
+	sourceCount := 0
+	if cfg.Path != "" {
+		sourceCount++
 	}
-	if cfg.Path != "" && cfg.URL != "" {
-		return fmt.Errorf("file.path and file.url are mutually exclusive")
+	if cfg.URL != "" {
+		sourceCount++
+	}
+	if cfg.Data != "" {
+		sourceCount++
 	}
 
-	// Validate timeout if specified
+	if sourceCount == 0 {
+		return fmt.Errorf("file.path, file.url, or file.data is required")
+	}
+	if sourceCount > 1 {
+		return fmt.Errorf("file.path, file.url, and file.data are mutually exclusive")
+	}
+
+	// Validate timeout if specified (only applicable for URL)
 	if cfg.Timeout != "" {
+		if cfg.URL == "" {
+			return fmt.Errorf("file.timeout is only applicable when file.url is specified")
+		}
 		if _, err := time.ParseDuration(cfg.Timeout); err != nil {
 			return fmt.Errorf("invalid file.timeout: %w", err)
 		}
 	}
 
+	// Basic validation for inline data
+	if cfg.Data != "" {
+		if err := ValidateInlineDataBasic(cfg.Data); err != nil {
+			return fmt.Errorf("file.data: %w", err)
+		}
+	}
+
 	return nil
+}
+
+// ValidateInlineDataBasic performs basic validation on inline registry data.
+// It uses the existing registry data validator to parse and validate both
+// toolhive and upstream formats.
+func ValidateInlineDataBasic(data string) error {
+	return ValidateInlineDataWithFormat(data, "")
+}
+
+// ValidateInlineDataWithFormat validates inline registry data with a specific format.
+// If format is empty, it tries upstream format first, then falls back to toolhive.
+func ValidateInlineDataWithFormat(data string, format string) error {
+	if data == "" {
+		return fmt.Errorf("data cannot be empty")
+	}
+
+	validator := sources.NewRegistryDataValidator()
+
+	// If format is specified, use it directly
+	if format != "" {
+		_, err := validator.ValidateData([]byte(data), format)
+		return err
+	}
+
+	// Try upstream format first (more common for API usage), then toolhive
+	_, err := validator.ValidateData([]byte(data), "upstream")
+	if err != nil {
+		_, err = validator.ValidateData([]byte(data), "toolhive")
+	}
+	return err
 }
