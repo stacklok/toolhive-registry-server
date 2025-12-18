@@ -1,15 +1,173 @@
 components:
   schemas:
+    github_com_stacklok_toolhive-registry-server_internal_config.APIConfig:
+      description: API endpoint source
+      properties:
+        endpoint:
+          description: |-
+            Endpoint is the base API URL (without path)
+            The registry handler will append the appropriate paths for the MCP Registry API v0.1:
+              - /v0.1/servers - List all servers
+              - /v0.1/servers/{name}/versions - List server versions
+              - /v0.1/servers/{name}/versions/{version} - Get specific version
+            Example: "http://my-registry-api.default.svc.cluster.local/registry"
+          type: string
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_config.FileConfig:
+      description: Local file or URL source
+      properties:
+        data:
+          description: |-
+            Data is the inline registry data as a JSON string
+            Mutually exclusive with Path and URL - exactly one must be specified
+            Useful for API-created registries where the data is provided directly
+          type: string
+        path:
+          description: |-
+            Path is the path to the registry.json file on the local filesystem
+            Can be absolute or relative to the working directory
+            Mutually exclusive with URL and Data - exactly one must be specified
+          type: string
+        timeout:
+          description: |-
+            Timeout is the timeout for HTTP requests when using URL
+            Defaults to 30s if not specified
+            Only applicable when URL is set
+          type: string
+        url:
+          description: |-
+            URL is the HTTP/HTTPS URL to fetch the registry file from
+            Mutually exclusive with Path and Data - exactly one must be specified
+            HTTPS is required unless the host is localhost or THV_REGISTRY_INSECURE_URL=true
+          type: string
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig:
+      description: Filtering rules
+      properties:
+        names:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig'
+        tags:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig'
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_config.GitConfig:
+      description: Git repository source
+      properties:
+        branch:
+          description: Branch is the Git branch to use (mutually exclusive with Tag
+            and Commit)
+          type: string
+        commit:
+          description: Commit is the Git commit SHA to use (mutually exclusive with
+            Branch and Tag)
+          type: string
+        path:
+          description: Path is the path to the registry file within the repository
+          type: string
+        repository:
+          description: Repository is the Git repository URL (HTTP/HTTPS/SSH)
+          type: string
+        tag:
+          description: Tag is the Git tag to use (mutually exclusive with Branch and
+            Commit)
+          type: string
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig:
+      description: Kubernetes discovery source
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig:
+      description: Managed registry (no sync)
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig:
+      properties:
+        exclude:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        include:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_config.SourceType:
+      description: git, api, file, managed, kubernetes
+      type: string
+      x-enum-varnames:
+      - SourceTypeGit
+      - SourceTypeAPI
+      - SourceTypeFile
+      - SourceTypeManaged
+      - SourceTypeKubernetes
+    github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig:
+      description: Sync schedule configuration
+      properties:
+        interval:
+          type: string
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig:
+      properties:
+        exclude:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        include:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_service.CreationType:
+      description: API or CONFIG
+      type: string
+      x-enum-varnames:
+      - CreationTypeAPI
+      - CreationTypeCONFIG
+    github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest:
+      properties:
+        api:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.APIConfig'
+        file:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FileConfig'
+        filter:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig'
+        format:
+          description: '"toolhive" or "upstream"'
+          type: string
+        git:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitConfig'
+        kubernetes:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig'
+        managed:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig'
+        syncPolicy:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig'
+      type: object
     github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo:
       properties:
         createdAt:
           type: string
+        creationType:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.CreationType'
+        filterConfig:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig'
+        format:
+          description: toolhive or upstream
+          type: string
         name:
+          type: string
+        sourceConfig:
+          description: Type-specific source configuration
+        sourceType:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SourceType'
+        syncSchedule:
+          description: Sync interval string
           type: string
         syncStatus:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistrySyncStatus'
         type:
-          description: MANAGED, FILE, REMOTE
+          description: MANAGED, FILE, REMOTE, KUBERNETES
           type: string
         updatedAt:
           type: string
@@ -608,6 +766,77 @@ paths:
       tags:
       - extension
   /extension/v0/registries/{registryName}:
+    delete:
+      description: Delete a registry by name. Only registries created via API can
+        be deleted.
+      parameters:
+      - description: Registry Name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "204":
+          description: Registry deleted
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Forbidden - cannot delete CONFIG registry
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Registry not found
+        "500":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Internal server error
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      security:
+      - BearerAuth: []
+      summary: Delete registry
+      tags:
+      - extension
     get:
       description: Get a registry by name
       parameters:
@@ -672,6 +901,81 @@ paths:
       security:
       - BearerAuth: []
       summary: Get registry
+      tags:
+      - extension
+    put:
+      description: Create a new registry or update an existing one. Only registries
+        created via API can be updated.
+      parameters:
+      - description: Registry Name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest'
+        description: Registry configuration
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo'
+          description: Registry updated
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo'
+          description: Registry created
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request - invalid configuration
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Forbidden - cannot modify CONFIG registry
+        "500":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Internal server error
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      security:
+      - BearerAuth: []
+      summary: Create or update registry
       tags:
       - extension
   /health:
