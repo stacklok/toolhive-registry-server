@@ -31,3 +31,7 @@ jobs:
   codegen:
     name: Codegen
     uses: ./.github/workflows/verify-gen.yml
+  helm-charts:
+    name: Helm Charts
+    uses: ./.github/workflows/helm-charts-test.yml
+    secrets: inherit

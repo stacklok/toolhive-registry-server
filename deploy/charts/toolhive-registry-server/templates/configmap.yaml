@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "toolhive-registry-server.configMapName" . }}
+  labels:
+    {{- include "toolhive-registry-server.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- .Values.config | toYaml | nindent 4 }}

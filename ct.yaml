@@ -1,0 +1,18 @@
+# Chart testing configuration
+# See: https://github.com/helm/chart-testing
+
+chart-dirs:
+  - deploy/charts
+
+charts:
+  - deploy/charts/toolhive-registry-server
+
+# Do not require version bump on every PR - we handle releases separately
+check-version-increment: false
+
+validate-maintainers: false
+remote: origin
+target-branch: main
+
+# Helm install options
+helm-extra-args: --timeout 120s

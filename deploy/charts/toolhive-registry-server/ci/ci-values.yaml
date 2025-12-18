@@ -1,0 +1,31 @@
+# CI test values for chart-testing
+# Image built with ko and loaded into KIND cluster
+
+image:
+  repository: ko.local/thv-registry-api
+  tag: ci-test
+  pullPolicy: Never
+
+# Use minimal resources for CI testing
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Shorter probe timings for faster CI feedback
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+readinessProbe:
+  httpGet:
+    path: /readiness
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 3

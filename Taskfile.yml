@@ -28,6 +28,12 @@ tasks:
           --v3.1 --output {{.SWAG_OUTPUT_DIR}} \
           --parseDependencyLevel 1 2>/dev/null
 
+  helm-docs:
+    desc: Generate Helm chart documentation
+    cmds:
+      - command -v helm-docs >/dev/null 2>&1 || go install github.com/norwoodj/helm-docs/cmd/helm-docs@latest
+      - helm-docs --chart-search-root=deploy/charts
+
   install-sqlc:
     desc: Install the sqlc tool for generating database code
     cmds:
