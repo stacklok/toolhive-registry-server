@@ -67,5 +67,14 @@ jobs:
           # Load the image into the KIND cluster
           kind load docker-image ko.local/thv-registry-api:ci-test --name chart-testing
 
+      - name: Deploy PostgreSQL for testing
+        run: |
+          # Deploy PostgreSQL using raw manifests
+          kubectl apply -f deploy/charts/toolhive-registry-server/ci/postgres-manifests.yaml
+
+          # Wait for PostgreSQL to be ready
+          kubectl wait --for=condition=available deployment/postgres --timeout=120s
+          kubectl wait --for=condition=ready pod -l app=postgres --timeout=120s
+
       - name: Run chart-testing (install)
         run: ct install --config ct.yaml

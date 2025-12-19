@@ -31,6 +31,10 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: registry-api
           {{- with .Values.securityContext }}
@@ -59,15 +63,13 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if or .Values.extraEnv .Values.extraEnvFrom }}
-          {{- if .Values.extraEnv }}
+          {{- with .Values.extraEnv }}
           env:
-            {{- toYaml .Values.extraEnv | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if .Values.extraEnvFrom }}
+          {{- with .Values.extraEnvFrom }}
           envFrom:
-            {{- toYaml .Values.extraEnvFrom | nindent 12 }}
-          {{- end }}
+            {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: config

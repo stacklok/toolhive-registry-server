@@ -1,0 +1,59 @@
+# CI test values for chart-testing with PostgreSQL
+# Image built with ko and loaded into KIND cluster
+
+image:
+  repository: ko.local/thv-registry-api
+  tag: ci-test
+  pullPolicy: Never
+
+# Use minimal resources for CI testing
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Shorter probe timings for faster CI feedback
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 5
+
+readinessProbe:
+  httpGet:
+    path: /readiness
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 3
+
+# Registry server configuration with PostgreSQL
+config:
+  registryName: "ci-postgres-test"
+
+  registries:
+    - name: toolhive
+      format: toolhive
+      git:
+        repository: https://github.com/stacklok/toolhive.git
+        branch: main
+        path: pkg/registry/data/registry.json
+      syncPolicy:
+        interval: "30m"
+
+  database:
+    host: postgres
+    port: 5432
+    user: db_app
+    migrationUser: db_migrator
+    database: registry
+    sslMode: disable
+    maxOpenConns: 5
+    maxIdleConns: 2
+    connMaxLifetime: "10m"
+
+  auth:
+    mode: anonymous
