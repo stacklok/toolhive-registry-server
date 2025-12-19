@@ -45,7 +45,7 @@ config:
         interval: "30m"
 
   database:
-    host: postgres
+    host: postgres.default.svc.cluster.local
     port: 5432
     user: db_app
     migrationUser: db_migrator
