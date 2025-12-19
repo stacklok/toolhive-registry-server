@@ -16,6 +16,7 @@ target-branch: main
 
 # Use a fixed namespace for testing so PostgreSQL and the chart are in the same namespace
 namespace: toolhive-test
+release-label: app.kubernetes.io/instance
 
 # Helm install options
 helm-extra-args: --timeout 120s
