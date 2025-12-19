@@ -897,3 +897,27 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 
 	return &info, nil
 }
+
+// CreateRegistry creates a new API-managed registry.
+// Will be implemented in PR3.
+func (*dbService) CreateRegistry(_ context.Context, _ string, _ *service.RegistryCreateRequest) (*service.RegistryInfo, error) {
+	return nil, service.ErrNotImplemented
+}
+
+// UpdateRegistry updates an existing API-managed registry.
+// Will be implemented in PR3.
+func (*dbService) UpdateRegistry(_ context.Context, _ string, _ *service.RegistryCreateRequest) (*service.RegistryInfo, error) {
+	return nil, service.ErrNotImplemented
+}
+
+// DeleteRegistry deletes an API-managed registry.
+// Will be implemented in PR3.
+func (*dbService) DeleteRegistry(_ context.Context, _ string) error {
+	return service.ErrNotImplemented
+}
+
+// ProcessInlineRegistryData processes inline data for a managed/file registry.
+// Will be implemented in PR3.
+func (*dbService) ProcessInlineRegistryData(_ context.Context, _ string, _ []byte, _ string) error {
+	return service.ErrNotImplemented
+}

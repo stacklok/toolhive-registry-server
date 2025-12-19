@@ -57,6 +57,35 @@ func (mr *MockRegistryServiceMockRecorder) CheckReadiness(ctx any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckReadiness", reflect.TypeOf((*MockRegistryService)(nil).CheckReadiness), ctx)
 }
 
+// CreateRegistry mocks base method.
+func (m *MockRegistryService) CreateRegistry(ctx context.Context, name string, req *service.RegistryCreateRequest) (*service.RegistryInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateRegistry", ctx, name, req)
+	ret0, _ := ret[0].(*service.RegistryInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateRegistry indicates an expected call of CreateRegistry.
+func (mr *MockRegistryServiceMockRecorder) CreateRegistry(ctx, name, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRegistry", reflect.TypeOf((*MockRegistryService)(nil).CreateRegistry), ctx, name, req)
+}
+
+// DeleteRegistry mocks base method.
+func (m *MockRegistryService) DeleteRegistry(ctx context.Context, name string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteRegistry", ctx, name)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteRegistry indicates an expected call of DeleteRegistry.
+func (mr *MockRegistryServiceMockRecorder) DeleteRegistry(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRegistry", reflect.TypeOf((*MockRegistryService)(nil).DeleteRegistry), ctx, name)
+}
+
 // DeleteServerVersion mocks base method.
 func (m *MockRegistryService) DeleteServerVersion(ctx context.Context, opts ...service.Option[service.DeleteServerVersionOptions]) error {
 	m.ctrl.T.Helper()
@@ -182,6 +211,20 @@ func (mr *MockRegistryServiceMockRecorder) ListServers(ctx any, opts ...any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListServers", reflect.TypeOf((*MockRegistryService)(nil).ListServers), varargs...)
 }
 
+// ProcessInlineRegistryData mocks base method.
+func (m *MockRegistryService) ProcessInlineRegistryData(ctx context.Context, name string, data []byte, format string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ProcessInlineRegistryData", ctx, name, data, format)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ProcessInlineRegistryData indicates an expected call of ProcessInlineRegistryData.
+func (mr *MockRegistryServiceMockRecorder) ProcessInlineRegistryData(ctx, name, data, format any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessInlineRegistryData", reflect.TypeOf((*MockRegistryService)(nil).ProcessInlineRegistryData), ctx, name, data, format)
+}
+
 // PublishServerVersion mocks base method.
 func (m *MockRegistryService) PublishServerVersion(ctx context.Context, opts ...service.Option[service.PublishServerVersionOptions]) (*v0.ServerJSON, error) {
 	m.ctrl.T.Helper()
@@ -200,4 +243,19 @@ func (mr *MockRegistryServiceMockRecorder) PublishServerVersion(ctx any, opts ..
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx}, opts...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishServerVersion", reflect.TypeOf((*MockRegistryService)(nil).PublishServerVersion), varargs...)
+}
+
+// UpdateRegistry mocks base method.
+func (m *MockRegistryService) UpdateRegistry(ctx context.Context, name string, req *service.RegistryCreateRequest) (*service.RegistryInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateRegistry", ctx, name, req)
+	ret0, _ := ret[0].(*service.RegistryInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateRegistry indicates an expected call of UpdateRegistry.
+func (mr *MockRegistryServiceMockRecorder) UpdateRegistry(ctx, name, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRegistry", reflect.TypeOf((*MockRegistryService)(nil).UpdateRegistry), ctx, name, req)
 }

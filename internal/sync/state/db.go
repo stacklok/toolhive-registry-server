@@ -371,7 +371,7 @@ func syncPhaseToDBStatus(phase status.SyncPhase) sqlc.SyncStatus {
 }
 
 // mapConfigTypeToDBType maps config source types to database registry types
-func mapConfigTypeToDBType(configType string) (sqlc.RegistryType, error) {
+func mapConfigTypeToDBType(configType config.SourceType) (sqlc.RegistryType, error) {
 	switch configType {
 	case config.SourceTypeGit:
 		return sqlc.RegistryTypeREMOTE, nil
@@ -391,7 +391,7 @@ func mapConfigTypeToDBType(configType string) (sqlc.RegistryType, error) {
 // getInitialSyncStatus returns the initial sync status and error message for a registry.
 // Non-synced registries (managed and kubernetes) start with COMPLETED status since they don't
 // sync from external sources. Synced registries start with FAILED to trigger initial sync.
-func getInitialSyncStatus(isNonSynced bool, regType string) (sqlc.SyncStatus, string) {
+func getInitialSyncStatus(isNonSynced bool, regType config.SourceType) (sqlc.SyncStatus, string) {
 	if isNonSynced {
 		return sqlc.SyncStatusCOMPLETED, fmt.Sprintf("Non-synced registry (type: %s)", regType)
 	}
