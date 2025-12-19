@@ -9,6 +9,8 @@ import (
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
 var (
@@ -71,16 +73,22 @@ type RegistryService interface {
 	DeleteRegistry(ctx context.Context, name string) error
 
 	// ProcessInlineRegistryData processes inline data for a managed/file registry
-	ProcessInlineRegistryData(ctx context.Context, name string, data []byte, format string) error
+	ProcessInlineRegistryData(ctx context.Context, name string, data string, format string) error
 }
 
 // RegistryInfo represents detailed information about a registry
 type RegistryInfo struct {
-	Name       string              `json:"name"`
-	Type       string              `json:"type"` // MANAGED, FILE, REMOTE
-	SyncStatus *RegistrySyncStatus `json:"syncStatus,omitempty"`
-	CreatedAt  time.Time           `json:"createdAt"`
-	UpdatedAt  time.Time           `json:"updatedAt"`
+	Name         string               `json:"name"`
+	Type         string               `json:"type"`                   // MANAGED, FILE, REMOTE, KUBERNETES
+	CreationType CreationType         `json:"creationType,omitempty"` // API or CONFIG
+	SourceType   config.SourceType    `json:"sourceType,omitempty"`   // git, api, file, managed, kubernetes
+	Format       string               `json:"format,omitempty"`       // toolhive or upstream
+	SourceConfig interface{}          `json:"sourceConfig,omitempty"` // Type-specific source configuration
+	FilterConfig *config.FilterConfig `json:"filterConfig,omitempty"` // Filtering rules
+	SyncSchedule string               `json:"syncSchedule,omitempty"` // Sync interval string
+	SyncStatus   *RegistrySyncStatus  `json:"syncStatus,omitempty"`
+	CreatedAt    time.Time            `json:"createdAt"`
+	UpdatedAt    time.Time            `json:"updatedAt"`
 }
 
 // RegistrySyncStatus represents the sync status of a registry

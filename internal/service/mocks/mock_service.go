@@ -212,7 +212,7 @@ func (mr *MockRegistryServiceMockRecorder) ListServers(ctx any, opts ...any) *go
 }
 
 // ProcessInlineRegistryData mocks base method.
-func (m *MockRegistryService) ProcessInlineRegistryData(ctx context.Context, name string, data []byte, format string) error {
+func (m *MockRegistryService) ProcessInlineRegistryData(ctx context.Context, name, data, format string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ProcessInlineRegistryData", ctx, name, data, format)
 	ret0, _ := ret[0].(error)

@@ -870,6 +870,6 @@ func (*regSvc) DeleteRegistry(_ context.Context, _ string) error {
 
 // ProcessInlineRegistryData processes inline data for a managed/file registry.
 // Not implemented for in-memory service.
-func (*regSvc) ProcessInlineRegistryData(_ context.Context, _ string, _ []byte, _ string) error {
+func (*regSvc) ProcessInlineRegistryData(_ context.Context, _ string, _ string, _ string) error {
 	return service.ErrNotImplemented
 }
