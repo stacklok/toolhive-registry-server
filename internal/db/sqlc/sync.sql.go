@@ -242,6 +242,7 @@ SELECT r.name,
        r.sync_schedule::interval AS sync_schedule
 FROM registry_sync rs
 INNER JOIN registry r ON rs.reg_id = r.id
+WHERE r.syncable = true
 ORDER BY rs.ended_at ASC NULLS FIRST, r.name ASC
 FOR UPDATE OF rs SKIP LOCKED
 `
