@@ -784,12 +784,8 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 	// Convert to API response format
 	result := make([]service.RegistryInfo, 0, len(registries))
 	for _, reg := range registries {
-		info := service.RegistryInfo{
-			Name:      reg.Name,
-			Type:      string(reg.RegType), // MANAGED, FILE, REMOTE
-			CreatedAt: *reg.CreatedAt,
-			UpdatedAt: *reg.UpdatedAt,
-		}
+		// Build RegistryInfo with all config fields
+		info := buildRegistryInfoFromListRow(&reg)
 
 		// Fetch sync status from database
 		syncRecord, err := querier.GetRegistrySyncByName(ctx, reg.Name)
@@ -814,7 +810,7 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 			}
 		}
 
-		result = append(result, info)
+		result = append(result, *info)
 	}
 
 	return result, nil
@@ -871,13 +867,8 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 		return nil, fmt.Errorf("failed to get registry: %w", err)
 	}
 
-	// Convert to service type
-	info := service.RegistryInfo{
-		Name:      registry.Name,
-		Type:      string(registry.RegType), // MANAGED, FILE, REMOTE
-		CreatedAt: *registry.CreatedAt,
-		UpdatedAt: *registry.UpdatedAt,
-	}
+	// Build RegistryInfo with all config fields
+	info := buildRegistryInfoFromGetByNameRow(&registry)
 
 	// Fetch sync status from database
 	syncRecord, err := querier.GetRegistrySyncByName(ctx, registry.Name)
@@ -902,7 +893,7 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 		}
 	}
 
-	return &info, nil
+	return info, nil
 }
 
 // CreateRegistry creates a new API-managed registry
@@ -1319,6 +1310,80 @@ func buildRegistryInfoFromDBRegistry(registry *sqlc.Registry) *service.RegistryI
 
 	if registry.UpdatedAt != nil {
 		info.UpdatedAt = *registry.UpdatedAt
+	}
+
+	return info
+}
+
+// buildRegistryInfoFromListRow builds a RegistryInfo from a ListRegistriesRow
+func buildRegistryInfoFromListRow(row *sqlc.ListRegistriesRow) *service.RegistryInfo {
+	info := &service.RegistryInfo{
+		Name:         row.Name,
+		Type:         string(row.RegType),
+		CreationType: service.CreationType(row.CreationType),
+	}
+
+	if row.SourceType != nil {
+		info.SourceType = config.SourceType(*row.SourceType)
+	}
+
+	if row.Format != nil {
+		info.Format = *row.Format
+	}
+
+	if row.SourceType != nil {
+		info.SourceConfig = deserializeSourceConfig(*row.SourceType, row.SourceConfig)
+	}
+
+	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
+
+	if row.SyncSchedule.Valid {
+		info.SyncSchedule = row.SyncSchedule.Duration.String()
+	}
+
+	if row.CreatedAt != nil {
+		info.CreatedAt = *row.CreatedAt
+	}
+
+	if row.UpdatedAt != nil {
+		info.UpdatedAt = *row.UpdatedAt
+	}
+
+	return info
+}
+
+// buildRegistryInfoFromGetByNameRow builds a RegistryInfo from a GetRegistryByNameRow
+func buildRegistryInfoFromGetByNameRow(row *sqlc.GetRegistryByNameRow) *service.RegistryInfo {
+	info := &service.RegistryInfo{
+		Name:         row.Name,
+		Type:         string(row.RegType),
+		CreationType: service.CreationType(row.CreationType),
+	}
+
+	if row.SourceType != nil {
+		info.SourceType = config.SourceType(*row.SourceType)
+	}
+
+	if row.Format != nil {
+		info.Format = *row.Format
+	}
+
+	if row.SourceType != nil {
+		info.SourceConfig = deserializeSourceConfig(*row.SourceType, row.SourceConfig)
+	}
+
+	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
+
+	if row.SyncSchedule.Valid {
+		info.SyncSchedule = row.SyncSchedule.Duration.String()
+	}
+
+	if row.CreatedAt != nil {
+		info.CreatedAt = *row.CreatedAt
+	}
+
+	if row.UpdatedAt != nil {
+		info.UpdatedAt = *row.UpdatedAt
 	}
 
 	return info
