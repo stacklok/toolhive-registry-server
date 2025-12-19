@@ -13,24 +13,29 @@ import (
 	"github.com/spf13/viper"
 )
 
+// SourceType represents the type of registry data source
+type SourceType string
+
 const (
 	// SourceTypeGit is the type for registry data stored in Git repositories
-	SourceTypeGit = "git"
+	SourceTypeGit SourceType = "git"
 
 	// SourceTypeAPI is the type for registry data fetched from API endpoints
-	SourceTypeAPI = "api"
+	SourceTypeAPI SourceType = "api"
 
 	// SourceTypeFile is the type for registry data stored in local files
-	SourceTypeFile = "file"
+	SourceTypeFile SourceType = "file"
 
 	// SourceTypeManaged is the type for registries directly managed via API
 	// Managed registries do not sync from external sources
-	SourceTypeManaged = "managed"
+	SourceTypeManaged SourceType = "managed"
 
 	// SourceTypeKubernetes is the type for registries that query Kubernetes deployments
 	// Kubernetes registries discover MCP servers from running Kubernetes resources
-	SourceTypeKubernetes = "kubernetes"
+	SourceTypeKubernetes SourceType = "kubernetes"
+)
 
+const (
 	// EnvPrefix is the prefix used for environment variables that override config values.
 	// For example, THV_REGISTRY_REGISTRYNAME overrides registryName in the config file.
 	EnvPrefix = "THV_REGISTRY"
@@ -139,19 +144,19 @@ type RegistryConfig struct {
 // GitConfig defines Git source settings
 type GitConfig struct {
 	// Repository is the Git repository URL (HTTP/HTTPS/SSH)
-	Repository string `yaml:"repository"`
+	Repository string `yaml:"repository" json:"repository"`
 
 	// Branch is the Git branch to use (mutually exclusive with Tag and Commit)
-	Branch string `yaml:"branch,omitempty"`
+	Branch string `yaml:"branch,omitempty" json:"branch,omitempty"`
 
 	// Tag is the Git tag to use (mutually exclusive with Branch and Commit)
-	Tag string `yaml:"tag,omitempty"`
+	Tag string `yaml:"tag,omitempty" json:"tag,omitempty"`
 
 	// Commit is the Git commit SHA to use (mutually exclusive with Branch and Tag)
-	Commit string `yaml:"commit,omitempty"`
+	Commit string `yaml:"commit,omitempty" json:"commit,omitempty"`
 
 	// Path is the path to the registry file within the repository
-	Path string `yaml:"path,omitempty"`
+	Path string `yaml:"path,omitempty" json:"path,omitempty"`
 }
 
 // APIConfig defines API source configuration for upstream MCP Registry APIs
@@ -162,26 +167,31 @@ type APIConfig struct {
 	//   - /v0.1/servers/{name}/versions - List server versions
 	//   - /v0.1/servers/{name}/versions/{version} - Get specific version
 	// Example: "http://my-registry-api.default.svc.cluster.local/registry"
-	Endpoint string `yaml:"endpoint"`
+	Endpoint string `yaml:"endpoint" json:"endpoint"`
 }
 
 // FileConfig defines file source configuration
-// Supports both local files and URL-hosted files
+// Supports local files, URL-hosted files, or inline data
 type FileConfig struct {
 	// Path is the path to the registry.json file on the local filesystem
 	// Can be absolute or relative to the working directory
-	// Mutually exclusive with URL - exactly one must be specified
-	Path string `yaml:"path,omitempty"`
+	// Mutually exclusive with URL and Data - exactly one must be specified
+	Path string `yaml:"path,omitempty" json:"path,omitempty"`
 
 	// URL is the HTTP/HTTPS URL to fetch the registry file from
-	// Mutually exclusive with Path - exactly one must be specified
+	// Mutually exclusive with Path and Data - exactly one must be specified
 	// HTTPS is required unless the host is localhost or THV_REGISTRY_INSECURE_URL=true
-	URL string `yaml:"url,omitempty"`
+	URL string `yaml:"url,omitempty" json:"url,omitempty"`
+
+	// Data is the inline registry data as a JSON string
+	// Mutually exclusive with Path and URL - exactly one must be specified
+	// Useful for API-created registries where the data is provided directly
+	Data string `yaml:"data,omitempty" json:"data,omitempty"`
 
 	// Timeout is the timeout for HTTP requests when using URL
 	// Defaults to 30s if not specified
 	// Only applicable when URL is set
-	Timeout string `yaml:"timeout,omitempty"`
+	Timeout string `yaml:"timeout,omitempty" json:"timeout,omitempty"`
 }
 
 // ManagedConfig defines configuration for managed registries
@@ -198,25 +208,25 @@ type KubernetesConfig struct{}
 
 // SyncPolicyConfig defines synchronization settings
 type SyncPolicyConfig struct {
-	Interval string `yaml:"interval"`
+	Interval string `yaml:"interval" json:"interval"`
 }
 
 // FilterConfig defines filtering rules for registry entries
 type FilterConfig struct {
-	Names *NameFilterConfig `yaml:"names,omitempty"`
-	Tags  *TagFilterConfig  `yaml:"tags,omitempty"`
+	Names *NameFilterConfig `yaml:"names,omitempty" json:"names,omitempty"`
+	Tags  *TagFilterConfig  `yaml:"tags,omitempty" json:"tags,omitempty"`
 }
 
 // NameFilterConfig defines name-based filtering
 type NameFilterConfig struct {
-	Include []string `yaml:"include,omitempty"`
-	Exclude []string `yaml:"exclude,omitempty"`
+	Include []string `yaml:"include,omitempty" json:"include,omitempty"`
+	Exclude []string `yaml:"exclude,omitempty" json:"exclude,omitempty"`
 }
 
 // TagFilterConfig defines tag-based filtering
 type TagFilterConfig struct {
-	Include []string `yaml:"include,omitempty"`
-	Exclude []string `yaml:"exclude,omitempty"`
+	Include []string `yaml:"include,omitempty" json:"include,omitempty"`
+	Exclude []string `yaml:"exclude,omitempty" json:"exclude,omitempty"`
 }
 
 // AuthMode represents the authentication mode
@@ -850,7 +860,7 @@ func readSecretFromFile(filePath string) (string, error) {
 }
 
 // GetType returns the inferred type of the registry config based on which field is present
-func (r *RegistryConfig) GetType() string {
+func (r *RegistryConfig) GetType() SourceType {
 	if r.Git != nil {
 		return SourceTypeGit
 	}

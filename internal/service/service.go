@@ -22,6 +22,12 @@ var (
 	ErrNotManagedRegistry = errors.New("registry is not managed")
 	// ErrVersionAlreadyExists is returned when attempting to publish a version that already exists
 	ErrVersionAlreadyExists = errors.New("version already exists")
+	// ErrConfigRegistry is returned when attempting to modify a CONFIG-created registry via API
+	ErrConfigRegistry = errors.New("cannot modify config-created registry via API")
+	// ErrInvalidRegistryConfig is returned when registry configuration is invalid
+	ErrInvalidRegistryConfig = errors.New("invalid registry configuration")
+	// ErrRegistryAlreadyExists is returned when attempting to create a registry that already exists
+	ErrRegistryAlreadyExists = errors.New("registry already exists")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service
@@ -54,6 +60,18 @@ type RegistryService interface {
 
 	// GetRegistryByName returns a single registry by name
 	GetRegistryByName(ctx context.Context, name string) (*RegistryInfo, error)
+
+	// CreateRegistry creates a new API-managed registry
+	CreateRegistry(ctx context.Context, name string, req *RegistryCreateRequest) (*RegistryInfo, error)
+
+	// UpdateRegistry updates an existing API-managed registry
+	UpdateRegistry(ctx context.Context, name string, req *RegistryCreateRequest) (*RegistryInfo, error)
+
+	// DeleteRegistry deletes an API-managed registry
+	DeleteRegistry(ctx context.Context, name string) error
+
+	// ProcessInlineRegistryData processes inline data for a managed/file registry
+	ProcessInlineRegistryData(ctx context.Context, name string, data []byte, format string) error
 }
 
 // RegistryInfo represents detailed information about a registry
