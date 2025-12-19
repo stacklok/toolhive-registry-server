@@ -41,7 +41,7 @@ initContainers:
     - sh
     - -c
     - |
-      cp /secret/.pgpass /pgpass/.pgpass
+      cp /secrets/.pgpass /pgpass/.pgpass
       chmod 600 /pgpass/.pgpass
   securityContext:
     allowPrivilegeEscalation: false
@@ -86,7 +86,7 @@ config:
         interval: "30m"
 
   database:
-    host: postgres.default.svc.cluster.local
+    host: postgres
     port: 5432
     user: db_app
     migrationUser: db_migrator

@@ -69,12 +69,15 @@ jobs:
 
       - name: Deploy PostgreSQL for testing
         run: |
-          # Deploy PostgreSQL using raw manifests
-          kubectl apply -f .github/postgres-manifests.yaml
+          # Create the test namespace (must match ct.yaml namespace)
+          kubectl create namespace toolhive-test
+
+          # Deploy PostgreSQL using raw manifests to the same namespace
+          kubectl apply -f .github/postgres-manifests.yaml -n toolhive-test
 
           # Wait for PostgreSQL to be ready
-          kubectl wait --for=condition=available deployment/postgres --timeout=120s
-          kubectl wait --for=condition=ready pod -l app=postgres --timeout=120s
+          kubectl wait --for=condition=available deployment/postgres -n toolhive-test --timeout=120s
+          kubectl wait --for=condition=ready pod -l app=postgres -n toolhive-test --timeout=120s
 
       - name: Run chart-testing (install)
         run: ct install --config ct.yaml
