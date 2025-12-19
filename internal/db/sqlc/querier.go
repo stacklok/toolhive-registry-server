@@ -14,8 +14,6 @@ type Querier interface {
 	BulkInitializeRegistrySyncs(ctx context.Context, arg BulkInitializeRegistrySyncsParams) error
 	// Bulk insert or update CONFIG registries (only updates existing CONFIG registries)
 	BulkUpsertConfigRegistries(ctx context.Context, arg BulkUpsertConfigRegistriesParams) ([]BulkUpsertConfigRegistriesRow, error)
-	// DEPRECATED: Use BulkUpsertConfigRegistries instead
-	BulkUpsertRegistries(ctx context.Context, arg BulkUpsertRegistriesParams) ([]BulkUpsertRegistriesRow, error)
 	// Temp Icon Table Operations
 	CreateTempIconTable(ctx context.Context) error
 	// Temp Package Table Operations
@@ -37,10 +35,6 @@ type Querier interface {
 	DeleteOrphanedPackages(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedServers(ctx context.Context, arg DeleteOrphanedServersParams) error
-	// DEPRECATED: Use DeleteConfigRegistriesNotInList instead
-	DeleteRegistriesNotInList(ctx context.Context, ids []uuid.UUID) error
-	// DEPRECATED: Use DeleteConfigRegistry or DeleteAPIRegistry instead
-	DeleteRegistry(ctx context.Context, name string) error
 	DeleteServerIconsByServerId(ctx context.Context, serverID uuid.UUID) error
 	DeleteServerPackagesByServerId(ctx context.Context, serverID uuid.UUID) error
 	DeleteServerRemotesByServerId(ctx context.Context, serverID uuid.UUID) error
@@ -64,12 +58,6 @@ type Querier interface {
 	// ============================================================================
 	// Insert a new CONFIG registry with full configuration
 	InsertConfigRegistry(ctx context.Context, arg InsertConfigRegistryParams) (uuid.UUID, error)
-	// ============================================================================
-	// Legacy Queries (to be removed after sync/state migration in PR4)
-	// These maintain backward compatibility with existing callers
-	// ============================================================================
-	// DEPRECATED: Use InsertConfigRegistry or InsertAPIRegistry instead
-	InsertRegistry(ctx context.Context, arg InsertRegistryParams) (uuid.UUID, error)
 	InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (uuid.UUID, error)
 	InsertServerIcon(ctx context.Context, arg InsertServerIconParams) error
 	InsertServerPackage(ctx context.Context, arg InsertServerPackageParams) error
@@ -93,8 +81,6 @@ type Querier interface {
 	UpsertIconsFromTemp(ctx context.Context) error
 	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (uuid.UUID, error)
 	UpsertPackagesFromTemp(ctx context.Context) error
-	// DEPRECATED: Use UpsertConfigRegistry instead
-	UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (uuid.UUID, error)
 	UpsertRegistrySyncByName(ctx context.Context, arg UpsertRegistrySyncByNameParams) error
 	UpsertRemotesFromTemp(ctx context.Context) error
 	UpsertServerVersionForSync(ctx context.Context, arg UpsertServerVersionForSyncParams) (uuid.UUID, error)
