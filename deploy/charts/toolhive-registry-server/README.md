@@ -82,7 +82,7 @@ The command removes all the Kubernetes components associated with the chart and 
 | readinessProbe | object | `{"httpGet":{"path":"/readiness","port":"http"},"initialDelaySeconds":5,"periodSeconds":5}` | Readiness probe configuration |
 | replicaCount | int | `1` | Number of replicas |
 | resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | Resource requests and limits (matching operator defaults) |
-| securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}}` | Container security context |
+| securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"runAsUser":65535,"seccompProfile":{"type":"RuntimeDefault"}}` | Container security context |
 | service.annotations | object | `{}` | Service annotations |
 | service.port | int | `8080` | Service port |
 | service.type | string | `"ClusterIP"` | Service type |
