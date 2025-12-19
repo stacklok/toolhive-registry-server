@@ -1,15 +1,78 @@
 components:
   schemas:
+    github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig:
+      description: Filtering rules
+      properties:
+        names:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig'
+        tags:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig'
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig:
+      properties:
+        exclude:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        include:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_config.SourceType:
+      description: git, api, file, managed, kubernetes
+      type: string
+      x-enum-varnames:
+      - SourceTypeGit
+      - SourceTypeAPI
+      - SourceTypeFile
+      - SourceTypeManaged
+      - SourceTypeKubernetes
+    github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig:
+      properties:
+        exclude:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        include:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+      type: object
+    github_com_stacklok_toolhive-registry-server_internal_service.CreationType:
+      description: API or CONFIG
+      type: string
+      x-enum-varnames:
+      - CreationTypeAPI
+      - CreationTypeCONFIG
     github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo:
       properties:
         createdAt:
           type: string
+        creationType:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.CreationType'
+        filterConfig:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig'
+        format:
+          description: toolhive or upstream
+          type: string
         name:
+          type: string
+        sourceConfig:
+          description: Type-specific source configuration
+        sourceType:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SourceType'
+        syncSchedule:
+          description: Sync interval string
           type: string
         syncStatus:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistrySyncStatus'
         type:
-          description: MANAGED, FILE, REMOTE
+          description: MANAGED, FILE, REMOTE, KUBERNETES
           type: string
         updatedAt:
           type: string
