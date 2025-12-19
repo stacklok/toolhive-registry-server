@@ -12,7 +12,8 @@ import (
 
 type Querier interface {
 	BulkInitializeRegistrySyncs(ctx context.Context, arg BulkInitializeRegistrySyncsParams) error
-	BulkUpsertRegistries(ctx context.Context, arg BulkUpsertRegistriesParams) ([]BulkUpsertRegistriesRow, error)
+	// Bulk insert or update CONFIG registries (only updates existing CONFIG registries)
+	BulkUpsertConfigRegistries(ctx context.Context, arg BulkUpsertConfigRegistriesParams) ([]BulkUpsertConfigRegistriesRow, error)
 	// Temp Icon Table Operations
 	CreateTempIconTable(ctx context.Context) error
 	// Temp Package Table Operations
@@ -24,12 +25,16 @@ type Querier interface {
 	// sqlc cannot validate these, but we organize them here for maintainability.
 	// Temp Server Table Operations
 	CreateTempServerTable(ctx context.Context) error
+	// Delete an API registry by name (returns 0 if not found or is CONFIG type)
+	DeleteAPIRegistry(ctx context.Context, name string) (int64, error)
+	// Delete CONFIG registries not in the provided list (for config file sync)
+	DeleteConfigRegistriesNotInList(ctx context.Context, ids []uuid.UUID) error
+	// Delete a CONFIG registry by name (returns 0 if not found or is API type)
+	DeleteConfigRegistry(ctx context.Context, name string) (int64, error)
 	DeleteOrphanedIcons(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedPackages(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedServers(ctx context.Context, arg DeleteOrphanedServersParams) error
-	DeleteRegistriesNotInList(ctx context.Context, ids []uuid.UUID) error
-	DeleteRegistry(ctx context.Context, name string) error
 	DeleteServerIconsByServerId(ctx context.Context, serverID uuid.UUID) error
 	DeleteServerPackagesByServerId(ctx context.Context, serverID uuid.UUID) error
 	DeleteServerRemotesByServerId(ctx context.Context, serverID uuid.UUID) error
@@ -43,7 +48,16 @@ type Querier interface {
 	GetServerIDsByRegistryNameVersion(ctx context.Context, regID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error)
 	GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error)
 	InitializeRegistrySync(ctx context.Context, arg InitializeRegistrySyncParams) error
-	InsertRegistry(ctx context.Context, arg InsertRegistryParams) (uuid.UUID, error)
+	// ============================================================================
+	// API Registry Queries (only operate on creation_type='API')
+	// ============================================================================
+	// Insert a new API registry with full configuration
+	InsertAPIRegistry(ctx context.Context, arg InsertAPIRegistryParams) (Registry, error)
+	// ============================================================================
+	// CONFIG Registry Queries (only operate on creation_type='CONFIG')
+	// ============================================================================
+	// Insert a new CONFIG registry with full configuration
+	InsertConfigRegistry(ctx context.Context, arg InsertConfigRegistryParams) (uuid.UUID, error)
 	InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (uuid.UUID, error)
 	InsertServerIcon(ctx context.Context, arg InsertServerIconParams) error
 	InsertServerPackage(ctx context.Context, arg InsertServerPackageParams) error
@@ -58,12 +72,15 @@ type Querier interface {
 	ListServerRemotes(ctx context.Context, serverIds []uuid.UUID) ([]McpServerRemote, error)
 	ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error)
 	ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error)
+	// Update an existing API registry (returns NULL if not found or is CONFIG type)
+	UpdateAPIRegistry(ctx context.Context, arg UpdateAPIRegistryParams) (Registry, error)
 	UpdateRegistrySync(ctx context.Context, arg UpdateRegistrySyncParams) error
 	UpdateRegistrySyncStatusByName(ctx context.Context, arg UpdateRegistrySyncStatusByNameParams) error
+	// Insert or update a CONFIG registry (only updates if existing is CONFIG type)
+	UpsertConfigRegistry(ctx context.Context, arg UpsertConfigRegistryParams) (uuid.UUID, error)
 	UpsertIconsFromTemp(ctx context.Context) error
 	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (uuid.UUID, error)
 	UpsertPackagesFromTemp(ctx context.Context) error
-	UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (uuid.UUID, error)
 	UpsertRegistrySyncByName(ctx context.Context, arg UpsertRegistrySyncByNameParams) error
 	UpsertRemotesFromTemp(ctx context.Context) error
 	UpsertServerVersionForSync(ctx context.Context, arg UpsertServerVersionForSyncParams) (uuid.UUID, error)

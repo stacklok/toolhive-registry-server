@@ -37,6 +37,9 @@ func (*defaultRegistryHandlerFactory) CreateHandler(regCfg *config.RegistryConfi
 		return NewFileRegistryHandler(), nil
 	case config.SourceTypeKubernetes:
 		return nil, fmt.Errorf("kubernetes source type is not yet implemented")
+	case config.SourceTypeManaged:
+		// Managed registries don't sync from external sources - they're API-managed
+		return nil, fmt.Errorf("managed registries do not use external sources")
 	default:
 		return nil, fmt.Errorf("unsupported source type: %s", sourceType)
 	}

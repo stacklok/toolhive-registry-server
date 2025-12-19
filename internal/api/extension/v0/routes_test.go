@@ -203,20 +203,22 @@ func TestURLEncodingInExtensionRoutes(t *testing.T) {
 			wantError:   "version cannot be empty",
 		},
 
-		// UpsertRegistry endpoint tests
+		// UpsertRegistry endpoint tests - PUT now requires request body
 		{
-			name:        "upsert registry - URL encoded slash",
+			name:        "upsert registry - URL encoded slash without body",
 			path:        "/registries/test%2Fregistry",
 			method:      "PUT",
-			description: "Should decode registry name with slash",
-			wantStatus:  http.StatusNotImplemented,
+			description: "Should require request body",
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "Request body is required",
 		},
 		{
-			name:        "upsert registry - URL encoded at symbol",
+			name:        "upsert registry - URL encoded at symbol without body",
 			path:        "/registries/test%40registry",
 			method:      "PUT",
-			description: "Should decode @ symbol",
-			wantStatus:  http.StatusNotImplemented,
+			description: "Should require request body",
+			wantStatus:  http.StatusBadRequest,
+			wantError:   "Request body is required",
 		},
 		{
 			name:        "upsert registry - URL encoded space",
@@ -235,14 +237,7 @@ func TestURLEncodingInExtensionRoutes(t *testing.T) {
 			wantError:   "registryName cannot be empty",
 		},
 
-		// DeleteRegistry endpoint tests
-		{
-			name:        "delete registry - URL encoded slash",
-			path:        "/registries/test%2Fregistry",
-			method:      "DELETE",
-			description: "Should decode registry name",
-			wantStatus:  http.StatusNotImplemented,
-		},
+		// DeleteRegistry endpoint tests - validation tests only (service calls tested in TestDeleteRegistry)
 		{
 			name:        "delete registry - whitespace",
 			path:        "/registries/test%0Aregistry",
@@ -535,11 +530,11 @@ func TestUpsertRegistry(t *testing.T) {
 		wantError  string
 	}{
 		{
-			name:       "upsert registry - valid name",
+			name:       "upsert registry - no body",
 			path:       "/registries/foo",
 			method:     "PUT",
-			wantStatus: http.StatusNotImplemented,
-			wantError:  "Creating or updating registry is not supported",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "Request body is required",
 		},
 		{
 			name:       "upsert registry - empty registry name",
@@ -547,13 +542,6 @@ func TestUpsertRegistry(t *testing.T) {
 			method:     "PUT",
 			wantStatus: http.StatusBadRequest,
 			wantError:  "registryName cannot be empty",
-		},
-		{
-			name:       "upsert registry - with special characters",
-			path:       "/registries/foo%2Fbar",
-			method:     "PUT",
-			wantStatus: http.StatusNotImplemented,
-			wantError:  "Creating or updating registry is not supported",
 		},
 		{
 			name:       "upsert registry - no name",
@@ -595,25 +583,49 @@ func TestUpsertRegistry(t *testing.T) {
 
 func TestDeleteRegistry(t *testing.T) {
 	t.Parallel()
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-
-	mockSvc := mocks.NewMockRegistryService(ctrl)
-	router := Router(mockSvc)
 
 	tests := []struct {
 		name       string
 		path       string
 		method     string
+		setupMock  func(*mocks.MockRegistryService)
 		wantStatus int
 		wantError  string
 	}{
 		{
-			name:       "delete registry - valid name",
-			path:       "/registries/foo",
-			method:     "DELETE",
-			wantStatus: http.StatusNotImplemented,
-			wantError:  "Deleting registry is not supported",
+			name:   "delete registry - success",
+			path:   "/registries/foo",
+			method: "DELETE",
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
+				mockSvc.EXPECT().
+					DeleteRegistry(gomock.Any(), "foo").
+					Return(nil)
+			},
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name:   "delete registry - not found",
+			path:   "/registries/nonexistent",
+			method: "DELETE",
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
+				mockSvc.EXPECT().
+					DeleteRegistry(gomock.Any(), "nonexistent").
+					Return(service.ErrRegistryNotFound)
+			},
+			wantStatus: http.StatusNotFound,
+			wantError:  "Registry nonexistent not found",
+		},
+		{
+			name:   "delete registry - config registry forbidden",
+			path:   "/registries/config-reg",
+			method: "DELETE",
+			setupMock: func(mockSvc *mocks.MockRegistryService) {
+				mockSvc.EXPECT().
+					DeleteRegistry(gomock.Any(), "config-reg").
+					Return(service.ErrConfigRegistry)
+			},
+			wantStatus: http.StatusForbidden,
+			wantError:  "Cannot modify registry created via config file",
 		},
 		{
 			name:       "delete registry - empty registry name",
@@ -621,13 +633,6 @@ func TestDeleteRegistry(t *testing.T) {
 			method:     "DELETE",
 			wantStatus: http.StatusBadRequest,
 			wantError:  "registryName cannot be empty",
-		},
-		{
-			name:       "delete registry - with special characters",
-			path:       "/registries/foo%2Fbar",
-			method:     "DELETE",
-			wantStatus: http.StatusNotImplemented,
-			wantError:  "Deleting registry is not supported",
 		},
 		{
 			name:       "delete registry - no name",
@@ -638,8 +643,20 @@ func TestDeleteRegistry(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+			router := Router(mockSvc)
+
+			if tt.setupMock != nil {
+				tt.setupMock(mockSvc)
+			}
+
 			req, err := http.NewRequest(tt.method, tt.path, nil)
 			require.NoError(t, err)
 
@@ -648,15 +665,7 @@ func TestDeleteRegistry(t *testing.T) {
 
 			assert.Equal(t, tt.wantStatus, rr.Code)
 
-			if tt.wantStatus == http.StatusNotImplemented {
-				var response map[string]string
-				err = json.Unmarshal(rr.Body.Bytes(), &response)
-				require.NoError(t, err)
-				assert.Contains(t, response, "error")
-				assert.Equal(t, tt.wantError, response["error"])
-			}
-
-			if tt.wantStatus == http.StatusBadRequest && tt.wantError != "" {
+			if tt.wantError != "" {
 				var response map[string]string
 				err = json.Unmarshal(rr.Body.Bytes(), &response)
 				require.NoError(t, err)

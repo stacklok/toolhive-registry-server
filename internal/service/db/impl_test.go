@@ -60,12 +60,12 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	queries := sqlc.New(pool)
 
 	// Create a registry
-	regID, err := queries.InsertRegistry(
+	regID, err := queries.InsertConfigRegistry(
 		ctx,
-		sqlc.InsertRegistryParams{
-			Name:         "test-registry",
-			RegType:      sqlc.RegistryTypeREMOTE,
-			CreationType: sqlc.CreationTypeCONFIG,
+		sqlc.InsertConfigRegistryParams{
+			Name:     "test-registry",
+			RegType:  sqlc.RegistryTypeREMOTE,
+			Syncable: true,
 		},
 	)
 	require.NoError(t, err)
@@ -694,12 +694,12 @@ func TestGetServerVersion(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				// Create a registry
-				regID, err := queries.InsertRegistry(
+				regID, err := queries.InsertConfigRegistry(
 					ctx,
-					sqlc.InsertRegistryParams{
-						Name:         "test-registry-with-packages",
-						RegType:      sqlc.RegistryTypeREMOTE,
-						CreationType: sqlc.CreationTypeCONFIG,
+					sqlc.InsertConfigRegistryParams{
+						Name:     "test-registry-with-packages",
+						RegType:  sqlc.RegistryTypeREMOTE,
+						Syncable: true,
 					},
 				)
 				require.NoError(t, err)
@@ -1048,10 +1048,10 @@ func TestPublishServerVersion(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				// Create a MANAGED registry
-				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
-					Name:         "test-registry",
-					RegType:      sqlc.RegistryTypeMANAGED,
-					CreationType: sqlc.CreationTypeCONFIG,
+				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
+					Name:     "test-registry",
+					RegType:  sqlc.RegistryTypeMANAGED,
+					Syncable: false,
 				})
 				require.NoError(t, err)
 
@@ -1059,12 +1059,11 @@ func TestPublishServerVersion(t *testing.T) {
 				require.NoError(t, err)
 				// Convert row to Registry struct
 				reg := &sqlc.Registry{
-					ID:           regRow.ID,
-					Name:         regRow.Name,
-					RegType:      regRow.RegType,
-					CreationType: regRow.CreationType,
-					CreatedAt:    regRow.CreatedAt,
-					UpdatedAt:    regRow.UpdatedAt,
+					ID:        regRow.ID,
+					Name:      regRow.Name,
+					RegType:   regRow.RegType,
+					CreatedAt: regRow.CreatedAt,
+					UpdatedAt: regRow.UpdatedAt,
 				}
 				return reg
 			},
@@ -1092,10 +1091,10 @@ func TestPublishServerVersion(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
-					Name:         "test-registry-meta",
-					RegType:      sqlc.RegistryTypeMANAGED,
-					CreationType: sqlc.CreationTypeCONFIG,
+				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
+					Name:     "test-registry-meta",
+					RegType:  sqlc.RegistryTypeMANAGED,
+					Syncable: false,
 				})
 				require.NoError(t, err)
 
@@ -1103,12 +1102,11 @@ func TestPublishServerVersion(t *testing.T) {
 				require.NoError(t, err)
 				// Convert row to Registry struct
 				reg := &sqlc.Registry{
-					ID:           regRow.ID,
-					Name:         regRow.Name,
-					RegType:      regRow.RegType,
-					CreationType: regRow.CreationType,
-					CreatedAt:    regRow.CreatedAt,
-					UpdatedAt:    regRow.UpdatedAt,
+					ID:        regRow.ID,
+					Name:      regRow.Name,
+					RegType:   regRow.RegType,
+					CreatedAt: regRow.CreatedAt,
+					UpdatedAt: regRow.UpdatedAt,
 				}
 				return reg
 			},
@@ -1147,10 +1145,10 @@ func TestPublishServerVersion(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
-					Name:         "test-registry-full",
-					RegType:      sqlc.RegistryTypeMANAGED,
-					CreationType: sqlc.CreationTypeCONFIG,
+				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
+					Name:     "test-registry-full",
+					RegType:  sqlc.RegistryTypeMANAGED,
+					Syncable: false,
 				})
 				require.NoError(t, err)
 
@@ -1158,12 +1156,11 @@ func TestPublishServerVersion(t *testing.T) {
 				require.NoError(t, err)
 				// Convert row to Registry struct
 				reg := &sqlc.Registry{
-					ID:           regRow.ID,
-					Name:         regRow.Name,
-					RegType:      regRow.RegType,
-					CreationType: regRow.CreationType,
-					CreatedAt:    regRow.CreatedAt,
-					UpdatedAt:    regRow.UpdatedAt,
+					ID:        regRow.ID,
+					Name:      regRow.Name,
+					RegType:   regRow.RegType,
+					CreatedAt: regRow.CreatedAt,
+					UpdatedAt: regRow.UpdatedAt,
 				}
 				return reg
 			},
@@ -1239,10 +1236,10 @@ func TestPublishServerVersion(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				// Create a REMOTE (non-managed) registry
-				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
-					Name:         "remote-registry",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					CreationType: sqlc.CreationTypeCONFIG,
+				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
+					Name:     "remote-registry",
+					RegType:  sqlc.RegistryTypeREMOTE,
+					Syncable: true,
 				})
 				require.NoError(t, err)
 
@@ -1250,12 +1247,11 @@ func TestPublishServerVersion(t *testing.T) {
 				require.NoError(t, err)
 				// Convert row to Registry struct
 				reg := &sqlc.Registry{
-					ID:           regRow.ID,
-					Name:         regRow.Name,
-					RegType:      regRow.RegType,
-					CreationType: regRow.CreationType,
-					CreatedAt:    regRow.CreatedAt,
-					UpdatedAt:    regRow.UpdatedAt,
+					ID:        regRow.ID,
+					Name:      regRow.Name,
+					RegType:   regRow.RegType,
+					CreatedAt: regRow.CreatedAt,
+					UpdatedAt: regRow.UpdatedAt,
 				}
 				return reg
 			},
@@ -1280,10 +1276,10 @@ func TestPublishServerVersion(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				// Create a MANAGED registry
-				regID, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
-					Name:         "test-registry-dup",
-					RegType:      sqlc.RegistryTypeMANAGED,
-					CreationType: sqlc.CreationTypeCONFIG,
+				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
+					Name:     "test-registry-dup",
+					RegType:  sqlc.RegistryTypeMANAGED,
+					Syncable: false,
 				})
 				require.NoError(t, err)
 
@@ -1303,12 +1299,11 @@ func TestPublishServerVersion(t *testing.T) {
 				require.NoError(t, err)
 				// Convert row to Registry struct
 				reg := &sqlc.Registry{
-					ID:           regRow.ID,
-					Name:         regRow.Name,
-					RegType:      regRow.RegType,
-					CreationType: regRow.CreationType,
-					CreatedAt:    regRow.CreatedAt,
-					UpdatedAt:    regRow.UpdatedAt,
+					ID:        regRow.ID,
+					Name:      regRow.Name,
+					RegType:   regRow.RegType,
+					CreatedAt: regRow.CreatedAt,
+					UpdatedAt: regRow.UpdatedAt,
 				}
 				return reg
 			},

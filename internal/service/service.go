@@ -9,6 +9,8 @@ import (
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
 var (
@@ -22,6 +24,12 @@ var (
 	ErrNotManagedRegistry = errors.New("registry is not managed")
 	// ErrVersionAlreadyExists is returned when attempting to publish a version that already exists
 	ErrVersionAlreadyExists = errors.New("version already exists")
+	// ErrConfigRegistry is returned when attempting to modify a CONFIG-created registry via API
+	ErrConfigRegistry = errors.New("cannot modify config-created registry via API")
+	// ErrInvalidRegistryConfig is returned when registry configuration is invalid
+	ErrInvalidRegistryConfig = errors.New("invalid registry configuration")
+	// ErrRegistryAlreadyExists is returned when attempting to create a registry that already exists
+	ErrRegistryAlreadyExists = errors.New("registry already exists")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service
@@ -54,15 +62,33 @@ type RegistryService interface {
 
 	// GetRegistryByName returns a single registry by name
 	GetRegistryByName(ctx context.Context, name string) (*RegistryInfo, error)
+
+	// CreateRegistry creates a new API-managed registry
+	CreateRegistry(ctx context.Context, name string, req *RegistryCreateRequest) (*RegistryInfo, error)
+
+	// UpdateRegistry updates an existing API-managed registry
+	UpdateRegistry(ctx context.Context, name string, req *RegistryCreateRequest) (*RegistryInfo, error)
+
+	// DeleteRegistry deletes an API-managed registry
+	DeleteRegistry(ctx context.Context, name string) error
+
+	// ProcessInlineRegistryData processes inline data for a managed/file registry
+	ProcessInlineRegistryData(ctx context.Context, name string, data string, format string) error
 }
 
 // RegistryInfo represents detailed information about a registry
 type RegistryInfo struct {
-	Name       string              `json:"name"`
-	Type       string              `json:"type"` // MANAGED, FILE, REMOTE
-	SyncStatus *RegistrySyncStatus `json:"syncStatus,omitempty"`
-	CreatedAt  time.Time           `json:"createdAt"`
-	UpdatedAt  time.Time           `json:"updatedAt"`
+	Name         string               `json:"name"`
+	Type         string               `json:"type"`                   // MANAGED, FILE, REMOTE, KUBERNETES
+	CreationType CreationType         `json:"creationType,omitempty"` // API or CONFIG
+	SourceType   config.SourceType    `json:"sourceType,omitempty"`   // git, api, file, managed, kubernetes
+	Format       string               `json:"format,omitempty"`       // toolhive or upstream
+	SourceConfig interface{}          `json:"sourceConfig,omitempty"` // Type-specific source configuration
+	FilterConfig *config.FilterConfig `json:"filterConfig,omitempty"` // Filtering rules
+	SyncSchedule string               `json:"syncSchedule,omitempty"` // Sync interval string
+	SyncStatus   *RegistrySyncStatus  `json:"syncStatus,omitempty"`
+	CreatedAt    time.Time            `json:"createdAt"`
+	UpdatedAt    time.Time            `json:"updatedAt"`
 }
 
 // RegistrySyncStatus represents the sync status of a registry
