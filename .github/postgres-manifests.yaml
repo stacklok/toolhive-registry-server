@@ -12,7 +12,7 @@ stringData:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: registry-pgpass
+  name: postgres-pgpass
 type: Opaque
 stringData:
   # Format: hostname:port:database:username:password
