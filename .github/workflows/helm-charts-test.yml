@@ -70,7 +70,7 @@ jobs:
       - name: Deploy PostgreSQL for testing
         run: |
           # Deploy PostgreSQL using raw manifests
-          kubectl apply -f deploy/charts/toolhive-registry-server/ci/postgres-manifests.yaml
+          kubectl apply -f .github/postgres-manifests.yaml
 
           # Wait for PostgreSQL to be ready
           kubectl wait --for=condition=available deployment/postgres --timeout=120s
