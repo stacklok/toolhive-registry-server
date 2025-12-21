@@ -46,7 +46,7 @@ securityContext:
       - ALL
   readOnlyRootFilesystem: true
   runAsNonRoot: true
-  runAsUser: 65532
+  runAsUser: 65535
   seccompProfile:
     type: RuntimeDefault
 
@@ -91,6 +91,34 @@ tolerations: []
 
 # -- Affinity rules for pod scheduling
 affinity: {}
+
+# -- Init containers to run before the main container
+# Use this for setup tasks like preparing pgpass files, waiting for dependencies, etc.
+# Init containers share the same volumes as the main container (extraVolumes)
+initContainers: []
+  # Example: pgpass init container for PostgreSQL authentication
+  # - name: pgpass-init
+  #   image: cgr.dev/chainguard/busybox:latest
+  #   command:
+  #     - sh
+  #     - -c
+  #     - |
+  #       cp /pgpass-secret/.pgpass /pgpass-prepared/.pgpass
+  #       chmod 600 /pgpass-prepared/.pgpass
+  #   securityContext:
+  #     allowPrivilegeEscalation: false
+  #     capabilities:
+  #       drop:
+  #         - ALL
+  #     readOnlyRootFilesystem: true
+  #     runAsNonRoot: true
+  #     runAsUser: 65535
+  #   volumeMounts:
+  #     - name: pgpass-secret
+  #       mountPath: /pgpass-secret
+  #       readOnly: true
+  #     - name: pgpass-prepared
+  #       mountPath: /pgpass-prepared
 
 # ==============================================================================
 # Registry Server Configuration
