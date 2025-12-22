@@ -186,7 +186,9 @@ fi
 VALUES_FILE="${CHART_PATH}/values.yaml"
 if [ -f "$VALUES_FILE" ]; then
   echo "Updating values.yaml..."
-  yq -i ".image.tag = \"$NEW_VERSION\"" "$VALUES_FILE"
+  # Use sed to update only the image.tag line, preserving file formatting
+  # Tag includes 'v' prefix to match container image tags (e.g., v0.4.6)
+  sed -i '' "s/^\\(  tag: \\)\".*\"/\\1\"v$NEW_VERSION\"/" "$VALUES_FILE"
 fi
 
 # Commit changes
