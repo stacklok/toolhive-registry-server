@@ -1018,6 +1018,11 @@ func (s *dbService) UpdateRegistry(
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidRegistryConfig, err)
 	}
 
+	// Check if source type is changing (not allowed)
+	if err := s.validateSourceTypeChange(ctx, name, req.GetSourceType()); err != nil {
+		return nil, err
+	}
+
 	// For file source types, check if the subtype (path/url/data) is changing
 	// We don't allow changing between path, url, and data - user must delete and recreate
 	if req.GetSourceType() == config.SourceTypeFile {
@@ -1484,6 +1489,30 @@ func (s *dbService) updateSyncStatusCompleted(
 		AttemptCount: 1,
 		ServerCount:  int64(serverCount),
 	})
+}
+
+// validateSourceTypeChange checks if the registry source type is changing and returns an error if so.
+// Users cannot change a registry's source type (e.g., git to file) - they must delete and recreate.
+func (s *dbService) validateSourceTypeChange(
+	ctx context.Context, name string, newSourceType config.SourceType,
+) error {
+	querier := sqlc.New(s.pool)
+	existing, err := querier.GetRegistryByName(ctx, name)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Registry doesn't exist yet, no validation needed
+			return nil
+		}
+		return fmt.Errorf("failed to get existing registry: %w", err)
+	}
+
+	// Check if source type is changing
+	if existing.SourceType != nil && *existing.SourceType != string(newSourceType) {
+		return fmt.Errorf("%w: cannot change from '%s' to '%s', delete and recreate the registry instead",
+			service.ErrSourceTypeChangeNotAllowed, *existing.SourceType, newSourceType)
+	}
+
+	return nil
 }
 
 // validateFileSourceTypeChange checks if the file source subtype (path/url/data) is changing

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
@@ -1339,6 +1340,396 @@ func TestPublishServerVersion(t *testing.T) {
 				context.Background(),
 				service.WithRegistryName[service.PublishServerVersionOptions](tt.registryName),
 				service.WithServerData(tt.serverData),
+			)
+
+			tt.validateFunc(t, result, err)
+		})
+	}
+}
+
+func TestUpdateRegistry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *pgxpool.Pool) string // returns registry name
+		updateReq    *service.RegistryCreateRequest
+		validateFunc func(*testing.T, *service.RegistryInfo, error)
+	}{
+		{
+			name: "success - update existing API registry",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				sourceType := string(config.SourceTypeGit)
+				format := config.SourceFormatUpstream
+				now := time.Now()
+				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git","branch":"main"}`)
+
+				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+					Name:         "update-test-registry",
+					RegType:      sqlc.RegistryTypeREMOTE,
+					SourceType:   &sourceType,
+					Format:       &format,
+					SourceConfig: sourceConfig,
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				return "update-test-registry"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Format: "toolhive",
+				Git: &config.GitConfig{
+					Repository: "https://github.com/example/updated-repo.git",
+					Branch:     "develop",
+				},
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "update-test-registry", result.Name)
+				require.Equal(t, "toolhive", result.Format)
+				require.Equal(t, config.SourceTypeGit, result.SourceType)
+				// Verify the source config was updated
+				gitConfig, ok := result.SourceConfig.(*config.GitConfig)
+				require.True(t, ok)
+				require.Equal(t, "https://github.com/example/updated-repo.git", gitConfig.Repository)
+				require.Equal(t, "develop", gitConfig.Branch)
+			},
+		},
+		{
+			name: "success - update with same source type",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				sourceType := string(config.SourceTypeAPI)
+				format := config.SourceFormatUpstream
+				now := time.Now()
+				sourceConfig := []byte(`{"endpoint":"https://api.example.com/v1"}`)
+
+				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+					Name:         "same-type-test-registry",
+					RegType:      sqlc.RegistryTypeREMOTE,
+					SourceType:   &sourceType,
+					Format:       &format,
+					SourceConfig: sourceConfig,
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				return "same-type-test-registry"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Format: config.SourceFormatUpstream,
+				API: &config.APIConfig{
+					Endpoint: "https://api.example.com/v2",
+				},
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "1h",
+				},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "same-type-test-registry", result.Name)
+				require.Equal(t, config.SourceTypeAPI, result.SourceType)
+				// Verify the endpoint was updated
+				apiConfig, ok := result.SourceConfig.(*config.APIConfig)
+				require.True(t, ok)
+				require.Equal(t, "https://api.example.com/v2", apiConfig.Endpoint)
+			},
+		},
+		{
+			name: "failure - registry not found",
+			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) string {
+				// No setup needed - registry doesn't exist
+				return "nonexistent-registry"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Format: config.SourceFormatUpstream,
+				Git: &config.GitConfig{
+					Repository: "https://github.com/example/repo.git",
+				},
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "1h",
+				},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrRegistryNotFound)
+			},
+		},
+		{
+			name: "failure - cannot modify CONFIG registry",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				// Create a CONFIG registry (created via config file, not API)
+				_, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
+					Name:     "config-registry-test",
+					RegType:  sqlc.RegistryTypeREMOTE,
+					Syncable: true,
+				})
+				require.NoError(t, err)
+
+				return "config-registry-test"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Format: config.SourceFormatUpstream,
+				Git: &config.GitConfig{
+					Repository: "https://github.com/example/repo.git",
+				},
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "1h",
+				},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrConfigRegistry)
+			},
+		},
+		{
+			name: "failure - source type change not allowed",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				sourceType := string(config.SourceTypeGit)
+				format := config.SourceFormatUpstream
+				now := time.Now()
+				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git","branch":"main"}`)
+
+				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+					Name:         "source-type-change-test",
+					RegType:      sqlc.RegistryTypeREMOTE,
+					SourceType:   &sourceType,
+					Format:       &format,
+					SourceConfig: sourceConfig,
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				return "source-type-change-test"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Format: config.SourceFormatUpstream,
+				File: &config.FileConfig{
+					Path: "/data/registry.json",
+				},
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "1h",
+				},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrSourceTypeChangeNotAllowed)
+			},
+		},
+		{
+			name: "failure - invalid configuration - missing required fields",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				sourceType := string(config.SourceTypeGit)
+				format := config.SourceFormatUpstream
+				now := time.Now()
+				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git"}`)
+
+				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+					Name:         "invalid-config-test",
+					RegType:      sqlc.RegistryTypeREMOTE,
+					SourceType:   &sourceType,
+					Format:       &format,
+					SourceConfig: sourceConfig,
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				return "invalid-config-test"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Format: config.SourceFormatUpstream,
+				Git: &config.GitConfig{
+					// Missing required Repository field
+					Branch: "main",
+				},
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "1h",
+				},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrInvalidRegistryConfig)
+			},
+		},
+		{
+			name: "failure - invalid configuration - no source type specified",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				sourceType := string(config.SourceTypeGit)
+				format := config.SourceFormatUpstream
+				now := time.Now()
+				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git"}`)
+
+				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+					Name:         "no-source-type-test",
+					RegType:      sqlc.RegistryTypeREMOTE,
+					SourceType:   &sourceType,
+					Format:       &format,
+					SourceConfig: sourceConfig,
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				return "no-source-type-test"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Format: config.SourceFormatUpstream,
+				// No source type specified (Git, API, File, Managed, or Kubernetes)
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "1h",
+				},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrInvalidRegistryConfig)
+			},
+		},
+		{
+			name: "failure - invalid configuration - missing sync policy for synced type",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				sourceType := string(config.SourceTypeAPI)
+				format := config.SourceFormatUpstream
+				now := time.Now()
+				sourceConfig := []byte(`{"endpoint":"https://api.example.com/v1"}`)
+
+				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+					Name:         "missing-sync-policy-test",
+					RegType:      sqlc.RegistryTypeREMOTE,
+					SourceType:   &sourceType,
+					Format:       &format,
+					SourceConfig: sourceConfig,
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				return "missing-sync-policy-test"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Format: config.SourceFormatUpstream,
+				API: &config.APIConfig{
+					Endpoint: "https://api.example.com/v2",
+				},
+				// Missing required SyncPolicy for API (synced) type
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrInvalidRegistryConfig)
+			},
+		},
+		{
+			name: "success - update managed registry without sync policy",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				sourceType := string(config.SourceTypeManaged)
+				format := config.SourceFormatUpstream
+				now := time.Now()
+				sourceConfig := []byte(`{}`)
+
+				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+					Name:         "managed-registry-update-test",
+					RegType:      sqlc.RegistryTypeMANAGED,
+					SourceType:   &sourceType,
+					Format:       &format,
+					SourceConfig: sourceConfig,
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				return "managed-registry-update-test"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Format:  "toolhive",
+				Managed: &config.ManagedConfig{},
+				// No SyncPolicy needed for managed type
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "managed-registry-update-test", result.Name)
+				require.Equal(t, config.SourceTypeManaged, result.SourceType)
+				require.Equal(t, "toolhive", result.Format)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			// Setup registry if needed
+			registryName := tt.setupFunc(t, svc.pool)
+
+			// Call UpdateRegistry
+			result, err := svc.UpdateRegistry(
+				context.Background(),
+				registryName,
+				tt.updateReq,
 			)
 
 			tt.validateFunc(t, result, err)
