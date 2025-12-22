@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 )
 
 func TestInsertRegistry(t *testing.T) {
@@ -29,14 +30,14 @@ func TestInsertRegistry(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertRegistry(
+				id, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeFILE,
-						CreationType: CreationTypeCONFIG,
-						CreatedAt:    &createdAt,
-						UpdatedAt:    &createdAt,
+					InsertConfigRegistryParams{
+						Name:      "test-registry",
+						RegType:   RegistryTypeFILE,
+						Syncable:  true,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -50,14 +51,14 @@ func TestInsertRegistry(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertRegistry(
+				id, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeMANAGED,
-						CreationType: CreationTypeCONFIG,
-						CreatedAt:    &createdAt,
-						UpdatedAt:    &createdAt,
+					InsertConfigRegistryParams{
+						Name:      "test-registry",
+						RegType:   RegistryTypeMANAGED,
+						Syncable:  false, // managed registries are not syncable
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -71,14 +72,14 @@ func TestInsertRegistry(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertRegistry(
+				id, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeREMOTE,
-						CreationType: CreationTypeCONFIG,
-						CreatedAt:    &createdAt,
-						UpdatedAt:    &createdAt,
+					InsertConfigRegistryParams{
+						Name:      "test-registry",
+						RegType:   RegistryTypeREMOTE,
+						Syncable:  true,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -92,14 +93,14 @@ func TestInsertRegistry(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertRegistry(
+				id, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeFILE,
-						CreationType: CreationTypeCONFIG,
-						CreatedAt:    &createdAt,
-						UpdatedAt:    &createdAt,
+					InsertConfigRegistryParams{
+						Name:      "test-registry",
+						RegType:   RegistryTypeFILE,
+						Syncable:  true,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -111,14 +112,14 @@ func TestInsertRegistry(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertRegistry(
+				id, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeMANAGED,
-						CreationType: CreationTypeCONFIG,
-						CreatedAt:    &createdAt,
-						UpdatedAt:    &createdAt,
+					InsertConfigRegistryParams{
+						Name:      "test-registry",
+						RegType:   RegistryTypeMANAGED,
+						Syncable:  false, // managed registries are not syncable
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -127,14 +128,14 @@ func TestInsertRegistry(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertRegistry(
+				id, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeMANAGED,
-						CreationType: CreationTypeCONFIG,
-						CreatedAt:    &createdAt,
-						UpdatedAt:    &createdAt,
+					InsertConfigRegistryParams{
+						Name:      "test-registry",
+						RegType:   RegistryTypeMANAGED,
+						Syncable:  false, // managed registries are not syncable
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.Error(t, err)
@@ -184,14 +185,14 @@ func TestListRegistries(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertRegistry(
+				id, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeREMOTE,
-						CreationType: CreationTypeCONFIG,
-						CreatedAt:    &createdAt,
-						UpdatedAt:    &createdAt,
+					InsertConfigRegistryParams{
+						Name:      "test-registry",
+						RegType:   RegistryTypeREMOTE,
+						Syncable:  true,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -216,14 +217,14 @@ func TestListRegistries(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i := range 2 {
 					createdAt = createdAt.Add(1 * time.Second)
-					id, err := queries.InsertRegistry(
+					id, err := queries.InsertConfigRegistry(
 						context.Background(),
-						InsertRegistryParams{
-							Name:         fmt.Sprintf("test-registry-%d", i),
-							RegType:      RegistryTypeREMOTE,
-							CreationType: CreationTypeCONFIG,
-							CreatedAt:    &createdAt,
-							UpdatedAt:    &createdAt,
+						InsertConfigRegistryParams{
+							Name:      fmt.Sprintf("test-registry-%d", i),
+							RegType:   RegistryTypeREMOTE,
+							Syncable:  true,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -251,14 +252,14 @@ func TestListRegistries(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i := range 2 {
 					createdAt = createdAt.Add(1 * time.Second)
-					id, err := queries.InsertRegistry(
+					id, err := queries.InsertConfigRegistry(
 						context.Background(),
-						InsertRegistryParams{
-							Name:         fmt.Sprintf("test-registry-%d", i),
-							RegType:      RegistryTypeREMOTE,
-							CreationType: CreationTypeCONFIG,
-							CreatedAt:    &createdAt,
-							UpdatedAt:    &createdAt,
+						InsertConfigRegistryParams{
+							Name:      fmt.Sprintf("test-registry-%d", i),
+							RegType:   RegistryTypeREMOTE,
+							Syncable:  true,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -292,14 +293,14 @@ func TestListRegistries(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i := range 2 {
 					createdAt = createdAt.Add(1 * time.Second)
-					id, err := queries.InsertRegistry(
+					id, err := queries.InsertConfigRegistry(
 						context.Background(),
-						InsertRegistryParams{
-							Name:         fmt.Sprintf("test-registry-%d", i),
-							RegType:      RegistryTypeREMOTE,
-							CreationType: CreationTypeCONFIG,
-							CreatedAt:    &createdAt,
-							UpdatedAt:    &createdAt,
+						InsertConfigRegistryParams{
+							Name:      fmt.Sprintf("test-registry-%d", i),
+							RegType:   RegistryTypeREMOTE,
+							Syncable:  true,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -333,14 +334,14 @@ func TestListRegistries(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i := range 2 {
 					createdAt = createdAt.Add(1 * time.Second)
-					id, err := queries.InsertRegistry(
+					id, err := queries.InsertConfigRegistry(
 						context.Background(),
-						InsertRegistryParams{
-							Name:         fmt.Sprintf("test-registry-%d", i),
-							RegType:      RegistryTypeREMOTE,
-							CreationType: CreationTypeCONFIG,
-							CreatedAt:    &createdAt,
-							UpdatedAt:    &createdAt,
+						InsertConfigRegistryParams{
+							Name:      fmt.Sprintf("test-registry-%d", i),
+							RegType:   RegistryTypeREMOTE,
+							Syncable:  true,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -404,12 +405,12 @@ func TestGetRegistry(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertRegistry(context.Background(), InsertRegistryParams{
-					Name:         "test-registry",
-					RegType:      RegistryTypeREMOTE,
-					CreationType: CreationTypeCONFIG,
-					CreatedAt:    &createdAt,
-					UpdatedAt:    &createdAt,
+				id, err := queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
+					Name:      "test-registry",
+					RegType:   RegistryTypeREMOTE,
+					Syncable:  true,
+					CreatedAt: &createdAt,
+					UpdatedAt: &createdAt,
 				})
 				require.NoError(t, err)
 				require.NotNil(t, id)
@@ -457,10 +458,15 @@ func TestBulkUpsertRegistries(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC()
-				result, err := queries.BulkUpsertRegistries(context.Background(), BulkUpsertRegistriesParams{
+				result, err := queries.BulkUpsertConfigRegistries(context.Background(), BulkUpsertConfigRegistriesParams{
 					Names:         []string{"reg1", "reg2"},
 					RegTypes:      []RegistryType{RegistryTypeREMOTE, RegistryTypeFILE},
-					CreationTypes: []CreationType{CreationTypeCONFIG, CreationTypeCONFIG},
+					SourceTypes:   []string{"git", "file"},
+					Formats:       []string{"upstream", "upstream"},
+					SourceConfigs: [][]byte{nil, nil},
+					FilterConfigs: [][]byte{nil, nil},
+					SyncSchedules: []pgtypes.Interval{pgtypes.NewNullInterval(), pgtypes.NewNullInterval()},
+					Syncables:     []bool{true, true},
 					CreatedAts:    []time.Time{now, now},
 					UpdatedAts:    []time.Time{now, now},
 				})
@@ -473,22 +479,27 @@ func TestBulkUpsertRegistries(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC()
-				_, err := queries.InsertRegistry(context.Background(), InsertRegistryParams{
-					Name:         "config-reg",
-					RegType:      RegistryTypeREMOTE,
-					CreationType: CreationTypeCONFIG,
-					CreatedAt:    &now,
-					UpdatedAt:    &now,
+				_, err := queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
+					Name:      "config-reg",
+					RegType:   RegistryTypeREMOTE,
+					Syncable:  true,
+					CreatedAt: &now,
+					UpdatedAt: &now,
 				})
 				require.NoError(t, err)
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC().Add(1 * time.Hour)
-				result, err := queries.BulkUpsertRegistries(context.Background(), BulkUpsertRegistriesParams{
+				result, err := queries.BulkUpsertConfigRegistries(context.Background(), BulkUpsertConfigRegistriesParams{
 					Names:         []string{"config-reg"},
 					RegTypes:      []RegistryType{RegistryTypeREMOTE},
-					CreationTypes: []CreationType{CreationTypeCONFIG},
+					SourceTypes:   []string{"git"},
+					Formats:       []string{"upstream"},
+					SourceConfigs: [][]byte{nil},
+					FilterConfigs: [][]byte{nil},
+					SyncSchedules: []pgtypes.Interval{pgtypes.NewNullInterval()},
+					Syncables:     []bool{true},
 					CreatedAts:    []time.Time{now},
 					UpdatedAts:    []time.Time{now},
 				})
@@ -502,22 +513,27 @@ func TestBulkUpsertRegistries(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC()
-				_, err := queries.InsertRegistry(context.Background(), InsertRegistryParams{
-					Name:         "api-reg",
-					RegType:      RegistryTypeMANAGED,
-					CreationType: CreationTypeAPI,
-					CreatedAt:    &now,
-					UpdatedAt:    &now,
+				_, err := queries.InsertAPIRegistry(context.Background(), InsertAPIRegistryParams{
+					Name:      "api-reg",
+					RegType:   RegistryTypeMANAGED,
+					Syncable:  false, // managed registries are not syncable
+					CreatedAt: &now,
+					UpdatedAt: &now,
 				})
 				require.NoError(t, err)
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC().Add(1 * time.Hour)
-				result, err := queries.BulkUpsertRegistries(context.Background(), BulkUpsertRegistriesParams{
+				result, err := queries.BulkUpsertConfigRegistries(context.Background(), BulkUpsertConfigRegistriesParams{
 					Names:         []string{"api-reg"},
 					RegTypes:      []RegistryType{RegistryTypeMANAGED},
-					CreationTypes: []CreationType{CreationTypeCONFIG},
+					SourceTypes:   []string{"managed"},
+					Formats:       []string{"upstream"},
+					SourceConfigs: [][]byte{nil},
+					FilterConfigs: [][]byte{nil},
+					SyncSchedules: []pgtypes.Interval{pgtypes.NewNullInterval()},
+					Syncables:     []bool{false},
 					CreatedAts:    []time.Time{now},
 					UpdatedAts:    []time.Time{now},
 				})
@@ -550,7 +566,7 @@ func TestBulkUpsertRegistries(t *testing.T) {
 	}
 }
 
-func TestDeleteRegistriesNotInList(t *testing.T) {
+func TestDeleteConfigRegistriesNotInList(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -563,21 +579,21 @@ func TestDeleteRegistriesNotInList(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				now := time.Now().UTC()
-				id1, err := queries.InsertRegistry(context.Background(), InsertRegistryParams{
-					Name:         "keep-reg",
-					RegType:      RegistryTypeREMOTE,
-					CreationType: CreationTypeCONFIG,
-					CreatedAt:    &now,
-					UpdatedAt:    &now,
+				id1, err := queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
+					Name:      "keep-reg",
+					RegType:   RegistryTypeREMOTE,
+					Syncable:  true,
+					CreatedAt: &now,
+					UpdatedAt: &now,
 				})
 				require.NoError(t, err)
 
-				_, err = queries.InsertRegistry(context.Background(), InsertRegistryParams{
-					Name:         "delete-reg",
-					RegType:      RegistryTypeFILE,
-					CreationType: CreationTypeCONFIG,
-					CreatedAt:    &now,
-					UpdatedAt:    &now,
+				_, err = queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
+					Name:      "delete-reg",
+					RegType:   RegistryTypeFILE,
+					Syncable:  true,
+					CreatedAt: &now,
+					UpdatedAt: &now,
 				})
 				require.NoError(t, err)
 
@@ -585,7 +601,7 @@ func TestDeleteRegistriesNotInList(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, keepIDs []uuid.UUID) {
-				err := queries.DeleteRegistriesNotInList(context.Background(), keepIDs)
+				err := queries.DeleteConfigRegistriesNotInList(context.Background(), keepIDs)
 				require.NoError(t, err)
 
 				// Verify only keep-reg remains
@@ -602,21 +618,21 @@ func TestDeleteRegistriesNotInList(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				now := time.Now().UTC()
-				id1, err := queries.InsertRegistry(context.Background(), InsertRegistryParams{
-					Name:         "config-reg",
-					RegType:      RegistryTypeREMOTE,
-					CreationType: CreationTypeCONFIG,
-					CreatedAt:    &now,
-					UpdatedAt:    &now,
+				id1, err := queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
+					Name:      "config-reg",
+					RegType:   RegistryTypeREMOTE,
+					Syncable:  true,
+					CreatedAt: &now,
+					UpdatedAt: &now,
 				})
 				require.NoError(t, err)
 
-				_, err = queries.InsertRegistry(context.Background(), InsertRegistryParams{
-					Name:         "api-reg",
-					RegType:      RegistryTypeMANAGED,
-					CreationType: CreationTypeAPI,
-					CreatedAt:    &now,
-					UpdatedAt:    &now,
+				_, err = queries.InsertAPIRegistry(context.Background(), InsertAPIRegistryParams{
+					Name:      "api-reg",
+					RegType:   RegistryTypeMANAGED,
+					Syncable:  false, // managed registries are not syncable
+					CreatedAt: &now,
+					UpdatedAt: &now,
 				})
 				require.NoError(t, err)
 
@@ -624,7 +640,7 @@ func TestDeleteRegistriesNotInList(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, keepIDs []uuid.UUID) {
-				err := queries.DeleteRegistriesNotInList(context.Background(), keepIDs)
+				err := queries.DeleteConfigRegistriesNotInList(context.Background(), keepIDs)
 				require.NoError(t, err)
 
 				// Verify both registries still exist - API registry is protected
@@ -666,21 +682,21 @@ func TestGetAPIRegistriesByNames(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC()
-				_, err := queries.InsertRegistry(context.Background(), InsertRegistryParams{
-					Name:         "api-reg",
-					RegType:      RegistryTypeMANAGED,
-					CreationType: CreationTypeAPI,
-					CreatedAt:    &now,
-					UpdatedAt:    &now,
+				_, err := queries.InsertAPIRegistry(context.Background(), InsertAPIRegistryParams{
+					Name:      "api-reg",
+					RegType:   RegistryTypeMANAGED,
+					Syncable:  false, // managed registries are not syncable
+					CreatedAt: &now,
+					UpdatedAt: &now,
 				})
 				require.NoError(t, err)
 
-				_, err = queries.InsertRegistry(context.Background(), InsertRegistryParams{
-					Name:         "config-reg",
-					RegType:      RegistryTypeREMOTE,
-					CreationType: CreationTypeCONFIG,
-					CreatedAt:    &now,
-					UpdatedAt:    &now,
+				_, err = queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
+					Name:      "config-reg",
+					RegType:   RegistryTypeREMOTE,
+					Syncable:  true,
+					CreatedAt: &now,
+					UpdatedAt: &now,
 				})
 				require.NoError(t, err)
 			},
@@ -698,12 +714,12 @@ func TestGetAPIRegistriesByNames(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC()
-				_, err := queries.InsertRegistry(context.Background(), InsertRegistryParams{
-					Name:         "config-reg",
-					RegType:      RegistryTypeREMOTE,
-					CreationType: CreationTypeCONFIG,
-					CreatedAt:    &now,
-					UpdatedAt:    &now,
+				_, err := queries.InsertConfigRegistry(context.Background(), InsertConfigRegistryParams{
+					Name:      "config-reg",
+					RegType:   RegistryTypeREMOTE,
+					Syncable:  true,
+					CreatedAt: &now,
+					UpdatedAt: &now,
 				})
 				require.NoError(t, err)
 			},

@@ -41,12 +41,12 @@ func TestGetRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry first
-				regID, err := queries.InsertRegistry(
+				regID, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeREMOTE,
-						CreationType: CreationTypeCONFIG,
+					InsertConfigRegistryParams{
+						Name:     "test-registry",
+						RegType:  RegistryTypeREMOTE,
+						Syncable: true,
 					},
 				)
 				require.NoError(t, err)
@@ -104,12 +104,12 @@ func TestInsertRegistrySync(t *testing.T) {
 			name: "insert sync with IN_PROGRESS status",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
-				regID, err := queries.InsertRegistry(
+				regID, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeREMOTE,
-						CreationType: CreationTypeCONFIG,
+					InsertConfigRegistryParams{
+						Name:     "test-registry",
+						RegType:  RegistryTypeREMOTE,
+						Syncable: true,
 					},
 				)
 				require.NoError(t, err)
@@ -133,12 +133,12 @@ func TestInsertRegistrySync(t *testing.T) {
 			name: "insert sync with COMPLETED status",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
-				regID, err := queries.InsertRegistry(
+				regID, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeREMOTE,
-						CreationType: CreationTypeCONFIG,
+					InsertConfigRegistryParams{
+						Name:     "test-registry",
+						RegType:  RegistryTypeREMOTE,
+						Syncable: true,
 					},
 				)
 				require.NoError(t, err)
@@ -162,12 +162,12 @@ func TestInsertRegistrySync(t *testing.T) {
 			name: "insert sync with FAILED status",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
-				regID, err := queries.InsertRegistry(
+				regID, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeREMOTE,
-						CreationType: CreationTypeCONFIG,
+					InsertConfigRegistryParams{
+						Name:     "test-registry",
+						RegType:  RegistryTypeREMOTE,
+						Syncable: true,
 					},
 				)
 				require.NoError(t, err)
@@ -191,12 +191,12 @@ func TestInsertRegistrySync(t *testing.T) {
 			name: "insert sync with error message",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
-				regID, err := queries.InsertRegistry(
+				regID, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeREMOTE,
-						CreationType: CreationTypeCONFIG,
+					InsertConfigRegistryParams{
+						Name:     "test-registry",
+						RegType:  RegistryTypeREMOTE,
+						Syncable: true,
 					},
 				)
 				require.NoError(t, err)
@@ -220,12 +220,12 @@ func TestInsertRegistrySync(t *testing.T) {
 			name: "insert sync without error message",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
-				regID, err := queries.InsertRegistry(
+				regID, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeREMOTE,
-						CreationType: CreationTypeCONFIG,
+					InsertConfigRegistryParams{
+						Name:     "test-registry",
+						RegType:  RegistryTypeREMOTE,
+						Syncable: true,
 					},
 				)
 				require.NoError(t, err)
@@ -295,12 +295,12 @@ func TestUpdateRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry
-				regID, err := queries.InsertRegistry(
+				regID, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeREMOTE,
-						CreationType: CreationTypeCONFIG,
+					InsertConfigRegistryParams{
+						Name:     "test-registry",
+						RegType:  RegistryTypeREMOTE,
+						Syncable: true,
 					},
 				)
 				require.NoError(t, err)
@@ -348,12 +348,12 @@ func TestUpdateRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry
-				regID, err := queries.InsertRegistry(
+				regID, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeREMOTE,
-						CreationType: CreationTypeCONFIG,
+					InsertConfigRegistryParams{
+						Name:     "test-registry",
+						RegType:  RegistryTypeREMOTE,
+						Syncable: true,
 					},
 				)
 				require.NoError(t, err)
@@ -403,12 +403,12 @@ func TestUpdateRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry
-				regID, err := queries.InsertRegistry(
+				regID, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeREMOTE,
-						CreationType: CreationTypeCONFIG,
+					InsertConfigRegistryParams{
+						Name:     "test-registry",
+						RegType:  RegistryTypeREMOTE,
+						Syncable: true,
 					},
 				)
 				require.NoError(t, err)
@@ -455,12 +455,12 @@ func TestUpdateRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry
-				regID, err := queries.InsertRegistry(
+				regID, err := queries.InsertConfigRegistry(
 					context.Background(),
-					InsertRegistryParams{
-						Name:         "test-registry",
-						RegType:      RegistryTypeREMOTE,
-						CreationType: CreationTypeCONFIG,
+					InsertConfigRegistryParams{
+						Name:     "test-registry",
+						RegType:  RegistryTypeREMOTE,
+						Syncable: true,
 					},
 				)
 				require.NoError(t, err)

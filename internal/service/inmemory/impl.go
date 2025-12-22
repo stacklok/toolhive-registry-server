@@ -715,7 +715,7 @@ func (s *regSvc) getRegistryType(registryName string) string {
 	if s.config != nil {
 		for _, regCfg := range s.config.Registries {
 			if regCfg.Name == registryName {
-				return strings.ToUpper(regCfg.GetType())
+				return strings.ToUpper(string(regCfg.GetType()))
 			}
 		}
 	}
@@ -848,4 +848,28 @@ func decodeCursor(cursor string) (int, error) {
 // the next cursor would be EncodeCursor(X + N).
 func EncodeCursor(index int) string {
 	return base64.StdEncoding.EncodeToString([]byte(strconv.Itoa(index)))
+}
+
+// CreateRegistry creates a new API-managed registry.
+// Not implemented for in-memory service.
+func (*regSvc) CreateRegistry(_ context.Context, _ string, _ *service.RegistryCreateRequest) (*service.RegistryInfo, error) {
+	return nil, service.ErrNotImplemented
+}
+
+// UpdateRegistry updates an existing API-managed registry.
+// Not implemented for in-memory service.
+func (*regSvc) UpdateRegistry(_ context.Context, _ string, _ *service.RegistryCreateRequest) (*service.RegistryInfo, error) {
+	return nil, service.ErrNotImplemented
+}
+
+// DeleteRegistry deletes an API-managed registry.
+// Not implemented for in-memory service.
+func (*regSvc) DeleteRegistry(_ context.Context, _ string) error {
+	return service.ErrNotImplemented
+}
+
+// ProcessInlineRegistryData processes inline data for a managed/file registry.
+// Not implemented for in-memory service.
+func (*regSvc) ProcessInlineRegistryData(_ context.Context, _ string, _ string, _ string) error {
+	return service.ErrNotImplemented
 }

@@ -100,7 +100,7 @@ func (f *fileStateService) loadOrInitializeRegistryStatus(
 	ctx context.Context,
 	registryName string,
 	isNonSynced bool,
-	regType string,
+	regType config.SourceType,
 	syncSchedule string,
 ) {
 	syncStatus, err := f.statusPersistence.LoadStatus(ctx, registryName)
