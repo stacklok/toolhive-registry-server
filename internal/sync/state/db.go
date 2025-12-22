@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -50,9 +51,9 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	now := time.Now()
 
 	if len(registryConfigs) == 0 {
-		// No registries in config - delete all registries from DB
-		// We can't use BulkUpsertRegistries with empty arrays, so handle separately
-		err := queries.DeleteRegistriesNotInList(ctx, []uuid.UUID{})
+		// No registries in config - delete all CONFIG registries from DB
+		// We can't use BulkUpsertConfigRegistries with empty arrays, so handle separately
+		err := queries.DeleteConfigRegistriesNotInList(ctx, []uuid.UUID{})
 		if err != nil {
 			return err
 		}
@@ -62,8 +63,12 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	// Prepare bulk upsert arrays
 	names := make([]string, len(registryConfigs))
 	regTypes := make([]sqlc.RegistryType, len(registryConfigs))
-	creationTypes := make([]sqlc.CreationType, len(registryConfigs))
+	sourceTypes := make([]string, len(registryConfigs))
+	formats := make([]string, len(registryConfigs))
+	sourceConfigs := make([][]byte, len(registryConfigs))
+	filterConfigs := make([][]byte, len(registryConfigs))
 	syncSchedules := make([]pgtypes.Interval, len(registryConfigs))
+	syncables := make([]bool, len(registryConfigs))
 	createdAts := make([]time.Time, len(registryConfigs))
 	updatedAts := make([]time.Time, len(registryConfigs))
 
@@ -74,8 +79,12 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 			return err
 		}
 		regTypes[i] = regType
-		creationTypes[i] = sqlc.CreationTypeCONFIG
+		sourceTypes[i] = string(reg.GetType())
+		formats[i] = reg.Format
+		sourceConfigs[i] = serializeSourceConfig(&reg)
+		filterConfigs[i] = serializeFilterConfig(reg.Filter)
 		syncSchedules[i] = getSyncScheduleIntervalFromConfig(&reg)
+		syncables[i] = !reg.IsNonSyncedRegistry()
 		createdAts[i] = now
 		updatedAts[i] = now
 	}
@@ -90,12 +99,16 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		return err
 	}
 
-	// Bulk upsert all registries - returns IDs and names
-	upsertedRegistries, err := queries.BulkUpsertRegistries(ctx, sqlc.BulkUpsertRegistriesParams{
+	// Bulk upsert all CONFIG registries - returns IDs and names
+	upsertedRegistries, err := queries.BulkUpsertConfigRegistries(ctx, sqlc.BulkUpsertConfigRegistriesParams{
 		Names:         names,
 		RegTypes:      regTypes,
-		CreationTypes: creationTypes,
+		SourceTypes:   sourceTypes,
+		Formats:       formats,
+		SourceConfigs: sourceConfigs,
+		FilterConfigs: filterConfigs,
 		SyncSchedules: syncSchedules,
+		Syncables:     syncables,
 		CreatedAts:    createdAts,
 		UpdatedAts:    updatedAts,
 	})
@@ -137,9 +150,9 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		return err
 	}
 
-	// Delete any registries not in the upserted list
+	// Delete any CONFIG registries not in the upserted list
 	// CASCADE will automatically delete associated sync statuses
-	err = queries.DeleteRegistriesNotInList(ctx, upsertedIDs)
+	err = queries.DeleteConfigRegistriesNotInList(ctx, upsertedIDs)
 	if err != nil {
 		return err
 	}
@@ -371,7 +384,7 @@ func syncPhaseToDBStatus(phase status.SyncPhase) sqlc.SyncStatus {
 }
 
 // mapConfigTypeToDBType maps config source types to database registry types
-func mapConfigTypeToDBType(configType string) (sqlc.RegistryType, error) {
+func mapConfigTypeToDBType(configType config.SourceType) (sqlc.RegistryType, error) {
 	switch configType {
 	case config.SourceTypeGit:
 		return sqlc.RegistryTypeREMOTE, nil
@@ -391,7 +404,7 @@ func mapConfigTypeToDBType(configType string) (sqlc.RegistryType, error) {
 // getInitialSyncStatus returns the initial sync status and error message for a registry.
 // Non-synced registries (managed and kubernetes) start with COMPLETED status since they don't
 // sync from external sources. Synced registries start with FAILED to trigger initial sync.
-func getInitialSyncStatus(isNonSynced bool, regType string) (sqlc.SyncStatus, string) {
+func getInitialSyncStatus(isNonSynced bool, regType config.SourceType) (sqlc.SyncStatus, string) {
 	if isNonSynced {
 		return sqlc.SyncStatusCOMPLETED, fmt.Sprintf("Non-synced registry (type: %s)", regType)
 	}
@@ -451,12 +464,18 @@ func (d *dbStatusService) GetNextSyncJob(
 	for _, reg := range registries {
 		syncStatus := dbSyncRowByLastUpdateToStatus(reg)
 
-		// Find the matching registry configuration from cached configs
+		// Find the matching registry configuration from cached configs (CONFIG registries)
+		// or load from database (API-created registries)
 		regCfg, ok := d.registryConfigsMap[reg.Name]
 		if !ok {
-			// Registry exists in DB but not in config - this shouldn't happen
-			// but handle gracefully by continuing to next registry
-			continue
+			// Registry exists in DB but not in config cache
+			// This is expected for API-created registries - load from database
+			var loadErr error
+			regCfg, loadErr = loadRegistryConfigFromDB(ctx, queries, reg.Name)
+			if loadErr != nil {
+				// Failed to load config - skip this registry and continue
+				continue
+			}
 		}
 
 		// Skip non-synced registries - they don't sync from external sources
@@ -493,4 +512,129 @@ func (d *dbStatusService) GetNextSyncJob(
 	}
 
 	return nil, nil
+}
+
+// serializeSourceConfig serializes the source configuration from a registry config to JSON bytes.
+// Returns nil for empty configs.
+func serializeSourceConfig(reg *config.RegistryConfig) []byte {
+	var sourceConfig interface{}
+	switch {
+	case reg.Git != nil:
+		sourceConfig = reg.Git
+	case reg.API != nil:
+		sourceConfig = reg.API
+	case reg.File != nil:
+		sourceConfig = reg.File
+	case reg.Managed != nil:
+		sourceConfig = reg.Managed
+	case reg.Kubernetes != nil:
+		sourceConfig = reg.Kubernetes
+	default:
+		return nil
+	}
+
+	data, err := json.Marshal(sourceConfig)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+// serializeFilterConfig serializes the filter configuration to JSON bytes.
+// Returns nil for nil filters.
+func serializeFilterConfig(filter *config.FilterConfig) []byte {
+	if filter == nil {
+		return nil
+	}
+
+	data, err := json.Marshal(filter)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+// loadRegistryConfigFromDB loads a registry configuration from the database.
+// This is used for API-created registries that are not in the config file cache.
+func loadRegistryConfigFromDB(ctx context.Context, queries *sqlc.Queries, name string) (*config.RegistryConfig, error) {
+	reg, err := queries.GetRegistryByName(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get registry %s: %w", name, err)
+	}
+
+	// Build the registry config from database fields
+	regCfg := &config.RegistryConfig{
+		Name:   reg.Name,
+		Format: stringOrEmpty(reg.Format),
+	}
+
+	// Parse sync schedule from interval
+	if reg.SyncSchedule.Valid && reg.SyncSchedule.Duration > 0 {
+		regCfg.SyncPolicy = &config.SyncPolicyConfig{
+			Interval: reg.SyncSchedule.Duration.String(),
+		}
+	}
+
+	// Parse filter config from JSONB
+	if reg.FilterConfig != nil {
+		var filterConfig config.FilterConfig
+		if err := json.Unmarshal(reg.FilterConfig, &filterConfig); err == nil {
+			regCfg.Filter = &filterConfig
+		}
+	}
+
+	// Determine source type and parse source config
+	sourceType := config.SourceType(stringOrEmpty(reg.SourceType))
+	if reg.SourceConfig != nil {
+		if err := parseSourceConfig(regCfg, sourceType, reg.SourceConfig); err != nil {
+			return nil, fmt.Errorf("failed to parse source config for registry %s: %w", name, err)
+		}
+	}
+
+	return regCfg, nil
+}
+
+// stringOrEmpty returns the string value or empty string if nil
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// parseSourceConfig parses the source configuration from JSONB into the appropriate config field
+func parseSourceConfig(regCfg *config.RegistryConfig, sourceType config.SourceType, sourceConfig []byte) error {
+	switch sourceType {
+	case config.SourceTypeGit:
+		var gitConfig config.GitConfig
+		if err := json.Unmarshal(sourceConfig, &gitConfig); err != nil {
+			return err
+		}
+		regCfg.Git = &gitConfig
+	case config.SourceTypeAPI:
+		var apiConfig config.APIConfig
+		if err := json.Unmarshal(sourceConfig, &apiConfig); err != nil {
+			return err
+		}
+		regCfg.API = &apiConfig
+	case config.SourceTypeFile:
+		var fileConfig config.FileConfig
+		if err := json.Unmarshal(sourceConfig, &fileConfig); err != nil {
+			return err
+		}
+		regCfg.File = &fileConfig
+	case config.SourceTypeManaged:
+		var managedConfig config.ManagedConfig
+		if err := json.Unmarshal(sourceConfig, &managedConfig); err != nil {
+			return err
+		}
+		regCfg.Managed = &managedConfig
+	case config.SourceTypeKubernetes:
+		var k8sConfig config.KubernetesConfig
+		if err := json.Unmarshal(sourceConfig, &k8sConfig); err != nil {
+			return err
+		}
+		regCfg.Kubernetes = &k8sConfig
+	}
+	return nil
 }

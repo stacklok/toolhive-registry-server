@@ -679,7 +679,7 @@ func TestFileStateService_loadOrInitializeRegistryStatus(t *testing.T) {
 		name         string
 		registryName string
 		isNonSynced  bool
-		regType      string
+		regType      config.SourceType
 		syncSchedule string
 		setupMocks   func(*statusmocks.MockStatusPersistence)
 		verifyCached func(*testing.T, *status.SyncStatus)
