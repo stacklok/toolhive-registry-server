@@ -36,7 +36,7 @@ podLabels: {}
 
 # -- Pod security context
 podSecurityContext: {}
-  # fsGroup: 2000
+# fsGroup: 2000
 
 # -- Container security context
 securityContext:
@@ -118,7 +118,7 @@ initContainers: []
   #       mountPath: /pgpass-secret
   #       readOnly: true
   #     - name: pgpass-prepared
-  #       mountPath: /pgpass-prepared
+#       mountPath: /pgpass-prepared
 
 # ==============================================================================
 # Registry Server Configuration
@@ -199,14 +199,14 @@ extraEnv: []
   # - name: PGPASSFILE
   #   value: "/secrets/pgpass"
   # - name: THV_REGISTRY_INSECURE_URL
-  #   value: "true"
+#   value: "true"
 
 # -- Additional environment variables from ConfigMap or Secret references
 extraEnvFrom: []
   # - configMapRef:
   #     name: my-config
   # - secretRef:
-  #     name: my-secret
+#     name: my-secret
 
 # ==============================================================================
 # Additional Volume Mounts
@@ -223,7 +223,7 @@ extraVolumes: []
   #     name: ca-certificates
   # - name: registry-data
   #   persistentVolumeClaim:
-  #     claimName: registry-data-pvc
+#     claimName: registry-data-pvc
 
 # -- Additional volume mounts to add to the container
 extraVolumeMounts: []
@@ -235,4 +235,4 @@ extraVolumeMounts: []
   #   mountPath: /etc/ssl/certs
   #   readOnly: true
   # - name: registry-data
-  #   mountPath: /data
+#   mountPath: /data
