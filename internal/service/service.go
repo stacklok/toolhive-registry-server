@@ -30,6 +30,8 @@ var (
 	ErrInvalidRegistryConfig = errors.New("invalid registry configuration")
 	// ErrRegistryAlreadyExists is returned when attempting to create a registry that already exists
 	ErrRegistryAlreadyExists = errors.New("registry already exists")
+	// ErrSourceTypeChangeNotAllowed is returned when attempting to change a registry's source type
+	ErrSourceTypeChangeNotAllowed = errors.New("changing registry source type is not allowed")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service
