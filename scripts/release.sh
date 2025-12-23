@@ -152,8 +152,9 @@ echo "  2. Update VERSION to: $NEW_VERSION"
 if [ -f "$CHART_PATH/Chart.yaml" ]; then
   echo "  3. Update Chart.yaml version and appVersion to: $NEW_VERSION"
   echo "  4. Update values.yaml image.tag to: $NEW_VERSION"
-  echo "  5. Commit and push the branch"
-  echo "  6. Create a pull request"
+  echo "  5. Regenerate Helm chart README via helm-docs"
+  echo "  6. Commit and push the branch"
+  echo "  7. Create a pull request"
 else
   echo "  3. Commit and push the branch"
   echo "  4. Create a pull request"
@@ -191,11 +192,24 @@ if [ -f "$VALUES_FILE" ]; then
   sed -i '' "s/^\\(  tag: \\)\".*\"/\\1\"v$NEW_VERSION\"/" "$VALUES_FILE"
 fi
 
+# Regenerate Helm chart README (if chart exists)
+README_FILE="${CHART_PATH}/README.md"
+if [ -f "$CHART_FILE" ]; then
+  echo "Regenerating Helm chart README..."
+  if command -v task &> /dev/null; then
+    task helm-docs
+  else
+    echo -e "${YELLOW}Warning: task command not found, skipping helm-docs regeneration${NC}"
+    echo "Install go-task or run 'helm-docs' manually if needed"
+  fi
+fi
+
 # Commit changes
 echo "Committing changes..."
 git add "$VERSION_FILE"
 [ -f "$CHART_FILE" ] && git add "$CHART_FILE"
 [ -f "$VALUES_FILE" ] && git add "$VALUES_FILE"
+[ -f "$README_FILE" ] && git add "$README_FILE"
 git commit -m "Release v${NEW_VERSION}"
 
 # Push branch
