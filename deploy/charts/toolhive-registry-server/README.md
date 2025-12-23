@@ -70,7 +70,7 @@ The command removes all the Kubernetes components associated with the chart and 
 | fullnameOverride | string | `""` | Override the full name of the chart |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | image.repository | string | `"ghcr.io/stacklok/thv-registry-api"` | Image repository |
-| image.tag | string | `"0.4.5"` | Overrides the image tag whose default is the chart appVersion |
+| image.tag | string | `"v0.4.6"` | Overrides the image tag whose default is the chart appVersion |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries |
 | initContainers | list | `[]` | Init containers to run before the main container Use this for setup tasks like preparing pgpass files, waiting for dependencies, etc. Init containers share the same volumes as the main container (extraVolumes) |
 | livenessProbe | object | `{"httpGet":{"path":"/health","port":"http"},"initialDelaySeconds":30,"periodSeconds":10}` | Liveness probe configuration |
