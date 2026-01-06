@@ -1,15 +1,9 @@
-<p float="left">
-  <picture>
-    <img src="docs/images/toolhive-icon-1024.png" alt="ToolHive Studio logo" height="100" align="middle" />
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/toolhive-wordmark-white.png">
-    <img src="docs/images/toolhive-wordmark-black.png" alt="ToolHive wordmark" width="500" align="middle" hspace="20" />
-  </picture>
-  <picture>
-    <img src="docs/images/toolhive.png" alt="ToolHive mascot" width="125" align="middle"/>
-  </picture>
-</p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/toolhive-byline-white.svg">
+  <img src="docs/images/toolhive-byline-black.svg" alt="ToolHive logo" width="500"/>
+</picture>
+
+<br>
 
 [![Release][release-img]][release] [![Build status][ci-img]][ci]
 [![Coverage Status][coveralls-img]][coveralls]
@@ -24,10 +18,10 @@ The ToolHive Registry Server (`thv-registry-api`) implements the official [Model
 
 ---
 
-## Table of Contents
+## Table of contents
 
 - [Features](#features)
-- [Quick Start](#quick-start)
+- [Quickstart](#quickstart)
 - [Core Concepts](#core-concepts)
   - [Data Sources](#data-sources)
   - [Architecture](#architecture)
@@ -40,13 +34,15 @@ The ToolHive Registry Server (`thv-registry-api`) implements the official [Model
 
 ## Features
 
-### Enterprise Governance & Security
+### Enterprise governance & security
+
 - **OAuth 2.0/OIDC authentication**: Integrate with enterprise identity providers (Okta, Auth0, Azure AD)
 - **Multi-provider support**: Combine corporate SSO with Kubernetes service accounts
 - **Secure by default**: OAuth mode enabled by default, with granular access control
 - **Audit trail**: Track MCP discovery and access through centralized metadata
 
-### Flexible Registry Sources
+### Flexible registry sources
+
 - **Curated registries**: Aggregate multiple sources into a unified catalog
 - **Upstream verified**: Sync from public MCP registries implementing the standard API
 - **File-based registries**: Support both ToolHive and upstream `server.json` formats
@@ -54,14 +50,15 @@ The ToolHive Registry Server (`thv-registry-api`) implements the official [Model
 - **Kubernetes discovery**: Automatically discover MCPs deployed in your clusters
 - **Automatic synchronization**: Background sync with configurable intervals and retry logic
 
-### Enterprise Integration
+### Enterprise integration
+
 - **Central metadata hub**: Powers the ToolHive Enterprise UI with MCP metadata
 - **ToolHive Operator integration**: Provides metadata for Kubernetes-native MCP deployment
 - **PostgreSQL backend**: Scalable database storage with automatic migrations
 - **Standards-compliant**: Implements the official MCP Registry API specification
 - **Production-ready**: Built-in health checks, graceful shutdown, and observability
 
-## Quick Start
+## Quickstart
 
 ### Prerequisites
 
@@ -69,7 +66,7 @@ The ToolHive Registry Server (`thv-registry-api`) implements the official [Model
 - [Task](https://taskfile.dev) for build automation
 - PostgreSQL 16+ (optional, for database backend)
 
-### Build and Run
+### Build and run
 
 ```bash
 # Build the binary
@@ -84,7 +81,7 @@ thv-registry-api serve --config examples/config-file.yaml
 
 The server starts on `http://localhost:8080` by default.
 
-### Docker Quick Start
+### Docker quickstart
 
 ```bash
 # Using Task (recommended - ensures fresh state)
@@ -102,7 +99,7 @@ task docker-down
 
 > **Note:** The `task docker-up` command ensures a fresh start by rebuilding the image and clearing all volumes (database + registry data). This prevents stale state issues.
 
-### What Happens on Startup
+### What happens on startup
 
 1. Loads configuration from YAML file
 2. Runs database migrations automatically (if configured)
@@ -110,21 +107,22 @@ task docker-down
 4. Starts background sync coordinator for automatic updates
 5. Serves MCP Registry API endpoints
 
-## Core Concepts
+## Core concepts
 
-### Data Sources
+### Data sources
 
 The Registry Server enables enterprises to curate MCP catalogs from multiple sources, creating a unified view for developers and knowledge workers:
 
-| Type | Description | Enterprise Use Case | Sync |
-|------|-------------|---------------------|------|
-| **API** | Upstream MCP Registry APIs | Official MCP Registry (registry.modelcontextprotocol.io) or any registry implementing the upstream specification | ✅ Auto |
-| **Git** | Clone from Git repositories | Version-controlled internal registries | ✅ Auto |
-| **File** | Read from local filesystem | Simple curated lists in ToolHive or upstream format | ✅ Auto |
-| **Managed** | API-managed registry | Internal custom MCPs (dynamically managed) | ❌ On-demand |
-| **Kubernetes** | Discover from K8s deployments | Organization-deployed MCPs (live discovery) | ❌ On-demand |
+| Type           | Description                   | Enterprise Use Case                                                                                              | Sync         |
+| -------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------ |
+| **API**        | Upstream MCP Registry APIs    | Official MCP Registry (registry.modelcontextprotocol.io) or any registry implementing the upstream specification | ✅ Auto      |
+| **Git**        | Clone from Git repositories   | Version-controlled internal registries                                                                           | ✅ Auto      |
+| **File**       | Read from local filesystem    | Simple curated lists in ToolHive or upstream format                                                              | ✅ Auto      |
+| **Managed**    | API-managed registry          | Internal custom MCPs (dynamically managed)                                                                       | ❌ On-demand |
+| **Kubernetes** | Discover from K8s deployments | Organization-deployed MCPs (live discovery)                                                                      | ❌ On-demand |
 
 **Key capability**: Configure multiple registries simultaneously to create a federated catalog that combines:
+
 - Official MCP Registry (registry.modelcontextprotocol.io) or any registry implementing the upstream specification
 - Internal organization-specific MCPs
 - Kubernetes-deployed MCPs
@@ -141,6 +139,7 @@ registries:
 ```
 
 For Git-based registries:
+
 ```yaml
 registries:
   - name: toolhive
@@ -150,7 +149,7 @@ registries:
       branch: main
       path: pkg/registry/data/registry.json
     syncPolicy:
-      interval: "30m"
+      interval: '30m'
 ```
 
 See [Configuration Guide](docs/configuration.md) for complete details.
@@ -159,7 +158,7 @@ See [Configuration Guide](docs/configuration.md) for complete details.
 
 The server follows clean architecture with clear separation of concerns:
 
-```
+```text
 ┌─────────────────────────────────────────────┐
 │  API Layer (Chi Router)                     │
 │  ├─ Registry API v0.1                       │
@@ -188,6 +187,7 @@ The server follows clean architecture with clear separation of concerns:
 ```
 
 **Key directories:**
+
 - `internal/api/` - HTTP API handlers
 - `internal/service/` - Business logic
 - `internal/sources/` - Data source handlers
@@ -196,11 +196,11 @@ The server follows clean architecture with clear separation of concerns:
 - `internal/db/` - Database access (sqlc generated)
 - `database/` - SQL migrations and queries
 
-## API Endpoints
+## API endpoints
 
 The server provides two types of registry endpoints to support different use cases:
 
-### 1. Aggregated Registry Endpoints (Read-Only)
+### 1. Aggregated registry endpoints (read-only)
 
 **Unified view across all configured registries** - ideal for enterprise-wide discovery:
 
@@ -208,16 +208,18 @@ The server provides two types of registry endpoints to support different use cas
 - `GET /registry/v0.1/servers/{name}/versions` - List all versions of a server
 - `GET /registry/v0.1/servers/{name}/versions/{version}` - Get a specific server version
 
-### 2. Per-Registry Endpoints (Standards-Compliant)
+### 2. Per-registry endpoints (standards-compliant)
 
 **Individual registry access** - fully compatible with upstream MCP Registry API specification:
 
 **Read operations (all registry types):**
+
 - `GET /registry/{registryName}/v0.1/servers` - List servers from a specific registry
 - `GET /registry/{registryName}/v0.1/servers/{name}/versions` - List versions from a specific registry
 - `GET /registry/{registryName}/v0.1/servers/{name}/versions/{version}` - Get specific version from a specific registry
 
 **Write operations (managed registries only):**
+
 - `POST /registry/{registryName}/v0.1/publish` - Publish a server to a managed registry
 - `DELETE /registry/{registryName}/v0.1/servers/{name}/versions/{version}` - Delete a server version from a managed registry
 
@@ -232,14 +234,14 @@ ToolHive-specific extensions for querying registry status:
 
 **Note:** Dynamic registry and server management endpoints (PUT/DELETE operations) are not yet implemented.
 
-### Operational Endpoints
+### Operational endpoints
 
 - `GET /health` - Health check
 - `GET /readiness` - Readiness check
 - `GET /version` - Version information
 - `GET /.well-known/oauth-protected-resource` - OAuth discovery (RFC 9728)
 
-### Use Cases
+### Use cases
 
 - **Aggregated endpoints**: Enterprise UI showing unified catalog of all MCPs
 - **Per-registry endpoints**: Direct access to specific registries (e.g., only upstream verified MCPs)
@@ -251,7 +253,7 @@ See the [MCP Registry API specification](https://github.com/modelcontextprotocol
 
 All configuration is done via YAML files. The server requires a `--config` flag.
 
-### Basic Example
+### Basic example
 
 ```yaml
 registryName: my-registry
@@ -263,7 +265,7 @@ registries:
       path: /data/registry.json
 
 auth:
-  mode: anonymous  # Use "oauth" for production
+  mode: anonymous # Use "oauth" for production
 
 # Optional: Add more registries
 # - name: toolhive
@@ -283,16 +285,17 @@ auth:
 #   database: registry
 ```
 
-### 📖 Complete Guides
+### 📖 Complete guides
 
-- **[Configuration Reference](docs/configuration.md)** - Complete configuration options
-- **[Environment Variables](docs/environment-variables.md)** - Using environment variables for configuration
-- **[Database Setup](docs/database.md)** - PostgreSQL configuration, migrations, and security
+- **[Configuration reference](docs/configuration.md)** - Complete configuration options
+- **[Environment variables](docs/environment-variables.md)** - Using environment variables for configuration
+- **[Database setup](docs/database.md)** - PostgreSQL configuration, migrations, and security
 - **[Authentication](docs/authentication.md)** - OAuth/OIDC setup and security
 
-### Configuration Examples
+### Configuration examples
 
 See [examples/](examples/) directory for complete working examples:
+
 - `config-git.yaml` - Git repository source
 - `config-api.yaml` - API endpoint source
 - `config-file.yaml` - Local file source
@@ -323,7 +326,7 @@ task docker-down
 
 > **Note:** Always use `task docker-up` instead of `docker-compose up` directly. The task command ensures fresh state by rebuilding the image and clearing volumes.
 
-See [Docker Deployment Guide](docs/deployment-docker.md) for details.
+See [Docker deployment guide](docs/deployment-docker.md) for details.
 
 ### Kubernetes
 
@@ -333,9 +336,9 @@ Basic deployment:
 kubectl apply -f examples/kubernetes/
 ```
 
-See [Kubernetes Deployment Guide](docs/deployment-kubernetes.md) for production setup.
+See [Kubernetes deployment guide](docs/deployment-kubernetes.md) for production setup.
 
-### Standalone Binary
+### Standalone binary
 
 ```bash
 # Linux/macOS
@@ -347,14 +350,14 @@ export THV_REGISTRY_AUTH_MODE=anonymous
 ./bin/thv-registry-api serve --config config.yaml
 ```
 
-### 📖 Deployment Guides
+### 📖 Deployment guides
 
 - **[Docker & Docker Compose](docs/deployment-docker.md)** - Container deployment
 - **[Kubernetes](docs/deployment-kubernetes.md)** - K8s deployment, HA, and production best practices
 
 ## Development
 
-### Build Commands
+### Build commands
 
 ```bash
 # Build the binary
@@ -397,9 +400,9 @@ go test ./internal/service/... -v
 
 The project uses table-driven tests with mocks generated via `go.uber.org/mock`.
 
-### Project Structure
+### Project structure
 
-```
+```text
 cmd/thv-registry-api/    # Main application
 ├── app/                 # CLI commands (serve, migrate, prime-db, version)
 └── main.go
@@ -427,48 +430,51 @@ docs/                    # Documentation
 
 ## Documentation
 
-### 📚 Complete Documentation
+### 📚 Complete documentation
 
-- **[Configuration Reference](docs/configuration.md)** - All configuration options
-- **[Environment Variables](docs/environment-variables.md)** - Using environment variables for configuration
-- **[Database Setup](docs/database.md)** - PostgreSQL setup and migrations
+- **[Configuration reference](docs/configuration.md)** - All configuration options
+- **[Environment variables](docs/environment-variables.md)** - Using environment variables for configuration
+- **[Database setup](docs/database.md)** - PostgreSQL setup and migrations
 - **[Authentication](docs/authentication.md)** - OAuth/OIDC security
-- **[Kubernetes Deployment](docs/deployment-kubernetes.md)** - K8s deployment guide
-- **[Docker Deployment](docs/deployment-docker.md)** - Docker & Docker Compose
-- **[API Documentation](docs/thv-registry-api/)** - Auto-generated OpenAPI docs
-- **[CLI Reference](docs/cli/)** - Command-line interface docs
+- **[Kubernetes deployment](docs/deployment-kubernetes.md)** - K8s deployment guide
+- **[Docker deployment](docs/deployment-docker.md)** - Docker & Docker Compose
+- **[API documentation](docs/thv-registry-api/)** - Auto-generated OpenAPI docs
+- **[CLI reference](docs/cli/)** - Command-line interface docs
 - **[Examples](examples/)** - Working configuration examples
 - **[CLAUDE.md](CLAUDE.md)** - AI assistant guidance for contributors
 
 ### Common Tasks
 
-| I want to... | See... |
-|--------------|--------|
-| Get started quickly | [Quick Start](#quick-start) |
-| Configure the server | [Configuration Reference](docs/configuration.md) |
-| Set up PostgreSQL | [Database Setup](docs/database.md) |
-| Enable authentication | [Authentication Guide](docs/authentication.md) |
-| Deploy to Kubernetes | [Kubernetes Guide](docs/deployment-kubernetes.md) |
-| Use Docker Compose | [Docker Guide](docs/deployment-docker.md) |
-| Contribute code | [Contributing](#contributing) |
+| I want to...          | See...                                            |
+| --------------------- | ------------------------------------------------- |
+| Get started quickly   | [Quickstart](#quickstart)                         |
+| Configure the server  | [Configuration reference](docs/configuration.md)  |
+| Set up PostgreSQL     | [Database setup](docs/database.md)                |
+| Enable authentication | [Authentication guide](docs/authentication.md)    |
+| Deploy to Kubernetes  | [Kubernetes guide](docs/deployment-kubernetes.md) |
+| Use Docker Compose    | [Docker guide](docs/deployment-docker.md)         |
+| Contribute code       | [Contributing](#contributing)                     |
 
 ## Integration with ToolHive
 
 The Registry API server is the central metadata engine of the ToolHive platform:
 
-### Enterprise UI Integration
+### Enterprise UI integration
+
 - **Metadata source**: Provides MCP details (name, description, URL, version, branding)
 - **Server status**: Reports sync status and availability for each registry
 - **Discovery experience**: Powers the catalog browsing and search in the Enterprise UI
 - **Authentication**: Enforces OAuth/OIDC access control from your identity provider
 
-### ToolHive Operator Integration
+### ToolHive Operator integration
+
 - **Deployment metadata**: Operator references registry data when deploying MCPs to Kubernetes
 - **Automated discovery**: Kubernetes-deployed MCPs automatically appear in the registry
 - **Custom Resource binding**: MCPRegistry CRDs are backed by Registry Server data
 - **Lifecycle management**: Tracks deployed MCP versions and configurations
 
-### Security & Governance
+### Security & governance
+
 - **Centralized control**: Single source of truth for approved MCPs
 - **Identity integration**: Seamless integration with Okta, Auth0, Azure AD, and other providers
 - **Kubernetes-native**: All MCP execution stays within your Kubernetes boundary
@@ -480,12 +486,12 @@ See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for the co
 
 We welcome contributions! Please see:
 
-- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
-- **[Code of Conduct](CODE_OF_CONDUCT.md)** - Community guidelines
-- **[Security Policy](SECURITY.md)** - Report security vulnerabilities
+- **[Contributing guide](CONTRIBUTING.md)** - How to contribute
+- **[Code of conduct](CODE_OF_CONDUCT.md)** - Community guidelines
+- **[Security policy](SECURITY.md)** - Report security vulnerabilities
 - **[CLAUDE.md](CLAUDE.md)** - AI assistant guidance for development
 
-### Development Guidelines
+### Development guidelines
 
 - Run `task lint-fix` before committing
 - Ensure tests pass with `task test`
@@ -494,7 +500,7 @@ We welcome contributions! Please see:
 - Write table-driven tests
 - Keep documentation up to date
 
-### Quick Start for Contributors
+### Quick start for contributors
 
 ```bash
 # Clone the repository
@@ -540,4 +546,4 @@ This project is licensed under the [Apache 2.0 License](LICENSE).
 [discord]: https://discord.gg/stacklok
 <!-- prettier-ignore-end -->
 
-<!-- markdownlint-disable-file first-line-heading no-inline-html -->
+<!-- markdownlint-disable-file first-line-heading no-emphasis-as-heading no-inline-html -->
