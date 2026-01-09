@@ -193,6 +193,15 @@ jobs:
           echo "Triggering docs website rebuild to refresh the API spec..."
           curl -f -X POST "${{ secrets.DOCS_VERCEL_DEPLOY_HOOK }}" || exit 1
 
+  publish-helm:
+    name: Publish Helm Chart
+    needs: [image-build-and-push]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/helm-publish.yml
+
 #  provenance:
 #    name: Generate provenance (SLSA3)
 #    needs:
