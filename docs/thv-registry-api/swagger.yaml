@@ -92,6 +92,12 @@ components:
       type: object
     github_com_stacklok_toolhive-registry-server_internal_config.SourceType:
       description: git, api, file, managed, kubernetes
+      enum:
+      - git
+      - api
+      - file
+      - managed
+      - kubernetes
       type: string
       x-enum-varnames:
       - SourceTypeGit
@@ -120,6 +126,9 @@ components:
       type: object
     github_com_stacklok_toolhive-registry-server_internal_service.CreationType:
       description: API or CONFIG
+      enum:
+      - API
+      - CONFIG
       type: string
       x-enum-varnames:
       - CreationTypeAPI
@@ -233,47 +242,32 @@ components:
       type: object
     model.Argument:
       properties:
-        choices:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        default:
-          type: string
-        description:
-          type: string
-        format:
-          $ref: '#/components/schemas/model.Format'
         isRepeated:
-          type: boolean
-        isRequired:
-          type: boolean
-        isSecret:
           type: boolean
         name:
           example: --port
           type: string
-        placeholder:
-          type: string
         type:
           $ref: '#/components/schemas/model.ArgumentType'
-        value:
-          type: string
         valueHint:
           example: file_path
           type: string
-        variables:
-          additionalProperties:
-            $ref: '#/components/schemas/model.Input'
-          type: object
       type: object
     model.ArgumentType:
+      enum:
+      - positional
+      - named
       example: positional
       type: string
       x-enum-varnames:
       - ArgumentTypePositional
       - ArgumentTypeNamed
     model.Format:
+      enum:
+      - string
+      - number
+      - boolean
+      - filepath
       type: string
       x-enum-varnames:
       - FormatString
@@ -322,32 +316,9 @@ components:
       type: object
     model.KeyValueInput:
       properties:
-        choices:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        default:
-          type: string
-        description:
-          type: string
-        format:
-          $ref: '#/components/schemas/model.Format'
-        isRequired:
-          type: boolean
-        isSecret:
-          type: boolean
         name:
           example: SOME_VARIABLE
           type: string
-        placeholder:
-          type: string
-        value:
-          type: string
-        variables:
-          additionalProperties:
-            $ref: '#/components/schemas/model.Input'
-          type: object
       type: object
     model.Package:
       properties:
@@ -427,6 +398,10 @@ components:
           type: string
       type: object
     model.Status:
+      enum:
+      - active
+      - deprecated
+      - deleted
       type: string
       x-enum-varnames:
       - StatusActive
@@ -591,7 +566,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/v0.ServerJSON'
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/v0.ServerJSON'
+                description: Server data
+                summary: server
         description: Server data
         required: true
       responses:
@@ -917,7 +896,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest'
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest'
+                description: Registry configuration
+                summary: body
         description: Registry configuration
         required: true
       responses:
