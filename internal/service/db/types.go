@@ -110,7 +110,7 @@ func getServerVersionRowToHelper(
 
 func helperToServer(
 	dbServer helper,
-	packages []sqlc.McpServerPackage,
+	packages []sqlc.ListServerPackagesRow,
 	remotes []sqlc.McpServerRemote,
 ) upstreamv0.ServerJSON {
 	server := upstreamv0.ServerJSON{
@@ -159,7 +159,7 @@ func helperToServer(
 }
 
 func toPackages(
-	packages []sqlc.McpServerPackage,
+	packages []sqlc.ListServerPackagesRow,
 ) []model.Package {
 	result := make([]model.Package, len(packages))
 	for i, dbPackage := range packages {
@@ -198,13 +198,17 @@ func toRemotes(
 }
 
 func toKeyValueInputs(
-	strings []string,
+	jsonData []byte,
 ) []model.KeyValueInput {
-	result := make([]model.KeyValueInput, len(strings))
-	for i, str := range strings {
-		result[i] = model.KeyValueInput{
-			Name: str,
-		}
+	if len(jsonData) == 0 {
+		return []model.KeyValueInput{}
+	}
+
+	var result []model.KeyValueInput
+	if err := json.Unmarshal(jsonData, &result); err != nil {
+		// If we can't parse as KeyValueInput array, return empty slice
+		// This handles the case where data might be malformed
+		return []model.KeyValueInput{}
 	}
 	return result
 }
@@ -231,12 +235,18 @@ func extractArgumentValues(arguments []model.Argument) []string {
 	return result
 }
 
-func extractKeyValueNames(kvInputs []model.KeyValueInput) []string {
-	result := make([]string, len(kvInputs))
-	for i, kv := range kvInputs {
-		result[i] = kv.Name
+// serializeKeyValueInputs serializes KeyValueInput slice to JSON bytes for database storage
+func serializeKeyValueInputs(kvInputs []model.KeyValueInput) ([]byte, error) {
+	if len(kvInputs) == 0 {
+		return []byte("[]"), nil
 	}
-	return result
+
+	bytes, err := json.Marshal(kvInputs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize key-value inputs: %w", err)
+	}
+
+	return bytes, nil
 }
 
 // serializePublisherProvidedMeta serializes the PublisherProvided map to JSON bytes for storage

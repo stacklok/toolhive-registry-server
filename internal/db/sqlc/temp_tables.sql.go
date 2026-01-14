@@ -27,7 +27,7 @@ func (q *Queries) CreateTempIconTable(ctx context.Context) error {
 const createTempPackageTable = `-- name: CreateTempPackageTable :exec
 
 CREATE TEMP TABLE temp_mcp_server_package ON COMMIT DROP AS
-SELECT server_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version, runtime_hint, runtime_arguments, package_arguments, env_vars, sha256_hash, transport, transport_url, transport_headers FROM mcp_server_package
+SELECT server_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version, runtime_hint, runtime_arguments, package_arguments, sha256_hash, transport, transport_url, env_vars, transport_headers FROM mcp_server_package
   WITH NO DATA
 `
 

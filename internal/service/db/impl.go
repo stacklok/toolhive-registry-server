@@ -337,7 +337,17 @@ func insertServerPackages(
 	packages []model.Package,
 ) error {
 	for _, pkg := range packages {
-		err := querier.InsertServerPackage(ctx, sqlc.InsertServerPackageParams{
+		envVarsJSON, err := serializeKeyValueInputs(pkg.EnvironmentVariables)
+		if err != nil {
+			return fmt.Errorf("failed to serialize env vars: %w", err)
+		}
+
+		transportHeadersJSON, err := serializeKeyValueInputs(pkg.Transport.Headers)
+		if err != nil {
+			return fmt.Errorf("failed to serialize transport headers: %w", err)
+		}
+
+		err = querier.InsertServerPackage(ctx, sqlc.InsertServerPackageParams{
 			ServerID:         serverID,
 			RegistryType:     pkg.RegistryType,
 			PkgRegistryUrl:   pkg.RegistryBaseURL,
@@ -346,11 +356,11 @@ func insertServerPackages(
 			RuntimeHint:      &pkg.RunTimeHint,
 			RuntimeArguments: extractArgumentValues(pkg.RuntimeArguments),
 			PackageArguments: extractArgumentValues(pkg.PackageArguments),
-			EnvVars:          extractKeyValueNames(pkg.EnvironmentVariables),
+			EnvVars:          envVarsJSON,
 			Sha256Hash:       &pkg.FileSHA256,
 			Transport:        pkg.Transport.Type,
 			TransportUrl:     &pkg.Transport.URL,
-			TransportHeaders: extractKeyValueNames(pkg.Transport.Headers),
+			TransportHeaders: transportHeadersJSON,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to insert server package: %w", err)
@@ -368,11 +378,16 @@ func insertServerRemotes(
 	remotes []model.Transport,
 ) error {
 	for _, remote := range remotes {
-		err := querier.InsertServerRemote(ctx, sqlc.InsertServerRemoteParams{
+		headersJSON, err := serializeKeyValueInputs(remote.Headers)
+		if err != nil {
+			return fmt.Errorf("failed to serialize transport headers: %w", err)
+		}
+
+		err = querier.InsertServerRemote(ctx, sqlc.InsertServerRemoteParams{
 			ServerID:         serverID,
 			Transport:        remote.Type,
 			TransportUrl:     remote.URL,
-			TransportHeaders: extractKeyValueNames(remote.Headers),
+			TransportHeaders: headersJSON,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to insert server remote: %w", err)
@@ -724,7 +739,7 @@ func (s *dbService) sharedListServers(
 	if err != nil {
 		return nil, err
 	}
-	packagesMap := make(map[uuid.UUID][]sqlc.McpServerPackage)
+	packagesMap := make(map[uuid.UUID][]sqlc.ListServerPackagesRow)
 	for _, pkg := range packages {
 		packagesMap[pkg.ServerID] = append(packagesMap[pkg.ServerID], pkg)
 	}

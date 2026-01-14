@@ -225,18 +225,18 @@ type McpServerPackage struct {
 	RuntimeHint      *string   `json:"runtime_hint"`
 	RuntimeArguments []string  `json:"runtime_arguments"`
 	PackageArguments []string  `json:"package_arguments"`
-	EnvVars          []string  `json:"env_vars"`
 	Sha256Hash       *string   `json:"sha256_hash"`
 	Transport        string    `json:"transport"`
 	TransportUrl     *string   `json:"transport_url"`
-	TransportHeaders []string  `json:"transport_headers"`
+	EnvVars          []byte    `json:"env_vars"`
+	TransportHeaders []byte    `json:"transport_headers"`
 }
 
 type McpServerRemote struct {
 	ServerID         uuid.UUID `json:"server_id"`
 	Transport        string    `json:"transport"`
 	TransportUrl     string    `json:"transport_url"`
-	TransportHeaders []string  `json:"transport_headers"`
+	TransportHeaders []byte    `json:"transport_headers"`
 }
 
 type Registry struct {

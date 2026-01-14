@@ -1024,11 +1024,11 @@ func TestInsertServerPackage(t *testing.T) {
 						RuntimeHint:      ptr.String("npx"),
 						RuntimeArguments: []string{"--yes"},
 						PackageArguments: []string{"--arg", "value"},
-						EnvVars:          []string{"NODE_ENV", "API_KEY"},
+						EnvVars:          []byte(`[{"name":"NODE_ENV"},{"name":"API_KEY"}]`),
 						Sha256Hash:       ptr.String("abc123"),
 						Transport:        "stdio",
 						TransportUrl:     ptr.String("https://example.com"),
-						TransportHeaders: []string{"Authorization: Bearer token"},
+						TransportHeaders: []byte(`[{"name":"Authorization: Bearer token"}]`),
 					},
 				)
 				require.NoError(t, err)
@@ -1144,7 +1144,7 @@ func TestInsertServerRemote(t *testing.T) {
 						ServerID:         serverID,
 						Transport:        "sse",
 						TransportUrl:     "https://example.com/sse",
-						TransportHeaders: []string{"Authorization: Bearer token", "X-Custom: value"},
+						TransportHeaders: []byte(`[{"name":"Authorization: Bearer token"},{"name":"X-Custom: value"}]`),
 					},
 				)
 				require.NoError(t, err)
@@ -1175,7 +1175,7 @@ func TestInsertServerRemote(t *testing.T) {
 						ServerID:         serverID,
 						Transport:        "sse",
 						TransportUrl:     "https://example.com/sse",
-						TransportHeaders: []string{"Old-Header: old"},
+						TransportHeaders: []byte(`[{"name":"Old-Header: old"}]`),
 					},
 				)
 				require.NoError(t, err)
@@ -1191,7 +1191,7 @@ func TestInsertServerRemote(t *testing.T) {
 						ServerID:         serverID,
 						Transport:        "sse",
 						TransportUrl:     "https://example.com/sse",
-						TransportHeaders: []string{"New-Header: new"},
+						TransportHeaders: []byte(`[{"name":"New-Header: new"}]`),
 					},
 				)
 				require.Error(t, err)

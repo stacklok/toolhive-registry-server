@@ -370,11 +370,11 @@ func bulkInsertPackages(
 				nilIfEmpty(pkg.RunTimeHint),
 				extractArgumentValues(pkg.RuntimeArguments),
 				extractArgumentValues(pkg.PackageArguments),
-				extractKeyValueNames(pkg.EnvironmentVariables),
+				serializeKeyValueInputs(pkg.EnvironmentVariables),
 				nilIfEmpty(pkg.FileSHA256),
 				pkg.Transport.Type,
 				nilIfEmpty(pkg.Transport.URL),
-				extractKeyValueNames(pkg.Transport.Headers),
+				serializeKeyValueInputs(pkg.Transport.Headers),
 			})
 		}
 	}
@@ -463,7 +463,7 @@ func bulkInsertRemotes(
 				serverID,
 				remote.Type,
 				remote.URL,
-				extractKeyValueNames(remote.Headers),
+				serializeKeyValueInputs(remote.Headers),
 			})
 		}
 	}
@@ -644,13 +644,20 @@ func extractArgumentValues(arguments []model.Argument) []string {
 	return result
 }
 
-// extractKeyValueNames extracts key names from a slice of model.KeyValueInput
-func extractKeyValueNames(kvInputs []model.KeyValueInput) []string {
-	result := make([]string, len(kvInputs))
-	for i, kv := range kvInputs {
-		result[i] = kv.Name
+// serializeKeyValueInputs serializes KeyValueInput slice to JSON bytes for database storage
+// This preserves all metadata (default, description, isSecret, etc.) not just the name
+func serializeKeyValueInputs(kvInputs []model.KeyValueInput) []byte {
+	if len(kvInputs) == 0 {
+		return []byte("[]")
 	}
-	return result
+
+	bytes, err := json.Marshal(kvInputs)
+	if err != nil {
+		// Return empty array on error - this shouldn't happen with valid KeyValueInput
+		return []byte("[]")
+	}
+
+	return bytes
 }
 
 // nilIfEmpty returns nil if the string is empty, otherwise returns a pointer to the string
