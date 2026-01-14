@@ -740,11 +740,11 @@ func TestGetServerVersion(t *testing.T) {
 						RuntimeHint:      ptr.String("npx"),
 						RuntimeArguments: []string{"--yes"},
 						PackageArguments: []string{"--arg", "value"},
-						EnvVars:          []string{"NODE_ENV"},
+						EnvVars:          []byte(`[{"name":"NODE_ENV"}]`),
 						Sha256Hash:       ptr.String("abc123def456"),
 						Transport:        "stdio",
 						TransportUrl:     ptr.String("https://example.com/transport"),
-						TransportHeaders: []string{"X-Custom: header"},
+						TransportHeaders: []byte(`[{"name":"X-Custom: header"}]`),
 					},
 				)
 				require.NoError(t, err)
@@ -756,7 +756,7 @@ func TestGetServerVersion(t *testing.T) {
 						ServerID:         serverID,
 						Transport:        "sse",
 						TransportUrl:     "https://example.com/sse",
-						TransportHeaders: []string{"Authorization: Bearer token"},
+						TransportHeaders: []byte(`[{"name":"Authorization: Bearer token"}]`),
 					},
 				)
 				require.NoError(t, err)

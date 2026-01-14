@@ -1014,40 +1014,60 @@ func TestExtractArgumentValues(t *testing.T) {
 	}
 }
 
-// TestExtractKeyValueNames tests the extractKeyValueNames helper function
-func TestExtractKeyValueNames(t *testing.T) {
+// TestSerializeKeyValueInputs tests the serializeKeyValueInputs helper function
+func TestSerializeKeyValueInputs(t *testing.T) {
 	t.Parallel()
+
+	// Create test inputs with full metadata using proper nested struct syntax
+	inputWithMetadata := model.KeyValueInput{
+		InputWithVariables: model.InputWithVariables{
+			Input: model.Input{
+				Default:     "default_value",
+				Description: "API key for authentication",
+				IsSecret:    true,
+				IsRequired:  true,
+			},
+		},
+		Name: "API_KEY",
+	}
+
+	inputWithSecret := model.KeyValueInput{Name: "API_KEY"}
+	inputWithSecret.IsSecret = true
+
+	inputWithDefault := model.KeyValueInput{Name: "DEBUG"}
+	inputWithDefault.Default = "false"
 
 	tests := []struct {
 		name     string
 		kvInputs []model.KeyValueInput
-		expected []string
+		expected string
 	}{
 		{
 			name:     "empty inputs",
 			kvInputs: []model.KeyValueInput{},
-			expected: []string{},
+			expected: "[]",
 		},
 		{
-			name: "single input",
+			name: "single input with name only",
 			kvInputs: []model.KeyValueInput{
 				{Name: "NODE_ENV"},
 			},
-			expected: []string{"NODE_ENV"},
+			expected: `[{"name":"NODE_ENV"}]`,
 		},
 		{
-			name: "multiple inputs",
-			kvInputs: []model.KeyValueInput{
-				{Name: "NODE_ENV"},
-				{Name: "API_KEY"},
-				{Name: "DEBUG"},
-			},
-			expected: []string{"NODE_ENV", "API_KEY", "DEBUG"},
+			name:     "input with full metadata",
+			kvInputs: []model.KeyValueInput{inputWithMetadata},
+			expected: `[{"name":"API_KEY","default":"default_value","description":"API key for authentication","isSecret":true,"isRequired":true}]`,
+		},
+		{
+			name:     "multiple inputs",
+			kvInputs: []model.KeyValueInput{{Name: "NODE_ENV"}, inputWithSecret, inputWithDefault},
+			expected: `[{"name":"NODE_ENV"},{"name":"API_KEY","isSecret":true},{"name":"DEBUG","default":"false"}]`,
 		},
 		{
 			name:     "nil inputs",
 			kvInputs: nil,
-			expected: []string{},
+			expected: "[]",
 		},
 	}
 
@@ -1055,8 +1075,8 @@ func TestExtractKeyValueNames(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result := extractKeyValueNames(tt.kvInputs)
-			assert.Equal(t, tt.expected, result)
+			result := serializeKeyValueInputs(tt.kvInputs)
+			assert.JSONEq(t, tt.expected, string(result))
 		})
 	}
 }
