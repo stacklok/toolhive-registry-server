@@ -57,6 +57,24 @@ func TestExtractTags(t *testing.T) {
 			server:       serverFromToolhive,
 			expectedTags: []string{"tag1", "tag2"},
 		},
+		{
+			name: "test with string values in PublisherProvided (issue #299)",
+			server: &upstream.ServerJSON{
+				Meta: &upstream.ServerMeta{
+					PublisherProvided: map[string]interface{}{
+						// String value that would cause panic without fix
+						"someKey": "someStringValue",
+						// Map value with tags (expected structure)
+						"provider": map[string]interface{}{
+							"metadata": map[string]interface{}{
+								"tags": []interface{}{"tag1", "tag2"},
+							},
+						},
+					},
+				},
+			},
+			expectedTags: []string{"tag1", "tag2"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
