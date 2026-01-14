@@ -3,6 +3,8 @@ package filtering
 import (
 	"fmt"
 	"path/filepath"
+
+	"github.com/gobwas/glob"
 )
 
 // NameFilter handles name-based filtering using glob patterns
@@ -12,7 +14,7 @@ type NameFilter interface {
 	ShouldInclude(name string, include, exclude []string) (bool, string)
 }
 
-// defaultNameFilter implements name filtering using Go's filepath.Match for glob patterns
+// defaultNameFilter implements name filtering using glob patterns
 type defaultNameFilter struct{}
 
 var _ NameFilter = (*defaultNameFilter)(nil)
@@ -20,6 +22,25 @@ var _ NameFilter = (*defaultNameFilter)(nil)
 // NewDefaultNameFilter creates a new defaultNameFilter
 func NewDefaultNameFilter() NameFilter {
 	return &defaultNameFilter{}
+}
+
+// matchPattern matches a glob pattern against a name, supporting matching across slashes.
+// Uses gobwas/glob which supports * matching across path separators, unlike filepath.Match.
+func matchPattern(pattern, name string) (bool, error) {
+	// First try filepath.Match for validation (it will catch invalid patterns)
+	_, err := filepath.Match(pattern, "test")
+	if err != nil {
+		return false, err
+	}
+
+	// Use gobwas/glob which supports matching across slashes
+	// Passing no separators allows * to match across any characters including /
+	compiled, err := glob.Compile(pattern)
+	if err != nil {
+		return false, fmt.Errorf("invalid glob pattern: %v", err)
+	}
+
+	return compiled.Match(name), nil
 }
 
 // ShouldInclude determines if a server name should be included based on include/exclude patterns
@@ -34,7 +55,7 @@ func (*defaultNameFilter) ShouldInclude(name string, include, exclude []string) 
 	// Check exclude patterns first (exclude takes precedence)
 	if len(exclude) > 0 {
 		for _, pattern := range exclude {
-			matches, err := filepath.Match(pattern, name)
+			matches, err := matchPattern(pattern, name)
 			if err != nil {
 				return false, fmt.Sprintf("invalid exclude pattern '%s': %v", pattern, err)
 			}
@@ -47,7 +68,7 @@ func (*defaultNameFilter) ShouldInclude(name string, include, exclude []string) 
 	// If include patterns are specified, name must match at least one
 	if len(include) > 0 {
 		for _, pattern := range include {
-			matches, err := filepath.Match(pattern, name)
+			matches, err := matchPattern(pattern, name)
 			if err != nil {
 				return false, fmt.Sprintf("invalid include pattern '%s': %v", pattern, err)
 			}
