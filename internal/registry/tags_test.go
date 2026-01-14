@@ -57,6 +57,57 @@ func TestExtractTags(t *testing.T) {
 			server:       serverFromToolhive,
 			expectedTags: []string{"tag1", "tag2"},
 		},
+		{
+			name:         "server.Meta is nil",
+			server:       &upstream.ServerJSON{Meta: nil},
+			expectedTags: []string{},
+		},
+		{
+			name: "server.Meta.PublisherProvided is nil",
+			server: &upstream.ServerJSON{
+				Meta: &upstream.ServerMeta{
+					PublisherProvided: nil,
+				},
+			},
+			expectedTags: []string{},
+		},
+		{
+			name: "direct tags in PublisherProvided (upstream MCP registry format)",
+			server: &upstream.ServerJSON{
+				Meta: &upstream.ServerMeta{
+					PublisherProvided: map[string]interface{}{
+						"tags": []interface{}{"upstream-tag1", "upstream-tag2", "upstream-tag3"},
+					},
+				},
+			},
+			expectedTags: []string{"upstream-tag1", "upstream-tag2", "upstream-tag3"},
+		},
+		{
+			name: "mixed types in PublisherProvided with string values",
+			server: &upstream.ServerJSON{
+				Meta: &upstream.ServerMeta{
+					PublisherProvided: map[string]interface{}{
+						"status":      "active",
+						"description": "some description",
+						"version":     "1.0.0",
+					},
+				},
+			},
+			expectedTags: []string{},
+		},
+		{
+			name: "empty tags array",
+			server: &upstream.ServerJSON{
+				Meta: &upstream.ServerMeta{
+					PublisherProvided: map[string]interface{}{
+						"provider": map[string]interface{}{
+							"image": map[string]interface{}{"tags": []interface{}{}},
+						},
+					},
+				},
+			},
+			expectedTags: []string{},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
