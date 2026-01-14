@@ -126,6 +126,15 @@ func TestDefaultNameFilter_ShouldInclude(t *testing.T) {
 			expected:   false,
 			reason:     "no include match should exclude even if exclude doesn't match",
 		},
+		// Issue #300: exclude pattern with slash-separated names
+		{
+			name:       "exclude pattern should match names with slashes (issue #300)",
+			serverName: "io.github.stacklok/context7-remote",
+			include:    []string{"io.github.stacklok/context7*"},
+			exclude:    []string{"*-remote"},
+			expected:   false,
+			reason:     "exclude pattern '*-remote' should exclude 'io.github.stacklok/context7-remote' even though it matches include pattern",
+		},
 		// Complex glob patterns
 		{
 			name:       "question mark wildcard",
