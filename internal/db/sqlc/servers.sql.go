@@ -267,11 +267,11 @@ type InsertServerPackageParams struct {
 	RuntimeHint      *string   `json:"runtime_hint"`
 	RuntimeArguments []string  `json:"runtime_arguments"`
 	PackageArguments []string  `json:"package_arguments"`
-	EnvVars          []string  `json:"env_vars"`
+	EnvVars          []byte    `json:"env_vars"`
 	Sha256Hash       *string   `json:"sha256_hash"`
 	Transport        string    `json:"transport"`
 	TransportUrl     *string   `json:"transport_url"`
-	TransportHeaders []string  `json:"transport_headers"`
+	TransportHeaders []byte    `json:"transport_headers"`
 }
 
 func (q *Queries) InsertServerPackage(ctx context.Context, arg InsertServerPackageParams) error {
@@ -311,7 +311,7 @@ type InsertServerRemoteParams struct {
 	ServerID         uuid.UUID `json:"server_id"`
 	Transport        string    `json:"transport"`
 	TransportUrl     string    `json:"transport_url"`
-	TransportHeaders []string  `json:"transport_headers"`
+	TransportHeaders []byte    `json:"transport_headers"`
 }
 
 func (q *Queries) InsertServerRemote(ctx context.Context, arg InsertServerRemoteParams) error {
@@ -492,15 +492,31 @@ SELECT p.server_id,
  ORDER BY p.pkg_version DESC
 `
 
-func (q *Queries) ListServerPackages(ctx context.Context, serverIds []uuid.UUID) ([]McpServerPackage, error) {
+type ListServerPackagesRow struct {
+	ServerID         uuid.UUID `json:"server_id"`
+	RegistryType     string    `json:"registry_type"`
+	PkgRegistryUrl   string    `json:"pkg_registry_url"`
+	PkgIdentifier    string    `json:"pkg_identifier"`
+	PkgVersion       string    `json:"pkg_version"`
+	RuntimeHint      *string   `json:"runtime_hint"`
+	RuntimeArguments []string  `json:"runtime_arguments"`
+	PackageArguments []string  `json:"package_arguments"`
+	EnvVars          []byte    `json:"env_vars"`
+	Sha256Hash       *string   `json:"sha256_hash"`
+	Transport        string    `json:"transport"`
+	TransportUrl     *string   `json:"transport_url"`
+	TransportHeaders []byte    `json:"transport_headers"`
+}
+
+func (q *Queries) ListServerPackages(ctx context.Context, serverIds []uuid.UUID) ([]ListServerPackagesRow, error) {
 	rows, err := q.db.Query(ctx, listServerPackages, serverIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []McpServerPackage{}
+	items := []ListServerPackagesRow{}
 	for rows.Next() {
-		var i McpServerPackage
+		var i ListServerPackagesRow
 		if err := rows.Scan(
 			&i.ServerID,
 			&i.RegistryType,
