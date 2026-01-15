@@ -55,7 +55,7 @@ jobs:
             - file: deploy/charts/toolhive-registry-server/values.yaml
               path: image.tag
               prefix: v
-          helm_docs_args: --chart-search-root=deploy/charts --template-files=README.md.gotmpl --template-files=./_templates.gotmpl
+          helm_docs_args: --chart-search-root=deploy/charts
 
       - name: Summary
         run: |
