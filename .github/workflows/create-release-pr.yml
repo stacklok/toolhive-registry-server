@@ -42,10 +42,10 @@ jobs:
 
       - name: Create Release PR
         id: release
-        uses: stacklok/releaseo@v1.0.10
+        uses: stacklok/releaseo@v1.0.11
         with:
           bump_type: ${{ inputs.bump_type }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_TOKEN }}
           version_files: |
             - file: VERSION
             - file: deploy/charts/toolhive-registry-server/Chart.yaml
@@ -55,7 +55,7 @@ jobs:
             - file: deploy/charts/toolhive-registry-server/values.yaml
               path: image.tag
               prefix: v
-          helm_docs_args: --chart-search-root=deploy/charts --template-files=README.md.gotmpl --template-files=./_templates.gotmpl
+          helm_docs_args: --chart-search-root=deploy/charts
 
       - name: Summary
         run: |
