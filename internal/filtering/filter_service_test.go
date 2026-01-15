@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	"github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -367,4 +368,55 @@ func TestDefaultFilterService_ApplyFilters_PreservesMetadata(t *testing.T) {
 	assert.Equal(t, originalRegistry.Meta.LastUpdated, result.Meta.LastUpdated)
 	// Verify server is included (wildcard match)
 	assert.Len(t, result.Data.Servers, 1)
+}
+
+// TestDefaultFilterService_ApplyFilters_UpstreamFormatWithStringMetadata reproduces issue #299
+// where upstream format servers with string values in PublisherProvided cause a panic
+// when filters are applied.
+func TestDefaultFilterService_ApplyFilters_UpstreamFormatWithStringMetadata(t *testing.T) {
+	t.Parallel()
+
+	service := NewDefaultFilterService()
+	ctx := context.Background()
+
+	// Create an upstream format server with PublisherProvided containing a string value
+	// This simulates the structure from upstream MCP registry API where some metadata
+	// values might be strings instead of nested maps
+	upstreamServer := upstreamv0.ServerJSON{
+		Schema:      "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+		Name:        "ai.smithery/test-server",
+		Description: "Test server from upstream",
+		Version:     "1.0.0",
+		Packages:    []model.Package{},
+		Meta: &upstreamv0.ServerMeta{
+			PublisherProvided: map[string]interface{}{
+				// This is a string value, not a map - this causes the panic in ExtractTags
+				"someKey": "someStringValue",
+				// This is a map (expected structure)
+				"provider": map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"tags": []interface{}{"tag1", "tag2"},
+					},
+				},
+			},
+		},
+	}
+
+	originalRegistry := registry.NewTestUpstreamRegistry(
+		registry.WithServers(upstreamServer),
+	)
+
+	// Apply a name filter (even without tag filter, ExtractTags is called)
+	filter := &config.FilterConfig{
+		Names: &config.NameFilterConfig{
+			Exclude: []string{"ai.smithery/*"},
+		},
+	}
+
+	// This should not panic - ExtractTags should handle string values gracefully
+	result, err := service.ApplyFilters(ctx, originalRegistry, filter)
+
+	require.NoError(t, err)
+	// Server should be excluded by name filter
+	assert.Len(t, result.Data.Servers, 0, "Server should be excluded by name filter")
 }
