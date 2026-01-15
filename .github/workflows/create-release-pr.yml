@@ -1,0 +1,66 @@
+# Create Release PR workflow using releaseo
+#
+# This workflow automates release PR creation by:
+# 1. Bumping the version (major/minor/patch)
+# 2. Updating VERSION, Chart.yaml, and values.yaml
+# 3. Creating a PR via GitHub API
+#
+# Usage: Trigger manually from Actions tab or via `gh workflow run create-release-pr.yml`
+
+name: Create Release PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Create Release PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Setup helm-docs
+        run: go install github.com/norwoodj/helm-docs/cmd/helm-docs@latest
+
+      - name: Create Release PR
+        id: release
+        uses: stacklok/releaseo@v1.0.8
+        with:
+          bump_type: ${{ inputs.bump_type }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          version_files: |
+            - file: VERSION
+            - file: deploy/charts/toolhive-registry-server/Chart.yaml
+              path: version
+            - file: deploy/charts/toolhive-registry-server/Chart.yaml
+              path: appVersion
+            - file: deploy/charts/toolhive-registry-server/values.yaml
+              path: image.tag
+              prefix: v
+          helm_docs_args: --chart-search-root=deploy/charts --template-files=README.md.gotmpl --template-files=./_templates.gotmpl
+
+      - name: Summary
+        run: |
+          echo "## Release PR Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ steps.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR**: #${{ steps.release.outputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL**: ${{ steps.release.outputs.pr_url }}" >> $GITHUB_STEP_SUMMARY
