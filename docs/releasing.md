@@ -4,60 +4,63 @@ This document describes the release process for the ToolHive Registry Server.
 
 ## Overview
 
-The release process is semi-automated:
+The release process is fully automated using the [releaseo](https://github.com/stacklok/releaseo) GitHub Action:
 
-1. A maintainer runs `task release` locally to create a release PR
-2. The PR is reviewed and merged
-3. GitHub Actions automatically creates the tag and GitHub Release
-4. GitHub Actions builds and publishes binaries, container images, and Helm charts
+1. A maintainer triggers the `Create Release PR` workflow from GitHub Actions
+2. The workflow creates a release PR with version bumps
+3. The PR is reviewed and merged
+4. GitHub Actions automatically creates the tag and GitHub Release
+5. GitHub Actions builds and publishes binaries, container images, and Helm charts
 
 ## Prerequisites
 
-### Required Tools
-
-- [Task](https://taskfile.dev/) - Task runner
-- [yq](https://github.com/mikefarah/yq) - YAML processor
-- [gh](https://cli.github.com/) - GitHub CLI (authenticated)
-
 ### Required Secrets
 
-The following repository secret must be configured:
+The following repository secrets must be configured:
 
 | Secret | Description |
 |--------|-------------|
-| `RELEASE_TOKEN` | Personal Access Token with `contents: write` scope. Required because `GITHUB_TOKEN` cannot trigger other workflows. |
+| `RELEASE_TOKEN` | Personal Access Token with `contents: write` and `pull-requests: write` scope. Required because `GITHUB_TOKEN` cannot trigger other workflows. |
 
 > **Warning: Token Expiry**
 >
 > The `RELEASE_TOKEN` PAT has a **90-day expiry**. Set a calendar reminder to rotate it before expiration. When the token expires, releases will fail at the tag creation step.
 >
 > To rotate:
-> 1. Create a new PAT at https://github.com/settings/tokens with `contents: write` scope
+> 1. Create a new PAT at https://github.com/settings/tokens with `contents: write` and `pull-requests: write` scope
 > 2. Update the `RELEASE_TOKEN` repository secret
 > 3. Delete the old PAT
 
 ## Creating a Release
 
-### Step 1: Run the Release Task
+### Step 1: Trigger the Release Workflow
 
-From the repository root on the `main` branch:
+You can trigger the release workflow in two ways:
+
+**Option A: GitHub Actions UI**
+
+1. Go to [Actions > Create Release PR](../../actions/workflows/create-release-pr.yml)
+2. Click "Run workflow"
+3. Select the version bump type (patch, minor, or major)
+4. Click "Run workflow"
+
+**Option B: GitHub CLI**
 
 ```bash
-task release
+gh workflow run create-release-pr.yml -f bump_type=patch
 ```
 
-This interactive script will:
+Replace `patch` with `minor` or `major` as needed:
+- **major** - Breaking changes (1.0.0 → 2.0.0)
+- **minor** - New features, backward compatible (1.0.0 → 1.1.0)
+- **patch** - Bug fixes, backward compatible (1.0.0 → 1.0.1)
 
-1. Display the current version from the `VERSION` file
-2. Prompt you to select a version bump type:
-   - **major** - Breaking changes (1.0.0 → 2.0.0)
-   - **minor** - New features, backward compatible (1.0.0 → 1.1.0)
-   - **patch** - Bug fixes, backward compatible (1.0.0 → 1.0.1)
-3. Create a release branch (`release/v{version}`)
-4. Update version files:
-   - `VERSION`
-   - `deploy/charts/toolhive-registry-server/Chart.yaml` (if exists)
-   - `deploy/charts/toolhive-registry-server/values.yaml` (if exists)
+The workflow will:
+
+1. Calculate the new version based on the bump type
+2. Create a release branch (`release/v{version}`)
+3. Update all version files configured in the workflow
+4. Regenerate Helm chart documentation via helm-docs
 5. Commit and push the branch
 6. Create a pull request
 
@@ -94,16 +97,17 @@ After merging, the following happens automatically:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        LOCAL                                     │
+│                     GITHUB ACTIONS                               │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│   task release                                                   │
+│   create-release-pr.yml (triggered manually via workflow_dispatch)│
 │        │                                                         │
-│        ├─ Prompts for version bump type                         │
+│        ├─ Uses stacklok/releaseo action                         │
+│        ├─ Calculates new version from bump type                 │
 │        ├─ Creates branch: release/v{version}                    │
-│        ├─ Updates VERSION, Chart.yaml, values.yaml              │
+│        ├─ Updates configured version files                      │
+│        ├─ Runs helm-docs to update chart README                 │
 │        ├─ Commits: "Release v{version}"                         │
-│        ├─ Pushes branch                                         │
 │        └─ Creates PR                                            │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
@@ -135,16 +139,6 @@ After merging, the following happens automatically:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Version Files
-
-The release process updates these files:
-
-| File | Field(s) Updated |
-|------|------------------|
-| `VERSION` | Contains the version number (e.g., `1.0.0`) |
-| `deploy/charts/*/Chart.yaml` | `version` and `appVersion` fields |
-| `deploy/charts/*/values.yaml` | `image.tag` field |
-
 ## Security Verifications
 
 The release process includes multiple security checks:
@@ -153,7 +147,7 @@ The release process includes multiple security checks:
 
 1. **Commit message verification** - Must match pattern `Release v{semver}` or be a merge from `release/v{semver}`
 2. **Version match verification** - VERSION file must match version in commit message
-3. **File change verification** - Only VERSION and Helm chart files can be modified
+3. **File change verification** - Only release-related files can be modified
 
 ### In `releaser.yml`:
 
@@ -164,28 +158,15 @@ The release process includes multiple security checks:
 
 ### Release PR Creation Fails
 
-**"Error: yq is not installed"**
+**Workflow fails to create PR**
+
+Check the workflow logs in GitHub Actions for specific error messages. Common issues:
+- `RELEASE_TOKEN` secret is not configured or has expired
+- Branch `release/v{version}` already exists
+
+**"Branch release/v{version} already exists"**
 ```bash
-# macOS
-brew install yq
-
-# Other platforms
-# See: https://github.com/mikefarah/yq#install
-```
-
-**"Error: gh CLI is not installed"**
-```bash
-# macOS
-brew install gh
-
-# Then authenticate
-gh auth login
-```
-
-**"Error: Branch release/v{version} already exists"**
-```bash
-# Delete the existing branch
-git branch -D release/v{version}
+# Delete the existing branch remotely
 git push origin --delete release/v{version}
 ```
 
@@ -199,12 +180,7 @@ The PR was likely squash-merged with a non-standard commit message. The commit m
 
 **"Unexpected file changes detected"**
 
-The release PR contained changes to files other than:
-- `VERSION`
-- `deploy/charts/*/Chart.yaml`
-- `deploy/charts/*/values.yaml`
-
-Create a new release PR with only version-related changes.
+The release PR contained changes to files other than the expected release files. Create a new release PR with only version-related changes.
 
 ### Releaser Workflow Fails
 
