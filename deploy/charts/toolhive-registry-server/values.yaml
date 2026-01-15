@@ -10,7 +10,7 @@ image:
   # -- Image pull policy
   pullPolicy: IfNotPresent
   # -- Overrides the image tag whose default is the chart appVersion
-  tag: "v0.4.8"
+  tag: v0.4.9
 
 # -- Image pull secrets for private registries
 imagePullSecrets: []
@@ -36,7 +36,7 @@ podLabels: {}
 
 # -- Pod security context
 podSecurityContext: {}
-  # fsGroup: 2000
+# fsGroup: 2000
 
 # -- Container security context
 securityContext:
@@ -96,29 +96,29 @@ affinity: {}
 # Use this for setup tasks like preparing pgpass files, waiting for dependencies, etc.
 # Init containers share the same volumes as the main container (extraVolumes)
 initContainers: []
-  # Example: pgpass init container for PostgreSQL authentication
-  # - name: pgpass-init
-  #   image: cgr.dev/chainguard/busybox:latest
-  #   command:
-  #     - sh
-  #     - -c
-  #     - |
-  #       cp /pgpass-secret/.pgpass /pgpass-prepared/.pgpass
-  #       chmod 600 /pgpass-prepared/.pgpass
-  #   securityContext:
-  #     allowPrivilegeEscalation: false
-  #     capabilities:
-  #       drop:
-  #         - ALL
-  #     readOnlyRootFilesystem: true
-  #     runAsNonRoot: true
-  #     runAsUser: 65535
-  #   volumeMounts:
-  #     - name: pgpass-secret
-  #       mountPath: /pgpass-secret
-  #       readOnly: true
-  #     - name: pgpass-prepared
-  #       mountPath: /pgpass-prepared
+# Example: pgpass init container for PostgreSQL authentication
+# - name: pgpass-init
+#   image: cgr.dev/chainguard/busybox:latest
+#   command:
+#     - sh
+#     - -c
+#     - |
+#       cp /pgpass-secret/.pgpass /pgpass-prepared/.pgpass
+#       chmod 600 /pgpass-prepared/.pgpass
+#   securityContext:
+#     allowPrivilegeEscalation: false
+#     capabilities:
+#       drop:
+#         - ALL
+#     readOnlyRootFilesystem: true
+#     runAsNonRoot: true
+#     runAsUser: 65535
+#   volumeMounts:
+#     - name: pgpass-secret
+#       mountPath: /pgpass-secret
+#       readOnly: true
+#     - name: pgpass-prepared
+#       mountPath: /pgpass-prepared
 
 # ==============================================================================
 # Registry Server Configuration
@@ -194,19 +194,19 @@ config:
 # -- Additional environment variables to add to the container
 # Use this for secrets, feature flags, or runtime configuration
 extraEnv: []
-  # - name: THV_REGISTRY_DATABASE_HOST
-  #   value: "postgres.example.com"
-  # - name: PGPASSFILE
-  #   value: "/secrets/pgpass"
-  # - name: THV_REGISTRY_INSECURE_URL
-  #   value: "true"
+# - name: THV_REGISTRY_DATABASE_HOST
+#   value: "postgres.example.com"
+# - name: PGPASSFILE
+#   value: "/secrets/pgpass"
+# - name: THV_REGISTRY_INSECURE_URL
+#   value: "true"
 
 # -- Additional environment variables from ConfigMap or Secret references
 extraEnvFrom: []
-  # - configMapRef:
-  #     name: my-config
-  # - secretRef:
-  #     name: my-secret
+# - configMapRef:
+#     name: my-config
+# - secretRef:
+#     name: my-secret
 
 # ==============================================================================
 # Additional Volume Mounts
@@ -214,25 +214,25 @@ extraEnvFrom: []
 
 # -- Additional volumes to add to the pod
 extraVolumes: []
-  # - name: pgpass
-  #   secret:
-  #     secretName: postgres-pgpass
-  #     defaultMode: 0600
-  # - name: ca-certs
-  #   configMap:
-  #     name: ca-certificates
-  # - name: registry-data
-  #   persistentVolumeClaim:
-  #     claimName: registry-data-pvc
+# - name: pgpass
+#   secret:
+#     secretName: postgres-pgpass
+#     defaultMode: 0600
+# - name: ca-certs
+#   configMap:
+#     name: ca-certificates
+# - name: registry-data
+#   persistentVolumeClaim:
+#     claimName: registry-data-pvc
 
 # -- Additional volume mounts to add to the container
 extraVolumeMounts: []
-  # - name: pgpass
-  #   mountPath: /secrets/pgpass
-  #   subPath: pgpass
-  #   readOnly: true
-  # - name: ca-certs
-  #   mountPath: /etc/ssl/certs
-  #   readOnly: true
-  # - name: registry-data
-  #   mountPath: /data
+# - name: pgpass
+#   mountPath: /secrets/pgpass
+#   subPath: pgpass
+#   readOnly: true
+# - name: ca-certs
+#   mountPath: /etc/ssl/certs
+#   readOnly: true
+# - name: registry-data
+#   mountPath: /data
