@@ -170,6 +170,92 @@ func TestFileRegistryDataProvider_GetRegistryData(t *testing.T) {
 	}
 }
 
+func TestFileRegistryDataProvider_GetAllRegistryData(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		setupMock   func(*sourcesmocks.MockStorageManager)
+		expectedErr bool
+		expectedMap map[string]*toolhivetypes.UpstreamRegistry
+	}{
+		{
+			name: "success returns map from storage manager",
+			setupMock: func(m *sourcesmocks.MockStorageManager) {
+				allRegs := map[string]*toolhivetypes.UpstreamRegistry{
+					"registry-1": registry.NewTestUpstreamRegistry(
+						registry.WithServers(
+							registry.NewTestServer("test-server-1"),
+						),
+					),
+					"registry-2": registry.NewTestUpstreamRegistry(
+						registry.WithServers(
+							registry.NewTestServer("test-server-2"),
+						),
+					),
+				}
+				m.EXPECT().
+					GetAll(gomock.Any()).
+					Return(allRegs, nil)
+			},
+			expectedErr: false,
+			expectedMap: map[string]*toolhivetypes.UpstreamRegistry{
+				"registry-1": registry.NewTestUpstreamRegistry(
+					registry.WithServers(
+						registry.NewTestServer("test-server-1"),
+					),
+				),
+				"registry-2": registry.NewTestUpstreamRegistry(
+					registry.WithServers(
+						registry.NewTestServer("test-server-2"),
+					),
+				),
+			},
+		},
+		{
+			name: "error propagates from storage manager",
+			setupMock: func(m *sourcesmocks.MockStorageManager) {
+				m.EXPECT().
+					GetAll(gomock.Any()).
+					Return(nil, assert.AnError)
+			},
+			expectedErr: true,
+			expectedMap: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStorageManager := sourcesmocks.NewMockStorageManager(ctrl)
+			tt.setupMock(mockStorageManager)
+
+			cfg := &config.Config{
+				RegistryName: "test-registry",
+			}
+
+			provider := NewFileRegistryDataProvider(mockStorageManager, cfg)
+			result, err := provider.GetAllRegistryData(context.Background())
+
+			if tt.expectedErr {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+			} else {
+				assert.NoError(t, err)
+				require.NotNil(t, result)
+				assert.Len(t, result, len(tt.expectedMap))
+				for key := range tt.expectedMap {
+					assert.Contains(t, result, key)
+				}
+			}
+		})
+	}
+}
+
 func TestFileRegistryDataProvider_GetSource(t *testing.T) {
 	t.Parallel()
 

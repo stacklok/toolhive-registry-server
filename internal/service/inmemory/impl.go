@@ -94,13 +94,13 @@ func (s *regSvc) loadRegistryDataLocked(ctx context.Context) error {
 		return fmt.Errorf("registry data provider not initialized")
 	}
 
-	// Get the merged data from the provider (legacy behavior)
-	data, err := s.registryProvider.GetRegistryData(ctx)
+	// Get per-registry data from the provider to avoid duplicates
+	allRegistryData, err := s.registryProvider.GetAllRegistryData(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get registry data: %w", err)
+		return fmt.Errorf("failed to get all registry data: %w", err)
 	}
 
-	// For each registry in config, initialize its entry
+	// For each registry in config, initialize its entry with its specific data
 	if s.config != nil {
 		for _, regCfg := range s.config.Registries {
 			if regCfg.GetType() == config.SourceTypeManaged {
@@ -118,17 +118,32 @@ func (s *regSvc) loadRegistryDataLocked(ctx context.Context) error {
 					s.lastFetch[regCfg.Name] = time.Now()
 				}
 			} else {
-				// FILE/GIT/API registries get the loaded data
-				// For simplicity in this initial version, all non-managed registries share the merged data
-				// TODO: In future, storage manager should return per-registry data
-				s.registryData[regCfg.Name] = data
+				// FILE/GIT/API/KUBERNETES registries get their specific data from the map
+				if regData, exists := allRegistryData[regCfg.Name]; exists && regData != nil {
+					s.registryData[regCfg.Name] = regData
+				} else {
+					// Registry not found in data map, initialize with empty registry
+					s.registryData[regCfg.Name] = &toolhivetypes.UpstreamRegistry{
+						Schema:  registry.UpstreamRegistrySchemaURL,
+						Version: registry.UpstreamRegistryVersion,
+						Meta:    toolhivetypes.UpstreamMeta{},
+						Data: toolhivetypes.UpstreamData{
+							Servers: make([]upstreamv0.ServerJSON, 0),
+							Groups:  make([]toolhivetypes.UpstreamGroup, 0),
+						},
+					}
+				}
 				s.lastFetch[regCfg.Name] = time.Now()
 			}
 		}
 	} else {
-		// Fallback: no config, use provider's registry name
+		// Fallback: no config, use provider's registry name with merged data
 		defaultName := s.registryProvider.GetRegistryName()
-		s.registryData[defaultName] = data
+		mergedData, mergeErr := s.registryProvider.GetRegistryData(ctx)
+		if mergeErr != nil {
+			return fmt.Errorf("failed to get registry data: %w", mergeErr)
+		}
+		s.registryData[defaultName] = mergedData
 		s.lastFetch[defaultName] = time.Now()
 	}
 

@@ -48,6 +48,14 @@ func testFileConfig(registryName string) *config.Config {
 	}
 }
 
+// setupGetAllRegistryData is a helper to set up mock for GetAllRegistryData with per-registry data
+func setupGetAllRegistryData(m *mocks.MockRegistryDataProvider, registryName string, reg *toolhivetypes.UpstreamRegistry) {
+	allData := map[string]*toolhivetypes.UpstreamRegistry{
+		registryName: reg,
+	}
+	m.EXPECT().GetAllRegistryData(gomock.Any()).Return(allData, nil).AnyTimes()
+}
+
 func TestService_GetRegistry(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -69,7 +77,7 @@ func TestService_GetRegistry(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil)
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
@@ -85,7 +93,7 @@ func TestService_GetRegistry(t *testing.T) {
 		{
 			name: "provider returns error",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(nil, errors.New("file not found")).Times(2) // Once during NewService, once during GetRegistry
+				m.EXPECT().GetAllRegistryData(gomock.Any()).Return(nil, errors.New("file not found")).Times(2) // Once during NewService, once during GetRegistry
 				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
@@ -145,7 +153,7 @@ func TestService_CheckReadiness(t *testing.T) {
 			name: "ready with successful data load",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).Times(1)
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -154,11 +162,11 @@ func TestService_CheckReadiness(t *testing.T) {
 		{
 			name: "not ready when provider fails",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(nil, errors.New("connection failed")).Times(2)
+				m.EXPECT().GetAllRegistryData(gomock.Any()).Return(nil, errors.New("connection failed")).Times(2)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
-			expectedError: "registry data not available: failed to get registry data: connection failed",
+			expectedError: "registry data not available: failed to get all registry data: connection failed",
 		},
 	}
 
@@ -219,7 +227,7 @@ func TestService_ListServers(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -239,7 +247,7 @@ func TestService_ListServers(t *testing.T) {
 			name: "empty registry returns empty list",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -264,7 +272,7 @@ func TestService_ListServers(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -286,7 +294,7 @@ func TestService_ListServers(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -308,7 +316,7 @@ func TestService_ListServers(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -368,7 +376,7 @@ func TestService_GetServer(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),
@@ -383,7 +391,7 @@ func TestService_GetServer(t *testing.T) {
 			serverName: "nonexistent",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -403,7 +411,7 @@ func TestService_GetServer(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),
@@ -427,7 +435,7 @@ func TestService_GetServer(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -490,7 +498,10 @@ func TestService_WithCacheDuration(t *testing.T) {
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				// Should be called twice: once during NewService, once after cache expires
 				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).Times(2)
+				allData := map[string]*toolhivetypes.UpstreamRegistry{
+					"test-registry": testRegistry,
+				}
+				m.EXPECT().GetAllRegistryData(gomock.Any()).Return(allData, nil).Times(2)
 				m.EXPECT().GetSource().Return("test-source").AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
@@ -561,7 +572,7 @@ func TestService_ListServerVersions(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -585,7 +596,7 @@ func TestService_ListServerVersions(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -607,7 +618,7 @@ func TestService_ListServerVersions(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -624,7 +635,7 @@ func TestService_ListServerVersions(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -674,7 +685,7 @@ func TestService_ListRegistries(t *testing.T) {
 			name: "list single registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
 			},
@@ -691,7 +702,7 @@ func TestService_ListRegistries(t *testing.T) {
 			name: "list registry with git source",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "git-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("git-registry").AnyTimes()
 				m.EXPECT().GetSource().Return("git:https://github.com/example/registry.git").AnyTimes()
 			},
@@ -719,7 +730,7 @@ func TestService_ListRegistries(t *testing.T) {
 			name: "list registry with remote source",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "remote-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("remote-registry").AnyTimes()
 				m.EXPECT().GetSource().Return("https://example.com/registry.json").AnyTimes()
 			},
@@ -788,7 +799,7 @@ func TestService_GetRegistryByName(t *testing.T) {
 			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 				m.EXPECT().GetSource().Return("file:/path/to/registry.json").AnyTimes()
 			},
@@ -804,7 +815,7 @@ func TestService_GetRegistryByName(t *testing.T) {
 			registryName: "nonexistent-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config:        testFileConfig("test-registry"),
@@ -859,8 +870,8 @@ func TestService_PublishServerVersion(t *testing.T) {
 			name:         "successful publish new server",
 			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				// Managed registries still call GetAllRegistryData but don't use the data
+				m.EXPECT().GetAllRegistryData(gomock.Any()).Return(map[string]*toolhivetypes.UpstreamRegistry{}, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			options: []service.Option[service.PublishServerVersionOptions]{
@@ -882,8 +893,8 @@ func TestService_PublishServerVersion(t *testing.T) {
 			name:         "publish to empty registry initializes data",
 			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				// Return nil to simulate empty/uninitialized registry
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(nil, errors.New("no data")).AnyTimes()
+				// Managed registries still call GetAllRegistryData but don't use the data
+				m.EXPECT().GetAllRegistryData(gomock.Any()).Return(map[string]*toolhivetypes.UpstreamRegistry{}, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			options: []service.Option[service.PublishServerVersionOptions]{
@@ -904,8 +915,8 @@ func TestService_PublishServerVersion(t *testing.T) {
 			name:         "publish with wrong registry name fails",
 			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				// Managed registries still call GetAllRegistryData but don't use the data
+				m.EXPECT().GetAllRegistryData(gomock.Any()).Return(map[string]*toolhivetypes.UpstreamRegistry{}, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			options: []service.Option[service.PublishServerVersionOptions]{
@@ -921,8 +932,8 @@ func TestService_PublishServerVersion(t *testing.T) {
 			name:         "publish without server data fails",
 			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				// Managed registries still call GetAllRegistryData but don't use the data
+				m.EXPECT().GetAllRegistryData(gomock.Any()).Return(map[string]*toolhivetypes.UpstreamRegistry{}, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			options: []service.Option[service.PublishServerVersionOptions]{
@@ -971,8 +982,8 @@ func TestService_PublishServerVersion_Duplicate(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
-	testRegistry := registry.NewTestUpstreamRegistry()
-	mockProvider.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+	// Managed registries still call GetAllRegistryData but don't use the data
+	mockProvider.EXPECT().GetAllRegistryData(gomock.Any()).Return(map[string]*toolhivetypes.UpstreamRegistry{}, nil).AnyTimes()
 	mockProvider.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 
 	svc, err := inmemory.New(
@@ -1019,8 +1030,8 @@ func TestService_DeleteServerVersion(t *testing.T) {
 			name:         "successful delete",
 			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				// Managed registries still call GetAllRegistryData but don't use the data
+				m.EXPECT().GetAllRegistryData(gomock.Any()).Return(map[string]*toolhivetypes.UpstreamRegistry{}, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			options: []service.Option[service.DeleteServerVersionOptions]{
@@ -1041,8 +1052,8 @@ func TestService_DeleteServerVersion(t *testing.T) {
 			name:         "delete with wrong registry name fails",
 			registryName: "test-registry",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
-				testRegistry := registry.NewTestUpstreamRegistry()
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				// Managed registries still call GetAllRegistryData but don't use the data
+				m.EXPECT().GetAllRegistryData(gomock.Any()).Return(map[string]*toolhivetypes.UpstreamRegistry{}, nil).AnyTimes()
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			options: []service.Option[service.DeleteServerVersionOptions]{
@@ -1113,8 +1124,8 @@ func TestService_DeleteServerVersion_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
-	testRegistry := registry.NewTestUpstreamRegistry()
-	mockProvider.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+	// Managed registries still call GetAllRegistryData but don't use the data
+	mockProvider.EXPECT().GetAllRegistryData(gomock.Any()).Return(map[string]*toolhivetypes.UpstreamRegistry{}, nil).AnyTimes()
 	mockProvider.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 
 	svc, err := inmemory.New(
@@ -1165,7 +1176,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),
@@ -1197,7 +1208,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),
@@ -1223,7 +1234,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),
@@ -1241,7 +1252,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),
@@ -1259,7 +1270,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 						),
 					),
 				)
-				m.EXPECT().GetRegistryData(gomock.Any()).Return(testRegistry, nil).AnyTimes()
+				setupGetAllRegistryData(m, "test-registry", testRegistry)
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),

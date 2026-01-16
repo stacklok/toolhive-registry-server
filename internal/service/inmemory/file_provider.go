@@ -33,6 +33,13 @@ func NewFileRegistryDataProvider(storageManager sources.StorageManager, cfg *con
 	}
 }
 
+// GetAllRegistryData implements RegistryDataProvider.GetAllRegistryData.
+// It returns the per-registry data map directly from StorageManager without merging.
+// This enables per-registry assignment and avoids duplicate servers.
+func (p *fileRegistryDataProvider) GetAllRegistryData(ctx context.Context) (map[string]*toolhivetypes.UpstreamRegistry, error) {
+	return p.storageManager.GetAll(ctx)
+}
+
 // GetRegistryData implements RegistryDataProvider.GetRegistryData.
 // It delegates to the StorageManager to retrieve and parse registry data from all registries,
 // then merges them into a single UpstreamRegistry for the API response.

@@ -16,6 +16,11 @@ type RegistryDataProvider interface {
 	// Returns the registry data and any error encountered.
 	GetRegistryData(ctx context.Context) (*toolhivetypes.UpstreamRegistry, error)
 
+	// GetAllRegistryData fetches registry data for all configured registries.
+	// Returns a map of registry name to registry data, enabling per-registry assignment.
+	// This is used to avoid duplicate servers when merging multiple registries.
+	GetAllRegistryData(ctx context.Context) (map[string]*toolhivetypes.UpstreamRegistry, error)
+
 	// GetSource returns a descriptive string about where the registry data comes from.
 	// Examples: "file:/path/to/registry.json", "remote:https://example.com/registry"
 	GetSource() string

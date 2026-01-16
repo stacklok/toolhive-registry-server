@@ -41,6 +41,21 @@ func (m *MockRegistryDataProvider) EXPECT() *MockRegistryDataProviderMockRecorde
 	return m.recorder
 }
 
+// GetAllRegistryData mocks base method.
+func (m *MockRegistryDataProvider) GetAllRegistryData(ctx context.Context) (map[string]*registry.UpstreamRegistry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAllRegistryData", ctx)
+	ret0, _ := ret[0].(map[string]*registry.UpstreamRegistry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAllRegistryData indicates an expected call of GetAllRegistryData.
+func (mr *MockRegistryDataProviderMockRecorder) GetAllRegistryData(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllRegistryData", reflect.TypeOf((*MockRegistryDataProvider)(nil).GetAllRegistryData), ctx)
+}
+
 // GetRegistryData mocks base method.
 func (m *MockRegistryDataProvider) GetRegistryData(ctx context.Context) (*registry.UpstreamRegistry, error) {
 	m.ctrl.T.Helper()
