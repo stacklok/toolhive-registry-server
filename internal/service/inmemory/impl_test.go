@@ -235,10 +235,12 @@ func TestPublishServerVersion_ManagedRegistryValidation(t *testing.T) {
 
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 
-			// Set up mock expectations
-			mockProvider.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.UpstreamRegistry{
-				Data: toolhivetypes.UpstreamData{
-					Servers: []upstreamv0.ServerJSON{},
+			// Set up mock expectations - GetAllRegistryData is now used instead of GetRegistryData
+			mockProvider.EXPECT().GetAllRegistryData(gomock.Any()).Return(map[string]*toolhivetypes.UpstreamRegistry{
+				tt.registryName: {
+					Data: toolhivetypes.UpstreamData{
+						Servers: []upstreamv0.ServerJSON{},
+					},
 				},
 			}, nil).AnyTimes()
 			mockProvider.EXPECT().GetSource().Return("file:/path/to/file").AnyTimes()
@@ -360,13 +362,15 @@ func TestDeleteServerVersion_ManagedRegistryValidation(t *testing.T) {
 
 			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 
-			// Set up mock expectations
-			mockProvider.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.UpstreamRegistry{
-				Data: toolhivetypes.UpstreamData{
-					Servers: []upstreamv0.ServerJSON{
-						{
-							Name:    tt.serverName,
-							Version: tt.version,
+			// Set up mock expectations - GetAllRegistryData is now used instead of GetRegistryData
+			mockProvider.EXPECT().GetAllRegistryData(gomock.Any()).Return(map[string]*toolhivetypes.UpstreamRegistry{
+				tt.registryName: {
+					Data: toolhivetypes.UpstreamData{
+						Servers: []upstreamv0.ServerJSON{
+							{
+								Name:    tt.serverName,
+								Version: tt.version,
+							},
 						},
 					},
 				},
@@ -409,11 +413,7 @@ func TestDeleteServerVersion_ManagedRegistrySuccess(t *testing.T) {
 	mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
 
 	// Set up mock expectations - start with empty registry (managed registries start empty)
-	mockProvider.EXPECT().GetRegistryData(gomock.Any()).Return(&toolhivetypes.UpstreamRegistry{
-		Data: toolhivetypes.UpstreamData{
-			Servers: []upstreamv0.ServerJSON{},
-		},
-	}, nil).AnyTimes()
+	mockProvider.EXPECT().GetAllRegistryData(gomock.Any()).Return(map[string]*toolhivetypes.UpstreamRegistry{}, nil).AnyTimes()
 	mockProvider.EXPECT().GetSource().Return("managed:").AnyTimes()
 	mockProvider.EXPECT().GetRegistryName().Return(registryName).AnyTimes()
 
