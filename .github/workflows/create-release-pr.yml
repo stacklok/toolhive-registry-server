@@ -42,7 +42,7 @@ jobs:
 
       - name: Create Release PR
         id: release
-        uses: stacklok/releaseo@103e7d5aac541f2f2148fdb1cd4b7a48130b9029 # v1.0.11
+        uses: stacklok/releaseo@6473f04d9a30a669232ffb0a3c729b3d61cff542 # v1.3.0
         with:
           bump_type: ${{ inputs.bump_type }}
           token: ${{ secrets.RELEASE_TOKEN }}
