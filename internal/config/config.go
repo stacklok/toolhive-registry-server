@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+
+	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
 // SourceType represents the type of registry data source
@@ -110,6 +112,7 @@ type Config struct {
 	Database     *DatabaseConfig    `yaml:"database,omitempty"`
 	FileStorage  *FileStorageConfig `yaml:"fileStorage,omitempty"`
 	Auth         *AuthConfig        `yaml:"auth,omitempty"`
+	Telemetry    *telemetry.Config  `yaml:"telemetry,omitempty"`
 
 	// insecureAllowHTTP allows HTTP URLs for OAuth issuer URLs (development only)
 	// Can be set via THV_REGISTRY_INSECURE_URL environment variable
