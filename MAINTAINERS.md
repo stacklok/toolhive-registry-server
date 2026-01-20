@@ -70,8 +70,6 @@ The current list of ToolHive Registry Server maintainers:
 <!-- This section will be updated as maintainers are added -->
 
 * [@stacklok/stackers (Stacklok)](https://github.com/orgs/stacklok/teams/stackers)
-* [@dmartinol (RedHat)](https://github.com/dmartinol)
-* [@RoddieKieley (RedHat)](https://github.com/RoddieKieley)
 
 ## Becoming a Maintainer
 
