@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
@@ -87,6 +89,12 @@ func New(ctx context.Context, opts ...Option) (*Telemetry, error) {
 		}
 		return nil, fmt.Errorf("failed to create meter provider: %w", err)
 	}
+
+	// Set up W3C Trace Context propagator for distributed tracing across services
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
 
 	slog.Info("Telemetry initialized successfully")
 
