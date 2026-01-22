@@ -16,6 +16,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/database"
 	registryapp "github.com/stacklok/toolhive-registry-server/internal/app"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
 var serveCmd = &cobra.Command{
@@ -84,6 +85,19 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		"config_path", configPath,
 		"registry_name", cfg.GetRegistryName(),
 		"registry_count", len(cfg.Registries))
+
+	// Initialize telemetry (tracing and metrics)
+	tel, err := telemetry.New(ctx, telemetry.WithTelemetryConfig(cfg.Telemetry))
+	if err != nil {
+		return fmt.Errorf("failed to initialize telemetry: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), defaultGracefulTimeout)
+		defer cancel()
+		if err := tel.Shutdown(shutdownCtx); err != nil {
+			slog.Error("Failed to shutdown telemetry", "error", err)
+		}
+	}()
 
 	// Run database migrations if database is configured
 	if cfg.Database != nil {
