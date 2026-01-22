@@ -15,6 +15,11 @@ import (
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
+// floatPtr is a helper function to create a pointer to a float64 value
+func floatPtr(f float64) *float64 {
+	return &f
+}
+
 func TestNew(t *testing.T) {
 	t.Parallel()
 
@@ -65,7 +70,7 @@ func TestNew(t *testing.T) {
 					Enabled: true,
 					Tracing: &TracingConfig{
 						Enabled:  true,
-						Sampling: 1.5,
+						Sampling: floatPtr(1.5),
 					},
 				}),
 			},
@@ -217,7 +222,7 @@ func TestTelemetry_Shutdown(t *testing.T) {
 			Insecure: true,
 			Tracing: &TracingConfig{
 				Enabled:  true,
-				Sampling: 1.0,
+				Sampling: floatPtr(1.0),
 			},
 			Metrics: &MetricsConfig{
 				Enabled: false,
@@ -282,7 +287,7 @@ func TestTelemetry_Shutdown(t *testing.T) {
 			Insecure: true,
 			Tracing: &TracingConfig{
 				Enabled:  true,
-				Sampling: 1.0,
+				Sampling: floatPtr(1.0),
 			},
 			Metrics: &MetricsConfig{
 				Enabled: true,

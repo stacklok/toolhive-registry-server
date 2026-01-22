@@ -57,8 +57,9 @@ type TracingConfig struct {
 
 	// Sampling controls the trace sampling rate (0.0 to 1.0)
 	// 1.0 means sample all traces, 0.5 means sample 50%, etc.
-	// Defaults to 1.0 if not specified
-	Sampling float64 `yaml:"sampling,omitempty"`
+	// Defaults to DefaultSampling if not specified (nil)
+	// Using a pointer allows distinguishing between "not set" and "explicitly set to 0"
+	Sampling *float64 `yaml:"sampling,omitempty"`
 }
 
 // MetricsConfig defines metrics-specific configuration
@@ -98,15 +99,13 @@ func (c *Config) GetInsecure() bool {
 }
 
 // GetSampling returns the sampling ratio.
-// If Sampling is 0 (unset), it returns DefaultSampling.
-// Note: 0 is treated as "use default" since we cannot distinguish between
-// an unset value and an explicitly configured value of 0 in YAML/JSON.
-// Validation should be performed before calling this method.
+// If Sampling is nil (not configured), it returns DefaultSampling.
+// If Sampling is explicitly set (including to 0), it returns that value.
 func (c *TracingConfig) GetSampling() float64 {
-	if c.Sampling == 0.0 {
+	if c.Sampling == nil {
 		return DefaultSampling
 	}
-	return c.Sampling
+	return *c.Sampling
 }
 
 // Validate validates the telemetry configuration
@@ -142,9 +141,11 @@ func (c *TracingConfig) Validate() error {
 		return nil
 	}
 
-	sampling := c.Sampling
-	if sampling < 0 || sampling > 1.0 {
-		return fmt.Errorf("sampling must be between 0.0 and 1.0, got %f", sampling)
+	if c.Sampling != nil {
+		sampling := *c.Sampling
+		if sampling < 0 || sampling > 1.0 {
+			return fmt.Errorf("sampling must be between 0.0 and 1.0, got %f", sampling)
+		}
 	}
 
 	return nil

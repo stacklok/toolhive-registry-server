@@ -10,6 +10,11 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
+// ptrFloat64 is a helper function to create a pointer to a float64 value
+func ptrFloat64(f float64) *float64 {
+	return &f
+}
+
 func TestNewTracerProvider(t *testing.T) {
 	t.Parallel()
 
@@ -37,7 +42,7 @@ func TestNewTracerProvider(t *testing.T) {
 			opts: []TracerProviderOption{
 				WithTracingConfig(&TracingConfig{
 					Enabled:  true,
-					Sampling: 0.5,
+					Sampling: ptrFloat64(0.5),
 				}),
 			},
 			expectNoOp: false,
