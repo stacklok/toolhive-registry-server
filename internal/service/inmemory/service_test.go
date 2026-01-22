@@ -48,12 +48,34 @@ func testFileConfig(registryName string) *config.Config {
 	}
 }
 
+// testMultipleFileConfig creates a config with multiple file registries for testing
+func testMultipleFileConfig(registryNames ...string) *config.Config {
+	registries := make([]config.RegistryConfig, 0, len(registryNames))
+	for _, name := range registryNames {
+		registries = append(registries, config.RegistryConfig{
+			Name: name,
+			File: &config.FileConfig{Path: "/path/to/" + name + ".json"},
+			SyncPolicy: &config.SyncPolicyConfig{
+				Interval: "1h",
+			},
+		})
+	}
+	return &config.Config{
+		Registries: registries,
+	}
+}
+
 // setupGetAllRegistryData is a helper to set up mock for GetAllRegistryData with per-registry data
 func setupGetAllRegistryData(m *mocks.MockRegistryDataProvider, registryName string, reg *toolhivetypes.UpstreamRegistry) {
 	allData := map[string]*toolhivetypes.UpstreamRegistry{
 		registryName: reg,
 	}
 	m.EXPECT().GetAllRegistryData(gomock.Any()).Return(allData, nil).AnyTimes()
+}
+
+// setupMultipleRegistriesData sets up mock for GetAllRegistryData with multiple registries
+func setupMultipleRegistriesData(m *mocks.MockRegistryDataProvider, registries map[string]*toolhivetypes.UpstreamRegistry) {
+	m.EXPECT().GetAllRegistryData(gomock.Any()).Return(registries, nil).AnyTimes()
 }
 
 func TestService_GetRegistry(t *testing.T) {
@@ -1310,4 +1332,90 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestListServers_MultipleRegistries_NoDuplication is a regression test for GitHub issue #389.
+// It verifies that when multiple registries are configured, each server appears only once
+// in the ListServers response. Previously, servers could be duplicated when the provider
+// returned data for multiple registries, because the service would iterate over all
+// registries and add servers without proper deduplication.
+func TestListServers_MultipleRegistries_NoDuplication(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Create test registries with distinct servers
+	// registry-1: servers 1, 2, 3
+	// registry-2: servers 4, 5
+	registry1 := registry.NewTestUpstreamRegistry(
+		registry.WithServers(
+			registry.NewTestServer("server1",
+				registry.WithDescription("Server 1 from registry-1"),
+				registry.WithOCIPackage("server1:latest"),
+			),
+			registry.NewTestServer("server2",
+				registry.WithDescription("Server 2 from registry-1"),
+				registry.WithOCIPackage("server2:latest"),
+			),
+			registry.NewTestServer("server3",
+				registry.WithDescription("Server 3 from registry-1"),
+				registry.WithOCIPackage("server3:latest"),
+			),
+		),
+	)
+
+	registry2 := registry.NewTestUpstreamRegistry(
+		registry.WithServers(
+			registry.NewTestServer("server4",
+				registry.WithDescription("Server 4 from registry-2"),
+				registry.WithOCIPackage("server4:latest"),
+			),
+			registry.NewTestServer("server5",
+				registry.WithDescription("Server 5 from registry-2"),
+				registry.WithOCIPackage("server5:latest"),
+			),
+		),
+	)
+
+	// Set up mock to return both registries
+	mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
+	setupMultipleRegistriesData(mockProvider, map[string]*toolhivetypes.UpstreamRegistry{
+		"registry-1": registry1,
+		"registry-2": registry2,
+	})
+	mockProvider.EXPECT().GetRegistryName().Return("registry-1").AnyTimes()
+
+	// Create service with multiple registries configured
+	cfg := testMultipleFileConfig("registry-1", "registry-2")
+	svc, err := inmemory.New(
+		context.Background(),
+		mockProvider,
+		inmemory.WithConfig(cfg),
+	)
+	require.NoError(t, err)
+
+	// Call ListServers without any filter (should return all servers from all registries)
+	servers, err := svc.ListServers(context.Background())
+	require.NoError(t, err)
+
+	// Verify total count is 5 (not 10 which would indicate duplication)
+	assert.Len(t, servers, 5, "Expected 5 unique servers, got %d - possible duplication issue", len(servers))
+
+	// Verify each server appears exactly once by collecting names
+	serverNames := make(map[string]int)
+	for _, s := range servers {
+		serverNames[s.Name]++
+	}
+
+	// Check that all expected servers are present exactly once
+	expectedServers := []string{"server1", "server2", "server3", "server4", "server5"}
+	for _, name := range expectedServers {
+		count, exists := serverNames[name]
+		assert.True(t, exists, "Expected server %s to be present", name)
+		assert.Equal(t, 1, count, "Server %s should appear exactly once, but appeared %d times", name, count)
+	}
+
+	// Verify no unexpected servers
+	assert.Len(t, serverNames, 5, "Expected exactly 5 unique server names")
 }
