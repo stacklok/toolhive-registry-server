@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 LDFLAGS="-s -w \
 GOOS=linux GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o main ./cmd/thv-registry-api/main.go
 
 # Use minimal base image to package the binary
-FROM registry.access.redhat.com/ubi10/ubi-minimal:10.1-1766033715
+FROM registry.access.redhat.com/ubi10/ubi-minimal:10.1-1769090502
 
 COPY --from=builder /workspace/main /
 COPY LICENSE /licenses/LICENSE
