@@ -301,7 +301,7 @@ tasks:
         --namespace toolhive-system \
         --create-namespace \
         --kubeconfig kconfig.yaml \
-        --set image.url={{.REGISTRY_SERVER_IMAGE}} \
+        --set image.registryServerUrl={{.REGISTRY_SERVER_IMAGE}} \
         --set image.pullPolicy=Never
 
   kind-with-registry-server*:
