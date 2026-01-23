@@ -118,6 +118,12 @@ type Config struct {
 	// Can be set via THV_REGISTRY_INSECURE_URL environment variable
 	// Not loaded from YAML file - environment variable only
 	insecureAllowHTTP bool
+
+	// EnableAggregatedEndpoints enables aggregated endpoints that access all
+	// configured registries.
+	// Can be set via THV_REGISTRY_ENABLE_AGGREGATED_ENDPOINTS environment variable
+	// Not loaded from YAML file - environment variable only
+	EnableAggregatedEndpoints bool
 }
 
 // RegistryConfig defines a single registry data source configuration
@@ -579,6 +585,10 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	// Set insecureAllowHTTP from environment variable (THV_REGISTRY_INSECURE_URL)
 	// This is not loaded from YAML - environment variable only for security
 	config.insecureAllowHTTP = v.GetBool("insecure_url")
+
+	// Set enableAggregatedEndpoints from environment variable (THV_REGISTRY_ENABLE_AGGREGATED_ENDPOINTS)
+	// This is not loaded from YAML - environment variable only
+	config.EnableAggregatedEndpoints = v.GetBool("enable_aggregated_endpoints")
 
 	// Validate the config
 	if err := config.validate(); err != nil {

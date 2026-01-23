@@ -31,17 +31,19 @@ func NewRoutes(svc service.RegistryService) *Routes {
 }
 
 // Router creates and configures the HTTP router for registry API v0.1 endpoints.
-func Router(svc service.RegistryService) http.Handler {
+func Router(svc service.RegistryService, enableAggregatedEndpoints bool) http.Handler {
 	routes := NewRoutes(svc)
 
 	r := chi.NewRouter()
 
-	r.Get("/v0.1/servers", routes.listServers)
-	r.Route("/v0.1/servers/{serverName}", func(r chi.Router) {
-		r.Get("/versions", routes.listVersions)
-		r.Get("/versions/{version}", routes.getVersion)
-	})
-	r.Post("/v0.1/publish", routes.publish)
+	if enableAggregatedEndpoints {
+		r.Get("/v0.1/servers", routes.listServers)
+		r.Route("/v0.1/servers/{serverName}", func(r chi.Router) {
+			r.Get("/versions", routes.listVersions)
+			r.Get("/versions/{version}", routes.getVersion)
+		})
+		r.Post("/v0.1/publish", routes.publish)
+	}
 
 	r.Get("/{registryName}/v0.1/servers", routes.listServersWithRegistryName)
 	r.Route("/{registryName}/v0.1/servers/{serverName}", func(r chi.Router) {
