@@ -47,3 +47,6 @@ data/
 # Local config file path
 config.local.yaml
 pgpass.local
+
+# Kind cluster kubeconfig
+kconfig.yaml

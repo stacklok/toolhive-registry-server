@@ -5,12 +5,12 @@
 replicaCount: 1
 
 image:
-  # -- Image repository
-  repository: ghcr.io/stacklok/thv-registry-api
+  
+  # -- URL of the registry server image
+  registryServerUrl: "ghcr.io/stacklok/thv-registry-api:v0.4.9"
+
   # -- Image pull policy
   pullPolicy: IfNotPresent
-  # -- Overrides the image tag whose default is the chart appVersion
-  tag: "v0.4.9"
 
 # -- Image pull secrets for private registries
 imagePullSecrets: []
@@ -152,6 +152,18 @@ config:
   # Authentication configuration
   auth:
     mode: anonymous
+
+  # Telemetry configuration (OpenTelemetry)
+  telemetry:
+    enabled: true
+    serviceName: thv-registry-api
+    serviceVersion: ""
+    endpoint: otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318
+    insecure: true
+    tracing:
+      enabled: false
+    metrics:
+      enabled: true
 
 # Example database configuration (uncomment and customize):
 # config:

@@ -256,3 +256,67 @@ tasks:
         else
           docker compose logs
         fi
+
+  # =============================================================================
+  # Kind Cluster Tasks
+  # =============================================================================
+
+  kind-setup:
+    desc: Create a kind cluster for local development
+    vars:
+      CLUSTER_NAME: '{{.CLUSTER_NAME | default "thv-registry"}}'
+    cmds:
+      - |
+        if kind get clusters 2>/dev/null | grep -q "^{{.CLUSTER_NAME}}$"; then
+          echo "Cluster '{{.CLUSTER_NAME}}' already exists"
+        else
+          kind create cluster --name {{.CLUSTER_NAME}}
+        fi
+      - kind get kubeconfig --name {{.CLUSTER_NAME}} > kconfig.yaml
+
+  kind-destroy:
+    desc: Delete the kind cluster
+    vars:
+      CLUSTER_NAME: '{{.CLUSTER_NAME | default "thv-registry"}}'
+    cmds:
+      - kind delete cluster --name {{.CLUSTER_NAME}}
+      - rm -f kconfig.yaml
+
+  registry-server-install-latest:
+    desc: Install latest built registry server image from Github to the K8s cluster
+    cmds:
+      - helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server --namespace toolhive-system --create-namespace --kubeconfig kconfig.yaml
+
+  registry-server-install-local:
+    desc: Build the ToolHive Registry Server image locally and install it to the K8s cluster.
+    vars:
+      CLUSTER_NAME: '{{.CLUSTER_NAME | default "thv-registry"}}'
+      REGISTRY_SERVER_IMAGE:
+        sh: KO_DOCKER_REPO=kind.local ko build --local -B ./cmd/thv-registry-api | tail -n 1
+    cmds:
+      - echo "Loading toolhive-registry-server image {{.REGISTRY_SERVER_IMAGE}} into kind..."
+      - kind load docker-image {{.REGISTRY_SERVER_IMAGE}} --name {{.CLUSTER_NAME}}
+      - |
+        helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server \
+        --namespace toolhive-system \
+        --create-namespace \
+        --kubeconfig kconfig.yaml \
+        --set image.url={{.REGISTRY_SERVER_IMAGE}} \
+        --set image.pullPolicy=Never
+
+  kind-with-registry-server*:
+    desc: Create kind cluster and deploy registry server
+    vars:
+      REGISTRY_SERVER_INSTALL: '{{index .MATCH 0 | trimPrefix "-" | default "latest"}}'
+    cmds:
+      - task: kind-setup
+      - task: registry-server-install-{{.REGISTRY_SERVER_INSTALL}}
+
+
+  registry-server-uninstall:
+    desc: Uninstall registry server from kind
+    vars:
+      CLUSTER_NAME: '{{.CLUSTER_NAME | default "thv-registry"}}'
+      NAMESPACE: '{{.NAMESPACE | default "thv-registry"}}'
+    cmds:
+      - helm uninstall toolhive-registry-server --namespace {{.NAMESPACE}} --kubeconfig kconfig.yaml
