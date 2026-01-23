@@ -63,13 +63,6 @@ The command removes all the Kubernetes components associated with the chart and 
 | config.registries[0].name | string | `"toolhive"` |  |
 | config.registries[0].syncPolicy.interval | string | `"30m"` |  |
 | config.registryName | string | `"default"` |  |
-| config.telemetry.enabled | bool | `true` |  |
-| config.telemetry.endpoint | string | `"otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318"` |  |
-| config.telemetry.insecure | bool | `true` |  |
-| config.telemetry.metrics.enabled | bool | `true` |  |
-| config.telemetry.serviceName | string | `"thv-registry-api"` |  |
-| config.telemetry.serviceVersion | string | `""` |  |
-| config.telemetry.tracing.enabled | bool | `false` |  |
 | extraEnv | list | `[]` | Additional environment variables to add to the container Use this for secrets, feature flags, or runtime configuration |
 | extraEnvFrom | list | `[]` | Additional environment variables from ConfigMap or Secret references |
 | extraVolumeMounts | list | `[]` | Additional volume mounts to add to the container |
