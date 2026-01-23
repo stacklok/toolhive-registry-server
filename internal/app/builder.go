@@ -354,8 +354,15 @@ func buildHTTPServer(
 	authMw := auth.WrapWithPublicPaths(b.authMiddleware, publicPaths)
 	b.middlewares = append(b.middlewares, authMw)
 
+	serverOpts := []api.ServerOption{
+		api.WithMiddlewares(b.middlewares...),
+		api.WithAuthInfoHandler(b.authInfoHandler),
+	}
+	if b.config != nil && b.config.EnableAggregatedEndpoints {
+		serverOpts = append(serverOpts, api.WithAggregatedEndpoints(true))
+	}
 	// Create router with middlewares
-	router := api.NewServer(svc, api.WithMiddlewares(b.middlewares...), api.WithAuthInfoHandler(b.authInfoHandler))
+	router := api.NewServer(svc, serverOpts...)
 
 	// Create HTTP server
 	server := &http.Server{

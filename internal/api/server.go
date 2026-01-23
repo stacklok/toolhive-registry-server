@@ -24,8 +24,14 @@ type ServerOption func(*serverConfig)
 
 // serverConfig holds the server configuration
 type serverConfig struct {
+	// These first two fields are private because they are not meant to be
+	// shared with the other layers of the application.
 	middlewares     []func(http.Handler) http.Handler
 	authInfoHandler http.Handler
+
+	// enableAggregatedEndpoints enables aggregated endpoints that access all
+	// configured registries.
+	enableAggregatedEndpoints bool
 }
 
 // WithMiddlewares adds middleware to the server
@@ -39,6 +45,13 @@ func WithMiddlewares(mw ...func(http.Handler) http.Handler) ServerOption {
 func WithAuthInfoHandler(handler http.Handler) ServerOption {
 	return func(cfg *serverConfig) {
 		cfg.authInfoHandler = handler
+	}
+}
+
+// WithAggregatedEndpoints enables aggregated endpoints that access all configured registries
+func WithAggregatedEndpoints(enableAggregatedEndpoints bool) ServerOption {
+	return func(cfg *serverConfig) {
+		cfg.enableAggregatedEndpoints = enableAggregatedEndpoints
 	}
 }
 
@@ -75,7 +88,7 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 	}
 
 	// Mount MCP Registry API v0.1 routes
-	r.Mount("/registry", v01.Router(svc))
+	r.Mount("/registry", v01.Router(svc, cfg.enableAggregatedEndpoints))
 	r.Mount("/extension/v0", extensionv0.Router(svc))
 
 	return r
