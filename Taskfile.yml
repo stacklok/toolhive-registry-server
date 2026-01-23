@@ -312,7 +312,6 @@ tasks:
       - task: kind-setup
       - task: registry-server-install-{{.REGISTRY_SERVER_INSTALL}}
 
-
   registry-server-uninstall:
     desc: Uninstall registry server from kind
     vars:
