@@ -163,15 +163,6 @@ The skill dynamically configures telemetry via Helm `--set` flags:
 | `config.telemetry.tracing.enabled` | false |
 | `config.telemetry.tracing.sampling` | 1.0 |
 
-## Available Metrics
-
-Once deployed, these metrics are exported to the OTEL collector:
-
-- `http_server_request_duration_seconds` - HTTP request latency
-- `http_server_requests_total` - Total HTTP requests
-- `http_server_active_requests` - Currently in-flight requests
-- `registry_servers_total` - Number of servers per registry
-- `sync_operation_duration_seconds` - Sync operation duration
 
 ## Cleanup
 
