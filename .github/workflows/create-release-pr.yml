@@ -54,7 +54,7 @@ jobs:
             - file: deploy/charts/toolhive-registry-server/Chart.yaml
               path: appVersion
             - file: deploy/charts/toolhive-registry-server/values.yaml
-              path: image.tag
+              path: image.registryServerUrl
               prefix: v
           helm_docs_args: --chart-search-root=deploy/charts
 
