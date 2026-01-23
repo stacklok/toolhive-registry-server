@@ -2,8 +2,7 @@
 # Image built with ko and loaded into KIND cluster
 
 image:
-  repository: ko.local/thv-registry-api
-  tag: ci-test
+  registryServerUrl: ko.local/thv-registry-api:ci-test
   pullPolicy: Never
 
 # Use minimal resources for CI testing
