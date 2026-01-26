@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/app/storage/mocks"
@@ -294,6 +296,44 @@ func TestWithSyncManager(t *testing.T) {
 	assert.Equal(t, testSyncManager, cfg.syncManager)
 }
 
+func TestWithMeterProvider(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		provider metric.MeterProvider
+		wantNil  bool
+	}{
+		{
+			name:     "sets noop meter provider",
+			provider: noop.NewMeterProvider(),
+			wantNil:  false,
+		},
+		{
+			name:     "sets nil meter provider",
+			provider: nil,
+			wantNil:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := &registryAppConfig{}
+
+			opt := WithMeterProvider(tt.provider)
+			err := opt(cfg)
+
+			require.NoError(t, err)
+			if tt.wantNil {
+				assert.Nil(t, cfg.meterProvider)
+			} else {
+				assert.Equal(t, tt.provider, cfg.meterProvider)
+			}
+		})
+	}
+}
+
 func TestBuildHTTPServer(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -393,6 +433,129 @@ func TestBuildHTTPServer(t *testing.T) {
 			} else {
 				assert.Equal(t, 2, len(tt.config.middlewares), "custom middlewares should be preserved plus auth middleware")
 			}
+		})
+	}
+}
+
+func TestBuildHTTPServer_WithMeterProvider(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	tests := []struct {
+		name                    string
+		meterProvider           metric.MeterProvider
+		initialMiddlewareCount  int
+		expectedMiddlewareCount int
+		description             string
+	}{
+		{
+			name:                    "with meter provider adds metrics middleware",
+			meterProvider:           noop.NewMeterProvider(),
+			initialMiddlewareCount:  0, // nil triggers defaults (5) + metrics (1) + auth (1) = 7
+			expectedMiddlewareCount: 7, // 5 default + 1 metrics + 1 auth
+			description:             "metrics middleware should be prepended when meter provider is set",
+		},
+		{
+			name:                    "without meter provider no metrics middleware",
+			meterProvider:           nil,
+			initialMiddlewareCount:  0, // nil triggers defaults (5) + auth (1) = 6
+			expectedMiddlewareCount: 6, // 5 default + 1 auth (no metrics)
+			description:             "no metrics middleware should be added when meter provider is nil",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockSvc := mocksvc.NewMockRegistryService(ctrl)
+
+			cfg := &registryAppConfig{
+				address:        ":8080",
+				middlewares:    nil, // nil triggers default middlewares
+				requestTimeout: 10 * time.Second,
+				readTimeout:    10 * time.Second,
+				writeTimeout:   15 * time.Second,
+				idleTimeout:    60 * time.Second,
+				meterProvider:  tt.meterProvider,
+				authMiddleware: func(next http.Handler) http.Handler { return next },
+			}
+
+			server, err := buildHTTPServer(ctx, cfg, mockSvc)
+
+			require.NoError(t, err, tt.description)
+			require.NotNil(t, server)
+			assert.Len(t, cfg.middlewares, tt.expectedMiddlewareCount, tt.description)
+		})
+	}
+}
+
+func TestBuildHTTPServer_MetricsMiddlewareWithCustomMiddlewares(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	tests := []struct {
+		name                    string
+		meterProvider           metric.MeterProvider
+		customMiddlewareCount   int
+		expectedMiddlewareCount int
+		description             string
+	}{
+		{
+			name:                    "meter provider with custom middlewares prepends metrics",
+			meterProvider:           noop.NewMeterProvider(),
+			customMiddlewareCount:   2,
+			expectedMiddlewareCount: 4, // 1 metrics + 2 custom + 1 auth
+			description:             "metrics middleware should be prepended to custom middlewares",
+		},
+		{
+			name:                    "no meter provider with custom middlewares",
+			meterProvider:           nil,
+			customMiddlewareCount:   2,
+			expectedMiddlewareCount: 3, // 2 custom + 1 auth (no metrics)
+			description:             "no metrics middleware with custom middlewares when provider is nil",
+		},
+		{
+			name:                    "meter provider with single custom middleware",
+			meterProvider:           noop.NewMeterProvider(),
+			customMiddlewareCount:   1,
+			expectedMiddlewareCount: 3, // 1 metrics + 1 custom + 1 auth
+			description:             "metrics middleware prepended to single custom middleware",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockSvc := mocksvc.NewMockRegistryService(ctrl)
+
+			// Create custom middlewares
+			customMiddlewares := make([]func(http.Handler) http.Handler, tt.customMiddlewareCount)
+			for i := range customMiddlewares {
+				customMiddlewares[i] = func(next http.Handler) http.Handler { return next }
+			}
+
+			cfg := &registryAppConfig{
+				address:        ":8080",
+				middlewares:    customMiddlewares,
+				requestTimeout: 10 * time.Second,
+				readTimeout:    10 * time.Second,
+				writeTimeout:   15 * time.Second,
+				idleTimeout:    60 * time.Second,
+				meterProvider:  tt.meterProvider,
+				authMiddleware: func(next http.Handler) http.Handler { return next },
+			}
+
+			server, err := buildHTTPServer(ctx, cfg, mockSvc)
+
+			require.NoError(t, err, tt.description)
+			require.NotNil(t, server)
+			assert.Len(t, cfg.middlewares, tt.expectedMiddlewareCount, tt.description)
 		})
 	}
 }
@@ -533,6 +696,55 @@ func TestBuildSyncComponents(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, coord)
 	})
+}
+
+func TestBuildSyncComponents_WithMeterProvider(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	tests := []struct {
+		name          string
+		meterProvider metric.MeterProvider
+		description   string
+	}{
+		{
+			name:          "with meter provider creates sync and registry metrics",
+			meterProvider: noop.NewMeterProvider(),
+			description:   "coordinator should be created with metrics when meter provider is set",
+		},
+		{
+			name:          "without meter provider no metrics created",
+			meterProvider: nil,
+			description:   "coordinator should be created without metrics when meter provider is nil",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			mockFactory := mocks.NewMockFactory(ctrl)
+
+			mockFactory.EXPECT().
+				CreateStateService(gomock.Any()).
+				Return(nil, nil)
+
+			mockFactory.EXPECT().
+				CreateSyncWriter(gomock.Any()).
+				Return(nil, nil)
+
+			cfg := &registryAppConfig{
+				config:         createValidTestConfig(),
+				storageFactory: mockFactory,
+				meterProvider:  tt.meterProvider,
+			}
+
+			coord, err := buildSyncComponents(ctx, cfg)
+
+			require.NoError(t, err, tt.description)
+			require.NotNil(t, coord, tt.description)
+		})
+	}
 }
 
 func TestNewRegistryApp(t *testing.T) {
