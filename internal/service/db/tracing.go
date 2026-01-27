@@ -34,11 +34,14 @@ var (
 
 // startSpan starts a new span for database operations.
 // If the tracer is nil, it returns a no-op span from the context.
+// All database spans automatically include the db.system attribute per OTEL semantic conventions.
 func (s *dbService) startSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
 	if s.tracer == nil {
 		// Return a no-op span from context
 		return ctx, trace.SpanFromContext(ctx)
 	}
+	// Prepend db.system attribute to ensure all database spans have it per OTEL semantic conventions
+	opts = append([]trace.SpanStartOption{trace.WithAttributes(DBSystemPostgres)}, opts...)
 	return s.tracer.Start(ctx, name, opts...)
 }
 

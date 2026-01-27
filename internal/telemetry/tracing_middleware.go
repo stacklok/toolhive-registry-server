@@ -17,6 +17,10 @@ import (
 const (
 	// TracerName is the name used for the HTTP tracer
 	TracerName = "github.com/stacklok/toolhive-registry-server/http"
+
+	// MaxUserAgentLength is the maximum length for User-Agent strings in traces
+	// to prevent unbounded storage from malicious or overly long User-Agent headers
+	MaxUserAgentLength = 256
 )
 
 // TracingMiddleware creates HTTP middleware for distributed tracing.
@@ -50,7 +54,7 @@ func TracingMiddleware(provider trace.TracerProvider) func(http.Handler) http.Ha
 				trace.WithAttributes(
 					semconv.HTTPRequestMethodKey.String(r.Method),
 					semconv.URLPath(r.URL.Path),
-					semconv.UserAgentOriginal(r.UserAgent()),
+					semconv.UserAgentOriginal(truncateUserAgent(r.UserAgent())),
 				),
 			)
 			defer span.End()
@@ -72,13 +76,16 @@ func TracingMiddleware(provider trace.TracerProvider) func(http.Handler) http.Ha
 			statusCode := ww.Status()
 			span.SetAttributes(semconv.HTTPResponseStatusCode(statusCode))
 
-			// Set span status based on HTTP status code
-			// 4xx errors are client errors, 5xx are server errors
-			if statusCode >= 400 {
+			// Set span status based on HTTP status code per OpenTelemetry semantic conventions.
+			// Only 5xx server errors should set span status to Error.
+			// 4xx client errors are expected responses and should leave status as Unset.
+			// 2xx/3xx responses are successful and set status to Ok.
+			if statusCode >= 500 {
 				span.SetStatus(codes.Error, http.StatusText(statusCode))
-			} else {
+			} else if statusCode < 400 {
 				span.SetStatus(codes.Ok, "")
 			}
+			// 4xx errors: intentionally leave status as Unset (do not call SetStatus)
 		})
 	}
 }
@@ -92,4 +99,13 @@ func getRoutePatternForTracing(r *http.Request) string {
 	}
 	// Return a constant to prevent cardinality explosion from unknown routes
 	return "unknown_route"
+}
+
+// truncateUserAgent truncates a User-Agent string if it exceeds MaxUserAgentLength.
+// This prevents unbounded storage in traces from malicious or overly long User-Agent headers.
+func truncateUserAgent(ua string) string {
+	if len(ua) <= MaxUserAgentLength {
+		return ua
+	}
+	return ua[:MaxUserAgentLength]
 }
