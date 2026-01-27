@@ -1,7 +1,9 @@
 package kubernetes
 
 import (
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
@@ -60,17 +62,24 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 	}
 
 	// Add Kubernetes metadata to publisher provided metadata
-	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
-		transportURL: map[string]any{
-			"metadata": map[string]any{
-				"kubernetes_kind":      mcpServer.Kind,
-				"kubernetes_namespace": mcpServer.Namespace,
-				"kubernetes_name":      mcpServer.Name,
-				"kubernetes_image":     mcpServer.Spec.Image,
-				"kubernetes_uid":       string(mcpServer.UID),
-				"kubernetes_transport": mcpServer.Spec.Transport,
-			},
+	extensionData := map[string]any{
+		"metadata": map[string]any{
+			"kubernetes_kind":      mcpServer.Kind,
+			"kubernetes_namespace": mcpServer.Namespace,
+			"kubernetes_name":      mcpServer.Name,
+			"kubernetes_image":     mcpServer.Spec.Image,
+			"kubernetes_uid":       string(mcpServer.UID),
+			"kubernetes_transport": mcpServer.Spec.Transport,
 		},
+	}
+
+	// Add tool definitions if present
+	if toolDefs := extractToolDefinitions(annotations, mcpServer.Name, mcpServer.Namespace); toolDefs != nil {
+		extensionData["tool_definitions"] = toolDefs
+	}
+
+	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
+		transportURL: extensionData,
 	}
 
 	return serverJSON, nil
@@ -122,15 +131,22 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 		PublisherProvided: make(map[string]any),
 	}
 	// Add Kubernetes metadata to publisher provided metadata
-	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
-		transportURL: map[string]any{
-			"metadata": map[string]any{
-				"kubernetes_kind":      virtualMCPServer.Kind,
-				"kubernetes_namespace": virtualMCPServer.Namespace,
-				"kubernetes_name":      virtualMCPServer.Name,
-				"kubernetes_uid":       string(virtualMCPServer.UID),
-			},
+	extensionData := map[string]any{
+		"metadata": map[string]any{
+			"kubernetes_kind":      virtualMCPServer.Kind,
+			"kubernetes_namespace": virtualMCPServer.Namespace,
+			"kubernetes_name":      virtualMCPServer.Name,
+			"kubernetes_uid":       string(virtualMCPServer.UID),
 		},
+	}
+
+	// Add tool definitions if present
+	if toolDefs := extractToolDefinitions(annotations, virtualMCPServer.Name, virtualMCPServer.Namespace); toolDefs != nil {
+		extensionData["tool_definitions"] = toolDefs
+	}
+
+	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
+		transportURL: extensionData,
 	}
 
 	return serverJSON, nil
@@ -189,18 +205,46 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 		PublisherProvided: make(map[string]any),
 	}
 	// Add Kubernetes metadata to publisher provided metadata
-	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
-		transportURL: map[string]any{
-			"metadata": map[string]any{
-				"kubernetes_kind":      mcpRemoteProxy.Kind,
-				"kubernetes_namespace": mcpRemoteProxy.Namespace,
-				"kubernetes_name":      mcpRemoteProxy.Name,
-				"kubernetes_uid":       string(mcpRemoteProxy.UID),
-			},
+	extensionData := map[string]any{
+		"metadata": map[string]any{
+			"kubernetes_kind":      mcpRemoteProxy.Kind,
+			"kubernetes_namespace": mcpRemoteProxy.Namespace,
+			"kubernetes_name":      mcpRemoteProxy.Name,
+			"kubernetes_uid":       string(mcpRemoteProxy.UID),
 		},
 	}
 
+	// Add tool definitions if present
+	if toolDefs := extractToolDefinitions(annotations, mcpRemoteProxy.Name, mcpRemoteProxy.Namespace); toolDefs != nil {
+		extensionData["tool_definitions"] = toolDefs
+	}
+
+	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
+		transportURL: extensionData,
+	}
+
 	return serverJSON, nil
+}
+
+// extractToolDefinitions extracts and parses tool definitions from annotations.
+// It validates JSON syntax but does not validate the schema (operator's responsibility).
+// Returns nil if the annotation is not present, empty, or contains invalid JSON.
+func extractToolDefinitions(annotations map[string]string, name, namespace string) interface{} {
+	toolDefsStr, ok := annotations[defaultRegistryToolDefinitionsAnnotation]
+	if !ok || toolDefsStr == "" {
+		return nil
+	}
+
+	var toolDefs interface{}
+	if err := json.Unmarshal([]byte(toolDefsStr), &toolDefs); err != nil {
+		slog.Warn("tool_definitions annotation is not valid JSON, skipping",
+			"error", err,
+			"server", name,
+			"namespace", namespace)
+		return nil
+	}
+
+	return toolDefs
 }
 
 // extractPackages extracts packages from MCPServer spec
