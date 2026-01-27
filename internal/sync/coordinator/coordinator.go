@@ -11,6 +11,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
+	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
 const (
@@ -40,6 +41,27 @@ type defaultCoordinator struct {
 	done       chan struct{}
 
 	statusSvc state.RegistryStateService
+
+	// Metrics
+	syncMetrics     *telemetry.SyncMetrics
+	registryMetrics *telemetry.RegistryMetrics
+}
+
+// Option is a function that configures the coordinator
+type Option func(*defaultCoordinator)
+
+// WithSyncMetrics sets the sync metrics for the coordinator
+func WithSyncMetrics(metrics *telemetry.SyncMetrics) Option {
+	return func(c *defaultCoordinator) {
+		c.syncMetrics = metrics
+	}
+}
+
+// WithRegistryMetrics sets the registry metrics for the coordinator
+func WithRegistryMetrics(metrics *telemetry.RegistryMetrics) Option {
+	return func(c *defaultCoordinator) {
+		c.registryMetrics = metrics
+	}
 }
 
 // New creates a new coordinator with injected dependencies
@@ -47,13 +69,20 @@ func New(
 	manager pkgsync.Manager,
 	statusSvc state.RegistryStateService,
 	cfg *config.Config,
+	opts ...Option,
 ) Coordinator {
-	return &defaultCoordinator{
+	c := &defaultCoordinator{
 		manager:   manager,
 		statusSvc: statusSvc,
 		config:    cfg,
 		done:      make(chan struct{}),
 	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
 }
 
 // calculatePollingInterval returns the base polling interval with a random jitter applied.
@@ -162,6 +191,7 @@ func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
 // performRegistrySync executes the sync operation for a registry
 func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *config.RegistryConfig) {
 	registryName := regCfg.Name
+	startTime := time.Now()
 
 	// Set up the final status update in a defer block to ensure that we always
 	// clean up the status of the sync at the end of this function.
@@ -183,6 +213,9 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 	// Perform sync
 	result, syncErr := c.manager.PerformSync(ctx, regCfg)
 
+	// Calculate sync duration for metrics
+	syncDuration := time.Since(startTime)
+
 	// Update status based on result
 	now := time.Now()
 	if syncErr != nil {
@@ -191,6 +224,11 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 		slog.Error("Sync failed",
 			"registry", registryName,
 			"error", syncErr.Message)
+
+		// Record sync failure metric
+		if c.syncMetrics != nil {
+			c.syncMetrics.RecordSyncDuration(ctx, registryName, syncDuration, false)
+		}
 	} else {
 		syncStatus.Phase = status.SyncPhaseComplete
 		syncStatus.Message = "Sync completed successfully"
@@ -206,5 +244,15 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 			"registry", registryName,
 			"server_count", result.ServerCount,
 			"hash", hashPreview)
+
+		// Record sync success metric
+		if c.syncMetrics != nil {
+			c.syncMetrics.RecordSyncDuration(ctx, registryName, syncDuration, true)
+		}
+
+		// Record registry server count metric
+		if c.registryMetrics != nil {
+			c.registryMetrics.RecordServersTotal(ctx, registryName, int64(result.ServerCount))
+		}
 	}
 }
