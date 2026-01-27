@@ -120,7 +120,9 @@ func NewTracerProvider(ctx context.Context, opts ...TracerProviderOption) (trace
 	slog.Info("W3C Trace Context propagator configured")
 
 	if cfg.insecure {
-		slog.Warn("Tracing configured with insecure connection - telemetry data will be transmitted over unencrypted HTTP. This should only be used in development/testing environments.")
+		slog.Warn("Tracing configured with insecure connection",
+			"warning", "telemetry data will be transmitted over unencrypted HTTP",
+			"recommendation", "only use insecure mode in development/testing environments")
 	}
 
 	slog.Info("Tracing initialized",
