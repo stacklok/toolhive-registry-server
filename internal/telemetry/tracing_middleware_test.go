@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -182,28 +183,28 @@ func TestTracingMiddleware_StatusCodeRecording(t *testing.T) {
 			expectedStatusDesc: "",
 		},
 		{
-			name:               "400 Bad Request sets span status to Error",
+			name:               "400 Bad Request leaves span status Unset",
 			statusCode:         http.StatusBadRequest,
-			expectedSpanStatus: codes.Error,
-			expectedStatusDesc: http.StatusText(http.StatusBadRequest),
+			expectedSpanStatus: codes.Unset,
+			expectedStatusDesc: "",
 		},
 		{
-			name:               "401 Unauthorized sets span status to Error",
+			name:               "401 Unauthorized leaves span status Unset",
 			statusCode:         http.StatusUnauthorized,
-			expectedSpanStatus: codes.Error,
-			expectedStatusDesc: http.StatusText(http.StatusUnauthorized),
+			expectedSpanStatus: codes.Unset,
+			expectedStatusDesc: "",
 		},
 		{
-			name:               "403 Forbidden sets span status to Error",
+			name:               "403 Forbidden leaves span status Unset",
 			statusCode:         http.StatusForbidden,
-			expectedSpanStatus: codes.Error,
-			expectedStatusDesc: http.StatusText(http.StatusForbidden),
+			expectedSpanStatus: codes.Unset,
+			expectedStatusDesc: "",
 		},
 		{
-			name:               "404 Not Found sets span status to Error",
+			name:               "404 Not Found leaves span status Unset",
 			statusCode:         http.StatusNotFound,
-			expectedSpanStatus: codes.Error,
-			expectedStatusDesc: http.StatusText(http.StatusNotFound),
+			expectedSpanStatus: codes.Unset,
+			expectedStatusDesc: "",
 		},
 		{
 			name:               "500 Internal Server Error sets span status to Error",
@@ -728,4 +729,43 @@ func TestTracingMiddleware_ConcurrentRequests(t *testing.T) {
 			assert.True(t, span.SpanContext.SpanID().IsValid())
 		}
 	})
+}
+
+func TestTruncateUserAgent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "short user agent unchanged",
+			input:    "Mozilla/5.0",
+			expected: "Mozilla/5.0",
+		},
+		{
+			name:     "exactly max length unchanged",
+			input:    strings.Repeat("a", MaxUserAgentLength),
+			expected: strings.Repeat("a", MaxUserAgentLength),
+		},
+		{
+			name:     "exceeds max length truncated",
+			input:    strings.Repeat("a", MaxUserAgentLength+100),
+			expected: strings.Repeat("a", MaxUserAgentLength),
+		},
+		{
+			name:     "empty string unchanged",
+			input:    "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := truncateUserAgent(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }
