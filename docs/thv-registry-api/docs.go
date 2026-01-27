@@ -1251,6 +1251,7 @@ const docTemplate = `{
         },
         "/registry/v0.1/publish": {
             "post": {
+                "deprecated": true,
                 "description": "Publish a server to the registry. This server does not support publishing via this endpoint.\nUse the registry-specific endpoint /{registryName}/v0.1/publish instead.",
                 "requestBody": {
                     "content": {
@@ -1302,6 +1303,7 @@ const docTemplate = `{
         },
         "/registry/v0.1/servers": {
             "get": {
+                "deprecated": true,
                 "description": "Get a list of available servers from all registries (aggregated view)",
                 "parameters": [
                     {
@@ -1397,6 +1399,7 @@ const docTemplate = `{
         },
         "/registry/v0.1/servers/{serverName}/versions": {
             "get": {
+                "deprecated": true,
                 "description": "Returns all available versions for a specific MCP server from all registries (aggregated view)",
                 "parameters": [
                     {
@@ -1482,6 +1485,7 @@ const docTemplate = `{
         },
         "/registry/v0.1/servers/{serverName}/versions/{version}": {
             "get": {
+                "deprecated": true,
                 "description": "Returns detailed information about a specific version of an MCP server from all registries.\nUse the special version ` + "`" + `latest` + "`" + ` to get the latest version.",
                 "parameters": [
                     {
@@ -1773,6 +1777,126 @@ const docTemplate = `{
             }
         },
         "/registry/{registryName}/v0.1/servers/{serverName}/versions/{version}": {
+            "delete": {
+                "description": "Delete a server version from a specific managed registry",
+                "parameters": [
+                    {
+                        "description": "Registry name",
+                        "in": "path",
+                        "name": "registryName",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Server name (URL-encoded)",
+                        "in": "path",
+                        "name": "serverName",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Version (URL-encoded)",
+                        "in": "path",
+                        "name": "version",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Bad request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Not a managed registry"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Server version not found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Delete server version from specific registry",
+                "tags": [
+                    "registry"
+                ]
+            },
             "get": {
                 "description": "Returns detailed information about a specific version of an MCP server from a specific registry.\nUse the special version ` + "`" + `latest` + "`" + ` to get the latest version.",
                 "parameters": [
@@ -2026,128 +2150,6 @@ const docTemplate = `{
                     }
                 ],
                 "summary": "Publish server to specific registry",
-                "tags": [
-                    "registry"
-                ]
-            }
-        },
-        "/{registryName}/v0.1/servers/{serverName}/versions/{version}": {
-            "delete": {
-                "description": "Delete a server version from a specific managed registry",
-                "parameters": [
-                    {
-                        "description": "Registry name",
-                        "in": "path",
-                        "name": "registryName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Server name (URL-encoded)",
-                        "in": "path",
-                        "name": "serverName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Version (URL-encoded)",
-                        "in": "path",
-                        "name": "version",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "204": {
-                        "description": "No content"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "403": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Not a managed registry"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Server version not found"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "Delete server version from specific registry",
                 "tags": [
                     "registry"
                 ]
