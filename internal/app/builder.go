@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/app/storage"
@@ -20,6 +21,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
+	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
 const (
@@ -65,6 +67,9 @@ type registryAppConfig struct {
 	// Auth components
 	authMiddleware  func(http.Handler) http.Handler
 	authInfoHandler http.Handler
+
+	// Telemetry components
+	meterProvider metric.MeterProvider
 }
 
 func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
@@ -248,6 +253,14 @@ func WithSyncManager(sm pkgsync.Manager) RegistryAppOptions {
 	}
 }
 
+// WithMeterProvider sets the OpenTelemetry meter provider for HTTP metrics
+func WithMeterProvider(mp metric.MeterProvider) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.meterProvider = mp
+		return nil
+	}
+}
+
 // buildSyncComponents builds sync manager, coordinator, and related components
 func buildSyncComponents(
 	ctx context.Context,
@@ -296,8 +309,32 @@ func buildSyncComponents(
 		}
 	}
 
+	// Create coordinator options for metrics
+	var coordOpts []coordinator.Option
+
+	// Create sync metrics if meter provider is configured
+	if b.meterProvider != nil {
+		syncMetrics, err := telemetry.NewSyncMetrics(b.meterProvider)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create sync metrics: %w", err)
+		}
+		if syncMetrics != nil {
+			coordOpts = append(coordOpts, coordinator.WithSyncMetrics(syncMetrics))
+			slog.Info("Sync metrics enabled")
+		}
+
+		registryMetrics, err := telemetry.NewRegistryMetrics(b.meterProvider)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create registry metrics: %w", err)
+		}
+		if registryMetrics != nil {
+			coordOpts = append(coordOpts, coordinator.WithRegistryMetrics(registryMetrics))
+			slog.Info("Registry metrics enabled")
+		}
+	}
+
 	// Create coordinator (storage-agnostic)
-	syncCoordinator := coordinator.New(b.syncManager, stateService, b.config)
+	syncCoordinator := coordinator.New(b.syncManager, stateService, b.config, coordOpts...)
 	slog.Info("Sync components initialized successfully")
 
 	return syncCoordinator, nil
@@ -343,6 +380,20 @@ func buildHTTPServer(
 			middleware.Recoverer,
 			middleware.Timeout(b.requestTimeout),
 			api.LoggingMiddleware,
+		}
+	}
+
+	// Add metrics middleware if meter provider is configured
+	// This should be added early in the chain to capture all requests
+	if b.meterProvider != nil {
+		metricsMiddleware, err := telemetry.MetricsMiddleware(b.meterProvider)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create metrics middleware: %w", err)
+		}
+		if metricsMiddleware != nil {
+			// Prepend metrics middleware to capture all requests including those rejected by auth
+			b.middlewares = append([]func(http.Handler) http.Handler{metricsMiddleware}, b.middlewares...)
+			slog.Info("HTTP metrics middleware enabled")
 		}
 	}
 

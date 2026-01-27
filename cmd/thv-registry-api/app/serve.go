@@ -113,6 +113,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		ctx,
 		registryapp.WithConfig(cfg),
 		registryapp.WithAddress(address),
+		registryapp.WithMeterProvider(tel.MeterProvider()),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to build application: %w", err)
