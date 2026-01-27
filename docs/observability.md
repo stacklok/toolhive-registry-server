@@ -57,6 +57,7 @@ The telemetry implementation is located in `internal/telemetry/`:
 | `meter.go` | MeterProvider setup with OTLP HTTP exporter |
 | `metrics.go` | Application-specific metrics (registry and sync) |
 | `middleware.go` | HTTP metrics middleware for Chi router |
+| `tracing_middleware.go` | HTTP tracing middleware for distributed tracing |
 
 ## Configuration
 
@@ -105,6 +106,153 @@ All metrics are prefixed with `thv_reg_srv_` to distinguish them from other metr
 
 - **HTTP metrics:** 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10 seconds
 - **Sync metrics:** 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300 seconds
+
+## Distributed Tracing
+
+The Registry Server implements distributed tracing across three layers: HTTP, Service, and Sync operations. Traces provide end-to-end visibility into request flows and background operations.
+
+### Trace Hierarchy
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ HTTP Request Span (root)                                            │
+│ Name: "GET /registry/v0.1/servers"                                  │
+│ ┌─────────────────────────────────────────────────────────────────┐ │
+│ │ Service Span (child)                                            │ │
+│ │ Name: "dbService.ListServers"                                   │ │
+│ │  - Attributes: registry.name, pagination.limit, result.count    │ │
+│ └─────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ Background Sync Span                                                │
+│ Name: "sync.performRegistrySync"                                    │
+│  - Attributes: registry.name, registry.type, sync.success,         │
+│                sync.duration_seconds, sync.server_count             │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Span Reference
+
+#### HTTP Layer Spans
+
+| Span Name | Kind | Description |
+|-----------|------|-------------|
+| `{METHOD} {route}` | Server | Root span for all HTTP requests |
+
+**Attributes:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `http.request.method` | string | HTTP method (GET, POST, etc.) |
+| `http.route` | string | Route pattern (e.g., `/registry/v0.1/servers/{serverName}`) |
+| `url.path` | string | Actual URL path |
+| `user_agent.original` | string | Client user agent |
+| `http.response.status_code` | int | Response status code |
+
+#### Service Layer Spans
+
+| Span Name | Description |
+|-----------|-------------|
+| `dbService.ListServers` | List servers with optional filtering |
+| `dbService.ListServerVersions` | List versions of a specific server |
+| `dbService.GetServerVersion` | Get a specific server version |
+| `dbService.PublishServerVersion` | Publish a new server version |
+| `dbService.DeleteServerVersion` | Delete a server version |
+| `dbService.ListRegistries` | List all registries |
+| `dbService.GetRegistryByName` | Get a specific registry |
+| `dbService.CreateRegistry` | Create a new registry |
+| `dbService.UpdateRegistry` | Update an existing registry |
+| `dbService.DeleteRegistry` | Delete a registry |
+
+**Common Attributes:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `registry.name` | string | Name of the registry |
+| `server.name` | string | Name of the server |
+| `server.version` | string | Version of the server |
+| `pagination.limit` | int | Page size limit |
+| `pagination.has_cursor` | bool | Whether pagination cursor is used |
+| `query.search` | string | Search query string |
+| `result.count` | int | Number of results returned |
+| `registry.type` | string | Type of registry (git, api, file, managed) |
+
+#### Sync Operation Spans
+
+| Span Name | Description |
+|-----------|-------------|
+| `sync.performRegistrySync` | Sync a registry from its source |
+
+**Attributes:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `registry.name` | string | Name of the registry being synced |
+| `registry.type` | string | Type of registry source |
+| `sync.success` | bool | Whether sync completed successfully |
+| `sync.duration_seconds` | float64 | Duration of the sync operation |
+| `sync.server_count` | int | Number of servers synced (on success) |
+
+### Example Traces
+
+#### Successful API Request
+
+```
+Trace ID: abc123def456...
+
+[12ms] GET /registry/v0.1/servers
+├── http.request.method: GET
+├── http.route: /registry/v0.1/servers
+├── http.response.status_code: 200
+│
+└── [10ms] dbService.ListServers
+    ├── registry.name: upstream
+    ├── pagination.limit: 50
+    ├── pagination.has_cursor: false
+    └── result.count: 25
+```
+
+#### Background Sync Operation
+
+```
+Trace ID: xyz789abc...
+
+[30.5s] sync.performRegistrySync
+├── registry.name: upstream
+├── registry.type: git
+├── sync.success: true
+├── sync.duration_seconds: 30.5
+└── sync.server_count: 42
+```
+
+#### Failed Request with Error
+
+```
+Trace ID: err456def...
+
+[5ms] GET /registry/v0.1/servers/unknown/versions/1.0.0
+├── http.request.method: GET
+├── http.route: /registry/v0.1/servers/{serverName}/versions/{version}
+├── http.response.status_code: 404
+│
+└── [3ms] dbService.GetServerVersion
+    ├── server.name: unknown
+    ├── server.version: 1.0.0
+    ├── status: ERROR
+    └── exception.message: server not found: unknown@1.0.0
+```
+
+### Tracer Names
+
+Each component uses a unique tracer name for identification:
+
+| Component | Tracer Name |
+|-----------|-------------|
+| HTTP Middleware | `github.com/stacklok/toolhive-registry-server/http` |
+| Database Service | `github.com/stacklok/toolhive-registry-server/service/db` |
+| Sync Coordinator | `github.com/stacklok/toolhive-registry-server/sync/coordinator` |
+
+### Context Propagation
+
+The Registry Server supports W3C Trace Context propagation. Incoming requests with `traceparent` headers will have their trace context extracted and used as the parent for all child spans. This enables distributed tracing across multiple services.
 
 ## Implementation Details
 
