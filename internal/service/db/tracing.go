@@ -23,7 +23,6 @@ const (
 	AttrPageSize      = attribute.Key("pagination.limit")
 	AttrResultCount   = attribute.Key("result.count")
 	AttrHasCursor     = attribute.Key("pagination.has_cursor")
-	AttrSearchQuery   = attribute.Key("query.search")
 )
 
 // Database semantic convention attributes
@@ -47,9 +46,12 @@ func (s *dbService) startSpan(ctx context.Context, name string, opts ...trace.Sp
 
 // recordError records an error on a span and sets the span status to error.
 // It safely handles nil spans and nil errors.
+// Note: The status description is intentionally generic to prevent sensitive
+// information (e.g., SQL queries, connection strings) from appearing in trace
+// status. The full error details are still available via span events for debugging.
 func recordError(span trace.Span, err error) {
 	if err != nil && span != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "operation failed")
 	}
 }

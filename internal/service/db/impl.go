@@ -146,9 +146,6 @@ func (s *dbService) ListServers(
 	if options.RegistryName != nil {
 		span.SetAttributes(AttrRegistryName.String(*options.RegistryName))
 	}
-	if options.Search != "" {
-		span.SetAttributes(AttrSearchQuery.String(options.Search))
-	}
 
 	slog.DebugContext(ctx, "ListServers query",
 		"limit", options.Limit,

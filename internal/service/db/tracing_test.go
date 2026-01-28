@@ -118,7 +118,7 @@ func TestRecordError_RecordsErrorCorrectly(t *testing.T) {
 
 	// Verify error status
 	assert.Equal(t, codes.Error, spans[0].Status.Code)
-	assert.Equal(t, testErr.Error(), spans[0].Status.Description)
+	assert.Equal(t, "operation failed", spans[0].Status.Description)
 
 	// Verify exception event was recorded
 	var hasException bool
