@@ -166,6 +166,64 @@ type GitConfig struct {
 
 	// Path is the path to the registry file within the repository
 	Path string `yaml:"path,omitempty" json:"path,omitempty"`
+
+	// Auth contains optional authentication for private repositories
+	Auth *GitAuthConfig `yaml:"auth,omitempty" json:"auth,omitempty"`
+}
+
+// GitAuthConfig defines authentication settings for Git repositories
+type GitAuthConfig struct {
+	// Username is the Git username for HTTP Basic authentication
+	Username string `yaml:"username,omitempty" json:"username,omitempty"`
+
+	// PasswordFile is the path to a file containing the Git password/token
+	// Must be an absolute path; whitespace is trimmed from the content
+	PasswordFile string `yaml:"passwordFile,omitempty" json:"passwordFile,omitempty"`
+}
+
+// GetPassword reads the password from PasswordFile using the secure file reader.
+// Returns empty string if the receiver is nil or PasswordFile is empty.
+// Returns an error if the file cannot be read.
+func (a *GitAuthConfig) GetPassword() (string, error) {
+	if a == nil {
+		return "", nil
+	}
+	password, err := readSecretFromFile(a.PasswordFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to read git password: %w", err)
+	}
+	return password, nil
+}
+
+// Validate validates the GitAuthConfig.
+// It checks that both username and passwordFile are specified together,
+// that passwordFile is an absolute path, and that the file exists and is readable.
+func (a *GitAuthConfig) Validate() error {
+	if a == nil {
+		return nil
+	}
+
+	hasUsername := a.Username != ""
+	hasPasswordFile := a.PasswordFile != ""
+
+	// Both must be set together, or neither
+	if hasUsername != hasPasswordFile {
+		return fmt.Errorf("git.auth.username and git.auth.passwordFile must both be specified")
+	}
+
+	if hasPasswordFile {
+		// Must be absolute path
+		if !filepath.IsAbs(a.PasswordFile) {
+			return fmt.Errorf("git.auth.passwordFile must be an absolute path")
+		}
+
+		// Verify the file exists and is readable
+		if _, err := os.Stat(a.PasswordFile); err != nil {
+			return fmt.Errorf("git.auth.passwordFile is not accessible: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // APIConfig defines API source configuration for upstream MCP Registry APIs
@@ -753,6 +811,13 @@ func validateSourceSpecificConfig(reg *RegistryConfig, prefix string) error {
 func validateGitConfig(git *GitConfig, prefix string) error {
 	if git.Repository == "" {
 		return fmt.Errorf("%s: git.repository is required", prefix)
+	}
+
+	// Validate auth if present
+	if git.Auth != nil {
+		if err := git.Auth.Validate(); err != nil {
+			return fmt.Errorf("%s: %w", prefix, err)
+		}
 	}
 	return nil
 }

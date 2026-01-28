@@ -2437,3 +2437,255 @@ auth:
 	require.Len(t, cfg.Auth.OAuth.Providers, 1)
 	assert.Equal(t, "/var/run/secrets/kubernetes.io/serviceaccount/token", cfg.Auth.OAuth.Providers[0].AuthTokenFile)
 }
+
+// TestGitAuthConfigGetPassword tests the GetPassword() method of GitAuthConfig
+func TestGitAuthConfigGetPassword(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		auth        *GitAuthConfig
+		setupFile   func(t *testing.T) string
+		wantPass    string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "reads password from file with whitespace trimming",
+			auth: &GitAuthConfig{
+				Username: "testuser",
+			},
+			setupFile: func(t *testing.T) string {
+				t.Helper()
+				tmpDir := t.TempDir()
+				passwordFile := filepath.Join(tmpDir, "password.txt")
+				err := os.WriteFile(passwordFile, []byte("  my-secret-password\n\t  "), 0600)
+				require.NoError(t, err)
+				return passwordFile
+			},
+			wantPass: "my-secret-password",
+			wantErr:  false,
+		},
+		{
+			name:     "nil receiver returns empty string",
+			auth:     nil,
+			wantPass: "",
+			wantErr:  false,
+		},
+		{
+			name: "missing file returns error",
+			auth: &GitAuthConfig{
+				Username:     "testuser",
+				PasswordFile: "/nonexistent/path/to/password.txt",
+			},
+			wantPass:    "",
+			wantErr:     true,
+			errContains: "failed to read git password",
+		},
+		{
+			name: "empty password file path returns empty string",
+			auth: &GitAuthConfig{
+				Username:     "testuser",
+				PasswordFile: "",
+			},
+			wantPass: "",
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Set up password file if needed
+			if tt.setupFile != nil && tt.auth != nil {
+				tt.auth.PasswordFile = tt.setupFile(t)
+			}
+
+			password, err := tt.auth.GetPassword()
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantPass, password)
+			}
+		})
+	}
+}
+
+// TestConfigValidateGitAuth tests git auth validation in TestConfigValidate
+func TestConfigValidateGitAuth(t *testing.T) {
+	t.Parallel()
+
+	// Create a temporary password file for valid auth tests
+	tmpDir := t.TempDir()
+	passwordFile := filepath.Join(tmpDir, "password.txt")
+	err := os.WriteFile(passwordFile, []byte("secret"), 0600)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		config  *Config
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid git config with auth (both username and passwordFile set)",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "git-registry",
+						Git: &GitConfig{
+							Repository: "https://github.com/example/repo.git",
+							Auth: &GitAuthConfig{
+								Username:     "testuser",
+								PasswordFile: passwordFile,
+							},
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "git.auth.username only (missing passwordFile) should fail",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "git-registry",
+						Git: &GitConfig{
+							Repository: "https://github.com/example/repo.git",
+							Auth: &GitAuthConfig{
+								Username: "testuser",
+							},
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: true,
+			errMsg:  "git.auth.username and git.auth.passwordFile must both be specified",
+		},
+		{
+			name: "git.auth.passwordFile only (missing username) should fail",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "git-registry",
+						Git: &GitConfig{
+							Repository: "https://github.com/example/repo.git",
+							Auth: &GitAuthConfig{
+								PasswordFile: passwordFile,
+							},
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: true,
+			errMsg:  "git.auth.username and git.auth.passwordFile must both be specified",
+		},
+		{
+			name: "git.auth.passwordFile with relative path should fail",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "git-registry",
+						Git: &GitConfig{
+							Repository: "https://github.com/example/repo.git",
+							Auth: &GitAuthConfig{
+								Username:     "testuser",
+								PasswordFile: "relative/path/to/password.txt",
+							},
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: true,
+			errMsg:  "git.auth.passwordFile must be an absolute path",
+		},
+		{
+			name: "git config without auth is valid",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "git-registry",
+						Git: &GitConfig{
+							Repository: "https://github.com/example/repo.git",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "git config with empty auth struct is valid",
+			config: &Config{
+				Registries: []RegistryConfig{
+					{
+						Name: "git-registry",
+						Git: &GitConfig{
+							Repository: "https://github.com/example/repo.git",
+							Auth:       &GitAuthConfig{},
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "30m",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := tt.config.validate()
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

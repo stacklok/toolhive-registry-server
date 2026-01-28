@@ -7,6 +7,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const (
+	testRepoURLClient = "https://github.com/example/repo.git"
+	mainBranchClient  = "main"
+)
+
 func TestNewDefaultGitClient(t *testing.T) {
 	t.Parallel()
 	client := NewDefaultGitClient()
@@ -98,16 +103,16 @@ func TestDefaultGitClient_GetFileContent_NoRepo(t *testing.T) {
 func TestCloneConfig_Structure(t *testing.T) {
 	t.Parallel()
 	config := CloneConfig{
-		URL:    "https://github.com/example/repo.git",
-		Branch: "main",
+		URL:    testRepoURLClient,
+		Branch: mainBranchClient,
 		Tag:    "v1.0.0",
 		Commit: "abc123",
 	}
 
-	if config.URL != "https://github.com/example/repo.git" {
+	if config.URL != testRepoURLClient {
 		t.Errorf("Expected URL to be set correctly")
 	}
-	if config.Branch != "main" {
+	if config.Branch != mainBranchClient {
 		t.Errorf("Expected Branch to be set correctly")
 	}
 	if config.Tag != "v1.0.0" {
@@ -121,17 +126,17 @@ func TestCloneConfig_Structure(t *testing.T) {
 func TestRepositoryInfo_Structure(t *testing.T) {
 	t.Parallel()
 	repoInfo := RepositoryInfo{
-		Branch:    "main",
-		RemoteURL: "https://github.com/example/repo.git",
+		Branch:    mainBranchClient,
+		RemoteURL: testRepoURLClient,
 	}
 
 	if repoInfo.Repository != nil {
 		t.Error("Expected Repository to be nil by default")
 	}
-	if repoInfo.Branch != "main" {
+	if repoInfo.Branch != mainBranchClient {
 		t.Errorf("Expected Branch to be set correctly")
 	}
-	if repoInfo.RemoteURL != "https://github.com/example/repo.git" {
+	if repoInfo.RemoteURL != testRepoURLClient {
 		t.Errorf("Expected RemoteURL to be set correctly")
 	}
 }
@@ -166,5 +171,58 @@ func TestRepositoryInfo_EmptyFields(t *testing.T) {
 	}
 	if repoInfo.RemoteURL != "" {
 		t.Error("Expected empty RemoteURL by default")
+	}
+}
+
+func TestDefaultGitClient_Clone_WithAuth(t *testing.T) {
+	t.Parallel()
+	client := NewDefaultGitClient()
+	ctx := log.IntoContext(t.Context(), logr.Discard())
+
+	// Test that auth config is properly handled (will fail to clone but exercises the auth code path)
+	config := &CloneConfig{
+		URL: "https://github.com/nonexistent/nonexistent.git",
+		Auth: &AuthConfig{
+			Username: "testuser",
+			Password: "testpass",
+		},
+	}
+
+	repoInfo, err := client.Clone(ctx, config)
+	// Expected to fail (repo doesn't exist), but auth code path should be exercised
+	if err == nil {
+		t.Error("Expected error for non-existent repository, got nil")
+	}
+	if repoInfo != nil {
+		t.Error("Expected nil repoInfo for non-existent repository")
+	}
+}
+
+func TestCloneConfig_WithAuth(t *testing.T) {
+	t.Parallel()
+	auth := &AuthConfig{
+		Username: "user",
+		Password: "pass",
+	}
+	config := CloneConfig{
+		URL:    testRepoURLClient,
+		Branch: mainBranchClient,
+		Auth:   auth,
+	}
+
+	if config.URL != testRepoURLClient {
+		t.Errorf("Expected URL to be set correctly")
+	}
+	if config.Branch != mainBranchClient {
+		t.Errorf("Expected Branch to be set correctly")
+	}
+	if config.Auth == nil {
+		t.Error("Expected Auth to be set")
+	}
+	if config.Auth.Username != "user" {
+		t.Errorf("Expected Username to be 'user', got '%s'", config.Auth.Username)
+	}
+	if config.Auth.Password != "pass" {
+		t.Errorf("Expected Password to be 'pass', got '%s'", config.Auth.Password)
 	}
 }
