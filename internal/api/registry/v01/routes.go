@@ -116,14 +116,14 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 		opts = append(opts, service.WithRegistryName[service.ListServersOptions](registryName))
 	}
 
-	servers, err := routes.service.ListServers(r.Context(), opts...)
+	listResult, err := routes.service.ListServers(r.Context(), opts...)
 	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	serverResponses := make([]upstreamv0.ServerResponse, len(servers))
-	for i, server := range servers {
+	serverResponses := make([]upstreamv0.ServerResponse, len(listResult.Servers))
+	for i, server := range listResult.Servers {
 		serverResponses[i] = upstreamv0.ServerResponse{
 			Server: *server,
 			Meta:   upstreamv0.ResponseMeta{},
@@ -133,8 +133,8 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 	result := upstreamv0.ServerListResponse{
 		Servers: serverResponses,
 		Metadata: upstreamv0.Metadata{
-			NextCursor: "",
-			Count:      len(servers),
+			NextCursor: listResult.NextCursor,
+			Count:      len(listResult.Servers),
 		},
 	}
 

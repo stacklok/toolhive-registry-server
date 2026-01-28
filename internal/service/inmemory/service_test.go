@@ -364,12 +364,12 @@ func TestService_ListServers(t *testing.T) {
 			svc, err := inmemory.New(context.Background(), mockProvider, opts...)
 			require.NoError(t, err)
 
-			servers, err := svc.ListServers(context.Background(), tt.options...)
+			result, err := svc.ListServers(context.Background(), tt.options...)
 			assert.NoError(t, err)
-			assert.Len(t, servers, tt.expectedCount)
+			assert.Len(t, result.Servers, tt.expectedCount)
 
 			if tt.validateServers != nil {
-				tt.validateServers(t, servers)
+				tt.validateServers(t, result.Servers)
 			}
 		})
 	}
@@ -1064,10 +1064,10 @@ func TestService_DeleteServerVersion(t *testing.T) {
 			verifyDelete: func(t *testing.T, svc service.RegistryService) {
 				t.Helper()
 				// Verify the server was deleted
-				servers, err := svc.ListServers(context.Background())
+				result, err := svc.ListServers(context.Background())
 				require.NoError(t, err)
-				assert.Len(t, servers, 1)
-				assert.Equal(t, "other-server", servers[0].Name)
+				assert.Len(t, result.Servers, 1)
+				assert.Equal(t, "other-server", result.Servers[0].Name)
 			},
 		},
 		{
@@ -1319,15 +1319,15 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 			svc, err := inmemory.New(context.Background(), mockProvider, opts...)
 			require.NoError(t, err)
 
-			servers, err := svc.ListServers(context.Background(), tt.options...)
+			result, err := svc.ListServers(context.Background(), tt.options...)
 
 			if tt.expectedError != "" {
 				assert.ErrorContains(t, err, tt.expectedError)
 			} else {
 				assert.NoError(t, err)
-				assert.Len(t, servers, tt.expectedCount)
+				assert.Len(t, result.Servers, tt.expectedCount)
 				if tt.validateServers != nil {
-					tt.validateServers(t, servers)
+					tt.validateServers(t, result.Servers)
 				}
 			}
 		})
@@ -1396,15 +1396,15 @@ func TestListServers_MultipleRegistries_NoDuplication(t *testing.T) {
 	require.NoError(t, err)
 
 	// Call ListServers without any filter (should return all servers from all registries)
-	servers, err := svc.ListServers(context.Background())
+	result, err := svc.ListServers(context.Background())
 	require.NoError(t, err)
 
 	// Verify total count is 5 (not 10 which would indicate duplication)
-	assert.Len(t, servers, 5, "Expected 5 unique servers, got %d - possible duplication issue", len(servers))
+	assert.Len(t, result.Servers, 5, "Expected 5 unique servers, got %d - possible duplication issue", len(result.Servers))
 
 	// Verify each server appears exactly once by collecting names
 	serverNames := make(map[string]int)
-	for _, s := range servers {
+	for _, s := range result.Servers {
 		serverNames[s.Name]++
 	}
 

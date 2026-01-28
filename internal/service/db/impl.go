@@ -120,7 +120,7 @@ func (*dbService) GetRegistry(
 func (s *dbService) ListServers(
 	ctx context.Context,
 	opts ...service.Option[service.ListServersOptions],
-) ([]*upstreamv0.ServerJSON, error) {
+) (*service.ListServersResult, error) {
 	ctx, span := s.startSpan(ctx, "dbService.ListServers")
 	defer span.End()
 
@@ -154,8 +154,9 @@ func (s *dbService) ListServers(
 		"search", options.Search,
 		"request_id", middleware.GetReqID(ctx))
 
+	// Request one extra record to detect if there are more results
 	params := sqlc.ListServersParams{
-		Size: int64(options.Limit),
+		Size: int64(options.Limit + 1),
 	}
 	if options.RegistryName != nil {
 		params.RegistryName = options.RegistryName
@@ -195,17 +196,30 @@ func (s *dbService) ListServers(
 		return helpers, nil
 	}
 
-	results, err := s.sharedListServers(ctx, querierFunc)
+	results, lastUpdatedAt, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
+	// Calculate NextCursor if there are more results
+	var nextCursor string
+	if lastUpdatedAt != nil {
+		nextCursor = base64.StdEncoding.EncodeToString(
+			[]byte(lastUpdatedAt.Format(time.RFC3339)),
+		)
+	}
+
 	span.SetAttributes(otel.AttrResultCount.Int(len(results)))
 	slog.DebugContext(ctx, "ListServers completed",
 		"count", len(results),
+		"has_more", nextCursor != "",
 		"request_id", middleware.GetReqID(ctx))
-	return results, nil
+
+	return &service.ListServersResult{
+		Servers:    results,
+		NextCursor: nextCursor,
+	}, nil
 }
 
 // ListServerVersions implements RegistryService.ListServerVersions
@@ -874,6 +888,87 @@ func (s *dbService) sharedListServers(
 	}
 
 	return result, nil
+}
+
+// sharedListServersWithCursor is similar to sharedListServers but supports cursor-based pagination.
+// It takes a limit parameter and returns:
+// - The list of servers (up to limit items)
+// - The UpdatedAt timestamp of the last server if there are more results (for cursor calculation)
+// - An error if the operation fails
+//
+// The querierFunc should request limit+1 records to allow detecting if there are more results.
+func (s *dbService) sharedListServersWithCursor(
+	ctx context.Context,
+	querierFunc querierFunction,
+	limit int,
+) ([]*upstreamv0.ServerJSON, *time.Time, error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.ReadCommitted,
+		AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			_ = err
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	servers, err := querierFunc(ctx, querier)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Check if there are more results
+	var lastUpdatedAt *time.Time
+	hasMore := len(servers) > limit
+	if hasMore {
+		// Trim to the requested limit
+		servers = servers[:limit]
+		// Get the UpdatedAt of the last server for the next cursor
+		if len(servers) > 0 {
+			lastUpdatedAt = servers[len(servers)-1].UpdatedAt
+		}
+	}
+
+	ids := make([]uuid.UUID, len(servers))
+	for i, server := range servers {
+		ids[i] = server.ID
+	}
+
+	packages, err := querier.ListServerPackages(ctx, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	packagesMap := make(map[uuid.UUID][]sqlc.ListServerPackagesRow)
+	for _, pkg := range packages {
+		packagesMap[pkg.ServerID] = append(packagesMap[pkg.ServerID], pkg)
+	}
+
+	remotes, err := querier.ListServerRemotes(ctx, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	remotesMap := make(map[uuid.UUID][]sqlc.McpServerRemote)
+	for _, remote := range remotes {
+		remotesMap[remote.ServerID] = append(remotesMap[remote.ServerID], remote)
+	}
+
+	result := make([]*upstreamv0.ServerJSON, 0, len(servers))
+	for _, dbServer := range servers {
+		server := helperToServer(
+			dbServer,
+			packagesMap[dbServer.ID],
+			remotesMap[dbServer.ID],
+		)
+		result = append(result, &server)
+	}
+
+	return result, lastUpdatedAt, nil
 }
 
 // ListRegistries returns all configured registries

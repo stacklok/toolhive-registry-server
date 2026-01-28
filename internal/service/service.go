@@ -44,8 +44,8 @@ type RegistryService interface {
 	// GetRegistry returns the registry data with metadata
 	GetRegistry(ctx context.Context) (*toolhivetypes.UpstreamRegistry, string, error) // returns registry, source, error
 
-	// ListServers returns all servers in the registry
-	ListServers(ctx context.Context, opts ...Option[ListServersOptions]) ([]*upstreamv0.ServerJSON, error)
+	// ListServers returns all servers in the registry with pagination info
+	ListServers(ctx context.Context, opts ...Option[ListServersOptions]) (*ListServersResult, error)
 
 	// ListServerVersions returns all versions of a specific server
 	ListServerVersions(ctx context.Context, opts ...Option[ListServerVersionsOptions]) ([]*upstreamv0.ServerJSON, error)
@@ -314,4 +314,14 @@ func WithServerData(serverData *upstreamv0.ServerJSON) Option[PublishServerVersi
 		o.ServerData = serverData
 		return nil
 	}
+}
+
+// ListServersResult contains the result of a ListServers operation with pagination info.
+// It wraps the server list with cursor-based pagination metadata.
+type ListServersResult struct {
+	// Servers is the list of servers matching the query
+	Servers []*upstreamv0.ServerJSON
+	// NextCursor is the cursor to use for fetching the next page of results.
+	// Empty string indicates no more results are available.
+	NextCursor string
 }

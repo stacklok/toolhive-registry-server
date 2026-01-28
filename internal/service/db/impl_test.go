@@ -131,7 +131,7 @@ func TestListServers(t *testing.T) {
 		setupFunc     func(*testing.T, *pgxpool.Pool)
 		options       []service.Option[service.ListServersOptions]
 		expectedCount int
-		validateFunc  func(*testing.T, []*upstreamv0.ServerJSON)
+		validateFunc  func(*testing.T, *service.ListServersResult)
 	}{
 		{
 			name: "list all servers with valid cursor",
@@ -144,10 +144,10 @@ func TestListServers(t *testing.T) {
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 4)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 4)
 				// Verify server structure
-				for _, server := range servers {
+				for _, server := range result.Servers {
 					require.NotEmpty(t, server.Name)
 					require.NotEmpty(t, server.Version)
 				}
@@ -164,8 +164,8 @@ func TestListServers(t *testing.T) {
 				service.WithLimit[service.ListServersOptions](2),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 2)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 2)
 			},
 		},
 		{
@@ -201,8 +201,8 @@ func TestListServers(t *testing.T) {
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 0)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 0)
 			},
 		},
 		{
@@ -217,10 +217,10 @@ func TestListServers(t *testing.T) {
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 4)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 4)
 				// Verify server structure
-				for _, server := range servers {
+				for _, server := range result.Servers {
 					require.NotEmpty(t, server.Name)
 					require.NotEmpty(t, server.Version)
 				}
@@ -238,8 +238,8 @@ func TestListServers(t *testing.T) {
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 0)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 0)
 			},
 		},
 		{
@@ -254,9 +254,9 @@ func TestListServers(t *testing.T) {
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 3) // Should find all 3 versions of com.example/test-server-1
-				for _, server := range servers {
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 3) // Should find all 3 versions of com.example/test-server-1
+				for _, server := range result.Servers {
 					require.Equal(t, "com.example/test-server-1", server.Name)
 				}
 			},
@@ -273,9 +273,9 @@ func TestListServers(t *testing.T) {
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 1) // Should find only com.example/test-server-2
-				require.Equal(t, "com.example/test-server-2", servers[0].Name)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 1) // Should find only com.example/test-server-2
+				require.Equal(t, "com.example/test-server-2", result.Servers[0].Name)
 			},
 		},
 		{
@@ -290,9 +290,9 @@ func TestListServers(t *testing.T) {
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 1) // Should find only com.example/test-server-2
-				require.Equal(t, "com.example/test-server-2", servers[0].Name)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 1) // Should find only com.example/test-server-2
+				require.Equal(t, "com.example/test-server-2", result.Servers[0].Name)
 			},
 		},
 		{
@@ -307,9 +307,9 @@ func TestListServers(t *testing.T) {
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 3) // Should still find com.example/test-server-1 versions
-				for _, server := range servers {
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 3) // Should still find com.example/test-server-1 versions
+				for _, server := range result.Servers {
 					require.Equal(t, "com.example/test-server-1", server.Name)
 				}
 			},
@@ -326,8 +326,8 @@ func TestListServers(t *testing.T) {
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 4) // Should find all servers (both com.example/test-server-1 and com.example/test-server-2)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 4) // Should find all servers (both com.example/test-server-1 and com.example/test-server-2)
 			},
 		},
 		{
@@ -342,8 +342,8 @@ func TestListServers(t *testing.T) {
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 0) // Should find no servers
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 0) // Should find no servers
 			},
 		},
 		{
@@ -359,9 +359,9 @@ func TestListServers(t *testing.T) {
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 3) // Should find com.example/test-server-1 versions in test-registry
-				for _, server := range servers {
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 3) // Should find com.example/test-server-1 versions in test-registry
+				for _, server := range result.Servers {
 					require.Equal(t, "com.example/test-server-1", server.Name)
 				}
 			},
@@ -377,16 +377,16 @@ func TestListServers(t *testing.T) {
 
 			tt.setupFunc(t, svc.pool)
 
-			servers, err := svc.ListServers(context.Background(), tt.options...)
+			result, err := svc.ListServers(context.Background(), tt.options...)
 
 			if tt.validateFunc == nil {
 				require.Error(t, err)
-				require.Nil(t, servers)
+				require.Nil(t, result)
 				return
 			}
 
 			require.NoError(t, err)
-			tt.validateFunc(t, servers)
+			tt.validateFunc(t, result)
 		})
 	}
 }

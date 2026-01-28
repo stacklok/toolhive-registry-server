@@ -318,7 +318,7 @@ func (s *regSvc) getMergedRegistryLocked() *toolhivetypes.UpstreamRegistry {
 func (s *regSvc) ListServers(
 	ctx context.Context,
 	opts ...service.Option[service.ListServersOptions],
-) ([]*upstreamv0.ServerJSON, error) {
+) (*service.ListServersResult, error) {
 	if err := s.refreshDataIfNeeded(ctx); err != nil {
 		slog.Warn("Failed to refresh data", "error", err)
 	}
@@ -339,7 +339,7 @@ func (s *regSvc) ListServers(
 
 // listServersLocked performs the actual server listing logic.
 // Caller must hold s.mu read lock.
-func (s *regSvc) listServersLocked(options *service.ListServersOptions) ([]*upstreamv0.ServerJSON, error) {
+func (s *regSvc) listServersLocked(options *service.ListServersOptions) (*service.ListServersResult, error) {
 	// Collect servers from relevant registries
 	var allServers []upstreamv0.ServerJSON
 
@@ -347,7 +347,10 @@ func (s *regSvc) listServersLocked(options *service.ListServersOptions) ([]*upst
 		// Filter by specific registry
 		regData, exists := s.registryData[*options.RegistryName]
 		if !exists {
-			return []*upstreamv0.ServerJSON{}, nil
+			return &service.ListServersResult{
+				Servers:    []*upstreamv0.ServerJSON{},
+				NextCursor: "",
+			}, nil
 		}
 		if regData != nil {
 			allServers = regData.Data.Servers
@@ -364,18 +367,35 @@ func (s *regSvc) listServersLocked(options *service.ListServersOptions) ([]*upst
 	// Collect and filter servers
 	servers := s.collectAndFilterServers(allServers, options.Search)
 
-	// Apply cursor pagination
-	servers, err := s.applyCursorPagination(servers, options.Cursor)
+	// Apply cursor pagination and get the start index for cursor calculation
+	startIndex, err := decodeCursor(options.Cursor)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid cursor format: %w", err)
 	}
 
-	// Apply limit if provided
+	// Slice servers based on cursor
+	if startIndex >= len(servers) {
+		return &service.ListServersResult{
+			Servers:    []*upstreamv0.ServerJSON{},
+			NextCursor: "",
+		}, nil
+	}
+	if startIndex > 0 {
+		servers = servers[startIndex:]
+	}
+
+	// Calculate NextCursor before applying limit
+	var nextCursor string
 	if options.Limit > 0 && len(servers) > options.Limit {
+		// There are more results after this page
+		nextCursor = EncodeCursor(startIndex + options.Limit)
 		servers = servers[:options.Limit]
 	}
 
-	return servers, nil
+	return &service.ListServersResult{
+		Servers:    servers,
+		NextCursor: nextCursor,
+	}, nil
 }
 
 // collectAndFilterServers collects servers and optionally filters by search term.
@@ -393,26 +413,6 @@ func (s *regSvc) collectAndFilterServers(allServers []upstreamv0.ServerJSON, sea
 		servers = []*upstreamv0.ServerJSON{}
 	}
 	return servers
-}
-
-// applyCursorPagination applies cursor-based pagination to the server list.
-func (*regSvc) applyCursorPagination(servers []*upstreamv0.ServerJSON, cursor string) ([]*upstreamv0.ServerJSON, error) {
-	if cursor == "" {
-		return servers, nil
-	}
-
-	startIndex, err := decodeCursor(cursor)
-	if err != nil {
-		return nil, fmt.Errorf("invalid cursor format: %w", err)
-	}
-
-	if startIndex >= len(servers) {
-		return []*upstreamv0.ServerJSON{}, nil
-	}
-	if startIndex > 0 {
-		servers = servers[startIndex:]
-	}
-	return servers, nil
 }
 
 // ListServerVersions implements RegistryService.ListServerVersions
