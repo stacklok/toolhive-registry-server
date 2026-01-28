@@ -11,6 +11,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/cache"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
@@ -36,9 +37,17 @@ func NewDefaultGitClient() Client {
 
 // Clone clones a repository with the given configuration
 func (c *defaultGitClient) Clone(ctx context.Context, config *CloneConfig) (*RepositoryInfo, error) {
-	// Prepare clone options (no authentication for initial version)
 	cloneOptions := &git.CloneOptions{
 		URL: config.URL,
+	}
+
+	// Configure authentication if provided
+	if config.Auth != nil && config.Auth.Username != "" {
+		cloneOptions.Auth = &githttp.BasicAuth{
+			Username: config.Auth.Username,
+			Password: config.Auth.Password,
+		}
+		slog.Debug("Using Git HTTP Basic authentication", "username", config.Auth.Username)
 	}
 
 	// Set reference if specified (but not for commit-based clones)

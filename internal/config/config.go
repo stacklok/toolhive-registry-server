@@ -166,6 +166,33 @@ type GitConfig struct {
 
 	// Path is the path to the registry file within the repository
 	Path string `yaml:"path,omitempty" json:"path,omitempty"`
+
+	// Auth contains optional authentication for private repositories
+	Auth *GitAuthConfig `yaml:"auth,omitempty" json:"auth,omitempty"`
+}
+
+// GitAuthConfig defines authentication settings for Git repositories
+type GitAuthConfig struct {
+	// Username is the Git username for HTTP Basic authentication
+	Username string `yaml:"username,omitempty" json:"username,omitempty"`
+
+	// PasswordFile is the path to a file containing the Git password/token
+	// Must be an absolute path; whitespace is trimmed from the content
+	PasswordFile string `yaml:"passwordFile,omitempty" json:"passwordFile,omitempty"`
+}
+
+// GetPassword reads the password from PasswordFile using the secure file reader.
+// Returns empty string if the receiver is nil or PasswordFile is empty.
+// Returns an error if the file cannot be read.
+func (a *GitAuthConfig) GetPassword() (string, error) {
+	if a == nil {
+		return "", nil
+	}
+	password, err := readSecretFromFile(a.PasswordFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to read git password: %w", err)
+	}
+	return password, nil
 }
 
 // APIConfig defines API source configuration for upstream MCP Registry APIs
@@ -753,6 +780,32 @@ func validateSourceSpecificConfig(reg *RegistryConfig, prefix string) error {
 func validateGitConfig(git *GitConfig, prefix string) error {
 	if git.Repository == "" {
 		return fmt.Errorf("%s: git.repository is required", prefix)
+	}
+
+	// Validate auth if present
+	if git.Auth != nil {
+		if err := validateGitAuth(git.Auth, prefix); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateGitAuth validates Git authentication configuration
+func validateGitAuth(auth *GitAuthConfig, prefix string) error {
+	hasUsername := auth.Username != ""
+	hasPasswordFile := auth.PasswordFile != ""
+
+	// Both must be set together, or neither
+	if hasUsername != hasPasswordFile {
+		return fmt.Errorf("%s: git.auth.username and git.auth.passwordFile must both be specified", prefix)
+	}
+
+	if hasPasswordFile {
+		// Must be absolute path
+		if !filepath.IsAbs(auth.PasswordFile) {
+			return fmt.Errorf("%s: git.auth.passwordFile must be an absolute path", prefix)
+		}
 	}
 	return nil
 }

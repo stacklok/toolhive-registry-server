@@ -88,6 +88,18 @@ func (h *gitRegistryHandler) fetchRegistryData(ctx context.Context, regCfg *conf
 		Commit: gitSource.Commit,
 	}
 
+	// Configure authentication if provided
+	if gitSource.Auth != nil && gitSource.Auth.Username != "" {
+		password, err := gitSource.Auth.GetPassword()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get git password: %w", err)
+		}
+		cloneConfig.Auth = &git2.AuthConfig{
+			Username: gitSource.Auth.Username,
+			Password: password,
+		}
+	}
+
 	// Clone the repository with timing and metrics
 	startTime := time.Now()
 	slog.Info("Starting git clone",

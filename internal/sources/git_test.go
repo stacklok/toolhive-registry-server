@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
@@ -637,4 +638,144 @@ func TestGitRegistryHandler_CleanupFailure(t *testing.T) {
 
 	mockGitClient.AssertExpectations(t)
 	mockValidator.AssertExpectations(t)
+}
+
+func TestGitRegistryHandler_FetchRegistryWithAuth(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		setupAuth      func(t *testing.T) *config.GitAuthConfig
+		registryConfig func(auth *config.GitAuthConfig) *config.RegistryConfig
+		setupMocks     func(*MockGitClient, *MockRegistryDataValidator)
+		expectError    bool
+		errorContains  string
+	}{
+		{
+			name: "successful fetch with authentication",
+			setupAuth: func(t *testing.T) *config.GitAuthConfig {
+				t.Helper()
+				// Create a temp password file
+				tmpDir := t.TempDir()
+				passwordFile := tmpDir + "/password.txt"
+				err := os.WriteFile(passwordFile, []byte("test-token"), 0600)
+				require.NoError(t, err)
+
+				return &config.GitAuthConfig{
+					Username:     "testuser",
+					PasswordFile: passwordFile,
+				}
+			},
+			registryConfig: func(auth *config.GitAuthConfig) *config.RegistryConfig {
+				return &config.RegistryConfig{
+					Name:   "test-git-auth",
+					Format: config.SourceFormatToolHive,
+					Git: &config.GitConfig{
+						Repository: testGitRepoURL,
+						Branch:     testBranch,
+						Auth:       auth,
+					},
+				}
+			},
+			setupMocks: func(gitClient *MockGitClient, validator *MockRegistryDataValidator) {
+				repoInfo := &git.RepositoryInfo{
+					RemoteURL: testGitRepoURL,
+				}
+				testData := []byte(`{"version": "1.0.0"}`)
+
+				upstreamRegistry := registry.NewTestUpstreamRegistry(
+					registry.WithVersion("1.0.0"),
+				)
+
+				// Verify that auth credentials are correctly passed to the git client
+				gitClient.On("Clone", mock.Anything, mock.MatchedBy(func(cfg *git.CloneConfig) bool {
+					return cfg.URL == testGitRepoURL &&
+						cfg.Branch == testBranch &&
+						cfg.Auth != nil &&
+						cfg.Auth.Username == "testuser" &&
+						cfg.Auth.Password == "test-token"
+				})).Return(repoInfo, nil)
+
+				gitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
+				gitClient.On("Cleanup", repoInfo).Return(nil)
+
+				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return(upstreamRegistry, nil)
+			},
+			expectError: false,
+		},
+		{
+			name: "fetch fails when password file not readable",
+			setupAuth: func(t *testing.T) *config.GitAuthConfig {
+				t.Helper()
+				// Use a path that doesn't exist
+				tmpDir := t.TempDir()
+				nonExistentFile := tmpDir + "/nonexistent-password.txt"
+
+				return &config.GitAuthConfig{
+					Username:     "testuser",
+					PasswordFile: nonExistentFile,
+				}
+			},
+			registryConfig: func(auth *config.GitAuthConfig) *config.RegistryConfig {
+				return &config.RegistryConfig{
+					Name:   "test-git-auth-fail",
+					Format: config.SourceFormatToolHive,
+					Git: &config.GitConfig{
+						Repository: testGitRepoURL,
+						Branch:     testBranch,
+						Auth:       auth,
+					},
+				}
+			},
+			setupMocks: func(_ *MockGitClient, _ *MockRegistryDataValidator) {
+				// No mocks needed as the fetch should fail before git operations
+			},
+			expectError:   true,
+			errorContains: "failed to get git password",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup auth config (may create temp files)
+			authConfig := tt.setupAuth(t)
+
+			// Create registry config with auth
+			registryConfig := tt.registryConfig(authConfig)
+
+			// Create mocks
+			mockGitClient := new(MockGitClient)
+			mockValidator := new(MockRegistryDataValidator)
+
+			// Setup mocks
+			tt.setupMocks(mockGitClient, mockValidator)
+
+			// Create handler with mocks
+			handler := &gitRegistryHandler{
+				gitClient: mockGitClient,
+				validator: mockValidator,
+			}
+
+			// Execute test
+			result, err := handler.FetchRegistry(context.Background(), registryConfig)
+
+			// Verify results
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+				assert.Contains(t, err.Error(), tt.errorContains)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, result)
+				assert.NotEmpty(t, result.Hash)
+				assert.Equal(t, registryConfig.Format, result.Format)
+			}
+
+			// Verify all mock expectations
+			mockGitClient.AssertExpectations(t)
+			mockValidator.AssertExpectations(t)
+		})
+	}
 }

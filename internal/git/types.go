@@ -19,6 +19,17 @@ type CloneConfig struct {
 
 	// Commit is the specific commit to clone (optional)
 	Commit string
+
+	// Auth contains optional authentication credentials
+	Auth *AuthConfig
+}
+
+// AuthConfig contains authentication credentials for Git operations
+type AuthConfig struct {
+	// Username is the Git username for HTTP Basic authentication
+	Username string
+	// Password is the Git password or personal access token
+	Password string
 }
 
 // RepositoryInfo contains information about a Git repository
