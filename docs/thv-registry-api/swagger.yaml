@@ -49,9 +49,23 @@ components:
         tags:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig'
       type: object
+    github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig:
+      description: Auth contains optional authentication for private repositories
+      properties:
+        passwordFile:
+          description: |-
+            PasswordFile is the path to a file containing the Git password/token
+            Must be an absolute path; whitespace is trimmed from the content
+          type: string
+        username:
+          description: Username is the Git username for HTTP Basic authentication
+          type: string
+      type: object
     github_com_stacklok_toolhive-registry-server_internal_config.GitConfig:
       description: Git repository source
       properties:
+        auth:
+          $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig'
         branch:
           description: Branch is the Git branch to use (mutually exclusive with Tag
             and Commit)
