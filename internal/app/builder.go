@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/app/storage"
@@ -69,7 +70,8 @@ type registryAppConfig struct {
 	authInfoHandler http.Handler
 
 	// Telemetry components
-	meterProvider metric.MeterProvider
+	meterProvider  metric.MeterProvider
+	tracerProvider trace.TracerProvider
 }
 
 func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
@@ -107,7 +109,12 @@ func NewRegistryApp(
 	// Create storage factory (single decision point for DB vs File)
 	// This factory creates all storage-dependent components
 	if cfg.storageFactory == nil {
-		cfg.storageFactory, err = storage.NewStorageFactory(ctx, cfg.config, cfg.dataDir)
+		// Build storage factory options
+		var storageOpts []storage.FactoryOption
+		if cfg.tracerProvider != nil {
+			storageOpts = append(storageOpts, storage.WithTracerProvider(cfg.tracerProvider))
+		}
+		cfg.storageFactory, err = storage.NewStorageFactory(ctx, cfg.config, cfg.dataDir, storageOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create storage factory: %w", err)
 		}
@@ -261,6 +268,14 @@ func WithMeterProvider(mp metric.MeterProvider) RegistryAppOptions {
 	}
 }
 
+// WithTracerProvider sets the OpenTelemetry tracer provider for HTTP tracing
+func WithTracerProvider(tp trace.TracerProvider) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.tracerProvider = tp
+		return nil
+	}
+}
+
 // buildSyncComponents builds sync manager, coordinator, and related components
 func buildSyncComponents(
 	ctx context.Context,
@@ -333,6 +348,13 @@ func buildSyncComponents(
 		}
 	}
 
+	// Add tracing if tracer provider is configured
+	if b.tracerProvider != nil {
+		tracer := b.tracerProvider.Tracer(coordinator.CoordinatorTracerName)
+		coordOpts = append(coordOpts, coordinator.WithTracer(tracer))
+		slog.Info("Sync coordinator tracing enabled")
+	}
+
 	// Create coordinator (storage-agnostic)
 	syncCoordinator := coordinator.New(b.syncManager, stateService, b.config, coordOpts...)
 	slog.Info("Sync components initialized successfully")
@@ -395,6 +417,15 @@ func buildHTTPServer(
 			b.middlewares = append([]func(http.Handler) http.Handler{metricsMiddleware}, b.middlewares...)
 			slog.Info("HTTP metrics middleware enabled")
 		}
+	}
+
+	// Add tracing middleware if tracer provider is configured
+	// This should be added early in the chain to capture all requests
+	if b.tracerProvider != nil {
+		tracingMiddleware := telemetry.TracingMiddleware(b.tracerProvider)
+		// Prepend tracing middleware to capture all requests including those rejected by auth
+		b.middlewares = append([]func(http.Handler) http.Handler{tracingMiddleware}, b.middlewares...)
+		slog.Info("HTTP tracing middleware enabled")
 	}
 
 	// Create auth middleware that bypasses public paths

@@ -18,10 +18,13 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
+	"github.com/stacklok/toolhive-registry-server/internal/otel"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
@@ -44,7 +47,8 @@ var (
 
 // options holds configuration options for the database service
 type options struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	tracer trace.Tracer
 }
 
 // Option is a functional option for configuring the database service
@@ -63,9 +67,19 @@ func WithConnectionPool(pool *pgxpool.Pool) Option {
 	}
 }
 
+// WithTracer sets the OpenTelemetry tracer for the database service.
+// If not set, tracing will be disabled (no-op).
+func WithTracer(tracer trace.Tracer) Option {
+	return func(o *options) error {
+		o.tracer = tracer
+		return nil
+	}
+}
+
 // dbService implements the RegistryService interface using a database backend
 type dbService struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	tracer trace.Tracer
 }
 
 var _ service.RegistryService = (*dbService)(nil)
@@ -81,7 +95,8 @@ func New(opts ...Option) (service.RegistryService, error) {
 	}
 
 	return &dbService{
-		pool: o.pool,
+		pool:   o.pool,
+		tracer: o.tracer,
 	}, nil
 }
 
@@ -106,11 +121,15 @@ func (s *dbService) ListServers(
 	ctx context.Context,
 	opts ...service.Option[service.ListServersOptions],
 ) ([]*upstreamv0.ServerJSON, error) {
+	ctx, span := s.startSpan(ctx, "dbService.ListServers")
+	defer span.End()
+
 	options := &service.ListServersOptions{
 		Limit: DefaultPageSize, // default limit
 	}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
+			otel.RecordError(span, err)
 			return nil, err
 		}
 	}
@@ -118,6 +137,15 @@ func (s *dbService) ListServers(
 	// Cap the limit at MaxPageSize to prevent potential DoS
 	if options.Limit > MaxPageSize {
 		options.Limit = MaxPageSize
+	}
+
+	// Add tracing attributes after options are parsed
+	span.SetAttributes(
+		otel.AttrPageSize.Int(options.Limit),
+		otel.AttrHasCursor.Bool(options.Cursor != ""),
+	)
+	if options.RegistryName != nil {
+		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
 	}
 
 	slog.DebugContext(ctx, "ListServers query",
@@ -139,10 +167,12 @@ func (s *dbService) ListServers(
 	if options.Cursor != "" {
 		decoded, err := base64.StdEncoding.DecodeString(options.Cursor)
 		if err != nil {
+			otel.RecordError(span, err)
 			return nil, fmt.Errorf("invalid cursor format: %w", err)
 		}
 		nextTime, err := time.Parse(time.RFC3339, string(decoded))
 		if err != nil {
+			otel.RecordError(span, err)
 			return nil, fmt.Errorf("invalid cursor format: %w", err)
 		}
 		params.Next = &nextTime
@@ -166,12 +196,16 @@ func (s *dbService) ListServers(
 	}
 
 	results, err := s.sharedListServers(ctx, querierFunc)
-	if err == nil {
-		slog.DebugContext(ctx, "ListServers completed",
-			"count", len(results),
-			"request_id", middleware.GetReqID(ctx))
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
 	}
-	return results, err
+
+	span.SetAttributes(otel.AttrResultCount.Int(len(results)))
+	slog.DebugContext(ctx, "ListServers completed",
+		"count", len(results),
+		"request_id", middleware.GetReqID(ctx))
+	return results, nil
 }
 
 // ListServerVersions implements RegistryService.ListServerVersions
@@ -179,22 +213,37 @@ func (s *dbService) ListServerVersions(
 	ctx context.Context,
 	opts ...service.Option[service.ListServerVersionsOptions],
 ) ([]*upstreamv0.ServerJSON, error) {
+	ctx, span := s.startSpan(ctx, "dbService.ListServerVersions")
+	defer span.End()
+
 	options := &service.ListServerVersionsOptions{
 		Limit: DefaultPageSize, // default limit
 	}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
+			otel.RecordError(span, err)
 			return nil, err
 		}
 	}
 
 	if options.Next != nil && options.Prev != nil {
-		return nil, fmt.Errorf("next and prev cannot be set at the same time")
+		err := fmt.Errorf("next and prev cannot be set at the same time")
+		otel.RecordError(span, err)
+		return nil, err
 	}
 
 	// Cap the limit at MaxPageSize to prevent potential DoS
 	if options.Limit > MaxPageSize {
 		options.Limit = MaxPageSize
+	}
+
+	// Add tracing attributes
+	span.SetAttributes(
+		otel.AttrServerName.String(options.Name),
+		otel.AttrPageSize.Int(options.Limit),
+	)
+	if options.RegistryName != nil {
+		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
 	}
 
 	params := sqlc.ListServerVersionsParams{
@@ -224,7 +273,14 @@ func (s *dbService) ListServerVersions(
 		return helpers, nil
 	}
 
-	return s.sharedListServers(ctx, querierFunc)
+	results, err := s.sharedListServers(ctx, querierFunc)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
+	span.SetAttributes(otel.AttrResultCount.Int(len(results)))
+	return results, nil
 }
 
 // GetServer returns a specific server by name
@@ -232,11 +288,24 @@ func (s *dbService) GetServerVersion(
 	ctx context.Context,
 	opts ...service.Option[service.GetServerVersionOptions],
 ) (*upstreamv0.ServerJSON, error) {
+	ctx, span := s.startSpan(ctx, "dbService.GetServerVersion")
+	defer span.End()
+
 	options := &service.GetServerVersionOptions{}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
+			otel.RecordError(span, err)
 			return nil, err
 		}
+	}
+
+	// Add tracing attributes
+	span.SetAttributes(
+		otel.AttrServerName.String(options.Name),
+		otel.AttrServerVersion.String(options.Version),
+	)
+	if options.RegistryName != nil {
+		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
 	}
 
 	params := sqlc.GetServerVersionParams{
@@ -261,6 +330,7 @@ func (s *dbService) GetServerVersion(
 
 	res, err := s.sharedListServers(ctx, querierFunc)
 	if err != nil {
+		otel.RecordError(span, err)
 		return nil, err
 	}
 
@@ -268,7 +338,9 @@ func (s *dbService) GetServerVersion(
 	// sooner if no records are found, so getting this far with
 	// a length result slice other than 1 means there's a bug.
 	if len(res) != 1 {
-		return nil, fmt.Errorf("%w: number of servers returned is not 1", ErrBug)
+		err := fmt.Errorf("%w: number of servers returned is not 1", ErrBug)
+		otel.RecordError(span, err)
+		return nil, err
 	}
 
 	return res[0], nil
@@ -477,27 +549,43 @@ func (s *dbService) PublishServerVersion(
 	ctx context.Context,
 	opts ...service.Option[service.PublishServerVersionOptions],
 ) (*upstreamv0.ServerJSON, error) {
+	ctx, span := s.startSpan(ctx, "dbService.PublishServerVersion")
+	defer span.End()
+
 	// Parse options
 	options := &service.PublishServerVersionOptions{}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
+			otel.RecordError(span, err)
 			return nil, fmt.Errorf("invalid option: %w", err)
 		}
 	}
 
 	if options.ServerData == nil {
-		return nil, fmt.Errorf("server data is required")
+		err := fmt.Errorf("server data is required")
+		otel.RecordError(span, err)
+		return nil, err
 	}
 
 	serverData := options.ServerData
 
+	// Add tracing attributes
+	span.SetAttributes(
+		otel.AttrRegistryName.String(options.RegistryName),
+		otel.AttrServerName.String(serverData.Name),
+		otel.AttrServerVersion.String(serverData.Version),
+	)
+
 	// Defensive check: validate server name format (should never fail if API layer is correct)
 	if !validators.IsValidServerName(serverData.Name) {
-		return nil, fmt.Errorf("invalid server name format: %s", serverData.Name)
+		err := fmt.Errorf("invalid server name format: %s", serverData.Name)
+		otel.RecordError(span, err)
+		return nil, err
 	}
 
 	// Execute the publish operation in a transaction
 	if err := s.executePublishTransaction(ctx, options.RegistryName, serverData); err != nil {
+		otel.RecordError(span, err)
 		return nil, err
 	}
 
@@ -514,6 +602,7 @@ func (s *dbService) PublishServerVersion(
 		service.WithVersion[service.GetServerVersionOptions](serverData.Version),
 	)
 	if err != nil {
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to fetch published server: %w", err)
 	}
 
@@ -609,13 +698,24 @@ func (s *dbService) DeleteServerVersion(
 	ctx context.Context,
 	opts ...service.Option[service.DeleteServerVersionOptions],
 ) error {
+	ctx, span := s.startSpan(ctx, "dbService.DeleteServerVersion")
+	defer span.End()
+
 	// 1. Parse options
 	options := &service.DeleteServerVersionOptions{}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
+			otel.RecordError(span, err)
 			return fmt.Errorf("invalid option: %w", err)
 		}
 	}
+
+	// Add tracing attributes
+	span.SetAttributes(
+		otel.AttrRegistryName.String(options.RegistryName),
+		otel.AttrServerName.String(options.ServerName),
+		otel.AttrServerVersion.String(options.Version),
+	)
 
 	// 2. Begin transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
@@ -623,6 +723,7 @@ func (s *dbService) DeleteServerVersion(
 		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
+		otel.RecordError(span, err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -639,15 +740,20 @@ func (s *dbService) DeleteServerVersion(
 	registry, err := querier.GetRegistryByName(ctx, options.RegistryName)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, options.RegistryName)
+			err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, options.RegistryName)
+			otel.RecordError(span, err)
+			return err
 		}
+		otel.RecordError(span, err)
 		return fmt.Errorf("failed to get registry: %w", err)
 	}
 
 	// 4. Validate registry is MANAGED type
 	if registry.RegType != sqlc.RegistryTypeMANAGED {
-		return fmt.Errorf("%w: registry %s has type %s",
+		err = fmt.Errorf("%w: registry %s has type %s",
 			service.ErrNotManagedRegistry, options.RegistryName, registry.RegType)
+		otel.RecordError(span, err)
+		return err
 	}
 
 	// 5. Delete the server version
@@ -657,17 +763,21 @@ func (s *dbService) DeleteServerVersion(
 		Version: options.Version,
 	})
 	if err != nil {
+		otel.RecordError(span, err)
 		return fmt.Errorf("failed to delete server version: %w", err)
 	}
 
 	// 5.1. Check if the server version was found and deleted
 	if rowsAffected == 0 {
-		return fmt.Errorf("%w: %s@%s",
+		err = fmt.Errorf("%w: %s@%s",
 			service.ErrServerNotFound, options.ServerName, options.Version)
+		otel.RecordError(span, err)
+		return err
 	}
 
 	// 6. Commit transaction
 	if err := tx.Commit(ctx); err != nil {
+		otel.RecordError(span, err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -768,12 +878,16 @@ func (s *dbService) sharedListServers(
 
 // ListRegistries returns all configured registries
 func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo, error) {
+	ctx, span := s.startSpan(ctx, "dbService.ListRegistries")
+	defer span.End()
+
 	// Begin a read-only transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.ReadCommitted,
 		AccessMode: pgx.ReadOnly,
 	})
 	if err != nil {
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -793,6 +907,7 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 
 	registries, err := querier.ListRegistries(ctx, params)
 	if err != nil {
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to list registries: %w", err)
 	}
 
@@ -828,6 +943,7 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 		result = append(result, *info)
 	}
 
+	span.SetAttributes(otel.AttrResultCount.Int(len(result)))
 	return result, nil
 }
 
@@ -855,12 +971,19 @@ func getStatusMessage(errorMsg *string) string {
 
 // GetRegistryByName returns a single registry by name
 func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*service.RegistryInfo, error) {
+	ctx, span := s.startSpan(ctx, "dbService.GetRegistryByName")
+	defer span.End()
+
+	// Add tracing attributes
+	span.SetAttributes(otel.AttrRegistryName.String(name))
+
 	// Begin a read-only transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.ReadCommitted,
 		AccessMode: pgx.ReadOnly,
 	})
 	if err != nil {
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -877,8 +1000,11 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 	registry, err := querier.GetRegistryByName(ctx, name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+			err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+			otel.RecordError(span, err)
+			return nil, err
 		}
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to get registry: %w", err)
 	}
 
@@ -917,10 +1043,20 @@ func (s *dbService) CreateRegistry(
 	name string,
 	req *service.RegistryCreateRequest,
 ) (*service.RegistryInfo, error) {
+	ctx, span := s.startSpan(ctx, "dbService.CreateRegistry")
+	defer span.End()
+
+	// Add tracing attributes
+	span.SetAttributes(otel.AttrRegistryName.String(name))
+
 	// Validate configuration
 	if err := service.ValidateRegistryConfig(req); err != nil {
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidRegistryConfig, err)
 	}
+
+	// Add registry type attribute after validation
+	span.SetAttributes(attribute.String("registry.type", string(req.GetSourceType())))
 
 	// Begin transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
@@ -928,6 +1064,7 @@ func (s *dbService) CreateRegistry(
 		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -942,9 +1079,12 @@ func (s *dbService) CreateRegistry(
 	// Check if registry already exists
 	_, err = querier.GetRegistryByName(ctx, name)
 	if err == nil {
-		return nil, fmt.Errorf("%w: %s", service.ErrRegistryAlreadyExists, name)
+		err = fmt.Errorf("%w: %s", service.ErrRegistryAlreadyExists, name)
+		otel.RecordError(span, err)
+		return nil, err
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to check registry existence: %w", err)
 	}
 
@@ -980,8 +1120,11 @@ func (s *dbService) CreateRegistry(
 		// Check for unique constraint violation
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return nil, fmt.Errorf("%w: %s", service.ErrRegistryAlreadyExists, name)
+			err = fmt.Errorf("%w: %s", service.ErrRegistryAlreadyExists, name)
+			otel.RecordError(span, err)
+			return nil, err
 		}
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to insert registry: %w", err)
 	}
 
@@ -1004,11 +1147,13 @@ func (s *dbService) CreateRegistry(
 		ErrorMsgs:    []string{initialErrorMsg},
 	})
 	if err != nil {
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to initialize sync status: %w", err)
 	}
 
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -1028,13 +1173,21 @@ func (s *dbService) UpdateRegistry(
 	name string,
 	req *service.RegistryCreateRequest,
 ) (*service.RegistryInfo, error) {
+	ctx, span := s.startSpan(ctx, "dbService.UpdateRegistry")
+	defer span.End()
+
+	// Add tracing attributes
+	span.SetAttributes(otel.AttrRegistryName.String(name))
+
 	// Validate configuration
 	if err := service.ValidateRegistryConfig(req); err != nil {
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidRegistryConfig, err)
 	}
 
 	// Check if source type is changing (not allowed)
 	if err := s.validateSourceTypeChange(ctx, name, req.GetSourceType()); err != nil {
+		otel.RecordError(span, err)
 		return nil, err
 	}
 
@@ -1042,6 +1195,7 @@ func (s *dbService) UpdateRegistry(
 	// We don't allow changing between path, url, and data - user must delete and recreate
 	if req.GetSourceType() == config.SourceTypeFile {
 		if err := s.validateFileSourceTypeChange(ctx, name, req); err != nil {
+			otel.RecordError(span, err)
 			return nil, err
 		}
 	}
@@ -1052,6 +1206,7 @@ func (s *dbService) UpdateRegistry(
 		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -1096,22 +1251,31 @@ func (s *dbService) UpdateRegistry(
 			existing, checkErr := querier.GetRegistryByName(ctx, name)
 			if checkErr != nil {
 				if errors.Is(checkErr, pgx.ErrNoRows) {
-					return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+					err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+					otel.RecordError(span, err)
+					return nil, err
 				}
+				otel.RecordError(span, checkErr)
 				return nil, fmt.Errorf("failed to check registry: %w", checkErr)
 			}
 			// Registry exists but is CONFIG type
 			if existing.CreationType == sqlc.CreationTypeCONFIG {
-				return nil, fmt.Errorf("%w: %s", service.ErrConfigRegistry, name)
+				err = fmt.Errorf("%w: %s", service.ErrConfigRegistry, name)
+				otel.RecordError(span, err)
+				return nil, err
 			}
 			// Should not reach here, but return not found just in case
-			return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+			err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+			otel.RecordError(span, err)
+			return nil, err
 		}
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to update registry: %w", err)
 	}
 
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
+		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -1127,12 +1291,19 @@ func (s *dbService) UpdateRegistry(
 
 // DeleteRegistry deletes an API registry
 func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
+	ctx, span := s.startSpan(ctx, "dbService.DeleteRegistry")
+	defer span.End()
+
+	// Add tracing attributes
+	span.SetAttributes(otel.AttrRegistryName.String(name))
+
 	// Begin transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.Serializable,
 		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
+		otel.RecordError(span, err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -1147,6 +1318,7 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 	// Delete the registry (only deletes API type registries)
 	rowsAffected, err := querier.DeleteAPIRegistry(ctx, name)
 	if err != nil {
+		otel.RecordError(span, err)
 		return fmt.Errorf("failed to delete registry: %w", err)
 	}
 
@@ -1155,20 +1327,28 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 		existing, checkErr := querier.GetRegistryByName(ctx, name)
 		if checkErr != nil {
 			if errors.Is(checkErr, pgx.ErrNoRows) {
-				return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+				err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+				otel.RecordError(span, err)
+				return err
 			}
+			otel.RecordError(span, checkErr)
 			return fmt.Errorf("failed to check registry: %w", checkErr)
 		}
 		// Registry exists but is CONFIG type
 		if existing.CreationType == sqlc.CreationTypeCONFIG {
-			return fmt.Errorf("%w: %s", service.ErrConfigRegistry, name)
+			err = fmt.Errorf("%w: %s", service.ErrConfigRegistry, name)
+			otel.RecordError(span, err)
+			return err
 		}
 		// Should not reach here, but return not found just in case
-		return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+		err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
+		otel.RecordError(span, err)
+		return err
 	}
 
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
+		otel.RecordError(span, err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 

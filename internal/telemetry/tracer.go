@@ -7,6 +7,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -110,6 +111,19 @@ func NewTracerProvider(ctx context.Context, opts ...TracerProviderOption) (trace
 
 	// Set as global tracer provider
 	otel.SetTracerProvider(tp)
+
+	// Set global propagator for W3C Trace Context propagation
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+	slog.Info("W3C Trace Context propagator configured")
+
+	if cfg.insecure {
+		slog.Warn("Tracing configured with insecure connection",
+			"warning", "telemetry data will be transmitted over unencrypted HTTP",
+			"recommendation", "only use insecure mode in development/testing environments")
+	}
 
 	slog.Info("Tracing initialized",
 		"endpoint", cfg.endpoint,

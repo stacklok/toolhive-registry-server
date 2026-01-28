@@ -7,8 +7,11 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 )
@@ -46,16 +49,45 @@ type Factory interface {
 	Cleanup()
 }
 
+// FactoryOption is a functional option for configuring the storage factory
+type FactoryOption func(*storageFactoryOptions)
+
+// storageFactoryOptions holds configuration options for the storage factory
+type storageFactoryOptions struct {
+	tracerProvider trace.TracerProvider
+}
+
+// WithTracerProvider sets the OpenTelemetry tracer provider for the storage factory.
+// If set, the factory will create a tracer and pass it to storage components
+// that support tracing (e.g., database service).
+func WithTracerProvider(tp trace.TracerProvider) FactoryOption {
+	return func(opts *storageFactoryOptions) {
+		opts.tracerProvider = tp
+	}
+}
+
 // NewStorageFactory creates a storage factory based on the configured storage type.
 // Returns a FileFactory for file-based storage or a DatabaseFactory for database storage.
-func NewStorageFactory(ctx context.Context, cfg *config.Config, dataDir string) (Factory, error) {
+func NewStorageFactory(ctx context.Context, cfg *config.Config, dataDir string, opts ...FactoryOption) (Factory, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
+	// Apply options
+	options := &storageFactoryOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	switch cfg.GetStorageType() {
 	case config.StorageTypeDatabase:
-		return NewDatabaseFactory(ctx, cfg)
+		// Build database factory options
+		var dbOpts []DatabaseFactoryOption
+		if options.tracerProvider != nil {
+			tracer := options.tracerProvider.Tracer(database.ServiceTracerName)
+			dbOpts = append(dbOpts, WithTracer(tracer))
+		}
+		return NewDatabaseFactory(ctx, cfg, dbOpts...)
 	case config.StorageTypeFile:
 		return NewFileFactory(cfg, dataDir)
 	default:
