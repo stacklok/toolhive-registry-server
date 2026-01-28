@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/stacklok/toolhive-registry-server/internal/app/storage/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
@@ -134,6 +135,14 @@ func buildDatabaseConnectionPool(ctx context.Context, cfg *config.Config) (*pgxp
 			return nil, fmt.Errorf("failed to parse connMaxLifetime: %w", err)
 		}
 		poolConfig.MaxConnLifetime = lifetime
+	}
+
+	if cfg.Database.DynamicAuth != nil {
+		authFunc, err := auth.NewDynamicAuth(ctx, cfg.Database)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create dynamic authentication function: %w", err)
+		}
+		poolConfig.BeforeConnect = authFunc
 	}
 
 	// Register custom type codecs after connection is established
