@@ -158,6 +158,7 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 // @Failure		401		{object}	map[string]string	"Unauthorized"
 // @Security	BearerAuth
 // @Router		/registry/v0.1/servers [get]
+// @Deprecated	true
 func (routes *Routes) listServers(w http.ResponseWriter, r *http.Request) {
 	routes.handleListServers(w, r, "")
 }
@@ -249,6 +250,7 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 // @Failure		404		{object}	map[string]string	"Server not found"
 // @Security	BearerAuth
 // @Router		/registry/v0.1/servers/{serverName}/versions [get]
+// @Deprecated	true
 func (routes *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 	routes.handleListVersions(w, r, "")
 }
@@ -336,6 +338,7 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 // @Failure		404		{object}	map[string]string	"Server or version not found"
 // @Security	BearerAuth
 // @Router		/registry/v0.1/servers/{serverName}/versions/{version} [get]
+// @Deprecated	true
 func (routes *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 	routes.handleGetVersion(w, r, "")
 }
@@ -384,7 +387,7 @@ func (routes *Routes) getVersionWithRegistryName(w http.ResponseWriter, r *http.
 // @Failure      404  {object}  map[string]string  "Server version not found"
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Security     BearerAuth
-// @Router       /{registryName}/v0.1/servers/{serverName}/versions/{version} [delete]
+// @Router       /registry/{registryName}/v0.1/servers/{serverName}/versions/{version} [delete]
 func (routes *Routes) deleteVersionWithRegistryName(w http.ResponseWriter, r *http.Request) {
 	registryName, err := common.GetAndValidateURLParam(r, "registryName")
 	if err != nil {
@@ -521,6 +524,7 @@ func (routes *Routes) publishWithRegistryName(w http.ResponseWriter, r *http.Req
 // @Failure		501	{object}	map[string]string	"Not implemented"
 // @Security	BearerAuth
 // @Router		/registry/v0.1/publish [post]
+// @Deprecated	true
 func (*Routes) publish(w http.ResponseWriter, _ *http.Request) {
 	common.WriteErrorResponse(
 		w,
