@@ -2,8 +2,8 @@ apiVersion: v2
 name: toolhive-registry-server
 description: A Helm chart for deploying the ToolHive Registry Server - the central metadata hub for enterprise MCP governance and discovery
 type: application
-version: 0.4.9
-appVersion: 0.4.9
+version: 0.5.0
+appVersion: 0.5.0
 keywords:
   - mcp
   - registry
