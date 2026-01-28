@@ -475,6 +475,52 @@ func TestValidateGitConfig(t *testing.T) {
 			wantErr: true,
 			errMsg:  "mutually exclusive",
 		},
+		{
+			name: "auth_username_only_returns_error",
+			cfg: &config.GitConfig{
+				Repository: "https://github.com/example/repo.git",
+				Auth: &config.GitAuthConfig{
+					Username: "user",
+				},
+			},
+			wantErr: true,
+			errMsg:  "git.auth.username and git.auth.passwordFile must both be specified",
+		},
+		{
+			name: "auth_password_file_only_returns_error",
+			cfg: &config.GitConfig{
+				Repository: "https://github.com/example/repo.git",
+				Auth: &config.GitAuthConfig{
+					PasswordFile: "/secrets/password",
+				},
+			},
+			wantErr: true,
+			errMsg:  "git.auth.username and git.auth.passwordFile must both be specified",
+		},
+		{
+			name: "auth_relative_path_returns_error",
+			cfg: &config.GitConfig{
+				Repository: "https://github.com/example/repo.git",
+				Auth: &config.GitAuthConfig{
+					Username:     "user",
+					PasswordFile: "relative/path",
+				},
+			},
+			wantErr: true,
+			errMsg:  "git.auth.passwordFile must be an absolute path",
+		},
+		{
+			name: "auth_nonexistent_file_returns_error",
+			cfg: &config.GitConfig{
+				Repository: "https://github.com/example/repo.git",
+				Auth: &config.GitAuthConfig{
+					Username:     "user",
+					PasswordFile: "/nonexistent/path/password.txt",
+				},
+			},
+			wantErr: true,
+			errMsg:  "git.auth.passwordFile is not accessible",
+		},
 	}
 
 	for _, tt := range tests {

@@ -88,6 +88,13 @@ func validateGitConfig(cfg *config.GitConfig) error {
 		return fmt.Errorf("git.branch, git.tag, and git.commit are mutually exclusive")
 	}
 
+	// Validate auth if present
+	if cfg.Auth != nil {
+		if err := cfg.Auth.Validate(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
