@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -34,12 +35,44 @@ import (
 const (
 	// unknownSubtype is used when a file source subtype cannot be determined
 	unknownSubtype = "unknown"
+	// cursorSeparator is the delimiter used to separate name and version in the cursor
+	cursorSeparator = ":"
 )
 
 var (
 	// ErrBug is returned when a server is not found
 	ErrBug = errors.New("bug")
 )
+
+// serverCursor represents a cursor for pagination based on server name and version.
+// This provides deterministic ordering regardless of timestamp values.
+type serverCursor struct {
+	Name    string
+	Version string
+}
+
+// decodeCursor decodes a base64-encoded cursor string into name and version components.
+// The cursor format is: base64(name:version)
+func decodeCursor(cursor string) (name, version string, err error) {
+	decoded, err := base64.StdEncoding.DecodeString(cursor)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to decode cursor: %w", err)
+	}
+
+	parts := strings.SplitN(string(decoded), cursorSeparator, 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid cursor format: expected name:version")
+	}
+
+	return parts[0], parts[1], nil
+}
+
+// encodeCursor encodes a name and version into a base64 cursor string.
+// The cursor format is: base64(name:version)
+func encodeCursor(name, version string) string {
+	cursorValue := name + cursorSeparator + version
+	return base64.StdEncoding.EncodeToString([]byte(cursorValue))
+}
 
 // options holds configuration options for the database service
 type options struct {
@@ -162,17 +195,13 @@ func (s *dbService) ListServers(
 	}
 
 	if options.Cursor != "" {
-		decoded, err := base64.StdEncoding.DecodeString(options.Cursor)
+		cursorName, cursorVersion, err := decodeCursor(options.Cursor)
 		if err != nil {
 			otel.RecordError(span, err)
 			return nil, fmt.Errorf("invalid cursor format: %w", err)
 		}
-		nextTime, err := time.Parse(time.RFC3339, string(decoded))
-		if err != nil {
-			otel.RecordError(span, err)
-			return nil, fmt.Errorf("invalid cursor format: %w", err)
-		}
-		params.Next = &nextTime
+		params.CursorName = &cursorName
+		params.CursorVersion = &cursorVersion
 	}
 
 	// Note: this function fetches a list of servers. In case no records are
@@ -192,7 +221,7 @@ func (s *dbService) ListServers(
 		return helpers, nil
 	}
 
-	results, lastUpdatedAt, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit)
+	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -200,10 +229,8 @@ func (s *dbService) ListServers(
 
 	// Calculate NextCursor if there are more results
 	var nextCursor string
-	if lastUpdatedAt != nil {
-		nextCursor = base64.StdEncoding.EncodeToString(
-			[]byte(lastUpdatedAt.Format(time.RFC3339)),
-		)
+	if lastCursor != nil {
+		nextCursor = encodeCursor(lastCursor.Name, lastCursor.Version)
 	}
 
 	span.SetAttributes(otel.AttrResultCount.Int(len(results)))
@@ -837,7 +864,7 @@ func (s *dbService) sharedListServers(
 // sharedListServersWithCursor is similar to sharedListServers but supports cursor-based pagination.
 // It takes a limit parameter and returns:
 // - The list of servers (up to limit items)
-// - The UpdatedAt timestamp of the last server if there are more results (for cursor calculation)
+// - The serverCursor of the last server if there are more results (for cursor calculation)
 // - An error if the operation fails
 //
 // The querierFunc should request limit+1 records to allow detecting if there are more results.
@@ -845,7 +872,7 @@ func (s *dbService) sharedListServersWithCursor(
 	ctx context.Context,
 	querierFunc querierFunction,
 	limit int,
-) ([]*upstreamv0.ServerJSON, *time.Time, error) {
+) ([]*upstreamv0.ServerJSON, *serverCursor, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.ReadCommitted,
 		AccessMode: pgx.ReadOnly,
@@ -868,14 +895,18 @@ func (s *dbService) sharedListServersWithCursor(
 	}
 
 	// Check if there are more results
-	var lastUpdatedAt *time.Time
+	var lastCursor *serverCursor
 	hasMore := len(servers) > limit
 	if hasMore {
 		// Trim to the requested limit
 		servers = servers[:limit]
-		// Get the UpdatedAt of the last server for the next cursor
+		// Get the Name and Version of the last server for the next cursor
 		if len(servers) > 0 {
-			lastUpdatedAt = servers[len(servers)-1].UpdatedAt
+			lastServer := servers[len(servers)-1]
+			lastCursor = &serverCursor{
+				Name:    lastServer.Name,
+				Version: lastServer.Version,
+			}
 		}
 	}
 
@@ -913,7 +944,7 @@ func (s *dbService) sharedListServersWithCursor(
 		result = append(result, &server)
 	}
 
-	return result, lastUpdatedAt, nil
+	return result, lastCursor, nil
 }
 
 // ListRegistries returns all configured registries

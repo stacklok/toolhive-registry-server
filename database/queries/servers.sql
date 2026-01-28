@@ -1,4 +1,7 @@
 -- name: ListServers :many
+-- Cursor-based pagination using (name, version) compound cursor.
+-- The cursor_name and cursor_version parameters define the starting point.
+-- When cursor is provided, results start AFTER the specified (name, version) tuple.
 SELECT r.reg_type as registry_type,
        s.id,
        s.name,
@@ -18,25 +21,19 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
- WHERE (sqlc.narg(next)::timestamp with time zone IS NULL OR s.created_at > sqlc.narg(next)::timestamp with time zone)
-   AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR s.created_at < sqlc.narg(prev)::timestamp with time zone)
-   AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
+ WHERE (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
    AND (sqlc.narg(search)::text IS NULL OR (
        LOWER(s.name) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
        OR LOWER(s.title) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
        OR LOWER(s.description) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
    ))
- ORDER BY
- -- next page sorting
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN r.reg_type END ASC,
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.name END ASC,
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.created_at END ASC,
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN s.version END ASC, -- acts as tie breaker
- -- previous page sorting
- CASE WHEN sqlc.narg(prev)::timestamp with time zone IS NULL THEN r.reg_type END DESC,
- CASE WHEN sqlc.narg(prev)::timestamp with time zone IS NULL THEN s.name END DESC,
- CASE WHEN sqlc.narg(prev)::timestamp with time zone IS NULL THEN s.created_at END DESC,
- CASE WHEN sqlc.narg(prev)::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
+   -- Compound cursor comparison: (name, version) > (cursor_name, cursor_version)
+   -- This ensures deterministic pagination even when timestamps are identical
+   AND (
+       sqlc.narg(cursor_name)::text IS NULL
+       OR (s.name, s.version) > (sqlc.narg(cursor_name)::text, sqlc.narg(cursor_version)::text)
+   )
+ ORDER BY s.name ASC, s.version ASC
  LIMIT sqlc.arg(size)::bigint;
 
 -- name: ListServerVersions :many

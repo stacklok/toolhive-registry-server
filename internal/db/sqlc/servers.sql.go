@@ -697,34 +697,28 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN registry r ON s.reg_id = r.id
   LEFT JOIN latest_server_version l ON s.id = l.latest_server_id
- WHERE ($1::timestamp with time zone IS NULL OR s.created_at > $1::timestamp with time zone)
-   AND ($2::timestamp with time zone IS NULL OR s.created_at < $2::timestamp with time zone)
-   AND ($3::text IS NULL OR r.name = $3::text)
-   AND ($4::text IS NULL OR (
-       LOWER(s.name) LIKE LOWER('%' || $4::text || '%')
-       OR LOWER(s.title) LIKE LOWER('%' || $4::text || '%')
-       OR LOWER(s.description) LIKE LOWER('%' || $4::text || '%')
+ WHERE ($1::text IS NULL OR r.name = $1::text)
+   AND ($2::text IS NULL OR (
+       LOWER(s.name) LIKE LOWER('%' || $2::text || '%')
+       OR LOWER(s.title) LIKE LOWER('%' || $2::text || '%')
+       OR LOWER(s.description) LIKE LOWER('%' || $2::text || '%')
    ))
- ORDER BY
- -- next page sorting
- CASE WHEN $1::timestamp with time zone IS NULL THEN r.reg_type END ASC,
- CASE WHEN $1::timestamp with time zone IS NULL THEN s.name END ASC,
- CASE WHEN $1::timestamp with time zone IS NULL THEN s.created_at END ASC,
- CASE WHEN $1::timestamp with time zone IS NULL THEN s.version END ASC, -- acts as tie breaker
- -- previous page sorting
- CASE WHEN $2::timestamp with time zone IS NULL THEN r.reg_type END DESC,
- CASE WHEN $2::timestamp with time zone IS NULL THEN s.name END DESC,
- CASE WHEN $2::timestamp with time zone IS NULL THEN s.created_at END DESC,
- CASE WHEN $2::timestamp with time zone IS NULL THEN s.version END DESC -- acts as tie breaker
+   -- Compound cursor comparison: (name, version) > (cursor_name, cursor_version)
+   -- This ensures deterministic pagination even when timestamps are identical
+   AND (
+       $3::text IS NULL
+       OR (s.name, s.version) > ($3::text, $4::text)
+   )
+ ORDER BY s.name ASC, s.version ASC
  LIMIT $5::bigint
 `
 
 type ListServersParams struct {
-	Next         *time.Time `json:"next"`
-	Prev         *time.Time `json:"prev"`
-	RegistryName *string    `json:"registry_name"`
-	Search       *string    `json:"search"`
-	Size         int64      `json:"size"`
+	RegistryName  *string `json:"registry_name"`
+	Search        *string `json:"search"`
+	CursorName    *string `json:"cursor_name"`
+	CursorVersion *string `json:"cursor_version"`
+	Size          int64   `json:"size"`
 }
 
 type ListServersRow struct {
@@ -746,12 +740,15 @@ type ListServersRow struct {
 	RepositoryType      *string      `json:"repository_type"`
 }
 
+// Cursor-based pagination using (name, version) compound cursor.
+// The cursor_name and cursor_version parameters define the starting point.
+// When cursor is provided, results start AFTER the specified (name, version) tuple.
 func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error) {
 	rows, err := q.db.Query(ctx, listServers,
-		arg.Next,
-		arg.Prev,
 		arg.RegistryName,
 		arg.Search,
+		arg.CursorName,
+		arg.CursorVersion,
 		arg.Size,
 	)
 	if err != nil {
