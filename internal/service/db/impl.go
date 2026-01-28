@@ -3,12 +3,10 @@ package database
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -35,8 +33,6 @@ import (
 const (
 	// unknownSubtype is used when a file source subtype cannot be determined
 	unknownSubtype = "unknown"
-	// cursorSeparator is the delimiter used to separate name and version in the cursor
-	cursorSeparator = ":"
 )
 
 var (
@@ -49,29 +45,6 @@ var (
 type serverCursor struct {
 	Name    string
 	Version string
-}
-
-// decodeCursor decodes a base64-encoded cursor string into name and version components.
-// The cursor format is: base64(name:version)
-func decodeCursor(cursor string) (name, version string, err error) {
-	decoded, err := base64.StdEncoding.DecodeString(cursor)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to decode cursor: %w", err)
-	}
-
-	parts := strings.SplitN(string(decoded), cursorSeparator, 2)
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid cursor format: expected name:version")
-	}
-
-	return parts[0], parts[1], nil
-}
-
-// encodeCursor encodes a name and version into a base64 cursor string.
-// The cursor format is: base64(name:version)
-func encodeCursor(name, version string) string {
-	cursorValue := name + cursorSeparator + version
-	return base64.StdEncoding.EncodeToString([]byte(cursorValue))
 }
 
 // options holds configuration options for the database service
@@ -195,7 +168,7 @@ func (s *dbService) ListServers(
 	}
 
 	if options.Cursor != "" {
-		cursorName, cursorVersion, err := decodeCursor(options.Cursor)
+		cursorName, cursorVersion, err := service.DecodeCursor(options.Cursor)
 		if err != nil {
 			otel.RecordError(span, err)
 			return nil, fmt.Errorf("invalid cursor format: %w", err)
@@ -230,7 +203,7 @@ func (s *dbService) ListServers(
 	// Calculate NextCursor if there are more results
 	var nextCursor string
 	if lastCursor != nil {
-		nextCursor = encodeCursor(lastCursor.Name, lastCursor.Version)
+		nextCursor = service.EncodeCursor(lastCursor.Name, lastCursor.Version)
 	}
 
 	span.SetAttributes(otel.AttrResultCount.Int(len(results)))

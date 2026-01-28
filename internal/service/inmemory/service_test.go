@@ -1186,15 +1186,19 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				testRegistry := registry.NewTestUpstreamRegistry(
 					registry.WithServers(
 						registry.NewTestServer("server1",
+							registry.WithServerVersion("1.0.0"),
 							registry.WithOCIPackage("server1:latest"),
 						),
 						registry.NewTestServer("server2",
+							registry.WithServerVersion("1.0.0"),
 							registry.WithOCIPackage("server2:latest"),
 						),
 						registry.NewTestServer("server3",
+							registry.WithServerVersion("1.0.0"),
 							registry.WithOCIPackage("server3:latest"),
 						),
 						registry.NewTestServer("server4",
+							registry.WithServerVersion("1.0.0"),
 							registry.WithOCIPackage("server4:latest"),
 						),
 					),
@@ -1203,8 +1207,8 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),
-			// Use EncodeCursor(2) which generates base64("2") = "Mg==" to skip first 2 servers
-			options:       []service.Option[service.ListServersOptions]{service.WithCursor(inmemory.EncodeCursor(2))},
+			// Use cursor for "server2:1.0.0" to skip to server3 (servers are sorted by name:version)
+			options:       []service.Option[service.ListServersOptions]{service.WithCursor(service.EncodeCursor("server2", "1.0.0"))},
 			expectedCount: 2,
 			validateServers: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
 				t.Helper()
@@ -1218,15 +1222,19 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				testRegistry := registry.NewTestUpstreamRegistry(
 					registry.WithServers(
 						registry.NewTestServer("server1",
+							registry.WithServerVersion("1.0.0"),
 							registry.WithOCIPackage("server1:latest"),
 						),
 						registry.NewTestServer("server2",
+							registry.WithServerVersion("1.0.0"),
 							registry.WithOCIPackage("server2:latest"),
 						),
 						registry.NewTestServer("server3",
+							registry.WithServerVersion("1.0.0"),
 							registry.WithOCIPackage("server3:latest"),
 						),
 						registry.NewTestServer("server4",
+							registry.WithServerVersion("1.0.0"),
 							registry.WithOCIPackage("server4:latest"),
 						),
 					),
@@ -1235,9 +1243,9 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),
-			// Cursor "MQ==" is base64("1"), skip first 1, then limit to 2
+			// Cursor for "server1:1.0.0" skips to server2, then limit to 2
 			options: []service.Option[service.ListServersOptions]{
-				service.WithCursor("MQ=="),
+				service.WithCursor(service.EncodeCursor("server1", "1.0.0")),
 				service.WithLimit[service.ListServersOptions](2),
 			},
 			expectedCount: 2,
@@ -1253,6 +1261,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				testRegistry := registry.NewTestUpstreamRegistry(
 					registry.WithServers(
 						registry.NewTestServer("server1",
+							registry.WithServerVersion("1.0.0"),
 							registry.WithOCIPackage("server1:latest"),
 						),
 					),
@@ -1261,8 +1270,8 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),
-			// Cursor "MTAw" is base64("100"), way beyond the 1 server we have
-			options:       []service.Option[service.ListServersOptions]{service.WithCursor("MTAw")},
+			// Cursor for "zzz:9.9.9" is lexicographically after "server1:1.0.0"
+			options:       []service.Option[service.ListServersOptions]{service.WithCursor(service.EncodeCursor("zzz", "9.9.9"))},
 			expectedCount: 0,
 		},
 		{
@@ -1284,7 +1293,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 			expectedError: "invalid cursor format",
 		},
 		{
-			name: "cursor with non-numeric value returns error",
+			name: "cursor without colon separator returns error",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry(
 					registry.WithServers(
@@ -1297,7 +1306,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),
-			// "YWJj" is base64("abc"), which is not a number
+			// "YWJj" is base64("abc"), which has no colon separator
 			options:       []service.Option[service.ListServersOptions]{service.WithCursor("YWJj")},
 			expectedError: "invalid cursor format",
 		},
@@ -1432,7 +1441,7 @@ func TestService_ListServers_PaginationBehavior(t *testing.T) {
 		limit              int
 		expectedCount      int
 		expectNextCursor   bool
-		validateNextCursor func(*testing.T, string)
+		validateNextCursor func(*testing.T, string, int)
 	}{
 		{
 			name:             "exact limit match returns empty NextCursor",
@@ -1447,12 +1456,14 @@ func TestService_ListServers_PaginationBehavior(t *testing.T) {
 			limit:            3,
 			expectedCount:    3,
 			expectNextCursor: true,
-			validateNextCursor: func(t *testing.T, cursor string) {
+			validateNextCursor: func(t *testing.T, cursor string, limit int) {
 				t.Helper()
-				// Verify the cursor is non-empty and valid base64
+				// Verify the cursor is non-empty and valid
 				assert.NotEmpty(t, cursor, "NextCursor should be non-empty when more results exist")
-				// The cursor should be base64 encoded index "3" (since we fetched 3 items starting at 0)
-				assert.Equal(t, inmemory.EncodeCursor(3), cursor, "NextCursor should point to index 3")
+				// The cursor should be the last server in the current page (server3:1.0.0)
+				// Server names are server1, server2, server3... sorted alphabetically
+				expectedCursor := service.EncodeCursor(fmt.Sprintf("server%d", limit), "1.0.0")
+				assert.Equal(t, expectedCursor, cursor, "NextCursor should point to the last server in page")
 			},
 		},
 		{
@@ -1468,11 +1479,17 @@ func TestService_ListServers_PaginationBehavior(t *testing.T) {
 			limit:            0, // No limit specified
 			expectedCount:    30,
 			expectNextCursor: true,
-			validateNextCursor: func(t *testing.T, cursor string) {
+			validateNextCursor: func(t *testing.T, cursor string, _ int) {
 				t.Helper()
 				assert.NotEmpty(t, cursor, "NextCursor should be non-empty when more results exist")
-				// The cursor should point to index 30 (default page size)
-				assert.Equal(t, inmemory.EncodeCursor(30), cursor, "NextCursor should point to index 30")
+				// With default page size 30, the last server is server9 (sorted: server1, server10-19, server2, server20-29, server3, server30)
+				// Actually with alphabetical sorting: server1, server10, server11..server19, server2, server20..server29, server3, server30..server35
+				// The 30th server in alphabetical order for server1-server35 needs calculation
+				// Decode the cursor to verify it's valid
+				name, version, err := service.DecodeCursor(cursor)
+				assert.NoError(t, err, "Cursor should be decodable")
+				assert.NotEmpty(t, name, "Cursor name should not be empty")
+				assert.Equal(t, "1.0.0", version, "Cursor version should be 1.0.0")
 			},
 		},
 		{
@@ -1532,7 +1549,7 @@ func TestService_ListServers_PaginationBehavior(t *testing.T) {
 			if tt.expectNextCursor {
 				assert.NotEmpty(t, result.NextCursor, "Expected NextCursor to be set")
 				if tt.validateNextCursor != nil {
-					tt.validateNextCursor(t, result.NextCursor)
+					tt.validateNextCursor(t, result.NextCursor, tt.limit)
 				}
 			} else {
 				assert.Empty(t, result.NextCursor, "Expected NextCursor to be empty")

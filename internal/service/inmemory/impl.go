@@ -2,11 +2,11 @@
 package inmemory
 
 import (
+	"cmp"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
-	"strconv"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -340,57 +340,32 @@ func (s *regSvc) ListServers(
 // listServersLocked performs the actual server listing logic.
 // Caller must hold s.mu read lock.
 func (s *regSvc) listServersLocked(options *service.ListServersOptions) (*service.ListServersResult, error) {
-	// Apply default and max limit for consistency with upstream MCP Registry API
-	limit := options.Limit
-	if limit <= 0 {
-		limit = service.DefaultPageSize
-	}
-	if limit > service.MaxPageSize {
-		limit = service.MaxPageSize
-	}
+	limit := normalizeLimit(options.Limit)
 
 	// Collect servers from relevant registries
-	var allServers []upstreamv0.ServerJSON
-
-	if options.RegistryName != nil && *options.RegistryName != "" {
-		// Filter by specific registry
-		regData, exists := s.registryData[*options.RegistryName]
-		if !exists {
-			return &service.ListServersResult{
-				Servers:    []*upstreamv0.ServerJSON{},
-				NextCursor: "",
-			}, nil
-		}
-		if regData != nil {
-			allServers = regData.Data.Servers
-		}
-	} else {
-		// Merge all registries
-		for _, regData := range s.registryData {
-			if regData != nil {
-				allServers = append(allServers, regData.Data.Servers...)
-			}
-		}
-	}
+	allServers := s.collectServersFromRegistries(options.RegistryName)
 
 	// Collect and filter servers
 	servers := s.collectAndFilterServers(allServers, options.Search)
 
-	// Apply cursor pagination and get the start index for cursor calculation
-	startIndex, err := decodeCursor(options.Cursor)
+	// Sort servers by (name, version) for deterministic pagination
+	sortServersByNameVersion(servers)
+
+	// Decode cursor to get the position after which to start
+	cursorName, cursorVersion, err := service.DecodeCursor(options.Cursor)
 	if err != nil {
 		return nil, fmt.Errorf("invalid cursor format: %w", err)
 	}
 
-	// Slice servers based on cursor
-	if startIndex >= len(servers) {
+	// Find the first server after the cursor position and slice
+	servers = sliceServersFromCursor(servers, cursorName, cursorVersion)
+
+	// If cursor points past all servers, return empty result
+	if len(servers) == 0 {
 		return &service.ListServersResult{
 			Servers:    []*upstreamv0.ServerJSON{},
 			NextCursor: "",
 		}, nil
-	}
-	if startIndex > 0 {
-		servers = servers[startIndex:]
 	}
 
 	// Calculate NextCursor before applying limit
@@ -398,7 +373,9 @@ func (s *regSvc) listServersLocked(options *service.ListServersOptions) (*servic
 	var nextCursor string
 	if len(servers) > limit {
 		// There are more results after this page
-		nextCursor = EncodeCursor(startIndex + limit)
+		// Use the last server in the current page as the cursor
+		lastServer := servers[limit-1]
+		nextCursor = service.EncodeCursor(lastServer.Name, lastServer.Version)
 		servers = servers[:limit]
 	}
 
@@ -406,6 +383,65 @@ func (s *regSvc) listServersLocked(options *service.ListServersOptions) (*servic
 		Servers:    servers,
 		NextCursor: nextCursor,
 	}, nil
+}
+
+// normalizeLimit applies default and max limit constraints.
+func normalizeLimit(limit int) int {
+	if limit <= 0 {
+		limit = service.DefaultPageSize
+	}
+	if limit > service.MaxPageSize {
+		limit = service.MaxPageSize
+	}
+	return limit
+}
+
+// collectServersFromRegistries collects servers from the specified registry or all registries.
+// Caller must hold s.mu read lock.
+func (s *regSvc) collectServersFromRegistries(registryName *string) []upstreamv0.ServerJSON {
+	if registryName != nil && *registryName != "" {
+		regData, exists := s.registryData[*registryName]
+		if !exists || regData == nil {
+			return nil
+		}
+		return regData.Data.Servers
+	}
+
+	// Merge all registries
+	var allServers []upstreamv0.ServerJSON
+	for _, regData := range s.registryData {
+		if regData != nil {
+			allServers = append(allServers, regData.Data.Servers...)
+		}
+	}
+	return allServers
+}
+
+// sortServersByNameVersion sorts servers by (name, version) for deterministic pagination.
+func sortServersByNameVersion(servers []*upstreamv0.ServerJSON) {
+	slices.SortFunc(servers, func(a, b *upstreamv0.ServerJSON) int {
+		if c := cmp.Compare(a.Name, b.Name); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Version, b.Version)
+	})
+}
+
+// sliceServersFromCursor finds the first server after the cursor position and returns
+// the slice starting from that position. Returns empty slice if cursor is past all servers.
+func sliceServersFromCursor(servers []*upstreamv0.ServerJSON, cursorName, cursorVersion string) []*upstreamv0.ServerJSON {
+	if cursorName == "" {
+		return servers
+	}
+
+	for i, s := range servers {
+		if s.Name > cursorName || (s.Name == cursorName && s.Version > cursorVersion) {
+			return servers[i:]
+		}
+	}
+
+	// Cursor is past all servers
+	return []*upstreamv0.ServerJSON{}
 }
 
 // collectAndFilterServers collects servers and optionally filters by search term.
@@ -845,32 +881,6 @@ func (*regSvc) serverMatchesSearch(server *upstreamv0.ServerJSON, search string)
 	}
 
 	return false
-}
-
-// decodeCursor decodes a base64-encoded cursor string to an index position.
-// Returns 0 if the cursor is empty.
-func decodeCursor(cursor string) (int, error) {
-	if cursor == "" {
-		return 0, nil
-	}
-	decoded, err := base64.StdEncoding.DecodeString(cursor)
-	if err != nil {
-		return 0, err
-	}
-	idx, err := strconv.Atoi(string(decoded))
-	if err != nil {
-		return 0, err
-	}
-	if idx < 0 {
-		return 0, fmt.Errorf("cursor index cannot be negative")
-	}
-	return idx, nil
-}
-
-// EncodeCursor encodes an index position to a base64-encoded cursor string.
-// Exported to allow tests to generate valid cursors.
-func EncodeCursor(index int) string {
-	return base64.StdEncoding.EncodeToString([]byte(strconv.Itoa(index)))
 }
 
 // CreateRegistry creates a new API-managed registry.

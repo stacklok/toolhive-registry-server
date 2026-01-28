@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"encoding/base64"
 	"testing"
 	"time"
 
@@ -43,14 +42,6 @@ func setupTestService(t *testing.T) (*dbService, func()) {
 	}
 
 	return svc, serviceCleanup
-}
-
-// createCursor creates a valid base64-encoded RFC3339 time cursor
-//
-// nolint:unparam
-func createCursor(offset time.Duration) string {
-	cursorTime := time.Now().Add(offset).UTC()
-	return base64.StdEncoding.EncodeToString([]byte(cursorTime.Format(time.RFC3339)))
 }
 
 // setupTestData creates a registry and server versions for testing
@@ -140,7 +131,6 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServersOptions]{
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -160,7 +150,6 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServersOptions]{
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](2),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -180,13 +169,14 @@ func TestListServers(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid cursor time format",
+			name: "cursor without colon separator returns error",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServersOptions]{
-				service.WithCursor(base64.StdEncoding.EncodeToString([]byte("not-a-time"))),
+				// "YWJj" is base64("abc"), which has no colon separator
+				service.WithCursor("YWJj"),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 		},
@@ -197,7 +187,6 @@ func TestListServers(t *testing.T) {
 				// Don't set up any data
 			},
 			options: []service.Option[service.ListServersOptions]{
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -213,7 +202,6 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithRegistryName[service.ListServersOptions]("test-registry"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -234,7 +222,6 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithRegistryName[service.ListServersOptions]("non-existent-registry"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -250,7 +237,6 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("server-1"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -269,7 +255,6 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("Test Server 2"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -286,7 +271,6 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("server 2 description"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -303,7 +287,6 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("SERVER-1"), // Uppercase
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -322,7 +305,6 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("server"), // Partial match
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -338,7 +320,6 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("nonexistent"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -355,7 +336,6 @@ func TestListServers(t *testing.T) {
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("server-1"),
 				service.WithRegistryName[service.ListServersOptions]("test-registry"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
