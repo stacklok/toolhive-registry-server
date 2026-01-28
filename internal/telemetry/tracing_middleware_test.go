@@ -306,6 +306,47 @@ func TestTracingMiddleware_SpanAttributes(t *testing.T) {
 	assert.Equal(t, "/test/path", attrs[string(semconv.HTTPRouteKey)])
 }
 
+func TestTracingMiddleware_SkipsLowValueEndpoints(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "health endpoint", path: "/health"},
+		{name: "readiness endpoint", path: "/readiness"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			exporter, tp := newTestTracerProvider(t)
+			middleware := TracingMiddleware(tp)
+
+			handlerCalled := false
+			handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				handlerCalled = true
+				w.WriteHeader(http.StatusOK)
+			})
+
+			wrapped := middleware(handler)
+
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			rr := httptest.NewRecorder()
+			wrapped.ServeHTTP(rr, req)
+
+			// Handler should still be called
+			assert.True(t, handlerCalled, "handler should be called")
+			assert.Equal(t, http.StatusOK, rr.Code)
+
+			// But no spans should be created for low-value endpoints
+			spans := exporter.GetSpans()
+			assert.Empty(t, spans, "should not create spans for %s", tt.path)
+		})
+	}
+}
+
 func TestTruncateUserAgent(t *testing.T) {
 	t.Parallel()
 

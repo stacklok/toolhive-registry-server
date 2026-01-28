@@ -23,6 +23,13 @@ const (
 	MaxUserAgentLength = 256
 )
 
+// lowValuePaths contains paths that should not be traced because they
+// generate high-frequency, low-value spans (e.g., health checks, readiness probes).
+var lowValuePaths = map[string]bool{
+	"/health":    true,
+	"/readiness": true,
+}
+
 // TracingMiddleware creates HTTP middleware for distributed tracing.
 // If provider is nil, it returns a pass-through middleware that does nothing.
 func TracingMiddleware(provider trace.TracerProvider) func(http.Handler) http.Handler {
@@ -37,6 +44,13 @@ func TracingMiddleware(provider trace.TracerProvider) func(http.Handler) http.Ha
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip tracing for low-value endpoints (health checks, readiness probes)
+			// These generate high-frequency spans with minimal diagnostic value
+			if lowValuePaths[r.URL.Path] {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// Extract incoming trace context from request headers using W3C Trace Context propagation
 			ctx := propagator.Extract(r.Context(), propagation.HeaderCarrier(r.Header))
 

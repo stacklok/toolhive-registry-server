@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/otel"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
@@ -168,18 +168,6 @@ func (c *defaultCoordinator) Stop() error {
 	return nil
 }
 
-// startSpan starts a new span if a tracer is configured, otherwise returns a no-op span.
-func (c *defaultCoordinator) startSpan(
-	ctx context.Context,
-	name string,
-	opts ...trace.SpanStartOption,
-) (context.Context, trace.Span) {
-	if c.tracer == nil {
-		return ctx, trace.SpanFromContext(ctx)
-	}
-	return c.tracer.Start(ctx, name, opts...)
-}
-
 // processNextSyncJob gets the next job and processes it if available
 func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
 	// Get the next sync job using the predicate to check if sync is needed
@@ -224,10 +212,10 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 	startTime := time.Now()
 
 	// Start tracing span for this sync operation
-	ctx, span := c.startSpan(ctx, "sync.performRegistrySync",
+	ctx, span := otel.StartSpan(ctx, c.tracer, "sync.performRegistrySync",
 		trace.WithAttributes(
-			attribute.String("registry.name", regCfg.Name),
-			attribute.String("registry.type", string(regCfg.GetType())),
+			otel.AttrRegistryName.String(regCfg.Name),
+			otel.AttrRegistryType.String(string(regCfg.GetType())),
 		),
 	)
 	defer span.End()
@@ -271,8 +259,7 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 			"error", syncErr.Message)
 
 		// Record error on span
-		span.RecordError(fmt.Errorf("%s", syncErr.Message))
-		span.SetStatus(codes.Error, syncErr.Message)
+		otel.RecordError(span, fmt.Errorf("%s", syncErr.Message))
 
 		// Record sync failure metric
 		if c.syncMetrics != nil {
