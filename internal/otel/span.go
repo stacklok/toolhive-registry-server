@@ -23,7 +23,12 @@ const (
 
 // StartSpan starts a new span if the tracer is non-nil, otherwise returns a no-op span.
 // This provides graceful degradation when tracing is disabled.
-func StartSpan(ctx context.Context, tracer trace.Tracer, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+func StartSpan(
+	ctx context.Context,
+	tracer trace.Tracer,
+	name string,
+	opts ...trace.SpanStartOption,
+) (context.Context, trace.Span) {
 	if tracer == nil {
 		return ctx, trace.SpanFromContext(ctx)
 	}
