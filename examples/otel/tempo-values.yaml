@@ -1,0 +1,58 @@
+# Helm values for Grafana Tempo
+# Distributed tracing backend for the OTEL observability stack
+
+# Use the single binary deployment mode for simplicity
+# This is ideal for development/testing environments
+tempo:
+  # Trace retention configuration
+  retention: 24h
+
+  # Receivers configuration - accept OTLP traces from OTEL Collector
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+        http:
+          endpoint: "0.0.0.0:4318"
+
+  # Storage configuration - use local filesystem for development
+  storage:
+    trace:
+      backend: local
+      local:
+        path: /var/tempo/traces
+      wal:
+        path: /var/tempo/wal
+
+  # Query frontend configuration
+  query_frontend:
+    search:
+      duration_slo: 5s
+      throughput_bytes_slo: 1.073741824e+09
+
+  # Metrics generator for trace-derived metrics
+  metrics_generator:
+    enabled: true
+    registry:
+      external_labels:
+        source: tempo
+        cluster: kind-thv-registry
+
+# Service configuration
+service:
+  type: ClusterIP
+
+# Resource limits suitable for development
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Persistence configuration
+persistence:
+  enabled: true
+  size: 5Gi

@@ -1,0 +1,113 @@
+# Registry server values for OTEL testing with PostgreSQL backend
+# This configuration enables full tracing through database operations
+
+# Use minimal resources for local testing
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Probe configuration
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 5
+
+readinessProbe:
+  httpGet:
+    path: /readiness
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 3
+
+# PostgreSQL password file configuration
+extraEnv:
+- name: PGPASSFILE
+  value: /home/appuser/.pgpass
+
+# Init container to set up pgpass file with correct permissions
+initContainers:
+- name: pgpass-init
+  image: cgr.dev/chainguard/busybox:latest
+  command:
+    - sh
+    - -c
+    - |
+      cp /secrets/.pgpass /pgpass/.pgpass
+      chmod 600 /pgpass/.pgpass
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 65535
+  volumeMounts:
+    - name: pgpass-secret
+      mountPath: /secrets
+      readOnly: true
+    - name: pgpass
+      mountPath: /pgpass
+
+# Volume mounts for pgpass
+extraVolumes:
+- name: pgpass-secret
+  secret:
+    secretName: postgres-pgpass
+- name: pgpass
+  emptyDir: {}
+
+extraVolumeMounts:
+- name: pgpass
+  mountPath: /home/appuser/.pgpass
+  subPath: .pgpass
+  readOnly: true
+
+# Registry server configuration with PostgreSQL and telemetry
+config:
+  registryName: "otel-postgres-test"
+
+  # Registry sources to sync
+  registries:
+    - name: toolhive
+      format: toolhive
+      git:
+        repository: https://github.com/stacklok/toolhive.git
+        branch: main
+        path: pkg/registry/data/registry.json
+      syncPolicy:
+        interval: "30m"
+
+  # PostgreSQL database configuration
+  database:
+    host: postgres.toolhive-system
+    port: 5432
+    user: db_app
+    migrationUser: db_migrator
+    database: registry
+    sslMode: disable
+    maxOpenConns: 5
+    maxIdleConns: 2
+    connMaxLifetime: "10m"
+
+  # Authentication mode
+  auth:
+    mode: anonymous
+
+  # Telemetry configuration
+  telemetry:
+    enabled: true
+    serviceName: thv-registry-api
+    endpoint: otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318
+    insecure: true
+    metrics:
+      enabled: true
+    tracing:
+      enabled: true
+      sampling: "1.0"

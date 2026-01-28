@@ -31,9 +31,9 @@ config:
       send_batch_max_size: 2048
 
   exporters:
-    # Jaeger exporter for distributed tracing
-    otlp/jaeger:
-      endpoint: http://jaeger-all-in-one-collector.monitoring:4317
+    # Tempo exporter for distributed tracing
+    otlp/tempo:
+      endpoint: http://tempo.monitoring:4317
       tls:
         insecure: true
       timeout: 30s
@@ -63,7 +63,7 @@ config:
       traces:
         receivers: [otlp]
         processors: [batch]
-        exporters: [otlp/jaeger]
+        exporters: [otlp/tempo]
       metrics:
         receivers: [otlp, kubeletstats]
         processors: [batch]

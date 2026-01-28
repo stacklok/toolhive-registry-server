@@ -1,0 +1,174 @@
+# PostgreSQL manifests for OTEL testing
+# Deploys PostgreSQL with required users and roles for the registry server
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: toolhive-system
+type: Opaque
+stringData:
+  POSTGRES_USER: registry
+  POSTGRES_PASSWORD: registry_password
+  POSTGRES_DB: registry
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-pgpass
+  namespace: toolhive-system
+type: Opaque
+stringData:
+  # Format: hostname:port:database:username:password
+  # Entries for both app user and migration user
+  .pgpass: |
+    postgres.toolhive-system:5432:registry:db_app:app_password
+    postgres.toolhive-system:5432:registry:db_migrator:migration_password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: toolhive-system
+data:
+  init.sh: |
+    #!/bin/bash
+    set -e
+
+    # Create application user with limited privileges
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+      -- Create the toolhive_registry_server role if it doesn't exist
+      -- This role is used by migrations to grant privileges
+      DO \$\$
+      BEGIN
+          IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
+              CREATE ROLE toolhive_registry_server;
+          END IF;
+      END
+      \$\$;
+
+      -- Create application user (limited privileges for normal operations)
+      CREATE USER db_app WITH PASSWORD 'app_password';
+      GRANT CONNECT ON DATABASE $POSTGRES_DB TO db_app;
+      GRANT USAGE ON SCHEMA public TO db_app;
+      -- Note: Table-level privileges are granted by migrations via the toolhive_registry_server role
+      GRANT toolhive_registry_server TO db_app;
+
+      -- Create migration user (elevated privileges for schema changes)
+      CREATE USER db_migrator WITH PASSWORD 'migration_password';
+      GRANT CONNECT ON DATABASE $POSTGRES_DB TO db_migrator;
+      GRANT ALL PRIVILEGES ON SCHEMA public TO db_migrator;
+      GRANT CREATE ON SCHEMA public TO db_migrator;
+      GRANT ALL PRIVILEGES ON DATABASE $POSTGRES_DB TO db_migrator;
+      GRANT toolhive_registry_server TO db_migrator;
+    EOSQL
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: toolhive-system
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+              protocol: TCP
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_DB
+            - name: POSTGRES_INITDB_ARGS
+              value: "-E UTF8"
+            - name: PGDATA
+              value: /data/pgdata
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /data
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - registry
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - registry
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: postgres-data
+          emptyDir: {}
+        - name: postgres-init
+          configMap:
+            name: postgres-init
+            defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: toolhive-system
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    app: postgres
