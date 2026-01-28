@@ -172,7 +172,6 @@ The Registry Server implements distributed tracing across three layers: HTTP, Se
 | `server.version` | string | Version of the server |
 | `pagination.limit` | int | Page size limit |
 | `pagination.has_cursor` | bool | Whether pagination cursor is used |
-| `query.search` | string | Search query string |
 | `result.count` | int | Number of results returned |
 | `registry.type` | string | Type of registry (git, api, file, managed) |
 
