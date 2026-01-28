@@ -2,19 +2,18 @@ package database
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/stacklok/toolhive-registry-server/internal/otel"
 )
 
 // newTestTracerProvider creates a tracer provider with in-memory exporter for testing.
-// The provider is automatically shut down when the test completes.
 func newTestTracerProvider(t *testing.T) (*tracetest.InMemoryExporter, trace.TracerProvider) {
 	t.Helper()
 	exporter := tracetest.NewInMemoryExporter()
@@ -23,24 +22,10 @@ func newTestTracerProvider(t *testing.T) (*tracetest.InMemoryExporter, trace.Tra
 	return exporter, tp
 }
 
-func TestStartSpan_NilTracer(t *testing.T) {
-	t.Parallel()
-
-	svc := &dbService{tracer: nil}
-	ctx := context.Background()
-
-	resultCtx, span := svc.startSpan(ctx, "test.operation")
-
-	// Should return valid context and no-op span without panicking
-	require.NotNil(t, resultCtx)
-	require.NotNil(t, span)
-	assert.False(t, span.SpanContext().IsValid(), "nil tracer should return no-op span")
-
-	// End should not panic
-	assert.NotPanics(t, func() { span.End() })
-}
-
-func TestStartSpan_ValidTracer(t *testing.T) {
+// TestDBServiceStartSpan_AddsDBSystemAttribute verifies that the database service's
+// startSpan method automatically adds the db.system attribute per OTEL semantic conventions.
+// This is the db-specific behavior that differentiates it from the common otel.StartSpan.
+func TestDBServiceStartSpan_AddsDBSystemAttribute(t *testing.T) {
 	t.Parallel()
 
 	exporter, tp := newTestTracerProvider(t)
@@ -50,22 +35,17 @@ func TestStartSpan_ValidTracer(t *testing.T) {
 	ctx := context.Background()
 	spanName := "dbService.TestOperation"
 
-	resultCtx, span := svc.startSpan(ctx, spanName,
-		trace.WithAttributes(AttrRegistryName.String("test-registry")),
+	_, span := svc.startSpan(ctx, spanName,
+		trace.WithAttributes(otel.AttrRegistryName.String("test-registry")),
 	)
-
-	require.NotNil(t, resultCtx)
-	require.NotNil(t, span)
-	assert.True(t, span.SpanContext().IsValid())
-
 	span.End()
 
-	// Verify span was recorded with correct name and attributes
+	// Verify span was recorded with correct name
 	spans := exporter.GetSpans()
 	require.Len(t, spans, 1)
 	assert.Equal(t, spanName, spans[0].Name)
 
-	// Verify db.system attribute was automatically added
+	// Verify db.system attribute was automatically added (db-specific behavior)
 	var hasDBSystem, hasRegistryName bool
 	for _, attr := range spans[0].Attributes {
 		if attr.Key == "db.system" && attr.Value.AsString() == "postgresql" {
@@ -75,58 +55,21 @@ func TestStartSpan_ValidTracer(t *testing.T) {
 			hasRegistryName = true
 		}
 	}
-	assert.True(t, hasDBSystem, "should have db.system attribute")
-	assert.True(t, hasRegistryName, "should have custom attribute")
+	assert.True(t, hasDBSystem, "db service spans should have db.system attribute")
+	assert.True(t, hasRegistryName, "should have custom attribute passed via options")
 }
 
-func TestRecordError_NilSafety(t *testing.T) {
+// TestDBServiceStartSpan_NilTracer verifies graceful degradation when tracer is nil.
+func TestDBServiceStartSpan_NilTracer(t *testing.T) {
 	t.Parallel()
 
-	testErr := errors.New("test error")
+	svc := &dbService{tracer: nil}
+	ctx := context.Background()
 
-	// All nil combinations should not panic
-	assert.NotPanics(t, func() { recordError(nil, testErr) }, "nil span should not panic")
-	assert.NotPanics(t, func() { recordError(nil, nil) }, "both nil should not panic")
+	resultCtx, span := svc.startSpan(ctx, "test.operation")
 
-	// Nil error with valid span should not record error
-	exporter, tp := newTestTracerProvider(t)
-	tracer := tp.Tracer(ServiceTracerName)
-	_, span := tracer.Start(context.Background(), "test")
-
-	recordError(span, nil)
-	span.End()
-
-	spans := exporter.GetSpans()
-	require.Len(t, spans, 1)
-	assert.Equal(t, codes.Unset, spans[0].Status.Code, "nil error should not set error status")
-	assert.Empty(t, spans[0].Events, "nil error should not record events")
-}
-
-func TestRecordError_RecordsErrorCorrectly(t *testing.T) {
-	t.Parallel()
-
-	exporter, tp := newTestTracerProvider(t)
-	tracer := tp.Tracer(ServiceTracerName)
-	_, span := tracer.Start(context.Background(), "test.operation")
-
-	testErr := errors.New("database connection failed")
-	recordError(span, testErr)
-	span.End()
-
-	spans := exporter.GetSpans()
-	require.Len(t, spans, 1)
-
-	// Verify error status
-	assert.Equal(t, codes.Error, spans[0].Status.Code)
-	assert.Equal(t, "operation failed", spans[0].Status.Description)
-
-	// Verify exception event was recorded
-	var hasException bool
-	for _, event := range spans[0].Events {
-		if event.Name == "exception" {
-			hasException = true
-			break
-		}
-	}
-	assert.True(t, hasException, "should record exception event")
+	require.NotNil(t, resultCtx)
+	require.NotNil(t, span)
+	assert.False(t, span.SpanContext().IsValid(), "nil tracer should return no-op span")
+	assert.NotPanics(t, func() { span.End() })
 }

@@ -149,6 +149,29 @@ The Registry Server implements distributed tracing across three layers: HTTP, Se
 | `user_agent.original` | string | Client user agent |
 | `http.response.status_code` | int | Response status code |
 
+**Excluded Endpoints:**
+
+The following endpoints are intentionally excluded from tracing:
+
+| Endpoint | Reason for Exclusion |
+|----------|---------------------|
+| `/health` | Health check endpoint |
+| `/readiness` | Readiness probe endpoint |
+
+**Rationale for excluding health and readiness endpoints:**
+
+1. **High frequency, low diagnostic value**: Health and readiness probes are typically called every 5-30 seconds by Kubernetes or load balancers. This generates a high volume of nearly identical spans that provide minimal insight into application behavior.
+
+2. **Trace storage costs**: Each span consumes storage in your tracing backend (e.g., Jaeger, Tempo). Health check spans can account for 50-90% of total span volume while providing almost no diagnostic value, significantly increasing storage costs.
+
+3. **Signal-to-noise ratio**: When investigating issues, health check spans clutter trace views and make it harder to find meaningful application traces. Excluding them improves the signal-to-noise ratio for debugging.
+
+4. **Predictable behavior**: Health and readiness endpoints have simple, predictable behavior (return 200 OK or error). Unlike business logic endpoints, they rarely need trace-level debugging—HTTP metrics are sufficient for monitoring their behavior.
+
+5. **Industry best practice**: Most observability frameworks and guidelines recommend excluding infrastructure endpoints from tracing. The OpenTelemetry community generally advises filtering out health checks at the instrumentation level.
+
+If you need to debug health check issues, HTTP metrics (`thv_reg_srv_http_request_duration_seconds`) still capture latency and error rates for these endpoints.
+
 #### Service Layer Spans
 
 | Span Name | Description |
@@ -252,6 +275,17 @@ Each component uses a unique tracer name for identification:
 ### Context Propagation
 
 The Registry Server supports W3C Trace Context propagation. Incoming requests with `traceparent` headers will have their trace context extracted and used as the parent for all child spans. This enables distributed tracing across multiple services.
+
+### Future Tracing Enhancements
+
+The following components are not yet instrumented but are planned for future tracing coverage:
+
+| Component | Description | Potential Value |
+|-----------|-------------|-----------------|
+| Sync Writer | Database write operations during sync | Diagnose write performance bottlenecks |
+| State Service | Sync state tracking operations | Debug sync state management issues |
+
+These additions would provide deeper visibility into sync operations, particularly useful for diagnosing performance issues in large-scale deployments.
 
 ## Implementation Details
 
