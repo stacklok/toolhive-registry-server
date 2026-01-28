@@ -195,6 +195,37 @@ func (a *GitAuthConfig) GetPassword() (string, error) {
 	return password, nil
 }
 
+// Validate validates the GitAuthConfig.
+// It checks that both username and passwordFile are specified together,
+// that passwordFile is an absolute path, and that the file exists and is readable.
+func (a *GitAuthConfig) Validate() error {
+	if a == nil {
+		return nil
+	}
+
+	hasUsername := a.Username != ""
+	hasPasswordFile := a.PasswordFile != ""
+
+	// Both must be set together, or neither
+	if hasUsername != hasPasswordFile {
+		return fmt.Errorf("git.auth.username and git.auth.passwordFile must both be specified")
+	}
+
+	if hasPasswordFile {
+		// Must be absolute path
+		if !filepath.IsAbs(a.PasswordFile) {
+			return fmt.Errorf("git.auth.passwordFile must be an absolute path")
+		}
+
+		// Verify the file exists and is readable
+		if _, err := os.Stat(a.PasswordFile); err != nil {
+			return fmt.Errorf("git.auth.passwordFile is not accessible: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // APIConfig defines API source configuration for upstream MCP Registry APIs
 type APIConfig struct {
 	// Endpoint is the base API URL (without path)
@@ -784,27 +815,8 @@ func validateGitConfig(git *GitConfig, prefix string) error {
 
 	// Validate auth if present
 	if git.Auth != nil {
-		if err := validateGitAuth(git.Auth, prefix); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// validateGitAuth validates Git authentication configuration
-func validateGitAuth(auth *GitAuthConfig, prefix string) error {
-	hasUsername := auth.Username != ""
-	hasPasswordFile := auth.PasswordFile != ""
-
-	// Both must be set together, or neither
-	if hasUsername != hasPasswordFile {
-		return fmt.Errorf("%s: git.auth.username and git.auth.passwordFile must both be specified", prefix)
-	}
-
-	if hasPasswordFile {
-		// Must be absolute path
-		if !filepath.IsAbs(auth.PasswordFile) {
-			return fmt.Errorf("%s: git.auth.passwordFile must be an absolute path", prefix)
+		if err := git.Auth.Validate(); err != nil {
+			return fmt.Errorf("%s: %w", prefix, err)
 		}
 	}
 	return nil
