@@ -340,6 +340,15 @@ func (s *regSvc) ListServers(
 // listServersLocked performs the actual server listing logic.
 // Caller must hold s.mu read lock.
 func (s *regSvc) listServersLocked(options *service.ListServersOptions) (*service.ListServersResult, error) {
+	// Apply default and max limit for consistency with upstream MCP Registry API
+	limit := options.Limit
+	if limit <= 0 {
+		limit = service.DefaultPageSize
+	}
+	if limit > service.MaxPageSize {
+		limit = service.MaxPageSize
+	}
+
 	// Collect servers from relevant registries
 	var allServers []upstreamv0.ServerJSON
 
@@ -385,11 +394,12 @@ func (s *regSvc) listServersLocked(options *service.ListServersOptions) (*servic
 	}
 
 	// Calculate NextCursor before applying limit
+	// NextCursor is only set when there are more results beyond the current page
 	var nextCursor string
-	if options.Limit > 0 && len(servers) > options.Limit {
+	if len(servers) > limit {
 		// There are more results after this page
-		nextCursor = EncodeCursor(startIndex + options.Limit)
-		servers = servers[:options.Limit]
+		nextCursor = EncodeCursor(startIndex + limit)
+		servers = servers[:limit]
 	}
 
 	return &service.ListServersResult{
@@ -858,9 +868,7 @@ func decodeCursor(cursor string) (int, error) {
 }
 
 // EncodeCursor encodes an index position to a base64-encoded cursor string.
-// This can be used by callers to generate cursors for pagination.
-// For example, after fetching a page of N items starting at index X,
-// the next cursor would be EncodeCursor(X + N).
+// Exported to allow tests to generate valid cursors.
 func EncodeCursor(index int) string {
 	return base64.StdEncoding.EncodeToString([]byte(strconv.Itoa(index)))
 }

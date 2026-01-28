@@ -13,6 +13,16 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
+// Pagination constants used by all RegistryService implementations.
+// These values are aligned with the upstream MCP Registry API specification.
+const (
+	// DefaultPageSize is the default number of items per page when no limit is specified.
+	// This matches the upstream MCP Registry API default of 30.
+	DefaultPageSize = 30
+	// MaxPageSize is the maximum allowed items per page to prevent potential DoS.
+	MaxPageSize = 1000
+)
+
 var (
 	// ErrServerNotFound is returned when a server is not found
 	ErrServerNotFound = errors.New("server not found")

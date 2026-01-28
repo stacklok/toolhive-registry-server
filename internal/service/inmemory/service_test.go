@@ -3,6 +3,7 @@ package inmemory_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -1418,4 +1419,310 @@ func TestListServers_MultipleRegistries_NoDuplication(t *testing.T) {
 
 	// Verify no unexpected servers
 	assert.Len(t, serverNames, 5, "Expected exactly 5 unique server names")
+}
+
+// TestService_ListServers_PaginationBehavior tests pagination edge cases
+// to ensure behavior is consistent with the upstream MCP Registry API.
+func TestService_ListServers_PaginationBehavior(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		serverCount        int
+		limit              int
+		expectedCount      int
+		expectNextCursor   bool
+		validateNextCursor func(*testing.T, string)
+	}{
+		{
+			name:             "exact limit match returns empty NextCursor",
+			serverCount:      3,
+			limit:            3,
+			expectedCount:    3,
+			expectNextCursor: false,
+		},
+		{
+			name:             "more servers than limit returns NextCursor",
+			serverCount:      5,
+			limit:            3,
+			expectedCount:    3,
+			expectNextCursor: true,
+			validateNextCursor: func(t *testing.T, cursor string) {
+				t.Helper()
+				// Verify the cursor is non-empty and valid base64
+				assert.NotEmpty(t, cursor, "NextCursor should be non-empty when more results exist")
+				// The cursor should be base64 encoded index "3" (since we fetched 3 items starting at 0)
+				assert.Equal(t, inmemory.EncodeCursor(3), cursor, "NextCursor should point to index 3")
+			},
+		},
+		{
+			name:             "fewer servers than limit returns empty NextCursor",
+			serverCount:      2,
+			limit:            5,
+			expectedCount:    2,
+			expectNextCursor: false,
+		},
+		{
+			name:             "no limit uses default page size (30)",
+			serverCount:      35,
+			limit:            0, // No limit specified
+			expectedCount:    30,
+			expectNextCursor: true,
+			validateNextCursor: func(t *testing.T, cursor string) {
+				t.Helper()
+				assert.NotEmpty(t, cursor, "NextCursor should be non-empty when more results exist")
+				// The cursor should point to index 30 (default page size)
+				assert.Equal(t, inmemory.EncodeCursor(30), cursor, "NextCursor should point to index 30")
+			},
+		},
+		{
+			name:             "exactly default page size returns empty NextCursor",
+			serverCount:      30,
+			limit:            0, // No limit specified, uses default of 30
+			expectedCount:    30,
+			expectNextCursor: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			// Create test servers
+			servers := make([]upstreamv0.ServerJSON, tt.serverCount)
+			for i := 0; i < tt.serverCount; i++ {
+				servers[i] = upstreamv0.ServerJSON{
+					Name:        fmt.Sprintf("server%d", i+1),
+					Version:     "1.0.0",
+					Description: fmt.Sprintf("Test server %d", i+1),
+				}
+			}
+
+			testRegistry := &toolhivetypes.UpstreamRegistry{
+				Schema:  "https://modelcontextprotocol.io/registry/v0/schema.json",
+				Version: "1.0.0",
+				Data: toolhivetypes.UpstreamData{
+					Servers: servers,
+				},
+			}
+
+			mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
+			setupGetAllRegistryData(mockProvider, "test-registry", testRegistry)
+			mockProvider.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
+
+			svc, err := inmemory.New(
+				context.Background(),
+				mockProvider,
+				inmemory.WithConfig(testFileConfig("test-registry")),
+			)
+			require.NoError(t, err)
+
+			var opts []service.Option[service.ListServersOptions]
+			if tt.limit > 0 {
+				opts = append(opts, service.WithLimit[service.ListServersOptions](tt.limit))
+			}
+
+			result, err := svc.ListServers(context.Background(), opts...)
+			require.NoError(t, err)
+
+			assert.Len(t, result.Servers, tt.expectedCount, "Expected %d servers, got %d", tt.expectedCount, len(result.Servers))
+
+			if tt.expectNextCursor {
+				assert.NotEmpty(t, result.NextCursor, "Expected NextCursor to be set")
+				if tt.validateNextCursor != nil {
+					tt.validateNextCursor(t, result.NextCursor)
+				}
+			} else {
+				assert.Empty(t, result.NextCursor, "Expected NextCursor to be empty")
+			}
+		})
+	}
+}
+
+// TestService_ListServers_RoundTripPagination tests that pagination works correctly
+// by fetching multiple pages and verifying all servers are retrieved exactly once.
+func TestService_ListServers_RoundTripPagination(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Create 7 test servers
+	serverCount := 7
+	servers := make([]upstreamv0.ServerJSON, serverCount)
+	expectedNames := make([]string, serverCount)
+	for i := 0; i < serverCount; i++ {
+		name := fmt.Sprintf("server%d", i+1)
+		servers[i] = upstreamv0.ServerJSON{
+			Name:        name,
+			Version:     "1.0.0",
+			Description: fmt.Sprintf("Test server %d", i+1),
+		}
+		expectedNames[i] = name
+	}
+
+	testRegistry := &toolhivetypes.UpstreamRegistry{
+		Schema:  "https://modelcontextprotocol.io/registry/v0/schema.json",
+		Version: "1.0.0",
+		Data: toolhivetypes.UpstreamData{
+			Servers: servers,
+		},
+	}
+
+	mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
+	setupGetAllRegistryData(mockProvider, "test-registry", testRegistry)
+	mockProvider.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
+
+	svc, err := inmemory.New(
+		context.Background(),
+		mockProvider,
+		inmemory.WithConfig(testFileConfig("test-registry")),
+	)
+	require.NoError(t, err)
+
+	// Fetch with limit of 3 per page
+	pageSize := 3
+	var allFetchedServers []*upstreamv0.ServerJSON
+	cursor := ""
+	pageCount := 0
+	maxPages := 10 // Safety limit to prevent infinite loops
+
+	for pageCount < maxPages {
+		pageCount++
+		var opts []service.Option[service.ListServersOptions]
+		opts = append(opts, service.WithLimit[service.ListServersOptions](pageSize))
+		if cursor != "" {
+			opts = append(opts, service.WithCursor(cursor))
+		}
+
+		result, err := svc.ListServers(context.Background(), opts...)
+		require.NoError(t, err)
+
+		allFetchedServers = append(allFetchedServers, result.Servers...)
+
+		if result.NextCursor == "" {
+			break
+		}
+		cursor = result.NextCursor
+	}
+
+	// Verify we fetched all servers
+	assert.Len(t, allFetchedServers, serverCount, "Should have fetched all %d servers", serverCount)
+
+	// Verify pagination took 3 pages: [3, 3, 1]
+	assert.Equal(t, 3, pageCount, "Should have taken 3 pages to fetch 7 servers with page size 3")
+
+	// Verify all servers are unique and present
+	fetchedNames := make(map[string]int)
+	for _, s := range allFetchedServers {
+		fetchedNames[s.Name]++
+	}
+
+	for _, name := range expectedNames {
+		count, exists := fetchedNames[name]
+		assert.True(t, exists, "Expected server %s to be fetched", name)
+		assert.Equal(t, 1, count, "Server %s should appear exactly once, appeared %d times", name, count)
+	}
+}
+
+// TestService_ListServers_DefaultLimit verifies that the default page size of 30
+// is applied when no limit is specified, matching the upstream MCP Registry API.
+func TestService_ListServers_DefaultLimit(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Create 50 test servers (more than the default page size of 30)
+	serverCount := 50
+	servers := make([]upstreamv0.ServerJSON, serverCount)
+	for i := 0; i < serverCount; i++ {
+		servers[i] = upstreamv0.ServerJSON{
+			Name:        fmt.Sprintf("server%d", i+1),
+			Version:     "1.0.0",
+			Description: fmt.Sprintf("Test server %d", i+1),
+		}
+	}
+
+	testRegistry := &toolhivetypes.UpstreamRegistry{
+		Schema:  "https://modelcontextprotocol.io/registry/v0/schema.json",
+		Version: "1.0.0",
+		Data: toolhivetypes.UpstreamData{
+			Servers: servers,
+		},
+	}
+
+	mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
+	setupGetAllRegistryData(mockProvider, "test-registry", testRegistry)
+	mockProvider.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
+
+	svc, err := inmemory.New(
+		context.Background(),
+		mockProvider,
+		inmemory.WithConfig(testFileConfig("test-registry")),
+	)
+	require.NoError(t, err)
+
+	// Call ListServers without specifying a limit
+	result, err := svc.ListServers(context.Background())
+	require.NoError(t, err)
+
+	// Should return exactly 30 servers (the default page size)
+	assert.Len(t, result.Servers, service.DefaultPageSize,
+		"Without limit, should return default page size of %d servers", service.DefaultPageSize)
+
+	// Should have a NextCursor since there are more servers
+	assert.NotEmpty(t, result.NextCursor, "NextCursor should be set when more results exist")
+}
+
+// TestService_ListServers_MaxLimit verifies that the limit is capped at MaxPageSize
+// to prevent potential DoS attacks.
+func TestService_ListServers_MaxLimit(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Create more servers than MaxPageSize
+	serverCount := service.MaxPageSize + 100
+	servers := make([]upstreamv0.ServerJSON, serverCount)
+	for i := range serverCount {
+		servers[i] = upstreamv0.ServerJSON{
+			Name:        fmt.Sprintf("server%d", i+1),
+			Version:     "1.0.0",
+			Description: fmt.Sprintf("Test server %d", i+1),
+		}
+	}
+
+	testRegistry := &toolhivetypes.UpstreamRegistry{
+		Schema:  "https://modelcontextprotocol.io/registry/v0/schema.json",
+		Version: "1.0.0",
+		Data: toolhivetypes.UpstreamData{
+			Servers: servers,
+		},
+	}
+
+	mockProvider := mocks.NewMockRegistryDataProvider(ctrl)
+	setupGetAllRegistryData(mockProvider, "test-registry", testRegistry)
+	mockProvider.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
+
+	svc, err := inmemory.New(
+		context.Background(),
+		mockProvider,
+		inmemory.WithConfig(testFileConfig("test-registry")),
+	)
+	require.NoError(t, err)
+
+	// Request more than MaxPageSize
+	result, err := svc.ListServers(
+		context.Background(),
+		service.WithLimit[service.ListServersOptions](service.MaxPageSize+500),
+	)
+	require.NoError(t, err)
+
+	// Should be capped at MaxPageSize
+	assert.Len(t, result.Servers, service.MaxPageSize,
+		"Limit should be capped at MaxPageSize (%d)", service.MaxPageSize)
+
+	// Should have a NextCursor since there are more servers
+	assert.NotEmpty(t, result.NextCursor, "NextCursor should be set when more results exist")
 }

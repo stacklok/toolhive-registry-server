@@ -32,10 +32,6 @@ import (
 )
 
 const (
-	// DefaultPageSize is the default number of items per page
-	DefaultPageSize = 50
-	// MaxPageSize is the maximum allowed items per page
-	MaxPageSize = 1000
 	// unknownSubtype is used when a file source subtype cannot be determined
 	unknownSubtype = "unknown"
 )
@@ -125,7 +121,7 @@ func (s *dbService) ListServers(
 	defer span.End()
 
 	options := &service.ListServersOptions{
-		Limit: DefaultPageSize, // default limit
+		Limit: service.DefaultPageSize, // default limit
 	}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
@@ -134,9 +130,9 @@ func (s *dbService) ListServers(
 		}
 	}
 
-	// Cap the limit at MaxPageSize to prevent potential DoS
-	if options.Limit > MaxPageSize {
-		options.Limit = MaxPageSize
+	// Cap the limit at service.MaxPageSize to prevent potential DoS
+	if options.Limit > service.MaxPageSize {
+		options.Limit = service.MaxPageSize
 	}
 
 	// Add tracing attributes after options are parsed
@@ -231,7 +227,7 @@ func (s *dbService) ListServerVersions(
 	defer span.End()
 
 	options := &service.ListServerVersionsOptions{
-		Limit: DefaultPageSize, // default limit
+		Limit: service.DefaultPageSize, // default limit
 	}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
@@ -246,9 +242,9 @@ func (s *dbService) ListServerVersions(
 		return nil, err
 	}
 
-	// Cap the limit at MaxPageSize to prevent potential DoS
-	if options.Limit > MaxPageSize {
-		options.Limit = MaxPageSize
+	// Cap the limit at service.MaxPageSize to prevent potential DoS
+	if options.Limit > service.MaxPageSize {
+		options.Limit = service.MaxPageSize
 	}
 
 	// Add tracing attributes
@@ -832,62 +828,10 @@ func (s *dbService) sharedListServers(
 	ctx context.Context,
 	querierFunc querierFunction,
 ) ([]*upstreamv0.ServerJSON, error) {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   pgx.ReadCommitted,
-		AccessMode: pgx.ReadOnly,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		err := tx.Rollback(ctx)
-		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			// TODO: log the rollback error (add proper logging)
-			_ = err
-		}
-	}()
-
-	querier := sqlc.New(tx)
-
-	servers, err := querierFunc(ctx, querier)
-	if err != nil {
-		return nil, err
-	}
-
-	ids := make([]uuid.UUID, len(servers))
-	for i, server := range servers {
-		ids[i] = server.ID
-	}
-
-	packages, err := querier.ListServerPackages(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	packagesMap := make(map[uuid.UUID][]sqlc.ListServerPackagesRow)
-	for _, pkg := range packages {
-		packagesMap[pkg.ServerID] = append(packagesMap[pkg.ServerID], pkg)
-	}
-
-	remotes, err := querier.ListServerRemotes(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	remotesMap := make(map[uuid.UUID][]sqlc.McpServerRemote)
-	for _, remote := range remotes {
-		remotesMap[remote.ServerID] = append(remotesMap[remote.ServerID], remote)
-	}
-
-	result := make([]*upstreamv0.ServerJSON, 0, len(servers))
-	for _, dbServer := range servers {
-		server := helperToServer(
-			dbServer,
-			packagesMap[dbServer.ID],
-			remotesMap[dbServer.ID],
-		)
-		result = append(result, &server)
-	}
-
-	return result, nil
+	// Delegate to sharedListServersWithCursor with a high limit and discard the cursor.
+	// This avoids duplicating the transaction and fetch logic.
+	result, _, err := s.sharedListServersWithCursor(ctx, querierFunc, service.MaxPageSize)
+	return result, err
 }
 
 // sharedListServersWithCursor is similar to sharedListServers but supports cursor-based pagination.
@@ -935,6 +879,7 @@ func (s *dbService) sharedListServersWithCursor(
 		}
 	}
 
+	// Fetch packages and remotes for all servers
 	ids := make([]uuid.UUID, len(servers))
 	for i, server := range servers {
 		ids[i] = server.ID
@@ -997,7 +942,7 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 
 	// List all registries (no pagination for now)
 	params := sqlc.ListRegistriesParams{
-		Size: MaxPageSize, // Maximum number of registries to return
+		Size: service.MaxPageSize, // Maximum number of registries to return
 	}
 
 	registries, err := querier.ListRegistries(ctx, params)
