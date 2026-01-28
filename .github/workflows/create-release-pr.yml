@@ -48,7 +48,6 @@ jobs:
           bump_type: ${{ inputs.bump_type }}
           token: ${{ secrets.RELEASE_TOKEN }}
           version_files: |
-            - file: VERSION
             - file: deploy/charts/toolhive-registry-server/Chart.yaml
               path: version
             - file: deploy/charts/toolhive-registry-server/Chart.yaml
