@@ -9,10 +9,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	"github.com/stacklok/toolhive-registry-server/internal/service/factory"
+	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 )
@@ -22,13 +23,25 @@ import (
 type DatabaseFactory struct {
 	config *config.Config
 	pool   *pgxpool.Pool
+	tracer trace.Tracer
 }
 
 var _ Factory = (*DatabaseFactory)(nil)
 
+// DatabaseFactoryOption is a functional option for configuring the DatabaseFactory
+type DatabaseFactoryOption func(*DatabaseFactory)
+
+// WithTracer sets the OpenTelemetry tracer for the database service.
+// If not set, tracing will be disabled (no-op).
+func WithTracer(tracer trace.Tracer) DatabaseFactoryOption {
+	return func(f *DatabaseFactory) {
+		f.tracer = tracer
+	}
+}
+
 // NewDatabaseFactory creates a new database-backed storage factory.
 // It establishes a connection pool to the configured PostgreSQL database.
-func NewDatabaseFactory(ctx context.Context, cfg *config.Config) (*DatabaseFactory, error) {
+func NewDatabaseFactory(ctx context.Context, cfg *config.Config, opts ...DatabaseFactoryOption) (*DatabaseFactory, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
@@ -44,10 +57,17 @@ func NewDatabaseFactory(ctx context.Context, cfg *config.Config) (*DatabaseFacto
 		return nil, fmt.Errorf("failed to create database connection pool: %w", err)
 	}
 
-	return &DatabaseFactory{
+	factory := &DatabaseFactory{
 		config: cfg,
 		pool:   pool,
-	}, nil
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(factory)
+	}
+
+	return factory, nil
 }
 
 // CreateStateService creates a database-backed state service for sync status tracking.
@@ -64,9 +84,21 @@ func (d *DatabaseFactory) CreateSyncWriter(_ context.Context) (writer.SyncWriter
 
 // CreateRegistryService creates a database-backed registry service.
 // The service reads and writes registry data directly to PostgreSQL.
-func (d *DatabaseFactory) CreateRegistryService(ctx context.Context) (service.RegistryService, error) {
+func (d *DatabaseFactory) CreateRegistryService(_ context.Context) (service.RegistryService, error) {
 	slog.Debug("Creating database-backed registry service")
-	return factory.NewRegistryService(ctx, d.config, d.pool, nil)
+
+	// Build database service options
+	opts := []database.Option{
+		database.WithConnectionPool(d.pool),
+	}
+
+	// Add tracer if configured
+	if d.tracer != nil {
+		opts = append(opts, database.WithTracer(d.tracer))
+		slog.Debug("Database service tracing enabled")
+	}
+
+	return database.New(opts...)
 }
 
 // Cleanup releases resources held by the database factory.

@@ -7,7 +7,11 @@ import (
 	"math/rand/v2"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/otel"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
@@ -15,6 +19,9 @@ import (
 )
 
 const (
+	// CoordinatorTracerName is the tracer name for sync coordinator operations
+	CoordinatorTracerName = "github.com/stacklok/toolhive-registry-server/sync/coordinator"
+
 	// basePollingInterval is the base interval at which the coordinator checks for sync jobs
 	basePollingInterval = 2 * time.Minute
 	// pollingJitter is the maximum random offset (±30 seconds) applied to the polling interval
@@ -45,6 +52,9 @@ type defaultCoordinator struct {
 	// Metrics
 	syncMetrics     *telemetry.SyncMetrics
 	registryMetrics *telemetry.RegistryMetrics
+
+	// Tracing
+	tracer trace.Tracer
 }
 
 // Option is a function that configures the coordinator
@@ -61,6 +71,14 @@ func WithSyncMetrics(metrics *telemetry.SyncMetrics) Option {
 func WithRegistryMetrics(metrics *telemetry.RegistryMetrics) Option {
 	return func(c *defaultCoordinator) {
 		c.registryMetrics = metrics
+	}
+}
+
+// WithTracer sets the OpenTelemetry tracer for the coordinator.
+// If not set, tracing will be disabled (no-op).
+func WithTracer(tracer trace.Tracer) Option {
+	return func(c *defaultCoordinator) {
+		c.tracer = tracer
 	}
 }
 
@@ -193,6 +211,15 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 	registryName := regCfg.Name
 	startTime := time.Now()
 
+	// Start tracing span for this sync operation
+	ctx, span := otel.StartSpan(ctx, c.tracer, "sync.performRegistrySync",
+		trace.WithAttributes(
+			otel.AttrRegistryName.String(regCfg.Name),
+			otel.AttrRegistryType.String(string(regCfg.GetType())),
+		),
+	)
+	defer span.End()
+
 	// Set up the final status update in a defer block to ensure that we always
 	// clean up the status of the sync at the end of this function.
 	// Set a default error here in case the function is killed by an unexpected error.
@@ -213,8 +240,14 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 	// Perform sync
 	result, syncErr := c.manager.PerformSync(ctx, regCfg)
 
-	// Calculate sync duration for metrics
+	// Calculate sync duration for metrics and tracing
 	syncDuration := time.Since(startTime)
+
+	// Add sync result attributes to span
+	span.SetAttributes(
+		attribute.Bool("sync.success", syncErr == nil),
+		attribute.Float64("sync.duration_seconds", syncDuration.Seconds()),
+	)
 
 	// Update status based on result
 	now := time.Now()
@@ -224,6 +257,9 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 		slog.Error("Sync failed",
 			"registry", registryName,
 			"error", syncErr.Message)
+
+		// Record error on span
+		otel.RecordError(span, fmt.Errorf("%s", syncErr.Message))
 
 		// Record sync failure metric
 		if c.syncMetrics != nil {
@@ -244,6 +280,9 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 			"registry", registryName,
 			"server_count", result.ServerCount,
 			"hash", hashPreview)
+
+		// Add server count to span on success
+		span.SetAttributes(attribute.Int("sync.server_count", result.ServerCount))
 
 		// Record sync success metric
 		if c.syncMetrics != nil {
