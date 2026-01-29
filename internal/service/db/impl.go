@@ -177,6 +177,10 @@ func (s *dbService) ListServers(
 		params.CursorVersion = &cursorVersion
 	}
 
+	if !options.UpdatedSince.IsZero() {
+		params.UpdatedSince = &options.UpdatedSince
+	}
+
 	// Note: this function fetches a list of servers. In case no records are
 	// found, the called function should return an empty slice as it's
 	// customary in Go.

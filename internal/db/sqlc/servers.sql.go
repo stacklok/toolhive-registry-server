@@ -703,22 +703,25 @@ SELECT r.reg_type as registry_type,
        OR LOWER(s.title) LIKE LOWER('%' || $2::text || '%')
        OR LOWER(s.description) LIKE LOWER('%' || $2::text || '%')
    ))
+   -- Filter by updated_since if provided
+   AND ($3::timestamp with time zone IS NULL OR s.updated_at > $3::timestamp with time zone)
    -- Compound cursor comparison: (name, version) > (cursor_name, cursor_version)
    -- This ensures deterministic pagination even when timestamps are identical
    AND (
-       $3::text IS NULL
-       OR (s.name, s.version) > ($3::text, $4::text)
+       $4::text IS NULL
+       OR (s.name, s.version) > ($4::text, $5::text)
    )
  ORDER BY s.name ASC, s.version ASC
- LIMIT $5::bigint
+ LIMIT $6::bigint
 `
 
 type ListServersParams struct {
-	RegistryName  *string `json:"registry_name"`
-	Search        *string `json:"search"`
-	CursorName    *string `json:"cursor_name"`
-	CursorVersion *string `json:"cursor_version"`
-	Size          int64   `json:"size"`
+	RegistryName  *string    `json:"registry_name"`
+	Search        *string    `json:"search"`
+	UpdatedSince  *time.Time `json:"updated_since"`
+	CursorName    *string    `json:"cursor_name"`
+	CursorVersion *string    `json:"cursor_version"`
+	Size          int64      `json:"size"`
 }
 
 type ListServersRow struct {
@@ -747,6 +750,7 @@ func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]Lis
 	rows, err := q.db.Query(ctx, listServers,
 		arg.RegistryName,
 		arg.Search,
+		arg.UpdatedSince,
 		arg.CursorName,
 		arg.CursorVersion,
 		arg.Size,

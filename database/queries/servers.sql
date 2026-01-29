@@ -27,6 +27,8 @@ SELECT r.reg_type as registry_type,
        OR LOWER(s.title) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
        OR LOWER(s.description) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
    ))
+   -- Filter by updated_since if provided
+   AND (sqlc.narg(updated_since)::timestamp with time zone IS NULL OR s.updated_at > sqlc.narg(updated_since)::timestamp with time zone)
    -- Compound cursor comparison: (name, version) > (cursor_name, cursor_version)
    -- This ensures deterministic pagination even when timestamps are identical
    AND (
