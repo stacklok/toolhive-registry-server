@@ -214,12 +214,15 @@ func (*upstreamAPIHandler) buildUpstreamRegistry(servers []v0.ServerJSON) *toolh
 	}
 }
 
-// calculateHash computes SHA256 hash of the serialized registry
+// calculateHash computes SHA256 hash of the registry data (servers and groups)
+// We hash only the Data field (not the full registry) to ensure consistent hashes
+// for the same content, regardless of when the fetch was performed.
+// This excludes Meta.LastUpdated which changes on every fetch.
 func (*upstreamAPIHandler) calculateHash(reg *toolhivetypes.UpstreamRegistry) (string, error) {
-	// Serialize to JSON
-	data, err := json.Marshal(reg)
+	// Serialize only the data to JSON (excludes metadata like LastUpdated timestamp)
+	data, err := json.Marshal(reg.Data)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal registry: %w", err)
+		return "", fmt.Errorf("failed to marshal registry data: %w", err)
 	}
 
 	// Compute SHA256
