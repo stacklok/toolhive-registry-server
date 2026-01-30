@@ -41,13 +41,23 @@ grafana:
   
   # Additional data sources configuration
   additionalDataSources:
-    - name: Jaeger
-      type: jaeger
+    - name: Tempo
+      type: tempo
       access: proxy
-      url: http://jaeger-all-in-one-query.monitoring:16686
+      url: http://tempo.monitoring:3200
       isDefault: false
       version: 1
       editable: true
+      jsonData:
+        httpMethod: GET
+        tracesToLogsV2:
+          datasourceUid: ''
+        tracesToMetrics:
+          datasourceUid: ''
+        nodeGraph:
+          enabled: true
+        serviceMap:
+          datasourceUid: ''
 
 # AlertManager configuration (optional)
 alertmanager:
