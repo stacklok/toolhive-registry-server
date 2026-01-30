@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/aws/smithy-go/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -37,7 +38,7 @@ func TestNewTracerProvider(t *testing.T) {
 			opts: []TracerProviderOption{
 				WithTracingConfig(&TracingConfig{
 					Enabled:  true,
-					Sampling: 0.5,
+					Sampling: ptr.Float64(0.5),
 				}),
 			},
 			expectNoOp: false,
