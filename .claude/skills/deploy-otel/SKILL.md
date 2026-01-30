@@ -47,6 +47,7 @@ echo "Kubeconfig written to kconfig.yaml"
 echo "Adding Helm repositories..."
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 echo "Helm repositories updated."
 ```
@@ -64,7 +65,20 @@ helm upgrade -i kube-prometheus-stack prometheus-community/kube-prometheus-stack
 echo "Prometheus/Grafana stack installed."
 ```
 
-### 5. Install OpenTelemetry Collector
+### 5. Install Tempo for Distributed Tracing
+
+```bash
+echo "Installing Grafana Tempo..."
+helm upgrade -i tempo grafana/tempo \
+  -f examples/otel/tempo-values.yaml \
+  -n monitoring \
+  --kubeconfig kconfig.yaml \
+  --wait --timeout 3m
+
+echo "Grafana Tempo installed."
+```
+
+### 6. Install OpenTelemetry Collector
 
 ```bash
 echo "Installing OpenTelemetry Collector..."
@@ -77,14 +91,14 @@ helm upgrade -i otel-collector open-telemetry/opentelemetry-collector \
 echo "OpenTelemetry Collector installed."
 ```
 
-### 6. Verify Deployment
+### 7. Verify Deployment
 
 ```bash
 echo "Verifying deployment..."
 kubectl get pods -n monitoring --kubeconfig kconfig.yaml
 ```
 
-### 7. Display Access Instructions
+### 8. Display Access Instructions
 
 ```bash
 cat <<'EOF'
@@ -112,7 +126,7 @@ If Helm installations fail due to incompatible values, it may be because the Hel
 **Chart Documentation:**
 - OpenTelemetry Collector: https://github.com/open-telemetry/opentelemetry-helm-charts/tree/main/charts/opentelemetry-collector
 - Prometheus Stack: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
-- Jaeger: https://github.com/jaegertracing/helm-charts/tree/main/charts/jaeger
+- Tempo: https://github.com/grafana/helm-charts/tree/main/charts/tempo
 
 **If you encounter issues:**
 1. Check the chart's `values.yaml` for schema changes in the versions of the Charts we are using
@@ -125,7 +139,8 @@ If Helm installations fail due to incompatible values, it may be because the Hel
 |-----------|-------------|
 | Prometheus | Metrics storage, scrapes OTEL collector on port 8889 |
 | Grafana | Visualization dashboards (admin/admin) |
-| OTEL Collector | Receives OTLP metrics/traces, exports to Prometheus |
+| Tempo | Distributed tracing backend, receives traces from OTEL Collector |
+| OTEL Collector | Receives OTLP metrics/traces, exports to Prometheus and Tempo |
 
 ## Cleanup
 
