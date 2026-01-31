@@ -3,7 +3,6 @@ package database
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,10 +31,6 @@ import (
 )
 
 const (
-	// DefaultPageSize is the default number of items per page
-	DefaultPageSize = 50
-	// MaxPageSize is the maximum allowed items per page
-	MaxPageSize = 1000
 	// unknownSubtype is used when a file source subtype cannot be determined
 	unknownSubtype = "unknown"
 )
@@ -44,6 +39,13 @@ var (
 	// ErrBug is returned when a server is not found
 	ErrBug = errors.New("bug")
 )
+
+// serverCursor represents a cursor for pagination based on server name and version.
+// This provides deterministic ordering regardless of timestamp values.
+type serverCursor struct {
+	Name    string
+	Version string
+}
 
 // options holds configuration options for the database service
 type options struct {
@@ -120,12 +122,12 @@ func (*dbService) GetRegistry(
 func (s *dbService) ListServers(
 	ctx context.Context,
 	opts ...service.Option[service.ListServersOptions],
-) ([]*upstreamv0.ServerJSON, error) {
+) (*service.ListServersResult, error) {
 	ctx, span := s.startSpan(ctx, "dbService.ListServers")
 	defer span.End()
 
 	options := &service.ListServersOptions{
-		Limit: DefaultPageSize, // default limit
+		Limit: service.DefaultPageSize, // default limit
 	}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
@@ -134,9 +136,9 @@ func (s *dbService) ListServers(
 		}
 	}
 
-	// Cap the limit at MaxPageSize to prevent potential DoS
-	if options.Limit > MaxPageSize {
-		options.Limit = MaxPageSize
+	// Cap the limit at service.MaxPageSize to prevent potential DoS
+	if options.Limit > service.MaxPageSize {
+		options.Limit = service.MaxPageSize
 	}
 
 	// Add tracing attributes after options are parsed
@@ -154,8 +156,9 @@ func (s *dbService) ListServers(
 		"search", options.Search,
 		"request_id", middleware.GetReqID(ctx))
 
+	// Request one extra record to detect if there are more results
 	params := sqlc.ListServersParams{
-		Size: int64(options.Limit),
+		Size: int64(options.Limit + 1),
 	}
 	if options.RegistryName != nil {
 		params.RegistryName = options.RegistryName
@@ -165,17 +168,17 @@ func (s *dbService) ListServers(
 	}
 
 	if options.Cursor != "" {
-		decoded, err := base64.StdEncoding.DecodeString(options.Cursor)
+		cursorName, cursorVersion, err := service.DecodeCursor(options.Cursor)
 		if err != nil {
 			otel.RecordError(span, err)
 			return nil, fmt.Errorf("invalid cursor format: %w", err)
 		}
-		nextTime, err := time.Parse(time.RFC3339, string(decoded))
-		if err != nil {
-			otel.RecordError(span, err)
-			return nil, fmt.Errorf("invalid cursor format: %w", err)
-		}
-		params.Next = &nextTime
+		params.CursorName = &cursorName
+		params.CursorVersion = &cursorVersion
+	}
+
+	if !options.UpdatedSince.IsZero() {
+		params.UpdatedSince = &options.UpdatedSince
 	}
 
 	// Note: this function fetches a list of servers. In case no records are
@@ -195,17 +198,28 @@ func (s *dbService) ListServers(
 		return helpers, nil
 	}
 
-	results, err := s.sharedListServers(ctx, querierFunc)
+	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
+	// Calculate NextCursor if there are more results
+	var nextCursor string
+	if lastCursor != nil {
+		nextCursor = service.EncodeCursor(lastCursor.Name, lastCursor.Version)
+	}
+
 	span.SetAttributes(otel.AttrResultCount.Int(len(results)))
 	slog.DebugContext(ctx, "ListServers completed",
 		"count", len(results),
+		"has_more", nextCursor != "",
 		"request_id", middleware.GetReqID(ctx))
-	return results, nil
+
+	return &service.ListServersResult{
+		Servers:    results,
+		NextCursor: nextCursor,
+	}, nil
 }
 
 // ListServerVersions implements RegistryService.ListServerVersions
@@ -217,7 +231,7 @@ func (s *dbService) ListServerVersions(
 	defer span.End()
 
 	options := &service.ListServerVersionsOptions{
-		Limit: DefaultPageSize, // default limit
+		Limit: service.DefaultPageSize, // default limit
 	}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
@@ -232,9 +246,9 @@ func (s *dbService) ListServerVersions(
 		return nil, err
 	}
 
-	// Cap the limit at MaxPageSize to prevent potential DoS
-	if options.Limit > MaxPageSize {
-		options.Limit = MaxPageSize
+	// Cap the limit at service.MaxPageSize to prevent potential DoS
+	if options.Limit > service.MaxPageSize {
+		options.Limit = service.MaxPageSize
 	}
 
 	// Add tracing attributes
@@ -818,17 +832,34 @@ func (s *dbService) sharedListServers(
 	ctx context.Context,
 	querierFunc querierFunction,
 ) ([]*upstreamv0.ServerJSON, error) {
+	// Delegate to sharedListServersWithCursor with a high limit and discard the cursor.
+	// This avoids duplicating the transaction and fetch logic.
+	result, _, err := s.sharedListServersWithCursor(ctx, querierFunc, service.MaxPageSize)
+	return result, err
+}
+
+// sharedListServersWithCursor is similar to sharedListServers but supports cursor-based pagination.
+// It takes a limit parameter and returns:
+// - The list of servers (up to limit items)
+// - The serverCursor of the last server if there are more results (for cursor calculation)
+// - An error if the operation fails
+//
+// The querierFunc should request limit+1 records to allow detecting if there are more results.
+func (s *dbService) sharedListServersWithCursor(
+	ctx context.Context,
+	querierFunc querierFunction,
+	limit int,
+) ([]*upstreamv0.ServerJSON, *serverCursor, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.ReadCommitted,
 		AccessMode: pgx.ReadOnly,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		return nil, nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		err := tx.Rollback(ctx)
 		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			// TODO: log the rollback error (add proper logging)
 			_ = err
 		}
 	}()
@@ -837,9 +868,26 @@ func (s *dbService) sharedListServers(
 
 	servers, err := querierFunc(ctx, querier)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
+	// Check if there are more results
+	var lastCursor *serverCursor
+	hasMore := len(servers) > limit
+	if hasMore {
+		// Trim to the requested limit
+		servers = servers[:limit]
+		// Get the Name and Version of the last server for the next cursor
+		if len(servers) > 0 {
+			lastServer := servers[len(servers)-1]
+			lastCursor = &serverCursor{
+				Name:    lastServer.Name,
+				Version: lastServer.Version,
+			}
+		}
+	}
+
+	// Fetch packages and remotes for all servers
 	ids := make([]uuid.UUID, len(servers))
 	for i, server := range servers {
 		ids[i] = server.ID
@@ -847,7 +895,7 @@ func (s *dbService) sharedListServers(
 
 	packages, err := querier.ListServerPackages(ctx, ids)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	packagesMap := make(map[uuid.UUID][]sqlc.ListServerPackagesRow)
 	for _, pkg := range packages {
@@ -856,7 +904,7 @@ func (s *dbService) sharedListServers(
 
 	remotes, err := querier.ListServerRemotes(ctx, ids)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	remotesMap := make(map[uuid.UUID][]sqlc.McpServerRemote)
 	for _, remote := range remotes {
@@ -873,7 +921,7 @@ func (s *dbService) sharedListServers(
 		result = append(result, &server)
 	}
 
-	return result, nil
+	return result, lastCursor, nil
 }
 
 // ListRegistries returns all configured registries
@@ -902,7 +950,7 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 
 	// List all registries (no pagination for now)
 	params := sqlc.ListRegistriesParams{
-		Size: MaxPageSize, // Maximum number of registries to return
+		Size: service.MaxPageSize, // Maximum number of registries to return
 	}
 
 	registries, err := querier.ListRegistries(ctx, params)

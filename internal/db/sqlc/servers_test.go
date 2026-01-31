@@ -453,7 +453,7 @@ func TestListServers(t *testing.T) {
 			},
 		},
 		{
-			name: "list servers with pagination next",
+			name: "list servers with cursor pagination",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
@@ -474,56 +474,37 @@ func TestListServers(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
-				nextTime := time.Now().UTC().Add(-10 * time.Minute)
-				servers, err := queries.ListServers(
+				// First get all servers without cursor
+				allServers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Next: &nextTime,
 						Size: 10,
 					},
 				)
 				require.NoError(t, err)
-				require.NotEmpty(t, servers)
-				for _, server := range servers {
-					require.True(t, server.CreatedAt.After(nextTime))
-				}
-			},
-		},
-		{
-			name: "list servers with pagination prev",
-			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				createdAt := time.Now().UTC().Add(-1 * time.Minute)
-				for _, version := range []string{"1.0.0", "2.0.0"} {
-					createdAt = createdAt.Add(1 * time.Second)
-					_, err := queries.InsertServerVersion(
-						context.Background(),
-						InsertServerVersionParams{
-							Name:      "test-server",
-							Version:   version,
-							RegID:     regID,
-							CreatedAt: &createdAt,
-							UpdatedAt: &createdAt,
-						},
-					)
-					require.NoError(t, err)
-				}
-			},
-			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
-				prevTime := time.Now().UTC().Add(10 * time.Minute)
+				require.Len(t, allServers, 2)
+				// Verify ordering by name ASC, version ASC
+				require.Equal(t, "test-server", allServers[0].Name)
+				require.Equal(t, "1.0.0", allServers[0].Version)
+				require.Equal(t, "test-server", allServers[1].Name)
+				require.Equal(t, "2.0.0", allServers[1].Version)
+
+				// Now use cursor to skip past first server
+				cursorName := allServers[0].Name
+				cursorVersion := allServers[0].Version
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Prev: &prevTime,
-						Size: 10,
+						CursorName:    &cursorName,
+						CursorVersion: &cursorVersion,
+						Size:          10,
 					},
 				)
 				require.NoError(t, err)
-				require.NotEmpty(t, servers)
-				for _, server := range servers {
-					require.True(t, server.CreatedAt.Before(prevTime))
-				}
+				require.Len(t, servers, 1)
+				// Should only return the second server (after cursor)
+				require.Equal(t, "test-server", servers[0].Name)
+				require.Equal(t, "2.0.0", servers[0].Version)
 			},
 		},
 		{

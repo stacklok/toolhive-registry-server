@@ -192,14 +192,14 @@ func (mr *MockRegistryServiceMockRecorder) ListServerVersions(ctx any, opts ...a
 }
 
 // ListServers mocks base method.
-func (m *MockRegistryService) ListServers(ctx context.Context, opts ...service.Option[service.ListServersOptions]) ([]*v0.ServerJSON, error) {
+func (m *MockRegistryService) ListServers(ctx context.Context, opts ...service.Option[service.ListServersOptions]) (*service.ListServersResult, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "ListServers", varargs...)
-	ret0, _ := ret[0].([]*v0.ServerJSON)
+	ret0, _ := ret[0].(*service.ListServersResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
