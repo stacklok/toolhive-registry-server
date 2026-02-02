@@ -32,7 +32,10 @@ func TestListServers(t *testing.T) {
 			name: "list servers - basic",
 			path: "/v0.1/servers",
 			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+					Servers:    []*upstreamv0.ServerJSON{},
+					NextCursor: "",
+				}, nil).AnyTimes()
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, true)
@@ -43,7 +46,10 @@ func TestListServers(t *testing.T) {
 			name: "list servers - with cursor",
 			path: "/v0.1/servers?cursor=abc123",
 			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+					Servers:    []*upstreamv0.ServerJSON{},
+					NextCursor: "",
+				}, nil).AnyTimes()
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, true)
@@ -54,7 +60,10 @@ func TestListServers(t *testing.T) {
 			name: "list servers - with limit",
 			path: "/v0.1/servers?limit=10",
 			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+					Servers:    []*upstreamv0.ServerJSON{},
+					NextCursor: "",
+				}, nil).AnyTimes()
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, true)
@@ -65,7 +74,10 @@ func TestListServers(t *testing.T) {
 			name: "list servers - with search",
 			path: "/v0.1/servers?search=test",
 			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+					Servers:    []*upstreamv0.ServerJSON{},
+					NextCursor: "",
+				}, nil).AnyTimes()
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, true)
@@ -76,7 +88,10 @@ func TestListServers(t *testing.T) {
 			name: "list servers - with updated_since",
 			path: "/v0.1/servers?updated_since=2025-01-01T00:00:00Z",
 			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+					Servers:    []*upstreamv0.ServerJSON{},
+					NextCursor: "",
+				}, nil).AnyTimes()
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, true)
@@ -87,7 +102,10 @@ func TestListServers(t *testing.T) {
 			name: "list servers - with version",
 			path: "/v0.1/servers?version=latest",
 			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+					Servers:    []*upstreamv0.ServerJSON{},
+					NextCursor: "",
+				}, nil).AnyTimes()
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, true)
@@ -116,7 +134,10 @@ func TestListServers(t *testing.T) {
 			name: "list servers with registry name - basic",
 			path: "/foo/v0.1/servers",
 			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+					Servers:    []*upstreamv0.ServerJSON{},
+					NextCursor: "",
+				}, nil).AnyTimes()
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, true)
@@ -127,7 +148,10 @@ func TestListServers(t *testing.T) {
 			name: "list servers with registry name - with cursor",
 			path: "/foo/v0.1/servers?cursor=abc123",
 			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+					Servers:    []*upstreamv0.ServerJSON{},
+					NextCursor: "",
+				}, nil).AnyTimes()
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, false)
@@ -138,7 +162,10 @@ func TestListServers(t *testing.T) {
 			name: "list servers with registry name - with limit",
 			path: "/foo/v0.1/servers?limit=10",
 			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+					Servers:    []*upstreamv0.ServerJSON{},
+					NextCursor: "",
+				}, nil).AnyTimes()
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, false)
@@ -149,7 +176,10 @@ func TestListServers(t *testing.T) {
 			name: "list servers with registry name - with search",
 			path: "/foo/v0.1/servers?search=test",
 			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+					Servers:    []*upstreamv0.ServerJSON{},
+					NextCursor: "",
+				}, nil).AnyTimes()
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, false)
@@ -160,7 +190,10 @@ func TestListServers(t *testing.T) {
 			name: "list servers with registry name - with updated_since",
 			path: "/foo/v0.1/servers?updated_since=2025-01-01T00:00:00Z",
 			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+					Servers:    []*upstreamv0.ServerJSON{},
+					NextCursor: "",
+				}, nil).AnyTimes()
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, false)
@@ -171,7 +204,10 @@ func TestListServers(t *testing.T) {
 			name: "list servers with registry name - with version",
 			path: "/foo/v0.1/servers?version=latest",
 			setupMocks: func(m *mocks.MockRegistryService) {
-				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return([]*upstreamv0.ServerJSON{}, nil).AnyTimes()
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+					Servers:    []*upstreamv0.ServerJSON{},
+					NextCursor: "",
+				}, nil).AnyTimes()
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, false)

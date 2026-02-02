@@ -71,6 +71,9 @@ type Querier interface {
 	ListServerPackages(ctx context.Context, serverIds []uuid.UUID) ([]ListServerPackagesRow, error)
 	ListServerRemotes(ctx context.Context, serverIds []uuid.UUID) ([]McpServerRemote, error)
 	ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error)
+	// Cursor-based pagination using (name, version) compound cursor.
+	// The cursor_name and cursor_version parameters define the starting point.
+	// When cursor is provided, results start AFTER the specified (name, version) tuple.
 	ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error)
 	// Update an existing API registry (returns NULL if not found or is CONFIG type)
 	UpdateAPIRegistry(ctx context.Context, arg UpdateAPIRegistryParams) (Registry, error)

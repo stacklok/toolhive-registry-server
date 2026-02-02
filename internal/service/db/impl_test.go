@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"encoding/base64"
 	"testing"
 	"time"
 
@@ -43,14 +42,6 @@ func setupTestService(t *testing.T) (*dbService, func()) {
 	}
 
 	return svc, serviceCleanup
-}
-
-// createCursor creates a valid base64-encoded RFC3339 time cursor
-//
-// nolint:unparam
-func createCursor(offset time.Duration) string {
-	cursorTime := time.Now().Add(offset).UTC()
-	return base64.StdEncoding.EncodeToString([]byte(cursorTime.Format(time.RFC3339)))
 }
 
 // setupTestData creates a registry and server versions for testing
@@ -131,7 +122,7 @@ func TestListServers(t *testing.T) {
 		setupFunc     func(*testing.T, *pgxpool.Pool)
 		options       []service.Option[service.ListServersOptions]
 		expectedCount int
-		validateFunc  func(*testing.T, []*upstreamv0.ServerJSON)
+		validateFunc  func(*testing.T, *service.ListServersResult)
 	}{
 		{
 			name: "list all servers with valid cursor",
@@ -140,14 +131,13 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServersOptions]{
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 4)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 4)
 				// Verify server structure
-				for _, server := range servers {
+				for _, server := range result.Servers {
 					require.NotEmpty(t, server.Name)
 					require.NotEmpty(t, server.Version)
 				}
@@ -160,12 +150,11 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServersOptions]{
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](2),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 2)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 2)
 			},
 		},
 		{
@@ -180,13 +169,14 @@ func TestListServers(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid cursor time format",
+			name: "cursor without comma separator returns error",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServersOptions]{
-				service.WithCursor(base64.StdEncoding.EncodeToString([]byte("not-a-time"))),
+				// "YWJj" is base64("abc"), which has no comma separator
+				service.WithCursor("YWJj"),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 		},
@@ -197,12 +187,11 @@ func TestListServers(t *testing.T) {
 				// Don't set up any data
 			},
 			options: []service.Option[service.ListServersOptions]{
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 0)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 0)
 			},
 		},
 		{
@@ -213,14 +202,13 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithRegistryName[service.ListServersOptions]("test-registry"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 4)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 4)
 				// Verify server structure
-				for _, server := range servers {
+				for _, server := range result.Servers {
 					require.NotEmpty(t, server.Name)
 					require.NotEmpty(t, server.Version)
 				}
@@ -234,12 +222,11 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithRegistryName[service.ListServersOptions]("non-existent-registry"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 0)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 0)
 			},
 		},
 		{
@@ -250,13 +237,12 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("server-1"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 3) // Should find all 3 versions of com.example/test-server-1
-				for _, server := range servers {
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 3) // Should find all 3 versions of com.example/test-server-1
+				for _, server := range result.Servers {
 					require.Equal(t, "com.example/test-server-1", server.Name)
 				}
 			},
@@ -269,13 +255,12 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("Test Server 2"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 1) // Should find only com.example/test-server-2
-				require.Equal(t, "com.example/test-server-2", servers[0].Name)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 1) // Should find only com.example/test-server-2
+				require.Equal(t, "com.example/test-server-2", result.Servers[0].Name)
 			},
 		},
 		{
@@ -286,13 +271,12 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("server 2 description"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 1) // Should find only com.example/test-server-2
-				require.Equal(t, "com.example/test-server-2", servers[0].Name)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 1) // Should find only com.example/test-server-2
+				require.Equal(t, "com.example/test-server-2", result.Servers[0].Name)
 			},
 		},
 		{
@@ -303,13 +287,12 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("SERVER-1"), // Uppercase
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 3) // Should still find com.example/test-server-1 versions
-				for _, server := range servers {
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 3) // Should still find com.example/test-server-1 versions
+				for _, server := range result.Servers {
 					require.Equal(t, "com.example/test-server-1", server.Name)
 				}
 			},
@@ -322,12 +305,11 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("server"), // Partial match
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 4) // Should find all servers (both com.example/test-server-1 and com.example/test-server-2)
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 4) // Should find all servers (both com.example/test-server-1 and com.example/test-server-2)
 			},
 		},
 		{
@@ -338,12 +320,11 @@ func TestListServers(t *testing.T) {
 			},
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("nonexistent"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 0) // Should find no servers
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 0) // Should find no servers
 			},
 		},
 		{
@@ -355,13 +336,12 @@ func TestListServers(t *testing.T) {
 			options: []service.Option[service.ListServersOptions]{
 				service.WithSearch("server-1"),
 				service.WithRegistryName[service.ListServersOptions]("test-registry"),
-				service.WithCursor(createCursor(-1 * time.Hour)),
 				service.WithLimit[service.ListServersOptions](10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 3) // Should find com.example/test-server-1 versions in test-registry
-				for _, server := range servers {
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 3) // Should find com.example/test-server-1 versions in test-registry
+				for _, server := range result.Servers {
 					require.Equal(t, "com.example/test-server-1", server.Name)
 				}
 			},
@@ -377,16 +357,16 @@ func TestListServers(t *testing.T) {
 
 			tt.setupFunc(t, svc.pool)
 
-			servers, err := svc.ListServers(context.Background(), tt.options...)
+			result, err := svc.ListServers(context.Background(), tt.options...)
 
 			if tt.validateFunc == nil {
 				require.Error(t, err)
-				require.Nil(t, servers)
+				require.Nil(t, result)
 				return
 			}
 
 			require.NoError(t, err)
-			tt.validateFunc(t, servers)
+			tt.validateFunc(t, result)
 		})
 	}
 }
