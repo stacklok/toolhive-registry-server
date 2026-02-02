@@ -18,7 +18,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/modelcontextprotocol/registry v1.4.0
 	github.com/spf13/viper v1.21.0
-	github.com/stacklok/toolhive v0.8.3
+	github.com/stacklok/toolhive v0.9.0
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc5
 	github.com/testcontainers/testcontainers-go v0.40.0
