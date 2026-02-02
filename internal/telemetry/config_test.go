@@ -3,6 +3,7 @@ package telemetry
 import (
 	"testing"
 
+	"github.com/aws/smithy-go/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -177,7 +178,7 @@ func TestConfig_Validate(t *testing.T) {
 				Insecure:       true,
 				Tracing: &TracingConfig{
 					Enabled:  true,
-					Sampling: 0.5,
+					Sampling: ptr.Float64(0.5),
 				},
 				Metrics: &MetricsConfig{
 					Enabled: true,
@@ -191,7 +192,7 @@ func TestConfig_Validate(t *testing.T) {
 				Enabled: true,
 				Tracing: &TracingConfig{
 					Enabled:  false,
-					Sampling: -1,
+					Sampling: ptr.Float64(-1),
 				},
 			},
 			wantErr: false,
@@ -250,7 +251,7 @@ func TestTracingConfig_Validate(t *testing.T) {
 			name: "valid enabled config",
 			config: &TracingConfig{
 				Enabled:  true,
-				Sampling: 1.0,
+				Sampling: ptr.Float64(1.0),
 			},
 			wantErr: false,
 		},
@@ -258,7 +259,15 @@ func TestTracingConfig_Validate(t *testing.T) {
 			name: "valid config with custom sampling",
 			config: &TracingConfig{
 				Enabled:  true,
-				Sampling: 0.5,
+				Sampling: ptr.Float64(0.5),
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid config with nil sampling uses default",
+			config: &TracingConfig{
+				Enabled:  true,
+				Sampling: nil,
 			},
 			wantErr: false,
 		},
@@ -266,27 +275,28 @@ func TestTracingConfig_Validate(t *testing.T) {
 			name: "sampling above 1.0",
 			config: &TracingConfig{
 				Enabled:  true,
-				Sampling: 1.1,
+				Sampling: ptr.Float64(1.1),
 			},
 			wantErr: true,
-			errMsg:  "sampling must be between",
+			errMsg:  "sampling must be greater than 0.0",
 		},
 		{
 			name: "negative sampling",
 			config: &TracingConfig{
 				Enabled:  true,
-				Sampling: -0.1,
+				Sampling: ptr.Float64(-0.1),
 			},
 			wantErr: true,
-			errMsg:  "sampling must be between",
+			errMsg:  "sampling must be greater than 0.0",
 		},
 		{
-			name: "zero sampling is valid",
+			name: "zero sampling is invalid when tracing enabled",
 			config: &TracingConfig{
 				Enabled:  true,
-				Sampling: 0,
+				Sampling: ptr.Float64(0),
 			},
-			wantErr: false,
+			wantErr: true,
+			errMsg:  "sampling must be greater than 0.0",
 		},
 	}
 
@@ -346,6 +356,49 @@ func TestMetricsConfig_Validate(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestTracingConfig_GetSampling(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		config   *TracingConfig
+		expected float64
+	}{
+		{
+			name: "returns default when sampling is nil",
+			config: &TracingConfig{
+				Enabled:  true,
+				Sampling: nil,
+			},
+			expected: DefaultSampling,
+		},
+		{
+			name: "returns explicit value when set",
+			config: &TracingConfig{
+				Enabled:  true,
+				Sampling: ptr.Float64(0.5),
+			},
+			expected: 0.5,
+		},
+		{
+			name: "returns 1.0 when set to full sampling",
+			config: &TracingConfig{
+				Enabled:  true,
+				Sampling: ptr.Float64(1.0),
+			},
+			expected: 1.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := tt.config.GetSampling()
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

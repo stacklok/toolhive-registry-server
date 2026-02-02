@@ -484,6 +484,20 @@ func (a *AuthConfig) Validate(insecureAllowHTTP bool) error {
 	}
 }
 
+// DynamicAuthAWSRDSIAM defines configuration for AWS RDS IAM dynamic authentication
+type DynamicAuthAWSRDSIAM struct {
+	// Region is the AWS region to use for authentication.
+	// If "detect", the region will be automatically detected from the
+	// instance metadata.
+	Region string `yaml:"region,omitempty"`
+}
+
+// DynamicAuthConfig defines configuration for dynamic database authentication
+type DynamicAuthConfig struct {
+	// AWSRDSIAM is configuration for AWS RDS IAM dynamic authentication
+	AWSRDSIAM *DynamicAuthAWSRDSIAM `yaml:"awsRdsIam,omitempty"`
+}
+
 // DatabaseConfig defines database connection settings
 type DatabaseConfig struct {
 	// Host is the database server hostname or IP address
@@ -499,6 +513,9 @@ type DatabaseConfig struct {
 	// This user typically has elevated privileges (CREATE, ALTER, DROP)
 	// If not specified, defaults to User for backward compatibility
 	MigrationUser string `yaml:"migrationUser,omitempty"`
+
+	// DynamicAuth is configuration for dynamic database authentication
+	DynamicAuth *DynamicAuthConfig `yaml:"dynamicAuth,omitempty"`
 
 	// Database is the database name
 	Database string `yaml:"database"`

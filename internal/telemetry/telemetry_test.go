@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aws/smithy-go/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -65,7 +66,7 @@ func TestNew(t *testing.T) {
 					Enabled: true,
 					Tracing: &TracingConfig{
 						Enabled:  true,
-						Sampling: 1.5,
+						Sampling: ptr.Float64(1.5),
 					},
 				}),
 			},
@@ -217,7 +218,7 @@ func TestTelemetry_Shutdown(t *testing.T) {
 			Insecure: true,
 			Tracing: &TracingConfig{
 				Enabled:  true,
-				Sampling: 1.0,
+				Sampling: ptr.Float64(1.0),
 			},
 			Metrics: &MetricsConfig{
 				Enabled: false,
@@ -282,7 +283,7 @@ func TestTelemetry_Shutdown(t *testing.T) {
 			Insecure: true,
 			Tracing: &TracingConfig{
 				Enabled:  true,
-				Sampling: 1.0,
+				Sampling: ptr.Float64(1.0),
 			},
 			Metrics: &MetricsConfig{
 				Enabled: true,
