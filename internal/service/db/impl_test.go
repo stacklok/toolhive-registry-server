@@ -169,13 +169,13 @@ func TestListServers(t *testing.T) {
 			},
 		},
 		{
-			name: "cursor without colon separator returns error",
+			name: "cursor without comma separator returns error",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option[service.ListServersOptions]{
-				// "YWJj" is base64("abc"), which has no colon separator
+				// "YWJj" is base64("abc"), which has no comma separator
 				service.WithCursor("YWJj"),
 				service.WithLimit[service.ListServersOptions](10),
 			},

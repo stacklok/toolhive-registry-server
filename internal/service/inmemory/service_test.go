@@ -1207,7 +1207,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),
-			// Use cursor for "server2:1.0.0" to skip to server3 (servers are sorted by name:version)
+			// Use cursor for "server2,1.0.0" to skip to server3 (servers are sorted by name,version)
 			options:       []service.Option[service.ListServersOptions]{service.WithCursor(service.EncodeCursor("server2", "1.0.0"))},
 			expectedCount: 2,
 			validateServers: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
@@ -1293,7 +1293,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 			expectedError: "invalid cursor format",
 		},
 		{
-			name: "cursor without colon separator returns error",
+			name: "cursor without comma separator returns error",
 			setupMocks: func(m *mocks.MockRegistryDataProvider) {
 				testRegistry := registry.NewTestUpstreamRegistry(
 					registry.WithServers(
@@ -1306,7 +1306,7 @@ func TestService_ListServers_WithCursor(t *testing.T) {
 				m.EXPECT().GetRegistryName().Return("test-registry").AnyTimes()
 			},
 			config: testFileConfig("test-registry"),
-			// "YWJj" is base64("abc"), which has no colon separator
+			// "YWJj" is base64("abc"), which has no comma separator
 			options:       []service.Option[service.ListServersOptions]{service.WithCursor("YWJj")},
 			expectedError: "invalid cursor format",
 		},
@@ -1460,7 +1460,7 @@ func TestService_ListServers_PaginationBehavior(t *testing.T) {
 				t.Helper()
 				// Verify the cursor is non-empty and valid
 				assert.NotEmpty(t, cursor, "NextCursor should be non-empty when more results exist")
-				// The cursor should be the last server in the current page (server3:1.0.0)
+				// The cursor should be the last server in the current page (server3,1.0.0)
 				// Server names are server1, server2, server3... sorted alphabetically
 				expectedCursor := service.EncodeCursor(fmt.Sprintf("server%d", limit), "1.0.0")
 				assert.Equal(t, expectedCursor, cursor, "NextCursor should point to the last server in page")

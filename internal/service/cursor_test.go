@@ -22,25 +22,25 @@ func TestEncodeCursor(t *testing.T) {
 			name:     "simple name and version",
 			inName:   "server1",
 			version:  "1.0.0",
-			expected: "c2VydmVyMToxLjAuMA==", // base64("server1:1.0.0")
+			expected: "c2VydmVyMSwxLjAuMA==", // base64("server1,1.0.0")
 		},
 		{
 			name:     "name with special characters",
 			inName:   "@org/server",
 			version:  "2.0.0-beta",
-			expected: "QG9yZy9zZXJ2ZXI6Mi4wLjAtYmV0YQ==", // base64("@org/server:2.0.0-beta")
+			expected: "QG9yZy9zZXJ2ZXIsMi4wLjAtYmV0YQ==", // base64("@org/server,2.0.0-beta")
 		},
 		{
 			name:     "empty name",
 			inName:   "",
 			version:  "1.0.0",
-			expected: "OjEuMC4w", // base64(":1.0.0")
+			expected: "LDEuMC4w", // base64(",1.0.0")
 		},
 		{
 			name:     "empty version",
 			inName:   "server",
 			version:  "",
-			expected: "c2VydmVyOg==", // base64("server:")
+			expected: "c2VydmVyLA==", // base64("server,")
 		},
 	}
 
@@ -66,7 +66,7 @@ func TestDecodeCursor(t *testing.T) {
 	}{
 		{
 			name:            "valid cursor",
-			cursor:          "c2VydmVyMToxLjAuMA==", // base64("server1:1.0.0")
+			cursor:          "c2VydmVyMSwxLjAuMA==", // base64("server1,1.0.0")
 			expectedName:    "server1",
 			expectedVersion: "1.0.0",
 			expectError:     false,
@@ -80,7 +80,7 @@ func TestDecodeCursor(t *testing.T) {
 		},
 		{
 			name:            "cursor with special characters in name",
-			cursor:          "QG9yZy9zZXJ2ZXI6Mi4wLjAtYmV0YQ==", // base64("@org/server:2.0.0-beta")
+			cursor:          "QG9yZy9zZXJ2ZXIsMi4wLjAtYmV0YQ==", // base64("@org/server,2.0.0-beta")
 			expectedName:    "@org/server",
 			expectedVersion: "2.0.0-beta",
 			expectError:     false,
@@ -92,17 +92,23 @@ func TestDecodeCursor(t *testing.T) {
 			errorContains: "failed to decode cursor",
 		},
 		{
-			name:          "valid base64 but no colon separator returns error",
+			name:          "valid base64 but no comma separator returns error",
 			cursor:        "YWJj", // base64("abc")
 			expectError:   true,
-			errorContains: "invalid cursor format: expected name:version",
+			errorContains: "invalid cursor format: expected 2 fields separated by comma",
 		},
 		{
-			name:            "cursor with multiple colons preserves version with colon",
-			cursor:          "c2VydmVyOjE6Mg==", // base64("server:1:2") - colon in version
+			name:            "cursor with colons in timestamp-style version works",
+			cursor:          "c2VydmVyLDIwMjQtMDE6MzA6MDA=", // base64("server,2024-01:30:00")
 			expectedName:    "server",
-			expectedVersion: "1:2",
+			expectedVersion: "2024-01:30:00",
 			expectError:     false,
+		},
+		{
+			name:          "cursor with multiple commas returns error",
+			cursor:        "c2VydmVyLDEuMC4wLGV4dHJh", // base64("server,1.0.0,extra")
+			expectError:   true,
+			errorContains: "invalid cursor format: expected 2 fields separated by comma",
 		},
 	}
 
