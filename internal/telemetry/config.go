@@ -146,7 +146,9 @@ func (c *TracingConfig) Validate() error {
 	if c.Sampling != nil {
 		sampling := *c.Sampling
 		if sampling <= 0 || sampling > 1.0 {
-			return fmt.Errorf("sampling must be greater than 0.0 and at most 1.0, got %f (use enabled: false to disable tracing)", sampling)
+			return fmt.Errorf(
+				"sampling must be greater than 0.0 and at most 1.0, got %f (use enabled: false to disable tracing)",
+				sampling)
 		}
 	}
 
