@@ -34,13 +34,13 @@ command -v kubectl >/dev/null 2>&1 || { echo "ERROR: kubectl is not installed"; 
 
 # Check kconfig.yaml exists
 if [ ! -f kconfig.yaml ]; then
-  echo "ERROR: kconfig.yaml not found. Run /deploy-otel first to create the Kind cluster."
+  echo "ERROR: kconfig.yaml not found. Run `task kind-setup` first to create the Kind cluster."
   exit 1
 fi
 
 # Check kind cluster is accessible
 if ! kubectl cluster-info --kubeconfig kconfig.yaml >/dev/null 2>&1; then
-  echo "ERROR: Cannot connect to Kind cluster. Run /deploy-otel first."
+  echo "ERROR: Cannot connect to Kind cluster. Run `task kind-setup` first."
   exit 1
 fi
 
