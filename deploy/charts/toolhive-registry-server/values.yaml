@@ -27,6 +27,14 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name: ""
 
+rbac:
+  # -- Specifies whether RBAC resources should be created
+  # Required for Kubernetes registry sources (leader election and watching MCPServer resources)
+  create: true
+  # -- Whether to create RBAC for watching MCPServer/VirtualMCPServer/MCPRemoteProxy resources
+  # Set to true when using kubernetes registry sources
+  watchMCPServers: false
+
 # -- Annotations to add to the pod
 podAnnotations: {}
 

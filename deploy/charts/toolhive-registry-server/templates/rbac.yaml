@@ -1,0 +1,87 @@
+{{- if .Values.rbac.create -}}
+---
+# Role for leader election (required for Kubernetes controller)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "toolhive-registry-server.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "toolhive-registry-server.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+---
+# RoleBinding for leader election
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "toolhive-registry-server.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "toolhive-registry-server.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "toolhive-registry-server.fullname" . }}-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "toolhive-registry-server.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- if .Values.rbac.watchMCPServers }}
+---
+# Role for watching MCPServer resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "toolhive-registry-server.fullname" . }}-mcpserver-reader
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "toolhive-registry-server.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - toolhive.stacklok.dev
+    resources:
+      - mcpservers
+      - virtualmcpservers
+      - mcpremoteproxies
+    verbs:
+      - get
+      - list
+      - watch
+---
+# RoleBinding for MCPServer reader
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "toolhive-registry-server.fullname" . }}-mcpserver-reader
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "toolhive-registry-server.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "toolhive-registry-server.fullname" . }}-mcpserver-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "toolhive-registry-server.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}
