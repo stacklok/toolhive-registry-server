@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/viper"
@@ -47,11 +48,30 @@ func getLogLevel() slog.Level {
 	}
 }
 
+// zapStyleReplaceAttr transforms slog attributes to match zap's production JSON format.
+// This ensures log output compatibility with toolhive's logger.
+func zapStyleReplaceAttr(_ []string, a slog.Attr) slog.Attr {
+	switch a.Key {
+	case slog.TimeKey:
+		// Convert "time" to "ts" with epoch seconds (float) to match zap
+		if t, ok := a.Value.Any().(time.Time); ok {
+			return slog.Float64("ts", float64(t.UnixNano())/1e9)
+		}
+	case slog.LevelKey:
+		// Lowercase level to match zap's production format
+		if lvl, ok := a.Value.Any().(slog.Level); ok {
+			return slog.String("level", strings.ToLower(lvl.String()))
+		}
+	}
+	return a
+}
+
 func main() {
-	// Setup structured JSON logging with slog
-	handler := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-		Level:     getLogLevel(),
-		AddSource: false, // Can be enabled for debugging
+	// Setup structured JSON logging with slog, formatted to match zap's production output
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level:       getLogLevel(),
+		AddSource:   false, // Can be enabled for debugging
+		ReplaceAttr: zapStyleReplaceAttr,
 	})
 
 	logger := slog.New(handler)
