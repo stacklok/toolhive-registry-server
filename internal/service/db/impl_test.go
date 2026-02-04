@@ -68,14 +68,25 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	// Server 1 with multiple versions
 	for i, version := range []string{"1.0.0", "1.1.0", "2.0.0"} {
 		createdAt := now.Add(time.Duration(i) * time.Hour)
-		_, err := queries.InsertServerVersion(
+		entryID, err := queries.InsertRegistryEntry(
+			context.Background(),
+			sqlc.InsertRegistryEntryParams{
+				Name:        "com.example/test-server-1",
+				Version:     version,
+				RegID:       regID,
+				Description: ptr.String("Test server 1 description"),
+				Title:       ptr.String("Test Server 1"),
+				EntryType:   sqlc.EntryTypeMCP,
+				CreatedAt:   &createdAt,
+				UpdatedAt:   &createdAt,
+			},
+		)
+		require.NoError(t, err)
+
+		serverID, err := queries.InsertServerVersion(
 			ctx,
 			sqlc.InsertServerVersionParams{
-				Name:                "com.example/test-server-1",
-				Version:             version,
-				RegID:               regID,
-				Description:         ptr.String("Test server 1 description"),
-				Title:               ptr.String("Test Server 1"),
+				EntryID:             entryID,
 				Website:             ptr.String("https://example.com/server1"),
 				UpstreamMeta:        []byte(`{"key": "value1"}`),
 				ServerMeta:          []byte(`{"meta": "data1"}`),
@@ -83,23 +94,33 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 				RepositoryID:        ptr.String("repo-1"),
 				RepositorySubfolder: ptr.String("subfolder1"),
 				RepositoryType:      ptr.String("git"),
-				CreatedAt:           &createdAt,
-				UpdatedAt:           &createdAt,
 			},
 		)
 		require.NoError(t, err)
+		require.Equal(t, entryID, serverID)
 	}
 
 	// Server 2 with single version
 	createdAt := now.Add(2 * time.Hour)
-	_, err = queries.InsertServerVersion(
+	entryID2, err := queries.InsertRegistryEntry(
+		context.Background(),
+		sqlc.InsertRegistryEntryParams{
+			Name:        "com.example/test-server-2",
+			Version:     "1.0.0",
+			RegID:       regID,
+			Description: ptr.String("Test server 2 description"),
+			Title:       ptr.String("Test Server 2"),
+			EntryType:   sqlc.EntryTypeMCP,
+			CreatedAt:   &createdAt,
+			UpdatedAt:   &createdAt,
+		},
+	)
+	require.NoError(t, err)
+
+	serverID2, err := queries.InsertServerVersion(
 		ctx,
 		sqlc.InsertServerVersionParams{
-			Name:                "com.example/test-server-2",
-			Version:             "1.0.0",
-			RegID:               regID,
-			Description:         ptr.String("Test server 2 description"),
-			Title:               ptr.String("Test Server 2"),
+			EntryID:             entryID2,
 			Website:             ptr.String("https://example.com/server2"),
 			UpstreamMeta:        []byte(`{"key": "value2"}`),
 			ServerMeta:          []byte(`{"meta": "data2"}`),
@@ -107,11 +128,10 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 			RepositoryID:        ptr.String("repo-2"),
 			RepositorySubfolder: ptr.String("subfolder2"),
 			RepositoryType:      ptr.String("git"),
-			CreatedAt:           &createdAt,
-			UpdatedAt:           &createdAt,
 		},
 	)
 	require.NoError(t, err)
+	require.Equal(t, entryID2, serverID2)
 }
 
 func TestListServers(t *testing.T) {
@@ -687,14 +707,25 @@ func TestGetServerVersion(t *testing.T) {
 
 				// Create a server version
 				now := time.Now().UTC()
+				entryID, err := queries.InsertRegistryEntry(
+					context.Background(),
+					sqlc.InsertRegistryEntryParams{
+						Name:        "com.test/server-with-packages",
+						Version:     "1.0.0",
+						RegID:       regID,
+						Description: ptr.String("Test server with packages and remotes"),
+						Title:       ptr.String("Test Server With Packages"),
+						EntryType:   sqlc.EntryTypeMCP,
+						CreatedAt:   &now,
+						UpdatedAt:   &now,
+					},
+				)
+				require.NoError(t, err)
+
 				serverID, err := queries.InsertServerVersion(
 					ctx,
 					sqlc.InsertServerVersionParams{
-						Name:                "com.test/server-with-packages",
-						Version:             "1.0.0",
-						RegID:               regID,
-						Description:         ptr.String("Test server with packages and remotes"),
-						Title:               ptr.String("Test Server With Packages"),
+						EntryID:             entryID,
 						Website:             ptr.String("https://example.com/server-with-packages"),
 						UpstreamMeta:        []byte(`{"key": "value"}`),
 						ServerMeta:          []byte(`{"meta": "data"}`),
@@ -702,17 +733,16 @@ func TestGetServerVersion(t *testing.T) {
 						RepositoryID:        ptr.String("repo-with-packages"),
 						RepositorySubfolder: ptr.String("subfolder"),
 						RepositoryType:      ptr.String("git"),
-						CreatedAt:           &now,
-						UpdatedAt:           &now,
 					},
 				)
 				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
 
 				// Add a package
 				err = queries.InsertServerPackage(
 					ctx,
 					sqlc.InsertServerPackageParams{
-						ServerID:         serverID,
+						EntryID:          entryID,
 						RegistryType:     "npm",
 						PkgRegistryUrl:   "https://registry.npmjs.org",
 						PkgIdentifier:    "@test/package",
@@ -733,7 +763,7 @@ func TestGetServerVersion(t *testing.T) {
 				err = queries.InsertServerRemote(
 					ctx,
 					sqlc.InsertServerRemoteParams{
-						ServerID:         serverID,
+						EntryID:          entryID,
 						Transport:        "sse",
 						TransportUrl:     "https://example.com/sse",
 						TransportHeaders: []byte(`[{"name":"Authorization: Bearer token"}]`),
@@ -1266,13 +1296,22 @@ func TestPublishServerVersion(t *testing.T) {
 
 				// Insert a server version
 				now := time.Now()
+				entryID, err := queries.InsertRegistryEntry(
+					context.Background(),
+					sqlc.InsertRegistryEntryParams{
+						Name:        "com.example/existing-server",
+						Version:     "1.0.0",
+						RegID:       regID,
+						EntryType:   sqlc.EntryTypeMCP,
+						Description: ptr.String("Existing"),
+						CreatedAt:   &now,
+						UpdatedAt:   &now,
+					},
+				)
+				require.NoError(t, err)
+
 				_, err = queries.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
-					Name:        "com.example/existing-server",
-					Version:     "1.0.0",
-					RegID:       regID,
-					CreatedAt:   &now,
-					UpdatedAt:   &now,
-					Description: ptr.String("Existing"),
+					EntryID: entryID,
 				})
 				require.NoError(t, err)
 

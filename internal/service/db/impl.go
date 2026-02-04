@@ -385,21 +385,15 @@ func insertServerVersionData(
 
 	// Insert the server version
 	now := time.Now()
-	serverID, err := querier.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
-		Name:                serverData.Name,
-		Version:             serverData.Version,
-		RegID:               registryID,
-		CreatedAt:           &now,
-		UpdatedAt:           &now,
-		Description:         &serverData.Description,
-		Title:               &serverData.Title,
-		Website:             &serverData.WebsiteURL,
-		UpstreamMeta:        nil,
-		ServerMeta:          serverMeta,
-		RepositoryUrl:       repoURL,
-		RepositoryID:        repoID,
-		RepositorySubfolder: repoSubfolder,
-		RepositoryType:      repoType,
+	entryID, err := querier.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
+		Name:        serverData.Name,
+		Version:     serverData.Version,
+		RegID:       registryID,
+		EntryType:   sqlc.EntryTypeMCP,
+		CreatedAt:   &now,
+		UpdatedAt:   &now,
+		Description: &serverData.Description,
+		Title:       &serverData.Title,
 	})
 	if err != nil {
 		// Check if this is a unique constraint violation
@@ -411,7 +405,21 @@ func insertServerVersionData(
 		return uuid.Nil, fmt.Errorf("failed to insert server version: %w", err)
 	}
 
-	return serverID, nil
+	_, err = querier.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
+		EntryID:             entryID,
+		Website:             &serverData.WebsiteURL,
+		UpstreamMeta:        nil,
+		ServerMeta:          serverMeta,
+		RepositoryUrl:       repoURL,
+		RepositoryID:        repoID,
+		RepositorySubfolder: repoSubfolder,
+		RepositoryType:      repoType,
+	})
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to insert server version: %w", err)
+	}
+
+	return entryID, nil
 }
 
 // insertServerPackages inserts all packages for a server version.
@@ -419,7 +427,7 @@ func insertServerVersionData(
 func insertServerPackages(
 	ctx context.Context,
 	querier *sqlc.Queries,
-	serverID uuid.UUID,
+	entryID uuid.UUID,
 	packages []model.Package,
 ) error {
 	for _, pkg := range packages {
@@ -434,7 +442,7 @@ func insertServerPackages(
 		}
 
 		err = querier.InsertServerPackage(ctx, sqlc.InsertServerPackageParams{
-			ServerID:         serverID,
+			EntryID:          entryID,
 			RegistryType:     pkg.RegistryType,
 			PkgRegistryUrl:   pkg.RegistryBaseURL,
 			PkgIdentifier:    pkg.Identifier,
@@ -460,7 +468,7 @@ func insertServerPackages(
 func insertServerRemotes(
 	ctx context.Context,
 	querier *sqlc.Queries,
-	serverID uuid.UUID,
+	entryID uuid.UUID,
 	remotes []model.Transport,
 ) error {
 	for _, remote := range remotes {
@@ -470,7 +478,7 @@ func insertServerRemotes(
 		}
 
 		err = querier.InsertServerRemote(ctx, sqlc.InsertServerRemoteParams{
-			ServerID:         serverID,
+			EntryID:          entryID,
 			Transport:        remote.Type,
 			TransportUrl:     remote.URL,
 			TransportHeaders: headersJSON,
@@ -487,7 +495,7 @@ func insertServerRemotes(
 func insertServerIcons(
 	ctx context.Context,
 	querier *sqlc.Queries,
-	serverID uuid.UUID,
+	entryID uuid.UUID,
 	icons []model.Icon,
 ) error {
 	for _, icon := range icons {
@@ -513,7 +521,7 @@ func insertServerIcons(
 		}
 
 		err := querier.InsertServerIcon(ctx, sqlc.InsertServerIconParams{
-			ServerID:  serverID,
+			EntryID:   entryID,
 			SourceUri: icon.Src,
 			MimeType:  mimeType,
 			Theme:     theme,
@@ -673,32 +681,32 @@ func (*dbService) insertServerData(
 	registryID uuid.UUID,
 ) error {
 	// Insert the server version
-	serverID, err := insertServerVersionData(ctx, querier, serverData, registryID)
+	entryID, err := insertServerVersionData(ctx, querier, serverData, registryID)
 	if err != nil {
 		return err
 	}
 
 	// Insert packages
-	if err := insertServerPackages(ctx, querier, serverID, serverData.Packages); err != nil {
+	if err := insertServerPackages(ctx, querier, entryID, serverData.Packages); err != nil {
 		return err
 	}
 
 	// Insert remotes
-	if err := insertServerRemotes(ctx, querier, serverID, serverData.Remotes); err != nil {
+	if err := insertServerRemotes(ctx, querier, entryID, serverData.Remotes); err != nil {
 		return err
 	}
 
 	// Insert icons
-	if err := insertServerIcons(ctx, querier, serverID, serverData.Icons); err != nil {
+	if err := insertServerIcons(ctx, querier, entryID, serverData.Icons); err != nil {
 		return err
 	}
 
 	// Upsert latest server version pointer
 	_, err = querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
-		RegID:    registryID,
-		Name:     serverData.Name,
-		Version:  serverData.Version,
-		ServerID: serverID,
+		RegID:   registryID,
+		Name:    serverData.Name,
+		Version: serverData.Version,
+		EntryID: entryID,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to upsert latest server version: %w", err)
@@ -771,7 +779,7 @@ func (s *dbService) DeleteServerVersion(
 	}
 
 	// 5. Delete the server version
-	rowsAffected, err := querier.DeleteServerVersion(ctx, sqlc.DeleteServerVersionParams{
+	rowsAffected, err := querier.DeleteRegistryEntry(ctx, sqlc.DeleteRegistryEntryParams{
 		RegID:   registry.ID,
 		Name:    options.ServerName,
 		Version: options.Version,
@@ -899,7 +907,7 @@ func (s *dbService) sharedListServersWithCursor(
 	}
 	packagesMap := make(map[uuid.UUID][]sqlc.ListServerPackagesRow)
 	for _, pkg := range packages {
-		packagesMap[pkg.ServerID] = append(packagesMap[pkg.ServerID], pkg)
+		packagesMap[pkg.EntryID] = append(packagesMap[pkg.EntryID], pkg)
 	}
 
 	remotes, err := querier.ListServerRemotes(ctx, ids)
@@ -908,7 +916,7 @@ func (s *dbService) sharedListServersWithCursor(
 	}
 	remotesMap := make(map[uuid.UUID][]sqlc.McpServerRemote)
 	for _, remote := range remotes {
-		remotesMap[remote.ServerID] = append(remotesMap[remote.ServerID], remote)
+		remotesMap[remote.EntryID] = append(remotesMap[remote.EntryID], remote)
 	}
 
 	result := make([]*upstreamv0.ServerJSON, 0, len(servers))

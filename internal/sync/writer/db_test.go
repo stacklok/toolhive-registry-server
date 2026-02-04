@@ -22,6 +22,13 @@ const (
 	testThemeLight  = "light"
 	testThemeDark   = "dark"
 	testMimeTypePNG = "image/png"
+
+	testQuery = `
+	SELECT COUNT(s.*) FROM mcp_server s
+	  JOIN registry_entry e ON s.entry_id = e.id
+	 WHERE e.reg_id = $1
+	   AND e.entry_type = 'MCP'
+	`
 )
 
 // setupTestDB creates a test database connection and returns cleanup function
@@ -520,13 +527,20 @@ func TestDbSyncWriter_Store(t *testing.T) {
 				t.Helper()
 				ctx := context.Background()
 				regID := createTestRegistry(t, pool, "test-registry")
+				queries := sqlc.New(pool)
+
+				// Insert registry entry
+				entryID, err := queries.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
+					RegID:     regID,
+					EntryType: sqlc.EntryTypeMCP,
+					Name:      "test.org/old-server",
+					Version:   "0.1.0",
+				})
+				require.NoError(t, err)
 
 				// Insert existing server that should be deleted
-				queries := sqlc.New(pool)
-				_, err := queries.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
-					Name:    "test.org/old-server",
-					Version: "0.1.0",
-					RegID:   regID,
+				_, err = queries.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
+					EntryID: entryID,
 				})
 				require.NoError(t, err)
 			},
@@ -1889,7 +1903,7 @@ func TestDbSyncWriter_Store_IconCleanup(t *testing.T) {
 
 	// Count icons using raw query
 	var iconCount int
-	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server_icon WHERE server_id = $1", originalUUID).Scan(&iconCount)
+	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server_icon WHERE entry_id = $1", originalUUID).Scan(&iconCount)
 	require.NoError(t, err)
 	require.Equal(t, 2, iconCount, "Should have 2 icons after first sync")
 
@@ -1916,7 +1930,7 @@ func TestDbSyncWriter_Store_IconCleanup(t *testing.T) {
 	assert.Equal(t, originalUUID, serverAfterUpdate.ID, "Server UUID should be preserved")
 
 	// Verify only 1 icon exists
-	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server_icon WHERE server_id = $1", originalUUID).Scan(&iconCount)
+	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server_icon WHERE entry_id = $1", originalUUID).Scan(&iconCount)
 	require.NoError(t, err)
 	require.Equal(t, 1, iconCount, "Should have 1 icon after second sync")
 }
@@ -1965,11 +1979,11 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 
 	// Count servers per registry
 	var countA, countB int
-	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server WHERE reg_id = $1", registryAID).Scan(&countA)
+	err = pool.QueryRow(ctx, testQuery, registryAID).Scan(&countA)
 	require.NoError(t, err)
 	assert.Equal(t, 2, countA, "Registry A should have 2 servers")
 
-	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server WHERE reg_id = $1", registryBID).Scan(&countB)
+	err = pool.QueryRow(ctx, testQuery, registryBID).Scan(&countB)
 	require.NoError(t, err)
 	assert.Equal(t, 2, countB, "Registry B should have 2 servers")
 
@@ -2013,7 +2027,7 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 
 	// Step 10: Query DB and verify registry isolation
 	// 10a: registry-A: only "server-1" exists (server-2 deleted)
-	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server WHERE reg_id = $1", registryAID).Scan(&countA)
+	err = pool.QueryRow(ctx, testQuery, registryAID).Scan(&countA)
 	require.NoError(t, err)
 	assert.Equal(t, 1, countA, "Registry A should have 1 server after update")
 
@@ -2034,7 +2048,7 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	_ = uuidServer2 // Server 2 was deleted, UUID no longer in DB
 
 	// 10b: registry-B: both "server-3" and "server-4" still exist (unchanged!)
-	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server WHERE reg_id = $1", registryBID).Scan(&countB)
+	err = pool.QueryRow(ctx, testQuery, registryBID).Scan(&countB)
 	require.NoError(t, err)
 	assert.Equal(t, 2, countB, "Registry B should still have 2 servers (unaffected by registry A changes)")
 
@@ -2069,7 +2083,7 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify registry-A is unaffected
-	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server WHERE reg_id = $1", registryAID).Scan(&countA)
+	err = pool.QueryRow(ctx, testQuery, registryAID).Scan(&countA)
 	require.NoError(t, err)
 	assert.Equal(t, 1, countA, "Registry A should still have 1 server (unaffected by registry B changes)")
 
@@ -2082,7 +2096,7 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	assert.Equal(t, uuidServer1, server1Final.ID, "Server 1 UUID should still be preserved")
 
 	// Verify registry-B now has 1 server
-	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server WHERE reg_id = $1", registryBID).Scan(&countB)
+	err = pool.QueryRow(ctx, testQuery, registryBID).Scan(&countB)
 	require.NoError(t, err)
 	assert.Equal(t, 1, countB, "Registry B should have 1 server after update")
 

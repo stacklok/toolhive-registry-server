@@ -43,13 +43,23 @@ func TestInsertServerVersion(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				createdAt := time.Now().UTC()
-				_, err := queries.InsertServerVersion(
+
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+
+				_, err = queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
 					},
 				)
 				require.NoError(t, err)
@@ -62,14 +72,25 @@ func TestInsertServerVersion(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				createdAt := time.Now().UTC()
-				_, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
+					context.Background(),
+					InsertRegistryEntryParams{
+						Name:        "test-server",
+						Version:     "1.0.0",
+						RegID:       regID,
+						Description: ptr.String("Test description"),
+						Title:       ptr.String("Test Title"),
+						EntryType:   EntryTypeMCP,
+						CreatedAt:   &createdAt,
+						UpdatedAt:   &createdAt,
+					},
+				)
+				require.NoError(t, err)
+
+				_, err = queries.InsertServerVersion(
 					context.Background(),
 					InsertServerVersionParams{
-						Name:                "test-server",
-						Version:             "1.0.0",
-						RegID:               regID,
-						Description:         ptr.String("Test description"),
-						Title:               ptr.String("Test Title"),
+						EntryID:             entryID,
 						Website:             ptr.String("https://example.com"),
 						UpstreamMeta:        []byte(`{"key": "value"}`),
 						ServerMeta:          []byte(`{"meta": "data"}`),
@@ -77,8 +98,6 @@ func TestInsertServerVersion(t *testing.T) {
 						RepositoryID:        ptr.String("repo-id"),
 						RepositorySubfolder: ptr.String("subfolder"),
 						RepositoryType:      ptr.String("git"),
-						CreatedAt:           &createdAt,
-						UpdatedAt:           &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -89,14 +108,23 @@ func TestInsertServerVersion(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				createdAt := time.Now().UTC()
-				_, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+
+				_, err = queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
 					},
 				)
 				require.NoError(t, err)
@@ -104,15 +132,24 @@ func TestInsertServerVersion(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				updatedAt := time.Now().UTC()
-				_, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:        "test-server",
 						Version:     "1.0.0",
 						RegID:       regID,
 						Description: ptr.String("Updated description"),
 						Title:       ptr.String("Updated Title"),
+						EntryType:   EntryTypeMCP,
 						UpdatedAt:   &updatedAt,
+					},
+				)
+				require.Error(t, err)
+
+				_, err = queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
 					},
 				)
 				require.Error(t, err) // Should fail with unique constraint violation
@@ -126,12 +163,13 @@ func TestInsertServerVersion(t *testing.T) {
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				createdAt := time.Now().UTC()
 				regID := uuid.New()
-				_, err := queries.InsertServerVersion(
+				_, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
@@ -192,14 +230,23 @@ func TestListServerVersions(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) string {
 				createdAt := time.Now().UTC()
-				_, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+
+				_, err = queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
 					},
 				)
 				require.NoError(t, err)
@@ -228,14 +275,23 @@ func TestListServerVersions(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					_, err := queries.InsertServerVersion(
+					entryID, err := queries.InsertRegistryEntry(
 						context.Background(),
-						InsertServerVersionParams{
+						InsertRegistryEntryParams{
 							Name:      "test-server",
 							Version:   version,
 							RegID:     regID,
+							EntryType: EntryTypeMCP,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
+						},
+					)
+					require.NoError(t, err)
+
+					_, err = queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
 						},
 					)
 					require.NoError(t, err)
@@ -263,14 +319,23 @@ func TestListServerVersions(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					_, err := queries.InsertServerVersion(
+					entryID, err := queries.InsertRegistryEntry(
 						context.Background(),
-						InsertServerVersionParams{
+						InsertRegistryEntryParams{
 							Name:      "test-server",
 							Version:   version,
 							RegID:     regID,
+							EntryType: EntryTypeMCP,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
+						},
+					)
+					require.NoError(t, err)
+
+					_, err = queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
 						},
 					)
 					require.NoError(t, err)
@@ -316,14 +381,23 @@ func TestListServerVersions(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					_, err := queries.InsertServerVersion(
+					entryID, err := queries.InsertRegistryEntry(
 						context.Background(),
-						InsertServerVersionParams{
+						InsertRegistryEntryParams{
 							Name:      "test-server",
 							Version:   version,
 							RegID:     regID,
+							EntryType: EntryTypeMCP,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
+						},
+					)
+					require.NoError(t, err)
+
+					_, err = queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
 						},
 					)
 					require.NoError(t, err)
@@ -393,14 +467,23 @@ func TestListServers(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				createdAt := time.Now().UTC()
-				_, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+
+				_, err = queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
 					},
 				)
 				require.NoError(t, err)
@@ -427,14 +510,23 @@ func TestListServers(t *testing.T) {
 				createdAt := time.Now().UTC()
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					_, err := queries.InsertServerVersion(
+					entryID, err := queries.InsertRegistryEntry(
 						context.Background(),
-						InsertServerVersionParams{
+						InsertRegistryEntryParams{
 							Name:      "test-server",
 							Version:   version,
 							RegID:     regID,
+							EntryType: EntryTypeMCP,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
+						},
+					)
+					require.NoError(t, err)
+
+					_, err = queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
 						},
 					)
 					require.NoError(t, err)
@@ -459,14 +551,23 @@ func TestListServers(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					_, err := queries.InsertServerVersion(
+					entryID, err := queries.InsertRegistryEntry(
 						context.Background(),
-						InsertServerVersionParams{
+						InsertRegistryEntryParams{
 							Name:      "test-server",
 							Version:   version,
 							RegID:     regID,
+							EntryType: EntryTypeMCP,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
+						},
+					)
+					require.NoError(t, err)
+
+					_, err = queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
 						},
 					)
 					require.NoError(t, err)
@@ -512,14 +613,23 @@ func TestListServers(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				createdAt := time.Now().UTC()
-				_, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+
+				_, err = queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
 					},
 				)
 				require.NoError(t, err)
@@ -535,10 +645,10 @@ func TestListServers(t *testing.T) {
 				_, err = queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:    regID,
-						Name:     "test-server",
-						Version:  "1.0.0",
-						ServerID: servers[0].ID,
+						RegID:   regID,
+						Name:    "test-server",
+						Version: "1.0.0",
+						EntryID: servers[0].ID,
 					},
 				)
 				require.NoError(t, err)
@@ -562,14 +672,23 @@ func TestListServers(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					_, err := queries.InsertServerVersion(
+					entryID, err := queries.InsertRegistryEntry(
 						context.Background(),
-						InsertServerVersionParams{
+						InsertRegistryEntryParams{
 							Name:      "test-server",
 							Version:   version,
 							RegID:     regID,
+							EntryType: EntryTypeMCP,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
+						},
+					)
+					require.NoError(t, err)
+
+					_, err = queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
 						},
 					)
 					require.NoError(t, err)
@@ -621,14 +740,23 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
 					},
 				)
 				require.NoError(t, err)
@@ -640,10 +768,10 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				serverID, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:    regID,
-						Name:     "test-server",
-						Version:  "1.0.0",
-						ServerID: ids[0],
+						RegID:   regID,
+						Name:    "test-server",
+						Version: "1.0.0",
+						EntryID: ids[0],
 					},
 				)
 				require.NoError(t, err)
@@ -659,14 +787,23 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					serverID, err := queries.InsertServerVersion(
+					entryID, err := queries.InsertRegistryEntry(
 						context.Background(),
-						InsertServerVersionParams{
+						InsertRegistryEntryParams{
 							Name:      "test-server",
 							Version:   version,
 							RegID:     regID,
+							EntryType: EntryTypeMCP,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
+						},
+					)
+					require.NoError(t, err)
+
+					serverID, err := queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
 						},
 					)
 					require.NoError(t, err)
@@ -678,10 +815,10 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				latestServerID, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:    regID,
-						Name:     "test-server",
-						Version:  "1.0.0",
-						ServerID: serverIDs[0],
+						RegID:   regID,
+						Name:    "test-server",
+						Version: "1.0.0",
+						EntryID: serverIDs[0],
 					},
 				)
 				require.NoError(t, err)
@@ -695,10 +832,10 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				latestServerID, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:    regID,
-						Name:     "test-server",
-						Version:  "2.0.0",
-						ServerID: ids[0],
+						RegID:   regID,
+						Name:    "test-server",
+						Version: "2.0.0",
+						EntryID: ids[0],
 					},
 				)
 				require.NoError(t, err)
@@ -718,10 +855,10 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				_, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:    regID,
-						Name:     "test-server",
-						Version:  "1.0.0",
-						ServerID: ids[0],
+						RegID:   regID,
+						Name:    "test-server",
+						Version: "1.0.0",
+						EntryID: ids[0],
 					},
 				)
 				require.Error(t, err)
@@ -738,10 +875,10 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				_, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:    regID,
-						Name:     "test-server",
-						Version:  "1.0.0",
-						ServerID: ids[0],
+						RegID:   regID,
+						Name:    "test-server",
+						Version: "1.0.0",
+						EntryID: ids[0],
 					},
 				)
 				require.Error(t, err)
@@ -774,21 +911,30 @@ func TestInsertServerIcon(t *testing.T) {
 	testCases := []struct {
 		name         string
 		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID
-		scenarioFunc func(t *testing.T, queries *Queries, serverID uuid.UUID)
+		scenarioFunc func(t *testing.T, queries *Queries, entryID uuid.UUID)
 	}{
 		{
 			name: "insert server icon",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
 					},
 				)
 				require.NoError(t, err)
@@ -796,11 +942,11 @@ func TestInsertServerIcon(t *testing.T) {
 				return serverID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryID uuid.UUID) {
 				err := queries.InsertServerIcon(
 					context.Background(),
 					InsertServerIconParams{
-						ServerID:  serverID,
+						EntryID:   entryID,
 						SourceUri: "https://example.com/icon.png",
 						MimeType:  "image/png",
 						Theme:     IconThemeLIGHT,
@@ -814,14 +960,23 @@ func TestInsertServerIcon(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
 					},
 				)
 				require.NoError(t, err)
@@ -829,11 +984,11 @@ func TestInsertServerIcon(t *testing.T) {
 				return serverID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryID uuid.UUID) {
 				err := queries.InsertServerIcon(
 					context.Background(),
 					InsertServerIconParams{
-						ServerID:  serverID,
+						EntryID:   entryID,
 						SourceUri: "https://example.com/icon.png",
 						MimeType:  "image/png",
 						Theme:     IconThemeDARK,
@@ -847,24 +1002,34 @@ func TestInsertServerIcon(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
-				require.NotNil(t, serverID)
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
 
 				// Insert initial icon
 				err = queries.InsertServerIcon(
 					context.Background(),
 					InsertServerIconParams{
-						ServerID:  serverID,
+						EntryID:   entryID,
 						SourceUri: "https://example.com/icon.png",
 						MimeType:  "image/png",
 						Theme:     IconThemeLIGHT,
@@ -872,14 +1037,14 @@ func TestInsertServerIcon(t *testing.T) {
 				)
 				require.NoError(t, err)
 
-				return serverID
+				return entryID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryID uuid.UUID) {
 				err := queries.InsertServerIcon(
 					context.Background(),
 					InsertServerIconParams{
-						ServerID:  serverID,
+						EntryID:   entryID,
 						SourceUri: "https://example.com/icon.png",
 						MimeType:  "image/png",
 						Theme:     IconThemeDARK,
@@ -895,11 +1060,11 @@ func TestInsertServerIcon(t *testing.T) {
 				return uuid.New()
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryID uuid.UUID) {
 				err := queries.InsertServerIcon(
 					context.Background(),
 					InsertServerIconParams{
-						ServerID:  serverID,
+						EntryID:   entryID,
 						SourceUri: "https://example.com/icon.png",
 						MimeType:  "image/png",
 						Theme:     IconThemeLIGHT,
@@ -942,26 +1107,36 @@ func TestInsertServerPackage(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
-				require.NotNil(t, serverID)
-				return serverID
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
+				return entryID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryID uuid.UUID) {
 				err := queries.InsertServerPackage(
 					context.Background(),
 					InsertServerPackageParams{
-						ServerID:       serverID,
+						EntryID:        entryID,
 						RegistryType:   "npm",
 						PkgRegistryUrl: "https://registry.npmjs.org",
 						PkgIdentifier:  "@test/package",
@@ -977,26 +1152,36 @@ func TestInsertServerPackage(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
-				require.NotNil(t, serverID)
-				return serverID
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
+				return entryID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryID uuid.UUID) {
 				err := queries.InsertServerPackage(
 					context.Background(),
 					InsertServerPackageParams{
-						ServerID:         serverID,
+						EntryID:          entryID,
 						RegistryType:     "npm",
 						PkgRegistryUrl:   "https://registry.npmjs.org",
 						PkgIdentifier:    "@test/package",
@@ -1021,11 +1206,11 @@ func TestInsertServerPackage(t *testing.T) {
 				return uuid.New()
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryID uuid.UUID) {
 				err := queries.InsertServerPackage(
 					context.Background(),
 					InsertServerPackageParams{
-						ServerID:       serverID,
+						EntryID:        entryID,
 						RegistryType:   "npm",
 						PkgRegistryUrl: "https://registry.npmjs.org",
 						PkgIdentifier:  "@test/package",
@@ -1070,26 +1255,36 @@ func TestInsertServerRemote(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
-				require.NotNil(t, serverID)
-				return serverID
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
+				return entryID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryID uuid.UUID) {
 				err := queries.InsertServerRemote(
 					context.Background(),
 					InsertServerRemoteParams{
-						ServerID:     serverID,
+						EntryID:      entryID,
 						Transport:    "sse",
 						TransportUrl: "https://example.com/sse",
 					},
@@ -1102,26 +1297,36 @@ func TestInsertServerRemote(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
-				require.NotNil(t, serverID)
-				return serverID
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
+				return entryID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryID uuid.UUID) {
 				err := queries.InsertServerRemote(
 					context.Background(),
 					InsertServerRemoteParams{
-						ServerID:         serverID,
+						EntryID:          entryID,
 						Transport:        "sse",
 						TransportUrl:     "https://example.com/sse",
 						TransportHeaders: []byte(`[{"name":"Authorization: Bearer token"},{"name":"X-Custom: value"}]`),
@@ -1135,24 +1340,34 @@ func TestInsertServerRemote(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
-				require.NotNil(t, serverID)
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
 
 				// Insert initial remote
 				err = queries.InsertServerRemote(
 					context.Background(),
 					InsertServerRemoteParams{
-						ServerID:         serverID,
+						EntryID:          entryID,
 						Transport:        "sse",
 						TransportUrl:     "https://example.com/sse",
 						TransportHeaders: []byte(`[{"name":"Old-Header: old"}]`),
@@ -1160,15 +1375,15 @@ func TestInsertServerRemote(t *testing.T) {
 				)
 				require.NoError(t, err)
 
-				return serverID
+				return entryID
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryID uuid.UUID) {
 				// Attempt to insert duplicate remote with same primary key (server_id, transport, transport_url) - should fail
 				err := queries.InsertServerRemote(
 					context.Background(),
 					InsertServerRemoteParams{
-						ServerID:         serverID,
+						EntryID:          entryID,
 						Transport:        "sse",
 						TransportUrl:     "https://example.com/sse",
 						TransportHeaders: []byte(`[{"name":"New-Header: new"}]`),
@@ -1184,11 +1399,11 @@ func TestInsertServerRemote(t *testing.T) {
 				return uuid.New()
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverID uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryID uuid.UUID) {
 				err := queries.InsertServerRemote(
 					context.Background(),
 					InsertServerRemoteParams{
-						ServerID:     serverID,
+						EntryID:      entryID,
 						Transport:    "sse",
 						TransportUrl: "https://example.com/sse",
 					},
@@ -1230,25 +1445,35 @@ func TestListServerPackages(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
-				require.NotNil(t, serverID)
-				return []uuid.UUID{serverID}
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
+				return []uuid.UUID{entryID}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryIDs []uuid.UUID) {
 				packages, err := queries.ListServerPackages(
 					context.Background(),
-					serverIDs,
+					entryIDs,
 				)
 				require.NoError(t, err)
 				require.Empty(t, packages)
@@ -1259,22 +1484,33 @@ func TestListServerPackages(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
 
 				err = queries.InsertServerPackage(
 					context.Background(),
 					InsertServerPackageParams{
-						ServerID:       serverID,
+						EntryID:        entryID,
 						RegistryType:   "npm",
 						PkgRegistryUrl: "https://registry.npmjs.org",
 						PkgIdentifier:  "@test/package",
@@ -1284,17 +1520,17 @@ func TestListServerPackages(t *testing.T) {
 				)
 				require.NoError(t, err)
 
-				return []uuid.UUID{serverID}
+				return []uuid.UUID{entryID}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryIDs []uuid.UUID) {
 				packages, err := queries.ListServerPackages(
 					context.Background(),
-					serverIDs,
+					entryIDs,
 				)
 				require.NoError(t, err)
 				require.Len(t, packages, 1)
-				require.Equal(t, serverIDs[0], packages[0].ServerID)
+				require.Equal(t, entryIDs[0], packages[0].EntryID)
 				require.Equal(t, "npm", packages[0].RegistryType)
 				require.Equal(t, "@test/package", packages[0].PkgIdentifier)
 				require.Equal(t, "1.0.0", packages[0].PkgVersion)
@@ -1304,27 +1540,38 @@ func TestListServerPackages(t *testing.T) {
 			name: "list multiple server packages for multiple servers",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
-				var serverIDs []uuid.UUID
+				var entryIDs []uuid.UUID
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					serverID, err := queries.InsertServerVersion(
+					entryID, err := queries.InsertRegistryEntry(
 						context.Background(),
-						InsertServerVersionParams{
+						InsertRegistryEntryParams{
 							Name:      fmt.Sprintf("test-server-%d", i+1),
 							Version:   version,
 							RegID:     regID,
+							EntryType: EntryTypeMCP,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
-					serverIDs = append(serverIDs, serverID)
+					require.NotNil(t, entryID)
+
+					serverID, err := queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
+						},
+					)
+					require.NoError(t, err)
+					require.Equal(t, entryID, serverID)
+					entryIDs = append(entryIDs, entryID)
 
 					err = queries.InsertServerPackage(
 						context.Background(),
 						InsertServerPackageParams{
-							ServerID:       serverID,
+							EntryID:        entryID,
 							RegistryType:   "npm",
 							PkgRegistryUrl: "https://registry.npmjs.org",
 							PkgIdentifier:  "@test/package",
@@ -1335,7 +1582,7 @@ func TestListServerPackages(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				return serverIDs
+				return entryIDs
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
@@ -1355,27 +1602,38 @@ func TestListServerPackages(t *testing.T) {
 			name: "list server packages for multiple servers",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
-				var serverIDs []uuid.UUID
+				var entryIDs []uuid.UUID
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i, name := range []string{"server-1", "server-2"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					serverID, err := queries.InsertServerVersion(
+					entryID, err := queries.InsertRegistryEntry(
 						context.Background(),
-						InsertServerVersionParams{
+						InsertRegistryEntryParams{
 							Name:      name,
 							Version:   "1.0.0",
 							RegID:     regID,
+							EntryType: EntryTypeMCP,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
-					serverIDs = append(serverIDs, serverID)
+					require.NotNil(t, entryID)
+
+					serverID, err := queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
+						},
+					)
+					require.NoError(t, err)
+					require.Equal(t, entryID, serverID)
+					entryIDs = append(entryIDs, entryID)
 
 					err = queries.InsertServerPackage(
 						context.Background(),
 						InsertServerPackageParams{
-							ServerID:       serverID,
+							EntryID:        entryID,
 							RegistryType:   "npm",
 							PkgRegistryUrl: "https://registry.npmjs.org",
 							PkgIdentifier:  fmt.Sprintf("@test/package-%d", i+1),
@@ -1386,23 +1644,23 @@ func TestListServerPackages(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				return serverIDs
+				return entryIDs
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryIDs []uuid.UUID) {
 				packages, err := queries.ListServerPackages(
 					context.Background(),
-					serverIDs,
+					entryIDs,
 				)
 				require.NoError(t, err)
 				require.Len(t, packages, 2)
 				// Verify both servers are included
-				serverIDMap := make(map[uuid.UUID]bool)
+				entryIDMap := make(map[uuid.UUID]bool)
 				for _, pkg := range packages {
-					serverIDMap[pkg.ServerID] = true
+					entryIDMap[pkg.EntryID] = true
 				}
-				require.True(t, serverIDMap[serverIDs[0]])
-				require.True(t, serverIDMap[serverIDs[1]])
+				require.True(t, entryIDMap[entryIDs[0]])
+				require.True(t, entryIDMap[entryIDs[1]])
 			},
 		},
 		{
@@ -1458,24 +1716,35 @@ func TestListServerRemotes(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
-				return []uuid.UUID{serverID}
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
+				return []uuid.UUID{entryID}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryIDs []uuid.UUID) {
 				remotes, err := queries.ListServerRemotes(
 					context.Background(),
-					serverIDs,
+					entryIDs,
 				)
 				require.NoError(t, err)
 				require.Empty(t, remotes)
@@ -1486,39 +1755,50 @@ func TestListServerRemotes(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
 
 				err = queries.InsertServerRemote(
 					context.Background(),
 					InsertServerRemoteParams{
-						ServerID:     serverID,
+						EntryID:      entryID,
 						Transport:    "sse",
 						TransportUrl: "https://example.com/sse",
 					},
 				)
 				require.NoError(t, err)
 
-				return []uuid.UUID{serverID}
+				return []uuid.UUID{entryID}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryIDs []uuid.UUID) {
 				remotes, err := queries.ListServerRemotes(
 					context.Background(),
-					serverIDs,
+					entryIDs,
 				)
 				require.NoError(t, err)
 				require.Len(t, remotes, 1)
-				require.Equal(t, serverIDs[0], remotes[0].ServerID)
+				require.Equal(t, entryIDs[0], remotes[0].EntryID)
 				require.Equal(t, "sse", remotes[0].Transport)
 				require.Equal(t, "https://example.com/sse", remotes[0].TransportUrl)
 			},
@@ -1528,17 +1808,28 @@ func TestListServerRemotes(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
 
 				remotes := []struct {
 					transport string
@@ -1553,7 +1844,7 @@ func TestListServerRemotes(t *testing.T) {
 					err = queries.InsertServerRemote(
 						context.Background(),
 						InsertServerRemoteParams{
-							ServerID:     serverID,
+							EntryID:      entryID,
 							Transport:    remote.transport,
 							TransportUrl: remote.url,
 						},
@@ -1561,17 +1852,17 @@ func TestListServerRemotes(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				return []uuid.UUID{serverID}
+				return []uuid.UUID{entryID}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryIDs []uuid.UUID) {
 				remotes, err := queries.ListServerRemotes(
 					context.Background(),
-					serverIDs,
+					entryIDs,
 				)
 				require.NoError(t, err)
 				require.Len(t, remotes, 3)
-				require.Equal(t, serverIDs[0], remotes[0].ServerID)
+				require.Equal(t, entryIDs[0], remotes[0].EntryID)
 				// Verify ordering by transport, then transport_url
 				require.Equal(t, "http", remotes[0].Transport)
 				require.Equal(t, "sse", remotes[1].Transport)
@@ -1585,27 +1876,38 @@ func TestListServerRemotes(t *testing.T) {
 			name: "list server remotes for multiple servers",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
-				var serverIDs []uuid.UUID
+				var entryIDs []uuid.UUID
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i, name := range []string{"server-1", "server-2"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					serverID, err := queries.InsertServerVersion(
+					entryID, err := queries.InsertRegistryEntry(
 						context.Background(),
-						InsertServerVersionParams{
+						InsertRegistryEntryParams{
 							Name:      name,
 							Version:   "1.0.0",
 							RegID:     regID,
+							EntryType: EntryTypeMCP,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
 						},
 					)
 					require.NoError(t, err)
-					serverIDs = append(serverIDs, serverID)
+					require.NotNil(t, entryID)
+
+					serverID, err := queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
+						},
+					)
+					require.NoError(t, err)
+					require.Equal(t, entryID, serverID)
+					entryIDs = append(entryIDs, entryID)
 
 					err = queries.InsertServerRemote(
 						context.Background(),
 						InsertServerRemoteParams{
-							ServerID:     serverID,
+							EntryID:      entryID,
 							Transport:    "sse",
 							TransportUrl: fmt.Sprintf("https://example.com/sse-%d", i+1),
 						},
@@ -1613,23 +1915,23 @@ func TestListServerRemotes(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				return serverIDs
+				return entryIDs
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryIDs []uuid.UUID) {
 				remotes, err := queries.ListServerRemotes(
 					context.Background(),
-					serverIDs,
+					entryIDs,
 				)
 				require.NoError(t, err)
 				require.Len(t, remotes, 2)
 				// Verify both servers are included
-				serverIDMap := make(map[uuid.UUID]bool)
+				entryIDMap := make(map[uuid.UUID]bool)
 				for _, remote := range remotes {
-					serverIDMap[remote.ServerID] = true
+					entryIDMap[remote.EntryID] = true
 				}
-				require.True(t, serverIDMap[serverIDs[0]])
-				require.True(t, serverIDMap[serverIDs[1]])
+				require.True(t, entryIDMap[entryIDs[0]])
+				require.True(t, entryIDMap[entryIDs[1]])
 			},
 		},
 		{
@@ -1642,10 +1944,10 @@ func TestListServerRemotes(t *testing.T) {
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverIDs []uuid.UUID) {
+			scenarioFunc: func(t *testing.T, queries *Queries, entryIDs []uuid.UUID) {
 				remotes, err := queries.ListServerRemotes(
 					context.Background(),
-					serverIDs,
+					entryIDs,
 				)
 				require.NoError(t, err)
 				require.Empty(t, remotes)
@@ -1685,17 +1987,29 @@ func TestGetServerVersion(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
 				createdAt := time.Now().UTC()
-				_, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
+
 				//nolint:goconst
 				return "test-server", "1.0.0"
 			},
@@ -1722,14 +2036,26 @@ func TestGetServerVersion(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
 				createdAt := time.Now().UTC()
-				_, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
+					context.Background(),
+					InsertRegistryEntryParams{
+						Name:        "test-server",
+						Version:     "1.0.0",
+						RegID:       regID,
+						Description: ptr.String("Test description"),
+						Title:       ptr.String("Test Title"),
+						EntryType:   EntryTypeMCP,
+						CreatedAt:   &createdAt,
+						UpdatedAt:   &createdAt,
+					},
+				)
+				require.NoError(t, err)
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
 					context.Background(),
 					InsertServerVersionParams{
-						Name:                "test-server",
-						Version:             "1.0.0",
-						RegID:               regID,
-						Description:         ptr.String("Test description"),
-						Title:               ptr.String("Test Title"),
+						EntryID:             entryID,
 						Website:             ptr.String("https://example.com"),
 						UpstreamMeta:        []byte(`{"key": "value"}`),
 						ServerMeta:          []byte(`{"meta": "data"}`),
@@ -1737,11 +2063,10 @@ func TestGetServerVersion(t *testing.T) {
 						RepositoryID:        ptr.String("repo-id"),
 						RepositorySubfolder: ptr.String("subfolder"),
 						RepositoryType:      ptr.String("git"),
-						CreatedAt:           &createdAt,
-						UpdatedAt:           &createdAt,
 					},
 				)
 				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
 				return "test-server", "1.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -1780,25 +2105,36 @@ func TestGetServerVersion(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
 				createdAt := time.Now().UTC()
-				serverID, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
 
 				_, err = queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:    regID,
-						Name:     "test-server",
-						Version:  "1.0.0",
-						ServerID: serverID,
+						RegID:   regID,
+						Name:    "test-server",
+						Version: "1.0.0",
+						EntryID: entryID,
 					},
 				)
 				require.NoError(t, err)
@@ -1824,43 +2160,65 @@ func TestGetServerVersion(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
-				// Create first version and mark it as latest
-				serverID1, err := queries.InsertServerVersion(
+				entryID1, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
+				require.NotNil(t, entryID1)
+
+				// Create first version and mark it as latest
+				serverID1, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID1,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID1, serverID1)
 
 				_, err = queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:    regID,
-						Name:     "test-server",
-						Version:  "1.0.0",
-						ServerID: serverID1,
+						RegID:   regID,
+						Name:    "test-server",
+						Version: "1.0.0",
+						EntryID: entryID1,
 					},
 				)
 				require.NoError(t, err)
 
 				// Create second version (not marked as latest)
 				createdAt2 := createdAt.Add(1 * time.Second)
-				_, err = queries.InsertServerVersion(
+				entryID2, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "2.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt2,
 						UpdatedAt: &createdAt2,
 					},
 				)
 				require.NoError(t, err)
+				require.NotNil(t, entryID2)
+
+				serverID2, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID2,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID2, serverID2)
 				return "test-server", "2.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -1901,17 +2259,28 @@ func TestGetServerVersion(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
 				createdAt := time.Now().UTC()
-				_, err := queries.InsertServerVersion(
+				entryID, err := queries.InsertRegistryEntry(
 					context.Background(),
-					InsertServerVersionParams{
+					InsertRegistryEntryParams{
 						Name:      "test-server",
 						Version:   "1.0.0",
 						RegID:     regID,
+						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
 				)
 				require.NoError(t, err)
+				require.NotNil(t, entryID)
+
+				serverID, err := queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+				require.Equal(t, entryID, serverID)
 				return "test-server", "2.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
