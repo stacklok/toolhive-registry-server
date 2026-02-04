@@ -235,3 +235,66 @@ extraVolumeMounts: []
   #   readOnly: true
   # - name: registry-data
   #   mountPath: /data
+
+# -- Leader election role configuration
+leaderElectionRole:
+  name: ""
+  binding:
+    # -- Name of the role binding for leader election
+    name: ""
+  rules:
+  # Permissions required to watch MCP servers, virtual MCP servers,
+  # and remote proxies
+  - apiGroups:
+      - toolhive.stacklok.dev
+    resources:
+      - mcpservers
+      - mcpremoteproxies
+      - virtualmcpservers
+    verbs:
+      - get
+      - list
+      - watch
+  # Permissions required to watch Services
+  - apiGroups:
+      - ''
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+  # Permissions required to manipulate ConfigMaps
+  - apiGroups:
+      - ''
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  # Permissions required to use Kubernetes leases for leader election
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  # Permissions required to receive events for the watched resources
+  - apiGroups:
+      - ''
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
