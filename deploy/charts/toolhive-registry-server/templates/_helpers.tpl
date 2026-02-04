@@ -52,31 +52,6 @@ app.kubernetes.io/component: registry-api
 {{- end }}
 
 {{/*
-Create the name of the service account to use
-*/}}
-{{- define "toolhive-registry-server.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "toolhive-registry-server.fullname" .) .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
-{{- end }}
-
-{{/*
-Create the name of the leader election role to use
-*/}}
-{{- define "toolhive-registry-server.leaderElectionRoleName" -}}
-{{- default (include "toolhive-registry-server.fullname" .) .Values.leaderElectionRole.name }}
-{{- end }}
-
-{{/*
-Create the name of the leader election role binding to use
-*/}}
-{{- define "toolhive-registry-server.leaderElectionRoleBindingName" -}}
-{{- default (include "toolhive-registry-server.fullname" .) .Values.leaderElectionRole.binding.name }}
-{{- end }}
-
-{{/*
 Create the name of the configmap for the registry server config
 */}}
 {{- define "toolhive-registry-server.configMapName" -}}
