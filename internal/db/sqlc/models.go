@@ -55,6 +55,48 @@ func (ns NullCreationType) Value() (driver.Value, error) {
 	return string(ns.CreationType), nil
 }
 
+type EntryType string
+
+const (
+	EntryTypeMCP   EntryType = "MCP"
+	EntryTypeSKILL EntryType = "SKILL"
+)
+
+func (e *EntryType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = EntryType(s)
+	case string:
+		*e = EntryType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for EntryType: %T", src)
+	}
+	return nil
+}
+
+type NullEntryType struct {
+	EntryType EntryType `json:"entry_type"`
+	Valid     bool      `json:"valid"` // Valid is true if EntryType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullEntryType) Scan(value interface{}) error {
+	if value == nil {
+		ns.EntryType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.EntryType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullEntryType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.EntryType), nil
+}
+
 type IconTheme string
 
 const (
@@ -184,40 +226,33 @@ func (ns NullSyncStatus) Value() (driver.Value, error) {
 	return string(ns.SyncStatus), nil
 }
 
-type LatestServerVersion struct {
-	RegID          uuid.UUID `json:"reg_id"`
-	Name           string    `json:"name"`
-	Version        string    `json:"version"`
-	LatestServerID uuid.UUID `json:"latest_server_id"`
+type LatestEntryVersion struct {
+	RegID         uuid.UUID `json:"reg_id"`
+	Name          string    `json:"name"`
+	Version       string    `json:"version"`
+	LatestEntryID uuid.UUID `json:"latest_entry_id"`
 }
 
 type McpServer struct {
-	ID                  uuid.UUID  `json:"id"`
-	Name                string     `json:"name"`
-	Version             string     `json:"version"`
-	RegID               uuid.UUID  `json:"reg_id"`
-	CreatedAt           *time.Time `json:"created_at"`
-	UpdatedAt           *time.Time `json:"updated_at"`
-	Description         *string    `json:"description"`
-	Title               *string    `json:"title"`
-	Website             *string    `json:"website"`
-	UpstreamMeta        []byte     `json:"upstream_meta"`
-	ServerMeta          []byte     `json:"server_meta"`
-	RepositoryUrl       *string    `json:"repository_url"`
-	RepositoryID        *string    `json:"repository_id"`
-	RepositorySubfolder *string    `json:"repository_subfolder"`
-	RepositoryType      *string    `json:"repository_type"`
+	Website             *string   `json:"website"`
+	UpstreamMeta        []byte    `json:"upstream_meta"`
+	ServerMeta          []byte    `json:"server_meta"`
+	RepositoryUrl       *string   `json:"repository_url"`
+	RepositoryID        *string   `json:"repository_id"`
+	RepositorySubfolder *string   `json:"repository_subfolder"`
+	RepositoryType      *string   `json:"repository_type"`
+	EntryID             uuid.UUID `json:"entry_id"`
 }
 
 type McpServerIcon struct {
-	ServerID  uuid.UUID `json:"server_id"`
+	EntryID   uuid.UUID `json:"entry_id"`
 	SourceUri string    `json:"source_uri"`
 	MimeType  string    `json:"mime_type"`
 	Theme     IconTheme `json:"theme"`
 }
 
 type McpServerPackage struct {
-	ServerID         uuid.UUID `json:"server_id"`
+	EntryID          uuid.UUID `json:"entry_id"`
 	RegistryType     string    `json:"registry_type"`
 	PkgRegistryUrl   string    `json:"pkg_registry_url"`
 	PkgIdentifier    string    `json:"pkg_identifier"`
@@ -233,7 +268,7 @@ type McpServerPackage struct {
 }
 
 type McpServerRemote struct {
-	ServerID         uuid.UUID `json:"server_id"`
+	EntryID          uuid.UUID `json:"entry_id"`
 	Transport        string    `json:"transport"`
 	TransportUrl     string    `json:"transport_url"`
 	TransportHeaders []byte    `json:"transport_headers"`
@@ -254,6 +289,18 @@ type Registry struct {
 	Syncable     bool             `json:"syncable"`
 }
 
+type RegistryEntry struct {
+	ID          uuid.UUID  `json:"id"`
+	RegID       uuid.UUID  `json:"reg_id"`
+	EntryType   EntryType  `json:"entry_type"`
+	Name        string     `json:"name"`
+	Title       *string    `json:"title"`
+	Description *string    `json:"description"`
+	Version     string     `json:"version"`
+	CreatedAt   *time.Time `json:"created_at"`
+	UpdatedAt   *time.Time `json:"updated_at"`
+}
+
 type RegistrySync struct {
 	ID                    uuid.UUID  `json:"id"`
 	RegID                 uuid.UUID  `json:"reg_id"`
@@ -268,20 +315,14 @@ type RegistrySync struct {
 }
 
 type TempMcpServer struct {
-	Name                string     `json:"name"`
-	Version             string     `json:"version"`
-	RegID               uuid.UUID  `json:"reg_id"`
-	CreatedAt           *time.Time `json:"created_at"`
-	UpdatedAt           *time.Time `json:"updated_at"`
-	Description         *string    `json:"description"`
-	Title               *string    `json:"title"`
-	Website             *string    `json:"website"`
-	UpstreamMeta        []byte     `json:"upstream_meta"`
-	ServerMeta          []byte     `json:"server_meta"`
-	RepositoryUrl       *string    `json:"repository_url"`
-	RepositoryID        *string    `json:"repository_id"`
-	RepositorySubfolder *string    `json:"repository_subfolder"`
-	RepositoryType      *string    `json:"repository_type"`
+	EntryID             uuid.UUID `json:"entry_id"`
+	Website             *string   `json:"website"`
+	UpstreamMeta        []byte    `json:"upstream_meta"`
+	ServerMeta          []byte    `json:"server_meta"`
+	RepositoryUrl       *string   `json:"repository_url"`
+	RepositoryID        *string   `json:"repository_id"`
+	RepositorySubfolder *string   `json:"repository_subfolder"`
+	RepositoryType      *string   `json:"repository_type"`
 }
 
 type TempMcpServerIcon struct {
@@ -312,4 +353,16 @@ type TempMcpServerRemote struct {
 	Transport        string    `json:"transport"`
 	TransportUrl     string    `json:"transport_url"`
 	TransportHeaders []string  `json:"transport_headers"`
+}
+
+type TempRegistryEntry struct {
+	ID          uuid.UUID  `json:"id"`
+	RegID       uuid.UUID  `json:"reg_id"`
+	EntryType   EntryType  `json:"entry_type"`
+	Name        string     `json:"name"`
+	Title       *string    `json:"title"`
+	Description *string    `json:"description"`
+	Version     string     `json:"version"`
+	CreatedAt   *time.Time `json:"created_at"`
+	UpdatedAt   *time.Time `json:"updated_at"`
 }

@@ -50,7 +50,11 @@ func NewDBSyncWriter(pool *pgxpool.Pool) (SyncWriter, error) {
 //
 // The operation is performed within a serializable transaction to ensure consistency.
 // Temp tables are automatically dropped at transaction end (ON COMMIT DROP).
-func (d *dbSyncWriter) Store(ctx context.Context, registryName string, reg *toolhivetypes.UpstreamRegistry) error {
+func (d *dbSyncWriter) Store(
+	ctx context.Context,
+	registryName string,
+	reg *toolhivetypes.UpstreamRegistry,
+) error {
 	if reg == nil {
 		return fmt.Errorf("registry data is required")
 	}
@@ -130,67 +134,19 @@ func (*dbSyncWriter) storeSyncInTempTables(
 
 	// 1. Create temp table
 	querier := sqlc.New(tx)
-	if err := querier.CreateTempServerTable(ctx); err != nil {
-		return nil, fmt.Errorf("failed to create temp server table: %w", err)
-	}
-
-	// 2. Prepare rows for COPY
-	now := time.Now()
-	rows := make([][]any, 0, len(servers))
-
-	for _, server := range servers {
-		// Prepare repository fields
-		var repoURL, repoID, repoSubfolder, repoType *string
-		if server.Repository != nil {
-			repoURL = &server.Repository.URL
-			repoID = &server.Repository.ID
-			repoSubfolder = &server.Repository.Subfolder
-			repoType = &server.Repository.Source
-		}
-
-		// Serialize metadata
-		serverMeta, err := serializeServerMeta(server.Meta)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize metadata for server %s: %w", server.Name, err)
-		}
-
-		rows = append(rows, []any{
-			server.Name,
-			server.Version,
-			registryID,
-			&now,
-			&now,
-			nilIfEmpty(server.Description),
-			nilIfEmpty(server.Title),
-			nilIfEmpty(server.WebsiteURL),
-			nil, // upstream_meta
-			serverMeta,
-			repoURL,
-			repoID,
-			repoSubfolder,
-			repoType,
-		})
-	}
-
-	// 3. COPY into temp table
-	copyCount, err := tx.CopyFrom(
-		ctx,
-		pgx.Identifier{"temp_mcp_server"},
-		[]string{"name", "version", "reg_id", "created_at", "updated_at",
-			"description", "title", "website", "upstream_meta", "server_meta",
-			"repository_url", "repository_id", "repository_subfolder", "repository_type"},
-		pgx.CopyFromRows(rows),
-	)
+	copiedEntryRows, err := sqlCopyEntries(ctx, tx, registryID, servers)
 	if err != nil {
-		return nil, fmt.Errorf("failed to copy servers to temp table: %w", err)
-	}
-	if int(copyCount) != len(servers) {
-		return nil, fmt.Errorf("copy count mismatch: expected %d, got %d", len(servers), copyCount)
+		return nil, fmt.Errorf("failed to copy entries: %w", err)
 	}
 
-	// 4. Bulk upsert from temp table to permanent table
-	if err := querier.UpsertServersFromTemp(ctx); err != nil {
-		return nil, fmt.Errorf("failed to upsert servers from temp table: %w", err)
+	entryIDMap := make(map[string]uuid.UUID, len(copiedEntryRows))
+	for _, row := range copiedEntryRows {
+		key := serverKey(row.Name, row.Version)
+		entryIDMap[key] = row.ID
+	}
+
+	if err := sqlCopyServers(ctx, tx, servers, entryIDMap); err != nil {
+		return nil, fmt.Errorf("failed to copy servers: %w", err)
 	}
 
 	// 5. Build a set of expected server keys from input
@@ -210,7 +166,7 @@ func (*dbSyncWriter) storeSyncInTempTables(
 	for _, dbServer := range dbServers {
 		key := serverKey(dbServer.Name, dbServer.Version)
 		if expectedKeys[key] {
-			serverIDMap[key] = dbServer.ID
+			serverIDMap[key] = dbServer.EntryID
 		}
 	}
 
@@ -315,10 +271,10 @@ func (*dbSyncWriter) updateLatestVersions(
 	// Insert latest version pointers
 	for name, latest := range latestVersions {
 		_, err := querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
-			RegID:    registryID,
-			Name:     name,
-			Version:  latest.version,
-			ServerID: latest.serverID,
+			RegID:   registryID,
+			Name:    name,
+			Version: latest.version,
+			EntryID: latest.serverID,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to upsert latest version for server %s: %w", name, err)
@@ -392,7 +348,7 @@ func bulkInsertPackages(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_package"},
-		[]string{"server_id", "registry_type", "pkg_registry_url", "pkg_identifier", "pkg_version",
+		[]string{"entry_id", "registry_type", "pkg_registry_url", "pkg_identifier", "pkg_version",
 			"runtime_hint", "runtime_arguments", "package_arguments", "env_vars", "sha256_hash",
 			"transport", "transport_url", "transport_headers"},
 		pgx.CopyFromRows(packageRows))
@@ -487,7 +443,7 @@ func bulkInsertRemotes(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_remote"},
-		[]string{"server_id", "transport", "transport_url", "transport_headers"},
+		[]string{"entry_id", "transport", "transport_url", "transport_headers"},
 		pgx.CopyFromRows(remoteRows))
 	if err != nil {
 		return fmt.Errorf("failed to copy remotes: %w", err)
@@ -571,7 +527,7 @@ func bulkInsertIcons(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_icon"},
-		[]string{"server_id", "source_uri", "mime_type", "theme"},
+		[]string{"entry_id", "source_uri", "mime_type", "theme"},
 		pgx.CopyFromRows(iconRows))
 	if err != nil {
 		return fmt.Errorf("failed to copy icons: %w", err)
@@ -666,4 +622,124 @@ func nilIfEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+func sqlCopyEntries(
+	ctx context.Context,
+	tx pgx.Tx,
+	registryID uuid.UUID,
+	servers []upstreamv0.ServerJSON,
+) ([]sqlc.UpsertRegistryEntriesFromTempRow, error) {
+	querier := sqlc.New(tx)
+
+	if err := querier.CreateTempRegistryEntryTable(ctx); err != nil {
+		return nil, fmt.Errorf("failed to create temp registry entry table: %w", err)
+	}
+
+	// 2. Prepare rows for COPY
+	entryRows := make([][]any, 0, len(servers))
+	for _, server := range servers {
+		now := time.Now()
+
+		entryID, err := uuid.NewV7()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate entry ID: %w", err)
+		}
+
+		entryRows = append(entryRows, []any{
+			entryID,
+			registryID,
+			sqlc.EntryTypeMCP,
+			server.Name,
+			nilIfEmpty(server.Title),
+			nilIfEmpty(server.Description),
+			server.Version,
+			&now,
+			&now,
+		})
+	}
+
+	// 3. COPY into temp table
+	entryCopyCount, err := tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"temp_registry_entry"},
+		[]string{"id", "reg_id", "entry_type", "name", "title", "description", "version", "created_at", "updated_at"},
+		pgx.CopyFromRows(entryRows),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy entries to temp table: %w", err)
+	}
+	if int(entryCopyCount) != len(servers) {
+		return nil, fmt.Errorf("copy count mismatch: expected %d, got %d", len(servers), entryCopyCount)
+	}
+
+	copiedEntryRows, err := querier.UpsertRegistryEntriesFromTemp(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert registry entries from temp table: %w", err)
+	}
+
+	return copiedEntryRows, nil
+}
+
+func sqlCopyServers(
+	ctx context.Context,
+	tx pgx.Tx,
+	servers []upstreamv0.ServerJSON,
+	entryIDMap map[string]uuid.UUID,
+) error {
+	querier := sqlc.New(tx)
+
+	if err := querier.CreateTempServerTable(ctx); err != nil {
+		return fmt.Errorf("failed to create temp server table: %w", err)
+	}
+
+	mcpRows := make([][]any, 0, len(servers))
+	for _, server := range servers {
+		// Prepare repository fields
+		var repoURL, repoID, repoSubfolder, repoType *string
+		if server.Repository != nil {
+			repoURL = &server.Repository.URL
+			repoID = &server.Repository.ID
+			repoSubfolder = &server.Repository.Subfolder
+			repoType = &server.Repository.Source
+		}
+
+		// Serialize metadata
+		serverMeta, err := serializeServerMeta(server.Meta)
+		if err != nil {
+			return fmt.Errorf("failed to serialize metadata for server %s: %w", server.Name, err)
+		}
+
+		mcpRows = append(mcpRows, []any{
+			entryIDMap[serverKey(server.Name, server.Version)],
+			nilIfEmpty(server.WebsiteURL),
+			nil, // upstream_meta
+			serverMeta,
+			repoURL,
+			repoID,
+			repoSubfolder,
+			repoType,
+		})
+	}
+
+	copyCount, err := tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"temp_mcp_server"},
+		[]string{"entry_id", "website", "upstream_meta", "server_meta",
+			"repository_url", "repository_id", "repository_subfolder", "repository_type"},
+		pgx.CopyFromRows(mcpRows),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to copy servers to temp table: %w", err)
+	}
+	if int(copyCount) != len(servers) {
+		return fmt.Errorf("copy count mismatch: expected %d, got %d", len(servers), copyCount)
+	}
+
+	// 4. Bulk upsert from temp table to permanent table
+	if err := querier.UpsertServersFromTemp(ctx); err != nil {
+		return fmt.Errorf("failed to upsert servers from temp table: %w", err)
+	}
+
+	return nil
 }

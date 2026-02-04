@@ -4,14 +4,20 @@
 -- These schemas exist only so sqlc can validate queries that reference temp tables.
 -- The actual temp tables are created at runtime with CREATE TEMP TABLE ... ON COMMIT DROP.
 
-CREATE TABLE temp_mcp_server (
-    name TEXT NOT NULL,
-    version TEXT NOT NULL,
+CREATE TABLE temp_registry_entry (
+    id UUID PRIMARY KEY,
     reg_id UUID NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE,
-    description TEXT,
+    entry_type entry_type NOT NULL,
+    name TEXT NOT NULL,
     title TEXT,
+    description TEXT,
+    version TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE temp_mcp_server (
+    entry_id UUID NOT NULL,
     website TEXT,
     upstream_meta JSONB,
     server_meta JSONB,
