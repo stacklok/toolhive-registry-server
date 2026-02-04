@@ -285,7 +285,7 @@ func buildSyncComponents(
 
 	// Build registry handler factory (storage-agnostic)
 	if b.registryHandlerFactory == nil {
-		b.registryHandlerFactory = sources.NewRegistryHandlerFactory()
+		b.registryHandlerFactory = sources.NewRegistryHandlerFactory(b.config)
 	}
 
 	// Create state service using storage factory

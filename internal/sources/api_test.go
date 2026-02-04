@@ -131,7 +131,7 @@ openapi: 3.1.0
 			mockServer := tt.setupServer()
 			defer mockServer.Close()
 
-			handler := sources.NewAPIRegistryHandler()
+			handler := sources.NewAPIRegistryHandler(nil)
 			ctx := context.Background()
 
 			// Set the endpoint from the mock server
@@ -164,7 +164,7 @@ openapi: 3.1.0
 func TestNewAPIRegistryHandler(t *testing.T) {
 	t.Parallel()
 
-	handler := sources.NewAPIRegistryHandler()
+	handler := sources.NewAPIRegistryHandler(nil)
 
 	require.NotNil(t, handler, "NewAPIRegistryHandler should return a non-nil handler")
 }
@@ -225,7 +225,7 @@ openapi: 3.1.0
 	}))
 	defer mockServer.Close()
 
-	handler := sources.NewAPIRegistryHandler()
+	handler := sources.NewAPIRegistryHandler(nil)
 	ctx := context.Background()
 
 	registryConfig := &config.RegistryConfig{
@@ -250,7 +250,7 @@ openapi: 3.1.0
 func TestAPIRegistryHandler_NilConfig(t *testing.T) {
 	t.Parallel()
 
-	handler := sources.NewAPIRegistryHandler()
+	handler := sources.NewAPIRegistryHandler(nil)
 	ctx := context.Background()
 
 	_, err := handler.FetchRegistry(ctx, nil)
@@ -261,7 +261,7 @@ func TestAPIRegistryHandler_NilConfig(t *testing.T) {
 func TestAPIRegistryHandler_NilAPIConfig(t *testing.T) {
 	t.Parallel()
 
-	handler := sources.NewAPIRegistryHandler()
+	handler := sources.NewAPIRegistryHandler(nil)
 	ctx := context.Background()
 
 	registryConfig := &config.RegistryConfig{

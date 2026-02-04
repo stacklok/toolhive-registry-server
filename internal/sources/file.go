@@ -20,22 +20,25 @@ const (
 type fileRegistryHandler struct {
 	validator  RegistryDataValidator
 	httpClient httpclient.Client
+	cfg        *config.Config
 }
 
 // NewFileRegistryHandler creates a new file registry handler
-func NewFileRegistryHandler() RegistryHandler {
+func NewFileRegistryHandler(cfg *config.Config) RegistryHandler {
 	return &fileRegistryHandler{
 		validator:  NewRegistryDataValidator(),
 		httpClient: httpclient.NewDefaultClient(DefaultURLTimeout),
+		cfg:        cfg,
 	}
 }
 
 // NewFileRegistryHandlerWithClient creates a new file registry handler with a custom HTTP client
 // This is useful for testing
-func NewFileRegistryHandlerWithClient(client httpclient.Client) RegistryHandler {
+func NewFileRegistryHandlerWithClient(client httpclient.Client, cfg *config.Config) RegistryHandler {
 	return &fileRegistryHandler{
 		validator:  NewRegistryDataValidator(),
 		httpClient: client,
+		cfg:        cfg,
 	}
 }
 

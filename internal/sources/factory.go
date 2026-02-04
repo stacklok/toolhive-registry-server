@@ -7,18 +7,22 @@ import (
 )
 
 // defaultRegistryHandlerFactory is the default implementation of RegistryHandlerFactory
-type defaultRegistryHandlerFactory struct{}
+type defaultRegistryHandlerFactory struct {
+	cfg *config.Config
+}
 
 var _ RegistryHandlerFactory = (*defaultRegistryHandlerFactory)(nil)
 
 // NewRegistryHandlerFactory creates a new registry handler factory
-func NewRegistryHandlerFactory() RegistryHandlerFactory {
-	return &defaultRegistryHandlerFactory{}
+func NewRegistryHandlerFactory(cfg *config.Config) RegistryHandlerFactory {
+	return &defaultRegistryHandlerFactory{
+		cfg: cfg,
+	}
 }
 
 // CreateHandler creates a registry handler for the given registry configuration
 // The source type is inferred from which field is present (Git/API/File)
-func (*defaultRegistryHandlerFactory) CreateHandler(regCfg *config.RegistryConfig) (RegistryHandler, error) {
+func (f *defaultRegistryHandlerFactory) CreateHandler(regCfg *config.RegistryConfig) (RegistryHandler, error) {
 	if regCfg == nil {
 		return nil, fmt.Errorf("registry configuration cannot be nil")
 	}
@@ -30,11 +34,11 @@ func (*defaultRegistryHandlerFactory) CreateHandler(regCfg *config.RegistryConfi
 
 	switch sourceType {
 	case config.SourceTypeGit:
-		return NewGitRegistryHandler(), nil
+		return NewGitRegistryHandler(f.cfg), nil
 	case config.SourceTypeAPI:
-		return NewAPIRegistryHandler(), nil
+		return NewAPIRegistryHandler(f.cfg), nil
 	case config.SourceTypeFile:
-		return NewFileRegistryHandler(), nil
+		return NewFileRegistryHandler(f.cfg), nil
 	case config.SourceTypeKubernetes:
 		return nil, fmt.Errorf("kubernetes source type is not yet implemented")
 	case config.SourceTypeManaged:

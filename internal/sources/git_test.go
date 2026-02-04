@@ -78,7 +78,7 @@ func (m *MockRegistryDataValidator) ValidateData(data []byte, format string) (*t
 func TestNewGitRegistryHandler(t *testing.T) {
 	t.Parallel()
 
-	handler := NewGitRegistryHandler()
+	handler := NewGitRegistryHandler(nil)
 
 	assert.NotNil(t, handler)
 	// Cast to concrete type to access fields in tests (same package)
@@ -90,7 +90,7 @@ func TestNewGitRegistryHandler(t *testing.T) {
 func TestGitRegistryHandler_Validate(t *testing.T) {
 	t.Parallel()
 
-	handler := NewGitRegistryHandler()
+	handler := NewGitRegistryHandler(nil)
 
 	tests := []struct {
 		name           string
@@ -588,7 +588,7 @@ func TestGitRegistryHandler_DefaultPath(t *testing.T) {
 		},
 	}
 
-	handler := NewGitRegistryHandler()
+	handler := NewGitRegistryHandler(nil)
 	err := handler.Validate(registryConfig)
 
 	require.NoError(t, err)
