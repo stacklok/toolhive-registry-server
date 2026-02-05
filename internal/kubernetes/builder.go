@@ -25,6 +25,7 @@ const (
 	defaultRegistryURLAnnotation             = "toolhive.stacklok.dev/registry-url"
 	defaultRegistryDescriptionAnnotation     = "toolhive.stacklok.dev/registry-description"
 	defaultRegistryToolDefinitionsAnnotation = "toolhive.stacklok.dev/tool-definitions"
+	defaultRegistryToolsAnnotation           = "toolhive.stacklok.dev/tools"
 
 	defaultRequeueAfter = 10 * time.Second
 

@@ -78,6 +78,11 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 		extensionData["tool_definitions"] = toolDefs
 	}
 
+	// Add tools if present
+	if tools := extractTools(annotations, mcpServer.Name, mcpServer.Namespace); tools != nil {
+		extensionData["tools"] = tools
+	}
+
 	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
 		transportURL: extensionData,
 	}
@@ -143,6 +148,11 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 	// Add tool definitions if present
 	if toolDefs := extractToolDefinitions(annotations, virtualMCPServer.Name, virtualMCPServer.Namespace); toolDefs != nil {
 		extensionData["tool_definitions"] = toolDefs
+	}
+
+	// Add tools if present
+	if tools := extractTools(annotations, virtualMCPServer.Name, virtualMCPServer.Namespace); tools != nil {
+		extensionData["tools"] = tools
 	}
 
 	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
@@ -219,6 +229,11 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 		extensionData["tool_definitions"] = toolDefs
 	}
 
+	// Add tools if present
+	if tools := extractTools(annotations, mcpRemoteProxy.Name, mcpRemoteProxy.Namespace); tools != nil {
+		extensionData["tools"] = tools
+	}
+
 	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
 		transportURL: extensionData,
 	}
@@ -245,6 +260,27 @@ func extractToolDefinitions(annotations map[string]string, name, namespace strin
 	}
 
 	return toolDefs
+}
+
+// extractTools extracts and parses tools from annotations.
+// It expects a JSON array of strings (tool names).
+// Returns nil if the annotation is not present, empty, or contains invalid JSON.
+func extractTools(annotations map[string]string, name, namespace string) []string {
+	toolsStr, ok := annotations[defaultRegistryToolsAnnotation]
+	if !ok || toolsStr == "" {
+		return nil
+	}
+
+	var tools []string
+	if err := json.Unmarshal([]byte(toolsStr), &tools); err != nil {
+		slog.Warn("tools annotation is not valid JSON, skipping",
+			"error", err,
+			"server", name,
+			"namespace", namespace)
+		return nil
+	}
+
+	return tools
 }
 
 // extractPackages extracts packages from MCPServer spec
