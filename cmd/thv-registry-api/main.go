@@ -67,8 +67,9 @@ func zapStyleReplaceAttr(_ []string, a slog.Attr) slog.Attr {
 }
 
 func main() {
-	// Setup structured JSON logging with slog, formatted to match zap's production output
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	// Setup structured JSON logging with slog, formatted to match zap's production output.
+	// Use stderr to keep stdout clean for commands that output data (e.g., version --format json).
+	handler := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level:       getLogLevel(),
 		AddSource:   false, // Can be enabled for debugging
 		ReplaceAttr: zapStyleReplaceAttr,
