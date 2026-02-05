@@ -69,7 +69,7 @@ The command removes all the Kubernetes components associated with the chart and 
 | extraVolumes | list | `[]` | Additional volumes to add to the pod |
 | fullnameOverride | string | `""` | Override the full name of the chart |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
-| image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v0.5.0"` | URL of the registry server image |
+| image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v0.5.1"` | URL of the registry server image |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries |
 | initContainers | list | `[]` | Init containers to run before the main container Use this for setup tasks like preparing pgpass files, waiting for dependencies, etc. Init containers share the same volumes as the main container (extraVolumes) |
 | leaderElectionRole | object | `{"binding":{"name":""},"name":"","rules":[{"apiGroups":["toolhive.stacklok.dev"],"resources":["mcpservers","mcpremoteproxies","virtualmcpservers"],"verbs":["get","list","watch"]},{"apiGroups":[""],"resources":["services"],"verbs":["get","list","watch"]},{"apiGroups":[""],"resources":["configmaps"],"verbs":["get","list","watch","create","update","patch","delete"]},{"apiGroups":["coordination.k8s.io"],"resources":["leases"],"verbs":["get","list","watch","create","update","patch","delete"]},{"apiGroups":[""],"resources":["events"],"verbs":["create","patch"]}]}` | Leader election role configuration |
