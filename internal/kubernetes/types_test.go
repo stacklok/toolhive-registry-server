@@ -323,6 +323,134 @@ func TestExtractServer(t *testing.T) {
 				assert.Equal(t, true, annotations["destructive"])
 			},
 		},
+		{
+			name: "MCPServer with valid tools annotation",
+			mcpServer: createTestMCPServer(
+				"server-with-tools-list",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "Server with tools list",
+					defaultRegistryURLAnnotation:         "https://example.com/tools-list",
+					defaultRegistryToolsAnnotation:       `["get_weather","get_forecast"]`,
+				},
+				mcpv1alpha1.MCPServerSpec{
+					Image:     "test/tools-list:v1",
+					Transport: "sse",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/server-with-tools-list",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+				mcpMetadata := ioStacklok["https://example.com/tools-list"].(map[string]any)
+
+				// Check tools is present and is a string array
+				require.NotNil(t, mcpMetadata["tools"])
+				tools, ok := mcpMetadata["tools"].([]string)
+				require.True(t, ok, "tools should be a string array")
+				require.Len(t, tools, 2)
+				assert.Equal(t, "get_weather", tools[0])
+				assert.Equal(t, "get_forecast", tools[1])
+			},
+		},
+		{
+			name: "MCPServer with invalid JSON in tools",
+			mcpServer: createTestMCPServer(
+				"server-invalid-tools",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "Server with invalid tools JSON",
+					defaultRegistryURLAnnotation:         "https://example.com/invalid-tools",
+					defaultRegistryToolsAnnotation:       `[invalid]`,
+				},
+				mcpv1alpha1.MCPServerSpec{
+					Image:     "test/invalid-tools:v1",
+					Transport: "sse",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/server-invalid-tools",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+				mcpMetadata := ioStacklok["https://example.com/invalid-tools"].(map[string]any)
+
+				// Invalid JSON should be skipped
+				assert.Nil(t, mcpMetadata["tools"])
+			},
+		},
+		{
+			name: "MCPServer with empty tools annotation",
+			mcpServer: createTestMCPServer(
+				"server-empty-tools-list",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "Server with empty tools",
+					defaultRegistryURLAnnotation:         "https://example.com/empty-tools",
+					defaultRegistryToolsAnnotation:       "",
+				},
+				mcpv1alpha1.MCPServerSpec{
+					Image:     "test/empty-tools:v1",
+					Transport: "sse",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/server-empty-tools-list",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+				mcpMetadata := ioStacklok["https://example.com/empty-tools"].(map[string]any)
+
+				// Empty string should be ignored
+				assert.Nil(t, mcpMetadata["tools"])
+			},
+		},
+		{
+			name: "MCPServer with both tool_definitions and tools",
+			mcpServer: createTestMCPServer(
+				"server-with-both",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation:     "Server with both annotations",
+					defaultRegistryURLAnnotation:             "https://example.com/both",
+					defaultRegistryToolDefinitionsAnnotation: `[{"name":"get_weather","description":"Get weather data"}]`,
+					defaultRegistryToolsAnnotation:           `["get_weather","get_forecast"]`,
+				},
+				mcpv1alpha1.MCPServerSpec{
+					Image:     "test/both:v1",
+					Transport: "sse",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/server-with-both",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+				mcpMetadata := ioStacklok["https://example.com/both"].(map[string]any)
+
+				// Both should be present
+				require.NotNil(t, mcpMetadata["tool_definitions"])
+				toolDefs, ok := mcpMetadata["tool_definitions"].([]interface{})
+				require.True(t, ok)
+				require.Len(t, toolDefs, 1)
+
+				require.NotNil(t, mcpMetadata["tools"])
+				tools, ok := mcpMetadata["tools"].([]string)
+				require.True(t, ok)
+				require.Len(t, tools, 2)
+				assert.Equal(t, "get_weather", tools[0])
+				assert.Equal(t, "get_forecast", tools[1])
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -695,6 +823,64 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				assert.Nil(t, mcpMetadata["tool_definitions"])
 			},
 		},
+		{
+			name: "VirtualMCPServer with valid tools annotation",
+			vmcpServer: createTestVirtualMCPServer(
+				"vmcp-with-tools-list",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "VirtualMCP with tools list",
+					defaultRegistryURLAnnotation:         "https://example.com/vmcp-tools-list",
+					defaultRegistryToolsAnnotation:       `["search_files","execute_command"]`,
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/vmcp-with-tools-list",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+				mcpMetadata := ioStacklok["https://example.com/vmcp-tools-list"].(map[string]any)
+
+				// Check tools is present
+				require.NotNil(t, mcpMetadata["tools"])
+				tools, ok := mcpMetadata["tools"].([]string)
+				require.True(t, ok)
+				require.Len(t, tools, 2)
+				assert.Equal(t, "search_files", tools[0])
+				assert.Equal(t, "execute_command", tools[1])
+			},
+		},
+		{
+			name: "VirtualMCPServer with both tool_definitions and tools",
+			vmcpServer: createTestVirtualMCPServer(
+				"vmcp-with-both",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation:     "VirtualMCP with both",
+					defaultRegistryURLAnnotation:             "https://example.com/vmcp-both",
+					defaultRegistryToolDefinitionsAnnotation: `[{"name":"search_files","description":"Search files"}]`,
+					defaultRegistryToolsAnnotation:           `["search_files","execute_command"]`,
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/vmcp-with-both",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+				mcpMetadata := ioStacklok["https://example.com/vmcp-both"].(map[string]any)
+
+				// Both should be present
+				require.NotNil(t, mcpMetadata["tool_definitions"])
+				require.NotNil(t, mcpMetadata["tools"])
+				tools, ok := mcpMetadata["tools"].([]string)
+				require.True(t, ok)
+				require.Len(t, tools, 2)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -920,6 +1106,64 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 
 				// Invalid JSON should be skipped
 				assert.Nil(t, mcpMetadata["tool_definitions"])
+			},
+		},
+		{
+			name: "MCPRemoteProxy with valid tools annotation",
+			mcpRemoteProxy: createTestMCPRemoteProxy(
+				"proxy-with-tools-list",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "Proxy with tools list",
+					defaultRegistryURLAnnotation:         "https://example.com/proxy-tools-list",
+					defaultRegistryToolsAnnotation:       `["query_database","update_table"]`,
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/proxy-with-tools-list",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+				mcpMetadata := ioStacklok["https://example.com/proxy-tools-list"].(map[string]any)
+
+				// Check tools is present
+				require.NotNil(t, mcpMetadata["tools"])
+				tools, ok := mcpMetadata["tools"].([]string)
+				require.True(t, ok)
+				require.Len(t, tools, 2)
+				assert.Equal(t, "query_database", tools[0])
+				assert.Equal(t, "update_table", tools[1])
+			},
+		},
+		{
+			name: "MCPRemoteProxy with both tool_definitions and tools",
+			mcpRemoteProxy: createTestMCPRemoteProxy(
+				"proxy-with-both",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation:     "Proxy with both",
+					defaultRegistryURLAnnotation:             "https://example.com/proxy-both",
+					defaultRegistryToolDefinitionsAnnotation: `[{"name":"query_database","description":"Query DB"}]`,
+					defaultRegistryToolsAnnotation:           `["query_database","update_table"]`,
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/proxy-with-both",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+				mcpMetadata := ioStacklok["https://example.com/proxy-both"].(map[string]any)
+
+				// Both should be present
+				require.NotNil(t, mcpMetadata["tool_definitions"])
+				require.NotNil(t, mcpMetadata["tools"])
+				tools, ok := mcpMetadata["tools"].([]string)
+				require.True(t, ok)
+				require.Len(t, tools, 2)
 			},
 		},
 	}
