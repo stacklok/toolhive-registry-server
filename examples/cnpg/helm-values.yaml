@@ -1,0 +1,83 @@
+# Registry Server Helm values for CloudNativePG (CNPG) backend
+# Use with: helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server -f examples/cnpg/helm-values.yaml
+#
+# Prerequisites:
+#   1. Install CNPG operator: kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/releases/cnpg-1.25.1.yaml
+#   2. Deploy CNPG cluster: kubectl apply -f postgres.yaml
+#   3. Deploy pgpass secret: kubectl apply -f examples/cnpg/pgpass-secret.yaml
+#   4. Wait for cluster to be ready: kubectl wait --for=condition=Ready cluster/registry-db -n toolhive-system --timeout=5m
+
+# Environment variable for pgpass file location
+extraEnv:
+  - name: PGPASSFILE
+    value: /home/appuser/.pgpass
+
+# Init container to prepare pgpass file with correct permissions
+initContainers:
+  - name: pgpass-init
+    image: cgr.dev/chainguard/busybox:latest
+    command:
+      - sh
+      - -c
+      - |
+        cp /secrets/.pgpass /pgpass/.pgpass
+        chmod 600 /pgpass/.pgpass
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 65535
+    volumeMounts:
+      - name: pgpass-secret
+        mountPath: /secrets
+        readOnly: true
+      - name: pgpass
+        mountPath: /pgpass
+
+# Volumes for pgpass file
+extraVolumes:
+  - name: pgpass-secret
+    secret:
+      secretName: cnpg-pgpass
+  - name: pgpass
+    emptyDir: {}
+
+extraVolumeMounts:
+  - name: pgpass
+    mountPath: /home/appuser/.pgpass
+    subPath: .pgpass
+    readOnly: true
+
+# Registry server configuration with CNPG PostgreSQL
+config:
+  registryName: "toolhive-dev"
+
+  registries:
+    - name: toolhive
+      format: toolhive
+      git:
+        repository: https://github.com/stacklok/toolhive.git
+        branch: main
+        path: pkg/registry/data/registry.json
+      syncPolicy:
+        interval: "5m"
+
+  # CNPG PostgreSQL database configuration
+  # Uses the CNPG read-write service (registry-db-rw)
+  database:
+    host: registry-db-rw
+    port: 5432
+    user: db_app
+    migrationUser: db_migrator
+    database: registry
+    sslMode: disable
+    maxOpenConns: 10
+    maxIdleConns: 5
+    connMaxLifetime: "30m"
+
+  # Authentication configuration
+  auth:
+    mode: anonymous

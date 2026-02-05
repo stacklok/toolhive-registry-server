@@ -1,0 +1,99 @@
+# CloudNativePG Cluster for ToolHive Registry
+#
+# Prerequisites: Install CNPG operator first:
+#   kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/releases/cnpg-1.25.1.yaml
+#
+# Services created automatically by CNPG:
+# - registry-db-rw: read-write service (use this for the registry API)
+# - registry-db-r: read-only service
+# - registry-db-ro: read-only service (replica)
+#
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-db-app-credentials
+  namespace: toolhive-system
+type: kubernetes.io/basic-auth
+stringData:
+  username: db_app
+  password: CHANGE_ME_app_password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-db-migrator-credentials
+  namespace: toolhive-system
+type: kubernetes.io/basic-auth
+stringData:
+  username: db_migrator
+  password: CHANGE_ME_migrator_password
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: registry-db
+  namespace: toolhive-system
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.2
+
+  # Enforce SCRAM-SHA-256 authentication
+  postgresql:
+    pg_hba:
+      - host all all 0.0.0.0/0 scram-sha-256
+      - host all all ::0/0 scram-sha-256
+
+  bootstrap:
+    initdb:
+      database: registry
+      owner: postgres
+      postInitSQL:
+        # Create the toolhive_registry_server role for privilege management
+        # This role is used by migrations to grant privileges to application users
+        - CREATE ROLE toolhive_registry_server
+        # Create users without passwords - managed roles will set passwords from secrets
+        # Users are created here so postInitApplicationSQL can grant privileges
+        - CREATE USER db_app
+        - CREATE USER db_migrator
+      postInitApplicationSQL:
+        # Grant application user limited privileges
+        - GRANT CONNECT ON DATABASE registry TO db_app
+        - GRANT USAGE ON SCHEMA public TO db_app
+        # Note: Table-level privileges are granted by migrations via the toolhive_registry_server role
+        # Grant migration user elevated privileges
+        - GRANT CONNECT ON DATABASE registry TO db_migrator
+        - GRANT ALL PRIVILEGES ON SCHEMA public TO db_migrator
+        - GRANT CREATE ON SCHEMA public TO db_migrator
+        - GRANT ALL PRIVILEGES ON DATABASE registry TO db_migrator
+
+  # Managed roles - CNPG manages these users and sets passwords from secrets
+  # The users are created in postInitSQL, managed roles updates them with:
+  # - Passwords from secrets
+  # - Role memberships (inRoles)
+  # - Login capability
+  managed:
+    roles:
+      - name: db_app
+        ensure: present
+        login: true
+        passwordSecret:
+          name: registry-db-app-credentials
+        inRoles:
+          - toolhive_registry_server
+      - name: db_migrator
+        ensure: present
+        login: true
+        passwordSecret:
+          name: registry-db-migrator-credentials
+        inRoles:
+          - toolhive_registry_server
+  storage:
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
