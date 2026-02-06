@@ -309,13 +309,17 @@ func buildSyncComponents(
 		// Setup Kubernetes reconciler if any registry uses Kubernetes source
 		for _, reg := range b.config.Registries {
 			if reg.GetType() == config.SourceTypeKubernetes {
-				_, err := kubernetes.NewMCPServerReconciler(
-					ctx,
+				opts := []kubernetes.Option{
 					kubernetes.WithSyncWriter(syncWriter),
 					kubernetes.WithRegistryName(reg.Name),
-					// TODO make it configurable
-					kubernetes.WithCurrentNamespace(),
-				)
+				}
+
+				if b.config.WatchNamespace != "" {
+					namespaces := strings.Split(b.config.WatchNamespace, ",")
+					opts = append(opts, kubernetes.WithNamespaces(namespaces...))
+				}
+
+				_, err := kubernetes.NewMCPServerReconciler(ctx, opts...)
 				if err != nil {
 					return nil, fmt.Errorf("failed to create kubernetes reconciler: %w", err)
 				}

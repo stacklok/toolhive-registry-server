@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -30,6 +31,9 @@ const (
 	defaultRequeueAfter = 10 * time.Second
 
 	leaderElectionID = "toolhive-registry-server-leader-election"
+
+	// namespaceRegexPattern is the regex pattern for a valid Kubernetes namespace name
+	namespaceRegexPattern = `^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`
 )
 
 var (
@@ -63,6 +67,11 @@ type Option func(*mcpServerReconcilerOptions) error
 // WithNamespaces sets the namespaces to watch.
 func WithNamespaces(namespaces ...string) Option {
 	return func(o *mcpServerReconcilerOptions) error {
+		if err := validateNamespaces(namespaces); err != nil {
+			// Don't wrap error, return it directly
+			return err
+		}
+
 		if o.namespaces == nil {
 			o.namespaces = make([]string, 0)
 		}
@@ -167,8 +176,10 @@ func NewMCPServerReconciler(
 		return nil, fmt.Errorf("registry name is required")
 	}
 
+	// This is validated in the options, so we can safely use the namespaces.
 	defaultNamespaces := map[string]cache.Config{}
 	for _, namespace := range o.namespaces {
+		slog.Info("Watching namespace", "namespace", namespace)
 		defaultNamespaces[namespace] = cache.Config{}
 	}
 
@@ -181,14 +192,16 @@ func NewMCPServerReconciler(
 		Scheme:           scheme,
 		LeaderElection:   true,
 		LeaderElectionID: leaderElectionID,
-		Cache: cache.Options{
-			// if nil, defaults to all namespaces
-			DefaultNamespaces: defaultNamespaces,
-		},
 		// disable metrics server
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
+	}
+
+	if len(defaultNamespaces) > 0 {
+		options.Cache = cache.Options{
+			DefaultNamespaces: defaultNamespaces,
+		}
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
@@ -213,4 +226,13 @@ func NewMCPServerReconciler(
 	}()
 
 	return mgr, nil
+}
+
+func validateNamespaces(namespaces []string) error {
+	for _, namespace := range namespaces {
+		if !regexp.MustCompile(namespaceRegexPattern).MatchString(namespace) {
+			return fmt.Errorf("invalid namespace name: %s", namespace)
+		}
+	}
+	return nil
 }

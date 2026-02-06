@@ -29,50 +29,49 @@ func TestWithNamespaces(t *testing.T) {
 		name       string
 		namespaces []string
 		initial    *mcpServerReconcilerOptions
-		want       []string
-		wantErr    bool
+		want       *[]string
 	}{
 		{
 			name:       "single namespace",
 			namespaces: []string{"default"},
 			initial:    &mcpServerReconcilerOptions{},
-			want:       []string{"default"},
-			wantErr:    false,
+			want:       &[]string{"default"},
 		},
 		{
 			name:       "multiple namespaces",
 			namespaces: []string{"default", "kube-system", "production"},
 			initial:    &mcpServerReconcilerOptions{},
-			want:       []string{"default", "kube-system", "production"},
-			wantErr:    false,
+			want:       &[]string{"default", "kube-system", "production"},
 		},
 		{
 			name:       "empty namespaces",
 			namespaces: []string{},
 			initial:    &mcpServerReconcilerOptions{},
-			want:       []string{},
-			wantErr:    false,
+			want:       &[]string{},
 		},
 		{
 			name:       "nil initial namespaces",
 			namespaces: []string{"default"},
 			initial:    &mcpServerReconcilerOptions{namespaces: nil},
-			want:       []string{"default"},
-			wantErr:    false,
+			want:       &[]string{"default"},
 		},
 		{
 			name:       "append to existing namespaces",
 			namespaces: []string{"new-namespace"},
 			initial:    &mcpServerReconcilerOptions{namespaces: []string{"existing"}},
-			want:       []string{"existing", "new-namespace"},
-			wantErr:    false,
+			want:       &[]string{"existing", "new-namespace"},
 		},
 		{
 			name:       "multiple appends",
 			namespaces: []string{"ns1", "ns2", "ns3"},
 			initial:    &mcpServerReconcilerOptions{namespaces: []string{"existing"}},
-			want:       []string{"existing", "ns1", "ns2", "ns3"},
-			wantErr:    false,
+			want:       &[]string{"existing", "ns1", "ns2", "ns3"},
+		},
+		{
+			name:       "invalid namespace returns error",
+			namespaces: []string{"Invalid-Namespace"},
+			initial:    &mcpServerReconcilerOptions{},
+			want:       nil,
 		},
 	}
 
@@ -83,12 +82,12 @@ func TestWithNamespaces(t *testing.T) {
 			opt := WithNamespaces(tt.namespaces...)
 			err := opt(tt.initial)
 
-			if tt.wantErr {
+			if tt.want == nil {
 				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.want, tt.initial.namespaces)
+				return
 			}
+			require.NoError(t, err)
+			assert.Equal(t, *tt.want, tt.initial.namespaces)
 		})
 	}
 }
@@ -500,4 +499,124 @@ func TestReadNamespaceFromFile(t *testing.T) {
 
 		require.Error(t, err)
 	})
+}
+
+func TestValidateNamespaces(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		namespaces []string
+		wantErr    bool
+	}{
+		{
+			name:       "valid single namespace",
+			namespaces: []string{"default"},
+			wantErr:    false,
+		},
+		{
+			name:       "valid multiple namespaces",
+			namespaces: []string{"default", "kube-system", "my-app"},
+			wantErr:    false,
+		},
+		{
+			name:       "empty slice is valid",
+			namespaces: []string{},
+			wantErr:    false,
+		},
+		{
+			name:       "nil slice is valid",
+			namespaces: nil,
+			wantErr:    false,
+		},
+		{
+			name:       "single character namespace",
+			namespaces: []string{"a"},
+			wantErr:    false,
+		},
+		{
+			name:       "namespace with numbers",
+			namespaces: []string{"app123", "123app", "1a2b3c"},
+			wantErr:    false,
+		},
+		{
+			name:       "valid namespace at max length 63 chars",
+			namespaces: []string{"a123456789012345678901234567890123456789012345678901234567890z"},
+			wantErr:    false,
+		},
+		{
+			name:       "namespace exceeding max length 64 chars",
+			namespaces: []string{"a1234567890123456789012345678901234567890123456789012345678901234"},
+			wantErr:    true,
+		},
+		{
+			name:       "empty namespace name",
+			namespaces: []string{""},
+			wantErr:    true,
+		},
+		{
+			name:       "namespace starting with hyphen",
+			namespaces: []string{"-invalid"},
+			wantErr:    true,
+		},
+		{
+			name:       "namespace ending with hyphen",
+			namespaces: []string{"invalid-"},
+			wantErr:    true,
+		},
+		{
+			name:       "namespace with uppercase letters",
+			namespaces: []string{"Invalid"},
+			wantErr:    true,
+		},
+		{
+			name:       "namespace with underscores",
+			namespaces: []string{"my_namespace"},
+			wantErr:    true,
+		},
+		{
+			name:       "namespace with special characters",
+			namespaces: []string{"my.namespace"},
+			wantErr:    true,
+		},
+		{
+			name:       "namespace with spaces",
+			namespaces: []string{"my namespace"},
+			wantErr:    true,
+		},
+		{
+			name:       "namespace with consecutive hyphens is valid",
+			namespaces: []string{"my--namespace"},
+			wantErr:    false,
+		},
+		{
+			name:       "multiple namespaces with one invalid in middle",
+			namespaces: []string{"valid", "Invalid", "also-valid"},
+			wantErr:    true,
+		},
+		{
+			name:       "multiple namespaces with first invalid",
+			namespaces: []string{"INVALID", "valid", "also-valid"},
+			wantErr:    true,
+		},
+		{
+			name:       "multiple namespaces with last invalid",
+			namespaces: []string{"valid", "also-valid", "invalid_one"},
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateNamespaces(tt.namespaces)
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
