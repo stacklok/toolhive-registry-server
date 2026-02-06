@@ -1048,7 +1048,7 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 			errContains: "URL not found in annotations",
 		},
 		{
-			name: "MCPRemoteProxy with description set before required check",
+			name: "MCPRemoteProxy with custom namespace",
 			mcpRemoteProxy: createTestMCPRemoteProxy(
 				"proxy-server",
 				"custom-ns",
