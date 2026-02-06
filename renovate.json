@@ -27,20 +27,18 @@
       "matchPackageNames": ["!kindest/node"]
     }
   ],
+  "postUpdateOptions": ["gomodTidy"],
   "customManagers": [
     {
       "customType": "regex",
       "description": "Update kindest/node versions in GitHub workflows",
-      "managerFilePatterns": [".github/workflows/*.yml", ".github/workflows/*.yaml"],
+      "fileMatch": [".github/workflows/*.yml", ".github/workflows/*.yaml"],
       "matchStrings": [
         "\"(?<depName>kindest/node):v(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "semver"
-    }
-  ],
-  "postUpdateOptions": ["gomodTidy"],
-  "customManagers": [
+    },
     {
       "customType": "regex",
       "fileMatch": ["(^|/)go\\.mod$"],
