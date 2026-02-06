@@ -64,3 +64,18 @@ Config file hash annotation for rolling updates
 {{- define "toolhive-registry-server.configHash" -}}
 {{- .Values.config | toYaml | sha256sum | trunc 63 }}
 {{- end }}
+
+{{/*
+Validation
+*/}}
+{{- define "toolhive-registry-server.rbacValidation" -}}
+{{- if and (ne .Values.rbac.scope "cluster") (ne .Values.rbac.scope "namespace")}}
+{{- fail "rbac.scope must be either cluster or namespace"}}
+{{- end }}
+{{- if and (eq .Values.rbac.scope "cluster") (ne (len .Values.rbac.allowedNamespaces) 0) }}
+{{- fail "rbac.allowedNamespaces must be empty when rbac.scope is cluster" }}
+{{- end }}
+{{- if and (eq .Values.rbac.scope "namespace") (eq (len .Values.rbac.allowedNamespaces) 0) }}
+{{- fail "rbac.allowedNamespaces must be non-empty when rbac.scope is namespace" }}
+{{- end }}
+{{- end}}
