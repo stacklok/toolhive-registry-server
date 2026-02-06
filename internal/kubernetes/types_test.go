@@ -354,9 +354,10 @@ func TestExtractServer(t *testing.T) {
 				mcpMetadata := ioStacklok["https://example.com/tools-list"].(map[string]any)
 
 				// Check tools is present and is a string array
+				// After JSON marshaling/unmarshaling, []string becomes []interface{}
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]string)
-				require.True(t, ok, "tools should be a string array")
+				tools, ok := mcpMetadata["tools"].([]interface{})
+				require.True(t, ok, "tools should be an array")
 				require.Len(t, tools, 2)
 				assert.Equal(t, "get_weather", tools[0])
 				assert.Equal(t, "get_forecast", tools[1])
@@ -449,8 +450,9 @@ func TestExtractServer(t *testing.T) {
 				require.True(t, ok)
 				require.Len(t, toolDefs, 1)
 
+				// After JSON marshaling/unmarshaling, []string becomes []interface{}
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]string)
+				tools, ok := mcpMetadata["tools"].([]interface{})
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 				assert.Equal(t, "get_weather", tools[0])
@@ -856,8 +858,9 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				mcpMetadata := ioStacklok["https://example.com/vmcp-tools-list"].(map[string]any)
 
 				// Check tools is present
+				// After JSON marshaling/unmarshaling, []string becomes []interface{}
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]string)
+				tools, ok := mcpMetadata["tools"].([]interface{})
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 				assert.Equal(t, "search_files", tools[0])
@@ -887,8 +890,9 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 
 				// Both should be present
 				require.NotNil(t, mcpMetadata["tool_definitions"])
+				// After JSON marshaling/unmarshaling, []string becomes []interface{}
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]string)
+				tools, ok := mcpMetadata["tools"].([]interface{})
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 			},
@@ -1147,8 +1151,9 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				mcpMetadata := ioStacklok["https://example.com/proxy-tools-list"].(map[string]any)
 
 				// Check tools is present
+				// After JSON marshaling/unmarshaling, []string becomes []interface{}
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]string)
+				tools, ok := mcpMetadata["tools"].([]interface{})
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 				assert.Equal(t, "query_database", tools[0])
@@ -1178,8 +1183,9 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 
 				// Both should be present
 				require.NotNil(t, mcpMetadata["tool_definitions"])
+				// After JSON marshaling/unmarshaling, []string becomes []interface{}
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]string)
+				tools, ok := mcpMetadata["tools"].([]interface{})
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 			},
