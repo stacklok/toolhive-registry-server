@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	registry "github.com/stacklok/toolhive/pkg/registry/registry"
 )
 
 // extractServer converts an MCPServer to a ServerJSON object
@@ -61,30 +63,39 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 		PublisherProvided: make(map[string]any),
 	}
 
-	// Add Kubernetes metadata to publisher provided metadata
-	extensionData := map[string]any{
-		"metadata": map[string]any{
-			"kubernetes_kind":      mcpServer.Kind,
-			"kubernetes_namespace": mcpServer.Namespace,
-			"kubernetes_name":      mcpServer.Name,
-			"kubernetes_image":     mcpServer.Spec.Image,
-			"kubernetes_uid":       string(mcpServer.UID),
-			"kubernetes_transport": mcpServer.Spec.Transport,
+	// Create ServerExtensions with Kubernetes metadata
+	extensions := &registry.ServerExtensions{
+		Status: "active", // Default status
+		Metadata: &registry.Metadata{
+			Kubernetes: &registry.KubernetesMetadata{
+				Kind:      mcpServer.Kind,
+				Namespace: mcpServer.Namespace,
+				Name:      mcpServer.Name,
+				Image:     mcpServer.Spec.Image,
+				UID:       string(mcpServer.UID),
+				Transport: mcpServer.Spec.Transport,
+			},
 		},
 	}
 
 	// Add tool definitions if present
 	if toolDefs := extractToolDefinitions(annotations, mcpServer.Name, mcpServer.Namespace); toolDefs != nil {
-		extensionData["tool_definitions"] = toolDefs
+		extensions.ToolDefinitions = toolDefs
 	}
 
 	// Add tools if present
 	if tools := extractTools(annotations, mcpServer.Name, mcpServer.Namespace); tools != nil {
-		extensionData["tools"] = tools
+		extensions.Tools = tools
 	}
 
-	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
-		transportURL: extensionData,
+	// Convert extensions struct to map[string]any for JSON serialization
+	extensionsMap, err := structToMap(extensions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert extensions to map: %w", err)
+	}
+
+	serverJSON.Meta.PublisherProvided[registry.ToolHivePublisherNamespace] = map[string]any{
+		transportURL: extensionsMap,
 	}
 
 	return serverJSON, nil
@@ -135,28 +146,38 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 	serverJSON.Meta = &upstreamv0.ServerMeta{
 		PublisherProvided: make(map[string]any),
 	}
-	// Add Kubernetes metadata to publisher provided metadata
-	extensionData := map[string]any{
-		"metadata": map[string]any{
-			"kubernetes_kind":      virtualMCPServer.Kind,
-			"kubernetes_namespace": virtualMCPServer.Namespace,
-			"kubernetes_name":      virtualMCPServer.Name,
-			"kubernetes_uid":       string(virtualMCPServer.UID),
+
+	// Create ServerExtensions with Kubernetes metadata
+	extensions := &registry.ServerExtensions{
+		Status: "active", // Default status
+		Metadata: &registry.Metadata{
+			Kubernetes: &registry.KubernetesMetadata{
+				Kind:      virtualMCPServer.Kind,
+				Namespace: virtualMCPServer.Namespace,
+				Name:      virtualMCPServer.Name,
+				UID:       string(virtualMCPServer.UID),
+			},
 		},
 	}
 
 	// Add tool definitions if present
 	if toolDefs := extractToolDefinitions(annotations, virtualMCPServer.Name, virtualMCPServer.Namespace); toolDefs != nil {
-		extensionData["tool_definitions"] = toolDefs
+		extensions.ToolDefinitions = toolDefs
 	}
 
 	// Add tools if present
 	if tools := extractTools(annotations, virtualMCPServer.Name, virtualMCPServer.Namespace); tools != nil {
-		extensionData["tools"] = tools
+		extensions.Tools = tools
 	}
 
-	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
-		transportURL: extensionData,
+	// Convert extensions struct to map[string]any for JSON serialization
+	extensionsMap, err := structToMap(extensions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert extensions to map: %w", err)
+	}
+
+	serverJSON.Meta.PublisherProvided[registry.ToolHivePublisherNamespace] = map[string]any{
+		transportURL: extensionsMap,
 	}
 
 	return serverJSON, nil
@@ -179,13 +200,6 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 		Name:    serverName,
 		Version: "1.0.0", // Default version, could be extracted from annotations or labels
-	}
-
-	// Extract description from annotations if available
-	if annotations := mcpRemoteProxy.GetAnnotations(); annotations != nil {
-		if desc, ok := annotations[defaultRegistryDescriptionAnnotation]; ok {
-			serverJSON.Description = desc
-		}
 	}
 
 	annotations := mcpRemoteProxy.GetAnnotations()
@@ -214,28 +228,38 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 	serverJSON.Meta = &upstreamv0.ServerMeta{
 		PublisherProvided: make(map[string]any),
 	}
-	// Add Kubernetes metadata to publisher provided metadata
-	extensionData := map[string]any{
-		"metadata": map[string]any{
-			"kubernetes_kind":      mcpRemoteProxy.Kind,
-			"kubernetes_namespace": mcpRemoteProxy.Namespace,
-			"kubernetes_name":      mcpRemoteProxy.Name,
-			"kubernetes_uid":       string(mcpRemoteProxy.UID),
+
+	// Create ServerExtensions with Kubernetes metadata
+	extensions := &registry.ServerExtensions{
+		Status: "active", // Default status
+		Metadata: &registry.Metadata{
+			Kubernetes: &registry.KubernetesMetadata{
+				Kind:      mcpRemoteProxy.Kind,
+				Namespace: mcpRemoteProxy.Namespace,
+				Name:      mcpRemoteProxy.Name,
+				UID:       string(mcpRemoteProxy.UID),
+			},
 		},
 	}
 
 	// Add tool definitions if present
 	if toolDefs := extractToolDefinitions(annotations, mcpRemoteProxy.Name, mcpRemoteProxy.Namespace); toolDefs != nil {
-		extensionData["tool_definitions"] = toolDefs
+		extensions.ToolDefinitions = toolDefs
 	}
 
 	// Add tools if present
 	if tools := extractTools(annotations, mcpRemoteProxy.Name, mcpRemoteProxy.Namespace); tools != nil {
-		extensionData["tools"] = tools
+		extensions.Tools = tools
 	}
 
-	serverJSON.Meta.PublisherProvided["io.github.stacklok"] = map[string]any{
-		transportURL: extensionData,
+	// Convert extensions struct to map[string]any for JSON serialization
+	extensionsMap, err := structToMap(extensions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert extensions to map: %w", err)
+	}
+
+	serverJSON.Meta.PublisherProvided[registry.ToolHivePublisherNamespace] = map[string]any{
+		transportURL: extensionsMap,
 	}
 
 	return serverJSON, nil
@@ -244,13 +268,13 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 // extractToolDefinitions extracts and parses tool definitions from annotations.
 // It validates JSON syntax but does not validate the schema (operator's responsibility).
 // Returns nil if the annotation is not present, empty, or contains invalid JSON.
-func extractToolDefinitions(annotations map[string]string, name, namespace string) interface{} {
+func extractToolDefinitions(annotations map[string]string, name, namespace string) []mcp.Tool {
 	toolDefsStr, ok := annotations[defaultRegistryToolDefinitionsAnnotation]
 	if !ok || toolDefsStr == "" {
 		return nil
 	}
 
-	var toolDefs interface{}
+	var toolDefs []mcp.Tool
 	if err := json.Unmarshal([]byte(toolDefsStr), &toolDefs); err != nil {
 		slog.Warn("tool_definitions annotation is not valid JSON, skipping",
 			"error", err,
@@ -340,4 +364,27 @@ func parseImageTagOrDigest(image string) string {
 	}
 
 	return "latest"
+}
+
+// structToMap converts a struct to map[string]any using JSON marshaling.
+// This is needed to convert typed structs (like ServerExtensions) into the generic map
+// structure expected by the PublisherProvided field, while preserving proper JSON serialization.
+//
+// Note: JSON numbers unmarshal to float64 in map[string]any. This is fine for the current
+// use case (only string fields are set from Kubernetes metadata), but callers should be
+// aware that any integer fields (e.g., ProxyPort, Stars) will become float64 in the result.
+func structToMap(v any) (map[string]any, error) {
+	// Marshal the struct to JSON
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal struct: %w", err)
+	}
+
+	// Unmarshal JSON into map[string]any
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal into map: %w", err)
+	}
+
+	return result, nil
 }

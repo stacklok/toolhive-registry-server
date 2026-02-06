@@ -1,12 +1,14 @@
 package kubernetes
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/google/uuid"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	"github.com/stacklok/toolhive/pkg/registry/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -66,14 +68,19 @@ func TestExtractServer(t *testing.T) {
 				assert.NotNil(t, ioStacklok["https://example.com/mcp"])
 				mcpMetadata := ioStacklok["https://example.com/mcp"].(map[string]any)
 
-				assert.NotNil(t, mcpMetadata["metadata"])
-				kubernetesMetadata := mcpMetadata["metadata"].(map[string]any)
+				// Deserialize to ServerExtensions to check typed fields
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
 
-				assert.Equal(t, "default", kubernetesMetadata["kubernetes_namespace"])
-				assert.Equal(t, "test-server", kubernetesMetadata["kubernetes_name"])
-				assert.Equal(t, "test/image:latest", kubernetesMetadata["kubernetes_image"])
-				assert.Equal(t, "stdio", kubernetesMetadata["kubernetes_transport"])
-				assert.NotEmpty(t, kubernetesMetadata["kubernetes_uid"])
+				require.NotNil(t, ext.Metadata)
+				require.NotNil(t, ext.Metadata.Kubernetes)
+				assert.Equal(t, "default", ext.Metadata.Kubernetes.Namespace)
+				assert.Equal(t, "test-server", ext.Metadata.Kubernetes.Name)
+				assert.Equal(t, "test/image:latest", ext.Metadata.Kubernetes.Image)
+				assert.Equal(t, "stdio", ext.Metadata.Kubernetes.Transport)
+				assert.NotEmpty(t, ext.Metadata.Kubernetes.UID)
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/mcp", sj.Remotes[0].URL)
@@ -166,14 +173,19 @@ func TestExtractServer(t *testing.T) {
 				assert.NotNil(t, ioStacklok["https://api.example.com/mcp-server"])
 				mcpMetadata := ioStacklok["https://api.example.com/mcp-server"].(map[string]any)
 
-				assert.NotNil(t, mcpMetadata["metadata"])
-				kubernetesMetadata := mcpMetadata["metadata"].(map[string]any)
+				// Deserialize to ServerExtensions to check typed fields
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
 
-				assert.Equal(t, "custom-ns", kubernetesMetadata["kubernetes_namespace"])
-				assert.Equal(t, "full-server", kubernetesMetadata["kubernetes_name"])
-				assert.Equal(t, "registry.example.com/image:tag", kubernetesMetadata["kubernetes_image"])
-				assert.Equal(t, "sse", kubernetesMetadata["kubernetes_transport"])
-				assert.NotEmpty(t, kubernetesMetadata["kubernetes_uid"])
+				require.NotNil(t, ext.Metadata)
+				require.NotNil(t, ext.Metadata.Kubernetes)
+				assert.Equal(t, "custom-ns", ext.Metadata.Kubernetes.Namespace)
+				assert.Equal(t, "full-server", ext.Metadata.Kubernetes.Name)
+				assert.Equal(t, "registry.example.com/image:tag", ext.Metadata.Kubernetes.Image)
+				assert.Equal(t, "sse", ext.Metadata.Kubernetes.Transport)
+				assert.NotEmpty(t, ext.Metadata.Kubernetes.UID)
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://api.example.com/mcp-server", sj.Remotes[0].URL)
@@ -187,7 +199,7 @@ func TestExtractServer(t *testing.T) {
 				map[string]string{
 					defaultRegistryDescriptionAnnotation:     "Server with tool definitions",
 					defaultRegistryURLAnnotation:             "https://example.com/tools",
-					defaultRegistryToolDefinitionsAnnotation: `[{"name":"test_tool","description":"A test tool","inputSchema":{"type":"object","properties":{"param":{"type":"string"}}},"annotations":{"readOnly":true}}]`,
+					defaultRegistryToolDefinitionsAnnotation: `[{"name":"test_tool","description":"A test tool","inputSchema":{"type":"object","properties":{"param":{"type":"string"}}},"annotations":{"readOnlyHint":true}}]`,
 				},
 				mcpv1alpha1.MCPServerSpec{
 					Image:     "test/tools:v1",
@@ -219,7 +231,7 @@ func TestExtractServer(t *testing.T) {
 
 				// Check annotations
 				annotations := tool["annotations"].(map[string]interface{})
-				assert.Equal(t, true, annotations["readOnly"])
+				assert.Equal(t, true, annotations["readOnlyHint"])
 			},
 		},
 		{
@@ -286,7 +298,7 @@ func TestExtractServer(t *testing.T) {
 				map[string]string{
 					defaultRegistryDescriptionAnnotation:     "Server with multiple tools",
 					defaultRegistryURLAnnotation:             "https://example.com/multi",
-					defaultRegistryToolDefinitionsAnnotation: `[{"name":"tool_one","description":"First tool"},{"name":"tool_two","description":"Second tool","inputSchema":{"type":"object"},"outputSchema":{"type":"object"},"annotations":{"destructive":true}}]`,
+					defaultRegistryToolDefinitionsAnnotation: `[{"name":"tool_one","description":"First tool"},{"name":"tool_two","description":"Second tool","inputSchema":{"type":"object"},"outputSchema":{"type":"object"},"annotations":{"destructiveHint":true}}]`,
 				},
 				mcpv1alpha1.MCPServerSpec{
 					Image:     "test/multi:v1",
@@ -320,7 +332,7 @@ func TestExtractServer(t *testing.T) {
 				assert.NotNil(t, tool2["inputSchema"])
 				assert.NotNil(t, tool2["outputSchema"])
 				annotations := tool2["annotations"].(map[string]interface{})
-				assert.Equal(t, true, annotations["destructive"])
+				assert.Equal(t, true, annotations["destructiveHint"])
 			},
 		},
 		{
@@ -348,9 +360,10 @@ func TestExtractServer(t *testing.T) {
 				mcpMetadata := ioStacklok["https://example.com/tools-list"].(map[string]any)
 
 				// Check tools is present and is a string array
+				// After JSON marshaling/unmarshaling, []string becomes []interface{}
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]string)
-				require.True(t, ok, "tools should be a string array")
+				tools, ok := mcpMetadata["tools"].([]interface{})
+				require.True(t, ok, "tools should be an array")
 				require.Len(t, tools, 2)
 				assert.Equal(t, "get_weather", tools[0])
 				assert.Equal(t, "get_forecast", tools[1])
@@ -443,8 +456,9 @@ func TestExtractServer(t *testing.T) {
 				require.True(t, ok)
 				require.Len(t, toolDefs, 1)
 
+				// After JSON marshaling/unmarshaling, []string becomes []interface{}
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]string)
+				tools, ok := mcpMetadata["tools"].([]interface{})
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 				assert.Equal(t, "get_weather", tools[0])
@@ -683,12 +697,17 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				assert.NotNil(t, ioStacklok["https://example.com/vmcp"])
 				mcpMetadata := ioStacklok["https://example.com/vmcp"].(map[string]any)
 
-				assert.NotNil(t, mcpMetadata["metadata"])
-				kubernetesMetadata := mcpMetadata["metadata"].(map[string]any)
+				// Deserialize to typed ServerExtensions for easier assertions
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
 
-				assert.Equal(t, "default", kubernetesMetadata["kubernetes_namespace"])
-				assert.Equal(t, "test-vmcp-server", kubernetesMetadata["kubernetes_name"])
-				assert.NotEmpty(t, kubernetesMetadata["kubernetes_uid"])
+				require.NotNil(t, ext.Metadata)
+				require.NotNil(t, ext.Metadata.Kubernetes)
+				assert.Equal(t, "default", ext.Metadata.Kubernetes.Namespace)
+				assert.Equal(t, "test-vmcp-server", ext.Metadata.Kubernetes.Name)
+				assert.NotEmpty(t, ext.Metadata.Kubernetes.UID)
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/vmcp", sj.Remotes[0].URL)
@@ -761,9 +780,15 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				assert.NotNil(t, ioStacklok["https://api.prod.example.com/vmcp"])
 				mcpMetadata := ioStacklok["https://api.prod.example.com/vmcp"].(map[string]any)
 
-				assert.NotNil(t, mcpMetadata["metadata"])
-				kubernetesMetadata := mcpMetadata["metadata"].(map[string]any)
-				assert.Equal(t, "production", kubernetesMetadata["kubernetes_namespace"])
+				// Deserialize to typed ServerExtensions for easier assertions
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
+
+				require.NotNil(t, ext.Metadata)
+				require.NotNil(t, ext.Metadata.Kubernetes)
+				assert.Equal(t, "production", ext.Metadata.Kubernetes.Namespace)
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, "https://api.prod.example.com/vmcp", sj.Remotes[0].URL)
 			},
@@ -776,7 +801,7 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				map[string]string{
 					defaultRegistryDescriptionAnnotation:     "Virtual MCP with tools",
 					defaultRegistryURLAnnotation:             "https://example.com/vmcp-tools",
-					defaultRegistryToolDefinitionsAnnotation: `[{"name":"search_files","description":"Search for files","inputSchema":{"type":"object","properties":{"pattern":{"type":"string"}}},"annotations":{"readOnly":true}}]`,
+					defaultRegistryToolDefinitionsAnnotation: `[{"name":"search_files","description":"Search for files","inputSchema":{"type":"object","properties":{"pattern":{"type":"string"}}},"annotations":{"readOnlyHint":true}}]`,
 				},
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
@@ -844,8 +869,9 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				mcpMetadata := ioStacklok["https://example.com/vmcp-tools-list"].(map[string]any)
 
 				// Check tools is present
+				// After JSON marshaling/unmarshaling, []string becomes []interface{}
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]string)
+				tools, ok := mcpMetadata["tools"].([]interface{})
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 				assert.Equal(t, "search_files", tools[0])
@@ -875,8 +901,9 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 
 				// Both should be present
 				require.NotNil(t, mcpMetadata["tool_definitions"])
+				// After JSON marshaling/unmarshaling, []string becomes []interface{}
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]string)
+				tools, ok := mcpMetadata["tools"].([]interface{})
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 			},
@@ -960,12 +987,17 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				assert.NotNil(t, ioStacklok["https://example.com/proxy"])
 				mcpMetadata := ioStacklok["https://example.com/proxy"].(map[string]any)
 
-				assert.NotNil(t, mcpMetadata["metadata"])
-				kubernetesMetadata := mcpMetadata["metadata"].(map[string]any)
+				// Deserialize to typed ServerExtensions for easier assertions
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
 
-				assert.Equal(t, "default", kubernetesMetadata["kubernetes_namespace"])
-				assert.Equal(t, "test-proxy", kubernetesMetadata["kubernetes_name"])
-				assert.NotEmpty(t, kubernetesMetadata["kubernetes_uid"])
+				require.NotNil(t, ext.Metadata)
+				require.NotNil(t, ext.Metadata.Kubernetes)
+				assert.Equal(t, "default", ext.Metadata.Kubernetes.Namespace)
+				assert.Equal(t, "test-proxy", ext.Metadata.Kubernetes.Name)
+				assert.NotEmpty(t, ext.Metadata.Kubernetes.UID)
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/proxy", sj.Remotes[0].URL)
@@ -1016,7 +1048,7 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 			errContains: "URL not found in annotations",
 		},
 		{
-			name: "MCPRemoteProxy with description set before required check",
+			name: "MCPRemoteProxy with custom namespace",
 			mcpRemoteProxy: createTestMCPRemoteProxy(
 				"proxy-server",
 				"custom-ns",
@@ -1038,12 +1070,17 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				assert.NotNil(t, ioStacklok["https://proxy.example.com"])
 				mcpMetadata := ioStacklok["https://proxy.example.com"].(map[string]any)
 
-				assert.NotNil(t, mcpMetadata["metadata"])
-				kubernetesMetadata := mcpMetadata["metadata"].(map[string]any)
+				// Deserialize to typed ServerExtensions for easier assertions
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
 
-				assert.Equal(t, "custom-ns", kubernetesMetadata["kubernetes_namespace"])
-				assert.Equal(t, "proxy-server", kubernetesMetadata["kubernetes_name"])
-				assert.NotEmpty(t, kubernetesMetadata["kubernetes_uid"])
+				require.NotNil(t, ext.Metadata)
+				require.NotNil(t, ext.Metadata.Kubernetes)
+				assert.Equal(t, "custom-ns", ext.Metadata.Kubernetes.Namespace)
+				assert.Equal(t, "proxy-server", ext.Metadata.Kubernetes.Name)
+				assert.NotEmpty(t, ext.Metadata.Kubernetes.UID)
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://proxy.example.com", sj.Remotes[0].URL)
@@ -1057,7 +1094,7 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				map[string]string{
 					defaultRegistryDescriptionAnnotation:     "Proxy with database tools",
 					defaultRegistryURLAnnotation:             "https://example.com/proxy-tools",
-					defaultRegistryToolDefinitionsAnnotation: `[{"name":"query_database","description":"Execute SQL query","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"database":{"type":"string"}}},"outputSchema":{"type":"object"},"annotations":{"readOnly":true}}]`,
+					defaultRegistryToolDefinitionsAnnotation: `[{"name":"query_database","description":"Execute SQL query","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"database":{"type":"string"}}},"outputSchema":{"type":"object"},"annotations":{"readOnlyHint":true}}]`,
 				},
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
@@ -1081,7 +1118,7 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				assert.NotNil(t, tool["inputSchema"])
 				assert.NotNil(t, tool["outputSchema"])
 				annotations := tool["annotations"].(map[string]interface{})
-				assert.Equal(t, true, annotations["readOnly"])
+				assert.Equal(t, true, annotations["readOnlyHint"])
 			},
 		},
 		{
@@ -1129,8 +1166,9 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				mcpMetadata := ioStacklok["https://example.com/proxy-tools-list"].(map[string]any)
 
 				// Check tools is present
+				// After JSON marshaling/unmarshaling, []string becomes []interface{}
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]string)
+				tools, ok := mcpMetadata["tools"].([]interface{})
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 				assert.Equal(t, "query_database", tools[0])
@@ -1160,8 +1198,9 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 
 				// Both should be present
 				require.NotNil(t, mcpMetadata["tool_definitions"])
+				// After JSON marshaling/unmarshaling, []string becomes []interface{}
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]string)
+				tools, ok := mcpMetadata["tools"].([]interface{})
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 			},
