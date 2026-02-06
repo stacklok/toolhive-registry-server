@@ -1,12 +1,14 @@
 package kubernetes
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/google/uuid"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	"github.com/stacklok/toolhive/pkg/registry/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -66,17 +68,19 @@ func TestExtractServer(t *testing.T) {
 				assert.NotNil(t, ioStacklok["https://example.com/mcp"])
 				mcpMetadata := ioStacklok["https://example.com/mcp"].(map[string]any)
 
-				assert.NotNil(t, mcpMetadata["metadata"])
-				metadata := mcpMetadata["metadata"].(map[string]any)
+				// Deserialize to ServerExtensions to check typed fields
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
 
-				assert.NotNil(t, metadata["kubernetes"])
-				kubernetes := metadata["kubernetes"].(map[string]any)
-
-				assert.Equal(t, "default", kubernetes["namespace"])
-				assert.Equal(t, "test-server", kubernetes["name"])
-				assert.Equal(t, "test/image:latest", kubernetes["image"])
-				assert.Equal(t, "stdio", kubernetes["transport"])
-				assert.NotEmpty(t, kubernetes["uid"])
+				require.NotNil(t, ext.Metadata)
+				require.NotNil(t, ext.Metadata.Kubernetes)
+				assert.Equal(t, "default", ext.Metadata.Kubernetes.Namespace)
+				assert.Equal(t, "test-server", ext.Metadata.Kubernetes.Name)
+				assert.Equal(t, "test/image:latest", ext.Metadata.Kubernetes.Image)
+				assert.Equal(t, "stdio", ext.Metadata.Kubernetes.Transport)
+				assert.NotEmpty(t, ext.Metadata.Kubernetes.UID)
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/mcp", sj.Remotes[0].URL)
@@ -169,17 +173,19 @@ func TestExtractServer(t *testing.T) {
 				assert.NotNil(t, ioStacklok["https://api.example.com/mcp-server"])
 				mcpMetadata := ioStacklok["https://api.example.com/mcp-server"].(map[string]any)
 
-				assert.NotNil(t, mcpMetadata["metadata"])
-				metadata := mcpMetadata["metadata"].(map[string]any)
+				// Deserialize to ServerExtensions to check typed fields
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
 
-				assert.NotNil(t, metadata["kubernetes"])
-				kubernetes := metadata["kubernetes"].(map[string]any)
-
-				assert.Equal(t, "custom-ns", kubernetes["namespace"])
-				assert.Equal(t, "full-server", kubernetes["name"])
-				assert.Equal(t, "registry.example.com/image:tag", kubernetes["image"])
-				assert.Equal(t, "sse", kubernetes["transport"])
-				assert.NotEmpty(t, kubernetes["uid"])
+				require.NotNil(t, ext.Metadata)
+				require.NotNil(t, ext.Metadata.Kubernetes)
+				assert.Equal(t, "custom-ns", ext.Metadata.Kubernetes.Namespace)
+				assert.Equal(t, "full-server", ext.Metadata.Kubernetes.Name)
+				assert.Equal(t, "registry.example.com/image:tag", ext.Metadata.Kubernetes.Image)
+				assert.Equal(t, "sse", ext.Metadata.Kubernetes.Transport)
+				assert.NotEmpty(t, ext.Metadata.Kubernetes.UID)
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://api.example.com/mcp-server", sj.Remotes[0].URL)
