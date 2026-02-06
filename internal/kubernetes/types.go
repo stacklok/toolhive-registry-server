@@ -202,13 +202,6 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 		Version: "1.0.0", // Default version, could be extracted from annotations or labels
 	}
 
-	// Extract description from annotations if available
-	if annotations := mcpRemoteProxy.GetAnnotations(); annotations != nil {
-		if desc, ok := annotations[defaultRegistryDescriptionAnnotation]; ok {
-			serverJSON.Description = desc
-		}
-	}
-
 	annotations := mcpRemoteProxy.GetAnnotations()
 	if annotations == nil {
 		return nil, fmt.Errorf("annotations not found")
@@ -376,6 +369,10 @@ func parseImageTagOrDigest(image string) string {
 // structToMap converts a struct to map[string]any using JSON marshaling.
 // This is needed to convert typed structs (like ServerExtensions) into the generic map
 // structure expected by the PublisherProvided field, while preserving proper JSON serialization.
+//
+// Note: JSON numbers unmarshal to float64 in map[string]any. This is fine for the current
+// use case (only string fields are set from Kubernetes metadata), but callers should be
+// aware that any integer fields (e.g., ProxyPort, Stars) will become float64 in the result.
 func structToMap(v any) (map[string]any, error) {
 	// Marshal the struct to JSON
 	data, err := json.Marshal(v)
