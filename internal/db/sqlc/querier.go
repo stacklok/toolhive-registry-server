@@ -18,12 +18,13 @@ type Querier interface {
 	CreateTempIconTable(ctx context.Context) error
 	// Temp Package Table Operations
 	CreateTempPackageTable(ctx context.Context) error
-	// Temp Remote Table Operations
-	CreateTempRemoteTable(ctx context.Context) error
 	// Temporary table operations for bulk sync
 	// Note: These queries reference temp tables that don't exist in the schema.
 	// sqlc cannot validate these, but we organize them here for maintainability.
 	// Temp Server Table Operations
+	CreateTempRegistryEntryTable(ctx context.Context) error
+	// Temp Remote Table Operations
+	CreateTempRemoteTable(ctx context.Context) error
 	CreateTempServerTable(ctx context.Context) error
 	// Delete an API registry by name (returns 0 if not found or is CONFIG type)
 	DeleteAPIRegistry(ctx context.Context, name string) (int64, error)
@@ -31,14 +32,14 @@ type Querier interface {
 	DeleteConfigRegistriesNotInList(ctx context.Context, ids []uuid.UUID) error
 	// Delete a CONFIG registry by name (returns 0 if not found or is API type)
 	DeleteConfigRegistry(ctx context.Context, name string) (int64, error)
-	DeleteOrphanedIcons(ctx context.Context, serverIds []uuid.UUID) error
-	DeleteOrphanedPackages(ctx context.Context, serverIds []uuid.UUID) error
-	DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UUID) error
+	DeleteOrphanedIcons(ctx context.Context, entryIds []uuid.UUID) error
+	DeleteOrphanedPackages(ctx context.Context, entryIds []uuid.UUID) error
+	DeleteOrphanedRemotes(ctx context.Context, entryIds []uuid.UUID) error
 	DeleteOrphanedServers(ctx context.Context, arg DeleteOrphanedServersParams) error
-	DeleteServerIconsByServerId(ctx context.Context, serverID uuid.UUID) error
-	DeleteServerPackagesByServerId(ctx context.Context, serverID uuid.UUID) error
-	DeleteServerRemotesByServerId(ctx context.Context, serverID uuid.UUID) error
-	DeleteServerVersion(ctx context.Context, arg DeleteServerVersionParams) (int64, error)
+	DeleteRegistryEntry(ctx context.Context, arg DeleteRegistryEntryParams) (int64, error)
+	DeleteServerIconsByServerId(ctx context.Context, entryID uuid.UUID) error
+	DeleteServerPackagesByServerId(ctx context.Context, entryID uuid.UUID) error
+	DeleteServerRemotesByServerId(ctx context.Context, entryID uuid.UUID) error
 	DeleteServersByRegistry(ctx context.Context, regID uuid.UUID) error
 	GetAPIRegistriesByNames(ctx context.Context, names []string) ([]GetAPIRegistriesByNamesRow, error)
 	GetRegistry(ctx context.Context, id uuid.UUID) (GetRegistryRow, error)
@@ -58,8 +59,10 @@ type Querier interface {
 	// ============================================================================
 	// Insert a new CONFIG registry with full configuration
 	InsertConfigRegistry(ctx context.Context, arg InsertConfigRegistryParams) (uuid.UUID, error)
+	InsertRegistryEntry(ctx context.Context, arg InsertRegistryEntryParams) (uuid.UUID, error)
 	InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (uuid.UUID, error)
 	InsertServerIcon(ctx context.Context, arg InsertServerIconParams) error
+	// TODO: this seems unused
 	InsertServerPackage(ctx context.Context, arg InsertServerPackageParams) error
 	InsertServerRemote(ctx context.Context, arg InsertServerRemoteParams) error
 	InsertServerVersion(ctx context.Context, arg InsertServerVersionParams) (uuid.UUID, error)
@@ -68,8 +71,8 @@ type Querier interface {
 	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]ListRegistriesRow, error)
 	ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow, error)
 	ListRegistrySyncsByLastUpdate(ctx context.Context) ([]ListRegistrySyncsByLastUpdateRow, error)
-	ListServerPackages(ctx context.Context, serverIds []uuid.UUID) ([]ListServerPackagesRow, error)
-	ListServerRemotes(ctx context.Context, serverIds []uuid.UUID) ([]McpServerRemote, error)
+	ListServerPackages(ctx context.Context, entryIds []uuid.UUID) ([]ListServerPackagesRow, error)
+	ListServerRemotes(ctx context.Context, entryIds []uuid.UUID) ([]McpServerRemote, error)
 	ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error)
 	// Cursor-based pagination using (name, version) compound cursor.
 	// The cursor_name and cursor_version parameters define the starting point.
@@ -84,6 +87,7 @@ type Querier interface {
 	UpsertIconsFromTemp(ctx context.Context) error
 	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (uuid.UUID, error)
 	UpsertPackagesFromTemp(ctx context.Context) error
+	UpsertRegistryEntriesFromTemp(ctx context.Context) ([]UpsertRegistryEntriesFromTempRow, error)
 	UpsertRegistrySyncByName(ctx context.Context, arg UpsertRegistrySyncByNameParams) error
 	UpsertRemotesFromTemp(ctx context.Context) error
 	UpsertServerVersionForSync(ctx context.Context, arg UpsertServerVersionForSyncParams) (uuid.UUID, error)
