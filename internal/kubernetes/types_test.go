@@ -697,15 +697,17 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				assert.NotNil(t, ioStacklok["https://example.com/vmcp"])
 				mcpMetadata := ioStacklok["https://example.com/vmcp"].(map[string]any)
 
-				assert.NotNil(t, mcpMetadata["metadata"])
-				metadata := mcpMetadata["metadata"].(map[string]any)
+				// Deserialize to typed ServerExtensions for easier assertions
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
 
-				assert.NotNil(t, metadata["kubernetes"])
-				kubernetes := metadata["kubernetes"].(map[string]any)
-
-				assert.Equal(t, "default", kubernetes["namespace"])
-				assert.Equal(t, "test-vmcp-server", kubernetes["name"])
-				assert.NotEmpty(t, kubernetes["uid"])
+				require.NotNil(t, ext.Metadata)
+				require.NotNil(t, ext.Metadata.Kubernetes)
+				assert.Equal(t, "default", ext.Metadata.Kubernetes.Namespace)
+				assert.Equal(t, "test-vmcp-server", ext.Metadata.Kubernetes.Name)
+				assert.NotEmpty(t, ext.Metadata.Kubernetes.UID)
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/vmcp", sj.Remotes[0].URL)
@@ -778,12 +780,15 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				assert.NotNil(t, ioStacklok["https://api.prod.example.com/vmcp"])
 				mcpMetadata := ioStacklok["https://api.prod.example.com/vmcp"].(map[string]any)
 
-				assert.NotNil(t, mcpMetadata["metadata"])
-				metadata := mcpMetadata["metadata"].(map[string]any)
+				// Deserialize to typed ServerExtensions for easier assertions
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
 
-				assert.NotNil(t, metadata["kubernetes"])
-				kubernetes := metadata["kubernetes"].(map[string]any)
-				assert.Equal(t, "production", kubernetes["namespace"])
+				require.NotNil(t, ext.Metadata)
+				require.NotNil(t, ext.Metadata.Kubernetes)
+				assert.Equal(t, "production", ext.Metadata.Kubernetes.Namespace)
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, "https://api.prod.example.com/vmcp", sj.Remotes[0].URL)
 			},
@@ -982,15 +987,17 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				assert.NotNil(t, ioStacklok["https://example.com/proxy"])
 				mcpMetadata := ioStacklok["https://example.com/proxy"].(map[string]any)
 
-				assert.NotNil(t, mcpMetadata["metadata"])
-				metadata := mcpMetadata["metadata"].(map[string]any)
+				// Deserialize to typed ServerExtensions for easier assertions
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
 
-				assert.NotNil(t, metadata["kubernetes"])
-				kubernetes := metadata["kubernetes"].(map[string]any)
-
-				assert.Equal(t, "default", kubernetes["namespace"])
-				assert.Equal(t, "test-proxy", kubernetes["name"])
-				assert.NotEmpty(t, kubernetes["uid"])
+				require.NotNil(t, ext.Metadata)
+				require.NotNil(t, ext.Metadata.Kubernetes)
+				assert.Equal(t, "default", ext.Metadata.Kubernetes.Namespace)
+				assert.Equal(t, "test-proxy", ext.Metadata.Kubernetes.Name)
+				assert.NotEmpty(t, ext.Metadata.Kubernetes.UID)
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/proxy", sj.Remotes[0].URL)
@@ -1063,15 +1070,17 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				assert.NotNil(t, ioStacklok["https://proxy.example.com"])
 				mcpMetadata := ioStacklok["https://proxy.example.com"].(map[string]any)
 
-				assert.NotNil(t, mcpMetadata["metadata"])
-				metadata := mcpMetadata["metadata"].(map[string]any)
+				// Deserialize to typed ServerExtensions for easier assertions
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
 
-				assert.NotNil(t, metadata["kubernetes"])
-				kubernetes := metadata["kubernetes"].(map[string]any)
-
-				assert.Equal(t, "custom-ns", kubernetes["namespace"])
-				assert.Equal(t, "proxy-server", kubernetes["name"])
-				assert.NotEmpty(t, kubernetes["uid"])
+				require.NotNil(t, ext.Metadata)
+				require.NotNil(t, ext.Metadata.Kubernetes)
+				assert.Equal(t, "custom-ns", ext.Metadata.Kubernetes.Namespace)
+				assert.Equal(t, "proxy-server", ext.Metadata.Kubernetes.Name)
+				assert.NotEmpty(t, ext.Metadata.Kubernetes.UID)
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://proxy.example.com", sj.Remotes[0].URL)
