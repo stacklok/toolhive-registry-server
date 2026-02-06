@@ -21,7 +21,7 @@ require (
 	github.com/modelcontextprotocol/registry v1.4.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	github.com/stacklok/toolhive v0.9.1
+	github.com/stacklok/toolhive v0.9.2
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc5
 	github.com/testcontainers/testcontainers-go v0.40.0
@@ -257,5 +257,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
-
-replace github.com/stacklok/toolhive => ../../toolhive
