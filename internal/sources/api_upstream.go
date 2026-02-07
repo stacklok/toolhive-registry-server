@@ -42,13 +42,15 @@ const (
 type upstreamAPIHandler struct {
 	httpClient httpclient.Client
 	validator  RegistryDataValidator
+	cfg        *config.Config
 }
 
 // NewUpstreamAPIHandler creates a new upstream MCP Registry API handler
-func NewUpstreamAPIHandler(httpClient httpclient.Client) *upstreamAPIHandler {
+func NewUpstreamAPIHandler(httpClient httpclient.Client, cfg *config.Config) *upstreamAPIHandler {
 	return &upstreamAPIHandler{
 		httpClient: httpClient,
 		validator:  NewRegistryDataValidator(),
+		cfg:        cfg,
 	}
 }
 

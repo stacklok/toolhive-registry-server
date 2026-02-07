@@ -15,16 +15,18 @@ type apiRegistryHandler struct {
 	httpClient      httpclient.Client
 	validator       RegistryDataValidator
 	upstreamHandler *upstreamAPIHandler
+	cfg             *config.Config
 }
 
 // NewAPIRegistryHandler creates a new API registry handler
-func NewAPIRegistryHandler() RegistryHandler {
+func NewAPIRegistryHandler(cfg *config.Config) RegistryHandler {
 	httpClient := httpclient.NewDefaultClient(0) // Use default timeout
 
 	return &apiRegistryHandler{
 		httpClient:      httpClient,
 		validator:       NewRegistryDataValidator(),
-		upstreamHandler: NewUpstreamAPIHandler(httpClient),
+		upstreamHandler: NewUpstreamAPIHandler(httpClient, cfg),
+		cfg:             cfg,
 	}
 }
 

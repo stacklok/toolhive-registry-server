@@ -21,13 +21,15 @@ const (
 type gitRegistryHandler struct {
 	gitClient git2.Client
 	validator RegistryDataValidator
+	cfg       *config.Config
 }
 
 // NewGitRegistryHandler creates a new Git registry handler
-func NewGitRegistryHandler() RegistryHandler {
+func NewGitRegistryHandler(cfg *config.Config) RegistryHandler {
 	return &gitRegistryHandler{
 		gitClient: git2.NewDefaultGitClient(),
 		validator: NewRegistryDataValidator(),
+		cfg:       cfg,
 	}
 }
 

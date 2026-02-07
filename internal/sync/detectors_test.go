@@ -100,7 +100,7 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			registryHandlerFactory := sources.NewRegistryHandlerFactory()
+			registryHandlerFactory := sources.NewRegistryHandlerFactory(nil)
 			detector := &defaultDataChangeDetector{
 				registryHandlerFactory: registryHandlerFactory,
 			}

@@ -11,14 +11,14 @@ import (
 func TestNewRegistryHandlerFactory(t *testing.T) {
 	t.Parallel()
 
-	factory := NewRegistryHandlerFactory()
+	factory := NewRegistryHandlerFactory(nil)
 	assert.NotNil(t, factory)
 }
 
 func TestDefaultRegistryHandlerFactory_CreateHandler(t *testing.T) {
 	t.Parallel()
 
-	factory := NewRegistryHandlerFactory()
+	factory := NewRegistryHandlerFactory(nil)
 
 	tests := []struct {
 		name           string

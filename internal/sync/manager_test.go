@@ -23,7 +23,7 @@ import (
 func TestNewDefaultSyncManager(t *testing.T) {
 	t.Parallel()
 
-	registryHandlerFactory := sources.NewRegistryHandlerFactory()
+	registryHandlerFactory := sources.NewRegistryHandlerFactory(nil)
 	storageManager := sources.NewFileStorageManager("/tmp/test-storage")
 
 	syncManager := NewDefaultSyncManager(registryHandlerFactory, storageManager)
@@ -121,7 +121,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			registryHandlerFactory := sources.NewRegistryHandlerFactory()
+			registryHandlerFactory := sources.NewRegistryHandlerFactory(nil)
 			storageManager := sources.NewFileStorageManager("/tmp/test-storage")
 			syncManager := NewDefaultSyncManager(registryHandlerFactory, storageManager)
 
@@ -265,7 +265,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			registryHandlerFactory := sources.NewRegistryHandlerFactory()
+			registryHandlerFactory := sources.NewRegistryHandlerFactory(nil)
 			mockStorageManager := mocks.NewMockStorageManager(ctrl)
 
 			// Setup expectations for successful syncs

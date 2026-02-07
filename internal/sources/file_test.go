@@ -61,7 +61,7 @@ const testUpstreamRegistryData = `{
 func TestNewFileRegistryHandler(t *testing.T) {
 	t.Parallel()
 
-	handler := NewFileRegistryHandler()
+	handler := NewFileRegistryHandler(nil)
 	assert.NotNil(t, handler)
 	// Cast to concrete type to access fields in tests (same package)
 	concreteHandler := handler.(*fileRegistryHandler)
@@ -129,7 +129,7 @@ func TestFileRegistryHandler_Validate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler := NewFileRegistryHandler()
+			handler := NewFileRegistryHandler(nil)
 			err := handler.Validate(tt.registryConfig)
 
 			if tt.expectError {
@@ -274,7 +274,7 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 			filePath := tt.setupFile(t)
 			regCfg := tt.registryConfig(filePath)
 
-			handler := NewFileRegistryHandler()
+			handler := NewFileRegistryHandler(nil)
 			result, err := handler.FetchRegistry(context.Background(), regCfg)
 
 			if tt.expectError {
@@ -309,7 +309,7 @@ func TestFileRegistryHandler_CurrentHash(t *testing.T) {
 		},
 	}
 
-	handler := NewFileRegistryHandler()
+	handler := NewFileRegistryHandler(nil)
 	hash, err := handler.CurrentHash(context.Background(), regCfg)
 
 	require.NoError(t, err)
@@ -332,7 +332,7 @@ func TestFileRegistryHandler_CurrentHash_FileNotFound(t *testing.T) {
 		},
 	}
 
-	handler := NewFileRegistryHandler()
+	handler := NewFileRegistryHandler(nil)
 	hash, err := handler.CurrentHash(context.Background(), regCfg)
 
 	require.Error(t, err)
@@ -351,7 +351,7 @@ func TestFileRegistryHandler_CurrentHash_ValidationFailure(t *testing.T) {
 		},
 	}
 
-	handler := NewFileRegistryHandler()
+	handler := NewFileRegistryHandler(nil)
 	hash, err := handler.CurrentHash(context.Background(), regCfg)
 
 	require.Error(t, err)
@@ -416,7 +416,7 @@ func TestFileRegistryHandler_Validate_URL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler := NewFileRegistryHandler()
+			handler := NewFileRegistryHandler(nil)
 			err := handler.Validate(tt.registryConfig)
 
 			if tt.expectError {
@@ -516,7 +516,7 @@ func TestFileRegistryHandler_FetchRegistry_URL(t *testing.T) {
 
 			// Create handler with custom HTTP client
 			client := httpclient.NewDefaultClient(DefaultURLTimeout)
-			handler := NewFileRegistryHandlerWithClient(client)
+			handler := NewFileRegistryHandlerWithClient(client, nil)
 
 			regCfg := &config.RegistryConfig{
 				Name:   "test-url",
@@ -556,7 +556,7 @@ func TestFileRegistryHandler_CurrentHash_URL(t *testing.T) {
 
 	// Create handler with custom HTTP client
 	client := httpclient.NewDefaultClient(DefaultURLTimeout)
-	handler := NewFileRegistryHandlerWithClient(client)
+	handler := NewFileRegistryHandlerWithClient(client, nil)
 
 	regCfg := &config.RegistryConfig{
 		Name:   "test-url",
@@ -589,7 +589,7 @@ func TestFileRegistryHandler_FetchRegistry_URL_WithTimeout(t *testing.T) {
 
 	// Create handler
 	client := httpclient.NewDefaultClient(DefaultURLTimeout)
-	handler := NewFileRegistryHandlerWithClient(client)
+	handler := NewFileRegistryHandlerWithClient(client, nil)
 
 	regCfg := &config.RegistryConfig{
 		Name:   "test-url",
@@ -612,7 +612,7 @@ func TestNewFileRegistryHandlerWithClient(t *testing.T) {
 	t.Parallel()
 
 	client := httpclient.NewDefaultClient(DefaultURLTimeout)
-	handler := NewFileRegistryHandlerWithClient(client)
+	handler := NewFileRegistryHandlerWithClient(client, nil)
 
 	assert.NotNil(t, handler)
 	concreteHandler := handler.(*fileRegistryHandler)

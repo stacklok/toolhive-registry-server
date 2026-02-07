@@ -207,7 +207,7 @@ info:
 			defer mockServer.Close()
 
 			httpClient := httpclient.NewDefaultClient(0)
-			handler := NewUpstreamAPIHandler(httpClient)
+			handler := NewUpstreamAPIHandler(httpClient, nil)
 			ctx := context.Background()
 
 			err := handler.Validate(ctx, mockServer.URL)
@@ -302,7 +302,7 @@ func TestUpstreamAPIHandler_FetchRegistry(t *testing.T) {
 			defer mockServer.Close()
 
 			httpClient := httpclient.NewDefaultClient(0)
-			handler := NewUpstreamAPIHandler(httpClient)
+			handler := NewUpstreamAPIHandler(httpClient, nil)
 			ctx := context.Background()
 
 			registryConfig := &config.RegistryConfig{
@@ -394,7 +394,7 @@ func TestUpstreamAPIHandler_FetchRegistry_Pagination(t *testing.T) {
 	defer mockServer.Close()
 
 	httpClient := httpclient.NewDefaultClient(0)
-	handler := NewUpstreamAPIHandler(httpClient)
+	handler := NewUpstreamAPIHandler(httpClient, nil)
 	ctx := context.Background()
 
 	registryConfig := &config.RegistryConfig{
@@ -478,7 +478,7 @@ func TestUpstreamAPIHandler_CurrentHash(t *testing.T) {
 			defer mockServer.Close()
 
 			httpClient := httpclient.NewDefaultClient(0)
-			handler := NewUpstreamAPIHandler(httpClient)
+			handler := NewUpstreamAPIHandler(httpClient, nil)
 			ctx := context.Background()
 
 			registryConfig := &config.RegistryConfig{
@@ -538,7 +538,7 @@ func TestUpstreamAPIHandler_HashConsistency(t *testing.T) {
 	defer mockServer.Close()
 
 	httpClient := httpclient.NewDefaultClient(0)
-	handler := NewUpstreamAPIHandler(httpClient)
+	handler := NewUpstreamAPIHandler(httpClient, nil)
 	ctx := context.Background()
 
 	registryConfig := &config.RegistryConfig{
@@ -582,7 +582,7 @@ func TestUpstreamAPIHandler_EmptyServers(t *testing.T) {
 	defer mockServer.Close()
 
 	httpClient := httpclient.NewDefaultClient(0)
-	handler := NewUpstreamAPIHandler(httpClient)
+	handler := NewUpstreamAPIHandler(httpClient, nil)
 	ctx := context.Background()
 
 	registryConfig := &config.RegistryConfig{
@@ -642,7 +642,7 @@ func TestUpstreamAPIHandler_MultiplePages(t *testing.T) {
 	defer mockServer.Close()
 
 	httpClient := httpclient.NewDefaultClient(0)
-	handler := NewUpstreamAPIHandler(httpClient)
+	handler := NewUpstreamAPIHandler(httpClient, nil)
 	ctx := context.Background()
 
 	registryConfig := &config.RegistryConfig{
@@ -670,7 +670,7 @@ func TestNewUpstreamAPIHandler(t *testing.T) {
 	t.Parallel()
 
 	httpClient := httpclient.NewDefaultClient(0)
-	handler := NewUpstreamAPIHandler(httpClient)
+	handler := NewUpstreamAPIHandler(httpClient, nil)
 
 	require.NotNil(t, handler, "NewUpstreamAPIHandler should return a non-nil handler")
 }
@@ -701,7 +701,7 @@ func TestUpstreamAPIHandler_HTTPErrorCodes(t *testing.T) {
 			defer mockServer.Close()
 
 			httpClient := httpclient.NewDefaultClient(0)
-			handler := NewUpstreamAPIHandler(httpClient)
+			handler := NewUpstreamAPIHandler(httpClient, nil)
 			ctx := context.Background()
 
 			registryConfig := &config.RegistryConfig{
