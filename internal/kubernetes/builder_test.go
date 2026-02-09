@@ -73,6 +73,18 @@ func TestWithNamespaces(t *testing.T) {
 			initial:    &mcpServerReconcilerOptions{},
 			want:       nil,
 		},
+		{
+			name:       "duplicate namespace returns error",
+			namespaces: []string{"default", "default"},
+			initial:    &mcpServerReconcilerOptions{},
+			want:       nil,
+		},
+		{
+			name:       "duplicate namespace not adjacent returns error",
+			namespaces: []string{"a", "b", "a"},
+			initial:    &mcpServerReconcilerOptions{},
+			want:       nil,
+		},
 	}
 
 	for _, tt := range tests {

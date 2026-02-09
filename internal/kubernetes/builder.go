@@ -37,6 +37,10 @@ const (
 )
 
 var (
+	namespaceRegex = regexp.MustCompile(namespaceRegexPattern)
+)
+
+var (
 	// serviceAccountNamespaceFile is the path to the file containing the namespace
 	// of the service account running in a Kubernetes pod.
 	// This is a variable to allow tests to override it.
@@ -70,6 +74,15 @@ func WithNamespaces(namespaces ...string) Option {
 		if err := validateNamespaces(namespaces); err != nil {
 			// Don't wrap error, return it directly
 			return err
+		}
+
+		nsSet := make(map[string]bool)
+		for _, namespace := range namespaces {
+			if !nsSet[namespace] {
+				nsSet[namespace] = true
+			} else {
+				return fmt.Errorf("duplicate namespace: %s", namespace)
+			}
 		}
 
 		if o.namespaces == nil {
@@ -230,7 +243,7 @@ func NewMCPServerReconciler(
 
 func validateNamespaces(namespaces []string) error {
 	for _, namespace := range namespaces {
-		if !regexp.MustCompile(namespaceRegexPattern).MatchString(namespace) {
+		if !namespaceRegex.MatchString(namespace) {
 			return fmt.Errorf("invalid namespace name: %s", namespace)
 		}
 	}
