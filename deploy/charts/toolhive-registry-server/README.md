@@ -72,14 +72,15 @@ The command removes all the Kubernetes components associated with the chart and 
 | image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v0.5.3"` | URL of the registry server image |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries |
 | initContainers | list | `[]` | Init containers to run before the main container Use this for setup tasks like preparing pgpass files, waiting for dependencies, etc. Init containers share the same volumes as the main container (extraVolumes) |
-| leaderElectionRole | object | `{"binding":{"name":""},"name":"","rules":[{"apiGroups":["toolhive.stacklok.dev"],"resources":["mcpservers","mcpremoteproxies","virtualmcpservers"],"verbs":["get","list","watch"]},{"apiGroups":[""],"resources":["services"],"verbs":["get","list","watch"]},{"apiGroups":[""],"resources":["configmaps"],"verbs":["get","list","watch","create","update","patch","delete"]},{"apiGroups":["coordination.k8s.io"],"resources":["leases"],"verbs":["get","list","watch","create","update","patch","delete"]},{"apiGroups":[""],"resources":["events"],"verbs":["create","patch"]}]}` | Leader election role configuration |
-| leaderElectionRole.binding.name | string | `""` | Name of the role binding for leader election |
 | livenessProbe | object | `{"httpGet":{"path":"/health","port":"http"},"initialDelaySeconds":30,"periodSeconds":10}` | Liveness probe configuration |
 | nameOverride | string | `""` | Override the name of the chart |
 | nodeSelector | object | `{}` | Node selector for pod scheduling |
 | podAnnotations | object | `{}` | Annotations to add to the pod |
 | podLabels | object | `{}` | Labels to add to the pod |
 | podSecurityContext | object | `{}` | Pod security context |
+| rbac | object | `{"allowedNamespaces":[],"scope":"cluster"}` | RBAC configuration for the registry server |
+| rbac.allowedNamespaces | list | `[]` | List of namespaces that the registry server is allowed to watch. Only used if scope is set to "namespace". |
+| rbac.scope | string | `"cluster"` | Scope of the RBAC configuration. - cluster: The registry server will have cluster-wide permissions via ClusterRole and ClusterRoleBinding. - namespace: The registry server will have permissions to watch resources in the namespaces specified in `allowedNamespaces`.   The registry server will have a ClusterRole and RoleBinding for each namespace in `allowedNamespaces`. |
 | readinessProbe | object | `{"httpGet":{"path":"/readiness","port":"http"},"initialDelaySeconds":5,"periodSeconds":5}` | Readiness probe configuration |
 | replicaCount | int | `1` | Number of replicas |
 | resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | Resource requests and limits (matching operator defaults) |
@@ -89,6 +90,6 @@ The command removes all the Kubernetes components associated with the chart and 
 | service.type | string | `"ClusterIP"` | Service type |
 | serviceAccount.annotations | object | `{}` | Annotations to add to the service account |
 | serviceAccount.create | bool | `true` | Specifies whether a service account should be created |
-| serviceAccount.name | string | `""` | The name of the service account to use. If not set and create is true, a name is generated using the fullname template |
+| serviceAccount.name | string | `"toolhive-registry-server"` | The name of the service account to use |
 | tolerations | list | `[]` | Tolerations for pod scheduling |
 

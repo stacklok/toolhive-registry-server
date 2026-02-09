@@ -1,0 +1,39 @@
+{{- include "toolhive-registry-server.rbacValidation" . }}
+{{- if eq .Values.rbac.scope "cluster" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: toolhive-registry-server-manager-rolebinding
+  labels:
+    {{- include "toolhive-registry-server.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: toolhive-registry-server-manager-role
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.serviceAccount.name }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+
+{{- if eq .Values.rbac.scope "namespace" }}
+{{- range .Values.rbac.allowedNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: toolhive-registry-server-manager-rolebinding
+  namespace: {{ . }}
+  labels:
+    {{- include "toolhive-registry-server.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: toolhive-registry-server-manager-role
+subjects:
+- kind: ServiceAccount
+  name: {{ $.Values.serviceAccount.name }}
+  namespace: {{ $.Release.Namespace }}
+{{- end }}
+{{- end }}

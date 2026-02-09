@@ -52,31 +52,6 @@ app.kubernetes.io/component: registry-api
 {{- end }}
 
 {{/*
-Create the name of the service account to use
-*/}}
-{{- define "toolhive-registry-server.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "toolhive-registry-server.fullname" .) .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
-{{- end }}
-
-{{/*
-Create the name of the leader election role to use
-*/}}
-{{- define "toolhive-registry-server.leaderElectionRoleName" -}}
-{{- default (include "toolhive-registry-server.fullname" .) .Values.leaderElectionRole.name }}
-{{- end }}
-
-{{/*
-Create the name of the leader election role binding to use
-*/}}
-{{- define "toolhive-registry-server.leaderElectionRoleBindingName" -}}
-{{- default (include "toolhive-registry-server.fullname" .) .Values.leaderElectionRole.binding.name }}
-{{- end }}
-
-{{/*
 Create the name of the configmap for the registry server config
 */}}
 {{- define "toolhive-registry-server.configMapName" -}}
@@ -89,3 +64,18 @@ Config file hash annotation for rolling updates
 {{- define "toolhive-registry-server.configHash" -}}
 {{- .Values.config | toYaml | sha256sum | trunc 63 }}
 {{- end }}
+
+{{/*
+Validation
+*/}}
+{{- define "toolhive-registry-server.rbacValidation" -}}
+{{- if and (ne .Values.rbac.scope "cluster") (ne .Values.rbac.scope "namespace")}}
+{{- fail "rbac.scope must be either cluster or namespace"}}
+{{- end }}
+{{- if and (eq .Values.rbac.scope "cluster") (ne (len .Values.rbac.allowedNamespaces) 0) }}
+{{- fail "rbac.allowedNamespaces must be empty when rbac.scope is cluster" }}
+{{- end }}
+{{- if and (eq .Values.rbac.scope "namespace") (eq (len .Values.rbac.allowedNamespaces) 0) }}
+{{- fail "rbac.allowedNamespaces must be non-empty when rbac.scope is namespace" }}
+{{- end }}
+{{- end}}
