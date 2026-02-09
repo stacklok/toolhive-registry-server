@@ -124,7 +124,7 @@ tasks:
         silent: true
       - task: deadcode
     cmds:
-      - golangci-lint run ./...
+      - golangci-lint run --allow-parallel-runners ./...
       - go vet ./...
 
   lint-fix:
@@ -138,7 +138,7 @@ tasks:
         silent: true
       - task: deadcode
     cmds:
-      - golangci-lint run --fix ./...
+      - golangci-lint run --allow-parallel-runners --fix ./...
 
   build:
     desc: Build the registry API binary
