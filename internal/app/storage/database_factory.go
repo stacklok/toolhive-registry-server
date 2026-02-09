@@ -80,7 +80,7 @@ func (d *DatabaseFactory) CreateStateService(_ context.Context) (state.RegistryS
 // CreateSyncWriter creates a database-backed sync writer for storing registry data.
 func (d *DatabaseFactory) CreateSyncWriter(_ context.Context) (writer.SyncWriter, error) {
 	slog.Debug("Creating database-backed sync writer")
-	return writer.NewSyncWriter(d.pool)
+	return writer.NewSyncWriter(d.pool, d.config.Database.GetMaxMetaSize())
 }
 
 // CreateRegistryService creates a database-backed registry service.
@@ -91,6 +91,7 @@ func (d *DatabaseFactory) CreateRegistryService(_ context.Context) (service.Regi
 	// Build database service options
 	opts := []database.Option{
 		database.WithConnectionPool(d.pool),
+		database.WithMaxMetaSize(d.config.Database.GetMaxMetaSize()),
 	}
 
 	// Add tracer if configured

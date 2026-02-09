@@ -2720,3 +2720,72 @@ func TestConfigValidateGitAuth(t *testing.T) {
 		})
 	}
 }
+
+func intPtr(i int) *int { return &i }
+
+func TestDatabaseConfigGetMaxMetaSize(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		dbConfig *DatabaseConfig
+		want     int
+	}{
+		{
+			name:     "nil DatabaseConfig returns default",
+			dbConfig: nil,
+			want:     DefaultMaxMetaSize,
+		},
+		{
+			name:     "MaxMetaSize not set returns default",
+			dbConfig: &DatabaseConfig{},
+			want:     DefaultMaxMetaSize,
+		},
+		{
+			name: "MaxMetaSize explicitly set to zero",
+			dbConfig: &DatabaseConfig{
+				MaxMetaSize: intPtr(0),
+			},
+			want: 0,
+		},
+		{
+			name: "MaxMetaSize set to custom value",
+			dbConfig: &DatabaseConfig{
+				MaxMetaSize: intPtr(4096),
+			},
+			want: 4096,
+		},
+		{
+			name: "MaxMetaSize set to negative value returns zero (disabled)",
+			dbConfig: &DatabaseConfig{
+				MaxMetaSize: intPtr(-1),
+			},
+			want: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := tt.dbConfig.GetMaxMetaSize()
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestValidateStorageConfigRejectsNegativeMaxMetaSize(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Database: &DatabaseConfig{
+			Host:        "localhost",
+			Port:        5432,
+			User:        "test",
+			Database:    "testdb",
+			MaxMetaSize: intPtr(-1),
+		},
+	}
+	err := cfg.validateStorageConfig()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "database.maxMetaSize must be non-negative")
+}

@@ -49,8 +49,9 @@ type serverCursor struct {
 
 // options holds configuration options for the database service
 type options struct {
-	pool   *pgxpool.Pool
-	tracer trace.Tracer
+	pool        *pgxpool.Pool
+	tracer      trace.Tracer
+	maxMetaSize int
 }
 
 // Option is a functional option for configuring the database service
@@ -78,10 +79,20 @@ func WithTracer(tracer trace.Tracer) Option {
 	}
 }
 
+// WithMaxMetaSize sets the maximum allowed size in bytes for publisher-provided
+// metadata extensions. Set to 0 to disable the size check.
+func WithMaxMetaSize(maxMetaSize int) Option {
+	return func(o *options) error {
+		o.maxMetaSize = maxMetaSize
+		return nil
+	}
+}
+
 // dbService implements the RegistryService interface using a database backend
 type dbService struct {
-	pool   *pgxpool.Pool
-	tracer trace.Tracer
+	pool        *pgxpool.Pool
+	tracer      trace.Tracer
+	maxMetaSize int
 }
 
 var _ service.RegistryService = (*dbService)(nil)
@@ -97,8 +108,9 @@ func New(opts ...Option) (service.RegistryService, error) {
 	}
 
 	return &dbService{
-		pool:   o.pool,
-		tracer: o.tracer,
+		pool:        o.pool,
+		tracer:      o.tracer,
+		maxMetaSize: o.maxMetaSize,
 	}, nil
 }
 
@@ -367,6 +379,7 @@ func insertServerVersionData(
 	querier *sqlc.Queries,
 	serverData *upstreamv0.ServerJSON,
 	registryID uuid.UUID,
+	maxMetaSize int,
 ) (uuid.UUID, error) {
 	// Prepare repository fields
 	var repoURL, repoID, repoSubfolder, repoType *string
@@ -378,7 +391,7 @@ func insertServerVersionData(
 	}
 
 	// Serialize publisher-provided metadata
-	serverMeta, err := serializePublisherProvidedMeta(serverData.Meta)
+	serverMeta, err := serializePublisherProvidedMeta(serverData.Meta, maxMetaSize)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("failed to serialize metadata: %w", err)
 	}
@@ -674,14 +687,14 @@ func (s *dbService) executePublishTransaction(
 }
 
 // insertServerData inserts the server version and all related data
-func (*dbService) insertServerData(
+func (s *dbService) insertServerData(
 	ctx context.Context,
 	querier *sqlc.Queries,
 	serverData *upstreamv0.ServerJSON,
 	registryID uuid.UUID,
 ) error {
 	// Insert the server version
-	entryID, err := insertServerVersionData(ctx, querier, serverData, registryID)
+	entryID, err := insertServerVersionData(ctx, querier, serverData, registryID, s.maxMetaSize)
 	if err != nil {
 		return err
 	}
@@ -1667,7 +1680,7 @@ func (s *dbService) ProcessInlineRegistryData(ctx context.Context, name string, 
 	}
 
 	// Create a sync writer to store the servers
-	syncWriter, err := writer.NewDBSyncWriter(s.pool)
+	syncWriter, err := writer.NewDBSyncWriter(s.pool, s.maxMetaSize)
 	if err != nil {
 		errMsg := fmt.Sprintf("failed to create sync writer: %v", err)
 		if updateErr := s.updateSyncStatusFailed(ctx, name, errMsg, startTime); updateErr != nil {

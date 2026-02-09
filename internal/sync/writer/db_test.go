@@ -274,7 +274,7 @@ func TestNewDBSyncWriter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			writer, err := NewDBSyncWriter(tt.pool)
+			writer, err := NewDBSyncWriter(tt.pool, 0)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -712,7 +712,7 @@ func TestDbSyncWriter_Store(t *testing.T) {
 
 			tt.setupFunc(t, pool)
 
-			writer, err := NewDBSyncWriter(pool)
+			writer, err := NewDBSyncWriter(pool, 0)
 			require.NoError(t, err)
 
 			err = writer.Store(context.Background(), tt.registryName, tt.registry)
@@ -1102,6 +1102,7 @@ func TestSerializeServerMeta(t *testing.T) {
 	tests := []struct {
 		name        string
 		meta        *upstreamv0.ServerMeta
+		maxMetaSize int
 		expectNil   bool
 		expectError bool
 	}{
@@ -1144,13 +1145,43 @@ func TestSerializeServerMeta(t *testing.T) {
 			},
 			expectNil: false,
 		},
+		{
+			name: "with data within size limit",
+			meta: &upstreamv0.ServerMeta{
+				PublisherProvided: map[string]interface{}{
+					"key": "value",
+				},
+			},
+			maxMetaSize: 1000,
+			expectNil:   false,
+		},
+		{
+			name: "with data exceeding size limit",
+			meta: &upstreamv0.ServerMeta{
+				PublisherProvided: map[string]interface{}{
+					"key": "value",
+				},
+			},
+			maxMetaSize: 5,
+			expectError: true,
+		},
+		{
+			name: "with size limit disabled (zero)",
+			meta: &upstreamv0.ServerMeta{
+				PublisherProvided: map[string]interface{}{
+					"key": "value",
+				},
+			},
+			maxMetaSize: 0,
+			expectNil:   false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result, err := serializeServerMeta(tt.meta)
+			result, err := serializeServerMeta(tt.meta, tt.maxMetaSize)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -1176,7 +1207,7 @@ func TestDbSyncWriter_Store_ContextCancellation(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	// Create a cancelled context
@@ -1200,7 +1231,7 @@ func TestDbSyncWriter_Store_IconThemes(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	// Create server with various icon themes
@@ -1256,7 +1287,7 @@ func TestDbSyncWriter_Store_PackageAcrossServers(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	// Create multiple server versions, each with their own package
@@ -1335,7 +1366,7 @@ func TestDbSyncWriter_Store_MultipleRemotes(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	server := createTestServer("test.org/server", "1.0.0")
@@ -1428,7 +1459,7 @@ func TestDbSyncWriter_Store_LatestVersionDetermination(t *testing.T) {
 
 			createTestRegistry(t, pool, tt.registryName)
 
-			writer, err := NewDBSyncWriter(pool)
+			writer, err := NewDBSyncWriter(pool, 0)
 			require.NoError(t, err)
 
 			servers := make([]upstreamv0.ServerJSON, len(tt.versions))
@@ -1470,7 +1501,7 @@ func TestDbSyncWriter_Store_UUIDStability(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1545,7 +1576,7 @@ func TestDbSyncWriter_Store_UpdatePreservesUUID(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1616,7 +1647,7 @@ func TestDbSyncWriter_Store_OrphanedServerCleanup(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1693,7 +1724,7 @@ func TestDbSyncWriter_Store_PackageCleanup(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1791,7 +1822,7 @@ func TestDbSyncWriter_Store_RemoteCleanup(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1864,7 +1895,7 @@ func TestDbSyncWriter_Store_IconCleanup(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1947,7 +1978,7 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	registryAID := createTestRegistry(t, pool, "registry-A")
 	registryBID := createTestRegistry(t, pool, "registry-B")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -2130,7 +2161,7 @@ func TestDbSyncWriter_Store_ServerWithMultiplePackages(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -2197,7 +2228,7 @@ func TestDbSyncWriter_Store_MultiplePackagesOrphanedCleanup(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -2320,7 +2351,7 @@ func TestDbSyncWriter_Store_PackageUpdate(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -2391,7 +2422,7 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool)
+	writer, err := NewDBSyncWriter(pool, 0)
 	require.NoError(t, err)
 
 	ctx := context.Background()
