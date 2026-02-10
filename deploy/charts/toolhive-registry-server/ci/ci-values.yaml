@@ -19,12 +19,81 @@ livenessProbe:
   httpGet:
     path: /health
     port: http
-  initialDelaySeconds: 10
+  initialDelaySeconds: 15
   periodSeconds: 5
 
 readinessProbe:
   httpGet:
     path: /readiness
     port: http
-  initialDelaySeconds: 5
+  initialDelaySeconds: 10
   periodSeconds: 3
+
+extraEnv:
+- name: PGPASSFILE
+  value: /home/appuser/.pgpass
+
+initContainers:
+- name: pgpass-init
+  image: cgr.dev/chainguard/busybox:latest
+  command:
+    - sh
+    - -c
+    - |
+      cp /secrets/.pgpass /pgpass/.pgpass
+      chmod 600 /pgpass/.pgpass
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 65535
+  volumeMounts:
+    - name: pgpass-secret
+      mountPath: /secrets
+      readOnly: true
+    - name: pgpass
+      mountPath: /pgpass
+
+extraVolumes:
+- name: pgpass-secret
+  secret:
+    secretName: postgres-pgpass
+- name: pgpass
+  emptyDir: {}
+
+extraVolumeMounts:
+- name: pgpass
+  mountPath: /home/appuser/.pgpass
+  subPath: .pgpass
+  readOnly: true
+
+# Registry server configuration with PostgreSQL
+config:
+  registryName: "ci-test"
+
+  registries:
+    - name: toolhive
+      format: toolhive
+      git:
+        repository: https://github.com/stacklok/toolhive.git
+        branch: main
+        path: pkg/registry/data/registry.json
+      syncPolicy:
+        interval: "30m"
+
+  database:
+    host: postgres
+    port: 5432
+    user: db_app
+    migrationUser: db_migrator
+    database: registry
+    sslMode: disable
+    maxOpenConns: 5
+    maxIdleConns: 2
+    connMaxLifetime: "10m"
+
+  auth:
+    mode: anonymous

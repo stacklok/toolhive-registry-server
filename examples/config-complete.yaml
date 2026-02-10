@@ -156,12 +156,11 @@ registries:
   #         - "development"
 
 # ==============================================================================
-# DATABASE CONFIGURATION (Optional)
+# DATABASE CONFIGURATION (Required)
 # ==============================================================================
 
 # PostgreSQL database configuration
-# When configured, the application will store synced registry data in the database
-# instead of local JSON files. This enables:
+# The application stores all synced registry data in the database. This enables:
 #   - Centralized data storage for multiple instances
 #   - Better performance for large registries
 #   - SQL query capabilities
@@ -220,12 +219,8 @@ database:
 # ==============================================================================
 
 # Storage Locations:
-#   Without database:
-#     - Registry data: ./data/{registryName}/registry.json (per-registry)
-#     - Sync status: ./data/{registryName}/status.json (per-registry)
-#   With database:
-#     - Registry data: PostgreSQL database
-#     - Sync status: PostgreSQL database
+#   - Registry data: PostgreSQL database
+#   - Sync status: PostgreSQL database
 
 # Multi-Registry Behavior:
 #   - Each registry runs in its own sync loop with independent timing
@@ -256,11 +251,10 @@ database:
 # Performance:
 #   - Each registry sync runs in a separate goroutine
 #   - Registry data is cached in memory (refreshes based on sync interval)
-#   - Sync status is written atomically per registry to prevent corruption
+#   - Sync status is updated atomically per registry to prevent corruption
 #   - Git clones are shallow (depth=1) to minimize bandwidth
 
 # Monitoring:
-#   - Check ./data/{registryName}/status.json for per-registry sync health
+#   - Use the /health and /readiness endpoints for liveness checks
 #   - Watch server logs for sync messages with registry names
-
 #   - Monitor serverCount in status for changes per registry

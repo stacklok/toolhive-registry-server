@@ -48,7 +48,7 @@ func NewDatabaseFactory(ctx context.Context, cfg *config.Config, opts ...Databas
 	}
 
 	if cfg.Database == nil {
-		return nil, fmt.Errorf("database configuration is required for database storage type")
+		return nil, fmt.Errorf("database configuration is required")
 	}
 
 	slog.Info("Creating database-backed storage factory")

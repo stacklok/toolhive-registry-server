@@ -55,7 +55,11 @@ The command removes all the Kubernetes components associated with the chart and 
 |-----|------|---------|-------------|
 | affinity | object | `{}` | Affinity rules for pod scheduling |
 | config.auth.mode | string | `"anonymous"` |  |
-| config.fileStorage.baseDir | string | `"/data"` |  |
+| config.database.database | string | `"toolhive_registry"` |  |
+| config.database.host | string | `"localhost"` |  |
+| config.database.port | int | `5432` |  |
+| config.database.sslMode | string | `"require"` |  |
+| config.database.user | string | `"thv_user"` |  |
 | config.registries[0].format | string | `"toolhive"` |  |
 | config.registries[0].git.branch | string | `"main"` |  |
 | config.registries[0].git.path | string | `"pkg/registry/data/registry.json"` |  |

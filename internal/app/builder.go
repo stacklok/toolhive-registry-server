@@ -95,8 +95,7 @@ func NewRegistryApp(
 		return nil, fmt.Errorf("failed to build base configuration: %w", err)
 	}
 
-	// Create storage factory (single decision point for DB vs File)
-	// This factory creates all storage-dependent components
+	// Create storage factory for all storage-dependent components
 	if cfg.storageFactory == nil {
 		// Build storage factory options
 		var storageOpts []storage.FactoryOption
@@ -357,7 +356,6 @@ func buildServiceComponents(
 	}
 
 	// Use storage factory to create the service
-	// No storage type checks needed - factory handles everything!
 	svc, err := b.storageFactory.CreateRegistryService(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create registry service: %w", err)

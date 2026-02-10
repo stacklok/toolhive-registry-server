@@ -60,7 +60,7 @@ func WithTracerProvider(tp trace.TracerProvider) FactoryOption {
 	}
 }
 
-// NewStorageFactory creates a storage factory based on the configured storage type.
+// NewStorageFactory creates a database-backed storage factory.
 // Database configuration is required.
 func NewStorageFactory(ctx context.Context, cfg *config.Config, opts ...FactoryOption) (Factory, error) {
 	if cfg == nil {
