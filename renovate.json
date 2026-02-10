@@ -3,7 +3,8 @@
   "extends": [
     "config:recommended",
     "helpers:pinGitHubActionDigests",
-    ":semanticCommitsDisabled"
+    ":semanticCommitsDisabled",
+    "schedule:earlyMondays"
   ],
   "labels": ["dependencies"],
   "packageRules": [
