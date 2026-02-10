@@ -1,3 +1,4 @@
+// Package status provides types for tracking synchronization status.
 package status
 
 import "time"

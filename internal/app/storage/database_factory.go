@@ -74,13 +74,13 @@ func NewDatabaseFactory(ctx context.Context, cfg *config.Config, opts ...Databas
 // CreateStateService creates a database-backed state service for sync status tracking.
 func (d *DatabaseFactory) CreateStateService(_ context.Context) (state.RegistryStateService, error) {
 	slog.Debug("Creating database-backed state service")
-	return state.NewStateService(d.config, nil, d.pool)
+	return state.NewStateService(d.pool)
 }
 
 // CreateSyncWriter creates a database-backed sync writer for storing registry data.
 func (d *DatabaseFactory) CreateSyncWriter(_ context.Context) (writer.SyncWriter, error) {
 	slog.Debug("Creating database-backed sync writer")
-	return writer.NewSyncWriter(d.config, nil, d.pool)
+	return writer.NewSyncWriter(d.pool)
 }
 
 // CreateRegistryService creates a database-backed registry service.

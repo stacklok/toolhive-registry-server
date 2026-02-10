@@ -26,9 +26,6 @@ import (
 )
 
 const (
-	defaultDataDir        = "./data"
-	defaultRegistryFile   = "./data/registry.json"
-	defaultStatusFile     = "./data/status.json"
 	defaultHTTPAddress    = ":8080"
 	defaultRequestTimeout = 10 * time.Second
 	defaultReadTimeout    = 10 * time.Second
@@ -60,11 +57,6 @@ type registryAppConfig struct {
 	writeTimeout   time.Duration
 	idleTimeout    time.Duration
 
-	// Data directories
-	dataDir      string
-	registryFile string
-	statusFile   string
-
 	// Auth components
 	authMiddleware  func(http.Handler) http.Handler
 	authInfoHandler http.Handler
@@ -81,9 +73,6 @@ func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
 		readTimeout:    defaultReadTimeout,
 		writeTimeout:   defaultWriteTimeout,
 		idleTimeout:    defaultIdleTimeout,
-		dataDir:        defaultDataDir,
-		registryFile:   defaultRegistryFile,
-		statusFile:     defaultStatusFile,
 	}
 
 	// Apply options
@@ -114,7 +103,7 @@ func NewRegistryApp(
 		if cfg.tracerProvider != nil {
 			storageOpts = append(storageOpts, storage.WithTracerProvider(cfg.tracerProvider))
 		}
-		cfg.storageFactory, err = storage.NewStorageFactory(ctx, cfg.config, cfg.dataDir, storageOpts...)
+		cfg.storageFactory, err = storage.NewStorageFactory(ctx, cfg.config, storageOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create storage factory: %w", err)
 		}
@@ -222,16 +211,6 @@ func WithAddress(addr string) RegistryAppOptions {
 func WithMiddlewares(mw ...func(http.Handler) http.Handler) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
 		cfg.middlewares = mw
-		return nil
-	}
-}
-
-// WithDataDirectory sets the data directory for storage and status files
-func WithDataDirectory(dir string) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.dataDir = dir
-		cfg.registryFile = dir + "/registry.json"
-		cfg.statusFile = dir + "/status.json"
 		return nil
 	}
 }

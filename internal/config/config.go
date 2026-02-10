@@ -43,24 +43,6 @@ const (
 	EnvPrefix = "THV_REGISTRY"
 )
 
-// StorageType is an enum of supported storage backends for registry data.
-type StorageType string
-
-const (
-	// StorageTypeDatabase stores registry data in PostgreSQL database
-	StorageTypeDatabase StorageType = "database"
-
-	// StorageTypeFile stores registry data in local JSON files
-	StorageTypeFile StorageType = "file"
-)
-
-// FileStorageConfig defines file storage settings
-type FileStorageConfig struct {
-	// BaseDir is the base directory for file storage
-	// Defaults to "./data" if not specified
-	BaseDir string `yaml:"baseDir,omitempty"`
-}
-
 const (
 	// SourceFormatToolHive is the native ToolHive registry format
 	SourceFormatToolHive = "toolhive"
@@ -107,12 +89,11 @@ func WithConfigPath(path string) Option {
 type Config struct {
 	// RegistryName is the name/identifier for this registry instance
 	// Defaults to "default" if not specified
-	RegistryName string             `yaml:"registryName,omitempty"`
-	Registries   []RegistryConfig   `yaml:"registries"`
-	Database     *DatabaseConfig    `yaml:"database,omitempty"`
-	FileStorage  *FileStorageConfig `yaml:"fileStorage,omitempty"`
-	Auth         *AuthConfig        `yaml:"auth,omitempty"`
-	Telemetry    *telemetry.Config  `yaml:"telemetry,omitempty"`
+	RegistryName string            `yaml:"registryName,omitempty"`
+	Registries   []RegistryConfig  `yaml:"registries"`
+	Database     *DatabaseConfig   `yaml:"database,omitempty"`
+	Auth         *AuthConfig       `yaml:"auth,omitempty"`
+	Telemetry    *telemetry.Config `yaml:"telemetry,omitempty"`
 
 	// insecureAllowHTTP allows HTTP URLs for OAuth issuer URLs (development only)
 	// Can be set via THV_REGISTRY_INSECURE_URL environment variable
@@ -690,25 +671,6 @@ func (c *Config) GetRegistryName() string {
 	return c.RegistryName
 }
 
-// GetStorageType determines the storage type based on configuration
-// Returns StorageTypeDatabase if database is configured
-// Returns StorageTypeFile if file storage is configured or neither is configured (default)
-func (c *Config) GetStorageType() StorageType {
-	if c.Database != nil {
-		return StorageTypeDatabase
-	}
-	return StorageTypeFile
-}
-
-// GetFileStorageBaseDir returns the base directory for file storage
-// Returns "./data" as the default if not specified
-func (c *Config) GetFileStorageBaseDir() string {
-	if c.FileStorage != nil && c.FileStorage.BaseDir != "" {
-		return c.FileStorage.BaseDir
-	}
-	return "./data"
-}
-
 // Validate performs validation on the configuration
 func (c *Config) validate() error {
 	if c == nil {
@@ -910,29 +872,22 @@ func validateFileURL(rawURL string, prefix string) error {
 
 // validateStorageConfig validates the storage configuration
 func (c *Config) validateStorageConfig() error {
-	// TODO: Reinstate this validation once database is fully wired in
-	// Error if both database and file storage are configured
-	// if c.Database != nil && c.FileStorage != nil {
-	// 	return fmt.Errorf("cannot configure both database and fileStorage - only one storage backend is allowed")
-	// }
-
-	// If database is configured, validate required fields
-	if c.Database != nil {
-		if c.Database.Host == "" {
-			return fmt.Errorf("database.host is required when database is configured")
-		}
-		if c.Database.Port == 0 {
-			return fmt.Errorf("database.port is required when database is configured")
-		}
-		if c.Database.User == "" {
-			return fmt.Errorf("database.user is required when database is configured")
-		}
-		if c.Database.Database == "" {
-			return fmt.Errorf("database.database is required when database is configured")
-		}
+	if c.Database == nil {
+		return fmt.Errorf("database configuration is required")
 	}
 
-	// File storage validation is minimal - baseDir is optional with default
+	if c.Database.Host == "" {
+		return fmt.Errorf("database.host is required")
+	}
+	if c.Database.Port == 0 {
+		return fmt.Errorf("database.port is required")
+	}
+	if c.Database.User == "" {
+		return fmt.Errorf("database.user is required")
+	}
+	if c.Database.Database == "" {
+		return fmt.Errorf("database.database is required")
+	}
 
 	return nil
 }

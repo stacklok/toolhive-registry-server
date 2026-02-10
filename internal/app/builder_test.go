@@ -48,7 +48,6 @@ func TestNewRegistryAppBuilder(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, built)
 	assert.Equal(t, defaultHTTPAddress, built.address)
-	assert.Equal(t, defaultDataDir, built.dataDir)
 }
 
 func TestRegistryAppWithFunctions(t *testing.T) {
@@ -79,23 +78,6 @@ func TestRegistryAppBuilder_WithAddress(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Equal(t, ":9090", built.address)
-}
-
-func TestRegistryAppBuilder_ChainedBuilder(t *testing.T) {
-	t.Parallel()
-	cfg := createValidTestConfig()
-
-	built, err := baseConfig(
-		WithConfig(cfg),
-		WithAddress(":8888"),
-		WithDataDirectory("/tmp/test-data"),
-	)
-	require.NoError(t, err)
-	require.NotNil(t, built)
-	assert.Equal(t, ":8888", built.address)
-	assert.Equal(t, "/tmp/test-data", built.dataDir)
-	assert.Equal(t, "/tmp/test-data/registry.json", built.registryFile)
-	assert.Equal(t, "/tmp/test-data/status.json", built.statusFile)
 }
 
 // createValidTestConfig creates a minimal valid config for testing
@@ -751,98 +733,80 @@ func TestNewRegistryApp(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	tests := []struct {
-		name   string
-		opts   []RegistryAppOptions
-		verify func(*testing.T, *RegistryApp)
-	}{
-		{
-			name: "success with minimal config",
-			opts: []RegistryAppOptions{
-				WithConfig(createValidTestConfig()),
-				WithDataDirectory(t.TempDir()),
-			},
-			//nolint:thelper // we want to see these lines
-			verify: func(t *testing.T, app *RegistryApp) {
-				assert.NotNil(t, app)
-				assert.NotNil(t, app.config)
-				assert.Equal(t, "test-registry", app.config.RegistryName)
-				assert.NotNil(t, app.components)
-				assert.NotNil(t, app.components.SyncCoordinator)
-				assert.NotNil(t, app.components.RegistryService)
-				assert.NotNil(t, app.httpServer)
-				assert.NotNil(t, app.ctx)
-				assert.NotNil(t, app.cancelFunc)
-				assert.Equal(t, defaultHTTPAddress, app.httpServer.Addr)
-			},
-		},
-		{
-			name: "success with custom address",
-			opts: []RegistryAppOptions{
-				WithConfig(createValidTestConfig()),
-				WithAddress(":9090"),
-				WithDataDirectory(t.TempDir()),
-			},
-			//nolint:thelper // we want to see these lines
-			verify: func(t *testing.T, app *RegistryApp) {
-				assert.NotNil(t, app)
-				assert.NotNil(t, app.httpServer)
-				assert.Equal(t, ":9090", app.httpServer.Addr)
-				assert.NotNil(t, app.components.SyncCoordinator)
-				assert.NotNil(t, app.components.RegistryService)
-			},
-		},
-		{
-			name: "success with custom data directory",
-			opts: []RegistryAppOptions{
-				WithConfig(createValidTestConfig()),
-				WithDataDirectory(t.TempDir()),
-			},
-			//nolint:thelper // we want to see these lines
-			verify: func(t *testing.T, app *RegistryApp) {
-				assert.NotNil(t, app)
-				assert.NotNil(t, app.components)
-				assert.NotNil(t, app.components.SyncCoordinator)
-				assert.NotNil(t, app.components.RegistryService)
-				assert.NotNil(t, app.httpServer)
-			},
-		},
-		{
-			name: "success with multiple options",
-			opts: []RegistryAppOptions{
-				WithConfig(createValidTestConfig()),
-				WithAddress(":8888"),
-				WithDataDirectory(t.TempDir()),
-			},
-			//nolint:thelper // we want to see these lines
-			verify: func(t *testing.T, app *RegistryApp) {
-				assert.NotNil(t, app)
-				assert.NotNil(t, app.config)
-				assert.NotNil(t, app.components)
-				assert.NotNil(t, app.components.SyncCoordinator)
-				assert.NotNil(t, app.components.RegistryService)
-				assert.NotNil(t, app.httpServer)
-				assert.Equal(t, ":8888", app.httpServer.Addr)
-				assert.NotNil(t, app.ctx)
-				assert.NotNil(t, app.cancelFunc)
-			},
-		},
+	// Helper to create a mock factory for success tests
+	newSuccessMockFactory := func(ctrl *gomock.Controller) *mocks.MockFactory {
+		mockFactory := mocks.NewMockFactory(ctrl)
+		mockSvc := mocksvc.NewMockRegistryService(ctrl)
+		mockFactory.EXPECT().CreateStateService(gomock.Any()).Return(nil, nil)
+		mockFactory.EXPECT().CreateSyncWriter(gomock.Any()).Return(nil, nil)
+		mockFactory.EXPECT().CreateRegistryService(gomock.Any()).Return(mockSvc, nil)
+		return mockFactory
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	t.Run("success with minimal config", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockFactory := newSuccessMockFactory(ctrl)
 
-			app, err := NewRegistryApp(ctx, tt.opts...)
+		app, err := NewRegistryApp(ctx,
+			WithConfig(createValidTestConfig()),
+			WithStorageFactory(mockFactory),
+		)
 
-			require.NoError(t, err)
-			require.NotNil(t, app)
+		require.NoError(t, err)
+		require.NotNil(t, app)
+		assert.NotNil(t, app.config)
+		assert.Equal(t, "test-registry", app.config.RegistryName)
+		assert.NotNil(t, app.components)
+		assert.NotNil(t, app.components.SyncCoordinator)
+		assert.NotNil(t, app.components.RegistryService)
+		assert.NotNil(t, app.httpServer)
+		assert.NotNil(t, app.ctx)
+		assert.NotNil(t, app.cancelFunc)
+		assert.Equal(t, defaultHTTPAddress, app.httpServer.Addr)
+	})
 
-			if tt.verify != nil {
-				tt.verify(t, app)
-			}
-		})
-	}
+	t.Run("success with custom address", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockFactory := newSuccessMockFactory(ctrl)
+
+		app, err := NewRegistryApp(ctx,
+			WithConfig(createValidTestConfig()),
+			WithAddress(":9090"),
+			WithStorageFactory(mockFactory),
+		)
+
+		require.NoError(t, err)
+		require.NotNil(t, app)
+		assert.NotNil(t, app.httpServer)
+		assert.Equal(t, ":9090", app.httpServer.Addr)
+		assert.NotNil(t, app.components.SyncCoordinator)
+		assert.NotNil(t, app.components.RegistryService)
+	})
+
+	t.Run("success with multiple options", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		mockFactory := newSuccessMockFactory(ctrl)
+
+		app, err := NewRegistryApp(ctx,
+			WithConfig(createValidTestConfig()),
+			WithAddress(":8888"),
+			WithStorageFactory(mockFactory),
+		)
+
+		require.NoError(t, err)
+		require.NotNil(t, app)
+		assert.NotNil(t, app.config)
+		assert.NotNil(t, app.components)
+		assert.NotNil(t, app.components.SyncCoordinator)
+		assert.NotNil(t, app.components.RegistryService)
+		assert.NotNil(t, app.httpServer)
+		assert.Equal(t, ":8888", app.httpServer.Addr)
+		assert.NotNil(t, app.ctx)
+		assert.NotNil(t, app.cancelFunc)
+	})
 }
 
 func TestNewRegistryApp_ErrorPaths(t *testing.T) {
@@ -881,11 +845,10 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 					Cleanup()
 				return mockFactory
 			},
-			opts: func(mockFactory *mocks.MockFactory, tmpDir string) []RegistryAppOptions {
+			opts: func(mockFactory *mocks.MockFactory, _ string) []RegistryAppOptions {
 				return []RegistryAppOptions{
 					WithConfig(createValidTestConfig()),
 					WithStorageFactory(mockFactory),
-					WithDataDirectory(tmpDir),
 				}
 			},
 			wantErrContain: "failed to build sync components",
@@ -905,11 +868,10 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 					Cleanup()
 				return mockFactory
 			},
-			opts: func(mockFactory *mocks.MockFactory, tmpDir string) []RegistryAppOptions {
+			opts: func(mockFactory *mocks.MockFactory, _ string) []RegistryAppOptions {
 				return []RegistryAppOptions{
 					WithConfig(createValidTestConfig()),
 					WithStorageFactory(mockFactory),
-					WithDataDirectory(tmpDir),
 				}
 			},
 			wantErrContain: "failed to build sync components",
@@ -932,11 +894,10 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 					Cleanup()
 				return mockFactory
 			},
-			opts: func(mockFactory *mocks.MockFactory, tmpDir string) []RegistryAppOptions {
+			opts: func(mockFactory *mocks.MockFactory, _ string) []RegistryAppOptions {
 				return []RegistryAppOptions{
 					WithConfig(createValidTestConfig()),
 					WithStorageFactory(mockFactory),
-					WithDataDirectory(tmpDir),
 				}
 			},
 			wantErrContain: "failed to build service components",
@@ -960,14 +921,13 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 					Cleanup()
 				return mockFactory
 			},
-			opts: func(mockFactory *mocks.MockFactory, tmpDir string) []RegistryAppOptions {
+			opts: func(mockFactory *mocks.MockFactory, _ string) []RegistryAppOptions {
 				// Config with invalid auth mode to trigger auth middleware error
 				invalidAuthConfig := createValidTestConfig()
 				invalidAuthConfig.Auth = nil // nil auth config causes error
 				return []RegistryAppOptions{
 					WithConfig(invalidAuthConfig),
 					WithStorageFactory(mockFactory),
-					WithDataDirectory(tmpDir),
 				}
 			},
 			wantErrContain: "failed to build auth middleware",
@@ -991,7 +951,7 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 					Cleanup()
 				return mockFactory
 			},
-			opts: func(mockFactory *mocks.MockFactory, tmpDir string) []RegistryAppOptions {
+			opts: func(mockFactory *mocks.MockFactory, _ string) []RegistryAppOptions {
 				// Config with unsupported auth mode to trigger error
 				invalidConfig := createValidTestConfig()
 				invalidConfig.Auth = &config.AuthConfig{
@@ -1000,7 +960,6 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 				return []RegistryAppOptions{
 					WithConfig(invalidConfig),
 					WithStorageFactory(mockFactory),
-					WithDataDirectory(tmpDir),
 				}
 			},
 			wantErrContain: "failed to build auth middleware",

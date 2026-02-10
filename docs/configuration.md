@@ -12,7 +12,6 @@ Complete configuration reference for the ToolHive Registry API server.
 - [Filtering](#filtering)
 - [Authentication](#authentication)
 - [Database](#database)
-- [File Storage](#file-storage)
 - [Environment Variables](#environment-variables)
 - [Examples](#examples)
 
@@ -44,6 +43,12 @@ registries:
     format: toolhive
     file:
       path: /data/registry.json
+
+database:
+  host: localhost
+  port: 5432
+  user: registry
+  database: registry
 ```
 
 ### Complete Configuration
@@ -80,7 +85,7 @@ auth:
         issuerUrl: https://idp.example.com
         audience: api://registry
 
-# Database configuration (optional)
+# Database configuration (required)
 database:
   host: localhost
   port: 5432
@@ -90,10 +95,6 @@ database:
   maxOpenConns: 25
   maxIdleConns: 5
   connMaxLifetime: "5m"
-
-# File storage configuration (optional)
-fileStorage:
-  baseDir: ./data
 ```
 
 ## Registry Configuration
@@ -355,21 +356,6 @@ database:
 **Password management:**
 Passwords are provided via PostgreSQL's standard pgpass file (`~/.pgpass` or `$PGPASSFILE`). See [Database Configuration](database.md#password-security) for details.
 
-## File Storage
-
-Configure local file storage for registry data.
-
-```yaml
-fileStorage:
-  baseDir: ./data                # Base directory for file storage
-```
-
-**Fields:**
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `baseDir` | string | No | `./data` | Base directory for storing sync data |
-
 ## Environment Variables
 
 Configuration values can be overridden using environment variables with the `THV_REGISTRY_` prefix. For complete documentation, see [Environment Variables Guide](environment-variables.md).
@@ -417,8 +403,12 @@ registries:
 auth:
   mode: anonymous
 
-fileStorage:
-  baseDir: ./data
+database:
+  host: localhost
+  port: 5432
+  user: registry
+  database: registry
+  sslMode: disable
 ```
 
 ### Production (Git + Database + OAuth)
@@ -461,9 +451,6 @@ database:
   maxOpenConns: 50
   maxIdleConns: 10
   connMaxLifetime: "1h"
-
-fileStorage:
-  baseDir: /var/lib/registry
 ```
 
 ### Multi-Registry Setup
