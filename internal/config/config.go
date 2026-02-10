@@ -124,6 +124,11 @@ type Config struct {
 	// Can be set via THV_REGISTRY_ENABLE_AGGREGATED_ENDPOINTS environment variable
 	// Not loaded from YAML file - environment variable only
 	EnableAggregatedEndpoints bool
+
+	// WatchNamespace is the namespace to watch for MCP servers.
+	// Can be set via THV_REGISTRY_WATCH_NAMESPACE environment variable
+	// Not loaded from YAML file - environment variable only
+	WatchNamespace string
 }
 
 // RegistryConfig defines a single registry data source configuration
@@ -664,6 +669,10 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	// Set enableAggregatedEndpoints from environment variable (THV_REGISTRY_ENABLE_AGGREGATED_ENDPOINTS)
 	// This is not loaded from YAML - environment variable only
 	config.EnableAggregatedEndpoints = v.GetBool("enable_aggregated_endpoints")
+
+	// Set watchNamespace from environment variable (THV_REGISTRY_WATCH_NAMESPACE)
+	// This is not loaded from YAML - environment variable only
+	config.WatchNamespace = v.GetString("watch_namespace")
 
 	// Validate the config
 	if err := config.validate(); err != nil {
