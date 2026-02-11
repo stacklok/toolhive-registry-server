@@ -17,6 +17,7 @@ import (
 	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
+	"github.com/stacklok/toolhive-registry-server/internal/validators"
 )
 
 // Theme constants for icons (must match PostgreSQL icon_theme enum values)
@@ -27,16 +28,19 @@ const (
 
 // dbSyncWriter is a SyncWriter implementation that persists data to a database
 type dbSyncWriter struct {
-	pool *pgxpool.Pool
+	pool        *pgxpool.Pool
+	maxMetaSize int
 }
 
 // NewDBSyncWriter creates a new dbSyncWriter with the given connection pool.
 // The caller is responsible for closing the pool when done.
-func NewDBSyncWriter(pool *pgxpool.Pool) (SyncWriter, error) {
+// maxMetaSize specifies the maximum allowed size in bytes for publisher-provided
+// metadata extensions and must be greater than zero.
+func NewDBSyncWriter(pool *pgxpool.Pool, maxMetaSize int) (SyncWriter, error) {
 	if pool == nil {
 		return nil, fmt.Errorf("pgx pool is required")
 	}
-	return &dbSyncWriter{pool: pool}, nil
+	return &dbSyncWriter{pool: pool, maxMetaSize: maxMetaSize}, nil
 }
 
 // Store saves a UpstreamRegistry instance to database storage for a specific registry.
@@ -122,7 +126,7 @@ func serverKey(name, version string) string {
 // storeSyncInTempTables upserts all servers using temp table and COPY for maximum performance.
 // Uses ON CONFLICT UPDATE to preserve existing server UUIDs.
 // Returns a map of serverKey (name@version) to server UUID for subsequent operations.
-func (*dbSyncWriter) storeSyncInTempTables(
+func (d *dbSyncWriter) storeSyncInTempTables(
 	ctx context.Context,
 	tx pgx.Tx,
 	registryID uuid.UUID,
@@ -145,7 +149,7 @@ func (*dbSyncWriter) storeSyncInTempTables(
 		entryIDMap[key] = row.ID
 	}
 
-	if err := sqlCopyServers(ctx, tx, servers, entryIDMap); err != nil {
+	if err := sqlCopyServers(ctx, tx, servers, entryIDMap, d.maxMetaSize); err != nil {
 		return nil, fmt.Errorf("failed to copy servers: %w", err)
 	}
 
@@ -577,18 +581,10 @@ func deleteOrphansWithEmptyTemp(ctx context.Context, tx pgx.Tx, serverIDs map[uu
 	return nil
 }
 
-// serializeServerMeta serializes the server metadata to JSON bytes for storage
-func serializeServerMeta(meta *upstreamv0.ServerMeta) ([]byte, error) {
-	if meta == nil || meta.PublisherProvided == nil || len(meta.PublisherProvided) == 0 {
-		return nil, nil
-	}
-
-	bytes, err := json.Marshal(meta.PublisherProvided)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize server metadata: %w", err)
-	}
-
-	return bytes, nil
+// serializeServerMeta serializes the server metadata to JSON bytes for storage.
+// maxMetaSize specifies the maximum allowed size in bytes and must be greater than zero.
+func serializeServerMeta(meta *upstreamv0.ServerMeta, maxMetaSize int) ([]byte, error) {
+	return validators.SerializeServerMeta(meta, maxMetaSize)
 }
 
 // extractArgumentValues extracts argument names from a slice of model.Argument
@@ -686,6 +682,7 @@ func sqlCopyServers(
 	tx pgx.Tx,
 	servers []upstreamv0.ServerJSON,
 	entryIDMap map[string]uuid.UUID,
+	maxMetaSize int,
 ) error {
 	querier := sqlc.New(tx)
 
@@ -705,7 +702,7 @@ func sqlCopyServers(
 		}
 
 		// Serialize metadata
-		serverMeta, err := serializeServerMeta(server.Meta)
+		serverMeta, err := serializeServerMeta(server.Meta, maxMetaSize)
 		if err != nil {
 			return fmt.Errorf("failed to serialize metadata for server %s: %w", server.Name, err)
 		}

@@ -11,6 +11,7 @@ import (
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
+	"github.com/stacklok/toolhive-registry-server/internal/validators"
 )
 
 // helper is just a bridge between the database and the API schema,
@@ -249,17 +250,8 @@ func serializeKeyValueInputs(kvInputs []model.KeyValueInput) ([]byte, error) {
 	return bytes, nil
 }
 
-// serializePublisherProvidedMeta serializes the PublisherProvided map to JSON bytes for storage
-func serializePublisherProvidedMeta(meta *upstreamv0.ServerMeta) ([]byte, error) {
-	if meta == nil || meta.PublisherProvided == nil || len(meta.PublisherProvided) == 0 {
-		return nil, nil
-	}
-
-	// Serialize the entire PublisherProvided map to JSON
-	bytes, err := json.Marshal(meta.PublisherProvided)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize publisher provided metadata: %w", err)
-	}
-
-	return bytes, nil
+// serializePublisherProvidedMeta serializes the PublisherProvided map to JSON bytes for storage.
+// maxMetaSize specifies the maximum allowed size in bytes and must be greater than zero.
+func serializePublisherProvidedMeta(meta *upstreamv0.ServerMeta, maxMetaSize int) ([]byte, error) {
+	return validators.SerializeServerMeta(meta, maxMetaSize)
 }

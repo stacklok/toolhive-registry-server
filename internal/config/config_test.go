@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/aws/smithy-go/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -2717,6 +2718,72 @@ func TestConfigValidateGitAuth(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestDatabaseConfigGetMaxMetaSize(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		dbConfig *DatabaseConfig
+		want     int
+	}{
+		{
+			name:     "nil DatabaseConfig returns default",
+			dbConfig: nil,
+			want:     DefaultMaxMetaSize,
+		},
+		{
+			name:     "MaxMetaSize not set returns default",
+			dbConfig: &DatabaseConfig{},
+			want:     DefaultMaxMetaSize,
+		},
+		{
+			name: "MaxMetaSize set to custom value",
+			dbConfig: &DatabaseConfig{
+				MaxMetaSize: ptr.Int(4096),
+			},
+			want: 4096,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := tt.dbConfig.GetMaxMetaSize()
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestValidateStorageConfigRejectsInvalidMaxMetaSize(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		maxMetaSize int
+	}{
+		{name: "zero", maxMetaSize: 0},
+		{name: "negative", maxMetaSize: -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := &Config{
+				Database: &DatabaseConfig{
+					Host:        "localhost",
+					Port:        5432,
+					User:        "test",
+					Database:    "testdb",
+					MaxMetaSize: ptr.Int(tt.maxMetaSize),
+				},
+			}
+			err := cfg.validateStorageConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "database.maxMetaSize must be greater than zero")
 		})
 	}
 }

@@ -54,7 +54,7 @@ func TestNewSyncWriter(t *testing.T) {
 			t.Parallel()
 
 			pool := tt.pool()
-			writer, err := NewSyncWriter(pool)
+			writer, err := NewSyncWriter(pool, 65536)
 
 			if tt.wantErr {
 				require.Error(t, err)

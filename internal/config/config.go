@@ -41,6 +41,10 @@ const (
 	// EnvPrefix is the prefix used for environment variables that override config values.
 	// For example, THV_REGISTRY_REGISTRYNAME overrides registryName in the config file.
 	EnvPrefix = "THV_REGISTRY"
+
+	// DefaultMaxMetaSize is the default maximum allowed size in bytes for
+	// publisher-provided metadata extensions (_meta). 65536 bytes = 64KB.
+	DefaultMaxMetaSize = 65536
 )
 
 const (
@@ -517,6 +521,12 @@ type DatabaseConfig struct {
 
 	// ConnMaxLifetime is the maximum lifetime of a connection (e.g., "1h", "30m")
 	ConnMaxLifetime string `yaml:"connMaxLifetime,omitempty"`
+
+	// MaxMetaSize is the maximum allowed size in bytes for publisher-provided
+	// metadata extensions (_meta). Must be greater than zero.
+	// Defaults to 65536 (64KB) if not specified.
+	// Can be overridden via THV_REGISTRY_DATABASE_MAXMETASIZE environment variable.
+	MaxMetaSize *int `yaml:"maxMetaSize,omitempty"`
 }
 
 // GetPassword returns the database password for the application user.
@@ -552,6 +562,16 @@ func (d *DatabaseConfig) GetMigrationUser() string {
 func (*DatabaseConfig) GetMigrationPassword() string {
 	// Return empty string to allow pgx to use PGPASSFILE or default ~/.pgpass
 	return ""
+}
+
+// GetMaxMetaSize returns the configured maximum meta size in bytes.
+// Returns DefaultMaxMetaSize (64KB) if not explicitly configured.
+// The returned value is always positive — validation rejects non-positive values at startup.
+func (d *DatabaseConfig) GetMaxMetaSize() int {
+	if d == nil || d.MaxMetaSize == nil {
+		return DefaultMaxMetaSize
+	}
+	return *d.MaxMetaSize
 }
 
 // GetConnectionString builds a PostgreSQL connection string for the application user.
@@ -887,6 +907,9 @@ func (c *Config) validateStorageConfig() error {
 	}
 	if c.Database.Database == "" {
 		return fmt.Errorf("database.database is required")
+	}
+	if c.Database.MaxMetaSize != nil && *c.Database.MaxMetaSize <= 0 {
+		return fmt.Errorf("database.maxMetaSize must be greater than zero")
 	}
 
 	return nil
