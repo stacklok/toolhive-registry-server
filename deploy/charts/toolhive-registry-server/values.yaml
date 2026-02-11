@@ -23,9 +23,8 @@ serviceAccount:
   create: true
   # -- Annotations to add to the service account
   annotations: {}
-  # -- The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
-  name: ""
+  # -- The name of the service account to use
+  name: "toolhive-registry-server"
 
 # -- Annotations to add to the pod
 podAnnotations: {}
@@ -236,65 +235,18 @@ extraVolumeMounts: []
   # - name: registry-data
   #   mountPath: /data
 
-# -- Leader election role configuration
-leaderElectionRole:
-  name: ""
-  binding:
-    # -- Name of the role binding for leader election
-    name: ""
-  rules:
-  # Permissions required to watch MCP servers, virtual MCP servers,
-  # and remote proxies
-  - apiGroups:
-      - toolhive.stacklok.dev
-    resources:
-      - mcpservers
-      - mcpremoteproxies
-      - virtualmcpservers
-    verbs:
-      - get
-      - list
-      - watch
-  # Permissions required to watch Services
-  - apiGroups:
-      - ''
-    resources:
-      - services
-    verbs:
-      - get
-      - list
-      - watch
-  # Permissions required to manipulate ConfigMaps
-  - apiGroups:
-      - ''
-    resources:
-      - configmaps
-    verbs:
-      - get
-      - list
-      - watch
-      - create
-      - update
-      - patch
-      - delete
-  # Permissions required to use Kubernetes leases for leader election
-  - apiGroups:
-      - coordination.k8s.io
-    resources:
-      - leases
-    verbs:
-      - get
-      - list
-      - watch
-      - create
-      - update
-      - patch
-      - delete
-  # Permissions required to receive events for the watched resources
-  - apiGroups:
-      - ''
-    resources:
-      - events
-    verbs:
-      - create
-      - patch
+# ==============================================================================
+# RBAC Configuration
+# ==============================================================================
+
+# -- RBAC configuration for the registry server
+rbac:
+  # -- Scope of the RBAC configuration.
+  # - cluster: The registry server will have cluster-wide permissions via ClusterRole and ClusterRoleBinding.
+  # - namespace: The registry server will have permissions to watch resources in the namespaces specified in `allowedNamespaces`.
+  #   The registry server will have a ClusterRole and RoleBinding for each namespace in `allowedNamespaces`.
+  scope: cluster
+
+  # -- List of namespaces that the registry server is allowed to watch.
+  # Only used if scope is set to "namespace".
+  allowedNamespaces: []

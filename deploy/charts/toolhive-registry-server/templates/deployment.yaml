@@ -26,7 +26,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "toolhive-registry-server.serviceAccountName" . }}
+      serviceAccountName: {{ .Values.serviceAccount.name }}
       {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
@@ -63,10 +63,14 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.extraEnv }}
           env:
+            {{- if eq .Values.rbac.scope "namespace" }}
+            - name: THV_REGISTRY_WATCH_NAMESPACE
+              value: "{{ .Values.rbac.allowedNamespaces | join "," }}"
+            {{- end }}
+            {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           {{- with .Values.extraEnvFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
