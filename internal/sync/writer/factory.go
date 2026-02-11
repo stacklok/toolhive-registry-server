@@ -11,7 +11,7 @@ import (
 // NewSyncWriter creates a database-backed SyncWriter.
 // The pool parameter must not be nil.
 // maxMetaSize specifies the maximum allowed size in bytes for publisher-provided
-// metadata extensions. Set to 0 to disable the size check.
+// metadata extensions and must be greater than zero.
 func NewSyncWriter(pool *pgxpool.Pool, maxMetaSize int) (SyncWriter, error) {
 	if pool == nil {
 		return nil, fmt.Errorf("database pool is required")

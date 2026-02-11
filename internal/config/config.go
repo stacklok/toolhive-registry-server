@@ -523,7 +523,7 @@ type DatabaseConfig struct {
 	ConnMaxLifetime string `yaml:"connMaxLifetime,omitempty"`
 
 	// MaxMetaSize is the maximum allowed size in bytes for publisher-provided
-	// metadata extensions (_meta). Set to 0 to disable the size check.
+	// metadata extensions (_meta). Must be greater than zero.
 	// Defaults to 65536 (64KB) if not specified.
 	// Can be overridden via THV_REGISTRY_DATABASE_MAXMETASIZE environment variable.
 	MaxMetaSize *int `yaml:"maxMetaSize,omitempty"`
@@ -566,13 +566,10 @@ func (*DatabaseConfig) GetMigrationPassword() string {
 
 // GetMaxMetaSize returns the configured maximum meta size in bytes.
 // Returns DefaultMaxMetaSize (64KB) if not explicitly configured.
-// Returns 0 (disabled) if explicitly set to 0 or a negative value.
+// The returned value is always positive — validation rejects non-positive values at startup.
 func (d *DatabaseConfig) GetMaxMetaSize() int {
 	if d == nil || d.MaxMetaSize == nil {
 		return DefaultMaxMetaSize
-	}
-	if *d.MaxMetaSize < 0 {
-		return 0
 	}
 	return *d.MaxMetaSize
 }
@@ -911,8 +908,8 @@ func (c *Config) validateStorageConfig() error {
 	if c.Database.Database == "" {
 		return fmt.Errorf("database.database is required")
 	}
-	if c.Database.MaxMetaSize != nil && *c.Database.MaxMetaSize < 0 {
-		return fmt.Errorf("database.maxMetaSize must be non-negative (use 0 to disable)")
+	if c.Database.MaxMetaSize != nil && *c.Database.MaxMetaSize <= 0 {
+		return fmt.Errorf("database.maxMetaSize must be greater than zero")
 	}
 
 	return nil

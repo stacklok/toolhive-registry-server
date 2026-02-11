@@ -251,7 +251,7 @@ func serializeKeyValueInputs(kvInputs []model.KeyValueInput) ([]byte, error) {
 }
 
 // serializePublisherProvidedMeta serializes the PublisherProvided map to JSON bytes for storage.
-// maxMetaSize specifies the maximum allowed size in bytes. Set to 0 to disable the size check.
+// maxMetaSize specifies the maximum allowed size in bytes and must be greater than zero.
 func serializePublisherProvidedMeta(meta *upstreamv0.ServerMeta, maxMetaSize int) ([]byte, error) {
 	return validators.SerializeServerMeta(meta, maxMetaSize)
 }

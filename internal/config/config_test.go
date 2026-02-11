@@ -2741,25 +2741,11 @@ func TestDatabaseConfigGetMaxMetaSize(t *testing.T) {
 			want:     DefaultMaxMetaSize,
 		},
 		{
-			name: "MaxMetaSize explicitly set to zero",
-			dbConfig: &DatabaseConfig{
-				MaxMetaSize: ptr.Int(0),
-			},
-			want: 0,
-		},
-		{
 			name: "MaxMetaSize set to custom value",
 			dbConfig: &DatabaseConfig{
 				MaxMetaSize: ptr.Int(4096),
 			},
 			want: 4096,
-		},
-		{
-			name: "MaxMetaSize set to negative value returns zero (disabled)",
-			dbConfig: &DatabaseConfig{
-				MaxMetaSize: ptr.Int(-1),
-			},
-			want: 0,
 		},
 	}
 
@@ -2772,19 +2758,32 @@ func TestDatabaseConfigGetMaxMetaSize(t *testing.T) {
 	}
 }
 
-func TestValidateStorageConfigRejectsNegativeMaxMetaSize(t *testing.T) {
+func TestValidateStorageConfigRejectsInvalidMaxMetaSize(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{
-		Database: &DatabaseConfig{
-			Host:        "localhost",
-			Port:        5432,
-			User:        "test",
-			Database:    "testdb",
-			MaxMetaSize: ptr.Int(-1),
-		},
+	tests := []struct {
+		name        string
+		maxMetaSize int
+	}{
+		{name: "zero", maxMetaSize: 0},
+		{name: "negative", maxMetaSize: -1},
 	}
-	err := cfg.validateStorageConfig()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "database.maxMetaSize must be non-negative")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := &Config{
+				Database: &DatabaseConfig{
+					Host:        "localhost",
+					Port:        5432,
+					User:        "test",
+					Database:    "testdb",
+					MaxMetaSize: ptr.Int(tt.maxMetaSize),
+				},
+			}
+			err := cfg.validateStorageConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "database.maxMetaSize must be greater than zero")
+		})
+	}
 }

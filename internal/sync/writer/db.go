@@ -35,7 +35,7 @@ type dbSyncWriter struct {
 // NewDBSyncWriter creates a new dbSyncWriter with the given connection pool.
 // The caller is responsible for closing the pool when done.
 // maxMetaSize specifies the maximum allowed size in bytes for publisher-provided
-// metadata extensions. Set to 0 to disable the size check.
+// metadata extensions and must be greater than zero.
 func NewDBSyncWriter(pool *pgxpool.Pool, maxMetaSize int) (SyncWriter, error) {
 	if pool == nil {
 		return nil, fmt.Errorf("pgx pool is required")
@@ -582,7 +582,7 @@ func deleteOrphansWithEmptyTemp(ctx context.Context, tx pgx.Tx, serverIDs map[uu
 }
 
 // serializeServerMeta serializes the server metadata to JSON bytes for storage.
-// maxMetaSize specifies the maximum allowed size in bytes. Set to 0 to disable the size check.
+// maxMetaSize specifies the maximum allowed size in bytes and must be greater than zero.
 func serializeServerMeta(meta *upstreamv0.ServerMeta, maxMetaSize int) ([]byte, error) {
 	return validators.SerializeServerMeta(meta, maxMetaSize)
 }

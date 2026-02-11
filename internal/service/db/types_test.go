@@ -38,16 +38,6 @@ func TestSerializePublisherProvidedMeta(t *testing.T) {
 			expectNil: true,
 		},
 		{
-			name: "with data no size limit",
-			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{
-					"key": "value",
-				},
-			},
-			maxMetaSize: 0,
-			expectNil:   false,
-		},
-		{
 			name: "with data within limit",
 			meta: &upstreamv0.ServerMeta{
 				PublisherProvided: map[string]interface{}{
@@ -68,7 +58,7 @@ func TestSerializePublisherProvidedMeta(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name: "with nested data no size limit",
+			name: "with nested data within limit",
 			meta: &upstreamv0.ServerMeta{
 				PublisherProvided: map[string]interface{}{
 					"nested": map[string]interface{}{
@@ -76,7 +66,7 @@ func TestSerializePublisherProvidedMeta(t *testing.T) {
 					},
 				},
 			},
-			maxMetaSize: 0,
+			maxMetaSize: 65536,
 			expectNil:   false,
 		},
 	}

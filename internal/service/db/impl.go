@@ -80,12 +80,11 @@ func WithTracer(tracer trace.Tracer) Option {
 }
 
 // WithMaxMetaSize sets the maximum allowed size in bytes for publisher-provided
-// metadata extensions. Set to 0 to disable the size check.
-// Negative values are treated as 0 (disabled).
+// metadata extensions. The value must be greater than zero.
 func WithMaxMetaSize(maxMetaSize int) Option {
 	return func(o *options) error {
-		if maxMetaSize < 0 {
-			maxMetaSize = 0
+		if maxMetaSize <= 0 {
+			return fmt.Errorf("maxMetaSize must be greater than zero, got %d", maxMetaSize)
 		}
 		o.maxMetaSize = maxMetaSize
 		return nil
