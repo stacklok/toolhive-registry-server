@@ -43,8 +43,8 @@ const (
 	EnvPrefix = "THV_REGISTRY"
 
 	// DefaultMaxMetaSize is the default maximum allowed size in bytes for
-	// publisher-provided metadata extensions (_meta). 8192 bytes = 8KB.
-	DefaultMaxMetaSize = 8192
+	// publisher-provided metadata extensions (_meta). 65536 bytes = 64KB.
+	DefaultMaxMetaSize = 65536
 )
 
 const (
@@ -524,7 +524,7 @@ type DatabaseConfig struct {
 
 	// MaxMetaSize is the maximum allowed size in bytes for publisher-provided
 	// metadata extensions (_meta). Set to 0 to disable the size check.
-	// Defaults to 8192 (8KB) if not specified.
+	// Defaults to 65536 (64KB) if not specified.
 	// Can be overridden via THV_REGISTRY_DATABASE_MAXMETASIZE environment variable.
 	MaxMetaSize *int `yaml:"maxMetaSize,omitempty"`
 }
@@ -565,7 +565,7 @@ func (*DatabaseConfig) GetMigrationPassword() string {
 }
 
 // GetMaxMetaSize returns the configured maximum meta size in bytes.
-// Returns DefaultMaxMetaSize (8KB) if not explicitly configured.
+// Returns DefaultMaxMetaSize (64KB) if not explicitly configured.
 // Returns 0 (disabled) if explicitly set to 0 or a negative value.
 func (d *DatabaseConfig) GetMaxMetaSize() int {
 	if d == nil || d.MaxMetaSize == nil {
