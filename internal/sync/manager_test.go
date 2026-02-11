@@ -16,17 +16,18 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
-	"github.com/stacklok/toolhive-registry-server/internal/sources/mocks"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
+	writermocks "github.com/stacklok/toolhive-registry-server/internal/sync/writer/mocks"
 )
 
 func TestNewDefaultSyncManager(t *testing.T) {
 	t.Parallel()
 
+	ctrl := gomock.NewController(t)
 	registryHandlerFactory := sources.NewRegistryHandlerFactory()
-	storageManager := sources.NewFileStorageManager("/tmp/test-storage")
+	mockWriter := writermocks.NewMockSyncWriter(ctrl)
 
-	syncManager := NewDefaultSyncManager(registryHandlerFactory, storageManager)
+	syncManager := NewDefaultSyncManager(registryHandlerFactory, mockWriter)
 
 	assert.NotNil(t, syncManager)
 	assert.IsType(t, &defaultSyncManager{}, syncManager)
@@ -121,9 +122,10 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			ctrl := gomock.NewController(t)
 			registryHandlerFactory := sources.NewRegistryHandlerFactory()
-			storageManager := sources.NewFileStorageManager("/tmp/test-storage")
-			syncManager := NewDefaultSyncManager(registryHandlerFactory, storageManager)
+			mockWriter := writermocks.NewMockSyncWriter(ctrl)
+			syncManager := NewDefaultSyncManager(registryHandlerFactory, mockWriter)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -266,17 +268,17 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			defer ctrl.Finish()
 
 			registryHandlerFactory := sources.NewRegistryHandlerFactory()
-			mockStorageManager := mocks.NewMockStorageManager(ctrl)
+			mockWriter := writermocks.NewMockSyncWriter(ctrl)
 
 			// Setup expectations for successful syncs
 			if !tt.expectedError {
-				mockStorageManager.EXPECT().
+				mockWriter.EXPECT().
 					Store(gomock.Any(), tt.config.Name, gomock.Any()).
 					Return(nil).
 					Times(1)
 			}
 
-			syncManager := NewDefaultSyncManager(registryHandlerFactory, mockStorageManager)
+			syncManager := NewDefaultSyncManager(registryHandlerFactory, mockWriter)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()

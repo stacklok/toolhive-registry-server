@@ -28,14 +28,11 @@ thv-registry-api serve --config examples/config-file.yaml
 **Verify sync is working:**
 
 ```bash
-# Check sync status
-cat ./data/status.json | jq '.phase, .serverCount, .lastSyncTime'
-
-# View synced registry data
-cat ./data/registry.json | jq '.servers | keys'
-
 # Query the API
 curl http://localhost:8080/registry/v0.1/servers | jq
+
+# Check health
+curl http://localhost:8080/health
 ```
 
 ---
@@ -67,9 +64,8 @@ registries:
 1. Background sync coordinator starts immediately
 2. Clones `https://github.com/stacklok/toolhive.git` (shallow, depth=1)
 3. Extracts `pkg/registry/data/registry.json` from the `main` branch
-4. Saves synced data to `./data/registry.json`
-5. Saves sync status to `./data/status.json`
-6. Repeats every 30 minutes
+4. Stores synced data in the PostgreSQL database
+5. Repeats every 30 minutes
 
 **Best for:**
 - Using official ToolHive registry data
@@ -106,7 +102,7 @@ registries:
 **What happens when you start:**
 1. Makes HTTP GET to `https://registry.modelcontextprotocol.io/registry/v0.1/servers`
 2. Converts from upstream MCP format to ToolHive format
-3. Saves to `./data/registry.json`
+3. Stores synced data in the PostgreSQL database
 4. Repeats every hour (less frequent to be respectful of external APIs)
 
 **Best for:**
@@ -143,7 +139,7 @@ registries:
 **What happens when you start:**
 1. Reads registry data from the specified file path
 2. Validates the JSON data structure
-3. Saves validated data to `./data/registry.json` (if different from source)
+3. Stores synced data in the PostgreSQL database
 4. Repeats every 5 minutes to detect file changes
 
 **Best for:**
@@ -152,7 +148,7 @@ registries:
 - Using pre-generated registry files
 - Quick prototyping without external dependencies
 
-**Note:** For file source, the source file and storage location can be the same path. The sync manager will detect if the file has changed by comparing content hashes.
+**Note:** The sync manager detects if the file has changed by comparing content hashes, so unchanged files won't trigger a database write.
 
 ---
 
@@ -295,21 +291,7 @@ registries:
 
 ### Check Sync Status
 
-```bash
-# View current status
-cat ./data/status.json | jq
-
-# Expected output:
-{
-  "phase": "Complete",              # Syncing, Complete, or Failed
-  "message": "Sync completed successfully",
-  "lastAttempt": "2024-11-05T12:30:00Z",
-  "attemptCount": 0,                # Resets to 0 on success
-  "lastSyncTime": "2024-11-05T12:30:00Z",
-  "lastSyncHash": "abc123...",      # Hash of synced data
-  "serverCount": 42                 # Number of servers synced
-}
-```
+Sync status is stored in the PostgreSQL database and exposed via server logs.
 
 **Status phases:**
 - `Syncing`: Sync operation in progress
@@ -339,7 +321,7 @@ Look for these log messages:
 
 #### Sync Not Starting
 
-**Symptom:** No `./data/status.json` file
+**Symptom:** Health endpoint returns unhealthy
 
 **Solution:**
 1. Verify `--config` flag is provided:
@@ -348,6 +330,7 @@ Look for these log messages:
    ```
 2. Check logs for "Loaded configuration from..."
 3. Ensure `syncPolicy` is defined in config
+4. Ensure `database` is configured and reachable
 
 #### Git Clone Failed
 
@@ -358,22 +341,6 @@ Look for these log messages:
 - For private repos, configure git credentials
 - Verify branch/tag/commit exists
 - Check network connectivity
-
-#### Permission Denied (File System)
-
-**Symptom:** Can't write to `./data/`
-
-**Solutions:**
-```bash
-# Create data directory
-mkdir -p ./data
-
-# Fix permissions
-chmod 755 ./data
-
-# Check disk space
-df -h .
-```
 
 #### API Endpoint Unreachable
 
@@ -387,14 +354,9 @@ df -h .
 
 ---
 
-## Storage Locations
+## Storage
 
-Synced data is stored in:
-
-- **Registry data**: `./data/registry.json`
-- **Sync status**: `./data/status.json`
-
-**Note:** The `./data` directory is currently hardcoded but will be configurable via CLI flags in a future release.
+All synced data is stored in PostgreSQL. Database configuration is required in the config file.
 
 ---
 
@@ -457,7 +419,7 @@ thv-registry-api serve \
   --address :8083 &
 ```
 
-**Note:** Each instance will use its own `./data/` directory for storage. If you need separate storage locations, start each instance from a different working directory or modify the configuration to support custom storage paths (planned feature).
+**Note:** Each instance should be configured with its own database or registry name to avoid conflicts.
 
 ---
 
@@ -476,14 +438,11 @@ thv-registry-api serve --config examples/config-file.yaml
 # Start with custom address
 thv-registry-api serve --config examples/config-git.yaml --address :9090
 
-# Check sync status
-cat ./data/status.json | jq
-
-# View synced servers
-cat ./data/registry.json | jq '.servers | keys'
-
 # Test API endpoint
 curl http://localhost:8080/registry/v0.1/servers | jq
+
+# Check health
+curl http://localhost:8080/health
 
 # Watch logs
 tail -f /var/log/thv-registry-api.log | grep -i sync

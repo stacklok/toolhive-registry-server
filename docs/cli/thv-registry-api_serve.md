@@ -23,7 +23,7 @@ The server requires a configuration file (--config) that specifies:
 - Authentication configuration
 - All other operational settings
 
-If database configuration is present, migrations will run automatically on startup.
+Database configuration is required. Migrations run automatically on startup.
 
 See examples/ directory for sample configurations.
 

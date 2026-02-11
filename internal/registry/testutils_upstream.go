@@ -76,13 +76,6 @@ func NewTestServer(name string, opts ...ServerOption) upstreamv0.ServerJSON {
 	return server
 }
 
-// WithDescription sets the server description
-func WithDescription(description string) ServerOption {
-	return func(server *upstreamv0.ServerJSON) {
-		server.Description = description
-	}
-}
-
 // WithServerVersion sets the server version
 func WithServerVersion(version string) ServerOption {
 	return func(server *upstreamv0.ServerJSON) {

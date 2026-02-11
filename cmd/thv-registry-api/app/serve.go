@@ -30,7 +30,7 @@ The server requires a configuration file (--config) that specifies:
 - Authentication configuration
 - All other operational settings
 
-If database configuration is present, migrations will run automatically on startup.
+Database configuration is required. Migrations run automatically on startup.
 
 See examples/ directory for sample configurations.`,
 	SilenceUsage: true,
@@ -99,12 +99,15 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		}
 	}()
 
-	// Run database migrations if database is configured
-	if cfg.Database != nil {
-		slog.Info("Database configuration found, running migrations")
-		if err := runMigrations(ctx, cfg); err != nil {
-			return fmt.Errorf("failed to run database migrations: %w", err)
-		}
+	// Database is required — validate before proceeding
+	if cfg.Database == nil {
+		return fmt.Errorf("database configuration is required")
+	}
+
+	// Run database migrations
+	slog.Info("Running database migrations")
+	if err := runMigrations(ctx, cfg); err != nil {
+		return fmt.Errorf("failed to run database migrations: %w", err)
 	}
 
 	// Build application using the builder pattern

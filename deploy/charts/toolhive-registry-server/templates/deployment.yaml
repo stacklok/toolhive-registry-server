@@ -79,8 +79,6 @@ spec:
             - name: config
               mountPath: /etc/registry-server
               readOnly: true
-            - name: data
-              mountPath: /data
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -88,8 +86,6 @@ spec:
         - name: config
           configMap:
             name: {{ include "toolhive-registry-server.configMapName" . }}
-        - name: data
-          emptyDir: {}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

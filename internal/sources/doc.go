@@ -8,7 +8,6 @@
 //
 // Architecture:
 //   - RegistryHandler: Interface for fetching and validating registry data
-//   - StorageManager: Interface for persisting registry data to local storage
 //   - RegistryDataValidator: Validates and parses registry data in different formats
 //   - FetchResult: Strongly-typed result containing Registry instances with metadata
 //
@@ -19,7 +18,6 @@
 //     Delegates to format-specific handlers (ToolHiveAPIHandler, UpstreamAPIHandler)
 //   - FileRegistryHandler: Retrieves registry data from local filesystem
 //     Supports both absolute and relative file paths for development and production
-//   - FileStorageManager: Persists Registry data to local file storage for serving
 //
 // The package provides a factory pattern for creating appropriate
 // registry handlers based on the registry type configuration, and uses

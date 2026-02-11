@@ -30,10 +30,10 @@
 //
 //	// Create dependencies
 //	syncManager := sync.NewDefaultSyncManager(...)
-//	statusPersistence := status.NewFileStatusPersistence("./data/status.json")
+//	stateService := state.NewDBStateService(pool)
 //
 //	// Create coordinator with injected dependencies
-//	coordinator := coordinator.New(syncManager, statusPersistence, config)
+//	coordinator := coordinator.New(syncManager, stateService, config)
 //
 //	// Start background sync
 //	ctx, cancel := context.WithCancel(context.Background())
@@ -55,17 +55,8 @@
 //
 // # Status Persistence
 //
-// The coordinator accepts a StatusPersistence interface, making it easy to swap
-// implementations (file, database, etc.) without changing coordinator code:
-//
-//	// File-based (current):
-//	persistence := status.NewFileStatusPersistence("./data/status.json")
-//
-//	// Future database-based:
-//	persistence := status.NewDatabaseStatusPersistence(db, registryID)
-//
-//	// Same coordinator works with both:
-//	coordinator := coordinator.New(manager, persistence, config)
+// The coordinator accepts a RegistryStateService interface for state management,
+// backed by PostgreSQL for persistence.
 //
 // # Sync Decision Flow
 //

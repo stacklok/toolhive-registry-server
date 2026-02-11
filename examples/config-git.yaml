@@ -40,16 +40,15 @@ registries:
 auth:
   mode: anonymous
 
-# Optional: PostgreSQL database configuration
-# Uncomment to store registry data in a database instead of local files
-# database:
-#   host: localhost
-#   port: 5432
-#   user: thv_user
-#   database: toolhive_registry
-#   sslMode: require
-#   # Passwords are managed via PostgreSQL's pgpass file
-#   # See: https://www.postgresql.org/docs/current/libpq-pgpass.html
+# PostgreSQL database configuration (required)
+# Passwords are managed via PostgreSQL's pgpass file (~/.pgpass or $PGPASSFILE)
+# See: https://www.postgresql.org/docs/current/libpq-pgpass.html
+database:
+  host: localhost
+  port: 5432
+  user: thv_user
+  database: toolhive_registry
+  sslMode: require
 
 # Optional: Filter configuration to include/exclude specific servers
 # filter:
