@@ -38,7 +38,8 @@ func setupTestService(t *testing.T) (*dbService, func()) {
 	}
 
 	svc := &dbService{
-		pool: pool,
+		pool:        pool,
+		maxMetaSize: config.DefaultMaxMetaSize,
 	}
 
 	return svc, serviceCleanup
