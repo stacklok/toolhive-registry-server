@@ -81,6 +81,16 @@ func TestSerializeServerMeta(t *testing.T) {
 			maxMetaSize: 0,
 			expectNil:   false,
 		},
+		{
+			name: "negative maxMetaSize treated as disabled",
+			meta: &upstreamv0.ServerMeta{
+				PublisherProvided: map[string]any{
+					"key": "value",
+				},
+			},
+			maxMetaSize: -1,
+			expectNil:   false,
+		},
 	}
 
 	for _, tt := range tests {

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/aws/smithy-go/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -2721,8 +2722,6 @@ func TestConfigValidateGitAuth(t *testing.T) {
 	}
 }
 
-func intPtr(i int) *int { return &i }
-
 func TestDatabaseConfigGetMaxMetaSize(t *testing.T) {
 	t.Parallel()
 
@@ -2744,21 +2743,21 @@ func TestDatabaseConfigGetMaxMetaSize(t *testing.T) {
 		{
 			name: "MaxMetaSize explicitly set to zero",
 			dbConfig: &DatabaseConfig{
-				MaxMetaSize: intPtr(0),
+				MaxMetaSize: ptr.Int(0),
 			},
 			want: 0,
 		},
 		{
 			name: "MaxMetaSize set to custom value",
 			dbConfig: &DatabaseConfig{
-				MaxMetaSize: intPtr(4096),
+				MaxMetaSize: ptr.Int(4096),
 			},
 			want: 4096,
 		},
 		{
 			name: "MaxMetaSize set to negative value returns zero (disabled)",
 			dbConfig: &DatabaseConfig{
-				MaxMetaSize: intPtr(-1),
+				MaxMetaSize: ptr.Int(-1),
 			},
 			want: 0,
 		},
@@ -2782,7 +2781,7 @@ func TestValidateStorageConfigRejectsNegativeMaxMetaSize(t *testing.T) {
 			Port:        5432,
 			User:        "test",
 			Database:    "testdb",
-			MaxMetaSize: intPtr(-1),
+			MaxMetaSize: ptr.Int(-1),
 		},
 	}
 	err := cfg.validateStorageConfig()

@@ -8,7 +8,7 @@ import (
 )
 
 // SerializeServerMeta serializes the publisher-provided metadata to JSON bytes for storage.
-// maxMetaSize specifies the maximum allowed size in bytes. Set to 0 to disable the size check.
+// maxMetaSize specifies the maximum allowed size in bytes. Set to 0 or negative to disable the size check.
 func SerializeServerMeta(meta *upstreamv0.ServerMeta, maxMetaSize int) ([]byte, error) {
 	if meta == nil || meta.PublisherProvided == nil || len(meta.PublisherProvided) == 0 {
 		return nil, nil
