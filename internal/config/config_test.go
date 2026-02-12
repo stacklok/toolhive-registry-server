@@ -2758,6 +2758,86 @@ func TestDatabaseConfigGetMaxMetaSize(t *testing.T) {
 	}
 }
 
+func TestDatabaseConfigBuildConnectionStringWithAuth(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		dbConfig    *DatabaseConfig
+		user        string
+		password    string
+		wantConnStr string
+	}{
+		{
+			name: "empty password produces passwordless URL",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Database: "testdb",
+			},
+			user:        "appuser",
+			password:    "",
+			wantConnStr: "postgres://appuser@localhost:5432/testdb?sslmode=require",
+		},
+		{
+			name: "non-empty password is embedded in URL",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Database: "testdb",
+			},
+			user:        "appuser",
+			password:    "secret123",
+			wantConnStr: "postgres://appuser:secret123@localhost:5432/testdb?sslmode=require",
+		},
+		{
+			name: "password with special characters is URL-escaped",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Database: "testdb",
+			},
+			user:     "appuser",
+			password: "p@ss/word=",
+			// url.UserPassword escapes @ and / but not =
+			wantConnStr: "postgres://appuser:p%40ss%2Fword=@localhost:5432/testdb?sslmode=require",
+		},
+		{
+			name: "custom sslmode is respected",
+			dbConfig: &DatabaseConfig{
+				Host:     "db.example.com",
+				Port:     5433,
+				Database: "production",
+				SSLMode:  "verify-full",
+			},
+			user:        "migratoruser",
+			password:    "token",
+			wantConnStr: "postgres://migratoruser:token@db.example.com:5433/production?sslmode=verify-full",
+		},
+		{
+			name: "migration user differs from app user",
+			dbConfig: &DatabaseConfig{
+				Host:          "localhost",
+				Port:          5432,
+				User:          "appuser",
+				MigrationUser: "migratoruser",
+				Database:      "testdb",
+			},
+			user:        "migratoruser",
+			password:    "",
+			wantConnStr: "postgres://migratoruser@localhost:5432/testdb?sslmode=require",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			connStr := tt.dbConfig.BuildConnectionStringWithAuth(tt.user, tt.password)
+			assert.Equal(t, tt.wantConnStr, connStr)
+		})
+	}
+}
+
 func TestValidateStorageConfigRejectsInvalidMaxMetaSize(t *testing.T) {
 	t.Parallel()
 

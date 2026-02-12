@@ -10,6 +10,35 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
+// ResolveAuthToken resolves a dynamic authentication token for the given user.
+// Returns an empty string if dynamic authentication is not configured.
+// The returned token can be used as a password in a PostgreSQL connection string.
+// This is useful for short-lived connections (e.g., migrations) where a
+// BeforeConnect hook cannot be used.
+func ResolveAuthToken(
+	ctx context.Context,
+	cfg *config.DatabaseConfig,
+	user string,
+) (string, error) {
+	if cfg == nil {
+		return "", fmt.Errorf("database configuration is required")
+	}
+
+	if cfg.DynamicAuth == nil {
+		return "", nil
+	}
+
+	if cfg.DynamicAuth.AWSRDSIAM != nil {
+		region, err := resolveAWSRegion(ctx, cfg)
+		if err != nil {
+			return "", err
+		}
+		return resolveAWSRdsIamToken(ctx, cfg, region, user)
+	}
+
+	return "", fmt.Errorf("dynamic auth is configured but no supported auth method (e.g., awsRdsIam) is specified")
+}
+
 // NewDynamicAuth creates a new dynamic authentication function based on the configuration.
 func NewDynamicAuth(
 	ctx context.Context,
@@ -31,5 +60,5 @@ func NewDynamicAuth(
 		return awsRdsIamAuthFunc(ctx, cfg)
 	}
 
-	return nil, fmt.Errorf("unknown dynamic authentication type: %T", cfg.DynamicAuth)
+	return nil, fmt.Errorf("dynamic auth is configured but no supported auth method (e.g., awsRdsIam) is specified")
 }

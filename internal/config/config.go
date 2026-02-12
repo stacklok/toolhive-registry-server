@@ -45,6 +45,9 @@ const (
 	// DefaultMaxMetaSize is the default maximum allowed size in bytes for
 	// publisher-provided metadata extensions (_meta). 65536 bytes = 64KB.
 	DefaultMaxMetaSize = 65536
+
+	// defaultSSLMode is the default SSL mode for PostgreSQL connections.
+	defaultSSLMode = "require"
 )
 
 const (
@@ -579,19 +582,29 @@ func (d *DatabaseConfig) GetMaxMetaSize() int {
 	return *d.MaxMetaSize
 }
 
-// GetConnectionString builds a PostgreSQL connection string for the application user.
-// The connection string omits the password, allowing pgx to look up the password
-// from PGPASSFILE or ~/.pgpass.
-func (d *DatabaseConfig) GetConnectionString() string {
+// BuildConnectionStringWithAuth builds a PostgreSQL connection string for the given user,
+// embedding the password in the URL if non-empty. When password is empty, pgx will
+// fall back to PGPASSFILE or ~/.pgpass as usual.
+//
+// The caller is responsible for resolving the password (e.g., via dynamic auth token
+// resolution or static configuration). This keeps the config package free of auth
+// dependencies.
+func (d *DatabaseConfig) BuildConnectionStringWithAuth(user, password string) string {
 	sslMode := d.SSLMode
 	if sslMode == "" {
-		sslMode = "require"
+		sslMode = defaultSSLMode
 	}
 
-	// No password in connection string - pgx will use PGPASSFILE or ~/.pgpass
+	var userInfo *url.Userinfo
+	if password != "" {
+		userInfo = url.UserPassword(user, password)
+	} else {
+		userInfo = url.User(user)
+	}
+
 	return fmt.Sprintf(
 		"postgres://%s@%s:%d/%s?sslmode=%s",
-		d.User,
+		userInfo.String(),
 		d.Host,
 		d.Port,
 		d.Database,
@@ -599,27 +612,19 @@ func (d *DatabaseConfig) GetConnectionString() string {
 	)
 }
 
+// GetConnectionString builds a PostgreSQL connection string for the application user.
+// The connection string omits the password, allowing pgx to look up the password
+// from PGPASSFILE or ~/.pgpass.
+func (d *DatabaseConfig) GetConnectionString() string {
+	return d.BuildConnectionStringWithAuth(d.User, "")
+}
+
 // GetMigrationConnectionString builds a PostgreSQL connection string for the migration user.
 // Uses GetMigrationUser() which defaults to User if MigrationUser is not set.
 // The connection string omits the password, allowing pgx to look up the password
 // from PGPASSFILE or ~/.pgpass.
 func (d *DatabaseConfig) GetMigrationConnectionString() string {
-	sslMode := d.SSLMode
-	if sslMode == "" {
-		sslMode = "require"
-	}
-
-	migrationUser := d.GetMigrationUser()
-
-	// No password in connection string - pgx will use PGPASSFILE or ~/.pgpass
-	return fmt.Sprintf(
-		"postgres://%s@%s:%d/%s?sslmode=%s",
-		migrationUser,
-		d.Host,
-		d.Port,
-		d.Database,
-		sslMode,
-	)
+	return d.BuildConnectionStringWithAuth(d.GetMigrationUser(), "")
 }
 
 // LoadConfig loads and parses configuration from a YAML file with environment variable support.
