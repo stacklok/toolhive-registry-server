@@ -22,6 +22,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
+	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
@@ -285,24 +286,8 @@ func buildSyncComponents(
 		)
 
 		// Setup Kubernetes reconciler if any registry uses Kubernetes source
-		for _, reg := range b.config.Registries {
-			if reg.GetType() == config.SourceTypeKubernetes {
-				opts := []kubernetes.Option{
-					kubernetes.WithSyncWriter(syncWriter),
-					kubernetes.WithRegistryName(reg.Name),
-				}
-
-				if b.config.WatchNamespace != "" {
-					namespaces := strings.Split(b.config.WatchNamespace, ",")
-					opts = append(opts, kubernetes.WithNamespaces(namespaces...))
-				}
-
-				_, err := kubernetes.NewMCPServerReconciler(ctx, opts...)
-				if err != nil {
-					return nil, fmt.Errorf("failed to create kubernetes reconciler: %w", err)
-				}
-				break
-			}
+		if err := setupKubernetesReconciler(ctx, b.config, syncWriter); err != nil {
+			return nil, err
 		}
 	}
 
@@ -438,4 +423,34 @@ func buildHTTPServer(
 
 	slog.Info("HTTP server configured", "address", b.address)
 	return server, nil
+}
+
+// setupKubernetesReconciler creates a Kubernetes reconciler if any registry uses the Kubernetes source type.
+func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWriter writer.SyncWriter) error {
+	for _, reg := range cfg.Registries {
+		if reg.GetType() != config.SourceTypeKubernetes {
+			continue
+		}
+
+		opts := []kubernetes.Option{
+			kubernetes.WithSyncWriter(syncWriter),
+			kubernetes.WithRegistryName(reg.Name),
+		}
+
+		if cfg.WatchNamespace != "" {
+			namespaces := strings.Split(cfg.WatchNamespace, ",")
+			opts = append(opts, kubernetes.WithNamespaces(namespaces...))
+		}
+
+		if cfg.LeaderElectionID != "" {
+			opts = append(opts, kubernetes.WithLeaderElectionID(cfg.LeaderElectionID))
+		}
+
+		_, err := kubernetes.NewMCPServerReconciler(ctx, opts...)
+		if err != nil {
+			return fmt.Errorf("failed to create kubernetes reconciler: %w", err)
+		}
+		return nil
+	}
+	return nil
 }

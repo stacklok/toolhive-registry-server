@@ -372,6 +372,54 @@ func TestWithRegistryName(t *testing.T) {
 	}
 }
 
+func TestWithLeaderElectionID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		id      string
+		initial *mcpServerReconcilerOptions
+		want    string
+		wantErr bool
+	}{
+		{
+			name:    "valid leader election ID",
+			id:      "my-release-leader-election",
+			initial: &mcpServerReconcilerOptions{},
+			want:    "my-release-leader-election",
+		},
+		{
+			name:    "empty ID should error",
+			id:      "",
+			initial: &mcpServerReconcilerOptions{},
+			wantErr: true,
+		},
+		{
+			name:    "overwrite existing ID",
+			id:      "new-id",
+			initial: &mcpServerReconcilerOptions{leaderElectionID: "old-id"},
+			want:    "new-id",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opt := WithLeaderElectionID(tt.id)
+			err := opt(tt.initial)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, tt.initial.leaderElectionID)
+		})
+	}
+}
+
 func TestHasRequiredRegistryAnnotations(t *testing.T) {
 	t.Parallel()
 

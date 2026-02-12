@@ -64,6 +64,8 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           env:
+            - name: THV_REGISTRY_LEADER_ELECTION_ID
+              value: "{{ include "toolhive-registry-server.fullname" . }}-leader-election"
             {{- if eq .Values.rbac.scope "namespace" }}
             - name: THV_REGISTRY_WATCH_NAMESPACE
               value: "{{ .Values.rbac.allowedNamespaces | join "," }}"

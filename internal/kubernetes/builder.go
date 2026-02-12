@@ -59,10 +59,11 @@ func hasRequiredRegistryAnnotations(annotations map[string]string) bool {
 }
 
 type mcpServerReconcilerOptions struct {
-	namespaces   []string
-	requeueAfter time.Duration
-	syncWriter   writer.SyncWriter
-	registryName string
+	namespaces       []string
+	requeueAfter     time.Duration
+	syncWriter       writer.SyncWriter
+	registryName     string
+	leaderElectionID string
 }
 
 // Option is a function that sets an option for the MCPServerReconciler.
@@ -166,6 +167,19 @@ func WithRegistryName(name string) Option {
 	}
 }
 
+// WithLeaderElectionID sets the leader election lease ID.
+// This allows multiple independent deployments in the same namespace
+// to use separate leases.
+func WithLeaderElectionID(id string) Option {
+	return func(o *mcpServerReconcilerOptions) error {
+		if id == "" {
+			return fmt.Errorf("leader election ID is required")
+		}
+		o.leaderElectionID = id
+		return nil
+	}
+}
+
 // NewMCPServerReconciler creates a new MCPServerReconciler.
 func NewMCPServerReconciler(
 	ctx context.Context,
@@ -189,6 +203,11 @@ func NewMCPServerReconciler(
 		return nil, fmt.Errorf("registry name is required")
 	}
 
+	// Default leader election ID to the hardcoded constant if not set
+	if o.leaderElectionID == "" {
+		o.leaderElectionID = leaderElectionID
+	}
+
 	// This is validated in the options, so we can safely use the namespaces.
 	defaultNamespaces := map[string]cache.Config{}
 	for _, namespace := range o.namespaces {
@@ -204,7 +223,7 @@ func NewMCPServerReconciler(
 	options := ctrl.Options{
 		Scheme:           scheme,
 		LeaderElection:   true,
-		LeaderElectionID: leaderElectionID,
+		LeaderElectionID: o.leaderElectionID,
 		// disable metrics server
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
