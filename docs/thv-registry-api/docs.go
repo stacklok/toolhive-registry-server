@@ -1669,6 +1669,19 @@ const docTemplate = `{
                             }
                         },
                         "description": "Unauthorized"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Registry not found"
                     }
                 },
                 "security": [

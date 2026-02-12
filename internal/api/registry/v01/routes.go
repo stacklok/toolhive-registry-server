@@ -118,6 +118,10 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 
 	listResult, err := routes.service.ListServers(r.Context(), opts...)
 	if err != nil {
+		if errors.Is(err, service.ErrRegistryNotFound) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -179,6 +183,7 @@ func (routes *Routes) listServers(w http.ResponseWriter, r *http.Request) {
 // @Success		200		{object}	upstreamv0.ServerListResponse
 // @Failure		400		{object}	map[string]string	"Bad request"
 // @Failure		401		{object}	map[string]string	"Unauthorized"
+// @Failure		404		{object}	map[string]string	"Registry not found"
 // @Security	BearerAuth
 // @Router		/registry/{registryName}/v0.1/servers [get]
 func (routes *Routes) listServersWithRegistryName(w http.ResponseWriter, r *http.Request) {
@@ -213,6 +218,10 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 
 	versions, err := routes.service.ListServerVersions(r.Context(), opts...)
 	if err != nil {
+		if errors.Is(err, service.ErrRegistryNotFound) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -307,6 +316,10 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 
 	server, err := routes.service.GetServerVersion(r.Context(), opts...)
 	if err != nil {
+		if errors.Is(err, service.ErrRegistryNotFound) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

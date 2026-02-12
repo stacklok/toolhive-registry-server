@@ -245,10 +245,6 @@ func TestListServers(t *testing.T) {
 				service.WithRegistryName[service.ListServersOptions]("non-existent-registry"),
 				service.WithLimit[service.ListServersOptions](10),
 			},
-			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, result *service.ListServersResult) {
-				require.Len(t, result.Servers, 0)
-			},
 		},
 		{
 			name: "list servers with search by name",
@@ -548,10 +544,6 @@ func TestListServerVersions(t *testing.T) {
 				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
 				service.WithRegistryName[service.ListServerVersionsOptions]("non-existent-registry"),
 				service.WithLimit[service.ListServerVersionsOptions](10),
-			},
-			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 0)
 			},
 		},
 	}
