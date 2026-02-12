@@ -6,7 +6,7 @@ replicaCount: 1
 
 image:
   # -- URL of the registry server image
-  registryServerUrl: "ghcr.io/stacklok/thv-registry-api:v0.5.3"
+  registryServerUrl: "ghcr.io/stacklok/thv-registry-api:v0.5.4"
 
   # -- Image pull policy
   pullPolicy: IfNotPresent
