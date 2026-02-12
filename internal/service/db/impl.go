@@ -163,6 +163,12 @@ func (s *dbService) ListServers(
 	)
 	if options.RegistryName != nil {
 		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
+
+		querier := sqlc.New(s.pool)
+		if err := validateRegistryExists(ctx, querier, *options.RegistryName); err != nil {
+			otel.RecordError(span, err)
+			return nil, err
+		}
 	}
 
 	slog.DebugContext(ctx, "ListServers query",
@@ -275,6 +281,14 @@ func (s *dbService) ListServerVersions(
 		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
 	}
 
+	if options.RegistryName != nil {
+		querier := sqlc.New(s.pool)
+		if err := validateRegistryExists(ctx, querier, *options.RegistryName); err != nil {
+			otel.RecordError(span, err)
+			return nil, err
+		}
+	}
+
 	params := sqlc.ListServerVersionsParams{
 		Name: options.Name,
 		Next: options.Next,
@@ -335,6 +349,14 @@ func (s *dbService) GetServerVersion(
 	)
 	if options.RegistryName != nil {
 		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
+	}
+
+	if options.RegistryName != nil {
+		querier := sqlc.New(s.pool)
+		if err := validateRegistryExists(ctx, querier, *options.RegistryName); err != nil {
+			otel.RecordError(span, err)
+			return nil, err
+		}
 	}
 
 	params := sqlc.GetServerVersionParams{
@@ -545,6 +567,19 @@ func insertServerIcons(
 		if err != nil {
 			return fmt.Errorf("failed to insert server icon: %w", err)
 		}
+	}
+	return nil
+}
+
+// validateRegistryExists validates that the registry exists.
+// Returns ErrRegistryNotFound if the registry doesn't exist.
+func validateRegistryExists(ctx context.Context, querier *sqlc.Queries, registryName string) error {
+	_, err := querier.GetRegistryByName(ctx, registryName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
+		}
+		return fmt.Errorf("failed to get registry: %w", err)
 	}
 	return nil
 }

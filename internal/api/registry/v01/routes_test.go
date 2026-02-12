@@ -241,6 +241,18 @@ func TestListServers(t *testing.T) {
 			},
 			wantStatus: http.StatusNotFound,
 		},
+		{
+			name: "list servers with registry name - registry not found",
+			path: "/nonexistent/v0.1/servers",
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).
+					Return(nil, service.ErrRegistryNotFound)
+			},
+			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
+				return Router(mockSvc, false)
+			},
+			wantStatus: http.StatusNotFound,
+		},
 	}
 
 	for _, tt := range tests {
@@ -343,6 +355,18 @@ func TestListVersions(t *testing.T) {
 			name:       "list versions - disabled aggregated endpoints",
 			path:       "/v0.1/servers/foo/versions",
 			setupMocks: func(_ *mocks.MockRegistryService) {},
+			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
+				return Router(mockSvc, false)
+			},
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "list versions with registry name - registry not found",
+			path: "/nonexistent/v0.1/servers/com.example%2Ftest-server/versions",
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().ListServerVersions(gomock.Any(), gomock.Any()).
+					Return(nil, service.ErrRegistryNotFound)
+			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, false)
 			},
@@ -508,6 +532,18 @@ func TestGetVersion(t *testing.T) {
 			name:       "get version - disabled aggregated endpoints",
 			path:       "/v0.1/servers/foo/versions/1.0.0",
 			setupMocks: func(_ *mocks.MockRegistryService) {},
+			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
+				return Router(mockSvc, false)
+			},
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "get version with registry name - registry not found",
+			path: "/nonexistent/v0.1/servers/com.example%2Ftest-server/versions/1.0.0",
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().GetServerVersion(gomock.Any(), gomock.Any()).
+					Return(nil, service.ErrRegistryNotFound)
+			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, false)
 			},
