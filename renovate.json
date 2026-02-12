@@ -47,6 +47,15 @@
       "depNameTemplate": "golang",
       "datasourceTemplate": "golang-version",
       "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^\\.github/workflows/create-release-pr\\.yml$"],
+      "matchStrings": [
+        "releaseo_version:\\s*(?<currentValue>v[\\d.]+)"
+      ],
+      "depNameTemplate": "stacklok/releaseo",
+      "datasourceTemplate": "github-tags"
     }
   ]
 }
