@@ -972,11 +972,14 @@ func (s *dbService) sharedListServersWithCursor(
 
 	result := make([]*upstreamv0.ServerJSON, 0, len(servers))
 	for _, dbServer := range servers {
-		server := helperToServer(
+		server, err := helperToServer(
 			dbServer,
 			packagesMap[dbServer.ID],
 			remotesMap[dbServer.ID],
 		)
+		if err != nil {
+			return nil, nil, err
+		}
 		result = append(result, &server)
 	}
 
