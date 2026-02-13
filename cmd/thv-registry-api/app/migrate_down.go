@@ -46,10 +46,12 @@ func runMigrateDown(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Build migration connection string with dynamic auth support
-	connString, err := auth.MigrationConnectionString(ctx, cfg.Database)
+	user := cfg.Database.GetMigrationUser()
+	token, err := auth.NewAuthToken(ctx, cfg.Database, user)
 	if err != nil {
 		return fmt.Errorf("failed to build migration connection string: %w", err)
 	}
+	connString := cfg.Database.BuildConnectionStringWithAuth(user, token)
 
 	// Prompt user for confirmation if not using --yes flag
 	if !yes {

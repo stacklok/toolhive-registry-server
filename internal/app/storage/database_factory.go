@@ -139,7 +139,7 @@ func buildDatabaseConnectionPool(ctx context.Context, cfg *config.Config) (*pgxp
 	}
 
 	if cfg.Database.DynamicAuth != nil {
-		authFunc, err := auth.NewDynamicAuth(ctx, cfg.Database)
+		authFunc, err := auth.NewDynamicAuth(ctx, cfg.Database, cfg.Database.User)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create dynamic authentication function: %w", err)
 		}
