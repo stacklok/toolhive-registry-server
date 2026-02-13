@@ -706,6 +706,240 @@ func TestListServers(t *testing.T) {
 				require.Len(t, servers, 1)
 			},
 		},
+		{
+			name: "list servers filtered by specific version",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
+				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
+					entryID, err := queries.InsertRegistryEntry(
+						context.Background(),
+						InsertRegistryEntryParams{
+							Name:      "test-server",
+							Version:   version,
+							RegID:     regID,
+							EntryType: EntryTypeMCP,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
+						},
+					)
+					require.NoError(t, err)
+
+					_, err = queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
+						},
+					)
+					require.NoError(t, err)
+				}
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries) {
+				//nolint:goconst
+				version := "2.0.0"
+				servers, err := queries.ListServers(
+					context.Background(),
+					ListServersParams{
+						Version: &version,
+						Size:    10,
+					},
+				)
+				require.NoError(t, err)
+				require.Len(t, servers, 1)
+				assert.Equal(t, "test-server", servers[0].Name)
+				assert.Equal(t, "2.0.0", servers[0].Version)
+			},
+		},
+		{
+			name: "list servers filtered by latest version",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
+				var entryIDs []uuid.UUID
+				for _, version := range []string{"1.0.0", "2.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
+					entryID, err := queries.InsertRegistryEntry(
+						context.Background(),
+						InsertRegistryEntryParams{
+							Name:      "test-server",
+							Version:   version,
+							RegID:     regID,
+							EntryType: EntryTypeMCP,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
+						},
+					)
+					require.NoError(t, err)
+
+					_, err = queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
+						},
+					)
+					require.NoError(t, err)
+					entryIDs = append(entryIDs, entryID)
+				}
+
+				// Mark 2.0.0 as latest
+				_, err := queries.UpsertLatestServerVersion(
+					context.Background(),
+					UpsertLatestServerVersionParams{
+						RegID:   regID,
+						Name:    "test-server",
+						Version: "2.0.0",
+						EntryID: entryIDs[1],
+					},
+				)
+				require.NoError(t, err)
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries) {
+				version := "latest"
+				servers, err := queries.ListServers(
+					context.Background(),
+					ListServersParams{
+						Version: &version,
+						Size:    10,
+					},
+				)
+				require.NoError(t, err)
+				require.Len(t, servers, 1)
+				assert.Equal(t, "test-server", servers[0].Name)
+				assert.Equal(t, "2.0.0", servers[0].Version)
+				assert.True(t, servers[0].IsLatest)
+			},
+		},
+		{
+			name: "list servers filtered by version returns empty when no match",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC()
+				entryID, err := queries.InsertRegistryEntry(
+					context.Background(),
+					InsertRegistryEntryParams{
+						Name:      "test-server",
+						Version:   "1.0.0",
+						RegID:     regID,
+						EntryType: EntryTypeMCP,
+						CreatedAt: &createdAt,
+						UpdatedAt: &createdAt,
+					},
+				)
+				require.NoError(t, err)
+
+				_, err = queries.InsertServerVersion(
+					context.Background(),
+					InsertServerVersionParams{
+						EntryID: entryID,
+					},
+				)
+				require.NoError(t, err)
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries) {
+				version := "9.9.9"
+				servers, err := queries.ListServers(
+					context.Background(),
+					ListServersParams{
+						Version: &version,
+						Size:    10,
+					},
+				)
+				require.NoError(t, err)
+				require.Empty(t, servers)
+			},
+		},
+		{
+			name: "list servers filtered by latest returns empty when no latest set",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
+				for _, version := range []string{"1.0.0", "2.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
+					entryID, err := queries.InsertRegistryEntry(
+						context.Background(),
+						InsertRegistryEntryParams{
+							Name:      "test-server",
+							Version:   version,
+							RegID:     regID,
+							EntryType: EntryTypeMCP,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
+						},
+					)
+					require.NoError(t, err)
+
+					_, err = queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
+						},
+					)
+					require.NoError(t, err)
+				}
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries) {
+				version := "latest"
+				servers, err := queries.ListServers(
+					context.Background(),
+					ListServersParams{
+						Version: &version,
+						Size:    10,
+					},
+				)
+				require.NoError(t, err)
+				require.Empty(t, servers)
+			},
+		},
+		{
+			name: "list servers with nil version returns all versions",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
+				createdAt := time.Now().UTC().Add(-1 * time.Minute)
+				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
+					createdAt = createdAt.Add(1 * time.Second)
+					entryID, err := queries.InsertRegistryEntry(
+						context.Background(),
+						InsertRegistryEntryParams{
+							Name:      "test-server",
+							Version:   version,
+							RegID:     regID,
+							EntryType: EntryTypeMCP,
+							CreatedAt: &createdAt,
+							UpdatedAt: &createdAt,
+						},
+					)
+					require.NoError(t, err)
+
+					_, err = queries.InsertServerVersion(
+						context.Background(),
+						InsertServerVersionParams{
+							EntryID: entryID,
+						},
+					)
+					require.NoError(t, err)
+				}
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries) {
+				servers, err := queries.ListServers(
+					context.Background(),
+					ListServersParams{
+						Version: nil,
+						Size:    10,
+					},
+				)
+				require.NoError(t, err)
+				require.Len(t, servers, 3)
+				assert.Equal(t, "1.0.0", servers[0].Version)
+				assert.Equal(t, "2.0.0", servers[1].Version)
+				assert.Equal(t, "3.0.0", servers[2].Version)
+			},
+		},
 	}
 
 	for _, tc := range testCases {

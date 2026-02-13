@@ -36,6 +36,11 @@ SELECT r.reg_type as registry_type,
        sqlc.narg(cursor_name)::text IS NULL
        OR (e.name, e.version) > (sqlc.narg(cursor_name)::text, sqlc.narg(cursor_version)::text)
    )
+   AND (
+       sqlc.narg(version)::text IS NULL OR
+       e.version = sqlc.narg(version)::text OR
+       (sqlc.narg(version)::text = 'latest' AND l.latest_entry_id = e.id)
+   )
  ORDER BY e.name ASC, e.version ASC
  LIMIT sqlc.arg(size)::bigint;
 
