@@ -86,12 +86,14 @@ func TestNewDynamicAuth(t *testing.T) {
 	tests := []struct {
 		name    string
 		cfg     *config.DatabaseConfig
+		user    string
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name:    "nil config returns error",
 			cfg:     nil,
+			user:    "testuser",
 			wantErr: true,
 			errMsg:  "database configuration is required",
 		},
@@ -103,6 +105,7 @@ func TestNewDynamicAuth(t *testing.T) {
 				User:     "appuser",
 				Database: "testdb",
 			},
+			user:    "appuser",
 			wantErr: true,
 			errMsg:  "dynamic authentication is not configured",
 		},
@@ -117,6 +120,7 @@ func TestNewDynamicAuth(t *testing.T) {
 					// AWSRDSIAM is nil, so no known auth type is configured
 				},
 			},
+			user:    "appuser",
 			wantErr: true,
 			errMsg:  "dynamic auth is configured but no supported auth method",
 		},
@@ -127,7 +131,7 @@ func TestNewDynamicAuth(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			authFunc, err := NewDynamicAuth(ctx, tt.cfg, tt.cfg.User)
+			authFunc, err := NewDynamicAuth(ctx, tt.cfg, tt.user)
 
 			if tt.wantErr {
 				require.Error(t, err)
