@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/internal/app/storage/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
@@ -44,8 +45,13 @@ func runMigrateDown(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("database configuration is required")
 	}
 
-	// Get migration connection string (uses migration user if configured)
-	connString := cfg.Database.GetMigrationConnectionString()
+	// Build migration connection string with dynamic auth support
+	user := cfg.Database.GetMigrationUser()
+	token, err := auth.NewAuthToken(ctx, cfg.Database, user)
+	if err != nil {
+		return fmt.Errorf("failed to build migration connection string: %w", err)
+	}
+	connString := cfg.Database.BuildConnectionStringWithAuth(user, token)
 
 	// Prompt user for confirmation if not using --yes flag
 	if !yes {

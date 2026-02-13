@@ -16,6 +16,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/internal/app/storage/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
@@ -121,7 +122,12 @@ func executePrimeSQL(ctx context.Context, primeSQL string, configPath string) er
 		return fmt.Errorf("database configuration is required")
 	}
 
-	connString := cfg.Database.GetMigrationConnectionString()
+	user := cfg.Database.GetMigrationUser()
+	token, err := auth.NewAuthToken(ctx, cfg.Database, user)
+	if err != nil {
+		return fmt.Errorf("failed to build migration connection string: %w", err)
+	}
+	connString := cfg.Database.BuildConnectionStringWithAuth(user, token)
 
 	conn, err := pgx.Connect(ctx, connString)
 	if err != nil {

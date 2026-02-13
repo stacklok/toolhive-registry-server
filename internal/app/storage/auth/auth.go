@@ -7,13 +7,40 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/stacklok/toolhive-registry-server/internal/app/storage/auth/aws"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
+
+// NewAuthToken creates a new dynamic authentication token for the given user.
+// Returns an empty string if dynamic authentication is not configured.
+// The returned token can be used as a password in a PostgreSQL connection string.
+// This is useful for short-lived connections (e.g., migrations) where a
+// BeforeConnect hook cannot be used.
+func NewAuthToken(
+	ctx context.Context,
+	cfg *config.DatabaseConfig,
+	user string,
+) (string, error) {
+	if cfg == nil {
+		return "", fmt.Errorf("database configuration is required")
+	}
+
+	if cfg.DynamicAuth == nil {
+		return "", nil
+	}
+
+	if cfg.DynamicAuth.AWSRDSIAM != nil {
+		return aws.NewToken(ctx, cfg, user)
+	}
+
+	return "", fmt.Errorf("dynamic auth is configured but no supported auth method (e.g., awsRdsIam) is specified")
+}
 
 // NewDynamicAuth creates a new dynamic authentication function based on the configuration.
 func NewDynamicAuth(
 	ctx context.Context,
 	cfg *config.DatabaseConfig,
+	user string,
 ) (func(ctx context.Context, connConfig *pgx.ConnConfig) error, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("database configuration is required")
@@ -28,8 +55,8 @@ func NewDynamicAuth(
 	// configured.
 
 	if cfg.DynamicAuth.AWSRDSIAM != nil {
-		return awsRdsIamAuthFunc(ctx, cfg)
+		return aws.PgxAuthFunc(ctx, cfg, user)
 	}
 
-	return nil, fmt.Errorf("unknown dynamic authentication type: %T", cfg.DynamicAuth)
+	return nil, fmt.Errorf("dynamic auth is configured but no supported auth method (e.g., awsRdsIam) is specified")
 }

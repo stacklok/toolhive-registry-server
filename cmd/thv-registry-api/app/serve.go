@@ -15,6 +15,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/database"
 	registryapp "github.com/stacklok/toolhive-registry-server/internal/app"
+	"github.com/stacklok/toolhive-registry-server/internal/app/storage/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
@@ -144,8 +145,13 @@ func runServe(cmd *cobra.Command, _ []string) error {
 
 // runMigrations executes database migrations on startup
 func runMigrations(ctx context.Context, cfg *config.Config) error {
-	// Get migration connection string (uses migration user if configured)
-	connString := cfg.Database.GetMigrationConnectionString()
+	// Build migration connection string with dynamic auth support
+	user := cfg.Database.GetMigrationUser()
+	token, err := auth.NewAuthToken(ctx, cfg.Database, user)
+	if err != nil {
+		return fmt.Errorf("failed to build migration connection string: %w", err)
+	}
+	connString := cfg.Database.BuildConnectionStringWithAuth(user, token)
 
 	// Log which user is running migrations
 	slog.Info("Running migrations as user", "user", cfg.Database.GetMigrationUser())
@@ -192,7 +198,11 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("failed to commit migration transaction: %w", err)
 	}
 
-	// Get and log new version
+	// Get and log new version.
+	// Note: This reuses the same connString (and embedded auth token) from above.
+	// AWS RDS IAM tokens are valid for 15 minutes, so this is safe for typical
+	// migration durations. If the token has expired, GetVersion will fail
+	// gracefully (logged as a warning below).
 	version, dirty, err := database.GetVersion(connString)
 	if err != nil {
 		slog.Warn("Unable to get migration version", "error", err)
