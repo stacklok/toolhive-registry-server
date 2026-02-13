@@ -113,7 +113,7 @@ func helperToServer(
 	dbServer helper,
 	packages []sqlc.ListServerPackagesRow,
 	remotes []sqlc.McpServerRemote,
-) upstreamv0.ServerJSON {
+) (upstreamv0.ServerJSON, error) {
 	server := upstreamv0.ServerJSON{
 		Schema:      "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 		Name:        dbServer.Name,
@@ -137,26 +137,18 @@ func helperToServer(
 	server.Meta = &upstreamv0.ServerMeta{
 		PublisherProvided: make(map[string]any),
 	}
-	if len(dbServer.UpstreamMeta) > 0 {
-		server.Meta.PublisherProvided["upstream_meta"] = dbServer.UpstreamMeta
-	}
+
+	// TODO: clarify what's the use for upstream_meta
+	// if len(dbServer.UpstreamMeta) > 0 {
+	// 	server.Meta.PublisherProvided["upstream_meta"] = dbServer.UpstreamMeta
+	// }
 	if len(dbServer.ServerMeta) > 0 {
-		server.Meta.PublisherProvided["server_meta"] = dbServer.ServerMeta
-	}
-	if dbServer.RepositoryUrl != nil {
-		server.Meta.PublisherProvided["repository_url"] = ptr.ToString(dbServer.RepositoryUrl)
-	}
-	if dbServer.RepositoryID != nil {
-		server.Meta.PublisherProvided["repository_id"] = ptr.ToString(dbServer.RepositoryID)
-	}
-	if dbServer.RepositorySubfolder != nil {
-		server.Meta.PublisherProvided["repository_subfolder"] = ptr.ToString(dbServer.RepositorySubfolder)
-	}
-	if dbServer.RepositoryType != nil {
-		server.Meta.PublisherProvided["repository_type"] = ptr.ToString(dbServer.RepositoryType)
+		if err := json.Unmarshal(dbServer.ServerMeta, &server.Meta.PublisherProvided); err != nil {
+			return upstreamv0.ServerJSON{}, fmt.Errorf("failed to unmarshal server meta: %w", err)
+		}
 	}
 
-	return server
+	return server, nil
 }
 
 func toPackages(
