@@ -278,6 +278,18 @@ func TestWithSyncManager(t *testing.T) {
 	assert.Equal(t, testSyncManager, cfg.syncManager)
 }
 
+func TestWithAuthzMiddleware(t *testing.T) {
+	t.Parallel()
+	cfg := &registryAppConfig{}
+	testMw := func(next http.Handler) http.Handler { return next }
+
+	opt := WithAuthzMiddleware(testMw)
+	err := opt(cfg)
+
+	require.NoError(t, err)
+	assert.NotNil(t, cfg.authzMiddleware)
+}
+
 func TestWithMeterProvider(t *testing.T) {
 	t.Parallel()
 
