@@ -78,9 +78,8 @@ SELECT
     runtime_hint, runtime_arguments, package_arguments, env_vars, sha256_hash,
     transport, transport_url, transport_headers
 FROM temp_mcp_server_package
-ON CONFLICT (entry_id, pkg_identifier, transport)
+ON CONFLICT (entry_id, registry_type, pkg_identifier, transport)
 DO UPDATE SET
-    registry_type = EXCLUDED.registry_type,
     pkg_registry_url = EXCLUDED.pkg_registry_url,
     pkg_version = EXCLUDED.pkg_version,
     runtime_hint = EXCLUDED.runtime_hint,
