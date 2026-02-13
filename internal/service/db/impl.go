@@ -134,6 +134,8 @@ func (*dbService) GetRegistry(
 }
 
 // ListServers returns all servers in the registry
+//
+//nolint:gocyclo
 func (s *dbService) ListServers(
 	ctx context.Context,
 	opts ...service.Option[service.ListServersOptions],
@@ -200,6 +202,10 @@ func (s *dbService) ListServers(
 
 	if !options.UpdatedSince.IsZero() {
 		params.UpdatedSince = &options.UpdatedSince
+	}
+
+	if options.Version != "" {
+		params.Version = &options.Version
 	}
 
 	// Note: this function fetches a list of servers. In case no records are

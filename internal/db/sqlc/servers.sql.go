@@ -659,8 +659,13 @@ SELECT r.reg_type as registry_type,
        $4::text IS NULL
        OR (e.name, e.version) > ($4::text, $5::text)
    )
+   AND (
+       $6::text IS NULL OR
+       e.version = $6::text OR
+       ($6::text = 'latest' AND l.latest_entry_id = e.id)
+   )
  ORDER BY e.name ASC, e.version ASC
- LIMIT $6::bigint
+ LIMIT $7::bigint
 `
 
 type ListServersParams struct {
@@ -669,6 +674,7 @@ type ListServersParams struct {
 	UpdatedSince  *time.Time `json:"updated_since"`
 	CursorName    *string    `json:"cursor_name"`
 	CursorVersion *string    `json:"cursor_version"`
+	Version       *string    `json:"version"`
 	Size          int64      `json:"size"`
 }
 
@@ -701,6 +707,7 @@ func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]Lis
 		arg.UpdatedSince,
 		arg.CursorName,
 		arg.CursorVersion,
+		arg.Version,
 		arg.Size,
 	)
 	if err != nil {

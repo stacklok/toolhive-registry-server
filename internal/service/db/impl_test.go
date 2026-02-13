@@ -99,6 +99,19 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, entryID, serverID)
+
+		if version == "2.0.0" {
+			_, err := queries.UpsertLatestServerVersion(
+				ctx,
+				sqlc.UpsertLatestServerVersionParams{
+					RegID:   regID,
+					Name:    "com.example/test-server-1",
+					Version: "2.0.0",
+					EntryID: entryID,
+				},
+			)
+			require.NoError(t, err)
+		}
 	}
 
 	// Server 2 with single version
@@ -361,6 +374,24 @@ func TestListServers(t *testing.T) {
 				for _, server := range result.Servers {
 					require.Equal(t, "com.example/test-server-1", server.Name)
 				}
+			},
+		},
+		{
+			name: "list servers filtered by version latest",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option[service.ListServersOptions]{
+				service.WithVersion[service.ListServersOptions]("latest"),
+				service.WithLimit[service.ListServersOptions](10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				// Only com.example/test-server-1 v2.0.0 has a latest_entry_version record
+				require.Len(t, result.Servers, 1)
+				require.Equal(t, "com.example/test-server-1", result.Servers[0].Name)
+				require.Equal(t, "2.0.0", result.Servers[0].Version)
 			},
 		},
 	}
