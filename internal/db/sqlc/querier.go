@@ -42,6 +42,7 @@ type Querier interface {
 	DeleteServerRemotesByServerId(ctx context.Context, entryID uuid.UUID) error
 	DeleteServersByRegistry(ctx context.Context, regID uuid.UUID) error
 	GetAPIRegistriesByNames(ctx context.Context, names []string) ([]GetAPIRegistriesByNamesRow, error)
+	GetLatestVersionForServer(ctx context.Context, arg GetLatestVersionForServerParams) (string, error)
 	GetRegistry(ctx context.Context, id uuid.UUID) (GetRegistryRow, error)
 	GetRegistryByName(ctx context.Context, name string) (GetRegistryByNameRow, error)
 	GetRegistrySync(ctx context.Context, id uuid.UUID) (RegistrySync, error)

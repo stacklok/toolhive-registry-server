@@ -28,6 +28,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 	"github.com/stacklok/toolhive-registry-server/internal/validators"
+	"github.com/stacklok/toolhive-registry-server/internal/versions"
 )
 
 const (
@@ -758,15 +759,28 @@ func (s *dbService) insertServerData(
 		return err
 	}
 
-	// Upsert latest server version pointer
-	_, err = querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
-		RegID:   registryID,
-		Name:    serverData.Name,
-		Version: serverData.Version,
-		EntryID: entryID,
+	// Compare with current latest before upserting — avoid regressing the pointer
+	shouldUpdateLatest := true
+	currentLatest, err := querier.GetLatestVersionForServer(ctx, sqlc.GetLatestVersionForServerParams{
+		Name:  serverData.Name,
+		RegID: registryID,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to upsert latest server version: %w", err)
+	if err == nil {
+		shouldUpdateLatest = versions.IsNewerVersion(serverData.Version, currentLatest)
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("failed to get current latest version: %w", err)
+	}
+
+	if shouldUpdateLatest {
+		_, err = querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
+			RegID:   registryID,
+			Name:    serverData.Name,
+			Version: serverData.Version,
+			EntryID: entryID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to upsert latest server version: %w", err)
+		}
 	}
 
 	return nil
