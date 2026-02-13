@@ -146,10 +146,12 @@ func runServe(cmd *cobra.Command, _ []string) error {
 // runMigrations executes database migrations on startup
 func runMigrations(ctx context.Context, cfg *config.Config) error {
 	// Build migration connection string with dynamic auth support
-	connString, err := auth.MigrationConnectionString(ctx, cfg.Database)
+	user := cfg.Database.GetMigrationUser()
+	token, err := auth.NewAuthToken(ctx, cfg.Database, user)
 	if err != nil {
 		return fmt.Errorf("failed to build migration connection string: %w", err)
 	}
+	connString := cfg.Database.BuildConnectionStringWithAuth(user, token)
 
 	// Log which user is running migrations
 	slog.Info("Running migrations as user", "user", cfg.Database.GetMigrationUser())

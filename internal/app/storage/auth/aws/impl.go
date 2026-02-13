@@ -1,4 +1,5 @@
-package auth
+// Package aws implements dynamic authentication for AWS RDS IAM.
+package aws
 
 import (
 	"context"
@@ -18,9 +19,9 @@ const (
 	awsRegionDetect = "detect"
 )
 
-// resolveAWSRegion resolves the AWS region from the configuration, detecting
+// getRegion resolves the AWS region from the configuration, detecting
 // it from IMDS if the region is set to "detect".
-func resolveAWSRegion(ctx context.Context, cfg *config.DatabaseConfig) (string, error) {
+func getRegion(ctx context.Context, cfg *config.DatabaseConfig) (string, error) {
 	if cfg.DynamicAuth.AWSRDSIAM.Region == "" {
 		return "", fmt.Errorf("AWS RDS IAM region is not configured")
 	}
@@ -43,9 +44,9 @@ func resolveAWSRegion(ctx context.Context, cfg *config.DatabaseConfig) (string, 
 	return cfg.DynamicAuth.AWSRDSIAM.Region, nil
 }
 
-// resolveAWSRdsIamToken generates an AWS RDS IAM authentication token for the
+// getToken generates an AWS RDS IAM authentication token for the
 // given user. The token can be used as a password in a PostgreSQL connection string.
-func resolveAWSRdsIamToken(ctx context.Context, cfg *config.DatabaseConfig, region, user string) (string, error) {
+func getToken(ctx context.Context, cfg *config.DatabaseConfig, region, user string) (string, error) {
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
 	if err != nil {
 		return "", fmt.Errorf("failed to load AWS config: %w", err)
@@ -60,22 +61,37 @@ func resolveAWSRdsIamToken(ctx context.Context, cfg *config.DatabaseConfig, regi
 	return token, nil
 }
 
-// awsRdsIamAuthFunc creates a function that authenticates with AWS RDS IAM.
+// NewToken creates a function that resolves an AWS RDS IAM authentication token.
+func NewToken(
+	ctx context.Context,
+	cfg *config.DatabaseConfig,
+	user string,
+) (string, error) {
+	region, err := getRegion(ctx, cfg)
+	if err != nil {
+		return "", err
+	}
+
+	return getToken(ctx, cfg, region, user)
+}
+
+// PgxAuthFunc creates a function that authenticates with AWS RDS IAM.
 //
 // It assumes that the role attached to the workload can be used to
 // authenticate with the database. If the region is "detect", it will try to
 // automatically detect it from the instance metadata via IMDS.
-func awsRdsIamAuthFunc(
+func PgxAuthFunc(
 	ctx context.Context,
 	cfg *config.DatabaseConfig,
+	user string,
 ) (func(ctx context.Context, connConfig *pgx.ConnConfig) error, error) {
-	region, err := resolveAWSRegion(ctx, cfg)
+	region, err := getRegion(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	return func(ctx context.Context, connConfig *pgx.ConnConfig) error {
-		token, err := resolveAWSRdsIamToken(ctx, cfg, region, connConfig.User)
+		token, err := getToken(ctx, cfg, region, user)
 		if err != nil {
 			return err
 		}
