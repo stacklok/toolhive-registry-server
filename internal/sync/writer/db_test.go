@@ -2184,6 +2184,20 @@ func TestDbSyncWriter_Store_ServerWithMultiplePackages(t *testing.T) {
 			Version:         "",
 			Transport:       model.Transport{Type: "stdio"},
 		},
+		{
+			RegistryType:    "pypi",
+			RegistryBaseURL: "fubar",
+			Identifier:      "test-package",
+			Version:         "2.0.0",
+			Transport:       model.Transport{Type: "stdio"},
+		},
+		{
+			RegistryType:    "npm",
+			RegistryBaseURL: "fubar",
+			Identifier:      "test-package",
+			Version:         "2.0.0",
+			Transport:       model.Transport{Type: "stdio"},
+		},
 	}
 
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
@@ -2199,7 +2213,7 @@ func TestDbSyncWriter_Store_ServerWithMultiplePackages(t *testing.T) {
 
 	packages, err := queries.ListServerPackages(ctx, []uuid.UUID{servers[0].ID})
 	require.NoError(t, err)
-	require.Len(t, packages, 3, "Server should have 3 packages")
+	require.Len(t, packages, 5, "Server should have 5 packages")
 
 	// Verify each package
 	pkgIdentifiers := make(map[string]bool)
