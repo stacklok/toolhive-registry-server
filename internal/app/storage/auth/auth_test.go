@@ -172,3 +172,179 @@ func TestMigrationConnectionString(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveAWSRegion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		cfg        *config.DatabaseConfig
+		wantRegion string
+		wantErr    bool
+		errMsg     string
+	}{
+		{
+			name: "static region configured returns region string",
+			cfg: &config.DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "appuser",
+				Database: "testdb",
+				DynamicAuth: &config.DynamicAuthConfig{
+					AWSRDSIAM: &config.DynamicAuthAWSRDSIAM{
+						Region: "us-east-1",
+					},
+				},
+			},
+			wantRegion: "us-east-1",
+			wantErr:    false,
+		},
+		{
+			name: "empty region returns error",
+			cfg: &config.DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "appuser",
+				Database: "testdb",
+				DynamicAuth: &config.DynamicAuthConfig{
+					AWSRDSIAM: &config.DynamicAuthAWSRDSIAM{
+						Region: "",
+					},
+				},
+			},
+			wantRegion: "",
+			wantErr:    true,
+			errMsg:     "AWS RDS IAM region is not configured",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			region, err := resolveAWSRegion(ctx, tt.cfg)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantRegion, region)
+		})
+	}
+}
+
+func TestNewDynamicAuth(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		cfg     *config.DatabaseConfig
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "nil config returns error",
+			cfg:     nil,
+			wantErr: true,
+			errMsg:  "database configuration is required",
+		},
+		{
+			name: "nil DynamicAuth returns error",
+			cfg: &config.DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "appuser",
+				Database: "testdb",
+			},
+			wantErr: true,
+			errMsg:  "dynamic authentication is not configured",
+		},
+		{
+			name: "unknown auth type returns error",
+			cfg: &config.DatabaseConfig{
+				Host:        "localhost",
+				Port:        5432,
+				User:        "appuser",
+				Database:    "testdb",
+				DynamicAuth: &config.DynamicAuthConfig{
+					// AWSRDSIAM is nil, so no known auth type is configured
+				},
+			},
+			wantErr: true,
+			errMsg:  "dynamic auth is configured but no supported auth method",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			authFunc, err := NewDynamicAuth(ctx, tt.cfg)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Nil(t, authFunc)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			assert.NotNil(t, authFunc)
+		})
+	}
+}
+
+func TestResolveAuthTokenWithAWSEmptyRegion(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	cfg := &config.DatabaseConfig{
+		Host:     "localhost",
+		Port:     5432,
+		User:     "appuser",
+		Database: "testdb",
+		DynamicAuth: &config.DynamicAuthConfig{
+			AWSRDSIAM: &config.DynamicAuthAWSRDSIAM{
+				Region: "",
+			},
+		},
+	}
+
+	token, err := ResolveAuthToken(ctx, cfg, "appuser")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "AWS RDS IAM region is not configured")
+	assert.Empty(t, token)
+}
+
+func TestMigrationConnectionStringWithAWSEmptyRegion(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	cfg := &config.DatabaseConfig{
+		Host:     "localhost",
+		Port:     5432,
+		User:     "appuser",
+		Database: "testdb",
+		DynamicAuth: &config.DynamicAuthConfig{
+			AWSRDSIAM: &config.DynamicAuthAWSRDSIAM{
+				Region: "",
+			},
+		},
+	}
+
+	connStr, err := MigrationConnectionString(ctx, cfg)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to resolve auth token for migration user")
+	assert.Empty(t, connStr)
+}
