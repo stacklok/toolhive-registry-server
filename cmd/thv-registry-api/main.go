@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/viper"
+	"go.opentelemetry.io/otel/trace"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/cmd/thv-registry-api/app"
@@ -66,19 +68,45 @@ func zapStyleReplaceAttr(_ []string, a slog.Attr) slog.Attr {
 	return a
 }
 
+// traceHandler wraps an slog.Handler to automatically inject OpenTelemetry
+// trace_id and span_id into every log record, enabling log-trace correlation.
+type traceHandler struct {
+	slog.Handler
+}
+
+func (h *traceHandler) Handle(ctx context.Context, r slog.Record) error {
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		r.AddAttrs(
+			slog.String("trace_id", span.SpanContext().TraceID().String()),
+			slog.String("span_id", span.SpanContext().SpanID().String()),
+		)
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h *traceHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &traceHandler{Handler: h.Handler.WithAttrs(attrs)}
+}
+
+func (h *traceHandler) WithGroup(name string) slog.Handler {
+	return &traceHandler{Handler: h.Handler.WithGroup(name)}
+}
+
 func main() {
 	// Setup structured JSON logging with slog, formatted to match zap's production output.
 	// Use stderr to keep stdout clean for commands that output data (e.g., version --format json).
-	handler := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+	jsonHandler := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level:       getLogLevel(),
 		AddSource:   false, // Can be enabled for debugging
 		ReplaceAttr: zapStyleReplaceAttr,
 	})
 
+	handler := &traceHandler{Handler: jsonHandler}
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 
-	// Configure controller-runtime to use same slog handler
+	// Configure controller-runtime to use same slog handler (with trace injection)
 	ctrl.SetLogger(logr.FromSlogHandler(handler))
 
 	slog.Info("Starting ToolHive Registry API server")

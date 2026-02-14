@@ -123,6 +123,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 			"path", r.URL.Path,
 			"status", status,
 			"duration_ms", duration.Milliseconds(),
+			"response_bytes", ww.BytesWritten(),
 			"request_id", middleware.GetReqID(r.Context()),
 			"remote_addr", r.RemoteAddr,
 		)

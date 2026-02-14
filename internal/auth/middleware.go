@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stacklok/toolhive/pkg/auth"
 )
 
@@ -37,6 +38,9 @@ type validationResult struct {
 
 	// Errors contains all errors from sequential fallback (for debugging)
 	Errors []providerError
+
+	// Claims contains the validated JWT claims (only set on success)
+	Claims jwt.MapClaims
 }
 
 // providerError pairs a provider name with its validation error
@@ -136,6 +140,7 @@ func (m *multiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 
 		slog.Info("Authentication successful",
 			"provider", result.Provider,
+			"subject", result.Claims["sub"],
 			"remote_addr", r.RemoteAddr,
 			"path", r.URL.Path)
 		// TODO: Store claims in request context for downstream handlers (needed for authorization/scope enforcement)
@@ -148,7 +153,7 @@ func (m *multiProviderMiddleware) validateToken(ctx context.Context, token strin
 	providerErrors := make([]providerError, 0, len(m.validators))
 
 	for _, nv := range m.validators {
-		_, err := nv.Validator.ValidateToken(ctx, token)
+		claims, err := nv.Validator.ValidateToken(ctx, token)
 		if err != nil {
 			providerErrors = append(providerErrors, providerError{
 				Provider: nv.Name,
@@ -160,6 +165,7 @@ func (m *multiProviderMiddleware) validateToken(ctx context.Context, token strin
 
 		return validationResult{
 			Provider: nv.Name,
+			Claims:   claims,
 			Errors:   providerErrors,
 		}
 	}
