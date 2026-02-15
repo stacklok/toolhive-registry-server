@@ -137,7 +137,8 @@ func NewRegistryApp(
 	// Build auth middleware (if not injected)
 	if cfg.authMiddleware == nil {
 		var authErr error
-		cfg.authMiddleware, cfg.authInfoHandler, authErr = auth.NewAuthMiddleware(ctx, cfg.config.Auth, auth.DefaultValidatorFactory)
+		cfg.authMiddleware, cfg.authInfoHandler, authErr = auth.NewAuthMiddleware(ctx, cfg.config.Auth, auth.DefaultValidatorFactory,
+			auth.WithInsecureAllowHTTP(cfg.config.InsecureAllowHTTP()))
 		if authErr != nil {
 			return nil, fmt.Errorf("failed to build auth middleware: %w", authErr)
 		}

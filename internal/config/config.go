@@ -799,6 +799,12 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	return &config, nil
 }
 
+// InsecureAllowHTTP returns whether HTTP URLs are allowed for OAuth issuer URLs.
+// This is set via the THV_REGISTRY_INSECURE_URL environment variable.
+func (c *Config) InsecureAllowHTTP() bool {
+	return c.insecureAllowHTTP
+}
+
 // GetRegistryName returns the registry name, using "default" if not specified
 func (c *Config) GetRegistryName() string {
 	if c.RegistryName == "" {
