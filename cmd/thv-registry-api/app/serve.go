@@ -85,7 +85,30 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	slog.Info("Loaded configuration",
 		"config_path", configPath,
 		"registry_name", cfg.GetRegistryName(),
-		"registry_count", len(cfg.Registries))
+		"registry_count", len(cfg.Registries),
+		"auth_mode", cfg.Auth.Mode,
+	)
+
+	// Log database configuration (sanitized - no passwords or connection strings)
+	if cfg.Database != nil {
+		slog.Info("Database configuration",
+			"host", cfg.Database.Host,
+			"port", cfg.Database.Port,
+			"database", cfg.Database.Database,
+			"max_open_conns", cfg.Database.MaxOpenConns,
+			"max_idle_conns", cfg.Database.MaxIdleConns,
+			"conn_max_lifetime", cfg.Database.ConnMaxLifetime,
+			"dynamic_auth", cfg.Database.DynamicAuth != nil,
+		)
+	}
+
+	// Log telemetry configuration
+	if cfg.Telemetry != nil {
+		slog.Info("Telemetry configuration",
+			"enabled", cfg.Telemetry.Enabled,
+			"endpoint", cfg.Telemetry.Endpoint,
+		)
+	}
 
 	// Initialize telemetry (tracing and metrics)
 	tel, err := telemetry.New(ctx, telemetry.WithTelemetryConfig(cfg.Telemetry))

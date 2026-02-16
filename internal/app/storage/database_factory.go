@@ -58,6 +58,8 @@ func NewDatabaseFactory(ctx context.Context, cfg *config.Config, opts ...Databas
 		return nil, fmt.Errorf("failed to create database connection pool: %w", err)
 	}
 
+	StartPoolStatsLogger(ctx, pool)
+
 	factory := &DatabaseFactory{
 		config: cfg,
 		pool:   pool,
@@ -110,6 +112,34 @@ func (d *DatabaseFactory) Cleanup() {
 		slog.Info("Closing database connection pool")
 		d.pool.Close()
 	}
+}
+
+// StartPoolStatsLogger starts a goroutine that periodically logs database connection
+// pool statistics at DEBUG level. The goroutine exits when ctx is cancelled.
+func StartPoolStatsLogger(ctx context.Context, pool *pgxpool.Pool) {
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				stat := pool.Stat()
+				slog.DebugContext(ctx, "Database connection pool stats",
+					"total_conns", stat.TotalConns(),
+					"acquired_conns", stat.AcquiredConns(),
+					"idle_conns", stat.IdleConns(),
+					"max_conns", stat.MaxConns(),
+					"acquire_count", stat.AcquireCount(),
+					"acquire_duration_ms", stat.AcquireDuration().Milliseconds(),
+					"canceled_acquire_count", stat.CanceledAcquireCount(),
+					"empty_acquire_count", stat.EmptyAcquireCount(),
+				)
+			}
+		}
+	}()
 }
 
 // buildDatabaseConnectionPool creates a database connection pool with proper configuration.

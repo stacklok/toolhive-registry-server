@@ -122,10 +122,17 @@ func (h *gitRegistryHandler) fetchRegistryData(ctx context.Context, regCfg *conf
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
 
-	slog.Info("Git clone completed",
+	cloneAttrs := []any{
 		"repository", cloneConfig.URL,
 		"duration", cloneDuration.String(),
-		"branch", repoInfo.Branch)
+		"branch", repoInfo.Branch,
+	}
+	if repoInfo.Repository != nil {
+		if ref, err := repoInfo.Repository.Head(); err == nil {
+			cloneAttrs = append(cloneAttrs, "commit_sha", ref.Hash().String())
+		}
+	}
+	slog.Info("Git clone completed", cloneAttrs...)
 
 	// Ensure cleanup
 	defer func() {

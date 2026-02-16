@@ -178,6 +178,9 @@ func (s *dbService) ListServers(
 		"limit", options.Limit,
 		"registry", options.RegistryName,
 		"search", options.Search,
+		"cursor", options.Cursor,
+		"updated_since", options.UpdatedSince,
+		"version", options.Version,
 		"request_id", middleware.GetReqID(ctx))
 
 	// Request one extra record to detect if there are more results
@@ -257,6 +260,7 @@ func (s *dbService) ListServerVersions(
 ) ([]*upstreamv0.ServerJSON, error) {
 	ctx, span := s.startSpan(ctx, "dbService.ListServerVersions")
 	defer span.End()
+	start := time.Now()
 
 	options := &service.ListServerVersionsOptions{
 		Limit: service.DefaultPageSize, // default limit
@@ -330,6 +334,11 @@ func (s *dbService) ListServerVersions(
 	}
 
 	span.SetAttributes(otel.AttrResultCount.Int(len(results)))
+	slog.DebugContext(ctx, "ListServerVersions completed",
+		"duration_ms", time.Since(start).Milliseconds(),
+		"count", len(results),
+		"server_name", options.Name,
+		"request_id", middleware.GetReqID(ctx))
 	return results, nil
 }
 
@@ -340,6 +349,7 @@ func (s *dbService) GetServerVersion(
 ) (*upstreamv0.ServerJSON, error) {
 	ctx, span := s.startSpan(ctx, "dbService.GetServerVersion")
 	defer span.End()
+	start := time.Now()
 
 	options := &service.GetServerVersionOptions{}
 	for _, opt := range opts {
@@ -401,6 +411,11 @@ func (s *dbService) GetServerVersion(
 		return nil, err
 	}
 
+	slog.DebugContext(ctx, "GetServerVersion completed",
+		"duration_ms", time.Since(start).Milliseconds(),
+		"server_name", options.Name,
+		"version", options.Version,
+		"request_id", middleware.GetReqID(ctx))
 	return res[0], nil
 }
 
@@ -631,6 +646,7 @@ func (s *dbService) PublishServerVersion(
 ) (*upstreamv0.ServerJSON, error) {
 	ctx, span := s.startSpan(ctx, "dbService.PublishServerVersion")
 	defer span.End()
+	start := time.Now()
 
 	// Parse options
 	options := &service.PublishServerVersionOptions{}
@@ -670,6 +686,7 @@ func (s *dbService) PublishServerVersion(
 	}
 
 	slog.InfoContext(ctx, "Server version published",
+		"duration_ms", time.Since(start).Milliseconds(),
 		"registry", options.RegistryName,
 		"server", serverData.Name,
 		"version", serverData.Version,
@@ -706,7 +723,7 @@ func (s *dbService) executePublishTransaction(
 	defer func() {
 		err := tx.Rollback(ctx)
 		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			_ = err
+			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
 		}
 	}()
 
@@ -793,6 +810,7 @@ func (s *dbService) DeleteServerVersion(
 ) error {
 	ctx, span := s.startSpan(ctx, "dbService.DeleteServerVersion")
 	defer span.End()
+	start := time.Now()
 
 	// 1. Parse options
 	options := &service.DeleteServerVersionOptions{}
@@ -822,8 +840,7 @@ func (s *dbService) DeleteServerVersion(
 	defer func() {
 		err := tx.Rollback(ctx)
 		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			// TODO: log the rollback error (add proper logging)
-			_ = err
+			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
 		}
 	}()
 
@@ -875,6 +892,7 @@ func (s *dbService) DeleteServerVersion(
 	}
 
 	slog.InfoContext(ctx, "Server version deleted",
+		"duration_ms", time.Since(start).Milliseconds(),
 		"registry", options.RegistryName,
 		"server", options.ServerName,
 		"version", options.Version,
@@ -939,7 +957,7 @@ func (s *dbService) sharedListServersWithCursor(
 	defer func() {
 		err := tx.Rollback(ctx)
 		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			_ = err
+			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
 		}
 	}()
 
@@ -1010,6 +1028,7 @@ func (s *dbService) sharedListServersWithCursor(
 func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo, error) {
 	ctx, span := s.startSpan(ctx, "dbService.ListRegistries")
 	defer span.End()
+	start := time.Now()
 
 	// Begin a read-only transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
@@ -1023,8 +1042,7 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 	defer func() {
 		err := tx.Rollback(ctx)
 		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			// TODO: log the rollback error (add proper logging)
-			_ = err
+			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
 		}
 	}()
 
@@ -1074,6 +1092,10 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 	}
 
 	span.SetAttributes(otel.AttrResultCount.Int(len(result)))
+	slog.DebugContext(ctx, "ListRegistries completed",
+		"duration_ms", time.Since(start).Milliseconds(),
+		"count", len(result),
+		"request_id", middleware.GetReqID(ctx))
 	return result, nil
 }
 
@@ -1103,6 +1125,7 @@ func getStatusMessage(errorMsg *string) string {
 func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*service.RegistryInfo, error) {
 	ctx, span := s.startSpan(ctx, "dbService.GetRegistryByName")
 	defer span.End()
+	start := time.Now()
 
 	// Add tracing attributes
 	span.SetAttributes(otel.AttrRegistryName.String(name))
@@ -1119,8 +1142,7 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 	defer func() {
 		err := tx.Rollback(ctx)
 		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			// TODO: log the rollback error (add proper logging)
-			_ = err
+			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
 		}
 	}()
 
@@ -1164,6 +1186,10 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 		}
 	}
 
+	slog.DebugContext(ctx, "GetRegistryByName completed",
+		"duration_ms", time.Since(start).Milliseconds(),
+		"registry", name,
+		"request_id", middleware.GetReqID(ctx))
 	return info, nil
 }
 
@@ -1175,6 +1201,7 @@ func (s *dbService) CreateRegistry(
 ) (*service.RegistryInfo, error) {
 	ctx, span := s.startSpan(ctx, "dbService.CreateRegistry")
 	defer span.End()
+	start := time.Now()
 
 	// Add tracing attributes
 	span.SetAttributes(otel.AttrRegistryName.String(name))
@@ -1200,7 +1227,7 @@ func (s *dbService) CreateRegistry(
 	defer func() {
 		err := tx.Rollback(ctx)
 		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			_ = err
+			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
 		}
 	}()
 
@@ -1288,6 +1315,7 @@ func (s *dbService) CreateRegistry(
 	}
 
 	slog.InfoContext(ctx, "Registry created",
+		"duration_ms", time.Since(start).Milliseconds(),
 		"name", name,
 		"type", registry.RegType,
 		"source_type", sourceType,
@@ -1305,6 +1333,7 @@ func (s *dbService) UpdateRegistry(
 ) (*service.RegistryInfo, error) {
 	ctx, span := s.startSpan(ctx, "dbService.UpdateRegistry")
 	defer span.End()
+	start := time.Now()
 
 	// Add tracing attributes
 	span.SetAttributes(otel.AttrRegistryName.String(name))
@@ -1342,7 +1371,7 @@ func (s *dbService) UpdateRegistry(
 	defer func() {
 		err := tx.Rollback(ctx)
 		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			_ = err
+			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
 		}
 	}()
 
@@ -1410,6 +1439,7 @@ func (s *dbService) UpdateRegistry(
 	}
 
 	slog.InfoContext(ctx, "Registry updated",
+		"duration_ms", time.Since(start).Milliseconds(),
 		"name", name,
 		"type", registry.RegType,
 		"source_type", sourceType,
@@ -1423,6 +1453,7 @@ func (s *dbService) UpdateRegistry(
 func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 	ctx, span := s.startSpan(ctx, "dbService.DeleteRegistry")
 	defer span.End()
+	start := time.Now()
 
 	// Add tracing attributes
 	span.SetAttributes(otel.AttrRegistryName.String(name))
@@ -1439,7 +1470,7 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 	defer func() {
 		err := tx.Rollback(ctx)
 		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			_ = err
+			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
 		}
 	}()
 
@@ -1483,6 +1514,7 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 	}
 
 	slog.InfoContext(ctx, "Registry deleted",
+		"duration_ms", time.Since(start).Milliseconds(),
 		"name", name,
 		"request_id", middleware.GetReqID(ctx))
 
@@ -1774,6 +1806,7 @@ func (s *dbService) ProcessInlineRegistryData(ctx context.Context, name string, 
 	}
 
 	slog.InfoContext(ctx, "Inline registry data processed successfully",
+		"duration_ms", time.Since(startTime).Milliseconds(),
 		"registry", name,
 		"server_count", len(registry.Data.Servers))
 

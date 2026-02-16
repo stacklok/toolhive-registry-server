@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api/common"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -68,6 +70,11 @@ func (r *Routes) listRegistries(w http.ResponseWriter, req *http.Request) {
 		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	slog.InfoContext(ctx, "List registries completed",
+		"result_count", len(registries),
+		"request_id", middleware.GetReqID(ctx),
+	)
 
 	response := service.RegistryListResponse{
 		Registries: registries,

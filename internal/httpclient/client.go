@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -59,6 +60,7 @@ func (c *defaultClient) Get(ctx context.Context, url string) ([]byte, error) {
 	req.Header.Set("Accept", "application/json")
 
 	// Execute request
+	start := time.Now()
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
@@ -91,6 +93,13 @@ func (c *defaultClient) Get(ctx context.Context, url string) ([]byte, error) {
 		return nil, fmt.Errorf("response size exceeds maximum allowed size of %d bytes (%.2f MB)",
 			MaxResponseSize, float64(MaxResponseSize)/(1024*1024))
 	}
+
+	slog.DebugContext(ctx, "HTTP client request completed",
+		"url", url,
+		"status", resp.StatusCode,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"response_bytes", len(body),
+	)
 
 	return body, nil
 }

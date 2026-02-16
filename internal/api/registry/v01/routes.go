@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api/common"
@@ -141,6 +143,12 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
+	slog.InfoContext(r.Context(), "List servers completed",
+		"result_count", len(listResult.Servers),
+		"has_more", listResult.NextCursor != "",
+		"request_id", middleware.GetReqID(r.Context()),
+	)
+
 	serverResponses := make([]upstreamv0.ServerResponse, len(listResult.Servers))
 	for i, server := range listResult.Servers {
 		serverResponses[i] = upstreamv0.ServerResponse{
@@ -240,6 +248,12 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	slog.InfoContext(r.Context(), "List versions completed",
+		"result_count", len(versions),
+		"server_name", serverName,
+		"request_id", middleware.GetReqID(r.Context()),
+	)
 
 	serverResponses := make([]upstreamv0.ServerResponse, len(versions))
 	for i, version := range versions {
