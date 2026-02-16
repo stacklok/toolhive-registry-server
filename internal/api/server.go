@@ -14,8 +14,8 @@ import (
 
 	// Import generated docs package to register OpenAPI spec via init()
 	_ "github.com/stacklok/toolhive-registry-server/docs/thv-registry-api"
-	extensionv0 "github.com/stacklok/toolhive-registry-server/internal/api/extension/v0"
 	v01 "github.com/stacklok/toolhive-registry-server/internal/api/registry/v01"
+	extensionv0 "github.com/stacklok/toolhive-registry-server/internal/api/x/v0"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
