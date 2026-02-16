@@ -16,6 +16,7 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api/common"
+	"github.com/stacklok/toolhive-registry-server/internal/api/x/skills"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/validators"
 )
@@ -35,13 +36,13 @@ func NewRoutes(svc service.RegistryService) *Routes {
 // Router creates and configures the HTTP router for registry API v0.1 endpoints.
 func Router(svc service.RegistryService, enableAggregatedEndpoints bool) http.Handler {
 	routes := NewRoutes(svc)
-
 	r := chi.NewRouter()
 
 	if enableAggregatedEndpoints {
 		r.Mount("/v0.1", aggregatedRegistryRouter(routes))
 	}
 	r.Mount("/{registryName}/v0.1", registryRouter(routes))
+	r.Mount("/{registryName}/v0.1/x/dev.toolhive/skills", skills.Router(svc))
 
 	return r
 }
