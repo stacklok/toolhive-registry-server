@@ -96,12 +96,12 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 	// Parse version (optional string)
 	version := query.Get("version")
 
-	opts := []service.Option[service.ListServersOptions]{}
+	opts := []service.Option{}
 	if cursor != "" {
 		opts = append(opts, service.WithCursor(cursor))
 	}
 	if limit != nil {
-		opts = append(opts, service.WithLimit[service.ListServersOptions](*limit))
+		opts = append(opts, service.WithLimit(*limit))
 	}
 	if search != "" {
 		opts = append(opts, service.WithSearch(search))
@@ -110,10 +110,10 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 		opts = append(opts, service.WithUpdatedSince(*updatedSince))
 	}
 	if version != "" {
-		opts = append(opts, service.WithVersion[service.ListServersOptions](version))
+		opts = append(opts, service.WithVersion(version))
 	}
 	if registryName != "" {
-		opts = append(opts, service.WithRegistryName[service.ListServersOptions](registryName))
+		opts = append(opts, service.WithRegistryName(registryName))
 	}
 
 	listResult, err := routes.service.ListServers(r.Context(), opts...)
@@ -204,16 +204,16 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	opts := []service.Option[service.ListServerVersionsOptions]{
+	opts := []service.Option{
 		// Note: Upstream API does not support pagination for versions,
 		// so we return an arbitrary large number of records.
-		service.WithLimit[service.ListServerVersionsOptions](1000),
+		service.WithLimit(1000),
 	}
 	if registryName != "" {
-		opts = append(opts, service.WithRegistryName[service.ListServerVersionsOptions](registryName))
+		opts = append(opts, service.WithRegistryName(registryName))
 	}
 	if serverName != "" {
-		opts = append(opts, service.WithName[service.ListServerVersionsOptions](serverName))
+		opts = append(opts, service.WithName(serverName))
 	}
 
 	versions, err := routes.service.ListServerVersions(r.Context(), opts...)
@@ -303,15 +303,15 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
-	opts := []service.Option[service.GetServerVersionOptions]{}
+	opts := []service.Option{}
 	if registryName != "" {
-		opts = append(opts, service.WithRegistryName[service.GetServerVersionOptions](registryName))
+		opts = append(opts, service.WithRegistryName(registryName))
 	}
 	if serverName != "" {
-		opts = append(opts, service.WithName[service.GetServerVersionOptions](serverName))
+		opts = append(opts, service.WithName(serverName))
 	}
 	if version != "" {
-		opts = append(opts, service.WithVersion[service.GetServerVersionOptions](version))
+		opts = append(opts, service.WithVersion(version))
 	}
 
 	server, err := routes.service.GetServerVersion(r.Context(), opts...)
@@ -423,9 +423,9 @@ func (routes *Routes) deleteVersionWithRegistryName(w http.ResponseWriter, r *ht
 	// Call service layer
 	err = routes.service.DeleteServerVersion(
 		r.Context(),
-		service.WithRegistryName[service.DeleteServerVersionOptions](registryName),
-		service.WithName[service.DeleteServerVersionOptions](serverName),
-		service.WithVersion[service.DeleteServerVersionOptions](version),
+		service.WithRegistryName(registryName),
+		service.WithName(serverName),
+		service.WithVersion(version),
 	)
 
 	if err != nil {
@@ -493,7 +493,7 @@ func (routes *Routes) publishWithRegistryName(w http.ResponseWriter, r *http.Req
 	// Call service layer
 	result, err := routes.service.PublishServerVersion(
 		r.Context(),
-		service.WithRegistryName[service.PublishServerVersionOptions](registryName),
+		service.WithRegistryName(registryName),
 		service.WithServerData(&serverData),
 	)
 
