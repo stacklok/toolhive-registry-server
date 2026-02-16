@@ -52,13 +52,23 @@ func isExtensionRegistryMutation(method, path string) bool {
 	return !strings.Contains(remainder, "/")
 }
 
-// isRegistryWrite checks if the request is a write operation on registry servers.
-// POST .../publish and DELETE .../versions/{version} are write operations.
+// isRegistryWrite checks if the request is a write operation on registry resources.
+// This covers both MCP server and skills endpoints:
+//   - POST .../publish (server publish)
+//   - POST .../skills (skill publish)
+//   - DELETE .../servers/{name}/versions/{version} (server version delete)
+//   - DELETE .../skills/{ns}/{name}/versions/{version} (skill version delete)
 func isRegistryWrite(method, path string) bool {
 	if method == http.MethodPost && strings.Contains(path, "/v0.1/publish") {
 		return true
 	}
+	if method == http.MethodPost && strings.Contains(path, "/v0.1/x/dev.toolhive/skills") {
+		return true
+	}
 	if method == http.MethodDelete && strings.Contains(path, "/v0.1/servers/") {
+		return true
+	}
+	if method == http.MethodDelete && strings.Contains(path, "/v0.1/x/dev.toolhive/skills/") {
 		return true
 	}
 	return false

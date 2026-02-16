@@ -79,6 +79,32 @@ func TestRouteAction(t *testing.T) {
 			want:   ActionWrite,
 		},
 
+		// Skills write operations
+		{
+			name:   "POST skills publish is write",
+			method: "POST",
+			path:   "/registry/test/v0.1/x/dev.toolhive/skills",
+			want:   ActionWrite,
+		},
+		{
+			name:   "DELETE skill version is write",
+			method: "DELETE",
+			path:   "/registry/test/v0.1/x/dev.toolhive/skills/io.github.test/my-skill/versions/1.0.0",
+			want:   ActionWrite,
+		},
+		{
+			name:   "GET skills list is read",
+			method: "GET",
+			path:   "/registry/test/v0.1/x/dev.toolhive/skills",
+			want:   ActionRead,
+		},
+		{
+			name:   "GET specific skill is read",
+			method: "GET",
+			path:   "/registry/test/v0.1/x/dev.toolhive/skills/io.github.test/my-skill",
+			want:   ActionRead,
+		},
+
 		// Admin operations (extension registry mutations)
 		{
 			name:   "PUT specific registry is admin",
@@ -290,6 +316,31 @@ func TestIsRegistryWrite(t *testing.T) {
 			name:   "PUT servers path is not write (wrong method)",
 			method: "PUT",
 			path:   "/registry/test/v0.1/servers/myserver",
+			want:   false,
+		},
+		// Skills write operations
+		{
+			name:   "POST skills is write",
+			method: "POST",
+			path:   "/registry/test/v0.1/x/dev.toolhive/skills",
+			want:   true,
+		},
+		{
+			name:   "DELETE skill version is write",
+			method: "DELETE",
+			path:   "/registry/test/v0.1/x/dev.toolhive/skills/io.github.test/my-skill/versions/1.0.0",
+			want:   true,
+		},
+		{
+			name:   "GET skills is not write",
+			method: "GET",
+			path:   "/registry/test/v0.1/x/dev.toolhive/skills",
+			want:   false,
+		},
+		{
+			name:   "PUT skills path is not write (wrong method)",
+			method: "PUT",
+			path:   "/registry/test/v0.1/x/dev.toolhive/skills/io.github.test/my-skill",
 			want:   false,
 		},
 	}
