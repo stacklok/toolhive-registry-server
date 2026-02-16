@@ -254,6 +254,23 @@ components:
           example: v0.1.0
           type: string
       type: object
+    internal_api_x_skills.SkillListMetadata:
+      properties:
+        count:
+          type: integer
+        nextCursor:
+          type: string
+      type: object
+    internal_api_x_skills.SkillListResponse:
+      properties:
+        metadata:
+          $ref: '#/components/schemas/internal_api_x_skills.SkillListMetadata'
+        skills:
+          items:
+            $ref: '#/components/schemas/registry.Skill'
+          type: array
+          uniqueItems: false
+      type: object
     model.Argument:
       properties:
         isRepeated:
@@ -439,6 +456,131 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/model.Input'
           type: object
+      type: object
+    registry.Skill:
+      properties:
+        _meta:
+          additionalProperties: {}
+          description: Meta is an opaque payload with extended meta data details of
+            the skill.
+          type: object
+        allowedTools:
+          description: |-
+            AllowedTools is the list of tools that the skill is compatible with.
+            This is experimental.
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        compatibility:
+          description: Compatibility is the environment requirements of the skill.
+          type: string
+        description:
+          description: Description is the description of the skill.
+          type: string
+        icons:
+          description: Icons is the list of icons for the skill.
+          items:
+            $ref: '#/components/schemas/registry.SkillIcon'
+          type: array
+          uniqueItems: false
+        license:
+          description: License is the SPDX license identifier of the skill.
+          type: string
+        metadata:
+          additionalProperties: {}
+          description: |-
+            Metadata is the official metadata of the skill as reported in the
+            SKILL.md file.
+          type: object
+        name:
+          description: |-
+            Name is the name of the skill.
+            The format is that of identifiers, e.g. "my-skill".
+          type: string
+        namespace:
+          description: |-
+            Namespace is the namespace of the skill.
+            The format is reverse-DNS, e.g. "io.github.user".
+          type: string
+        packages:
+          description: Packages is the list of packages for the skill.
+          items:
+            $ref: '#/components/schemas/registry.SkillPackage'
+          type: array
+          uniqueItems: false
+        repository:
+          $ref: '#/components/schemas/registry.SkillRepository'
+        status:
+          description: |-
+            Status is the status of the skill.
+            Can be one of "active", "deprecated", or "archived".
+          type: string
+        title:
+          description: |-
+            Title is the title of the skill.
+            This is for human consumption, not an identifier.
+          type: string
+        version:
+          description: |-
+            Version is the version of the skill.
+            Any non-empty string is valid, but ideally it should be either a
+            semantic version or a commit hash.
+          type: string
+      type: object
+    registry.SkillIcon:
+      properties:
+        label:
+          description: Label is the label of the icon.
+          type: string
+        size:
+          description: Size is the size of the icon.
+          type: string
+        src:
+          description: Src is the source of the icon.
+          type: string
+        type:
+          description: Type is the type of the icon.
+          type: string
+      type: object
+    registry.SkillPackage:
+      properties:
+        commit:
+          description: Commit is the commit of the package.
+          type: string
+        digest:
+          description: Digest is the digest of the package.
+          type: string
+        identifier:
+          description: Identifier is the OCI identifier of the package.
+          type: string
+        mediaType:
+          description: MediaType is the media type of the package.
+          type: string
+        ref:
+          description: Ref is the reference of the package.
+          type: string
+        registryType:
+          description: |-
+            RegistryType is the type of registry the package is from.
+            Can be "oci" or "git".
+          type: string
+        subfolder:
+          description: Subfolder is the subfolder of the package.
+          type: string
+        url:
+          description: URL is the URL of the package.
+          type: string
+      type: object
+    registry.SkillRepository:
+      description: Repository is the source repository of the skill.
+      properties:
+        type:
+          description: Type is the type of the repository.
+          type: string
+        url:
+          description: URL is the URL of the repository.
+          type: string
       type: object
     v0.Metadata:
       properties:
@@ -1224,6 +1366,413 @@ paths:
       summary: Get specific MCP server version in specific registry
       tags:
       - registry
+  /registry/{registryName}/v0.1/x/dev.toolhive/skills:
+    get:
+      description: List skills in a registry (paginated, latest versions). Not implemented.
+      parameters:
+      - description: Registry name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      - description: Filter by name/description substring
+        in: query
+        name: search
+        schema:
+          type: string
+      - description: Filter by namespace
+        in: query
+        name: namespace
+        schema:
+          type: string
+      - description: Filter by status (comma-separated, e.g. active,deprecated)
+        in: query
+        name: status
+        schema:
+          type: string
+      - description: Max results (default 50, max 100)
+        in: query
+        name: limit
+        schema:
+          type: integer
+      - description: Pagination cursor
+        in: query
+        name: cursor
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/internal_api_x_skills.SkillListResponse'
+          description: List of skills
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      security:
+      - BearerAuth: []
+      summary: List skills in registry
+      tags:
+      - skills
+    post:
+      description: Publish a skill version to the registry. Not implemented.
+      parameters:
+      - description: Registry name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/registry.Skill'
+                description: Skill data
+                summary: body
+        description: Skill data
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/registry.Skill'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not a managed registry
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      security:
+      - BearerAuth: []
+      summary: Publish skill
+      tags:
+      - skills
+  /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}:
+    get:
+      description: Get the latest version of a skill by namespace and name. Not implemented.
+      parameters:
+      - description: Registry name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      - description: Skill namespace (reverse-DNS)
+        in: path
+        name: namespace
+        required: true
+        schema:
+          type: string
+      - description: Skill name
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/registry.Skill'
+          description: Skill details
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Skill not found
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      security:
+      - BearerAuth: []
+      summary: Get latest skill version
+      tags:
+      - skills
+  /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions:
+    get:
+      description: List all versions of a skill. Not implemented.
+      parameters:
+      - description: Registry name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      - description: Skill namespace (reverse-DNS)
+        in: path
+        name: namespace
+        required: true
+        schema:
+          type: string
+      - description: Skill name
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/internal_api_x_skills.SkillListResponse'
+          description: List of skill versions
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Skill not found
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      security:
+      - BearerAuth: []
+      summary: List skill versions
+      tags:
+      - skills
+  /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions/{version}:
+    delete:
+      description: Delete a specific version of a skill from the registry. Not implemented.
+      parameters:
+      - description: Registry name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      - description: Skill namespace (reverse-DNS)
+        in: path
+        name: namespace
+        required: true
+        schema:
+          type: string
+      - description: Skill name
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+      - description: Skill version
+        in: path
+        name: version
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "204":
+          description: No content
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not a managed registry
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Skill version not found
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      security:
+      - BearerAuth: []
+      summary: Delete skill version
+      tags:
+      - skills
+    get:
+      description: Get a specific version of a skill. Not implemented.
+      parameters:
+      - description: Registry name
+        in: path
+        name: registryName
+        required: true
+        schema:
+          type: string
+      - description: Skill namespace (reverse-DNS)
+        in: path
+        name: namespace
+        required: true
+        schema:
+          type: string
+      - description: Skill name
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+      - description: Skill version
+        in: path
+        name: version
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/registry.Skill'
+          description: Skill details
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Bad request
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Skill or version not found
+        "501":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Not implemented
+      security:
+      - BearerAuth: []
+      summary: Get specific skill version
+      tags:
+      - skills
   /registry/v0.1/publish:
     post:
       deprecated: true
