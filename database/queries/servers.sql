@@ -96,8 +96,17 @@ SELECT r.reg_type as registry_type,
   JOIN registry r ON e.reg_id = r.id
   LEFT JOIN latest_entry_version l ON e.id = l.latest_entry_id
  WHERE e.name = sqlc.arg(name)
-   AND e.version = sqlc.arg(version)
+   AND (
+       e.version = sqlc.arg(version)
+       OR (sqlc.arg(version) = 'latest' AND l.latest_entry_id = e.id)
+   )
    AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text);
+
+-- name: GetLatestVersionForServer :one
+SELECT l.version
+  FROM latest_entry_version l
+ WHERE l.name = sqlc.arg(name)
+   AND l.reg_id = sqlc.arg(reg_id);
 
 -- name: ListServerPackages :many
 SELECT p.entry_id,

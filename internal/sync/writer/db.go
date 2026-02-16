@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/validators"
+	"github.com/stacklok/toolhive-registry-server/internal/versions"
 )
 
 // Theme constants for icons (must match PostgreSQL icon_theme enum values)
@@ -261,7 +261,7 @@ func (*dbSyncWriter) updateLatestVersions(
 		}
 
 		// Compare versions using semver
-		if isNewerVersion(server.Version, existing.version) {
+		if versions.IsNewerVersion(server.Version, existing.version) {
 			latestVersions[server.Name] = struct {
 				version  string
 				serverID uuid.UUID
@@ -286,20 +286,6 @@ func (*dbSyncWriter) updateLatestVersions(
 	}
 
 	return nil
-}
-
-// isNewerVersion compares two version strings and returns true if newVersion is greater than oldVersion.
-// Falls back to string comparison if semantic versioning parsing fails.
-func isNewerVersion(newVersion, oldVersion string) bool {
-	newSemver, errNew := semver.NewVersion(newVersion)
-	oldSemver, errOld := semver.NewVersion(oldVersion)
-
-	if errNew != nil || errOld != nil {
-		// Fallback to string comparison if semver parsing fails
-		return newVersion > oldVersion
-	}
-
-	return newSemver.GreaterThan(oldSemver)
 }
 
 // bulkInsertPackages handles bulk upsert of packages using temp table and COPY.

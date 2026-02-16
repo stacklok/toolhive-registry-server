@@ -79,6 +79,25 @@ func (q *Queries) DeleteServersByRegistry(ctx context.Context, regID uuid.UUID) 
 	return err
 }
 
+const getLatestVersionForServer = `-- name: GetLatestVersionForServer :one
+SELECT l.version
+  FROM latest_entry_version l
+ WHERE l.name = $1
+   AND l.reg_id = $2
+`
+
+type GetLatestVersionForServerParams struct {
+	Name  string    `json:"name"`
+	RegID uuid.UUID `json:"reg_id"`
+}
+
+func (q *Queries) GetLatestVersionForServer(ctx context.Context, arg GetLatestVersionForServerParams) (string, error) {
+	row := q.db.QueryRow(ctx, getLatestVersionForServer, arg.Name, arg.RegID)
+	var version string
+	err := row.Scan(&version)
+	return version, err
+}
+
 const getServerIDsByRegistryNameVersion = `-- name: GetServerIDsByRegistryNameVersion :many
 SELECT entry_id, name, version
 FROM registry_entry e
@@ -134,7 +153,10 @@ SELECT r.reg_type as registry_type,
   JOIN registry r ON e.reg_id = r.id
   LEFT JOIN latest_entry_version l ON e.id = l.latest_entry_id
  WHERE e.name = $1
-   AND e.version = $2
+   AND (
+       e.version = $2
+       OR ($2 = 'latest' AND l.latest_entry_id = e.id)
+   )
    AND ($3::text IS NULL OR r.name = $3::text)
 `
 
