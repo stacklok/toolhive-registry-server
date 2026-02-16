@@ -37,21 +37,36 @@ func Router(svc service.RegistryService, enableAggregatedEndpoints bool) http.Ha
 	r := chi.NewRouter()
 
 	if enableAggregatedEndpoints {
-		r.Get("/v0.1/servers", routes.listServers)
-		r.Route("/v0.1/servers/{serverName}", func(r chi.Router) {
-			r.Get("/versions", routes.listVersions)
-			r.Get("/versions/{version}", routes.getVersion)
-		})
-		r.Post("/v0.1/publish", routes.publish)
+		r.Mount("/v0.1", aggregatedRegistryRouter(routes))
 	}
+	r.Mount("/{registryName}/v0.1", registryRouter(routes))
 
-	r.Get("/{registryName}/v0.1/servers", routes.listServersWithRegistryName)
-	r.Route("/{registryName}/v0.1/servers/{serverName}", func(r chi.Router) {
+	return r
+}
+
+func aggregatedRegistryRouter(routes *Routes) http.Handler {
+	r := chi.NewRouter()
+
+	r.Get("/servers", routes.listServers)
+	r.Route("/servers/{serverName}", func(r chi.Router) {
+		r.Get("/versions", routes.listVersions)
+		r.Get("/versions/{version}", routes.getVersion)
+	})
+	r.Post("/publish", routes.publish)
+
+	return r
+}
+
+func registryRouter(routes *Routes) http.Handler {
+	r := chi.NewRouter()
+
+	r.Get("/servers", routes.listServersWithRegistryName)
+	r.Route("/servers/{serverName}", func(r chi.Router) {
 		r.Get("/versions", routes.listVersionsWithRegistryName)
 		r.Get("/versions/{version}", routes.getVersionWithRegistryName)
 		r.Delete("/versions/{version}", routes.deleteVersionWithRegistryName)
 	})
-	r.Post("/{registryName}/v0.1/publish", routes.publishWithRegistryName)
+	r.Post("/publish", routes.publishWithRegistryName)
 
 	return r
 }
