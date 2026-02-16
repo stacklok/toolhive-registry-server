@@ -87,7 +87,7 @@ func (mr *MockRegistryServiceMockRecorder) DeleteRegistry(ctx, name any) *gomock
 }
 
 // DeleteServerVersion mocks base method.
-func (m *MockRegistryService) DeleteServerVersion(ctx context.Context, opts ...service.Option[service.DeleteServerVersionOptions]) error {
+func (m *MockRegistryService) DeleteServerVersion(ctx context.Context, opts ...service.Option) error {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range opts {
@@ -137,7 +137,7 @@ func (mr *MockRegistryServiceMockRecorder) GetRegistryByName(ctx, name any) *gom
 }
 
 // GetServerVersion mocks base method.
-func (m *MockRegistryService) GetServerVersion(ctx context.Context, opts ...service.Option[service.GetServerVersionOptions]) (*v0.ServerJSON, error) {
+func (m *MockRegistryService) GetServerVersion(ctx context.Context, opts ...service.Option) (*v0.ServerJSON, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range opts {
@@ -172,7 +172,7 @@ func (mr *MockRegistryServiceMockRecorder) ListRegistries(ctx any) *gomock.Call 
 }
 
 // ListServerVersions mocks base method.
-func (m *MockRegistryService) ListServerVersions(ctx context.Context, opts ...service.Option[service.ListServerVersionsOptions]) ([]*v0.ServerJSON, error) {
+func (m *MockRegistryService) ListServerVersions(ctx context.Context, opts ...service.Option) ([]*v0.ServerJSON, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range opts {
@@ -192,7 +192,7 @@ func (mr *MockRegistryServiceMockRecorder) ListServerVersions(ctx any, opts ...a
 }
 
 // ListServers mocks base method.
-func (m *MockRegistryService) ListServers(ctx context.Context, opts ...service.Option[service.ListServersOptions]) (*service.ListServersResult, error) {
+func (m *MockRegistryService) ListServers(ctx context.Context, opts ...service.Option) (*service.ListServersResult, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range opts {
@@ -226,7 +226,7 @@ func (mr *MockRegistryServiceMockRecorder) ProcessInlineRegistryData(ctx, name, 
 }
 
 // PublishServerVersion mocks base method.
-func (m *MockRegistryService) PublishServerVersion(ctx context.Context, opts ...service.Option[service.PublishServerVersionOptions]) (*v0.ServerJSON, error) {
+func (m *MockRegistryService) PublishServerVersion(ctx context.Context, opts ...service.Option) (*v0.ServerJSON, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range opts {

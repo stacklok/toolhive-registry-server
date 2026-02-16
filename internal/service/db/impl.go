@@ -138,7 +138,7 @@ func (*dbService) GetRegistry(
 //nolint:gocyclo
 func (s *dbService) ListServers(
 	ctx context.Context,
-	opts ...service.Option[service.ListServersOptions],
+	opts ...service.Option,
 ) (*service.ListServersResult, error) {
 	ctx, span := s.startSpan(ctx, "dbService.ListServers")
 	defer span.End()
@@ -255,7 +255,7 @@ func (s *dbService) ListServers(
 // ListServerVersions implements RegistryService.ListServerVersions
 func (s *dbService) ListServerVersions(
 	ctx context.Context,
-	opts ...service.Option[service.ListServerVersionsOptions],
+	opts ...service.Option,
 ) ([]*upstreamv0.ServerJSON, error) {
 	ctx, span := s.startSpan(ctx, "dbService.ListServerVersions")
 	defer span.End()
@@ -344,7 +344,7 @@ func (s *dbService) ListServerVersions(
 // GetServer returns a specific server by name
 func (s *dbService) GetServerVersion(
 	ctx context.Context,
-	opts ...service.Option[service.GetServerVersionOptions],
+	opts ...service.Option,
 ) (*upstreamv0.ServerJSON, error) {
 	ctx, span := s.startSpan(ctx, "dbService.GetServerVersion")
 	defer span.End()
@@ -641,7 +641,7 @@ func validateManagedRegistry(
 // PublishServerVersion publishes a server version to a managed registry
 func (s *dbService) PublishServerVersion(
 	ctx context.Context,
-	opts ...service.Option[service.PublishServerVersionOptions],
+	opts ...service.Option,
 ) (*upstreamv0.ServerJSON, error) {
 	ctx, span := s.startSpan(ctx, "dbService.PublishServerVersion")
 	defer span.End()
@@ -693,9 +693,9 @@ func (s *dbService) PublishServerVersion(
 
 	// Fetch the inserted server to return it
 	result, err := s.GetServerVersion(ctx,
-		service.WithRegistryName[service.GetServerVersionOptions](options.RegistryName),
-		service.WithName[service.GetServerVersionOptions](serverData.Name),
-		service.WithVersion[service.GetServerVersionOptions](serverData.Version),
+		service.WithRegistryName(options.RegistryName),
+		service.WithName(serverData.Name),
+		service.WithVersion(serverData.Version),
 	)
 	if err != nil {
 		otel.RecordError(span, err)
@@ -792,7 +792,7 @@ func (s *dbService) insertServerData(
 // DeleteServerVersion removes a server version from a managed registry
 func (s *dbService) DeleteServerVersion(
 	ctx context.Context,
-	opts ...service.Option[service.DeleteServerVersionOptions],
+	opts ...service.Option,
 ) error {
 	ctx, span := s.startSpan(ctx, "dbService.DeleteServerVersion")
 	defer span.End()

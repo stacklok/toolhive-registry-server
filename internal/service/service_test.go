@@ -174,7 +174,7 @@ func TestWithRegistryNameListServers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			opt := service.WithRegistryName[service.ListServersOptions](tt.registryName)
+			opt := service.WithRegistryName(tt.registryName)
 			opts := &service.ListServersOptions{}
 			err := opt(opts)
 
@@ -216,7 +216,7 @@ func TestWithRegistryNameListServersVersions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			opt := service.WithRegistryName[service.ListServerVersionsOptions](tt.registryName)
+			opt := service.WithRegistryName(tt.registryName)
 			opts := &service.ListServerVersionsOptions{}
 			err := opt(opts)
 
@@ -258,7 +258,7 @@ func TestWithRegistryNameGetServerVersion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			opt := service.WithRegistryName[service.GetServerVersionOptions](tt.registryName)
+			opt := service.WithRegistryName(tt.registryName)
 			opts := &service.GetServerVersionOptions{}
 			err := opt(opts)
 
@@ -392,7 +392,7 @@ func TestWithVersionListServers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			opt := service.WithVersion[service.ListServersOptions](tt.version)
+			opt := service.WithVersion(tt.version)
 			opts := &service.ListServersOptions{}
 			err := opt(opts)
 
@@ -434,7 +434,7 @@ func TestWithVersionGetServerVersion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			opt := service.WithVersion[service.GetServerVersionOptions](tt.version)
+			opt := service.WithVersion(tt.version)
 			opts := &service.GetServerVersionOptions{}
 			err := opt(opts)
 
@@ -476,7 +476,7 @@ func TestWithNameListServerVersions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			opt := service.WithName[service.ListServerVersionsOptions](tt.serverName)
+			opt := service.WithName(tt.serverName)
 			opts := &service.ListServerVersionsOptions{}
 			err := opt(opts)
 
@@ -518,7 +518,7 @@ func TestWithNameGetServerVersion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			opt := service.WithName[service.GetServerVersionOptions](tt.serverName)
+			opt := service.WithName(tt.serverName)
 			opts := &service.GetServerVersionOptions{}
 			err := opt(opts)
 
@@ -565,7 +565,7 @@ func TestWithLimitListServers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			opt := service.WithLimit[service.ListServersOptions](tt.limit)
+			opt := service.WithLimit(tt.limit)
 			opts := &service.ListServersOptions{}
 			err := opt(opts)
 
@@ -612,7 +612,7 @@ func TestWithLimitListServerVersions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			opt := service.WithLimit[service.ListServerVersionsOptions](tt.limit)
+			opt := service.WithLimit(tt.limit)
 			opts := &service.ListServerVersionsOptions{}
 			err := opt(opts)
 

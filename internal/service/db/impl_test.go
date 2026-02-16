@@ -154,7 +154,7 @@ func TestListServers(t *testing.T) {
 	tests := []struct {
 		name          string
 		setupFunc     func(*testing.T, *pgxpool.Pool)
-		options       []service.Option[service.ListServersOptions]
+		options       []service.Option
 		expectedCount int
 		validateFunc  func(*testing.T, *service.ListServersResult)
 	}{
@@ -164,8 +164,8 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
-				service.WithLimit[service.ListServersOptions](10),
+			options: []service.Option{
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, result *service.ListServersResult) {
@@ -183,8 +183,8 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
-				service.WithLimit[service.ListServersOptions](2),
+			options: []service.Option{
+				service.WithLimit(2),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, result *service.ListServersResult) {
@@ -197,9 +197,9 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
+			options: []service.Option{
 				service.WithCursor("invalid-base64"),
-				service.WithLimit[service.ListServersOptions](10),
+				service.WithLimit(10),
 			},
 		},
 		{
@@ -208,10 +208,10 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
+			options: []service.Option{
 				// "YWJj" is base64("abc"), which has no comma separator
 				service.WithCursor("YWJj"),
-				service.WithLimit[service.ListServersOptions](10),
+				service.WithLimit(10),
 			},
 		},
 		{
@@ -220,8 +220,8 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) {
 				// Don't set up any data
 			},
-			options: []service.Option[service.ListServersOptions]{
-				service.WithLimit[service.ListServersOptions](10),
+			options: []service.Option{
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, result *service.ListServersResult) {
@@ -234,9 +234,9 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
-				service.WithRegistryName[service.ListServersOptions]("test-registry"),
-				service.WithLimit[service.ListServersOptions](10),
+			options: []service.Option{
+				service.WithRegistryName("test-registry"),
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, result *service.ListServersResult) {
@@ -254,9 +254,9 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
-				service.WithRegistryName[service.ListServersOptions]("non-existent-registry"),
-				service.WithLimit[service.ListServersOptions](10),
+			options: []service.Option{
+				service.WithRegistryName("non-existent-registry"),
+				service.WithLimit(10),
 			},
 		},
 		{
@@ -265,9 +265,9 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
+			options: []service.Option{
 				service.WithSearch("server-1"),
-				service.WithLimit[service.ListServersOptions](10),
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, result *service.ListServersResult) {
@@ -283,9 +283,9 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
+			options: []service.Option{
 				service.WithSearch("Test Server 2"),
-				service.WithLimit[service.ListServersOptions](10),
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, result *service.ListServersResult) {
@@ -299,9 +299,9 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
+			options: []service.Option{
 				service.WithSearch("server 2 description"),
-				service.WithLimit[service.ListServersOptions](10),
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, result *service.ListServersResult) {
@@ -315,9 +315,9 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
+			options: []service.Option{
 				service.WithSearch("SERVER-1"), // Uppercase
-				service.WithLimit[service.ListServersOptions](10),
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, result *service.ListServersResult) {
@@ -333,9 +333,9 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
+			options: []service.Option{
 				service.WithSearch("server"), // Partial match
-				service.WithLimit[service.ListServersOptions](10),
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, result *service.ListServersResult) {
@@ -348,9 +348,9 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
+			options: []service.Option{
 				service.WithSearch("nonexistent"),
-				service.WithLimit[service.ListServersOptions](10),
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, result *service.ListServersResult) {
@@ -363,10 +363,10 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
+			options: []service.Option{
 				service.WithSearch("server-1"),
-				service.WithRegistryName[service.ListServersOptions]("test-registry"),
-				service.WithLimit[service.ListServersOptions](10),
+				service.WithRegistryName("test-registry"),
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, result *service.ListServersResult) {
@@ -382,9 +382,9 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServersOptions]{
-				service.WithVersion[service.ListServersOptions]("latest"),
-				service.WithLimit[service.ListServersOptions](10),
+			options: []service.Option{
+				service.WithVersion("latest"),
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, result *service.ListServersResult) {
@@ -425,7 +425,7 @@ func TestListServerVersions(t *testing.T) {
 	tests := []struct {
 		name         string
 		setupFunc    func(*testing.T, *pgxpool.Pool)
-		options      []service.Option[service.ListServerVersionsOptions]
+		options      []service.Option
 		validateFunc func(*testing.T, []*upstreamv0.ServerJSON)
 	}{
 		{
@@ -434,9 +434,9 @@ func TestListServerVersions(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
-				service.WithLimit[service.ListServerVersionsOptions](10),
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
@@ -461,9 +461,9 @@ func TestListServerVersions(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
-				service.WithLimit[service.ListServerVersionsOptions](2),
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				service.WithLimit(2),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
@@ -476,9 +476,9 @@ func TestListServerVersions(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("com.example/non-existent-server"),
-				service.WithLimit[service.ListServerVersionsOptions](10),
+			options: []service.Option{
+				service.WithName("com.example/non-existent-server"),
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
@@ -491,9 +491,10 @@ func TestListServerVersions(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
-				func(opts *service.ListServerVersionsOptions) error {
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				func(o any) error {
+					opts := o.(*service.ListServerVersionsOptions)
 					// Set nextTime to 30 minutes from now, so only versions created at +1h and +2h are returned
 					nextTime := time.Now().Add(30 * time.Minute).UTC()
 					opts.Next = &nextTime
@@ -512,9 +513,10 @@ func TestListServerVersions(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
-				func(opts *service.ListServerVersionsOptions) error {
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				func(o any) error {
+					opts := o.(*service.ListServerVersionsOptions)
 					prevTime := time.Now().Add(1 * time.Hour).UTC()
 					opts.Prev = &prevTime
 					opts.Limit = 10
@@ -532,9 +534,9 @@ func TestListServerVersions(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions](""), // Empty name should error
-				service.WithLimit[service.ListServerVersionsOptions](10),
+			options: []service.Option{
+				service.WithName(""), // Empty name should error
+				service.WithLimit(10),
 			},
 		},
 		{
@@ -543,10 +545,10 @@ func TestListServerVersions(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
-				service.WithRegistryName[service.ListServerVersionsOptions]("test-registry"),
-				service.WithLimit[service.ListServerVersionsOptions](10),
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				service.WithRegistryName("test-registry"),
+				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
@@ -571,10 +573,10 @@ func TestListServerVersions(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.ListServerVersionsOptions]{
-				service.WithName[service.ListServerVersionsOptions]("com.example/test-server-1"),
-				service.WithRegistryName[service.ListServerVersionsOptions]("non-existent-registry"),
-				service.WithLimit[service.ListServerVersionsOptions](10),
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				service.WithRegistryName("non-existent-registry"),
+				service.WithLimit(10),
 			},
 		},
 	}
@@ -608,7 +610,7 @@ func TestGetServerVersion(t *testing.T) {
 	tests := []struct {
 		name         string
 		setupFunc    func(*testing.T, *pgxpool.Pool)
-		options      []service.Option[service.GetServerVersionOptions]
+		options      []service.Option
 		validateFunc func(*testing.T, *upstreamv0.ServerJSON)
 	}{
 		{
@@ -617,9 +619,9 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("com.example/test-server-1"),
-				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				service.WithVersion("1.0.0"),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON) {
@@ -638,9 +640,9 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("com.example/test-server-1"),
-				service.WithVersion[service.GetServerVersionOptions]("2.0.0"),
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				service.WithVersion("2.0.0"),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON) {
@@ -655,9 +657,9 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("com.example/non-existent-server"),
-				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+			options: []service.Option{
+				service.WithName("com.example/non-existent-server"),
+				service.WithVersion("1.0.0"),
 			},
 		},
 		{
@@ -666,9 +668,9 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("com.example/test-server-1"),
-				service.WithVersion[service.GetServerVersionOptions]("999.999.999"),
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				service.WithVersion("999.999.999"),
 			},
 		},
 		{
@@ -677,9 +679,9 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions](""), // Empty name should error
-				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+			options: []service.Option{
+				service.WithName(""), // Empty name should error
+				service.WithVersion("1.0.0"),
 			},
 		},
 		{
@@ -688,9 +690,9 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("com.example/test-server-1"),
-				service.WithVersion[service.GetServerVersionOptions](""), // Empty version should error
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				service.WithVersion(""), // Empty version should error
 			},
 		},
 		{
@@ -699,9 +701,9 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("com.example/test-server-2"),
-				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+			options: []service.Option{
+				service.WithName("com.example/test-server-2"),
+				service.WithVersion("1.0.0"),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON) {
@@ -795,9 +797,9 @@ func TestGetServerVersion(t *testing.T) {
 				)
 				require.NoError(t, err)
 			},
-			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("com.test/server-with-packages"),
-				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
+			options: []service.Option{
+				service.WithName("com.test/server-with-packages"),
+				service.WithVersion("1.0.0"),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON) {
@@ -831,10 +833,10 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("com.example/test-server-1"),
-				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
-				service.WithRegistryName[service.GetServerVersionOptions]("test-registry"),
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				service.WithVersion("1.0.0"),
+				service.WithRegistryName("test-registry"),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, server *upstreamv0.ServerJSON) {
@@ -851,10 +853,10 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				setupTestData(t, pool)
 			},
-			options: []service.Option[service.GetServerVersionOptions]{
-				service.WithName[service.GetServerVersionOptions]("com.example/test-server-1"),
-				service.WithVersion[service.GetServerVersionOptions]("1.0.0"),
-				service.WithRegistryName[service.GetServerVersionOptions]("non-existent-registry"),
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				service.WithVersion("1.0.0"),
+				service.WithRegistryName("non-existent-registry"),
 			},
 		},
 	}
@@ -1381,7 +1383,7 @@ func TestPublishServerVersion(t *testing.T) {
 			// Call PublishServerVersion
 			result, err := svc.PublishServerVersion(
 				context.Background(),
-				service.WithRegistryName[service.PublishServerVersionOptions](tt.registryName),
+				service.WithRegistryName(tt.registryName),
 				service.WithServerData(tt.serverData),
 			)
 

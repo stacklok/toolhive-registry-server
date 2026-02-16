@@ -55,19 +55,19 @@ type RegistryService interface {
 	GetRegistry(ctx context.Context) (*toolhivetypes.UpstreamRegistry, string, error) // returns registry, source, error
 
 	// ListServers returns all servers in the registry with pagination info
-	ListServers(ctx context.Context, opts ...Option[ListServersOptions]) (*ListServersResult, error)
+	ListServers(ctx context.Context, opts ...Option) (*ListServersResult, error)
 
 	// ListServerVersions returns all versions of a specific server
-	ListServerVersions(ctx context.Context, opts ...Option[ListServerVersionsOptions]) ([]*upstreamv0.ServerJSON, error)
+	ListServerVersions(ctx context.Context, opts ...Option) ([]*upstreamv0.ServerJSON, error)
 
 	// GetServer returns a specific server by name
-	GetServerVersion(ctx context.Context, opts ...Option[GetServerVersionOptions]) (*upstreamv0.ServerJSON, error)
+	GetServerVersion(ctx context.Context, opts ...Option) (*upstreamv0.ServerJSON, error)
 
 	// PublishServerVersion publishes a server version to a managed registry
-	PublishServerVersion(ctx context.Context, opts ...Option[PublishServerVersionOptions]) (*upstreamv0.ServerJSON, error)
+	PublishServerVersion(ctx context.Context, opts ...Option) (*upstreamv0.ServerJSON, error)
 
 	// DeleteServerVersion removes a server version from a managed registry
-	DeleteServerVersion(ctx context.Context, opts ...Option[DeleteServerVersionOptions]) error
+	DeleteServerVersion(ctx context.Context, opts ...Option) error
 
 	// ListRegistries returns all configured registries
 	ListRegistries(ctx context.Context) ([]RegistryInfo, error)
@@ -120,10 +120,7 @@ type RegistryListResponse struct {
 
 // Option is a function that sets an option for the ListServersOptions, ListServerVersionsOptions,
 // GetServerVersionOptions, PublishServerVersionOptions, or DeleteServerVersionOptions
-type Option[
-	T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions |
-		PublishServerVersionOptions | DeleteServerVersionOptions,
-] func(*T) error
+type Option func(any) error
 
 // ListServersOptions is the options for the ListServers operation
 type ListServersOptions struct {
@@ -165,51 +162,70 @@ type DeleteServerVersionOptions struct {
 }
 
 // WithCursor sets the cursor for the ListServers operation
-func WithCursor(cursor string) Option[ListServersOptions] {
-	return func(o *ListServersOptions) error {
+func WithCursor(cursor string) Option {
+	return func(o any) error {
 		if cursor == "" {
 			return fmt.Errorf("invalid cursor: %s", cursor)
 		}
-		o.Cursor = cursor
+
+		switch o := o.(type) {
+		case *ListServersOptions:
+			o.Cursor = cursor
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+
 		return nil
 	}
 }
 
 // WithSearch sets the search for the ListServers operation
-func WithSearch(search string) Option[ListServersOptions] {
-	return func(o *ListServersOptions) error {
+func WithSearch(search string) Option {
+	return func(o any) error {
 		if search == "" {
 			return fmt.Errorf("invalid search: %s", search)
 		}
-		o.Search = search
+
+		switch o := o.(type) {
+		case *ListServersOptions:
+			o.Search = search
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+
 		return nil
 	}
 }
 
 // WithUpdatedSince sets the updated since for the ListServers operation
-func WithUpdatedSince(updatedSince time.Time) Option[ListServersOptions] {
-	return func(o *ListServersOptions) error {
+func WithUpdatedSince(updatedSince time.Time) Option {
+	return func(o any) error {
 		if updatedSince.IsZero() {
 			return fmt.Errorf("invalid updated since: %s", updatedSince)
 		}
-		o.UpdatedSince = updatedSince
+
+		switch o := o.(type) {
+		case *ListServersOptions:
+			o.UpdatedSince = updatedSince
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+
 		return nil
 	}
 }
 
 // WithRegistryName sets the registry name for the ListServers, ListServerVersions,
 // GetServerVersion, PublishServerVersion, or DeleteServerVersion operation
-func WithRegistryName[
-	T ListServersOptions | ListServerVersionsOptions | GetServerVersionOptions |
-		PublishServerVersionOptions | DeleteServerVersionOptions,
-](
+func WithRegistryName(
 	registryName string,
-) Option[T] {
-	return func(o *T) error {
+) Option {
+	return func(o any) error {
 		if registryName == "" {
 			return fmt.Errorf("invalid registry name: %s", registryName)
 		}
-		switch o := any(o).(type) {
+
+		switch o := o.(type) {
 		case *ListServersOptions:
 			o.RegistryName = &registryName
 		case *ListServerVersionsOptions:
@@ -223,41 +239,56 @@ func WithRegistryName[
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
+
 		return nil
 	}
 }
 
 // WithNext sets the next time for the ListServerVersions operation
-func WithNext(next time.Time) Option[ListServerVersionsOptions] {
-	return func(o *ListServerVersionsOptions) error {
+func WithNext(next time.Time) Option {
+	return func(o any) error {
 		if next.IsZero() {
 			return fmt.Errorf("invalid next: %s", next)
 		}
-		o.Next = &next
+
+		switch o := o.(type) {
+		case *ListServerVersionsOptions:
+			o.Next = &next
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+
 		return nil
 	}
 }
 
 // WithPrev sets the prev time for the ListServerVersions operation
-func WithPrev(prev time.Time) Option[ListServerVersionsOptions] {
-	return func(o *ListServerVersionsOptions) error {
+func WithPrev(prev time.Time) Option {
+	return func(o any) error {
 		if prev.IsZero() {
 			return fmt.Errorf("invalid prev: %s", prev)
 		}
-		o.Prev = &prev
+
+		switch o := o.(type) {
+		case *ListServerVersionsOptions:
+			o.Prev = &prev
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+
 		return nil
 	}
 }
 
 // WithVersion sets the version for the ListServers, GetServerVersion,
 // or DeleteServerVersion operation
-func WithVersion[T ListServersOptions | GetServerVersionOptions | DeleteServerVersionOptions](version string) Option[T] {
-	return func(o *T) error {
+func WithVersion(version string) Option {
+	return func(o any) error {
 		if version == "" {
 			return fmt.Errorf("invalid version: %s", version)
 		}
 
-		switch o := any(o).(type) {
+		switch o := o.(type) {
 		case *ListServersOptions:
 			o.Version = version
 		case *GetServerVersionOptions:
@@ -274,13 +305,13 @@ func WithVersion[T ListServersOptions | GetServerVersionOptions | DeleteServerVe
 
 // WithName sets the name for the ListServerVersions, GetServerVersion,
 // or DeleteServerVersion operation
-func WithName[T ListServerVersionsOptions | GetServerVersionOptions | DeleteServerVersionOptions](name string) Option[T] {
-	return func(o *T) error {
+func WithName(name string) Option {
+	return func(o any) error {
 		if name == "" {
 			return fmt.Errorf("invalid name: %s", name)
 		}
 
-		switch o := any(o).(type) {
+		switch o := o.(type) {
 		case *ListServerVersionsOptions:
 			o.Name = name
 		case *GetServerVersionOptions:
@@ -296,13 +327,13 @@ func WithName[T ListServerVersionsOptions | GetServerVersionOptions | DeleteServ
 }
 
 // WithLimit sets the limit for the ListServers or ListServerVersions operation
-func WithLimit[T ListServersOptions | ListServerVersionsOptions](limit int) Option[T] {
-	return func(o *T) error {
+func WithLimit(limit int) Option {
+	return func(o any) error {
 		if limit <= 0 {
 			return fmt.Errorf("invalid limit: %d", limit)
 		}
 
-		switch o := any(o).(type) {
+		switch o := o.(type) {
 		case *ListServersOptions:
 			o.Limit = limit
 		case *ListServerVersionsOptions:
@@ -316,12 +347,19 @@ func WithLimit[T ListServersOptions | ListServerVersionsOptions](limit int) Opti
 }
 
 // WithServerData sets the server data for the PublishServerVersion operation
-func WithServerData(serverData *upstreamv0.ServerJSON) Option[PublishServerVersionOptions] {
-	return func(o *PublishServerVersionOptions) error {
+func WithServerData(serverData *upstreamv0.ServerJSON) Option {
+	return func(o any) error {
 		if serverData == nil {
 			return fmt.Errorf("server data is required")
 		}
-		o.ServerData = serverData
+
+		switch o := o.(type) {
+		case *PublishServerVersionOptions:
+			o.ServerData = serverData
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+
 		return nil
 	}
 }
