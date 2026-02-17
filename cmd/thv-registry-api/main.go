@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/viper"
+	"github.com/stacklok/toolhive-core/logging"
 	"go.opentelemetry.io/otel/trace"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -50,24 +50,6 @@ func getLogLevel() slog.Level {
 	}
 }
 
-// zapStyleReplaceAttr transforms slog attributes to match zap's production JSON format.
-// This ensures log output compatibility with toolhive's logger.
-func zapStyleReplaceAttr(_ []string, a slog.Attr) slog.Attr {
-	switch a.Key {
-	case slog.TimeKey:
-		// Convert "time" to "ts" with epoch seconds (float) to match zap
-		if t, ok := a.Value.Any().(time.Time); ok {
-			return slog.Float64("ts", float64(t.UnixNano())/1e9)
-		}
-	case slog.LevelKey:
-		// Lowercase level to match zap's production format
-		if lvl, ok := a.Value.Any().(slog.Level); ok {
-			return slog.String("level", strings.ToLower(lvl.String()))
-		}
-	}
-	return a
-}
-
 // traceHandler wraps an slog.Handler to automatically inject OpenTelemetry
 // trace_id and span_id into every log record, enabling log-trace correlation.
 type traceHandler struct {
@@ -94,15 +76,10 @@ func (h *traceHandler) WithGroup(name string) slog.Handler {
 }
 
 func main() {
-	// Setup structured JSON logging with slog, formatted to match zap's production output.
+	// Setup structured JSON logging using the shared toolhive-core logging package.
 	// Use stderr to keep stdout clean for commands that output data (e.g., version --format json).
-	jsonHandler := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-		Level:       getLogLevel(),
-		AddSource:   false, // Can be enabled for debugging
-		ReplaceAttr: zapStyleReplaceAttr,
-	})
-
-	handler := &traceHandler{Handler: jsonHandler}
+	baseHandler := logging.NewHandler(logging.WithLevel(getLogLevel()))
+	handler := &traceHandler{Handler: baseHandler}
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 

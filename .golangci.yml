@@ -41,7 +41,11 @@ linters:
       min-complexity: 15
     gosec:
       excludes:
+        - G115 # integer overflow conversion — false positives on term.IsTerminal(int(fd))
+        - G117 # struct field matches secret pattern — false positives on internal types
         - G601
+        - G704 # SSRF via taint analysis — false positive on internal HTTP client wrapper
+        - G706 # log injection via taint analysis — false positives on standard error logging
     lll:
       line-length: 130
     revive:
