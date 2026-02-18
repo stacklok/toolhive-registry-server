@@ -56,3 +56,16 @@ CREATE TABLE temp_mcp_server_icon (
     mime_type TEXT NOT NULL,
     theme TEXT NOT NULL
 );
+
+CREATE TABLE temp_skill (
+    entry_id UUID PRIMARY KEY,
+    namespace TEXT NOT NULL,
+    status skill_status NOT NULL DEFAULT 'ACTIVE',
+    license TEXT,
+    compatibility TEXT,
+    allowed_tools TEXT[],
+    repository JSONB,
+    icons JSONB,
+    metadata JSONB,
+    extension_meta JSONB
+);

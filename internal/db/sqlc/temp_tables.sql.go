@@ -78,6 +78,19 @@ func (q *Queries) CreateTempServerTable(ctx context.Context) error {
 	return err
 }
 
+const createTempSkillTable = `-- name: CreateTempSkillTable :exec
+
+CREATE TEMP TABLE temp_skill ON COMMIT DROP AS
+SELECT entry_id, namespace, status, license, compatibility, allowed_tools, repository, icons, metadata, extension_meta FROM skill
+  WITH NO DATA
+`
+
+// Temp Skill Table Operations
+func (q *Queries) CreateTempSkillTable(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, createTempSkillTable)
+	return err
+}
+
 const deleteOrphanedIcons = `-- name: DeleteOrphanedIcons :exec
 DELETE FROM mcp_server_icon
 WHERE entry_id = ANY($1::UUID[])
@@ -256,5 +269,31 @@ FROM temp_mcp_server
 
 func (q *Queries) UpsertServersFromTemp(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, upsertServersFromTemp)
+	return err
+}
+
+const upsertSkillsFromTemp = `-- name: UpsertSkillsFromTemp :exec
+INSERT INTO skill (
+    entry_id, namespace, status, license, compatibility,
+    allowed_tools, repository, icons, metadata, extension_meta
+)
+SELECT entry_id, namespace, status, license, compatibility,
+       allowed_tools, repository, icons, metadata, extension_meta
+FROM temp_skill
+ON CONFLICT (entry_id)
+DO UPDATE SET
+    namespace = EXCLUDED.namespace,
+    status = EXCLUDED.status,
+    license = EXCLUDED.license,
+    compatibility = EXCLUDED.compatibility,
+    allowed_tools = EXCLUDED.allowed_tools,
+    repository = EXCLUDED.repository,
+    icons = EXCLUDED.icons,
+    metadata = EXCLUDED.metadata,
+    extension_meta = EXCLUDED.extension_meta
+`
+
+func (q *Queries) UpsertSkillsFromTemp(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, upsertSkillsFromTemp)
 	return err
 }

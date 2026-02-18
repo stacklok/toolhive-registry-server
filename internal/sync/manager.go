@@ -404,7 +404,7 @@ func (s *defaultSyncManager) storeRegistryData(
 	ctx context.Context,
 	regCfg *config.RegistryConfig,
 	fetchResult *sources.FetchResult) *Error {
-	if err := s.writer.Store(ctx, regCfg.Name, fetchResult.Registry); err != nil {
+	if err := s.writer.Store(ctx, regCfg.Name, writer.NewSyncData(fetchResult.Registry)); err != nil {
 		slog.Error("Failed to store registry data", "error", err)
 		return &Error{
 			Err:             err,

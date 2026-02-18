@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	registry "github.com/stacklok/toolhive/pkg/registry/registry"
+	writer "github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,15 +42,15 @@ func (m *MockSyncWriter) EXPECT() *MockSyncWriterMockRecorder {
 }
 
 // Store mocks base method.
-func (m *MockSyncWriter) Store(ctx context.Context, registryName string, reg *registry.UpstreamRegistry) error {
+func (m *MockSyncWriter) Store(ctx context.Context, registryName string, data *writer.SyncData) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Store", ctx, registryName, reg)
+	ret := m.ctrl.Call(m, "Store", ctx, registryName, data)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Store indicates an expected call of Store.
-func (mr *MockSyncWriterMockRecorder) Store(ctx, registryName, reg any) *gomock.Call {
+func (mr *MockSyncWriterMockRecorder) Store(ctx, registryName, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Store", reflect.TypeOf((*MockSyncWriter)(nil).Store), ctx, registryName, reg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Store", reflect.TypeOf((*MockSyncWriter)(nil).Store), ctx, registryName, data)
 }

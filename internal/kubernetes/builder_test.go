@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -18,7 +17,7 @@ import (
 // mockSyncWriter is a simple mock implementation of writer.SyncWriter for testing
 type mockSyncWriter struct{}
 
-func (*mockSyncWriter) Store(_ context.Context, _ string, _ *toolhivetypes.UpstreamRegistry) error {
+func (*mockSyncWriter) Store(_ context.Context, _ string, _ *writer.SyncData) error {
 	return nil
 }
 

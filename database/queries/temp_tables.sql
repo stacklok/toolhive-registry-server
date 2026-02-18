@@ -138,3 +138,30 @@ WHERE entry_id = ANY(sqlc.slice(entry_ids)::UUID[])
   AND (entry_id, source_uri, mime_type, theme) NOT IN (
     SELECT entry_id, source_uri, mime_type, theme FROM temp_mcp_server_icon
   );
+
+-- Temp Skill Table Operations
+
+-- name: CreateTempSkillTable :exec
+CREATE TEMP TABLE temp_skill ON COMMIT DROP AS
+SELECT * FROM skill
+  WITH NO DATA;
+
+-- name: UpsertSkillsFromTemp :exec
+INSERT INTO skill (
+    entry_id, namespace, status, license, compatibility,
+    allowed_tools, repository, icons, metadata, extension_meta
+)
+SELECT entry_id, namespace, status, license, compatibility,
+       allowed_tools, repository, icons, metadata, extension_meta
+FROM temp_skill
+ON CONFLICT (entry_id)
+DO UPDATE SET
+    namespace = EXCLUDED.namespace,
+    status = EXCLUDED.status,
+    license = EXCLUDED.license,
+    compatibility = EXCLUDED.compatibility,
+    allowed_tools = EXCLUDED.allowed_tools,
+    repository = EXCLUDED.repository,
+    icons = EXCLUDED.icons,
+    metadata = EXCLUDED.metadata,
+    extension_meta = EXCLUDED.extension_meta;

@@ -439,3 +439,16 @@ type TempRegistryEntry struct {
 	CreatedAt   *time.Time `json:"created_at"`
 	UpdatedAt   *time.Time `json:"updated_at"`
 }
+
+type TempSkill struct {
+	EntryID       uuid.UUID   `json:"entry_id"`
+	Namespace     string      `json:"namespace"`
+	Status        SkillStatus `json:"status"`
+	License       *string     `json:"license"`
+	Compatibility *string     `json:"compatibility"`
+	AllowedTools  []string    `json:"allowed_tools"`
+	Repository    []byte      `json:"repository"`
+	Icons         []byte      `json:"icons"`
+	Metadata      []byte      `json:"metadata"`
+	ExtensionMeta []byte      `json:"extension_meta"`
+}

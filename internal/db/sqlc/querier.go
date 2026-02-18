@@ -26,6 +26,8 @@ type Querier interface {
 	// Temp Remote Table Operations
 	CreateTempRemoteTable(ctx context.Context) error
 	CreateTempServerTable(ctx context.Context) error
+	// Temp Skill Table Operations
+	CreateTempSkillTable(ctx context.Context) error
 	// Delete an API registry by name (returns 0 if not found or is CONFIG type)
 	DeleteAPIRegistry(ctx context.Context, name string) (int64, error)
 	// Delete CONFIG registries not in the provided list (for config file sync)
@@ -42,6 +44,8 @@ type Querier interface {
 	DeleteServerPackagesByServerId(ctx context.Context, entryID uuid.UUID) error
 	DeleteServerRemotesByServerId(ctx context.Context, entryID uuid.UUID) error
 	DeleteServersByRegistry(ctx context.Context, regID uuid.UUID) error
+	DeleteSkillGitPackagesByEntryIDs(ctx context.Context, entryIds []uuid.UUID) error
+	DeleteSkillOciPackagesByEntryIDs(ctx context.Context, entryIds []uuid.UUID) error
 	DeleteSkillsByRegistry(ctx context.Context, regID uuid.UUID) error
 	GetAPIRegistriesByNames(ctx context.Context, names []string) ([]GetAPIRegistriesByNamesRow, error)
 	GetLatestVersionForServer(ctx context.Context, arg GetLatestVersionForServerParams) (string, error)
@@ -51,6 +55,7 @@ type Querier interface {
 	GetRegistrySyncByName(ctx context.Context, name string) (RegistrySync, error)
 	GetServerIDsByRegistryNameVersion(ctx context.Context, regID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error)
 	GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error)
+	GetSkillIDsByRegistry(ctx context.Context, regID uuid.UUID) ([]GetSkillIDsByRegistryRow, error)
 	GetSkillVersion(ctx context.Context, arg GetSkillVersionParams) (GetSkillVersionRow, error)
 	InitializeRegistrySync(ctx context.Context, arg InitializeRegistrySyncParams) error
 	// ============================================================================
@@ -108,6 +113,7 @@ type Querier interface {
 	UpsertServerVersionForSync(ctx context.Context, arg UpsertServerVersionForSyncParams) (uuid.UUID, error)
 	UpsertServersFromTemp(ctx context.Context) error
 	UpsertSkillVersionForSync(ctx context.Context, arg UpsertSkillVersionForSyncParams) (uuid.UUID, error)
+	UpsertSkillsFromTemp(ctx context.Context) error
 }
 
 var _ Querier = (*Queries)(nil)
