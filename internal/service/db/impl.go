@@ -364,13 +364,13 @@ func (s *dbService) GetServerVersion(
 		otel.AttrServerName.String(options.Name),
 		otel.AttrServerVersion.String(options.Version),
 	)
-	if options.RegistryName != nil {
-		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
+	if options.RegistryName != "" {
+		span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 	}
 
-	if options.RegistryName != nil {
+	if options.RegistryName != "" {
 		querier := sqlc.New(s.pool)
-		if err := validateRegistryExists(ctx, querier, *options.RegistryName); err != nil {
+		if err := validateRegistryExists(ctx, querier, options.RegistryName); err != nil {
 			otel.RecordError(span, err)
 			return nil, err
 		}
@@ -380,8 +380,8 @@ func (s *dbService) GetServerVersion(
 		Name:    options.Name,
 		Version: options.Version,
 	}
-	if options.RegistryName != nil {
-		params.RegistryName = options.RegistryName
+	if options.RegistryName != "" {
+		params.RegistryName = &options.RegistryName
 	}
 
 	// Note: this function fetches a single record given name and version.
@@ -880,7 +880,7 @@ func (s *dbService) DeleteServerVersion(
 	// 5.1. Check if the server version was found and deleted
 	if rowsAffected == 0 {
 		err = fmt.Errorf("%w: %s@%s",
-			service.ErrServerNotFound, options.ServerName, options.Version)
+			service.ErrNotFound, options.ServerName, options.Version)
 		otel.RecordError(span, err)
 		return err
 	}

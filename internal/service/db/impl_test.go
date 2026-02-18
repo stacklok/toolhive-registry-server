@@ -493,12 +493,14 @@ func TestListServerVersions(t *testing.T) {
 			},
 			options: []service.Option{
 				service.WithName("com.example/test-server-1"),
-				func(o any) error {
-					opts := o.(*service.ListServerVersionsOptions)
+				func(opts any) error {
 					// Set nextTime to 30 minutes from now, so only versions created at +1h and +2h are returned
 					nextTime := time.Now().Add(30 * time.Minute).UTC()
-					opts.Next = &nextTime
-					opts.Limit = 10
+
+					castOpts := opts.(*service.ListServerVersionsOptions)
+					castOpts.Next = &nextTime
+					castOpts.Limit = 10
+
 					return nil
 				},
 			},
@@ -515,11 +517,13 @@ func TestListServerVersions(t *testing.T) {
 			},
 			options: []service.Option{
 				service.WithName("com.example/test-server-1"),
-				func(o any) error {
-					opts := o.(*service.ListServerVersionsOptions)
+				func(opts any) error {
 					prevTime := time.Now().Add(1 * time.Hour).UTC()
-					opts.Prev = &prevTime
-					opts.Limit = 10
+
+					castOpts := opts.(*service.ListServerVersionsOptions)
+					castOpts.Prev = &prevTime
+					castOpts.Limit = 10
+
 					return nil
 				},
 			},

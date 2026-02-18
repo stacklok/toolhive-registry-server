@@ -1008,7 +1008,7 @@ func TestDeleteVersion(t *testing.T) {
 			path: "/foo/v0.1/servers/com.example%2Fnonexistent/versions/1.0.0",
 			setupMocks: func(m *mocks.MockRegistryService) {
 				m.EXPECT().DeleteServerVersion(gomock.Any(), gomock.Any()).
-					Return(service.ErrServerNotFound)
+					Return(service.ErrNotFound)
 			},
 			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
 				return Router(mockSvc, false)
