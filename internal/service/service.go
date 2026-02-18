@@ -21,11 +21,16 @@ const (
 	DefaultPageSize = 30
 	// MaxPageSize is the maximum allowed items per page to prevent potential DoS.
 	MaxPageSize = 1000
+
+	// SkillPackageTypeOCI is the type for OCI packages
+	SkillPackageTypeOCI = "oci"
+	// SkillPackageTypeGit is the type for Git packages
+	SkillPackageTypeGit = "git"
 )
 
 var (
-	// ErrServerNotFound is returned when a server is not found
-	ErrServerNotFound = errors.New("server not found")
+	// ErrNotFound is returned when a server is not found
+	ErrNotFound = errors.New("not found")
 	// ErrNotImplemented is returned when a feature is not implemented
 	ErrNotImplemented = errors.New("not implemented")
 	// ErrRegistryNotFound is returned when a registry is not found
@@ -86,6 +91,19 @@ type RegistryService interface {
 
 	// ProcessInlineRegistryData processes inline data for a managed/file registry
 	ProcessInlineRegistryData(ctx context.Context, name string, data string, format string) error
+
+	// ListSkills lists skills in a registry with cursor-based pagination
+	ListSkills(ctx context.Context, opts ...Option) (*ListSkillsResult, error)
+
+	// GetSkillVersion gets a specific skill version. If the version is
+	// "latest", the latest version will be returned.
+	GetSkillVersion(ctx context.Context, opts ...Option) (*Skill, error)
+
+	// PublishSkill publishes a skill
+	PublishSkill(ctx context.Context, skill *Skill, opts ...Option) (*Skill, error)
+
+	// DeleteSkillVersion deletes a skill version
+	DeleteSkillVersion(ctx context.Context, opts ...Option) error
 }
 
 // RegistryInfo represents detailed information about a registry
@@ -143,7 +161,7 @@ type ListServerVersionsOptions struct {
 
 // GetServerVersionOptions is the options for the GetServerVersion operation
 type GetServerVersionOptions struct {
-	RegistryName *string
+	RegistryName string
 	Name         string
 	Version      string
 }
@@ -171,6 +189,8 @@ func WithCursor(cursor string) Option {
 		switch o := o.(type) {
 		case *ListServersOptions:
 			o.Cursor = cursor
+		case *ListSkillsOptions:
+			o.Cursor = &cursor
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
@@ -189,6 +209,8 @@ func WithSearch(search string) Option {
 		switch o := o.(type) {
 		case *ListServersOptions:
 			o.Search = search
+		case *ListSkillsOptions:
+			o.Search = &search
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
@@ -217,9 +239,7 @@ func WithUpdatedSince(updatedSince time.Time) Option {
 
 // WithRegistryName sets the registry name for the ListServers, ListServerVersions,
 // GetServerVersion, PublishServerVersion, or DeleteServerVersion operation
-func WithRegistryName(
-	registryName string,
-) Option {
+func WithRegistryName(registryName string) Option {
 	return func(o any) error {
 		if registryName == "" {
 			return fmt.Errorf("invalid registry name: %s", registryName)
@@ -231,11 +251,40 @@ func WithRegistryName(
 		case *ListServerVersionsOptions:
 			o.RegistryName = &registryName
 		case *GetServerVersionOptions:
-			o.RegistryName = &registryName
+			o.RegistryName = registryName
 		case *PublishServerVersionOptions:
 			o.RegistryName = registryName
 		case *DeleteServerVersionOptions:
 			o.RegistryName = registryName
+		case *ListSkillsOptions:
+			o.RegistryName = registryName
+		case *GetSkillVersionOptions:
+			o.RegistryName = registryName
+		case *PublishSkillOptions:
+			o.RegistryName = registryName
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+
+		return nil
+	}
+}
+
+// WithNamespace sets the namespace for the ListSkills, GetLatestSkillVersion,
+// or DeleteSkillVersion operation
+func WithNamespace(namespace string) Option {
+	return func(o any) error {
+		if namespace == "" {
+			return fmt.Errorf("invalid namespace: %s", namespace)
+		}
+
+		switch o := o.(type) {
+		case *ListSkillsOptions:
+			o.Namespace = namespace
+		case *GetSkillVersionOptions:
+			o.Namespace = namespace
+		case *DeleteSkillVersionOptions:
+			o.Namespace = namespace
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
@@ -293,6 +342,8 @@ func WithVersion(version string) Option {
 			o.Version = version
 		case *GetServerVersionOptions:
 			o.Version = version
+		case *GetSkillVersionOptions:
+			o.Version = version
 		case *DeleteServerVersionOptions:
 			o.Version = version
 		default:
@@ -318,6 +369,10 @@ func WithName(name string) Option {
 			o.Name = name
 		case *DeleteServerVersionOptions:
 			o.ServerName = name
+		case *ListSkillsOptions:
+			o.Name = &name
+		case *GetSkillVersionOptions:
+			o.Name = name
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
@@ -337,6 +392,8 @@ func WithLimit(limit int) Option {
 		case *ListServersOptions:
 			o.Limit = limit
 		case *ListServerVersionsOptions:
+			o.Limit = limit
+		case *ListSkillsOptions:
 			o.Limit = limit
 		default:
 			return fmt.Errorf("invalid option type: %T", o)

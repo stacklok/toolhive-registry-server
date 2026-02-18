@@ -460,7 +460,7 @@ func (routes *Routes) deleteVersionWithRegistryName(w http.ResponseWriter, r *ht
 
 	if err != nil {
 		// Check for specific error types
-		if errors.Is(err, service.ErrRegistryNotFound) || errors.Is(err, service.ErrServerNotFound) {
+		if errors.Is(err, service.ErrRegistryNotFound) || errors.Is(err, service.ErrNotFound) {
 			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
 			return
 		}
