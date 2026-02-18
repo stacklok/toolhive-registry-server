@@ -262,6 +262,8 @@ func WithRegistryName(registryName string) Option {
 			o.RegistryName = registryName
 		case *PublishSkillOptions:
 			o.RegistryName = registryName
+		case *DeleteSkillVersionOptions:
+			o.RegistryName = registryName
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
@@ -346,6 +348,8 @@ func WithVersion(version string) Option {
 			o.Version = version
 		case *DeleteServerVersionOptions:
 			o.Version = version
+		case *DeleteSkillVersionOptions:
+			o.Version = version
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
@@ -372,6 +376,8 @@ func WithName(name string) Option {
 		case *ListSkillsOptions:
 			o.Name = &name
 		case *GetSkillVersionOptions:
+			o.Name = name
+		case *DeleteSkillVersionOptions:
 			o.Name = name
 		default:
 			return fmt.Errorf("invalid option type: %T", o)

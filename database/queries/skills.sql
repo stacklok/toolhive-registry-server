@@ -68,7 +68,8 @@ SELECT r.reg_type AS registry_type,
    AND (e.version = sqlc.arg(version)::text
        OR (sqlc.arg(version)::text = 'latest' AND l.latest_entry_id = e.id)
    )
-   AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text);
+   AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
+   AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text);
 
 -- name: ListSkillOciPackages :many
 SELECT p.id,
