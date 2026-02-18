@@ -2186,7 +2186,7 @@ const docTemplate = `{
         },
         "/registry/{registryName}/v0.1/x/dev.toolhive/skills": {
             "get": {
-                "description": "List skills in a registry (paginated, latest versions). Not implemented.",
+                "description": "List skills in a registry (paginated, latest versions).",
                 "parameters": [
                     {
                         "description": "Registry name",
@@ -2271,7 +2271,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "501": {
+                    "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2282,7 +2282,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Internal server error"
                     }
                 },
                 "security": [
@@ -2296,7 +2296,7 @@ const docTemplate = `{
                 ]
             },
             "post": {
-                "description": "Publish a skill version to the registry. Not implemented.",
+                "description": "Publish a skill version to the registry.",
                 "parameters": [
                     {
                         "description": "Registry name",
@@ -2378,7 +2378,7 @@ const docTemplate = `{
                         },
                         "description": "Not a managed registry"
                     },
-                    "501": {
+                    "409": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2389,7 +2389,20 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Version already exists"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "security": [
@@ -2405,7 +2418,7 @@ const docTemplate = `{
         },
         "/registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}": {
             "get": {
-                "description": "Get the latest version of a skill by namespace and name. Not implemented.",
+                "description": "Get the latest version of a skill by namespace and name.",
                 "parameters": [
                     {
                         "description": "Registry name",
@@ -2481,7 +2494,7 @@ const docTemplate = `{
                         },
                         "description": "Skill not found"
                     },
-                    "501": {
+                    "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2492,7 +2505,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Internal server error"
                     }
                 },
                 "security": [
@@ -2508,7 +2521,7 @@ const docTemplate = `{
         },
         "/registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions": {
             "get": {
-                "description": "List all versions of a skill. Not implemented.",
+                "description": "List all versions of a skill.",
                 "parameters": [
                     {
                         "description": "Registry name",
@@ -2584,7 +2597,7 @@ const docTemplate = `{
                         },
                         "description": "Skill not found"
                     },
-                    "501": {
+                    "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2595,7 +2608,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Internal server error"
                     }
                 },
                 "security": [
@@ -2611,7 +2624,7 @@ const docTemplate = `{
         },
         "/registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions/{version}": {
             "delete": {
-                "description": "Delete a specific version of a skill from the registry. Not implemented.",
+                "description": "Delete a specific version of a skill from the registry.",
                 "parameters": [
                     {
                         "description": "Registry name",
@@ -2715,7 +2728,7 @@ const docTemplate = `{
                         },
                         "description": "Skill version not found"
                     },
-                    "501": {
+                    "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2726,7 +2739,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Internal server error"
                     }
                 },
                 "security": [
@@ -2740,7 +2753,7 @@ const docTemplate = `{
                 ]
             },
             "get": {
-                "description": "Get a specific version of a skill. Not implemented.",
+                "description": "Get a specific version of a skill.",
                 "parameters": [
                     {
                         "description": "Registry name",
@@ -2825,7 +2838,7 @@ const docTemplate = `{
                         },
                         "description": "Skill or version not found"
                     },
-                    "501": {
+                    "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2836,7 +2849,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Internal server error"
                     }
                 },
                 "security": [
