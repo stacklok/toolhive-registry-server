@@ -183,6 +183,49 @@ func (ns NullRegistryType) Value() (driver.Value, error) {
 	return string(ns.RegistryType), nil
 }
 
+type SkillStatus string
+
+const (
+	SkillStatusACTIVE     SkillStatus = "ACTIVE"
+	SkillStatusDEPRECATED SkillStatus = "DEPRECATED"
+	SkillStatusARCHIVED   SkillStatus = "ARCHIVED"
+)
+
+func (e *SkillStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SkillStatus(s)
+	case string:
+		*e = SkillStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SkillStatus: %T", src)
+	}
+	return nil
+}
+
+type NullSkillStatus struct {
+	SkillStatus SkillStatus `json:"skill_status"`
+	Valid       bool        `json:"valid"` // Valid is true if SkillStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSkillStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.SkillStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SkillStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSkillStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SkillStatus), nil
+}
+
 type SyncStatus string
 
 const (
@@ -312,6 +355,36 @@ type RegistrySync struct {
 	LastSyncHash          *string    `json:"last_sync_hash"`
 	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
 	ServerCount           int64      `json:"server_count"`
+}
+
+type Skill struct {
+	EntryID       uuid.UUID   `json:"entry_id"`
+	Namespace     string      `json:"namespace"`
+	Status        SkillStatus `json:"status"`
+	License       *string     `json:"license"`
+	Compatibility *string     `json:"compatibility"`
+	AllowedTools  []string    `json:"allowed_tools"`
+	Repository    []byte      `json:"repository"`
+	Icons         []byte      `json:"icons"`
+	Metadata      []byte      `json:"metadata"`
+	ExtensionMeta []byte      `json:"extension_meta"`
+}
+
+type SkillGitPackage struct {
+	ID           uuid.UUID `json:"id"`
+	SkillEntryID uuid.UUID `json:"skill_entry_id"`
+	Url          string    `json:"url"`
+	Ref          *string   `json:"ref"`
+	CommitSha    *string   `json:"commit_sha"`
+	Subfolder    *string   `json:"subfolder"`
+}
+
+type SkillOciPackage struct {
+	ID           uuid.UUID `json:"id"`
+	SkillEntryID uuid.UUID `json:"skill_entry_id"`
+	Identifier   string    `json:"identifier"`
+	Digest       *string   `json:"digest"`
+	MediaType    *string   `json:"media_type"`
 }
 
 type TempMcpServer struct {
