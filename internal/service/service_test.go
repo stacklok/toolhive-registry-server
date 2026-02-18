@@ -268,7 +268,7 @@ func TestWithRegistryNameGetServerVersion(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.expectedValue, *opts.RegistryName)
+			assert.Equal(t, tt.expectedValue, opts.RegistryName)
 		})
 	}
 }
