@@ -176,9 +176,9 @@ func createTestServerWithRepository(name, version string) upstreamv0.ServerJSON 
 func createTestServerWithMeta(name, version string) upstreamv0.ServerJSON {
 	server := createTestServer(name, version)
 	server.Meta = &upstreamv0.ServerMeta{
-		PublisherProvided: map[string]interface{}{
+		PublisherProvided: map[string]any{
 			"custom_field": "custom_value",
-			"nested": map[string]interface{}{
+			"nested": map[string]any{
 				"key": "value",
 			},
 		},
@@ -241,7 +241,7 @@ func createFullTestServer(name, version string) upstreamv0.ServerJSON {
 			},
 		},
 		Meta: &upstreamv0.ServerMeta{
-			PublisherProvided: map[string]interface{}{
+			PublisherProvided: map[string]any{
 				"custom": "value",
 			},
 		},
@@ -977,14 +977,14 @@ func TestSerializeServerMeta(t *testing.T) {
 		{
 			name: "empty publisher provided",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{},
+				PublisherProvided: map[string]any{},
 			},
 			expectNil: true,
 		},
 		{
 			name: "with publisher provided data",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{
+				PublisherProvided: map[string]any{
 					"key": "value",
 				},
 			},
@@ -994,8 +994,8 @@ func TestSerializeServerMeta(t *testing.T) {
 		{
 			name: "with nested data",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{
-					"nested": map[string]interface{}{
+				PublisherProvided: map[string]any{
+					"nested": map[string]any{
 						"key": "value",
 					},
 				},
@@ -1006,7 +1006,7 @@ func TestSerializeServerMeta(t *testing.T) {
 		{
 			name: "with data within size limit",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{
+				PublisherProvided: map[string]any{
 					"key": "value",
 				},
 			},
@@ -1016,7 +1016,7 @@ func TestSerializeServerMeta(t *testing.T) {
 		{
 			name: "with data exceeding size limit",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{
+				PublisherProvided: map[string]any{
 					"key": "value",
 				},
 			},

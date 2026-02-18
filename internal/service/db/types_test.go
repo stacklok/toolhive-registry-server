@@ -185,14 +185,14 @@ func TestSerializePublisherProvidedMeta(t *testing.T) {
 		{
 			name: "empty PublisherProvided",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{},
+				PublisherProvided: map[string]any{},
 			},
 			expectNil: true,
 		},
 		{
 			name: "with data within limit",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{
+				PublisherProvided: map[string]any{
 					"key": "value",
 				},
 			},
@@ -202,7 +202,7 @@ func TestSerializePublisherProvidedMeta(t *testing.T) {
 		{
 			name: "with data exceeding limit",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{
+				PublisherProvided: map[string]any{
 					"key": "value",
 				},
 			},
@@ -212,8 +212,8 @@ func TestSerializePublisherProvidedMeta(t *testing.T) {
 		{
 			name: "with nested data within limit",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{
-					"nested": map[string]interface{}{
+				PublisherProvided: map[string]any{
+					"nested": map[string]any{
 						"key": "value",
 					},
 				},

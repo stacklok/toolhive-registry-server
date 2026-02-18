@@ -86,7 +86,7 @@ func (r *RegistryCreateRequest) IsInlineData() bool {
 }
 
 // GetSourceConfig returns the active source configuration
-func (r *RegistryCreateRequest) GetSourceConfig() interface{} {
+func (r *RegistryCreateRequest) GetSourceConfig() any {
 	switch {
 	case r.Git != nil:
 		return r.Git

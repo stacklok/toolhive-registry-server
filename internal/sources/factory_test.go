@@ -24,7 +24,7 @@ func TestDefaultRegistryHandlerFactory_CreateHandler(t *testing.T) {
 		name           string
 		registryConfig *config.RegistryConfig
 		expectError    bool
-		expectedType   interface{}
+		expectedType   any
 		errorContains  string
 	}{
 		{

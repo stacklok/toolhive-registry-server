@@ -1513,7 +1513,7 @@ func TestRegistryCreateRequest_GetSourceConfig(t *testing.T) {
 	tests := []struct {
 		name     string
 		req      *RegistryCreateRequest
-		expected interface{}
+		expected any
 	}{
 		{
 			name: "returns_git_config",

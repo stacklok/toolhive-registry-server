@@ -389,13 +389,13 @@ func TestDefaultFilterService_ApplyFilters_UpstreamFormatWithStringMetadata(t *t
 		Version:     "1.0.0",
 		Packages:    []model.Package{},
 		Meta: &upstreamv0.ServerMeta{
-			PublisherProvided: map[string]interface{}{
+			PublisherProvided: map[string]any{
 				// This is a string value, not a map - this causes the panic in ExtractTags
 				"someKey": "someStringValue",
 				// This is a map (expected structure)
-				"provider": map[string]interface{}{
-					"metadata": map[string]interface{}{
-						"tags": []interface{}{"tag1", "tag2"},
+				"provider": map[string]any{
+					"metadata": map[string]any{
+						"tags": []any{"tag1", "tag2"},
 					},
 				},
 			},

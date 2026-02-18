@@ -961,7 +961,7 @@ func TestURLEncodingInRoutes(t *testing.T) {
 			assert.Equal(t, tt.wantStatus, rr.Code, "Status code mismatch for %s", tt.description)
 
 			if tt.wantStatus == http.StatusBadRequest && tt.wantError != "" {
-				var response map[string]interface{}
+				var response map[string]any
 				err = json.Unmarshal(rr.Body.Bytes(), &response)
 				require.NoError(t, err)
 				assert.Contains(t, response, "error")
@@ -970,7 +970,7 @@ func TestURLEncodingInRoutes(t *testing.T) {
 
 			if tt.wantStatus == http.StatusOK {
 				// Verify we got a valid response
-				var response interface{}
+				var response any
 				err = json.Unmarshal(rr.Body.Bytes(), &response)
 				require.NoError(t, err, "Response should be valid JSON")
 			}

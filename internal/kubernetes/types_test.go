@@ -218,19 +218,19 @@ func TestExtractServer(t *testing.T) {
 
 				// Check tool_definitions is present and parsed as array
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				toolDefs, ok := mcpMetadata["tool_definitions"].([]interface{})
+				toolDefs, ok := mcpMetadata["tool_definitions"].([]any)
 				require.True(t, ok, "tool_definitions should be an array")
 				require.Len(t, toolDefs, 1)
 
 				// Check first tool definition
-				tool := toolDefs[0].(map[string]interface{})
+				tool := toolDefs[0].(map[string]any)
 				assert.Equal(t, "test_tool", tool["name"])
 				assert.Equal(t, "A test tool", tool["description"])
 				assert.NotNil(t, tool["inputSchema"])
 				assert.NotNil(t, tool["annotations"])
 
 				// Check annotations
-				annotations := tool["annotations"].(map[string]interface{})
+				annotations := tool["annotations"].(map[string]any)
 				assert.Equal(t, true, annotations["readOnlyHint"])
 			},
 		},
@@ -316,22 +316,22 @@ func TestExtractServer(t *testing.T) {
 
 				// Check tool_definitions has multiple tools
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				toolDefs, ok := mcpMetadata["tool_definitions"].([]interface{})
+				toolDefs, ok := mcpMetadata["tool_definitions"].([]any)
 				require.True(t, ok)
 				require.Len(t, toolDefs, 2)
 
 				// Check first tool
-				tool1 := toolDefs[0].(map[string]interface{})
+				tool1 := toolDefs[0].(map[string]any)
 				assert.Equal(t, "tool_one", tool1["name"])
 				assert.Equal(t, "First tool", tool1["description"])
 
 				// Check second tool
-				tool2 := toolDefs[1].(map[string]interface{})
+				tool2 := toolDefs[1].(map[string]any)
 				assert.Equal(t, "tool_two", tool2["name"])
 				assert.Equal(t, "Second tool", tool2["description"])
 				assert.NotNil(t, tool2["inputSchema"])
 				assert.NotNil(t, tool2["outputSchema"])
-				annotations := tool2["annotations"].(map[string]interface{})
+				annotations := tool2["annotations"].(map[string]any)
 				assert.Equal(t, true, annotations["destructiveHint"])
 			},
 		},
@@ -360,9 +360,9 @@ func TestExtractServer(t *testing.T) {
 				mcpMetadata := ioStacklok["https://example.com/tools-list"].(map[string]any)
 
 				// Check tools is present and is a string array
-				// After JSON marshaling/unmarshaling, []string becomes []interface{}
+				// After JSON marshaling/unmarshaling, []string becomes []any
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]interface{})
+				tools, ok := mcpMetadata["tools"].([]any)
 				require.True(t, ok, "tools should be an array")
 				require.Len(t, tools, 2)
 				assert.Equal(t, "get_weather", tools[0])
@@ -452,13 +452,13 @@ func TestExtractServer(t *testing.T) {
 
 				// Both should be present
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				toolDefs, ok := mcpMetadata["tool_definitions"].([]interface{})
+				toolDefs, ok := mcpMetadata["tool_definitions"].([]any)
 				require.True(t, ok)
 				require.Len(t, toolDefs, 1)
 
-				// After JSON marshaling/unmarshaling, []string becomes []interface{}
+				// After JSON marshaling/unmarshaling, []string becomes []any
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]interface{})
+				tools, ok := mcpMetadata["tools"].([]any)
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 				assert.Equal(t, "get_weather", tools[0])
@@ -815,11 +815,11 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 
 				// Check tool_definitions is parsed correctly
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				toolDefs, ok := mcpMetadata["tool_definitions"].([]interface{})
+				toolDefs, ok := mcpMetadata["tool_definitions"].([]any)
 				require.True(t, ok)
 				require.Len(t, toolDefs, 1)
 
-				tool := toolDefs[0].(map[string]interface{})
+				tool := toolDefs[0].(map[string]any)
 				assert.Equal(t, "search_files", tool["name"])
 				assert.Equal(t, "Search for files", tool["description"])
 			},
@@ -869,9 +869,9 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				mcpMetadata := ioStacklok["https://example.com/vmcp-tools-list"].(map[string]any)
 
 				// Check tools is present
-				// After JSON marshaling/unmarshaling, []string becomes []interface{}
+				// After JSON marshaling/unmarshaling, []string becomes []any
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]interface{})
+				tools, ok := mcpMetadata["tools"].([]any)
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 				assert.Equal(t, "search_files", tools[0])
@@ -901,9 +901,9 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 
 				// Both should be present
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				// After JSON marshaling/unmarshaling, []string becomes []interface{}
+				// After JSON marshaling/unmarshaling, []string becomes []any
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]interface{})
+				tools, ok := mcpMetadata["tools"].([]any)
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 			},
@@ -1108,16 +1108,16 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 
 				// Check tool_definitions is parsed correctly
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				toolDefs, ok := mcpMetadata["tool_definitions"].([]interface{})
+				toolDefs, ok := mcpMetadata["tool_definitions"].([]any)
 				require.True(t, ok)
 				require.Len(t, toolDefs, 1)
 
-				tool := toolDefs[0].(map[string]interface{})
+				tool := toolDefs[0].(map[string]any)
 				assert.Equal(t, "query_database", tool["name"])
 				assert.Equal(t, "Execute SQL query", tool["description"])
 				assert.NotNil(t, tool["inputSchema"])
 				assert.NotNil(t, tool["outputSchema"])
-				annotations := tool["annotations"].(map[string]interface{})
+				annotations := tool["annotations"].(map[string]any)
 				assert.Equal(t, true, annotations["readOnlyHint"])
 			},
 		},
@@ -1166,9 +1166,9 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				mcpMetadata := ioStacklok["https://example.com/proxy-tools-list"].(map[string]any)
 
 				// Check tools is present
-				// After JSON marshaling/unmarshaling, []string becomes []interface{}
+				// After JSON marshaling/unmarshaling, []string becomes []any
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]interface{})
+				tools, ok := mcpMetadata["tools"].([]any)
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 				assert.Equal(t, "query_database", tools[0])
@@ -1198,9 +1198,9 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 
 				// Both should be present
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				// After JSON marshaling/unmarshaling, []string becomes []interface{}
+				// After JSON marshaling/unmarshaling, []string becomes []any
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]interface{})
+				tools, ok := mcpMetadata["tools"].([]any)
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 			},

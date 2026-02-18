@@ -271,7 +271,7 @@ func TestInvalidJSON(t *testing.T) {
 	assert.Equal(t, []byte("invalid json"), invalidJSON)
 
 	// Verify it's actually invalid JSON
-	var parsed interface{}
+	var parsed any
 	err := json.Unmarshal(invalidJSON, &parsed)
 	assert.Error(t, err)
 }
@@ -283,7 +283,7 @@ func TestEmptyToolHiveJSON(t *testing.T) {
 	assert.Equal(t, []byte("{}"), emptyJSON)
 
 	// Verify it's valid JSON
-	var parsed interface{}
+	var parsed any
 	err := json.Unmarshal(emptyJSON, &parsed)
 	assert.NoError(t, err)
 }

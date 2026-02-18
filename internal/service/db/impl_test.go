@@ -1163,7 +1163,7 @@ func TestPublishServerVersion(t *testing.T) {
 					Subfolder: "src",
 				},
 				Meta: &upstreamv0.ServerMeta{
-					PublisherProvided: map[string]interface{}{
+					PublisherProvided: map[string]any{
 						"custom_field": "custom_value",
 					},
 				},
