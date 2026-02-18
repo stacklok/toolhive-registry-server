@@ -78,12 +78,14 @@ SELECT r.reg_type AS registry_type,
        OR ($2::text = 'latest' AND l.latest_entry_id = e.id)
    )
    AND ($3::text IS NULL OR r.name = $3::text)
+   AND ($4::text IS NULL OR s.namespace = $4::text)
 `
 
 type GetSkillVersionParams struct {
 	Name         string  `json:"name"`
 	Version      string  `json:"version"`
 	RegistryName *string `json:"registry_name"`
+	Namespace    *string `json:"namespace"`
 }
 
 type GetSkillVersionRow struct {
@@ -109,7 +111,12 @@ type GetSkillVersionRow struct {
 }
 
 func (q *Queries) GetSkillVersion(ctx context.Context, arg GetSkillVersionParams) (GetSkillVersionRow, error) {
-	row := q.db.QueryRow(ctx, getSkillVersion, arg.Name, arg.Version, arg.RegistryName)
+	row := q.db.QueryRow(ctx, getSkillVersion,
+		arg.Name,
+		arg.Version,
+		arg.RegistryName,
+		arg.Namespace,
+	)
 	var i GetSkillVersionRow
 	err := row.Scan(
 		&i.RegistryType,

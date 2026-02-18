@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -137,11 +138,15 @@ func (s *dbService) GetSkillVersion(
 	if options.Name == "" || options.Version == "" {
 		return nil, fmt.Errorf("name and version are required")
 	}
+	if options.Namespace == "" {
+		return nil, fmt.Errorf("namespace is required")
+	}
 
 	params := sqlc.GetSkillVersionParams{
 		Name:         options.Name,
 		Version:      options.Version,
 		RegistryName: &options.RegistryName,
+		Namespace:    &options.Namespace,
 	}
 
 	querier := sqlc.New(s.pool)
@@ -195,17 +200,28 @@ func toServiceSkillOciPackage(pkg sqlc.SkillOciPackage) service.SkillPackage {
 }
 
 func toServiceSkillGitPackage(pkg sqlc.SkillGitPackage) service.SkillPackage {
+	ref := ""
+	commit := ""
+	subfolder := ""
+	if pkg.Ref != nil {
+		ref = *pkg.Ref
+	}
+	if pkg.CommitSha != nil {
+		commit = *pkg.CommitSha
+	}
+	if pkg.Subfolder != nil {
+		subfolder = *pkg.Subfolder
+	}
 	return service.SkillPackage{
 		RegistryType: service.SkillPackageTypeGit,
 		URL:          pkg.Url,
-		Ref:          *pkg.Ref,
-		Commit:       *pkg.CommitSha,
+		Ref:          ref,
+		Commit:       commit,
+		Subfolder:    subfolder,
 	}
 }
 
 // PublishSkill inserts a new skill version into a managed registry.
-//
-//nolint:gocyclo
 func (s *dbService) PublishSkill(
 	ctx context.Context,
 	skill *service.Skill,
@@ -225,10 +241,46 @@ func (s *dbService) PublishSkill(
 		return nil, fmt.Errorf("namespace, name, and version are required")
 	}
 
-	registry, err := validateManagedRegistry(ctx, sqlc.New(s.pool), options.RegistryName)
-	if err != nil {
+	if err := s.executePublishSkillTransaction(ctx, options.RegistryName, skill); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
+	}
+
+	return s.GetSkillVersion(ctx,
+		service.WithRegistryName(options.RegistryName),
+		service.WithName(skill.Name),
+		service.WithVersion(skill.Version),
+		service.WithNamespace(skill.Namespace),
+	)
+}
+
+// executePublishSkillTransaction executes the skill publish operation within a transaction.
+//
+//nolint:gocyclo
+func (s *dbService) executePublishSkillTransaction(
+	ctx context.Context,
+	registryName string,
+	skill *service.Skill,
+) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.Serializable,
+		AccessMode: pgx.ReadWrite,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	registry, err := validateManagedRegistry(ctx, querier, registryName)
+	if err != nil {
+		return err
 	}
 
 	now := time.Now().UTC()
@@ -247,27 +299,23 @@ func (s *dbService) PublishSkill(
 		entryParams.Description = &skill.Description
 	}
 
-	querier := sqlc.New(s.pool)
 	entryID, err := querier.InsertRegistryEntry(ctx, entryParams)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return nil, fmt.Errorf("%w: %s %s", service.ErrVersionAlreadyExists, skill.Name, skill.Version)
+			return fmt.Errorf("%w: %s %s", service.ErrVersionAlreadyExists, skill.Name, skill.Version)
 		}
-		otel.RecordError(span, err)
-		return nil, err
+		return err
 	}
 
 	skillParams, err := makeInsertSkillVersionParams(entryID, skill)
 	if err != nil {
-		otel.RecordError(span, err)
-		return nil, err
+		return err
 	}
 
 	_, err = querier.InsertSkillVersion(ctx, *skillParams)
 	if err != nil {
-		otel.RecordError(span, err)
-		return nil, err
+		return err
 	}
 
 	for _, pkg := range skill.Packages {
@@ -290,22 +338,25 @@ func (s *dbService) PublishSkill(
 			})
 		}
 		if err != nil {
-			otel.RecordError(span, err)
-			return nil, err
+			return err
 		}
 	}
 
+	// Compare with current latest before upserting — avoid regressing the pointer
+	shouldUpdateLatest := true
 	latestSkill, err := querier.GetSkillVersion(ctx, sqlc.GetSkillVersionParams{
 		Name:         skill.Name,
-		RegistryName: &options.RegistryName,
+		RegistryName: &registryName,
+		Namespace:    &skill.Namespace,
 		Version:      "latest",
 	})
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		otel.RecordError(span, err)
-		return nil, err
+	if err == nil {
+		shouldUpdateLatest = versions.IsNewerVersion(skill.Version, latestSkill.Version)
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("failed to get current latest version: %w", err)
 	}
 
-	if versions.IsNewerVersion(skill.Version, latestSkill.Version) {
+	if shouldUpdateLatest {
 		_, err = querier.UpsertLatestSkillVersion(ctx, sqlc.UpsertLatestSkillVersionParams{
 			RegID:   registry.ID,
 			Name:    skill.Name,
@@ -313,16 +364,15 @@ func (s *dbService) PublishSkill(
 			EntryID: entryID,
 		})
 		if err != nil {
-			otel.RecordError(span, err)
-			return nil, err
+			return fmt.Errorf("failed to upsert latest skill version: %w", err)
 		}
 	}
 
-	return s.GetSkillVersion(ctx,
-		service.WithRegistryName(options.RegistryName),
-		service.WithName(skill.Name),
-		service.WithVersion(skill.Version),
-	)
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func makeInsertSkillVersionParams(
@@ -383,7 +433,7 @@ func (s *dbService) DeleteSkillVersion(
 	ctx, span := s.startSpan(ctx, "dbService.DeleteSkillVersion")
 	defer span.End()
 
-	options := &service.DeleteServerVersionOptions{}
+	options := &service.DeleteSkillVersionOptions{}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
 			otel.RecordError(span, err)
@@ -400,7 +450,7 @@ func (s *dbService) DeleteSkillVersion(
 	querier := sqlc.New(s.pool)
 	affected, err := querier.DeleteRegistryEntry(ctx, sqlc.DeleteRegistryEntryParams{
 		RegID:   registry.ID,
-		Name:    options.ServerName,
+		Name:    options.Name,
 		Version: options.Version,
 	})
 	if err != nil {
@@ -408,7 +458,7 @@ func (s *dbService) DeleteSkillVersion(
 		return err
 	}
 	if affected == 0 {
-		return fmt.Errorf("%w: %s %s", service.ErrNotFound, options.ServerName, options.Version)
+		return fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
 	}
 
 	return nil
