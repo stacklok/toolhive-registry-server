@@ -185,36 +185,3 @@ func GetSkillVersionRowToSkill(row sqlc.GetSkillVersionRow) *Skill {
 		ExtensionMeta: row.ExtensionMeta,
 	})
 }
-
-// PublishSkillOptions is the options for the PublishSkill operation
-type PublishSkillOptions struct {
-	RegistryName string
-}
-
-// ListSkillsOptions is the options for the ListSkills and ListSkillVersions
-// operations.
-type ListSkillsOptions struct {
-	RegistryName string
-	Namespace    string
-	Name         *string
-	Version      *string
-	Search       *string
-	Limit        int
-	Cursor       *string
-}
-
-// GetSkillVersionOptions is the options for the GetSkillVersion operation.
-type GetSkillVersionOptions struct {
-	RegistryName string
-	Namespace    string
-	Name         string
-	Version      string
-}
-
-// DeleteSkillVersionOptions is the options for the DeleteSkillVersion operation
-type DeleteSkillVersionOptions struct {
-	RegistryName string
-	Namespace    string
-	Name         string
-	Version      string
-}

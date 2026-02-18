@@ -37,7 +37,7 @@ func NewNullInterval() Interval {
 }
 
 // Scan implements the sql.Scanner interface to read PostgreSQL INTERVAL values
-func (i *Interval) Scan(src interface{}) error {
+func (i *Interval) Scan(src any) error {
 	if src == nil {
 		i.Valid = false
 		i.Duration = 0

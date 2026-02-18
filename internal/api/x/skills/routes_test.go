@@ -276,7 +276,7 @@ func TestPublishSkill(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		body       interface{}
+		body       any
 		setupMocks func(m *mocks.MockRegistryService)
 		wantStatus int
 		wantError  string

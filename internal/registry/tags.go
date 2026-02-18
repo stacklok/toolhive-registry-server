@@ -11,19 +11,19 @@ func ExtractTags(server *upstream.ServerJSON) []string {
 		for _, metadata := range server.Meta.PublisherProvided {
 			// Handle case where metadata might be a string (upstream format)
 			// instead of a map (toolhive format)
-			metadataMap, ok := metadata.(map[string]interface{})
+			metadataMap, ok := metadata.(map[string]any)
 			if !ok {
 				// Skip non-map values (e.g., strings)
 				continue
 			}
 			for _, metadatas := range metadataMap {
-				metadatasMap, ok := metadatas.(map[string]interface{})
+				metadatasMap, ok := metadatas.(map[string]any)
 				if !ok {
 					// Skip non-map values
 					continue
 				}
 				if tags, ok := metadatasMap["tags"]; ok {
-					if tags, ok := tags.([]interface{}); ok {
+					if tags, ok := tags.([]any); ok {
 						for _, tag := range tags {
 							if tagStr, ok := tag.(string); ok {
 								extractedTags = append(extractedTags, tagStr)

@@ -63,13 +63,13 @@ func (h *upstreamAPIHandler) Validate(ctx context.Context, endpoint string) erro
 	}
 
 	// Parse YAML into a map
-	var openapiSpec map[string]interface{}
+	var openapiSpec map[string]any
 	if err := yaml.Unmarshal(data, &openapiSpec); err != nil {
 		return fmt.Errorf("failed to parse /openapi.yaml: %w", err)
 	}
 
 	// Check for 'info' section
-	info, ok := openapiSpec["info"].(map[string]interface{})
+	info, ok := openapiSpec["info"].(map[string]any)
 	if !ok {
 		return fmt.Errorf("/openapi.yaml missing 'info' section")
 	}

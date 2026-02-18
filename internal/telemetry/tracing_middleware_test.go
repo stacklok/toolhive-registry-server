@@ -286,7 +286,7 @@ func TestTracingMiddleware_SpanAttributes(t *testing.T) {
 	require.Len(t, spans, 1)
 
 	// Collect all attributes into a map for easier assertion
-	attrs := make(map[string]interface{})
+	attrs := make(map[string]any)
 	for _, attr := range spans[0].Attributes {
 		switch attr.Value.Type().String() {
 		case "STRING":

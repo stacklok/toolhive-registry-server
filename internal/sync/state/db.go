@@ -517,7 +517,7 @@ func (d *dbStatusService) GetNextSyncJob(
 // serializeSourceConfig serializes the source configuration from a registry config to JSON bytes.
 // Returns nil for empty configs.
 func serializeSourceConfig(reg *config.RegistryConfig) []byte {
-	var sourceConfig interface{}
+	var sourceConfig any
 	switch {
 	case reg.Git != nil:
 		sourceConfig = reg.Git
