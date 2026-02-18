@@ -138,14 +138,15 @@ func (s *dbService) GetSkillVersion(
 	if options.Name == "" || options.Version == "" {
 		return nil, fmt.Errorf("name and version are required")
 	}
+	if options.Namespace == "" {
+		return nil, fmt.Errorf("namespace is required")
+	}
 
 	params := sqlc.GetSkillVersionParams{
 		Name:         options.Name,
 		Version:      options.Version,
 		RegistryName: &options.RegistryName,
-	}
-	if options.Namespace != "" {
-		params.Namespace = &options.Namespace
+		Namespace:    &options.Namespace,
 	}
 
 	querier := sqlc.New(s.pool)
