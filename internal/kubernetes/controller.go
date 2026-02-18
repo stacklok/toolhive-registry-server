@@ -46,7 +46,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		"count", len(registry.Data.Servers),
 	)
 
-	if err := r.syncWriter.Store(ctx, r.registryName, registry); err != nil {
+	if err := r.syncWriter.Store(ctx, r.registryName, writer.NewSyncData(registry)); err != nil {
 		slog.Error("Failed to store MCPServer list", "error", err)
 		return ctrl.Result{
 			Requeue:      true,

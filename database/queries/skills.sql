@@ -244,3 +244,17 @@ WITH subset AS (
 )
 DELETE FROM skill s
  WHERE s.entry_id IN (SELECT id FROM subset);
+
+-- name: GetSkillIDsByRegistry :many
+SELECT e.id AS entry_id, e.name, e.version
+  FROM registry_entry e
+  JOIN skill s ON e.id = s.entry_id
+ WHERE e.reg_id = sqlc.arg(reg_id);
+
+-- name: DeleteSkillOciPackagesByEntryIDs :exec
+DELETE FROM skill_oci_package
+WHERE skill_entry_id = ANY(sqlc.slice(entry_ids)::UUID[]);
+
+-- name: DeleteSkillGitPackagesByEntryIDs :exec
+DELETE FROM skill_git_package
+WHERE skill_entry_id = ANY(sqlc.slice(entry_ids)::UUID[]);

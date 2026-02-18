@@ -33,6 +33,26 @@ func (q *Queries) DeleteOrphanedSkills(ctx context.Context, arg DeleteOrphanedSk
 	return err
 }
 
+const deleteSkillGitPackagesByEntryIDs = `-- name: DeleteSkillGitPackagesByEntryIDs :exec
+DELETE FROM skill_git_package
+WHERE skill_entry_id = ANY($1::UUID[])
+`
+
+func (q *Queries) DeleteSkillGitPackagesByEntryIDs(ctx context.Context, entryIds []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteSkillGitPackagesByEntryIDs, entryIds)
+	return err
+}
+
+const deleteSkillOciPackagesByEntryIDs = `-- name: DeleteSkillOciPackagesByEntryIDs :exec
+DELETE FROM skill_oci_package
+WHERE skill_entry_id = ANY($1::UUID[])
+`
+
+func (q *Queries) DeleteSkillOciPackagesByEntryIDs(ctx context.Context, entryIds []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteSkillOciPackagesByEntryIDs, entryIds)
+	return err
+}
+
 const deleteSkillsByRegistry = `-- name: DeleteSkillsByRegistry :exec
 WITH registry_entries AS (
     SELECT e.id
@@ -47,6 +67,39 @@ DELETE FROM registry_entry
 func (q *Queries) DeleteSkillsByRegistry(ctx context.Context, regID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteSkillsByRegistry, regID)
 	return err
+}
+
+const getSkillIDsByRegistry = `-- name: GetSkillIDsByRegistry :many
+SELECT e.id AS entry_id, e.name, e.version
+  FROM registry_entry e
+  JOIN skill s ON e.id = s.entry_id
+ WHERE e.reg_id = $1
+`
+
+type GetSkillIDsByRegistryRow struct {
+	EntryID uuid.UUID `json:"entry_id"`
+	Name    string    `json:"name"`
+	Version string    `json:"version"`
+}
+
+func (q *Queries) GetSkillIDsByRegistry(ctx context.Context, regID uuid.UUID) ([]GetSkillIDsByRegistryRow, error) {
+	rows, err := q.db.Query(ctx, getSkillIDsByRegistry, regID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetSkillIDsByRegistryRow{}
+	for rows.Next() {
+		var i GetSkillIDsByRegistryRow
+		if err := rows.Scan(&i.EntryID, &i.Name, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getSkillVersion = `-- name: GetSkillVersion :one
