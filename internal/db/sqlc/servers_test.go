@@ -14,6 +14,10 @@ import (
 	"github.com/stacklok/toolhive-registry-server/database"
 )
 
+const (
+	latestVersion = "latest"
+)
+
 //nolint:thelper // We want to see these lines in the test output
 func setupRegistry(t *testing.T, queries *Queries) uuid.UUID {
 	regID, err := queries.InsertConfigRegistry(
@@ -797,7 +801,7 @@ func TestListServers(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
-				version := "latest"
+				version := latestVersion
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
@@ -883,7 +887,7 @@ func TestListServers(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
-				version := "latest"
+				version := latestVersion
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
