@@ -43,8 +43,8 @@ const (
 	EnvPrefix = "THV_REGISTRY"
 
 	// DefaultMaxMetaSize is the default maximum allowed size in bytes for
-	// publisher-provided metadata extensions (_meta). 65536 bytes = 64KB.
-	DefaultMaxMetaSize = 65536
+	// publisher-provided metadata extensions (_meta). 262144 bytes = 256KB.
+	DefaultMaxMetaSize = 262144
 
 	// defaultSSLMode is the default SSL mode for PostgreSQL connections.
 	defaultSSLMode = "require"
@@ -532,7 +532,7 @@ type DatabaseConfig struct {
 
 	// MaxMetaSize is the maximum allowed size in bytes for publisher-provided
 	// metadata extensions (_meta). Must be greater than zero.
-	// Defaults to 65536 (64KB) if not specified.
+	// Defaults to 262144 (256KB) if not specified.
 	// Can be overridden via THV_REGISTRY_DATABASE_MAXMETASIZE environment variable.
 	MaxMetaSize *int `yaml:"maxMetaSize,omitempty"`
 }
@@ -573,7 +573,7 @@ func (*DatabaseConfig) GetMigrationPassword() string {
 }
 
 // GetMaxMetaSize returns the configured maximum meta size in bytes.
-// Returns DefaultMaxMetaSize (64KB) if not explicitly configured.
+// Returns DefaultMaxMetaSize (256KB) if not explicitly configured.
 // The returned value is always positive — validation rejects non-positive values at startup.
 func (d *DatabaseConfig) GetMaxMetaSize() int {
 	if d == nil || d.MaxMetaSize == nil {
