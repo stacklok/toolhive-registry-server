@@ -33,14 +33,14 @@ type validationResult struct {
 	// Provider is the name of the provider that validated the token
 	Provider string
 
+	// Claims contains the validated JWT claims (only set on success)
+	Claims jwt.MapClaims
+
 	// Error is set if validation failed
 	Error error
 
 	// Errors contains all errors from sequential fallback (for debugging)
 	Errors []providerError
-
-	// Claims contains the validated JWT claims (only set on success)
-	Claims jwt.MapClaims
 }
 
 // providerError pairs a provider name with its validation error
@@ -143,8 +143,20 @@ func (m *multiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 			"subject", result.Claims["sub"],
 			"remote_addr", r.RemoteAddr,
 			"path", r.URL.Path)
-		// TODO: Store claims in request context for downstream handlers (needed for authorization/scope enforcement)
-		next.ServeHTTP(w, r)
+
+		identity, err := claimsToIdentity(result.Claims, token)
+		if err != nil {
+			slog.Warn("Failed to construct identity from claims",
+				"error", err,
+				"provider", result.Provider,
+				"remote_addr", r.RemoteAddr,
+				"path", r.URL.Path)
+			m.writeError(w, http.StatusUnauthorized, errorCodeInvalidToken, "token claims invalid")
+			return
+		}
+
+		ctx := auth.WithIdentity(r.Context(), identity)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
@@ -221,6 +233,37 @@ func (m *multiProviderMiddleware) writeError(w http.ResponseWriter, status int, 
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		slog.Error("Failed to encode error response", "error", err)
 	}
+}
+
+// claimsToIdentity converts JWT claims to an upstream auth.Identity struct.
+// It extracts standard OIDC claims (sub, name, email) and preserves all claims
+// for downstream authorization decisions.
+//
+// The 'sub' claim is required per OIDC Core 1.0 spec section 5.1.
+// Groups are intentionally NOT extracted here because group claim names vary
+// by provider (e.g., "groups", "roles", "cognito:groups"); authorization logic
+// should read groups directly from the Claims map.
+func claimsToIdentity(claims jwt.MapClaims, token string) (*auth.Identity, error) {
+	sub, ok := claims["sub"].(string)
+	if !ok || sub == "" {
+		return nil, errors.New("missing or invalid 'sub' claim (required by OIDC Core 1.0)")
+	}
+
+	identity := &auth.Identity{
+		Subject:   sub,
+		Claims:    map[string]any(claims),
+		Token:     token,
+		TokenType: "Bearer",
+	}
+
+	if name, ok := claims["name"].(string); ok {
+		identity.Name = name
+	}
+	if email, ok := claims["email"].(string); ok {
+		identity.Email = email
+	}
+
+	return identity, nil
 }
 
 // WrapWithPublicPaths wraps an auth middleware to bypass authentication for public paths.

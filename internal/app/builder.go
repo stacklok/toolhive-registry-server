@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"os"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/app/storage"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
+	"github.com/stacklok/toolhive-registry-server/internal/authz"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -61,6 +63,9 @@ type registryAppConfig struct {
 	// Auth components
 	authMiddleware  func(http.Handler) http.Handler
 	authInfoHandler http.Handler
+
+	// Authorization components
+	authzMiddleware func(http.Handler) http.Handler
 
 	// Telemetry components
 	meterProvider  metric.MeterProvider
@@ -132,9 +137,19 @@ func NewRegistryApp(
 	// Build auth middleware (if not injected)
 	if cfg.authMiddleware == nil {
 		var authErr error
-		cfg.authMiddleware, cfg.authInfoHandler, authErr = auth.NewAuthMiddleware(ctx, cfg.config.Auth, auth.DefaultValidatorFactory)
+		cfg.authMiddleware, cfg.authInfoHandler, authErr = auth.NewAuthMiddleware(ctx, cfg.config.Auth, auth.DefaultValidatorFactory,
+			auth.WithInsecureAllowHTTP(cfg.config.InsecureAllowHTTP()))
 		if authErr != nil {
 			return nil, fmt.Errorf("failed to build auth middleware: %w", authErr)
+		}
+	}
+
+	// Build authorization middleware (if not injected)
+	if cfg.authzMiddleware == nil {
+		var authzErr error
+		cfg.authzMiddleware, authzErr = buildAuthzMiddleware(cfg.config)
+		if authzErr != nil {
+			return nil, fmt.Errorf("failed to build authz middleware: %w", authzErr)
 		}
 	}
 
@@ -253,6 +268,58 @@ func WithTracerProvider(tp trace.TracerProvider) RegistryAppOptions {
 		cfg.tracerProvider = tp
 		return nil
 	}
+}
+
+// WithAuthzMiddleware allows injecting a custom authorization middleware (for testing)
+func WithAuthzMiddleware(mw func(http.Handler) http.Handler) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.authzMiddleware = mw
+		return nil
+	}
+}
+
+// buildAuthzMiddleware creates the authorization middleware based on configuration.
+// Returns a noop middleware if authorization is disabled or auth mode is anonymous.
+func buildAuthzMiddleware(appConfig *config.Config) (func(http.Handler) http.Handler, error) {
+	// Skip authorization for anonymous mode
+	if appConfig.Auth == nil || appConfig.Auth.Mode == config.AuthModeAnonymous {
+		slog.Info("Authorization disabled (anonymous auth mode)")
+		return authz.NoopMiddleware(), nil
+	}
+
+	// Check if authorization is enabled
+	var authzCfg *config.AuthorizationConfig
+	if appConfig.Auth.OAuth != nil {
+		authzCfg = appConfig.Auth.OAuth.Authorization
+	}
+	if !authzCfg.IsEnabled() {
+		slog.Info("Authorization disabled by configuration")
+		return authz.NoopMiddleware(), nil
+	}
+
+	// Load Cedar policies (from file or defaults)
+	var policyBytes []byte
+	if authzCfg != nil && authzCfg.PolicyFile != "" {
+		var err error
+		policyBytes, err = os.ReadFile(authzCfg.PolicyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read policy file %s: %w", authzCfg.PolicyFile, err)
+		}
+		slog.Info("Authorization enabled with custom policy file", "policyFile", authzCfg.PolicyFile)
+	} else {
+		slog.Info("Authorization enabled with default policies")
+	}
+
+	// Create Cedar authorizer
+	authorizer, err := authz.NewCedarAuthorizer(policyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Cedar authorizer: %w", err)
+	}
+
+	// Get scope mapping
+	scopeMapping := authzCfg.GetScopeMapping()
+
+	return authz.Middleware(authorizer, scopeMapping), nil
 }
 
 // buildSyncComponents builds sync manager, coordinator, and related components
@@ -401,6 +468,12 @@ func buildHTTPServer(
 	}
 	authMw := auth.WrapWithPublicPaths(b.authMiddleware, publicPaths)
 	b.middlewares = append(b.middlewares, authMw)
+
+	// Add authorization middleware after auth (same public path bypass)
+	if b.authzMiddleware != nil {
+		authzMw := auth.WrapWithPublicPaths(b.authzMiddleware, publicPaths)
+		b.middlewares = append(b.middlewares, authzMw)
+	}
 
 	serverOpts := []api.ServerOption{
 		api.WithMiddlewares(b.middlewares...),

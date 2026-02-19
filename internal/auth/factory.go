@@ -25,15 +25,20 @@ func NewAuthMiddleware(
 	ctx context.Context,
 	cfg *config.AuthConfig,
 	factory validatorFactory,
+	opts ...MiddlewareOption,
 ) (func(http.Handler) http.Handler, http.Handler, error) {
+	options := &authMiddlewareOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	// Handle nil config - authentication is required by default
 	if cfg == nil {
 		return nil, nil, errors.New("auth configuration is required")
 	}
 
 	// Validate the auth configuration
-	// Pass false for insecureAllowHTTP since this is already validated during config load
-	if err := cfg.Validate(false); err != nil {
+	if err := cfg.Validate(options.insecureAllowHTTP); err != nil {
 		return nil, nil, fmt.Errorf("invalid auth configuration: %w", err)
 	}
 
@@ -42,7 +47,7 @@ func NewAuthMiddleware(
 		slog.Info("Auth mode configured", "mode", "anonymous")
 		return anonymousMiddleware, nil, nil
 	case config.AuthModeOAuth:
-		return createOAuthMiddleware(ctx, cfg, factory)
+		return createOAuthMiddleware(ctx, cfg, factory, options.insecureAllowHTTP)
 	default:
 		return nil, nil, fmt.Errorf("unsupported auth mode: %s", cfg.Mode)
 	}
@@ -53,6 +58,7 @@ func createOAuthMiddleware(
 	ctx context.Context,
 	cfg *config.AuthConfig,
 	factory validatorFactory,
+	insecureAllowHTTP bool,
 ) (func(http.Handler) http.Handler, http.Handler, error) {
 	if cfg.OAuth == nil {
 		return nil, nil, errors.New("oauth configuration is required for oauth mode")
@@ -76,15 +82,16 @@ func createOAuthMiddleware(
 			Name:      p.Name,
 			IssuerURL: p.IssuerURL,
 			ValidatorConfig: thvauth.TokenValidatorConfig{
-				Issuer:           p.IssuerURL,
-				JWKSURL:          p.JwksUrl,
-				Audience:         p.Audience,
-				ClientID:         p.ClientID,
-				ClientSecret:     clientSecret,
-				CACertPath:       p.CACertPath,
-				AuthTokenFile:    p.AuthTokenFile,
-				IntrospectionURL: p.IntrospectionURL,
-				AllowPrivateIP:   p.AllowPrivateIP,
+				Issuer:            p.IssuerURL,
+				JWKSURL:           p.JwksUrl,
+				Audience:          p.Audience,
+				ClientID:          p.ClientID,
+				ClientSecret:      clientSecret,
+				CACertPath:        p.CACertPath,
+				AuthTokenFile:     p.AuthTokenFile,
+				IntrospectionURL:  p.IntrospectionURL,
+				AllowPrivateIP:    p.AllowPrivateIP,
+				InsecureAllowHTTP: insecureAllowHTTP,
 			},
 		}
 		issuerURLs[i] = p.IssuerURL
@@ -104,6 +111,21 @@ func createOAuthMiddleware(
 	slog.Info("Auth mode configured", "mode", "OAuth")
 
 	return m.Middleware, handler, nil
+}
+
+// authMiddlewareOptions holds configuration options for NewAuthMiddleware.
+type authMiddlewareOptions struct {
+	insecureAllowHTTP bool
+}
+
+// MiddlewareOption configures NewAuthMiddleware behavior.
+type MiddlewareOption func(*authMiddlewareOptions)
+
+// WithInsecureAllowHTTP allows HTTP issuer URLs for development environments.
+func WithInsecureAllowHTTP(allow bool) MiddlewareOption {
+	return func(o *authMiddlewareOptions) {
+		o.insecureAllowHTTP = allow
+	}
 }
 
 // anonymousMiddleware is a no-op middleware that passes requests through without authentication.
