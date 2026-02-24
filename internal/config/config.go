@@ -343,10 +343,35 @@ type OAuthConfig struct {
 	// Realm is the protection space identifier for WWW-Authenticate header (RFC 7235)
 	// Defaults to "mcp-registry" if not specified
 	Realm string `yaml:"realm,omitempty"`
+
+	// Authorization defines authorization settings.
+	// Authorization is enabled by default when mode is oauth.
+	Authorization *AuthorizationConfig `yaml:"authorization,omitempty"`
 }
 
 // DefaultScopes are the default OAuth scopes for the registry when not configured
-var DefaultScopes = []string{"mcp-registry:read", "mcp-registry:write"}
+var DefaultScopes = []string{"mcp-registry:read", "mcp-registry:write", "mcp-registry:admin"}
+
+// DefaultScopeMapping defines the default mapping from OAuth scopes to authorization actions.
+var DefaultScopeMapping = []ScopeMappingEntry{
+	{Scope: "mcp-registry:read", Actions: []string{ActionRead}},
+	{Scope: "mcp-registry:write", Actions: []string{ActionRead, ActionWrite}},
+	{Scope: "mcp-registry:admin", Actions: []string{ActionRead, ActionWrite, ActionAdmin}},
+}
+
+// Authorization action names used by Cedar policies and scope mapping.
+const (
+	ActionRead  = "read"
+	ActionWrite = "write"
+	ActionAdmin = "admin"
+)
+
+// ValidAuthzActions contains the set of valid authorization action names.
+var ValidAuthzActions = map[string]bool{
+	ActionRead:  true,
+	ActionWrite: true,
+	ActionAdmin: true,
+}
 
 // GetScopes returns the configured OAuth scopes or defaults if not specified
 func (o *OAuthConfig) GetScopes() []string {
@@ -354,6 +379,76 @@ func (o *OAuthConfig) GetScopes() []string {
 		return DefaultScopes
 	}
 	return o.ScopesSupported
+}
+
+// AuthorizationConfig defines authorization settings for the registry server.
+// When authorization is enabled, requests are evaluated against Cedar policies
+// to determine if the authenticated user has sufficient permissions.
+type AuthorizationConfig struct {
+	// Enabled controls whether authorization is active.
+	// Defaults to true when auth.mode is oauth.
+	Enabled *bool `yaml:"enabled,omitempty"`
+
+	// PolicyFile is the path to a custom Cedar policy file.
+	// If not specified, built-in default policies are used.
+	PolicyFile string `yaml:"policyFile,omitempty"`
+
+	// ScopeMapping maps OAuth scopes to authorization actions.
+	// If not specified, default mappings are used.
+	ScopeMapping []ScopeMappingEntry `yaml:"scopeMapping,omitempty"`
+}
+
+// ScopeMappingEntry maps a single OAuth scope to one or more authorization actions.
+type ScopeMappingEntry struct {
+	// Scope is the OAuth scope name (e.g., "mcp-registry:read")
+	Scope string `yaml:"scope"`
+
+	// Actions are the authorization actions granted by this scope.
+	// Valid values: "read", "write", "admin"
+	Actions []string `yaml:"actions"`
+}
+
+// IsEnabled returns whether authorization is enabled.
+// Defaults to true if not explicitly set.
+func (a *AuthorizationConfig) IsEnabled() bool {
+	if a == nil || a.Enabled == nil {
+		return true
+	}
+	return *a.Enabled
+}
+
+// GetScopeMapping returns the configured scope mapping or defaults if not specified.
+func (a *AuthorizationConfig) GetScopeMapping() []ScopeMappingEntry {
+	if a == nil || len(a.ScopeMapping) == 0 {
+		return DefaultScopeMapping
+	}
+	return a.ScopeMapping
+}
+
+// validate performs validation on the authorization configuration.
+func (a *AuthorizationConfig) validate() error {
+	if a == nil {
+		return nil
+	}
+
+	// Validate scope mapping entries
+	for i, entry := range a.ScopeMapping {
+		if entry.Scope == "" {
+			return fmt.Errorf("auth.oauth.authorization.scopeMapping[%d].scope is required", i)
+		}
+		if len(entry.Actions) == 0 {
+			return fmt.Errorf("auth.oauth.authorization.scopeMapping[%d].actions is required", i)
+		}
+		for _, action := range entry.Actions {
+			if !ValidAuthzActions[action] {
+				return fmt.Errorf(
+					"auth.oauth.authorization.scopeMapping[%d].actions contains invalid action %q"+
+						" (must be read, write, or admin)", i, action)
+			}
+		}
+	}
+
+	return nil
 }
 
 // OAuthProviderConfig defines configuration for an OAuth/OIDC provider
@@ -472,6 +567,13 @@ func (a *AuthConfig) Validate(insecureAllowHTTP bool) error {
 		// Validate each provider
 		for i, provider := range a.OAuth.Providers {
 			if err := provider.validateProvider(i, insecureAllowHTTP); err != nil {
+				return err
+			}
+		}
+
+		// Validate authorization config if present
+		if a.OAuth.Authorization != nil {
+			if err := a.OAuth.Authorization.validate(); err != nil {
 				return err
 			}
 		}
@@ -695,6 +797,12 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+// InsecureAllowHTTP returns whether HTTP URLs are allowed for OAuth issuer URLs.
+// This is set via the THV_REGISTRY_INSECURE_URL environment variable.
+func (c *Config) InsecureAllowHTTP() bool {
+	return c.insecureAllowHTTP
 }
 
 // GetRegistryName returns the registry name, using "default" if not specified

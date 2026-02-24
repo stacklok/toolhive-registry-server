@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.17
 	github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.6.17
 	github.com/aws/smithy-go v1.24.0
+	github.com/cedar-policy/cedar-go v1.5.2
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-git/go-billy/v5 v5.7.0
 	github.com/go-git/go-git/v5 v5.16.5
@@ -229,6 +230,7 @@ require (
 	golang.ngrok.com/muxado/v2 v2.0.1 // indirect
 	golang.ngrok.com/ngrok/v2 v2.1.1 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
+	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/exp/event v0.0.0-20260112195511-716be5621a96 // indirect
 	golang.org/x/exp/jsonrpc2 v0.0.0-20260212183809-81e46e3db34a // indirect
 	golang.org/x/mod v0.33.0 // indirect
