@@ -17,12 +17,12 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
-	github.com/mark3labs/mcp-go v0.44.0
-	github.com/modelcontextprotocol/registry v1.4.0
+	github.com/mark3labs/mcp-go v0.44.1
+	github.com/modelcontextprotocol/registry v1.4.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stacklok/toolhive v0.9.4
-	github.com/stacklok/toolhive-core v0.0.5
+	github.com/stacklok/toolhive-core v0.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc5
 	github.com/testcontainers/testcontainers-go v0.40.0
@@ -141,7 +141,7 @@ require (
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
-	github.com/klauspost/compress v1.18.1 // indirect
+	github.com/klauspost/compress v1.18.4 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.4 // indirect
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
 	github.com/lestrrat-go/httprc/v3 v3.0.4 // indirect
@@ -232,7 +232,7 @@ require (
 	golang.org/x/exp/event v0.0.0-20260112195511-716be5621a96 // indirect
 	golang.org/x/exp/jsonrpc2 v0.0.0-20260212183809-81e46e3db34a // indirect
 	golang.org/x/mod v0.33.0 // indirect
-	golang.org/x/net v0.49.0 // indirect
+	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
