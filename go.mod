@@ -21,7 +21,7 @@ require (
 	github.com/modelcontextprotocol/registry v1.4.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	github.com/stacklok/toolhive v0.9.4
+	github.com/stacklok/toolhive v0.11.0
 	github.com/stacklok/toolhive-core v0.0.5
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc5
