@@ -15,7 +15,7 @@ import (
 
 	config "github.com/stacklok/toolhive-registry-server/internal/config"
 	sources "github.com/stacklok/toolhive-registry-server/internal/sources"
-	registry "github.com/stacklok/toolhive/pkg/registry/registry"
+	registry "github.com/stacklok/toolhive-core/registry/types"
 	gomock "go.uber.org/mock/gomock"
 )
 

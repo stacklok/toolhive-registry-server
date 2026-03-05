@@ -19,7 +19,7 @@ import (
 	"time"
 
 	v0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 

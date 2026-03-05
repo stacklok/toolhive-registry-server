@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	toolhiveregistry "github.com/stacklok/toolhive/pkg/registry"
-	"github.com/stacklok/toolhive/pkg/registry/converters"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	toolhiveregistry "github.com/stacklok/toolhive-core/registry/types"
+	"github.com/stacklok/toolhive-core/registry/converters"
+	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
@@ -121,7 +121,7 @@ func validateToolhiveFormatAndParse(data []byte) (*toolhivetypes.UpstreamRegistr
 // validateUpstreamFormatAndParse validates data against upstream registry format and returns UpstreamRegistry
 func validateUpstreamFormatAndParse(data []byte) (*toolhivetypes.UpstreamRegistry, error) {
 	// Validate using toolhive's upstream registry schema validator
-	if err := toolhiveregistry.ValidateUpstreamRegistry(data); err != nil {
+	if err := toolhiveregistry.ValidateUpstreamRegistryBytes(data); err != nil {
 		return nil, err
 	}
 

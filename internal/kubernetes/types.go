@@ -10,7 +10,7 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
-	registry "github.com/stacklok/toolhive/pkg/registry/registry"
+	registry "github.com/stacklok/toolhive-core/registry/types"
 )
 
 // extractServer converts an MCPServer to a ServerJSON object

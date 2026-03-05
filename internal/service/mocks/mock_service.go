@@ -15,7 +15,7 @@ import (
 
 	v0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	service "github.com/stacklok/toolhive-registry-server/internal/service"
-	registry "github.com/stacklok/toolhive/pkg/registry/registry"
+	registry "github.com/stacklok/toolhive-core/registry/types"
 	gomock "go.uber.org/mock/gomock"
 )
 
