@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	registry "github.com/stacklok/toolhive/pkg/registry/registry"
+	registry "github.com/stacklok/toolhive-core/registry/types"
 	gomock "go.uber.org/mock/gomock"
 )
 

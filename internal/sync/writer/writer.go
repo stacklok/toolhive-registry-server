@@ -4,7 +4,7 @@ package writer
 import (
 	"context"
 
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 )
 
 //go:generate mockgen -destination=mocks/mock_sync_writer.go -package=mocks -source=writer.go SyncWriter

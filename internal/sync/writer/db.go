@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/validators"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 )
 
 // ToolHiveRegistryOption is a function that configures a ToolHive Registry for testing

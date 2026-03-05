@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	upstream "github.com/modelcontextprotocol/registry/pkg/api/v0"
-	"github.com/stacklok/toolhive/pkg/registry/converters"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	"github.com/stacklok/toolhive-core/registry/converters"
+	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 	"github.com/stretchr/testify/assert"
 )
 
