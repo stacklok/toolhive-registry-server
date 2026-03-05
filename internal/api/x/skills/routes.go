@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	thvregistry "github.com/stacklok/toolhive/pkg/registry/registry"
+	thvregistry "github.com/stacklok/toolhive-core/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api/common"
 	"github.com/stacklok/toolhive-registry-server/internal/service"

@@ -4,7 +4,7 @@ import upstream "github.com/modelcontextprotocol/registry/pkg/api/v0"
 
 // ExtractTags extracts tags from an upstream server
 // It uses the conventions of the Toolhive conversions function in
-// github.com/stacklok/toolhive/pkg/registry/converters/toolhive_to_upstream.go
+// github.com/stacklok/toolhive-core/registry/converters/toolhive_to_upstream.go
 func ExtractTags(server *upstream.ServerJSON) []string {
 	extractedTags := make([]string, 0)
 	if server.Meta != nil {

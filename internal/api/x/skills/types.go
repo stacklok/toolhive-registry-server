@@ -2,7 +2,7 @@
 // extension endpoints (THV-0029).
 package skills
 
-import thvregistry "github.com/stacklok/toolhive/pkg/registry/registry"
+import thvregistry "github.com/stacklok/toolhive-core/registry/types"
 
 // ListSkillsQuery holds parsed query parameters for GET /skills (list).
 type ListSkillsQuery struct {
