@@ -61,6 +61,7 @@ func TestExtractServer(t *testing.T) {
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Empty(t, sj.Title, "Title should be empty when title annotation is not set")
 				assert.Equal(t, "A test MCP server", sj.Description)
 				assert.NotNil(t, sj.Meta.PublisherProvided["io.github.stacklok"])
 				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
@@ -426,6 +427,33 @@ func TestExtractServer(t *testing.T) {
 			},
 		},
 		{
+			name: "MCPServer with title annotation",
+			mcpServer: createTestMCPServer(
+				"titled-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A titled MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/titled",
+					defaultRegistryTitleAnnotation:       "My Custom Server Title",
+				},
+				mcpv1alpha1.MCPServerSpec{
+					Image:     "test/titled:v1",
+					Transport: "sse",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/titled-server",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Equal(t, "My Custom Server Title", sj.Title)
+				assert.Equal(t, "A titled MCP server", sj.Description)
+				require.Len(t, sj.Remotes, 1)
+				assert.Equal(t, "https://example.com/titled", sj.Remotes[0].URL)
+			},
+		},
+		{
 			name: "MCPServer with both tool_definitions and tools",
 			mcpServer: createTestMCPServer(
 				"server-with-both",
@@ -690,6 +718,7 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Empty(t, sj.Title, "Title should be empty when title annotation is not set")
 				assert.Equal(t, "A test Virtual MCP server", sj.Description)
 				assert.NotNil(t, sj.Meta.PublisherProvided["io.github.stacklok"])
 				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
@@ -879,6 +908,29 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 			},
 		},
 		{
+			name: "VirtualMCPServer with title annotation",
+			vmcpServer: createTestVirtualMCPServer(
+				"titled-vmcp-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A titled Virtual MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/vmcp-titled",
+					defaultRegistryTitleAnnotation:       "My Virtual Server Title",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/titled-vmcp-server",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Equal(t, "My Virtual Server Title", sj.Title)
+				assert.Equal(t, "A titled Virtual MCP server", sj.Description)
+				require.Len(t, sj.Remotes, 1)
+				assert.Equal(t, "https://example.com/vmcp-titled", sj.Remotes[0].URL)
+			},
+		},
+		{
 			name: "VirtualMCPServer with both tool_definitions and tools",
 			vmcpServer: createTestVirtualMCPServer(
 				"vmcp-with-both",
@@ -980,6 +1032,7 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Empty(t, sj.Title, "Title should be empty when title annotation is not set")
 				assert.Equal(t, "A test MCP Remote Proxy", sj.Description)
 				assert.NotNil(t, sj.Meta.PublisherProvided["io.github.stacklok"])
 				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
@@ -1173,6 +1226,29 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				require.Len(t, tools, 2)
 				assert.Equal(t, "query_database", tools[0])
 				assert.Equal(t, "update_table", tools[1])
+			},
+		},
+		{
+			name: "MCPRemoteProxy with title annotation",
+			mcpRemoteProxy: createTestMCPRemoteProxy(
+				"titled-proxy",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A titled MCP Remote Proxy",
+					defaultRegistryURLAnnotation:         "https://example.com/proxy-titled",
+					defaultRegistryTitleAnnotation:       "My Proxy Title",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/titled-proxy",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Equal(t, "My Proxy Title", sj.Title)
+				assert.Equal(t, "A titled MCP Remote Proxy", sj.Description)
+				require.Len(t, sj.Remotes, 1)
+				assert.Equal(t, "https://example.com/proxy-titled", sj.Remotes[0].URL)
 			},
 		},
 		{
