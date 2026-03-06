@@ -145,7 +145,7 @@ func NewRegistryApp(
 	}
 
 	// Create application context
-	appCtx, cancel := context.WithCancel(ctx)
+	appCtx, cancel := context.WithCancel(ctx) //nolint:govet // cancel is called via cancelFunc below
 
 	// Cleanup is now handled by the app, not in defer
 	cleanupNeeded = false
