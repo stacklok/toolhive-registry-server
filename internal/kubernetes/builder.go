@@ -25,6 +25,7 @@ const (
 	defaultRegistryExportAnnotation          = "toolhive.stacklok.dev/registry-export"
 	defaultRegistryURLAnnotation             = "toolhive.stacklok.dev/registry-url"
 	defaultRegistryDescriptionAnnotation     = "toolhive.stacklok.dev/registry-description"
+	defaultRegistryTitleAnnotation           = "toolhive.stacklok.dev/registry-title"
 	defaultRegistryToolDefinitionsAnnotation = "toolhive.stacklok.dev/tool-definitions"
 	defaultRegistryToolsAnnotation           = "toolhive.stacklok.dev/tools"
 
