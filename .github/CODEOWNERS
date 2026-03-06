@@ -1,0 +1,5 @@
+# Protect AI agent configuration from unauthorized changes.
+# Changes to these files modify the AI agent's system prompt and behavior,
+# which is a supply-chain attack vector (ref: hackerbot-claw campaign).
+CLAUDE.md @stacklok/maintainers
+.claude/ @stacklok/maintainers

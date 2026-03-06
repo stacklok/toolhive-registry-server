@@ -26,18 +26,19 @@ jobs:
 
       - name: Compute version number
         id: version-string
+        env:
+          GH_REF: ${{ github.ref }}
+          GH_REF_NAME: ${{ github.ref_name }}
         run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          if [[ "$GH_REF" == "refs/heads/main" ]]; then
             # For main branch, use semver with -dev suffix
             echo "tag=0.0.1-dev.${GITHUB_RUN_NUMBER}_$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          elif [[ "$GH_REF" == refs/tags/* ]]; then
             # For tags, use the tag as is (assuming it's semver)
-            TAG="${{ github.ref_name }}"
-            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "tag=$GH_REF_NAME" >> "$GITHUB_OUTPUT"
           else
             # For other branches, use branch name and run number
-            BRANCH="${{ github.ref_name }}"
-            echo "tag=0.0.1-$BRANCH.${GITHUB_RUN_NUMBER}_$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+            echo "tag=0.0.1-$GH_REF_NAME.${GITHUB_RUN_NUMBER}_$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Login to GitHub Container Registry
@@ -59,27 +60,30 @@ jobs:
           COMMIT: ${{ github.sha }}
           BUILD_DATE: ${{ github.event.head_commit.timestamp }}
           KO_CONFIG_PATH: ${{ github.workspace }}/.github/ko-ci.yml
+          GH_REF: ${{ github.ref }}
+          IMAGE_TAG: ${{ steps.version-string.outputs.tag }}
         run: |
-          TAG=$(echo "${{ steps.version-string.outputs.tag }}")
-          TAGS="-t $TAG"
-          
+          TAGS="-t $IMAGE_TAG"
+
           # Add latest tag only if building from a tag
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          if [[ "$GH_REF" == refs/tags/* ]]; then
             TAGS="$TAGS -t latest"
           fi
-          
+
           KO_DOCKER_REPO=$BASE_REPO ko build --platform=linux/amd64,linux/arm64 --bare $TAGS ./cmd/thv-registry-api \
             --image-label=org.opencontainers.image.source=https://github.com/stacklok/toolhive-registry-server,org.opencontainers.image.title="toolhive-registry-server",org.opencontainers.image.vendor=Stacklok
 
       - name: Sign Image with Cosign
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
+        env:
+          GH_REF: ${{ github.ref }}
+          IMAGE_TAG: ${{ steps.version-string.outputs.tag }}
         run: |
-          TAG=$(echo "${{ steps.version-string.outputs.tag }}")
           # Sign the ko image
-          cosign sign -y $BASE_REPO:$TAG
+          cosign sign -y $BASE_REPO:$IMAGE_TAG
 
           # Sign the latest tag if building from a tag
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          if [[ "$GH_REF" == refs/tags/* ]]; then
             cosign sign -y $BASE_REPO:latest
           fi
