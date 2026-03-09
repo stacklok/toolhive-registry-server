@@ -49,8 +49,13 @@ func (s *dbService) ListSkills(
 
 	params := sqlc.ListSkillsParams{
 		RegistryName: &options.RegistryName,
-		Namespace:    &options.Namespace,
 		Size:         int64(options.Limit + 1),
+	}
+	if options.Namespace != "" {
+		params.Namespace = &options.Namespace
+	}
+	if options.Name != nil {
+		params.Name = options.Name
 	}
 	if options.Search != nil {
 		params.Search = options.Search
@@ -66,6 +71,12 @@ func (s *dbService) ListSkills(
 	}
 
 	querier := sqlc.New(s.pool)
+
+	if err := validateRegistryExists(ctx, querier, options.RegistryName); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
 	listRows, err := querier.ListSkills(ctx, params)
 	if err != nil {
 		otel.RecordError(span, err)

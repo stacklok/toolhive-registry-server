@@ -80,6 +80,9 @@ func (routes *Routes) listSkills(w http.ResponseWriter, r *http.Request) {
 	if query.Search != "" {
 		opts = append(opts, service.WithSearch(query.Search))
 	}
+	if query.Namespace != "" {
+		opts = append(opts, service.WithNamespace(query.Namespace))
+	}
 	if query.Cursor != "" {
 		opts = append(opts, service.WithCursor(query.Cursor))
 	}
@@ -314,7 +317,7 @@ func toService(skill *thvregistry.Skill) *service.Skill {
 		Name:          skill.Name,
 		Description:   skill.Description,
 		Version:       skill.Version,
-		Status:        skill.Status,
+		Status:        strings.ToUpper(skill.Status),
 		Title:         skill.Title,
 		License:       skill.License,
 		Compatibility: skill.Compatibility,
