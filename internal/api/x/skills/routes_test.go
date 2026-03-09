@@ -26,6 +26,17 @@ func skillsRouterWithRegistryMount(svc service.RegistryService) http.Handler {
 	return r
 }
 
+// applyListSkillsOptions applies service.Option functions to a ListSkillsOptions
+// struct so tests can inspect which options were passed by the handler.
+func applyListSkillsOptions(t *testing.T, opts []service.Option) *service.ListSkillsOptions {
+	t.Helper()
+	result := &service.ListSkillsOptions{}
+	for _, opt := range opts {
+		require.NoError(t, opt(result))
+	}
+	return result
+}
+
 func TestListSkills(t *testing.T) {
 	t.Parallel()
 
@@ -100,6 +111,91 @@ func TestListSkills(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestListSkillsSearchFilter(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	mockSvc := mocks.NewMockRegistryService(ctrl)
+
+	mockSvc.EXPECT().ListSkills(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ any, opts ...service.Option) (*service.ListSkillsResult, error) {
+			resolved := applyListSkillsOptions(t, opts)
+			assert.Equal(t, "myreg", resolved.RegistryName)
+			require.NotNil(t, resolved.Search)
+			assert.Equal(t, "pdf", *resolved.Search)
+			return &service.ListSkillsResult{Skills: []*service.Skill{}}, nil
+		})
+
+	router := skillsRouterWithRegistryMount(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/myreg/v0.1/x/dev.toolhive/skills?search=pdf", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestListSkillsCursorPassed(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	mockSvc := mocks.NewMockRegistryService(ctrl)
+
+	mockSvc.EXPECT().ListSkills(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ any, opts ...service.Option) (*service.ListSkillsResult, error) {
+			resolved := applyListSkillsOptions(t, opts)
+			require.NotNil(t, resolved.Cursor)
+			assert.Equal(t, "abc123", *resolved.Cursor)
+			return &service.ListSkillsResult{Skills: []*service.Skill{}}, nil
+		})
+
+	router := skillsRouterWithRegistryMount(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/myreg/v0.1/x/dev.toolhive/skills?cursor=abc123", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestListSkillsNamespaceQueryParamIgnored(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	mockSvc := mocks.NewMockRegistryService(ctrl)
+
+	// The handler passes exactly 2 options (registryName + limit) even when
+	// ?namespace=foo is in the URL -- the namespace query param must be ignored.
+	mockSvc.EXPECT().ListSkills(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ any, opts ...service.Option) (*service.ListSkillsResult, error) {
+			resolved := applyListSkillsOptions(t, opts)
+			assert.Empty(t, resolved.Namespace, "namespace must not be forwarded from query param")
+			return &service.ListSkillsResult{Skills: []*service.Skill{}}, nil
+		})
+
+	router := skillsRouterWithRegistryMount(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/myreg/v0.1/x/dev.toolhive/skills?namespace=io.github.stacklok", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestListSkillsRegistryNotFoundReturns404(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	mockSvc := mocks.NewMockRegistryService(ctrl)
+
+	mockSvc.EXPECT().ListSkills(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("%w: nosuchreg", service.ErrRegistryNotFound))
+
+	router := skillsRouterWithRegistryMount(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/nosuchreg/v0.1/x/dev.toolhive/skills", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusNotFound, rr.Code)
+
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+	assert.Contains(t, body["error"], "registry not found")
 }
 
 func TestGetLatestVersion(t *testing.T) {
@@ -389,6 +485,56 @@ func TestPublishSkill(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPublishSkillLowercaseStatusNormalized(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	mockSvc := mocks.NewMockRegistryService(ctrl)
+
+	mockSvc.EXPECT().PublishSkill(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ any, skill *service.Skill, _ ...service.Option) (*service.Skill, error) {
+			assert.Equal(t, "ACTIVE", skill.Status, "status should be uppercased by the handler")
+			return skill, nil
+		})
+
+	router := skillsRouterWithRegistryMount(mockSvc)
+	body := thvregistry.Skill{
+		Namespace:   "io.github.stacklok",
+		Name:        "pdf-processor",
+		Description: "Extract text from PDFs",
+		Version:     "1.0.0",
+		Status:      "active",
+	}
+	var buf bytes.Buffer
+	require.NoError(t, json.NewEncoder(&buf).Encode(body))
+
+	req := httptest.NewRequest(http.MethodPost, "/myreg/v0.1/x/dev.toolhive/skills", &buf)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusCreated, rr.Code)
+}
+
+func TestPublishSkillNilBodyReturns400(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	mockSvc := mocks.NewMockRegistryService(ctrl)
+
+	router := skillsRouterWithRegistryMount(mockSvc)
+
+	req := httptest.NewRequest(http.MethodPost, "/myreg/v0.1/x/dev.toolhive/skills", nil)
+	req.Body = nil // explicitly nil body
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+	assert.Equal(t, "Request body is required", body["error"])
 }
 
 func TestDeleteVersion(t *testing.T) {
