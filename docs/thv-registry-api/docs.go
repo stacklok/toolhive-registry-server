@@ -2206,14 +2206,6 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Filter by namespace",
-                        "in": "query",
-                        "name": "namespace",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
                         "description": "Filter by status (comma-separated, e.g. active,deprecated)",
                         "in": "query",
                         "name": "status",
