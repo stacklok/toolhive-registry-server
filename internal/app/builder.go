@@ -145,7 +145,7 @@ func NewRegistryApp(
 	}
 
 	// Create application context
-	appCtx, cancel := context.WithCancel(ctx) //nolint:gosec // cancel is called via cancelFunc below
+	appCtx, cancel := context.WithCancel(ctx) //nolint:gosec // G118 false positive: cancel is called in cancelFunc below
 
 	// Cleanup is now handled by the app, not in defer
 	cleanupNeeded = false
