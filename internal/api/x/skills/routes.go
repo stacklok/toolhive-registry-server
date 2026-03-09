@@ -51,7 +51,6 @@ type Routes struct {
 // @Produce		json
 // @Param		registryName	path		string	true	"Registry name"
 // @Param		search		query		string	false	"Filter by name/description substring"
-// @Param		namespace	query		string	false	"Filter by namespace"
 // @Param		status		query		string	false	"Filter by status (comma-separated, e.g. active,deprecated)"
 // @Param		limit		query		int		false	"Max results (default 50, max 100)"
 // @Param		cursor		query		string	false	"Pagination cursor"
@@ -79,9 +78,6 @@ func (routes *Routes) listSkills(w http.ResponseWriter, r *http.Request) {
 	}
 	if query.Search != "" {
 		opts = append(opts, service.WithSearch(query.Search))
-	}
-	if query.Namespace != "" {
-		opts = append(opts, service.WithNamespace(query.Namespace))
 	}
 	if query.Cursor != "" {
 		opts = append(opts, service.WithCursor(query.Cursor))
@@ -419,11 +415,10 @@ func (routes *Routes) deleteVersion(w http.ResponseWriter, r *http.Request) {
 func parseListSkillsQuery(r *http.Request) (*ListSkillsQuery, error) {
 	q := r.URL.Query()
 	query := &ListSkillsQuery{
-		Search:    strings.TrimSpace(q.Get("search")),
-		Namespace: strings.TrimSpace(q.Get("namespace")),
-		Status:    strings.TrimSpace(q.Get("status")),
-		Cursor:    strings.TrimSpace(q.Get("cursor")),
-		Limit:     defaultListLimit,
+		Search: strings.TrimSpace(q.Get("search")),
+		Status: strings.TrimSpace(q.Get("status")),
+		Cursor: strings.TrimSpace(q.Get("cursor")),
+		Limit:  defaultListLimit,
 	}
 
 	if limitStr := q.Get("limit"); limitStr != "" {
