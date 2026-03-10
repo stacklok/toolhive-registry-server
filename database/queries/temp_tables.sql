@@ -23,9 +23,8 @@ SELECT id,
        created_at,
        updated_at
   FROM temp_registry_entry
-    ON CONFLICT (reg_id, name, version)
+    ON CONFLICT (reg_id, entry_type, name, version)
     DO UPDATE SET
-      entry_type = EXCLUDED.entry_type,
       title = EXCLUDED.title,
       description = EXCLUDED.description,
       updated_at = EXCLUDED.updated_at
