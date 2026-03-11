@@ -2855,7 +2855,7 @@ const docTemplate = `{
                 ]
             }
         },
-        "/v1/publish": {
+        "/v1/entries": {
             "post": {
                 "description": "Publish a new entry",
                 "requestBody": {
@@ -2888,10 +2888,85 @@ const docTemplate = `{
                 ]
             }
         },
-        "/v1/publish/{name}/versions/{version}": {
+        "/v1/entries/{type}/{name}/claims": {
+            "put": {
+                "description": "Update claims for a published entry name",
+                "parameters": [
+                    {
+                        "description": "Entry Type (server or skill)",
+                        "in": "path",
+                        "name": "type",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Entry Name",
+                        "in": "path",
+                        "name": "name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Bad request"
+                    },
+                    "501": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Not implemented"
+                    }
+                },
+                "summary": "Update entry claims",
+                "tags": [
+                    "v1"
+                ]
+            }
+        },
+        "/v1/entries/{type}/{name}/versions/{version}": {
             "delete": {
                 "description": "Delete a published entry version",
                 "parameters": [
+                    {
+                        "description": "Entry Type (server or skill)",
+                        "in": "path",
+                        "name": "type",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     {
                         "description": "Entry Name",
                         "in": "path",
@@ -2949,72 +3024,6 @@ const docTemplate = `{
                     }
                 },
                 "summary": "Delete published entry",
-                "tags": [
-                    "v1"
-                ]
-            }
-        },
-        "/v1/publish/{name}/versions/{version}/claims": {
-            "put": {
-                "description": "Update claims for a published entry version",
-                "parameters": [
-                    {
-                        "description": "Entry Name",
-                        "in": "path",
-                        "name": "name",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Version",
-                        "in": "path",
-                        "name": "version",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "501": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Not implemented"
-                    }
-                },
-                "summary": "Update entry claims",
                 "tags": [
                     "v1"
                 ]
