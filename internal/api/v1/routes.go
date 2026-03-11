@@ -1,4 +1,4 @@
-// Package v1 provides API v1 endpoints for managing sources, registries, and publishing.
+// Package v1 provides API v1 endpoints for managing sources, registries, and entries.
 package v1
 
 import (
@@ -41,10 +41,10 @@ func Router(svc service.RegistryService) http.Handler {
 	r.Delete("/registries/{name}", routes.deleteRegistry)
 	r.Get("/registries/{name}/entries", routes.listRegistryEntries)
 
-	// Publish endpoints
-	r.Post("/publish", routes.publishEntry)
-	r.Delete("/publish/{name}/versions/{version}", routes.deletePublishedEntry)
-	r.Put("/publish/{name}/versions/{version}/claims", routes.updateEntryClaims)
+	// Entry endpoints
+	r.Post("/entries", routes.publishEntry)
+	r.Delete("/entries/{type}/{name}/versions/{version}", routes.deletePublishedEntry)
+	r.Put("/entries/{type}/{name}/claims", routes.updateEntryClaims)
 
 	return r
 }

@@ -89,23 +89,23 @@ func TestV1StubEndpoints(t *testing.T) {
 			path:      "/registries/my-registry/entries",
 			wantError: "Listing registry entries is not yet implemented",
 		},
-		// Publish endpoints
+		// Entry endpoints
 		{
 			name:      "publish entry",
 			method:    "POST",
-			path:      "/publish",
+			path:      "/entries",
 			wantError: "Publishing entry is not yet implemented",
 		},
 		{
 			name:      "delete published entry",
 			method:    "DELETE",
-			path:      "/publish/my-entry/versions/1.0.0",
+			path:      "/entries/server/my-entry/versions/1.0.0",
 			wantError: "Deleting published entry is not yet implemented",
 		},
 		{
 			name:      "update entry claims",
 			method:    "PUT",
-			path:      "/publish/my-entry/versions/1.0.0/claims",
+			path:      "/entries/server/my-entry/claims",
 			wantError: "Updating entry claims is not yet implemented",
 		},
 	}
@@ -239,49 +239,65 @@ func TestV1URLParamValidation(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 			wantError:  "name cannot contain whitespace",
 		},
-		// Publish param validation - empty name
+		// Entry param validation - empty type
+		{
+			name:       "delete published entry - empty type",
+			method:     "DELETE",
+			path:       "/entries/%20/my-entry/versions/1.0.0",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "type cannot be empty",
+		},
+		{
+			name:       "update entry claims - empty type",
+			method:     "PUT",
+			path:       "/entries/%20/my-entry/claims",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "type cannot be empty",
+		},
+		// Entry param validation - empty name
 		{
 			name:       "delete published entry - empty name",
 			method:     "DELETE",
-			path:       "/publish/%20/versions/1.0.0",
+			path:       "/entries/server/%20/versions/1.0.0",
 			wantStatus: http.StatusBadRequest,
 			wantError:  "name cannot be empty",
 		},
 		{
 			name:       "update entry claims - empty name",
 			method:     "PUT",
-			path:       "/publish/%20/versions/1.0.0/claims",
+			path:       "/entries/server/%20/claims",
 			wantStatus: http.StatusBadRequest,
 			wantError:  "name cannot be empty",
 		},
-		// Publish param validation - empty version
+		// Entry param validation - empty version
 		{
 			name:       "delete published entry - empty version",
 			method:     "DELETE",
-			path:       "/publish/my-entry/versions/%20",
+			path:       "/entries/server/my-entry/versions/%20",
 			wantStatus: http.StatusBadRequest,
 			wantError:  "version cannot be empty",
 		},
+		// Entry param validation - whitespace in type
 		{
-			name:       "update entry claims - empty version",
-			method:     "PUT",
-			path:       "/publish/my-entry/versions/%20/claims",
+			name:       "delete published entry - whitespace in type",
+			method:     "DELETE",
+			path:       "/entries/my%20type/my-entry/versions/1.0.0",
 			wantStatus: http.StatusBadRequest,
-			wantError:  "version cannot be empty",
+			wantError:  "type cannot contain whitespace",
 		},
-		// Publish param validation - whitespace in name
+		// Entry param validation - whitespace in name
 		{
 			name:       "delete published entry - whitespace in name",
 			method:     "DELETE",
-			path:       "/publish/my%20entry/versions/1.0.0",
+			path:       "/entries/server/my%20entry/versions/1.0.0",
 			wantStatus: http.StatusBadRequest,
 			wantError:  "name cannot contain whitespace",
 		},
-		// Publish param validation - whitespace in version
+		// Entry param validation - whitespace in version
 		{
-			name:       "update entry claims - whitespace in version",
-			method:     "PUT",
-			path:       "/publish/my-entry/versions/1.0%0A0/claims",
+			name:       "delete published entry - whitespace in version",
+			method:     "DELETE",
+			path:       "/entries/server/my-entry/versions/1.0%0A0",
 			wantStatus: http.StatusBadRequest,
 			wantError:  "version cannot contain whitespace",
 		},
