@@ -15,6 +15,7 @@ import (
 	// Import generated docs package to register OpenAPI spec via init()
 	_ "github.com/stacklok/toolhive-registry-server/docs/thv-registry-api"
 	v01 "github.com/stacklok/toolhive-registry-server/internal/api/registry/v01"
+	apiv1 "github.com/stacklok/toolhive-registry-server/internal/api/v1"
 	extensionv0 "github.com/stacklok/toolhive-registry-server/internal/api/x/v0"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
@@ -89,6 +90,7 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 
 	// Mount MCP Registry API v0.1 routes
 	r.Mount("/registry", v01.Router(svc, cfg.enableAggregatedEndpoints))
+	r.Mount("/v1", apiv1.Router(svc))
 	r.Mount("/extension/v0", extensionv0.Router(svc))
 
 	return r
