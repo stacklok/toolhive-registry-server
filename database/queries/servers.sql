@@ -3,14 +3,14 @@
 -- The cursor_name and cursor_version parameters define the starting point.
 -- When cursor is provided, results start AFTER the specified (name, version) tuple.
 SELECT r.reg_type as registry_type,
-       e.id,
+       v.id,
        e.name,
-       e.version,
-       (l.latest_entry_id IS NOT NULL)::boolean AS is_latest,
-       e.created_at,
-       e.updated_at,
-       e.description,
-       e.title,
+       v.version,
+       (l.latest_version_id IS NOT NULL)::boolean AS is_latest,
+       v.created_at,
+       v.updated_at,
+       v.description,
+       v.title,
        s.website,
        s.upstream_meta,
        s.server_meta,
@@ -19,41 +19,42 @@ SELECT r.reg_type as registry_type,
        s.repository_subfolder,
        s.repository_type
   FROM mcp_server s
-  JOIN registry_entry e ON s.entry_id = e.id
+  JOIN entry_version v ON s.version_id = v.id
+  JOIN registry_entry e ON v.entry_id = e.id
   JOIN registry r ON e.reg_id = r.id
-  LEFT JOIN latest_entry_version l ON e.id = l.latest_entry_id
+  LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
  WHERE (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
    AND (sqlc.narg(search)::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
-       OR LOWER(e.title) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
-       OR LOWER(e.description) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
+       OR LOWER(v.title) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
+       OR LOWER(v.description) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
    ))
    -- Filter by updated_since if provided
-   AND (sqlc.narg(updated_since)::timestamp with time zone IS NULL OR e.updated_at > sqlc.narg(updated_since)::timestamp with time zone)
+   AND (sqlc.narg(updated_since)::timestamp with time zone IS NULL OR v.updated_at > sqlc.narg(updated_since)::timestamp with time zone)
    -- Compound cursor comparison: (name, version) > (cursor_name, cursor_version)
    -- This ensures deterministic pagination even when timestamps are identical
    AND (
        sqlc.narg(cursor_name)::text IS NULL
-       OR (e.name, e.version) > (sqlc.narg(cursor_name)::text, sqlc.narg(cursor_version)::text)
+       OR (e.name, v.version) > (sqlc.narg(cursor_name)::text, sqlc.narg(cursor_version)::text)
    )
    AND (
        sqlc.narg(version)::text IS NULL OR
-       e.version = sqlc.narg(version)::text OR
-       (sqlc.narg(version)::text = 'latest' AND l.latest_entry_id = e.id)
+       v.version = sqlc.narg(version)::text OR
+       (sqlc.narg(version)::text = 'latest' AND l.latest_version_id = v.id)
    )
- ORDER BY e.name ASC, e.version ASC
+ ORDER BY e.name ASC, v.version ASC
  LIMIT sqlc.arg(size)::bigint;
 
 -- name: ListServerVersions :many
 SELECT r.reg_type as registry_type,
-       e.id,
+       v.id,
        e.name,
-       e.version,
-       (l.latest_entry_id IS NOT NULL)::boolean AS is_latest,
-       e.created_at,
-       e.updated_at,
-       e.description,
-       e.title,
+       v.version,
+       (l.latest_version_id IS NOT NULL)::boolean AS is_latest,
+       v.created_at,
+       v.updated_at,
+       v.description,
+       v.title,
        s.website,
        s.upstream_meta,
        s.server_meta,
@@ -62,28 +63,29 @@ SELECT r.reg_type as registry_type,
        s.repository_subfolder,
        s.repository_type
   FROM mcp_server s
-  JOIN registry_entry e ON s.entry_id = e.id
+  JOIN entry_version v ON s.version_id = v.id
+  JOIN registry_entry e ON v.entry_id = e.id
   JOIN registry r ON e.reg_id = r.id
-  LEFT JOIN latest_entry_version l ON e.id = l.latest_entry_id
+  LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
  WHERE e.name = sqlc.arg(name)
    AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
-   AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR e.created_at > sqlc.narg(next))
-    AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR e.created_at < sqlc.narg(prev)))
+   AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR v.created_at > sqlc.narg(next))
+    AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR v.created_at < sqlc.narg(prev)))
  ORDER BY
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN e.created_at END ASC,
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN e.version END DESC -- acts as tie breaker
+ CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN v.created_at END ASC,
+ CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN v.version END DESC -- acts as tie breaker
  LIMIT sqlc.arg(size)::bigint;
 
 -- name: GetServerVersion :one
 SELECT r.reg_type as registry_type,
-       e.id,
+       v.id,
        e.name,
-       e.version,
-       (l.latest_entry_id IS NOT NULL)::boolean AS is_latest,
-       e.created_at,
-       e.updated_at,
-       e.description,
-       e.title,
+       v.version,
+       (l.latest_version_id IS NOT NULL)::boolean AS is_latest,
+       v.created_at,
+       v.updated_at,
+       v.description,
+       v.title,
        s.website,
        s.upstream_meta,
        s.server_meta,
@@ -92,13 +94,14 @@ SELECT r.reg_type as registry_type,
        s.repository_subfolder,
        s.repository_type
   FROM mcp_server s
-  JOIN registry_entry e ON s.entry_id = e.id
+  JOIN entry_version v ON s.version_id = v.id
+  JOIN registry_entry e ON v.entry_id = e.id
   JOIN registry r ON e.reg_id = r.id
-  LEFT JOIN latest_entry_version l ON e.id = l.latest_entry_id
+  LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
  WHERE e.name = sqlc.arg(name)
    AND (
-       e.version = sqlc.arg(version)
-       OR (sqlc.arg(version) = 'latest' AND l.latest_entry_id = e.id)
+       v.version = sqlc.arg(version)
+       OR (sqlc.arg(version) = 'latest' AND l.latest_version_id = v.id)
    )
    AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text);
 
@@ -109,7 +112,7 @@ SELECT l.version
    AND l.reg_id = sqlc.arg(reg_id);
 
 -- name: ListServerPackages :many
-SELECT p.entry_id,
+SELECT p.server_id,
        p.registry_type,
        p.pkg_registry_url,
        p.pkg_identifier,
@@ -123,23 +126,23 @@ SELECT p.entry_id,
        p.transport_url,
        p.transport_headers
   FROM mcp_server_package p
-  JOIN mcp_server s ON p.entry_id = s.entry_id
- WHERE s.entry_id = ANY(sqlc.slice(entry_ids)::UUID[])
+  JOIN mcp_server s ON p.server_id = s.version_id
+ WHERE s.version_id = ANY(sqlc.slice(version_ids)::UUID[])
  ORDER BY p.pkg_version DESC;
 
 -- name: ListServerRemotes :many
-SELECT r.entry_id,
+SELECT r.server_id,
        r.transport,
        r.transport_url,
        r.transport_headers
   FROM mcp_server_remote r
-  JOIN mcp_server s ON r.entry_id = s.entry_id
- WHERE s.entry_id = ANY(sqlc.slice(entry_ids)::UUID[])
+  JOIN mcp_server s ON r.server_id = s.version_id
+ WHERE s.version_id = ANY(sqlc.slice(version_ids)::UUID[])
  ORDER BY r.transport, r.transport_url;
 
 -- name: InsertServerVersion :one
 INSERT INTO mcp_server (
-    entry_id,
+    version_id,
     website,
     upstream_meta,
     server_meta,
@@ -148,7 +151,7 @@ INSERT INTO mcp_server (
     repository_subfolder,
     repository_type
 ) VALUES (
-    sqlc.arg(entry_id),
+    sqlc.arg(version_id),
     sqlc.narg(website),
     sqlc.narg(upstream_meta),
     sqlc.narg(server_meta),
@@ -157,29 +160,29 @@ INSERT INTO mcp_server (
     sqlc.narg(repository_subfolder),
     sqlc.narg(repository_type)
 )
-RETURNING entry_id;
+RETURNING version_id;
 
 -- name: UpsertLatestServerVersion :one
 INSERT INTO latest_entry_version (
     reg_id,
     name,
     version,
-    latest_entry_id
+    latest_version_id
 ) VALUES (
     sqlc.arg(reg_id),
     sqlc.arg(name),
     sqlc.arg(version),
-    sqlc.arg(entry_id)
+    sqlc.arg(version_id)
 ) ON CONFLICT (reg_id, name)
   DO UPDATE SET
     version = sqlc.arg(version),
-    latest_entry_id = sqlc.arg(entry_id)
-RETURNING latest_entry_id;
+    latest_version_id = sqlc.arg(version_id)
+RETURNING latest_version_id;
 
 -- name: InsertServerPackage :exec
 -- TODO: this seems unused
 INSERT INTO mcp_server_package (
-    entry_id,
+    server_id,
     registry_type,
     pkg_registry_url,
     pkg_identifier,
@@ -193,7 +196,7 @@ INSERT INTO mcp_server_package (
     transport_url,
     transport_headers
 ) VALUES (
-    sqlc.arg(entry_id),
+    sqlc.arg(server_id),
     sqlc.arg(registry_type),
     sqlc.arg(pkg_registry_url),
     sqlc.arg(pkg_identifier),
@@ -210,12 +213,12 @@ INSERT INTO mcp_server_package (
 
 -- name: InsertServerRemote :exec
 INSERT INTO mcp_server_remote (
-    entry_id,
+    server_id,
     transport,
     transport_url,
     transport_headers
 ) VALUES (
-    sqlc.arg(entry_id),
+    sqlc.arg(server_id),
     sqlc.arg(transport),
     sqlc.arg(transport_url),
     sqlc.narg(transport_headers)
@@ -223,12 +226,12 @@ INSERT INTO mcp_server_remote (
 
 -- name: InsertServerIcon :exec
 INSERT INTO mcp_server_icon (
-    entry_id,
+    server_id,
     source_uri,
     mime_type,
     theme
 ) VALUES (
-    sqlc.arg(entry_id),
+    sqlc.arg(server_id),
     sqlc.arg(source_uri),
     sqlc.arg(mime_type),
     sqlc.arg(theme)
@@ -238,7 +241,8 @@ INSERT INTO mcp_server_icon (
 WITH registry_entries AS (
     SELECT e.id
       FROM registry_entry e
-      JOIN mcp_server s ON e.id = s.entry_id
+      JOIN entry_version v ON v.entry_id = e.id
+      JOIN mcp_server s ON v.id = s.version_id
      WHERE e.reg_id = sqlc.arg(reg_id)
 )
 DELETE FROM registry_entry
@@ -246,7 +250,7 @@ DELETE FROM registry_entry
 
 -- name: InsertServerVersionForSync :one
 INSERT INTO mcp_server (
-    entry_id,
+    version_id,
     website,
     upstream_meta,
     server_meta,
@@ -255,7 +259,7 @@ INSERT INTO mcp_server (
     repository_subfolder,
     repository_type
 ) VALUES (
-    sqlc.arg(entry_id),
+    sqlc.arg(version_id),
     sqlc.narg(website),
     sqlc.narg(upstream_meta),
     sqlc.narg(server_meta),
@@ -264,11 +268,11 @@ INSERT INTO mcp_server (
     sqlc.narg(repository_subfolder),
     sqlc.narg(repository_type)
 )
-RETURNING entry_id;
+RETURNING version_id;
 
 -- name: UpsertServerVersionForSync :one
 INSERT INTO mcp_server (
-    entry_id,
+    version_id,
     website,
     upstream_meta,
     server_meta,
@@ -277,7 +281,7 @@ INSERT INTO mcp_server (
     repository_subfolder,
     repository_type
 ) VALUES (
-    sqlc.arg(entry_id),
+    sqlc.arg(version_id),
     sqlc.narg(website),
     sqlc.narg(upstream_meta),
     sqlc.narg(server_meta),
@@ -286,7 +290,7 @@ INSERT INTO mcp_server (
     sqlc.narg(repository_subfolder),
     sqlc.narg(repository_type)
 )
-ON CONFLICT (entry_id)
+ON CONFLICT (version_id)
 DO UPDATE SET
     website = sqlc.narg(website),
     upstream_meta = sqlc.narg(upstream_meta),
@@ -295,32 +299,34 @@ DO UPDATE SET
     repository_id = sqlc.narg(repository_id),
     repository_subfolder = sqlc.narg(repository_subfolder),
     repository_type = sqlc.narg(repository_type)
-RETURNING entry_id;
+RETURNING version_id;
 
 -- name: DeleteOrphanedServers :exec
 WITH subset AS (
-    SELECT e.id
-      FROM registry_entry e
-     WHERE reg_id = sqlc.arg(reg_id)
-       AND e.id != ALL(sqlc.slice(keep_ids)::UUID[])
+    SELECT v.id
+      FROM entry_version v
+      JOIN registry_entry e ON v.entry_id = e.id
+     WHERE e.reg_id = sqlc.arg(reg_id)
+       AND v.id != ALL(sqlc.slice(keep_ids)::UUID[])
 )
-DELETE FROM mcp_server s
-WHERE s.entry_id IN (SELECT id FROM subset);
+DELETE FROM entry_version v
+WHERE v.id IN (SELECT id FROM subset);
 
 -- name: DeleteServerPackagesByServerId :exec
 DELETE FROM mcp_server_package
-WHERE entry_id = sqlc.arg(entry_id);
+WHERE server_id = sqlc.arg(server_id);
 
 -- name: DeleteServerRemotesByServerId :exec
 DELETE FROM mcp_server_remote
-WHERE entry_id = sqlc.arg(entry_id);
+WHERE server_id = sqlc.arg(server_id);
 
 -- name: DeleteServerIconsByServerId :exec
 DELETE FROM mcp_server_icon
-WHERE entry_id = sqlc.arg(entry_id);
+WHERE server_id = sqlc.arg(server_id);
 
 -- name: GetServerIDsByRegistryNameVersion :many
-SELECT entry_id, name, version
-FROM registry_entry e
-JOIN mcp_server s ON e.id = s.entry_id
-WHERE e.reg_id = sqlc.arg(reg_id);
+SELECT s.version_id, e.name, v.version
+  FROM entry_version v
+  JOIN registry_entry e ON e.id = v.entry_id
+  JOIN mcp_server s ON v.id = s.version_id
+ WHERE e.reg_id = sqlc.arg(reg_id);

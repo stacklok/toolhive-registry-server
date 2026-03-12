@@ -97,7 +97,7 @@ func TestHelperToServer(t *testing.T) {
 			},
 			packages: []sqlc.ListServerPackagesRow{
 				{
-					EntryID:        uuid.New(),
+					ServerID:       uuid.New(),
 					RegistryType:   "npm",
 					PkgRegistryUrl: "https://registry.npmjs.org",
 					PkgIdentifier:  "@example/mcp",
@@ -107,7 +107,7 @@ func TestHelperToServer(t *testing.T) {
 			},
 			remotes: []sqlc.McpServerRemote{
 				{
-					EntryID:      uuid.New(),
+					ServerID:     uuid.New(),
 					Transport:    "sse",
 					TransportUrl: "https://example.com/sse",
 				},

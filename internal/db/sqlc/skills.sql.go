@@ -14,13 +14,14 @@ import (
 
 const deleteOrphanedSkills = `-- name: DeleteOrphanedSkills :exec
 WITH subset AS (
-    SELECT e.id
-      FROM registry_entry e
-     WHERE reg_id = $1
-       AND e.id != ALL($2::UUID[])
+    SELECT v.id
+      FROM entry_version v
+      JOIN registry_entry e ON v.entry_id = e.id
+     WHERE e.reg_id = $1
+       AND v.id != ALL($2::UUID[])
 )
 DELETE FROM skill s
- WHERE s.entry_id IN (SELECT id FROM subset)
+ WHERE s.version_id IN (SELECT id FROM subset)
 `
 
 type DeleteOrphanedSkillsParams struct {
@@ -34,14 +35,15 @@ func (q *Queries) DeleteOrphanedSkills(ctx context.Context, arg DeleteOrphanedSk
 }
 
 const deleteSkillsByRegistry = `-- name: DeleteSkillsByRegistry :exec
-WITH registry_entries AS (
-    SELECT e.id
-      FROM registry_entry e
-      JOIN skill s ON e.id = s.entry_id
+WITH skill_entries AS (
+    SELECT DISTINCT v.entry_id
+      FROM entry_version v
+      JOIN registry_entry e ON v.entry_id = e.id
+      JOIN skill s ON v.id = s.version_id
      WHERE e.reg_id = $1
 )
 DELETE FROM registry_entry
- WHERE id IN (SELECT id FROM registry_entries)
+ WHERE id IN (SELECT entry_id FROM skill_entries)
 `
 
 func (q *Queries) DeleteSkillsByRegistry(ctx context.Context, regID uuid.UUID) error {
@@ -51,15 +53,15 @@ func (q *Queries) DeleteSkillsByRegistry(ctx context.Context, regID uuid.UUID) e
 
 const getSkillVersion = `-- name: GetSkillVersion :one
 SELECT r.reg_type AS registry_type,
-       e.id,
+       v.id,
        e.name,
-       e.version,
-       (l.latest_entry_id IS NOT NULL)::boolean AS is_latest,
-       e.created_at,
-       e.updated_at,
-       e.description,
-       e.title,
-       s.entry_id AS skill_entry_id,
+       v.version,
+       (l.latest_version_id IS NOT NULL)::boolean AS is_latest,
+       v.created_at,
+       v.updated_at,
+       v.description,
+       v.title,
+       s.version_id AS skill_version_id,
        s.namespace,
        s.status,
        s.license,
@@ -70,12 +72,13 @@ SELECT r.reg_type AS registry_type,
        s.metadata,
        s.extension_meta
   FROM skill s
-  JOIN registry_entry e ON s.entry_id = e.id
+  JOIN entry_version v ON s.version_id = v.id
+  JOIN registry_entry e ON v.entry_id = e.id
   JOIN registry r ON e.reg_id = r.id
-  LEFT JOIN latest_entry_version l ON e.id = l.latest_entry_id
+  LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
  WHERE e.name = $1
-   AND (e.version = $2::text
-       OR ($2::text = 'latest' AND l.latest_entry_id = e.id)
+   AND (v.version = $2::text
+       OR ($2::text = 'latest' AND l.latest_version_id = v.id)
    )
    AND ($3::text IS NULL OR r.name = $3::text)
    AND ($4::text IS NULL OR s.namespace = $4::text)
@@ -89,25 +92,25 @@ type GetSkillVersionParams struct {
 }
 
 type GetSkillVersionRow struct {
-	RegistryType  RegistryType `json:"registry_type"`
-	ID            uuid.UUID    `json:"id"`
-	Name          string       `json:"name"`
-	Version       string       `json:"version"`
-	IsLatest      bool         `json:"is_latest"`
-	CreatedAt     *time.Time   `json:"created_at"`
-	UpdatedAt     *time.Time   `json:"updated_at"`
-	Description   *string      `json:"description"`
-	Title         *string      `json:"title"`
-	SkillEntryID  uuid.UUID    `json:"skill_entry_id"`
-	Namespace     string       `json:"namespace"`
-	Status        SkillStatus  `json:"status"`
-	License       *string      `json:"license"`
-	Compatibility *string      `json:"compatibility"`
-	AllowedTools  []string     `json:"allowed_tools"`
-	Repository    []byte       `json:"repository"`
-	Icons         []byte       `json:"icons"`
-	Metadata      []byte       `json:"metadata"`
-	ExtensionMeta []byte       `json:"extension_meta"`
+	RegistryType   RegistryType `json:"registry_type"`
+	ID             uuid.UUID    `json:"id"`
+	Name           string       `json:"name"`
+	Version        string       `json:"version"`
+	IsLatest       bool         `json:"is_latest"`
+	CreatedAt      *time.Time   `json:"created_at"`
+	UpdatedAt      *time.Time   `json:"updated_at"`
+	Description    *string      `json:"description"`
+	Title          *string      `json:"title"`
+	SkillVersionID uuid.UUID    `json:"skill_version_id"`
+	Namespace      string       `json:"namespace"`
+	Status         SkillStatus  `json:"status"`
+	License        *string      `json:"license"`
+	Compatibility  *string      `json:"compatibility"`
+	AllowedTools   []string     `json:"allowed_tools"`
+	Repository     []byte       `json:"repository"`
+	Icons          []byte       `json:"icons"`
+	Metadata       []byte       `json:"metadata"`
+	ExtensionMeta  []byte       `json:"extension_meta"`
 }
 
 func (q *Queries) GetSkillVersion(ctx context.Context, arg GetSkillVersionParams) (GetSkillVersionRow, error) {
@@ -128,7 +131,7 @@ func (q *Queries) GetSkillVersion(ctx context.Context, arg GetSkillVersionParams
 		&i.UpdatedAt,
 		&i.Description,
 		&i.Title,
-		&i.SkillEntryID,
+		&i.SkillVersionID,
 		&i.Namespace,
 		&i.Status,
 		&i.License,
@@ -144,7 +147,7 @@ func (q *Queries) GetSkillVersion(ctx context.Context, arg GetSkillVersionParams
 
 const insertSkillGitPackage = `-- name: InsertSkillGitPackage :exec
 INSERT INTO skill_git_package (
-    skill_entry_id,
+    skill_id,
     url,
     ref,
     commit_sha,
@@ -159,16 +162,16 @@ INSERT INTO skill_git_package (
 `
 
 type InsertSkillGitPackageParams struct {
-	SkillEntryID uuid.UUID `json:"skill_entry_id"`
-	Url          string    `json:"url"`
-	Ref          *string   `json:"ref"`
-	CommitSha    *string   `json:"commit_sha"`
-	Subfolder    *string   `json:"subfolder"`
+	SkillID   uuid.UUID `json:"skill_id"`
+	Url       string    `json:"url"`
+	Ref       *string   `json:"ref"`
+	CommitSha *string   `json:"commit_sha"`
+	Subfolder *string   `json:"subfolder"`
 }
 
 func (q *Queries) InsertSkillGitPackage(ctx context.Context, arg InsertSkillGitPackageParams) error {
 	_, err := q.db.Exec(ctx, insertSkillGitPackage,
-		arg.SkillEntryID,
+		arg.SkillID,
 		arg.Url,
 		arg.Ref,
 		arg.CommitSha,
@@ -179,7 +182,7 @@ func (q *Queries) InsertSkillGitPackage(ctx context.Context, arg InsertSkillGitP
 
 const insertSkillOciPackage = `-- name: InsertSkillOciPackage :exec
 INSERT INTO skill_oci_package (
-    skill_entry_id,
+    skill_id,
     identifier,
     digest,
     media_type
@@ -192,15 +195,15 @@ INSERT INTO skill_oci_package (
 `
 
 type InsertSkillOciPackageParams struct {
-	SkillEntryID uuid.UUID `json:"skill_entry_id"`
-	Identifier   string    `json:"identifier"`
-	Digest       *string   `json:"digest"`
-	MediaType    *string   `json:"media_type"`
+	SkillID    uuid.UUID `json:"skill_id"`
+	Identifier string    `json:"identifier"`
+	Digest     *string   `json:"digest"`
+	MediaType  *string   `json:"media_type"`
 }
 
 func (q *Queries) InsertSkillOciPackage(ctx context.Context, arg InsertSkillOciPackageParams) error {
 	_, err := q.db.Exec(ctx, insertSkillOciPackage,
-		arg.SkillEntryID,
+		arg.SkillID,
 		arg.Identifier,
 		arg.Digest,
 		arg.MediaType,
@@ -210,7 +213,7 @@ func (q *Queries) InsertSkillOciPackage(ctx context.Context, arg InsertSkillOciP
 
 const insertSkillVersion = `-- name: InsertSkillVersion :one
 INSERT INTO skill (
-    entry_id,
+    version_id,
     namespace,
     status,
     license,
@@ -232,11 +235,11 @@ INSERT INTO skill (
     $9,
     $10
 )
-RETURNING entry_id
+RETURNING version_id
 `
 
 type InsertSkillVersionParams struct {
-	EntryID       uuid.UUID       `json:"entry_id"`
+	VersionID     uuid.UUID       `json:"version_id"`
 	Namespace     string          `json:"namespace"`
 	Status        NullSkillStatus `json:"status"`
 	License       *string         `json:"license"`
@@ -250,7 +253,7 @@ type InsertSkillVersionParams struct {
 
 func (q *Queries) InsertSkillVersion(ctx context.Context, arg InsertSkillVersionParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertSkillVersion,
-		arg.EntryID,
+		arg.VersionID,
 		arg.Namespace,
 		arg.Status,
 		arg.License,
@@ -261,14 +264,14 @@ func (q *Queries) InsertSkillVersion(ctx context.Context, arg InsertSkillVersion
 		arg.Metadata,
 		arg.ExtensionMeta,
 	)
-	var entry_id uuid.UUID
-	err := row.Scan(&entry_id)
-	return entry_id, err
+	var version_id uuid.UUID
+	err := row.Scan(&version_id)
+	return version_id, err
 }
 
 const insertSkillVersionForSync = `-- name: InsertSkillVersionForSync :one
 INSERT INTO skill (
-    entry_id,
+    version_id,
     namespace,
     status,
     license,
@@ -290,11 +293,11 @@ INSERT INTO skill (
     $9,
     $10
 )
-RETURNING entry_id
+RETURNING version_id
 `
 
 type InsertSkillVersionForSyncParams struct {
-	EntryID       uuid.UUID       `json:"entry_id"`
+	VersionID     uuid.UUID       `json:"version_id"`
 	Namespace     string          `json:"namespace"`
 	Status        NullSkillStatus `json:"status"`
 	License       *string         `json:"license"`
@@ -308,7 +311,7 @@ type InsertSkillVersionForSyncParams struct {
 
 func (q *Queries) InsertSkillVersionForSync(ctx context.Context, arg InsertSkillVersionForSyncParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertSkillVersionForSync,
-		arg.EntryID,
+		arg.VersionID,
 		arg.Namespace,
 		arg.Status,
 		arg.License,
@@ -319,25 +322,25 @@ func (q *Queries) InsertSkillVersionForSync(ctx context.Context, arg InsertSkill
 		arg.Metadata,
 		arg.ExtensionMeta,
 	)
-	var entry_id uuid.UUID
-	err := row.Scan(&entry_id)
-	return entry_id, err
+	var version_id uuid.UUID
+	err := row.Scan(&version_id)
+	return version_id, err
 }
 
 const listSkillGitPackages = `-- name: ListSkillGitPackages :many
 SELECT p.id,
-       p.skill_entry_id,
+       p.skill_id,
        p.url,
        p.ref,
        p.commit_sha,
        p.subfolder
   FROM skill_git_package p
-  JOIN skill s ON p.skill_entry_id = s.entry_id
- WHERE s.entry_id = ANY($1::UUID[])
+  JOIN skill s ON p.skill_id = s.version_id
+ WHERE s.version_id = ANY($1::UUID[])
 `
 
-func (q *Queries) ListSkillGitPackages(ctx context.Context, entryIds []uuid.UUID) ([]SkillGitPackage, error) {
-	rows, err := q.db.Query(ctx, listSkillGitPackages, entryIds)
+func (q *Queries) ListSkillGitPackages(ctx context.Context, versionIds []uuid.UUID) ([]SkillGitPackage, error) {
+	rows, err := q.db.Query(ctx, listSkillGitPackages, versionIds)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +350,7 @@ func (q *Queries) ListSkillGitPackages(ctx context.Context, entryIds []uuid.UUID
 		var i SkillGitPackage
 		if err := rows.Scan(
 			&i.ID,
-			&i.SkillEntryID,
+			&i.SkillID,
 			&i.Url,
 			&i.Ref,
 			&i.CommitSha,
@@ -365,17 +368,17 @@ func (q *Queries) ListSkillGitPackages(ctx context.Context, entryIds []uuid.UUID
 
 const listSkillOciPackages = `-- name: ListSkillOciPackages :many
 SELECT p.id,
-       p.skill_entry_id,
+       p.skill_id,
        p.identifier,
        p.digest,
        p.media_type
   FROM skill_oci_package p
-  JOIN skill s ON p.skill_entry_id = s.entry_id
- WHERE s.entry_id = ANY($1::UUID[])
+  JOIN skill s ON p.skill_id = s.version_id
+ WHERE s.version_id = ANY($1::UUID[])
 `
 
-func (q *Queries) ListSkillOciPackages(ctx context.Context, entryIds []uuid.UUID) ([]SkillOciPackage, error) {
-	rows, err := q.db.Query(ctx, listSkillOciPackages, entryIds)
+func (q *Queries) ListSkillOciPackages(ctx context.Context, versionIds []uuid.UUID) ([]SkillOciPackage, error) {
+	rows, err := q.db.Query(ctx, listSkillOciPackages, versionIds)
 	if err != nil {
 		return nil, err
 	}
@@ -385,7 +388,7 @@ func (q *Queries) ListSkillOciPackages(ctx context.Context, entryIds []uuid.UUID
 		var i SkillOciPackage
 		if err := rows.Scan(
 			&i.ID,
-			&i.SkillEntryID,
+			&i.SkillID,
 			&i.Identifier,
 			&i.Digest,
 			&i.MediaType,
@@ -402,14 +405,14 @@ func (q *Queries) ListSkillOciPackages(ctx context.Context, entryIds []uuid.UUID
 
 const listSkills = `-- name: ListSkills :many
 SELECT r.reg_type AS registry_type,
-       s.entry_id,
+       s.version_id,
        e.name,
-       e.version,
-       (l.latest_entry_id IS NOT NULL)::boolean AS is_latest,
-       e.created_at,
-       e.updated_at,
-       e.description,
-       e.title,
+       v.version,
+       (l.latest_version_id IS NOT NULL)::boolean AS is_latest,
+       v.created_at,
+       v.updated_at,
+       v.description,
+       v.title,
        s.namespace,
        s.status,
        s.license,
@@ -420,23 +423,24 @@ SELECT r.reg_type AS registry_type,
        s.metadata,
        s.extension_meta
   FROM skill s
-  JOIN registry_entry e ON s.entry_id = e.id
+  JOIN entry_version v ON s.version_id = v.id
+  JOIN registry_entry e ON v.entry_id = e.id
   JOIN registry r ON e.reg_id = r.id
-  LEFT JOIN latest_entry_version l ON e.id = l.latest_entry_id
+  LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
  WHERE ($1::text IS NULL OR r.name = $1::text)
    AND ($2::text IS NULL OR s.namespace = $2::text)
    AND ($3::text IS NULL OR e.name = $3::text)
    AND ($4::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || $4::text || '%')
-       OR LOWER(e.title) LIKE LOWER('%' || $4::text || '%')
-       OR LOWER(e.description) LIKE LOWER('%' || $4::text || '%')
+       OR LOWER(v.title) LIKE LOWER('%' || $4::text || '%')
+       OR LOWER(v.description) LIKE LOWER('%' || $4::text || '%')
    ))
-   AND ($5::timestamp with time zone IS NULL OR e.updated_at > $5::timestamp with time zone)
+   AND ($5::timestamp with time zone IS NULL OR v.updated_at > $5::timestamp with time zone)
    AND (
        $6::text IS NULL
-       OR (e.name, e.version) > ($6::text, $7::text)
+       OR (e.name, v.version) > ($6::text, $7::text)
    )
- ORDER BY e.name ASC, e.version ASC
+ ORDER BY e.name ASC, v.version ASC
  LIMIT $8::bigint
 `
 
@@ -453,7 +457,7 @@ type ListSkillsParams struct {
 
 type ListSkillsRow struct {
 	RegistryType  RegistryType `json:"registry_type"`
-	EntryID       uuid.UUID    `json:"entry_id"`
+	VersionID     uuid.UUID    `json:"version_id"`
 	Name          string       `json:"name"`
 	Version       string       `json:"version"`
 	IsLatest      bool         `json:"is_latest"`
@@ -495,7 +499,7 @@ func (q *Queries) ListSkills(ctx context.Context, arg ListSkillsParams) ([]ListS
 		var i ListSkillsRow
 		if err := rows.Scan(
 			&i.RegistryType,
-			&i.EntryID,
+			&i.VersionID,
 			&i.Name,
 			&i.Version,
 			&i.IsLatest,
@@ -528,7 +532,7 @@ INSERT INTO latest_entry_version (
     reg_id,
     name,
     version,
-    latest_entry_id
+    latest_version_id
 ) VALUES (
     $1,
     $2,
@@ -537,15 +541,15 @@ INSERT INTO latest_entry_version (
 ) ON CONFLICT (reg_id, name)
   DO UPDATE SET
     version = $3,
-    latest_entry_id = $4
-RETURNING latest_entry_id
+    latest_version_id = $4
+RETURNING latest_version_id
 `
 
 type UpsertLatestSkillVersionParams struct {
-	RegID   uuid.UUID `json:"reg_id"`
-	Name    string    `json:"name"`
-	Version string    `json:"version"`
-	EntryID uuid.UUID `json:"entry_id"`
+	RegID     uuid.UUID `json:"reg_id"`
+	Name      string    `json:"name"`
+	Version   string    `json:"version"`
+	VersionID uuid.UUID `json:"version_id"`
 }
 
 func (q *Queries) UpsertLatestSkillVersion(ctx context.Context, arg UpsertLatestSkillVersionParams) (uuid.UUID, error) {
@@ -553,16 +557,16 @@ func (q *Queries) UpsertLatestSkillVersion(ctx context.Context, arg UpsertLatest
 		arg.RegID,
 		arg.Name,
 		arg.Version,
-		arg.EntryID,
+		arg.VersionID,
 	)
-	var latest_entry_id uuid.UUID
-	err := row.Scan(&latest_entry_id)
-	return latest_entry_id, err
+	var latest_version_id uuid.UUID
+	err := row.Scan(&latest_version_id)
+	return latest_version_id, err
 }
 
 const upsertSkillVersionForSync = `-- name: UpsertSkillVersionForSync :one
 INSERT INTO skill (
-    entry_id,
+    version_id,
     namespace,
     status,
     license,
@@ -584,7 +588,7 @@ INSERT INTO skill (
     $9,
     $10
 )
-ON CONFLICT (entry_id)
+ON CONFLICT (version_id)
 DO UPDATE SET
     status = COALESCE($3::skill_status, skill.status),
     license = $4,
@@ -594,11 +598,11 @@ DO UPDATE SET
     icons = $8,
     metadata = $9,
     extension_meta = $10
-RETURNING entry_id
+RETURNING version_id
 `
 
 type UpsertSkillVersionForSyncParams struct {
-	EntryID       uuid.UUID       `json:"entry_id"`
+	VersionID     uuid.UUID       `json:"version_id"`
 	Namespace     string          `json:"namespace"`
 	Status        NullSkillStatus `json:"status"`
 	License       *string         `json:"license"`
@@ -612,7 +616,7 @@ type UpsertSkillVersionForSyncParams struct {
 
 func (q *Queries) UpsertSkillVersionForSync(ctx context.Context, arg UpsertSkillVersionForSyncParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, upsertSkillVersionForSync,
-		arg.EntryID,
+		arg.VersionID,
 		arg.Namespace,
 		arg.Status,
 		arg.License,
@@ -623,7 +627,7 @@ func (q *Queries) UpsertSkillVersionForSync(ctx context.Context, arg UpsertSkill
 		arg.Metadata,
 		arg.ExtensionMeta,
 	)
-	var entry_id uuid.UUID
-	err := row.Scan(&entry_id)
-	return entry_id, err
+	var version_id uuid.UUID
+	err := row.Scan(&version_id)
+	return version_id, err
 }

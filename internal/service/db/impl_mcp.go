@@ -307,8 +307,8 @@ func (s *dbService) GetServerVersion(
 	return res[0], nil
 }
 
-// insertServerVersionData inserts the server version record and returns the server ID.
-// It validates unique constraints on (registry_id, name, version) and returns ErrVersionAlreadyExists if violated.
+// insertServerVersionData inserts the server version record and returns the entry_version ID.
+// It validates unique constraints on (entry_id, version) and returns ErrVersionAlreadyExists if violated.
 func insertServerVersionData(
 	ctx context.Context,
 	querier *sqlc.Queries,
@@ -331,30 +331,47 @@ func insertServerVersionData(
 		return uuid.Nil, fmt.Errorf("failed to serialize metadata: %w", err)
 	}
 
-	// Insert the server version
 	now := time.Now()
-	entryID, err := querier.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
-		Name:        serverData.Name,
+
+	// Get or create the registry entry (one per unique name)
+	entryID, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
+		RegID:     registryID,
+		EntryType: sqlc.EntryTypeMCP,
+		Name:      serverData.Name,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		entryID, err = querier.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
+			RegID:     registryID,
+			EntryType: sqlc.EntryTypeMCP,
+			Name:      serverData.Name,
+			CreatedAt: &now,
+			UpdatedAt: &now,
+		})
+	}
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to get or create registry entry: %w", err)
+	}
+
+	// Insert the entry version (one per name+version)
+	versionID, err := querier.InsertEntryVersion(ctx, sqlc.InsertEntryVersionParams{
+		EntryID:     entryID,
 		Version:     serverData.Version,
-		RegID:       registryID,
-		EntryType:   sqlc.EntryTypeMCP,
+		Title:       &serverData.Title,
+		Description: &serverData.Description,
 		CreatedAt:   &now,
 		UpdatedAt:   &now,
-		Description: &serverData.Description,
-		Title:       &serverData.Title,
 	})
 	if err != nil {
-		// Check if this is a unique constraint violation
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return uuid.Nil, fmt.Errorf("%w: %s@%s",
 				service.ErrVersionAlreadyExists, serverData.Name, serverData.Version)
 		}
-		return uuid.Nil, fmt.Errorf("failed to insert server version: %w", err)
+		return uuid.Nil, fmt.Errorf("failed to insert entry version: %w", err)
 	}
 
-	_, err = querier.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
-		EntryID:             entryID,
+	serverVersionID, err := querier.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
+		VersionID:           versionID,
 		Website:             &serverData.WebsiteURL,
 		UpstreamMeta:        nil,
 		ServerMeta:          serverMeta,
@@ -367,7 +384,7 @@ func insertServerVersionData(
 		return uuid.Nil, fmt.Errorf("failed to insert server version: %w", err)
 	}
 
-	return entryID, nil
+	return serverVersionID, nil
 }
 
 // insertServerPackages inserts all packages for a server version.
@@ -390,7 +407,7 @@ func insertServerPackages(
 		}
 
 		err = querier.InsertServerPackage(ctx, sqlc.InsertServerPackageParams{
-			EntryID:          entryID,
+			ServerID:         entryID,
 			RegistryType:     pkg.RegistryType,
 			PkgRegistryUrl:   pkg.RegistryBaseURL,
 			PkgIdentifier:    pkg.Identifier,
@@ -426,7 +443,7 @@ func insertServerRemotes(
 		}
 
 		err = querier.InsertServerRemote(ctx, sqlc.InsertServerRemoteParams{
-			EntryID:          entryID,
+			ServerID:         entryID,
 			Transport:        remote.Type,
 			TransportUrl:     remote.URL,
 			TransportHeaders: headersJSON,
@@ -469,7 +486,7 @@ func insertServerIcons(
 		}
 
 		err := querier.InsertServerIcon(ctx, sqlc.InsertServerIconParams{
-			EntryID:   entryID,
+			ServerID:  entryID,
 			SourceUri: icon.Src,
 			MimeType:  mimeType,
 			Theme:     theme,
@@ -494,8 +511,9 @@ func validateRegistryExists(ctx context.Context, querier *sqlc.Queries, registry
 	return nil
 }
 
-// validateManagedRegistry validates that the registry exists and is a managed (LOCAL) registry.
-// Returns ErrRegistryNotFound if the registry doesn't exist, or ErrNotManagedRegistry if it's not a LOCAL type.
+// validateManagedRegistry validates that the registry exists and is a managed
+// registry. Returns ErrRegistryNotFound if the registry doesn't exist, or
+// ErrNotManagedRegistry if it's not of type managed.
 func validateManagedRegistry(
 	ctx context.Context,
 	querier *sqlc.Queries,
@@ -644,23 +662,23 @@ func (s *dbService) insertServerData(
 	registryID uuid.UUID,
 ) error {
 	// Insert the server version
-	entryID, err := insertServerVersionData(ctx, querier, serverData, registryID, s.maxMetaSize)
+	serverVersionID, err := insertServerVersionData(ctx, querier, serverData, registryID, s.maxMetaSize)
 	if err != nil {
 		return err
 	}
 
 	// Insert packages
-	if err := insertServerPackages(ctx, querier, entryID, serverData.Packages); err != nil {
+	if err := insertServerPackages(ctx, querier, serverVersionID, serverData.Packages); err != nil {
 		return err
 	}
 
 	// Insert remotes
-	if err := insertServerRemotes(ctx, querier, entryID, serverData.Remotes); err != nil {
+	if err := insertServerRemotes(ctx, querier, serverVersionID, serverData.Remotes); err != nil {
 		return err
 	}
 
 	// Insert icons
-	if err := insertServerIcons(ctx, querier, entryID, serverData.Icons); err != nil {
+	if err := insertServerIcons(ctx, querier, serverVersionID, serverData.Icons); err != nil {
 		return err
 	}
 
@@ -678,10 +696,10 @@ func (s *dbService) insertServerData(
 
 	if shouldUpdateLatest {
 		_, err = querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
-			RegID:   registryID,
-			Name:    serverData.Name,
-			Version: serverData.Version,
-			EntryID: entryID,
+			RegID:     registryID,
+			Name:      serverData.Name,
+			Version:   serverData.Version,
+			VersionID: serverVersionID,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to upsert latest server version: %w", err)
@@ -700,7 +718,6 @@ func (s *dbService) DeleteServerVersion(
 	defer span.End()
 	start := time.Now()
 
-	// 1. Parse options
 	options := &service.DeleteServerVersionOptions{}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
@@ -709,20 +726,37 @@ func (s *dbService) DeleteServerVersion(
 		}
 	}
 
-	// Add tracing attributes
 	span.SetAttributes(
 		otel.AttrRegistryName.String(options.RegistryName),
 		otel.AttrServerName.String(options.ServerName),
 		otel.AttrServerVersion.String(options.Version),
 	)
 
-	// 2. Begin transaction
+	if err := s.executeDeleteTransaction(ctx, options); err != nil {
+		otel.RecordError(span, err)
+		return err
+	}
+
+	slog.InfoContext(ctx, "Server version deleted",
+		"duration_ms", time.Since(start).Milliseconds(),
+		"registry", options.RegistryName,
+		"server", options.ServerName,
+		"version", options.Version,
+		"request_id", middleware.GetReqID(ctx))
+
+	return nil
+}
+
+// executeDeleteTransaction runs the version deletion within a serializable transaction.
+func (s *dbService) executeDeleteTransaction(
+	ctx context.Context,
+	options *service.DeleteServerVersionOptions,
+) error {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.Serializable,
 		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
-		otel.RecordError(span, err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -734,58 +768,80 @@ func (s *dbService) DeleteServerVersion(
 
 	querier := sqlc.New(tx)
 
-	// 3. Validate registry exists and get registry info
-	registry, err := querier.GetRegistryByName(ctx, options.RegistryName)
+	registry, err := validateManagedRegistry(ctx, querier, options.RegistryName)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, options.RegistryName)
-			otel.RecordError(span, err)
-			return err
-		}
-		otel.RecordError(span, err)
-		return fmt.Errorf("failed to get registry: %w", err)
-	}
-
-	// 4. Validate registry is MANAGED type
-	if registry.RegType != sqlc.RegistryTypeMANAGED {
-		err = fmt.Errorf("%w: registry %s has type %s",
-			service.ErrNotManagedRegistry, options.RegistryName, registry.RegType)
-		otel.RecordError(span, err)
 		return err
 	}
 
-	// 5. Delete the server version
-	rowsAffected, err := querier.DeleteRegistryEntry(ctx, sqlc.DeleteRegistryEntryParams{
-		RegID:   registry.ID,
-		Name:    options.ServerName,
-		Version: options.Version,
-	})
+	entryID, err := lookupAndDeleteEntryVersion(ctx, querier, registry.ID, sqlc.EntryTypeMCP, options.ServerName, options.Version)
 	if err != nil {
-		otel.RecordError(span, err)
-		return fmt.Errorf("failed to delete server version: %w", err)
-	}
-
-	// 5.1. Check if the server version was found and deleted
-	if rowsAffected == 0 {
-		err = fmt.Errorf("%w: %s@%s",
-			service.ErrNotFound, options.ServerName, options.Version)
-		otel.RecordError(span, err)
 		return err
 	}
 
-	// 6. Commit transaction
+	if err := cleanupOrphanedEntry(ctx, querier, entryID); err != nil {
+		return err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
-		otel.RecordError(span, err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	slog.InfoContext(ctx, "Server version deleted",
-		"duration_ms", time.Since(start).Milliseconds(),
-		"registry", options.RegistryName,
-		"server", options.ServerName,
-		"version", options.Version,
-		"request_id", middleware.GetReqID(ctx))
+	return nil
+}
 
+// lookupAndDeleteEntryVersion finds the registry entry by name and entry type,
+// then deletes the specified version. Returns the entry ID for potential
+// cleanup, or an error if the entry or version is not found.
+func lookupAndDeleteEntryVersion(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	registryID uuid.UUID,
+	entryType sqlc.EntryType,
+	name string,
+	version string,
+) (uuid.UUID, error) {
+	entryID, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
+		RegID:     registryID,
+		EntryType: entryType,
+		Name:      name,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, fmt.Errorf("%w: %s@%s", service.ErrNotFound, name, version)
+		}
+		return uuid.Nil, fmt.Errorf("failed to look up registry entry: %w", err)
+	}
+
+	rowsAffected, err := querier.DeleteEntryVersion(ctx, sqlc.DeleteEntryVersionParams{
+		EntryID: entryID,
+		Version: version,
+	})
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to delete entry version: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return uuid.Nil, fmt.Errorf("%w: %s@%s", service.ErrNotFound, name, version)
+	}
+
+	return entryID, nil
+}
+
+// cleanupOrphanedEntry removes the parent registry entry if no versions remain.
+func cleanupOrphanedEntry(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	entryID uuid.UUID,
+) error {
+	remaining, err := querier.CountEntryVersions(ctx, entryID)
+	if err != nil {
+		return fmt.Errorf("failed to count remaining versions: %w", err)
+	}
+	if remaining == 0 {
+		if _, err := querier.DeleteRegistryEntryByID(ctx, entryID); err != nil {
+			return fmt.Errorf("failed to delete empty registry entry: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -884,7 +940,7 @@ func (s *dbService) sharedListServersWithCursor(
 	}
 	packagesMap := make(map[uuid.UUID][]sqlc.ListServerPackagesRow)
 	for _, pkg := range packages {
-		packagesMap[pkg.EntryID] = append(packagesMap[pkg.EntryID], pkg)
+		packagesMap[pkg.ServerID] = append(packagesMap[pkg.ServerID], pkg)
 	}
 
 	remotes, err := querier.ListServerRemotes(ctx, ids)
@@ -893,7 +949,7 @@ func (s *dbService) sharedListServersWithCursor(
 	}
 	remotesMap := make(map[uuid.UUID][]sqlc.McpServerRemote)
 	for _, remote := range remotes {
-		remotesMap[remote.EntryID] = append(remotesMap[remote.EntryID], remote)
+		remotesMap[remote.ServerID] = append(remotesMap[remote.ServerID], remote)
 	}
 
 	result := make([]*upstreamv0.ServerJSON, 0, len(servers))

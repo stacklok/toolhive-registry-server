@@ -68,24 +68,24 @@ type ListSkillsResult struct {
 
 // skillRow holds the common shape of sqlc skill list/get rows for mapping.
 type skillRow struct {
-	ID            uuid.UUID
-	Name          string
-	Version       string
-	IsLatest      bool
-	CreatedAt     *time.Time
-	UpdatedAt     *time.Time
-	Description   *string
-	Title         *string
-	SkillEntryID  uuid.UUID
-	Namespace     string
-	Status        sqlc.SkillStatus
-	License       *string
-	Compatibility *string
-	AllowedTools  []string
-	Repository    []byte
-	Icons         []byte
-	Metadata      []byte
-	ExtensionMeta []byte
+	ID             uuid.UUID
+	Name           string
+	Version        string
+	IsLatest       bool
+	CreatedAt      *time.Time
+	UpdatedAt      *time.Time
+	Description    *string
+	Title          *string
+	SkillVersionID uuid.UUID
+	Namespace      string
+	Status         sqlc.SkillStatus
+	License        *string
+	Compatibility  *string
+	AllowedTools   []string
+	Repository     []byte
+	Icons          []byte
+	Metadata       []byte
+	ExtensionMeta  []byte
 }
 
 func rowToSkill(r skillRow) *Skill {
@@ -142,7 +142,7 @@ func rowToSkill(r skillRow) *Skill {
 // ListSkillsRowToSkill maps a sqlc ListSkillsRow to a service Skill.
 func ListSkillsRowToSkill(row sqlc.ListSkillsRow) *Skill {
 	return rowToSkill(skillRow{
-		ID:            row.EntryID,
+		ID:            row.VersionID,
 		Name:          row.Name,
 		Version:       row.Version,
 		IsLatest:      row.IsLatest,
@@ -165,23 +165,23 @@ func ListSkillsRowToSkill(row sqlc.ListSkillsRow) *Skill {
 // GetSkillVersionRowToSkill maps a sqlc GetSkillVersionRow to a service Skill.
 func GetSkillVersionRowToSkill(row sqlc.GetSkillVersionRow) *Skill {
 	return rowToSkill(skillRow{
-		ID:            row.ID,
-		Name:          row.Name,
-		Version:       row.Version,
-		IsLatest:      row.IsLatest,
-		CreatedAt:     row.CreatedAt,
-		UpdatedAt:     row.UpdatedAt,
-		Description:   row.Description,
-		Title:         row.Title,
-		SkillEntryID:  row.SkillEntryID,
-		Namespace:     row.Namespace,
-		Status:        row.Status,
-		License:       row.License,
-		Compatibility: row.Compatibility,
-		AllowedTools:  row.AllowedTools,
-		Repository:    row.Repository,
-		Icons:         row.Icons,
-		Metadata:      row.Metadata,
-		ExtensionMeta: row.ExtensionMeta,
+		ID:             row.ID,
+		Name:           row.Name,
+		Version:        row.Version,
+		IsLatest:       row.IsLatest,
+		CreatedAt:      row.CreatedAt,
+		UpdatedAt:      row.UpdatedAt,
+		Description:    row.Description,
+		Title:          row.Title,
+		SkillVersionID: row.SkillVersionID,
+		Namespace:      row.Namespace,
+		Status:         row.Status,
+		License:        row.License,
+		Compatibility:  row.Compatibility,
+		AllowedTools:   row.AllowedTools,
+		Repository:     row.Repository,
+		Icons:          row.Icons,
+		Metadata:       row.Metadata,
+		ExtensionMeta:  row.ExtensionMeta,
 	})
 }
