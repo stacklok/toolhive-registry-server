@@ -46,11 +46,12 @@ func NewDBSyncWriter(pool *pgxpool.Pool, maxMetaSize int) (SyncWriter, error) {
 // Store saves a UpstreamRegistry instance to database storage for a specific registry.
 //
 // This method performs an efficient bulk sync using temporary tables and COPY operations:
-// 1. Validates the registry exists
-// 2. Creates temp tables, copies server data, and bulk upserts to preserve existing UUIDs
-// 3. Deletes orphaned servers that no longer exist in upstream (CASCADE cleans related data)
-// 4. For packages/remotes/icons: creates temp tables, copies data, bulk upserts, deletes orphans
-// 5. Updates the latest_server_version table for each unique server name
+//  1. Validates the registry exists
+//  2. Upserts registry entries (one per name), entry versions (one per name+version),
+//     and mcp_server rows via temp tables and COPY to preserve existing UUIDs
+//  3. Deletes orphaned servers that no longer exist in upstream (CASCADE cleans related data)
+//  4. For packages/remotes/icons: creates temp tables, copies data, bulk upserts, deletes orphans
+//  5. Updates the latest_entry_version table for each unique server name
 //
 // The operation is performed within a serializable transaction to ensure consistency.
 // Temp tables are automatically dropped at transaction end (ON COMMIT DROP).
@@ -124,8 +125,8 @@ func serverKey(name, version string) string {
 }
 
 // storeSyncInTempTables upserts all servers using temp table and COPY for maximum performance.
-// Uses ON CONFLICT UPDATE to preserve existing server UUIDs.
-// Returns a map of serverKey (name@version) to server UUID for subsequent operations.
+// Uses ON CONFLICT UPDATE to preserve existing UUIDs.
+// Returns a map of serverKey (name@version) to entry_version UUID for subsequent operations.
 func (d *dbSyncWriter) storeSyncInTempTables(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -136,30 +137,32 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 		return make(map[string]uuid.UUID), nil
 	}
 
-	// 1. Create temp table
 	querier := sqlc.New(tx)
-	copiedEntryRows, err := sqlCopyEntries(ctx, tx, registryID, servers)
+
+	// 1. Upsert registry entries (one per unique name)
+	entryMap, err := sqlCopyEntries(ctx, tx, registryID, servers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to copy entries: %w", err)
 	}
 
-	entryIDMap := make(map[string]uuid.UUID, len(copiedEntryRows))
-	for _, row := range copiedEntryRows {
-		key := serverKey(row.Name, row.Version)
-		entryIDMap[key] = row.ID
+	// 2. Upsert entry versions (one per name+version)
+	versionMap, err := sqlCopyEntryVersions(ctx, tx, entryMap, servers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy entry versions: %w", err)
 	}
 
-	if err := sqlCopyServers(ctx, tx, servers, entryIDMap, d.maxMetaSize); err != nil {
+	// 3. Copy mcp_server rows using entry_version IDs
+	if err := sqlCopyServers(ctx, tx, servers, versionMap, d.maxMetaSize); err != nil {
 		return nil, fmt.Errorf("failed to copy servers: %w", err)
 	}
 
-	// 5. Build a set of expected server keys from input
+	// 4. Build a set of expected server keys from input
 	expectedKeys := make(map[string]bool, len(servers))
 	for _, server := range servers {
 		expectedKeys[serverKey(server.Name, server.Version)] = true
 	}
 
-	// 6. Query back server IDs from permanent table
+	// 5. Query back server IDs from permanent table
 	dbServers, err := querier.GetServerIDsByRegistryNameVersion(ctx, registryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query server IDs: %w", err)
@@ -170,7 +173,7 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 	for _, dbServer := range dbServers {
 		key := serverKey(dbServer.Name, dbServer.Version)
 		if expectedKeys[key] {
-			serverIDMap[key] = dbServer.EntryID
+			serverIDMap[key] = dbServer.VersionID
 		}
 	}
 
@@ -178,7 +181,7 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 }
 
 // deleteOrphanedServers removes servers for a registry that are not in the keepIDs set.
-// Due to CASCADE constraints, this also removes related packages, remotes, icons, and latest_server_version entries.
+// Due to CASCADE constraints, this also removes related packages, remotes, icons, and latest_entry_version entries.
 func (*dbSyncWriter) deleteOrphanedServers(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -275,10 +278,10 @@ func (*dbSyncWriter) updateLatestVersions(
 	// Insert latest version pointers
 	for name, latest := range latestVersions {
 		_, err := querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
-			RegID:   registryID,
-			Name:    name,
-			Version: latest.version,
-			EntryID: latest.serverID,
+			RegID:     registryID,
+			Name:      name,
+			Version:   latest.version,
+			VersionID: latest.serverID,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to upsert latest version for server %s: %w", name, err)
@@ -338,7 +341,7 @@ func bulkInsertPackages(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_package"},
-		[]string{"entry_id", "registry_type", "pkg_registry_url", "pkg_identifier", "pkg_version",
+		[]string{"server_id", "registry_type", "pkg_registry_url", "pkg_identifier", "pkg_version",
 			"runtime_hint", "runtime_arguments", "package_arguments", "env_vars", "sha256_hash",
 			"transport", "transport_url", "transport_headers"},
 		pgx.CopyFromRows(packageRows))
@@ -433,7 +436,7 @@ func bulkInsertRemotes(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_remote"},
-		[]string{"entry_id", "transport", "transport_url", "transport_headers"},
+		[]string{"server_id", "transport", "transport_url", "transport_headers"},
 		pgx.CopyFromRows(remoteRows))
 	if err != nil {
 		return fmt.Errorf("failed to copy remotes: %w", err)
@@ -517,7 +520,7 @@ func bulkInsertIcons(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_icon"},
-		[]string{"entry_id", "source_uri", "mime_type", "theme"},
+		[]string{"server_id", "source_uri", "mime_type", "theme"},
 		pgx.CopyFromRows(iconRows))
 	if err != nil {
 		return fmt.Errorf("failed to copy icons: %w", err)
@@ -606,23 +609,30 @@ func nilIfEmpty(s string) *string {
 	return &s
 }
 
+// sqlCopyEntries upserts registry entries (one per unique name) using temp table and COPY.
+// Returns a map of server name to registry_entry UUID.
 func sqlCopyEntries(
 	ctx context.Context,
 	tx pgx.Tx,
 	registryID uuid.UUID,
 	servers []upstreamv0.ServerJSON,
-) ([]sqlc.UpsertRegistryEntriesFromTempRow, error) {
+) (map[string]uuid.UUID, error) {
 	querier := sqlc.New(tx)
 
 	if err := querier.CreateTempRegistryEntryTable(ctx); err != nil {
 		return nil, fmt.Errorf("failed to create temp registry entry table: %w", err)
 	}
 
-	// 2. Prepare rows for COPY
-	entryRows := make([][]any, 0, len(servers))
+	// Deduplicate by name — one registry_entry per unique server name
+	seen := make(map[string]bool, len(servers))
+	var entryRows [][]any
 	for _, server := range servers {
-		now := time.Now()
+		if seen[server.Name] {
+			continue
+		}
+		seen[server.Name] = true
 
+		now := time.Now()
 		entryID, err := uuid.NewV7()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate entry ID: %w", err)
@@ -633,34 +643,106 @@ func sqlCopyEntries(
 			registryID,
 			sqlc.EntryTypeMCP,
 			server.Name,
-			nilIfEmpty(server.Title),
-			nilIfEmpty(server.Description),
-			server.Version,
 			&now,
 			&now,
 		})
 	}
 
-	// 3. COPY into temp table
 	entryCopyCount, err := tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"temp_registry_entry"},
-		[]string{"id", "reg_id", "entry_type", "name", "title", "description", "version", "created_at", "updated_at"},
+		[]string{"id", "reg_id", "entry_type", "name", "created_at", "updated_at"},
 		pgx.CopyFromRows(entryRows),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to copy entries to temp table: %w", err)
 	}
-	if int(entryCopyCount) != len(servers) {
-		return nil, fmt.Errorf("copy count mismatch: expected %d, got %d", len(servers), entryCopyCount)
+	if int(entryCopyCount) != len(entryRows) {
+		return nil, fmt.Errorf("copy count mismatch: expected %d, got %d", len(entryRows), entryCopyCount)
 	}
 
-	copiedEntryRows, err := querier.UpsertRegistryEntriesFromTemp(ctx)
+	copiedRows, err := querier.UpsertRegistryEntriesFromTemp(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to upsert registry entries from temp table: %w", err)
 	}
 
-	return copiedEntryRows, nil
+	entryMap := make(map[string]uuid.UUID, len(copiedRows))
+	for _, row := range copiedRows {
+		entryMap[row.Name] = row.ID
+	}
+
+	return entryMap, nil
+}
+
+// sqlCopyEntryVersions upserts entry versions (one per name+version) using temp table and COPY.
+// Returns a map of serverKey (name@version) to entry_version UUID.
+func sqlCopyEntryVersions(
+	ctx context.Context,
+	tx pgx.Tx,
+	entryMap map[string]uuid.UUID,
+	servers []upstreamv0.ServerJSON,
+) (map[string]uuid.UUID, error) {
+	querier := sqlc.New(tx)
+
+	if err := querier.CreateTempEntryVersionTable(ctx); err != nil {
+		return nil, fmt.Errorf("failed to create temp entry version table: %w", err)
+	}
+
+	versionRows := make([][]any, 0, len(servers))
+	for _, server := range servers {
+		entryID, ok := entryMap[server.Name]
+		if !ok {
+			return nil, fmt.Errorf("entry ID not found for %s", server.Name)
+		}
+
+		now := time.Now()
+		versionID, err := uuid.NewV7()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate version ID: %w", err)
+		}
+
+		versionRows = append(versionRows, []any{
+			versionID,
+			entryID,
+			server.Version,
+			nilIfEmpty(server.Title),
+			nilIfEmpty(server.Description),
+			&now,
+			&now,
+		})
+	}
+
+	copyCount, err := tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"temp_entry_version"},
+		[]string{"id", "entry_id", "version", "title", "description", "created_at", "updated_at"},
+		pgx.CopyFromRows(versionRows),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy entry versions to temp table: %w", err)
+	}
+	if int(copyCount) != len(servers) {
+		return nil, fmt.Errorf("copy count mismatch: expected %d, got %d", len(servers), copyCount)
+	}
+
+	copiedRows, err := querier.UpsertEntryVersionsFromTemp(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert entry versions from temp table: %w", err)
+	}
+
+	// Build reverse lookup: entry_id → name
+	entryIDToName := make(map[uuid.UUID]string, len(entryMap))
+	for name, id := range entryMap {
+		entryIDToName[id] = name
+	}
+
+	versionMap := make(map[string]uuid.UUID, len(copiedRows))
+	for _, row := range copiedRows {
+		name := entryIDToName[row.EntryID]
+		versionMap[serverKey(name, row.Version)] = row.ID
+	}
+
+	return versionMap, nil
 }
 
 func sqlCopyServers(
@@ -708,7 +790,7 @@ func sqlCopyServers(
 	copyCount, err := tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"temp_mcp_server"},
-		[]string{"entry_id", "website", "upstream_meta", "server_meta",
+		[]string{"version_id", "website", "upstream_meta", "server_meta",
 			"repository_url", "repository_id", "repository_subfolder", "repository_type"},
 		pgx.CopyFromRows(mcpRows),
 	)

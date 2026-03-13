@@ -85,7 +85,7 @@ func (s *dbService) ListSkills(
 
 	ids := make([]uuid.UUID, 0)
 	for _, row := range listRows {
-		ids = append(ids, row.EntryID)
+		ids = append(ids, row.VersionID)
 	}
 
 	ociPackages, err := querier.ListSkillOciPackages(ctx, ids)
@@ -101,10 +101,10 @@ func (s *dbService) ListSkills(
 
 	packages := make(map[uuid.UUID][]service.SkillPackage)
 	for _, pkg := range ociPackages {
-		packages[pkg.SkillEntryID] = append(packages[pkg.SkillEntryID], toServiceSkillOciPackage(pkg))
+		packages[pkg.SkillID] = append(packages[pkg.SkillID], toServiceSkillOciPackage(pkg))
 	}
 	for _, pkg := range gitPackages {
-		packages[pkg.SkillEntryID] = append(packages[pkg.SkillEntryID], toServiceSkillGitPackage(pkg))
+		packages[pkg.SkillID] = append(packages[pkg.SkillID], toServiceSkillGitPackage(pkg))
 	}
 
 	nextCursor := ""
@@ -117,7 +117,7 @@ func (s *dbService) ListSkills(
 	skills := make([]*service.Skill, len(listRows))
 	for i, row := range listRows {
 		skill := service.ListSkillsRowToSkill(row)
-		skill.Packages = packages[row.EntryID]
+		skill.Packages = packages[row.VersionID]
 		skills[i] = skill
 	}
 
@@ -170,12 +170,12 @@ func (s *dbService) GetSkillVersion(
 		return nil, err
 	}
 
-	ociPackages, err := querier.ListSkillOciPackages(ctx, []uuid.UUID{row.SkillEntryID})
+	ociPackages, err := querier.ListSkillOciPackages(ctx, []uuid.UUID{row.SkillVersionID})
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
-	gitPackages, err := querier.ListSkillGitPackages(ctx, []uuid.UUID{row.SkillEntryID})
+	gitPackages, err := querier.ListSkillGitPackages(ctx, []uuid.UUID{row.SkillVersionID})
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -295,22 +295,41 @@ func (s *dbService) executePublishSkillTransaction(
 	}
 
 	now := time.Now().UTC()
-	entryParams := sqlc.InsertRegistryEntryParams{
+
+	// Get or create the registry entry (one per unique name)
+	entryID, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
 		RegID:     registry.ID,
 		EntryType: sqlc.EntryTypeSKILL,
 		Name:      skill.Name,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		entryID, err = querier.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
+			RegID:     registry.ID,
+			EntryType: sqlc.EntryTypeSKILL,
+			Name:      skill.Name,
+			CreatedAt: &now,
+			UpdatedAt: &now,
+		})
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get or create registry entry: %w", err)
+	}
+
+	// Insert the entry version (one per name+version)
+	versionParams := sqlc.InsertEntryVersionParams{
+		EntryID:   entryID,
 		Version:   skill.Version,
 		CreatedAt: &now,
 		UpdatedAt: &now,
 	}
 	if skill.Title != "" {
-		entryParams.Title = &skill.Title
+		versionParams.Title = &skill.Title
 	}
 	if skill.Description != "" {
-		entryParams.Description = &skill.Description
+		versionParams.Description = &skill.Description
 	}
 
-	entryID, err := querier.InsertRegistryEntry(ctx, entryParams)
+	versionID, err := querier.InsertEntryVersion(ctx, versionParams)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -319,7 +338,7 @@ func (s *dbService) executePublishSkillTransaction(
 		return err
 	}
 
-	skillParams, err := makeInsertSkillVersionParams(entryID, skill)
+	skillParams, err := makeInsertSkillVersionParams(versionID, skill)
 	if err != nil {
 		return err
 	}
@@ -334,18 +353,18 @@ func (s *dbService) executePublishSkillTransaction(
 		switch pkg.RegistryType {
 		case service.SkillPackageTypeOCI:
 			err = querier.InsertSkillOciPackage(ctx, sqlc.InsertSkillOciPackageParams{
-				SkillEntryID: entryID,
-				Identifier:   pkg.Identifier,
-				Digest:       &pkg.Digest,
-				MediaType:    &pkg.MediaType,
+				SkillID:    versionID,
+				Identifier: pkg.Identifier,
+				Digest:     &pkg.Digest,
+				MediaType:  &pkg.MediaType,
 			})
 		case service.SkillPackageTypeGit:
 			err = querier.InsertSkillGitPackage(ctx, sqlc.InsertSkillGitPackageParams{
-				SkillEntryID: entryID,
-				Url:          pkg.URL,
-				Ref:          &pkg.Ref,
-				CommitSha:    &pkg.Commit,
-				Subfolder:    &pkg.Subfolder,
+				SkillID:   versionID,
+				Url:       pkg.URL,
+				Ref:       &pkg.Ref,
+				CommitSha: &pkg.Commit,
+				Subfolder: &pkg.Subfolder,
 			})
 		}
 		if err != nil {
@@ -369,10 +388,10 @@ func (s *dbService) executePublishSkillTransaction(
 
 	if shouldUpdateLatest {
 		_, err = querier.UpsertLatestSkillVersion(ctx, sqlc.UpsertLatestSkillVersionParams{
-			RegID:   registry.ID,
-			Name:    skill.Name,
-			Version: skill.Version,
-			EntryID: entryID,
+			RegID:     registry.ID,
+			Name:      skill.Name,
+			Version:   skill.Version,
+			VersionID: versionID,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to upsert latest skill version: %w", err)
@@ -387,7 +406,7 @@ func (s *dbService) executePublishSkillTransaction(
 }
 
 func makeInsertSkillVersionParams(
-	entryID uuid.UUID,
+	versionID uuid.UUID,
 	skill *service.Skill,
 ) (*sqlc.InsertSkillVersionParams, error) {
 
@@ -417,7 +436,7 @@ func makeInsertSkillVersionParams(
 	}
 
 	skillParams := sqlc.InsertSkillVersionParams{
-		EntryID:       entryID,
+		VersionID:     versionID,
 		Namespace:     skill.Namespace,
 		Status:        status,
 		AllowedTools:  skill.AllowedTools,
@@ -452,24 +471,58 @@ func (s *dbService) DeleteSkillVersion(
 		}
 	}
 
-	registry, err := validateManagedRegistry(ctx, sqlc.New(s.pool), options.RegistryName)
-	if err != nil {
+	if err := s.executeDeleteSkillTransaction(ctx, options); err != nil {
 		otel.RecordError(span, err)
 		return err
 	}
 
-	querier := sqlc.New(s.pool)
-	affected, err := querier.DeleteRegistryEntry(ctx, sqlc.DeleteRegistryEntryParams{
-		RegID:   registry.ID,
-		Name:    options.Name,
-		Version: options.Version,
+	return nil
+}
+
+// executeDeleteSkillTransaction runs the skill version deletion within a serializable transaction.
+func (s *dbService) executeDeleteSkillTransaction(
+	ctx context.Context,
+	options *service.DeleteSkillVersionOptions,
+) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.Serializable,
+		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
-		otel.RecordError(span, err)
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	registry, err := validateManagedRegistry(ctx, querier, options.RegistryName)
+	if err != nil {
 		return err
 	}
-	if affected == 0 {
-		return fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
+
+	entryID, err := lookupAndDeleteEntryVersion(
+		ctx,
+		querier,
+		registry.ID,
+		sqlc.EntryTypeSKILL,
+		options.Name,
+		options.Version,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := cleanupOrphanedEntry(ctx, querier, entryID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil

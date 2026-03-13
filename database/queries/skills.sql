@@ -3,14 +3,14 @@
 -- The cursor_name and cursor_version parameters define the starting point.
 -- When cursor is provided, results start AFTER the specified (name, version) tuple.
 SELECT r.reg_type AS registry_type,
-       s.entry_id,
+       s.version_id,
        e.name,
-       e.version,
-       (l.latest_entry_id IS NOT NULL)::boolean AS is_latest,
-       e.created_at,
-       e.updated_at,
-       e.description,
-       e.title,
+       v.version,
+       (l.latest_version_id IS NOT NULL)::boolean AS is_latest,
+       v.created_at,
+       v.updated_at,
+       v.description,
+       v.title,
        s.namespace,
        s.status,
        s.license,
@@ -21,36 +21,37 @@ SELECT r.reg_type AS registry_type,
        s.metadata,
        s.extension_meta
   FROM skill s
-  JOIN registry_entry e ON s.entry_id = e.id
+  JOIN entry_version v ON s.version_id = v.id
+  JOIN registry_entry e ON v.entry_id = e.id
   JOIN registry r ON e.reg_id = r.id
-  LEFT JOIN latest_entry_version l ON e.id = l.latest_entry_id
+  LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
  WHERE (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
    AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text)
    AND (sqlc.narg(name)::text IS NULL OR e.name = sqlc.narg(name)::text)
    AND (sqlc.narg(search)::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
-       OR LOWER(e.title) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
-       OR LOWER(e.description) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
+       OR LOWER(v.title) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
+       OR LOWER(v.description) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
    ))
-   AND (sqlc.narg(updated_since)::timestamp with time zone IS NULL OR e.updated_at > sqlc.narg(updated_since)::timestamp with time zone)
+   AND (sqlc.narg(updated_since)::timestamp with time zone IS NULL OR v.updated_at > sqlc.narg(updated_since)::timestamp with time zone)
    AND (
        sqlc.narg(cursor_name)::text IS NULL
-       OR (e.name, e.version) > (sqlc.narg(cursor_name)::text, sqlc.narg(cursor_version)::text)
+       OR (e.name, v.version) > (sqlc.narg(cursor_name)::text, sqlc.narg(cursor_version)::text)
    )
- ORDER BY e.name ASC, e.version ASC
+ ORDER BY e.name ASC, v.version ASC
  LIMIT sqlc.arg(size)::bigint;
 
 -- name: GetSkillVersion :one
 SELECT r.reg_type AS registry_type,
-       e.id,
+       v.id,
        e.name,
-       e.version,
-       (l.latest_entry_id IS NOT NULL)::boolean AS is_latest,
-       e.created_at,
-       e.updated_at,
-       e.description,
-       e.title,
-       s.entry_id AS skill_entry_id,
+       v.version,
+       (l.latest_version_id IS NOT NULL)::boolean AS is_latest,
+       v.created_at,
+       v.updated_at,
+       v.description,
+       v.title,
+       s.version_id AS skill_version_id,
        s.namespace,
        s.status,
        s.license,
@@ -61,40 +62,41 @@ SELECT r.reg_type AS registry_type,
        s.metadata,
        s.extension_meta
   FROM skill s
-  JOIN registry_entry e ON s.entry_id = e.id
+  JOIN entry_version v ON s.version_id = v.id
+  JOIN registry_entry e ON v.entry_id = e.id
   JOIN registry r ON e.reg_id = r.id
-  LEFT JOIN latest_entry_version l ON e.id = l.latest_entry_id
+  LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
  WHERE e.name = sqlc.arg(name)
-   AND (e.version = sqlc.arg(version)::text
-       OR (sqlc.arg(version)::text = 'latest' AND l.latest_entry_id = e.id)
+   AND (v.version = sqlc.arg(version)::text
+       OR (sqlc.arg(version)::text = 'latest' AND l.latest_version_id = v.id)
    )
    AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
    AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text);
 
 -- name: ListSkillOciPackages :many
 SELECT p.id,
-       p.skill_entry_id,
+       p.skill_id,
        p.identifier,
        p.digest,
        p.media_type
   FROM skill_oci_package p
-  JOIN skill s ON p.skill_entry_id = s.entry_id
- WHERE s.entry_id = ANY(sqlc.slice(entry_ids)::UUID[]);
+  JOIN skill s ON p.skill_id = s.version_id
+ WHERE s.version_id = ANY(sqlc.slice(version_ids)::UUID[]);
 
 -- name: ListSkillGitPackages :many
 SELECT p.id,
-       p.skill_entry_id,
+       p.skill_id,
        p.url,
        p.ref,
        p.commit_sha,
        p.subfolder
   FROM skill_git_package p
-  JOIN skill s ON p.skill_entry_id = s.entry_id
- WHERE s.entry_id = ANY(sqlc.slice(entry_ids)::UUID[]);
+  JOIN skill s ON p.skill_id = s.version_id
+ WHERE s.version_id = ANY(sqlc.slice(version_ids)::UUID[]);
 
 -- name: InsertSkillVersion :one
 INSERT INTO skill (
-    entry_id,
+    version_id,
     namespace,
     status,
     license,
@@ -105,7 +107,7 @@ INSERT INTO skill (
     metadata,
     extension_meta
 ) VALUES (
-    sqlc.arg(entry_id),
+    sqlc.arg(version_id),
     sqlc.arg(namespace),
     COALESCE(sqlc.narg(status)::skill_status, 'ACTIVE'),
     sqlc.narg(license),
@@ -116,33 +118,33 @@ INSERT INTO skill (
     sqlc.narg(metadata),
     sqlc.narg(extension_meta)
 )
-RETURNING entry_id;
+RETURNING version_id;
 
 -- name: UpsertLatestSkillVersion :one
 INSERT INTO latest_entry_version (
     reg_id,
     name,
     version,
-    latest_entry_id
+    latest_version_id
 ) VALUES (
     sqlc.arg(reg_id),
     sqlc.arg(name),
     sqlc.arg(version),
-    sqlc.arg(entry_id)
+    sqlc.arg(version_id)
 ) ON CONFLICT (reg_id, name)
   DO UPDATE SET
     version = sqlc.arg(version),
-    latest_entry_id = sqlc.arg(entry_id)
-RETURNING latest_entry_id;
+    latest_version_id = sqlc.arg(version_id)
+RETURNING latest_version_id;
 
 -- name: InsertSkillOciPackage :exec
 INSERT INTO skill_oci_package (
-    skill_entry_id,
+    skill_id,
     identifier,
     digest,
     media_type
 ) VALUES (
-    sqlc.arg(skill_entry_id),
+    sqlc.arg(skill_id),
     sqlc.arg(identifier),
     sqlc.narg(digest),
     sqlc.narg(media_type)
@@ -150,13 +152,13 @@ INSERT INTO skill_oci_package (
 
 -- name: InsertSkillGitPackage :exec
 INSERT INTO skill_git_package (
-    skill_entry_id,
+    skill_id,
     url,
     ref,
     commit_sha,
     subfolder
 ) VALUES (
-    sqlc.arg(skill_entry_id),
+    sqlc.arg(skill_id),
     sqlc.arg(url),
     sqlc.narg(ref),
     sqlc.narg(commit_sha),
@@ -164,18 +166,19 @@ INSERT INTO skill_git_package (
 );
 
 -- name: DeleteSkillsByRegistry :exec
-WITH registry_entries AS (
-    SELECT e.id
-      FROM registry_entry e
-      JOIN skill s ON e.id = s.entry_id
+WITH skill_entries AS (
+    SELECT DISTINCT v.entry_id
+      FROM entry_version v
+      JOIN registry_entry e ON v.entry_id = e.id
+      JOIN skill s ON v.id = s.version_id
      WHERE e.reg_id = sqlc.arg(reg_id)
 )
 DELETE FROM registry_entry
- WHERE id IN (SELECT id FROM registry_entries);
+ WHERE id IN (SELECT entry_id FROM skill_entries);
 
 -- name: InsertSkillVersionForSync :one
 INSERT INTO skill (
-    entry_id,
+    version_id,
     namespace,
     status,
     license,
@@ -186,7 +189,7 @@ INSERT INTO skill (
     metadata,
     extension_meta
 ) VALUES (
-    sqlc.arg(entry_id),
+    sqlc.arg(version_id),
     sqlc.arg(namespace),
     COALESCE(sqlc.narg(status)::skill_status, 'ACTIVE'),
     sqlc.narg(license),
@@ -197,11 +200,11 @@ INSERT INTO skill (
     sqlc.narg(metadata),
     sqlc.narg(extension_meta)
 )
-RETURNING entry_id;
+RETURNING version_id;
 
 -- name: UpsertSkillVersionForSync :one
 INSERT INTO skill (
-    entry_id,
+    version_id,
     namespace,
     status,
     license,
@@ -212,7 +215,7 @@ INSERT INTO skill (
     metadata,
     extension_meta
 ) VALUES (
-    sqlc.arg(entry_id),
+    sqlc.arg(version_id),
     sqlc.arg(namespace),
     COALESCE(sqlc.narg(status)::skill_status, 'ACTIVE'),
     sqlc.narg(license),
@@ -223,7 +226,7 @@ INSERT INTO skill (
     sqlc.narg(metadata),
     sqlc.narg(extension_meta)
 )
-ON CONFLICT (entry_id)
+ON CONFLICT (version_id)
 DO UPDATE SET
     status = COALESCE(sqlc.narg(status)::skill_status, skill.status),
     license = sqlc.narg(license),
@@ -233,14 +236,15 @@ DO UPDATE SET
     icons = sqlc.narg(icons),
     metadata = sqlc.narg(metadata),
     extension_meta = sqlc.narg(extension_meta)
-RETURNING entry_id;
+RETURNING version_id;
 
 -- name: DeleteOrphanedSkills :exec
 WITH subset AS (
-    SELECT e.id
-      FROM registry_entry e
-     WHERE reg_id = sqlc.arg(reg_id)
-       AND e.id != ALL(sqlc.slice(keep_ids)::UUID[])
+    SELECT v.id
+      FROM entry_version v
+      JOIN registry_entry e ON v.entry_id = e.id
+     WHERE e.reg_id = sqlc.arg(reg_id)
+       AND v.id != ALL(sqlc.slice(keep_ids)::UUID[])
 )
 DELETE FROM skill s
- WHERE s.entry_id IN (SELECT id FROM subset);
+ WHERE s.version_id IN (SELECT id FROM subset);

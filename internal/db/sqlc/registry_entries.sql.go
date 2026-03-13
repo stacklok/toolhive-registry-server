@@ -12,35 +12,98 @@ import (
 	"github.com/google/uuid"
 )
 
-const deleteRegistryEntry = `-- name: DeleteRegistryEntry :execrows
-DELETE FROM registry_entry
-WHERE reg_id = $1
-  AND name = $2
-  AND version = $3
+const countEntryVersions = `-- name: CountEntryVersions :one
+SELECT count(*) FROM entry_version
+WHERE entry_id = $1
 `
 
-type DeleteRegistryEntryParams struct {
-	RegID   uuid.UUID `json:"reg_id"`
-	Name    string    `json:"name"`
+func (q *Queries) CountEntryVersions(ctx context.Context, entryID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countEntryVersions, entryID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const deleteEntryVersion = `-- name: DeleteEntryVersion :execrows
+DELETE FROM entry_version
+WHERE entry_id = $1
+  AND version = $2
+`
+
+type DeleteEntryVersionParams struct {
+	EntryID uuid.UUID `json:"entry_id"`
 	Version string    `json:"version"`
 }
 
-func (q *Queries) DeleteRegistryEntry(ctx context.Context, arg DeleteRegistryEntryParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteRegistryEntry, arg.RegID, arg.Name, arg.Version)
+func (q *Queries) DeleteEntryVersion(ctx context.Context, arg DeleteEntryVersionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEntryVersion, arg.EntryID, arg.Version)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const insertRegistryEntry = `-- name: InsertRegistryEntry :one
-INSERT INTO registry_entry (
-    reg_id,
-    entry_type,
-    name,
+const deleteRegistryEntry = `-- name: DeleteRegistryEntry :execrows
+DELETE FROM registry_entry
+WHERE reg_id = $1
+  AND entry_type = $2
+  AND name = $3
+`
+
+type DeleteRegistryEntryParams struct {
+	RegID     uuid.UUID `json:"reg_id"`
+	EntryType EntryType `json:"entry_type"`
+	Name      string    `json:"name"`
+}
+
+func (q *Queries) DeleteRegistryEntry(ctx context.Context, arg DeleteRegistryEntryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRegistryEntry, arg.RegID, arg.EntryType, arg.Name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteRegistryEntryByID = `-- name: DeleteRegistryEntryByID :execrows
+DELETE FROM registry_entry
+WHERE id = $1
+`
+
+func (q *Queries) DeleteRegistryEntryByID(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRegistryEntryByID, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getRegistryEntryByName = `-- name: GetRegistryEntryByName :one
+SELECT id
+  FROM registry_entry
+ WHERE reg_id = $1
+   AND entry_type = $2
+   AND name = $3
+`
+
+type GetRegistryEntryByNameParams struct {
+	RegID     uuid.UUID `json:"reg_id"`
+	EntryType EntryType `json:"entry_type"`
+	Name      string    `json:"name"`
+}
+
+func (q *Queries) GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getRegistryEntryByName, arg.RegID, arg.EntryType, arg.Name)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const insertEntryVersion = `-- name: InsertEntryVersion :one
+INSERT INTO entry_version (
+    entry_id,
+    version,
     title,
     description,
-    version,
     created_at,
     updated_at
 ) VALUES (
@@ -49,21 +112,55 @@ INSERT INTO registry_entry (
     $3,
     $4,
     $5,
-    $6,
-    $7,
-    $8
+    $6
+) RETURNING id
+`
+
+type InsertEntryVersionParams struct {
+	EntryID     uuid.UUID  `json:"entry_id"`
+	Version     string     `json:"version"`
+	Title       *string    `json:"title"`
+	Description *string    `json:"description"`
+	CreatedAt   *time.Time `json:"created_at"`
+	UpdatedAt   *time.Time `json:"updated_at"`
+}
+
+func (q *Queries) InsertEntryVersion(ctx context.Context, arg InsertEntryVersionParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, insertEntryVersion,
+		arg.EntryID,
+		arg.Version,
+		arg.Title,
+		arg.Description,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const insertRegistryEntry = `-- name: InsertRegistryEntry :one
+INSERT INTO registry_entry (
+    reg_id,
+    entry_type,
+    name,
+    created_at,
+    updated_at
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5
 ) RETURNING id
 `
 
 type InsertRegistryEntryParams struct {
-	RegID       uuid.UUID  `json:"reg_id"`
-	EntryType   EntryType  `json:"entry_type"`
-	Name        string     `json:"name"`
-	Title       *string    `json:"title"`
-	Description *string    `json:"description"`
-	Version     string     `json:"version"`
-	CreatedAt   *time.Time `json:"created_at"`
-	UpdatedAt   *time.Time `json:"updated_at"`
+	RegID     uuid.UUID  `json:"reg_id"`
+	EntryType EntryType  `json:"entry_type"`
+	Name      string     `json:"name"`
+	CreatedAt *time.Time `json:"created_at"`
+	UpdatedAt *time.Time `json:"updated_at"`
 }
 
 func (q *Queries) InsertRegistryEntry(ctx context.Context, arg InsertRegistryEntryParams) (uuid.UUID, error) {
@@ -71,9 +168,6 @@ func (q *Queries) InsertRegistryEntry(ctx context.Context, arg InsertRegistryEnt
 		arg.RegID,
 		arg.EntryType,
 		arg.Name,
-		arg.Title,
-		arg.Description,
-		arg.Version,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

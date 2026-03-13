@@ -26,7 +26,8 @@ const (
 
 	testQuery = `
 	SELECT COUNT(s.*) FROM mcp_server s
-	  JOIN registry_entry e ON s.entry_id = e.id
+	  JOIN entry_version v ON s.version_id = v.id
+	  JOIN registry_entry e ON v.entry_id = e.id
 	 WHERE e.reg_id = $1
 	   AND e.entry_type = 'MCP'
 	`
@@ -305,16 +306,16 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "successful sync with single server",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry: createTestUpstreamRegistry([]upstreamv0.ServerJSON{
 				createTestServer("test.org/server", "1.0.0"),
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -328,8 +329,8 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "successful sync with multiple servers",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry: createTestUpstreamRegistry([]upstreamv0.ServerJSON{
@@ -338,8 +339,8 @@ func TestDbSyncWriter_Store(t *testing.T) {
 				createTestServer("test.org/server3", "3.0.0"),
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -351,16 +352,16 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "successful sync with server packages",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry: createTestUpstreamRegistry([]upstreamv0.ServerJSON{
 				createTestServerWithPackages("test.org/server", "1.0.0"),
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -378,16 +379,16 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "successful sync with server remotes",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry: createTestUpstreamRegistry([]upstreamv0.ServerJSON{
 				createTestServerWithRemotes("test.org/server", "1.0.0"),
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -405,16 +406,16 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "successful sync with server icons",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry: createTestUpstreamRegistry([]upstreamv0.ServerJSON{
 				createTestServerWithIcons("test.org/server", "1.0.0"),
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -427,16 +428,16 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "successful sync with repository info",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry: createTestUpstreamRegistry([]upstreamv0.ServerJSON{
 				createTestServerWithRepository("test.org/server", "1.0.0"),
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -452,16 +453,16 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "successful sync with metadata",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry: createTestUpstreamRegistry([]upstreamv0.ServerJSON{
 				createTestServerWithMeta("test.org/server", "1.0.0"),
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -476,16 +477,16 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "successful sync with full server",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry: createTestUpstreamRegistry([]upstreamv0.ServerJSON{
 				createFullTestServer("test.org/server", "1.0.0"),
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -505,14 +506,14 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "successful sync with empty servers list",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry:    createTestUpstreamRegistry([]upstreamv0.ServerJSON{}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -524,8 +525,8 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "successful sync replaces existing servers",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				ctx := context.Background()
 				regID := createTestRegistry(t, pool, "test-registry")
 				queries := sqlc.New(pool)
@@ -535,13 +536,19 @@ func TestDbSyncWriter_Store(t *testing.T) {
 					RegID:     regID,
 					EntryType: sqlc.EntryTypeMCP,
 					Name:      "test.org/old-server",
-					Version:   "0.1.0",
+				})
+				require.NoError(t, err)
+
+				// Insert entry version
+				versionID, err := queries.InsertEntryVersion(ctx, sqlc.InsertEntryVersionParams{
+					EntryID: entryID,
+					Version: "0.1.0",
 				})
 				require.NoError(t, err)
 
 				// Insert existing server that should be deleted
 				_, err = queries.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
-					EntryID: entryID,
+					VersionID: versionID,
 				})
 				require.NoError(t, err)
 			},
@@ -549,8 +556,8 @@ func TestDbSyncWriter_Store(t *testing.T) {
 				createTestServer("test.org/new-server", "1.0.0"),
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -563,16 +570,16 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "successful sync updates latest version - single version",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry: createTestUpstreamRegistry([]upstreamv0.ServerJSON{
 				createTestServer("test.org/server", "1.0.0"),
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -588,8 +595,8 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "successful sync updates latest version - multiple versions",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry: createTestUpstreamRegistry([]upstreamv0.ServerJSON{
@@ -598,8 +605,8 @@ func TestDbSyncWriter_Store(t *testing.T) {
 				createTestServer("test.org/server", "1.5.0"),
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -647,8 +654,8 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "multiple servers same name different versions",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry: createTestUpstreamRegistry([]upstreamv0.ServerJSON{
@@ -657,8 +664,8 @@ func TestDbSyncWriter_Store(t *testing.T) {
 				createTestServer("test.org/server", "2.0.0"),
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -673,8 +680,8 @@ func TestDbSyncWriter_Store(t *testing.T) {
 		{
 			name:         "server with empty optional fields",
 			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				t.Helper()
 				createTestRegistry(t, pool, "test-registry")
 			},
 			registry: createTestUpstreamRegistry([]upstreamv0.ServerJSON{
@@ -687,8 +694,8 @@ func TestDbSyncWriter_Store(t *testing.T) {
 				},
 			}),
 			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
-				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
@@ -1782,7 +1789,7 @@ func TestDbSyncWriter_Store_IconCleanup(t *testing.T) {
 
 	// Count icons using raw query
 	var iconCount int
-	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server_icon WHERE entry_id = $1", originalUUID).Scan(&iconCount)
+	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server_icon WHERE server_id = $1", originalUUID).Scan(&iconCount)
 	require.NoError(t, err)
 	require.Equal(t, 2, iconCount, "Should have 2 icons after first sync")
 
@@ -1809,7 +1816,7 @@ func TestDbSyncWriter_Store_IconCleanup(t *testing.T) {
 	assert.Equal(t, originalUUID, serverAfterUpdate.ID, "Server UUID should be preserved")
 
 	// Verify only 1 icon exists
-	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server_icon WHERE entry_id = $1", originalUUID).Scan(&iconCount)
+	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_server_icon WHERE server_id = $1", originalUUID).Scan(&iconCount)
 	require.NoError(t, err)
 	require.Equal(t, 1, iconCount, "Should have 1 icon after second sync")
 }

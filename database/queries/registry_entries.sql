@@ -1,20 +1,21 @@
+-- name: GetRegistryEntryByName :one
+SELECT id
+  FROM registry_entry
+ WHERE reg_id = sqlc.arg(reg_id)
+   AND entry_type = sqlc.arg(entry_type)
+   AND name = sqlc.arg(name);
+
 -- name: InsertRegistryEntry :one
 INSERT INTO registry_entry (
     reg_id,
     entry_type,
     name,
-    title,
-    description,
-    version,
     created_at,
     updated_at
 ) VALUES (
     sqlc.arg(reg_id),
     sqlc.arg(entry_type),
     sqlc.arg(name),
-    sqlc.arg(title),
-    sqlc.arg(description),
-    sqlc.arg(version),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 ) RETURNING id;
@@ -22,5 +23,35 @@ INSERT INTO registry_entry (
 -- name: DeleteRegistryEntry :execrows
 DELETE FROM registry_entry
 WHERE reg_id = sqlc.arg(reg_id)
-  AND name = sqlc.arg(name)
+  AND entry_type = sqlc.arg(entry_type)
+  AND name = sqlc.arg(name);
+
+-- name: InsertEntryVersion :one
+INSERT INTO entry_version (
+    entry_id,
+    version,
+    title,
+    description,
+    created_at,
+    updated_at
+) VALUES (
+    sqlc.arg(entry_id),
+    sqlc.arg(version),
+    sqlc.arg(title),
+    sqlc.arg(description),
+    sqlc.arg(created_at),
+    sqlc.arg(updated_at)
+) RETURNING id;
+
+-- name: DeleteEntryVersion :execrows
+DELETE FROM entry_version
+WHERE entry_id = sqlc.arg(entry_id)
   AND version = sqlc.arg(version);
+
+-- name: CountEntryVersions :one
+SELECT count(*) FROM entry_version
+WHERE entry_id = sqlc.arg(entry_id);
+
+-- name: DeleteRegistryEntryByID :execrows
+DELETE FROM registry_entry
+WHERE id = sqlc.arg(id);
