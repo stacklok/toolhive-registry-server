@@ -25,6 +25,13 @@ ON CONFLICT (registry_id, source_id) DO UPDATE SET position = EXCLUDED.position;
 DELETE FROM registry_source
 WHERE registry_id = sqlc.arg(registry_id) AND source_id = sqlc.arg(source_id);
 
+-- name: DeleteConfigRegistriesNotInList :exec
+-- Delete CONFIG registry rows whose names are not in the provided list.
+-- Used during config sync to clean up registry/junction rows before deleting orphaned sources.
+DELETE FROM registry
+WHERE creation_type = 'CONFIG'
+  AND name NOT IN (SELECT unnest(sqlc.arg(keep_names)::text[]));
+
 -- name: ListRegistrySources :many
 SELECT s.id, s.name
 FROM registry_source rs

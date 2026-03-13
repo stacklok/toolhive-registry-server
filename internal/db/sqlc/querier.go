@@ -32,6 +32,9 @@ type Querier interface {
 	CreateTempServerTable(ctx context.Context) error
 	// Delete an API source by name (returns 0 if not found or is CONFIG type)
 	DeleteAPISource(ctx context.Context, name string) (int64, error)
+	// Delete CONFIG registry rows whose names are not in the provided list.
+	// Used during config sync to clean up registry/junction rows before deleting orphaned sources.
+	DeleteConfigRegistriesNotInList(ctx context.Context, keepNames []string) error
 	// Delete a CONFIG source by name (returns 0 if not found or is API type)
 	DeleteConfigSource(ctx context.Context, name string) (int64, error)
 	// Delete CONFIG sources not in the provided list (for config file sync)
