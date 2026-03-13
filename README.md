@@ -145,9 +145,9 @@ registries:
   - name: toolhive
     format: toolhive
     git:
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/registry.json
     syncPolicy:
       interval: '30m'
 ```
@@ -168,8 +168,7 @@ The server follows clean architecture with clear separation of concerns:
                     │
 ┌─────────────────────────────────────────────┐
 │  Service Layer                              │
-│  ├─ DB Service (PostgreSQL)                 │
-│  └─ In-Memory Service                       │
+│  └─ DB Service (PostgreSQL)                 │
 └─────────────────────────────────────────────┘
                     │
 ┌─────────────────────────────────────────────┐
@@ -271,9 +270,9 @@ auth:
 # - name: toolhive
 #   format: toolhive
 #   git:
-#     repository: https://github.com/stacklok/toolhive.git
+#     repository: https://github.com/stacklok/toolhive-catalog.git
 #     branch: main
-#     path: pkg/registry/data/registry.json
+#     path: pkg/catalog/toolhive/data/registry.json
 #   syncPolicy:
 #     interval: "30m"
 

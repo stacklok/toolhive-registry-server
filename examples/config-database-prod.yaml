@@ -51,10 +51,10 @@ registries:
 
     # Git repository configuration
     git:
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
       # Use a specific tag for production stability
       tag: v1.0.0
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/registry.json
 
     # Per-registry automatic synchronization policy
     syncPolicy:
