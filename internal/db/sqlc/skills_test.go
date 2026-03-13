@@ -27,7 +27,7 @@ func createSkillEntry(
 		context.Background(),
 		InsertRegistryEntryParams{
 			Name:      name,
-			RegID:     regID,
+			SourceID:  regID,
 			EntryType: EntryTypeSKILL,
 			CreatedAt: &createdAt,
 			UpdatedAt: &createdAt,
@@ -147,7 +147,7 @@ func TestInsertSkillVersion(t *testing.T) {
 					context.Background(),
 					InsertRegistryEntryParams{
 						Name:      "test-skill-dup",
-						RegID:     regID,
+						SourceID:  regID,
 						EntryType: EntryTypeSKILL,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
@@ -510,7 +510,7 @@ func TestGetSkillVersion(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, skillName, skill.Name)
 				require.Equal(t, version, skill.Version)
-				require.Equal(t, RegistryTypeREMOTE, skill.RegistryType)
+				require.Equal(t, "git", skill.RegistryType)
 				require.Equal(t, "test-namespace", skill.Namespace)
 				require.Equal(t, SkillStatusACTIVE, skill.Status)
 				require.False(t, skill.IsLatest)
@@ -582,7 +582,7 @@ func TestGetSkillVersion(t *testing.T) {
 				_, err := queries.UpsertLatestSkillVersion(
 					context.Background(),
 					UpsertLatestSkillVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-skill",
 						Version:   "1.0.0",
 						VersionID: versionID,
@@ -616,7 +616,7 @@ func TestGetSkillVersion(t *testing.T) {
 				_, err := queries.UpsertLatestSkillVersion(
 					context.Background(),
 					UpsertLatestSkillVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-skill",
 						Version:   "2.0.0",
 						VersionID: versionID,
@@ -780,7 +780,7 @@ func TestListSkills(t *testing.T) {
 				require.Equal(t, "test-skill", skills[0].Name)
 				require.Equal(t, "1.0.0", skills[0].Version)
 				require.Equal(t, "test-namespace", skills[0].Namespace)
-				require.Equal(t, RegistryTypeREMOTE, skills[0].RegistryType)
+				require.Equal(t, "git", skills[0].RegistryType)
 			},
 		},
 		{
@@ -956,7 +956,7 @@ func TestListSkills(t *testing.T) {
 					context.Background(),
 					InsertRegistryEntryParams{
 						Name:      "old-skill",
-						RegID:     regID,
+						SourceID:  regID,
 						EntryType: EntryTypeSKILL,
 						CreatedAt: &oldTime,
 						UpdatedAt: &oldTime,
@@ -979,7 +979,7 @@ func TestListSkills(t *testing.T) {
 					context.Background(),
 					InsertRegistryEntryParams{
 						Name:      "recent-skill",
-						RegID:     regID,
+						SourceID:  regID,
 						EntryType: EntryTypeSKILL,
 						CreatedAt: &recentTime,
 						UpdatedAt: &recentTime,
@@ -1055,7 +1055,7 @@ func TestListSkills(t *testing.T) {
 					context.Background(),
 					InsertRegistryEntryParams{
 						Name:      "test-skill",
-						RegID:     regID,
+						SourceID:  regID,
 						EntryType: EntryTypeSKILL,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
@@ -1134,7 +1134,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 				latestID, err := queries.UpsertLatestSkillVersion(
 					context.Background(),
 					UpsertLatestSkillVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-skill",
 						Version:   "1.0.0",
 						VersionID: ids[0],
@@ -1153,7 +1153,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 					context.Background(),
 					InsertRegistryEntryParams{
 						Name:      "test-skill",
-						RegID:     regID,
+						SourceID:  regID,
 						EntryType: EntryTypeSKILL,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
@@ -1181,7 +1181,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 				latestID, err := queries.UpsertLatestSkillVersion(
 					context.Background(),
 					UpsertLatestSkillVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-skill",
 						Version:   "1.0.0",
 						VersionID: versionIDs[0],
@@ -1198,7 +1198,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 				latestID, err := queries.UpsertLatestSkillVersion(
 					context.Background(),
 					UpsertLatestSkillVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-skill",
 						Version:   "2.0.0",
 						VersionID: ids[1],
@@ -1219,7 +1219,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 				_, err := queries.UpsertLatestSkillVersion(
 					context.Background(),
 					UpsertLatestSkillVersionParams{
-						RegID:     uuid.New(),
+						SourceID:  uuid.New(),
 						Name:      "test-skill",
 						Version:   "1.0.0",
 						VersionID: ids[0],
@@ -1239,7 +1239,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 				_, err := queries.UpsertLatestSkillVersion(
 					context.Background(),
 					UpsertLatestSkillVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-skill",
 						Version:   "1.0.0",
 						VersionID: ids[0],
@@ -1295,8 +1295,8 @@ func TestDeleteOrphanedSkills(t *testing.T) {
 				err := queries.DeleteOrphanedSkills(
 					context.Background(),
 					DeleteOrphanedSkillsParams{
-						RegID:   regID,
-						KeepIds: []uuid.UUID{entryIDs[0]},
+						SourceID: regID,
+						KeepIds:  []uuid.UUID{entryIDs[0]},
 					},
 				)
 				require.NoError(t, err)
@@ -1328,8 +1328,8 @@ func TestDeleteOrphanedSkills(t *testing.T) {
 				err := queries.DeleteOrphanedSkills(
 					context.Background(),
 					DeleteOrphanedSkillsParams{
-						RegID:   regID,
-						KeepIds: []uuid.UUID{},
+						SourceID: regID,
+						KeepIds:  []uuid.UUID{},
 					},
 				)
 				require.NoError(t, err)
@@ -1353,8 +1353,8 @@ func TestDeleteOrphanedSkills(t *testing.T) {
 				err := queries.DeleteOrphanedSkills(
 					context.Background(),
 					DeleteOrphanedSkillsParams{
-						RegID:   regID,
-						KeepIds: []uuid.UUID{},
+						SourceID: regID,
+						KeepIds:  []uuid.UUID{},
 					},
 				)
 				require.NoError(t, err)

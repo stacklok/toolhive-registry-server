@@ -28,7 +28,7 @@ const (
 	SELECT COUNT(s.*) FROM mcp_server s
 	  JOIN entry_version v ON s.version_id = v.id
 	  JOIN registry_entry e ON v.entry_id = e.id
-	 WHERE e.reg_id = $1
+	 WHERE e.source_id = $1
 	   AND e.entry_type = 'MCP'
 	`
 )
@@ -56,18 +56,18 @@ func setupTestDB(t *testing.T) (*pgxpool.Pool, func()) {
 	return pool, poolCleanup
 }
 
-// createTestRegistry creates a test registry in the database and returns its ID
-// Uses REMOTE registry type by default, which is the typical type for synced registries
+// createTestRegistry creates a test source in the database and returns its ID
+// Uses "git" source type by default, which is the typical type for synced registries
 func createTestRegistry(t *testing.T, pool *pgxpool.Pool, name string) uuid.UUID {
 	t.Helper()
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
 
-	regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-		Name:     name,
-		RegType:  sqlc.RegistryTypeREMOTE,
-		Syncable: true,
+	regID, err := queries.InsertConfigSource(ctx, sqlc.InsertConfigSourceParams{
+		Name:       name,
+		SourceType: "git",
+		Syncable:   true,
 	})
 	require.NoError(t, err)
 
@@ -533,7 +533,7 @@ func TestDbSyncWriter_Store(t *testing.T) {
 
 				// Insert registry entry
 				entryID, err := queries.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
-					RegID:     regID,
+					SourceID:  regID,
 					EntryType: sqlc.EntryTypeMCP,
 					Name:      "test.org/old-server",
 				})
