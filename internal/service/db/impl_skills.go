@@ -298,13 +298,13 @@ func (s *dbService) executePublishSkillTransaction(
 
 	// Get or create the registry entry (one per unique name)
 	entryID, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
-		RegID:     registry.ID,
+		SourceID:  registry.ID,
 		EntryType: sqlc.EntryTypeSKILL,
 		Name:      skill.Name,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		entryID, err = querier.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
-			RegID:     registry.ID,
+			SourceID:  registry.ID,
 			EntryType: sqlc.EntryTypeSKILL,
 			Name:      skill.Name,
 			CreatedAt: &now,
@@ -388,7 +388,7 @@ func (s *dbService) executePublishSkillTransaction(
 
 	if shouldUpdateLatest {
 		_, err = querier.UpsertLatestSkillVersion(ctx, sqlc.UpsertLatestSkillVersionParams{
-			RegID:     registry.ID,
+			SourceID:  registry.ID,
 			Name:      skill.Name,
 			Version:   skill.Version,
 			VersionID: versionID,

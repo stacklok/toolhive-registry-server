@@ -52,13 +52,13 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	ctx := context.Background()
 	queries := sqlc.New(pool)
 
-	// Create a registry
-	regID, err := queries.InsertConfigRegistry(
+	// Create a source
+	regID, err := queries.InsertConfigSource(
 		ctx,
-		sqlc.InsertConfigRegistryParams{
-			Name:     "test-registry",
-			RegType:  sqlc.RegistryTypeREMOTE,
-			Syncable: true,
+		sqlc.InsertConfigSourceParams{
+			Name:       "test-registry",
+			SourceType: "git",
+			Syncable:   true,
 		},
 	)
 	require.NoError(t, err)
@@ -70,7 +70,7 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	entryID1, err := queries.InsertRegistryEntry(
 		ctx,
 		sqlc.InsertRegistryEntryParams{
-			RegID:     regID,
+			SourceID:  regID,
 			EntryType: sqlc.EntryTypeMCP,
 			Name:      "com.example/test-server-1",
 			CreatedAt: &now,
@@ -114,7 +114,7 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 			_, err := queries.UpsertLatestServerVersion(
 				ctx,
 				sqlc.UpsertLatestServerVersionParams{
-					RegID:     regID,
+					SourceID:  regID,
 					Name:      "com.example/test-server-1",
 					Version:   "2.0.0",
 					VersionID: versionID,
@@ -129,7 +129,7 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	entryID2, err := queries.InsertRegistryEntry(
 		ctx,
 		sqlc.InsertRegistryEntryParams{
-			RegID:     regID,
+			SourceID:  regID,
 			EntryType: sqlc.EntryTypeMCP,
 			Name:      "com.example/test-server-2",
 			CreatedAt: &createdAt,
@@ -744,13 +744,13 @@ func TestGetServerVersion(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a registry
-				regID, err := queries.InsertConfigRegistry(
+				// Create a source
+				regID, err := queries.InsertConfigSource(
 					ctx,
-					sqlc.InsertConfigRegistryParams{
-						Name:     "test-registry-with-packages",
-						RegType:  sqlc.RegistryTypeREMOTE,
-						Syncable: true,
+					sqlc.InsertConfigSourceParams{
+						Name:       "test-registry-with-packages",
+						SourceType: "git",
+						Syncable:   true,
 					},
 				)
 				require.NoError(t, err)
@@ -760,7 +760,7 @@ func TestGetServerVersion(t *testing.T) {
 				entryID, err := queries.InsertRegistryEntry(
 					ctx,
 					sqlc.InsertRegistryEntryParams{
-						RegID:     regID,
+						SourceID:  regID,
 						EntryType: sqlc.EntryTypeMCP,
 						Name:      "com.test/server-with-packages",
 						CreatedAt: &now,
@@ -1106,37 +1106,25 @@ func TestPublishServerVersion(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		setupFunc    func(*testing.T, *pgxpool.Pool) *sqlc.Registry
+		setupFunc    func(*testing.T, *pgxpool.Pool)
 		serverData   *upstreamv0.ServerJSON
 		registryName string
 		validateFunc func(*testing.T, *upstreamv0.ServerJSON, error)
 	}{
 		{
 			name: "success - publish new server version",
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a MANAGED registry
-				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     "test-registry",
-					RegType:  sqlc.RegistryTypeMANAGED,
-					Syncable: false,
+				// Create a MANAGED source
+				_, err := queries.InsertConfigSource(ctx, sqlc.InsertConfigSourceParams{
+					Name:       "test-registry",
+					SourceType: "managed",
+					Syncable:   false,
 				})
 				require.NoError(t, err)
-
-				regRow, err := queries.GetRegistry(ctx, regID)
-				require.NoError(t, err)
-				// Convert row to Registry struct
-				reg := &sqlc.Registry{
-					ID:        regRow.ID,
-					Name:      regRow.Name,
-					RegType:   regRow.RegType,
-					CreatedAt: regRow.CreatedAt,
-					UpdatedAt: regRow.UpdatedAt,
-				}
-				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.example/test-server",
@@ -1157,29 +1145,17 @@ func TestPublishServerVersion(t *testing.T) {
 		},
 		{
 			name: "success - publish with metadata and repository",
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     "test-registry-meta",
-					RegType:  sqlc.RegistryTypeMANAGED,
-					Syncable: false,
+				_, err := queries.InsertConfigSource(ctx, sqlc.InsertConfigSourceParams{
+					Name:       "test-registry-meta",
+					SourceType: "managed",
+					Syncable:   false,
 				})
 				require.NoError(t, err)
-
-				regRow, err := queries.GetRegistry(ctx, regID)
-				require.NoError(t, err)
-				// Convert row to Registry struct
-				reg := &sqlc.Registry{
-					ID:        regRow.ID,
-					Name:      regRow.Name,
-					RegType:   regRow.RegType,
-					CreatedAt: regRow.CreatedAt,
-					UpdatedAt: regRow.UpdatedAt,
-				}
-				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.test/server-with-meta",
@@ -1211,29 +1187,17 @@ func TestPublishServerVersion(t *testing.T) {
 		},
 		{
 			name: "success - publish with packages and remotes",
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     "test-registry-full",
-					RegType:  sqlc.RegistryTypeMANAGED,
-					Syncable: false,
+				_, err := queries.InsertConfigSource(ctx, sqlc.InsertConfigSourceParams{
+					Name:       "test-registry-full",
+					SourceType: "managed",
+					Syncable:   false,
 				})
 				require.NoError(t, err)
-
-				regRow, err := queries.GetRegistry(ctx, regID)
-				require.NoError(t, err)
-				// Convert row to Registry struct
-				reg := &sqlc.Registry{
-					ID:        regRow.ID,
-					Name:      regRow.Name,
-					RegType:   regRow.RegType,
-					CreatedAt: regRow.CreatedAt,
-					UpdatedAt: regRow.UpdatedAt,
-				}
-				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "org.example/server-with-packages-remotes",
@@ -1282,9 +1246,8 @@ func TestPublishServerVersion(t *testing.T) {
 		},
 		{
 			name: "failure - registry not found",
-			setupFunc: func(t *testing.T, _ *pgxpool.Pool) *sqlc.Registry {
+			setupFunc: func(t *testing.T, _ *pgxpool.Pool) {
 				t.Helper()
-				return nil
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.example/test-server",
@@ -1301,30 +1264,18 @@ func TestPublishServerVersion(t *testing.T) {
 		},
 		{
 			name: "failure - not a managed registry",
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a REMOTE (non-managed) registry
-				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     "remote-registry",
-					RegType:  sqlc.RegistryTypeREMOTE,
-					Syncable: true,
+				// Create a REMOTE (non-managed) source
+				_, err := queries.InsertConfigSource(ctx, sqlc.InsertConfigSourceParams{
+					Name:       "remote-registry",
+					SourceType: "git",
+					Syncable:   true,
 				})
 				require.NoError(t, err)
-
-				regRow, err := queries.GetRegistry(ctx, regID)
-				require.NoError(t, err)
-				// Convert row to Registry struct
-				reg := &sqlc.Registry{
-					ID:        regRow.ID,
-					Name:      regRow.Name,
-					RegType:   regRow.RegType,
-					CreatedAt: regRow.CreatedAt,
-					UpdatedAt: regRow.UpdatedAt,
-				}
-				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.example/test-server",
@@ -1341,22 +1292,22 @@ func TestPublishServerVersion(t *testing.T) {
 		},
 		{
 			name: "failure - version already exists",
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a MANAGED registry
-				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     "test-registry-dup",
-					RegType:  sqlc.RegistryTypeMANAGED,
-					Syncable: false,
+				// Create a MANAGED source
+				regID, err := queries.InsertConfigSource(ctx, sqlc.InsertConfigSourceParams{
+					Name:       "test-registry-dup",
+					SourceType: "managed",
+					Syncable:   false,
 				})
 				require.NoError(t, err)
 
 				now := time.Now()
 				entryID, err := queries.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
-					RegID:     regID,
+					SourceID:  regID,
 					EntryType: sqlc.EntryTypeMCP,
 					Name:      "com.example/existing-server",
 					CreatedAt: &now,
@@ -1377,18 +1328,6 @@ func TestPublishServerVersion(t *testing.T) {
 					VersionID: versionID,
 				})
 				require.NoError(t, err)
-
-				regRow, err := queries.GetRegistry(ctx, regID)
-				require.NoError(t, err)
-				// Convert row to Registry struct
-				reg := &sqlc.Registry{
-					ID:        regRow.ID,
-					Name:      regRow.Name,
-					RegType:   regRow.RegType,
-					CreatedAt: regRow.CreatedAt,
-					UpdatedAt: regRow.UpdatedAt,
-				}
-				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.example/existing-server",
@@ -1450,10 +1389,9 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git","branch":"main"}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertAPISource(ctx, sqlc.InsertAPISourceParams{
 					Name:         "update-test-registry",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					SourceType:   &sourceType,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     true,
@@ -1500,10 +1438,9 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{"endpoint":"https://api.example.com/v1"}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertAPISource(ctx, sqlc.InsertAPISourceParams{
 					Name:         "same-type-test-registry",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					SourceType:   &sourceType,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     true,
@@ -1564,11 +1501,11 @@ func TestUpdateRegistry(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a CONFIG registry (created via config file, not API)
-				_, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     "config-registry-test",
-					RegType:  sqlc.RegistryTypeREMOTE,
-					Syncable: true,
+				// Create a CONFIG source (created via config file, not API)
+				_, err := queries.InsertConfigSource(ctx, sqlc.InsertConfigSourceParams{
+					Name:       "config-registry-test",
+					SourceType: "git",
+					Syncable:   true,
 				})
 				require.NoError(t, err)
 
@@ -1602,10 +1539,9 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git","branch":"main"}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertAPISource(ctx, sqlc.InsertAPISourceParams{
 					Name:         "source-type-change-test",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					SourceType:   &sourceType,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     true,
@@ -1644,10 +1580,9 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git"}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertAPISource(ctx, sqlc.InsertAPISourceParams{
 					Name:         "invalid-config-test",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					SourceType:   &sourceType,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     true,
@@ -1687,10 +1622,9 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git"}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertAPISource(ctx, sqlc.InsertAPISourceParams{
 					Name:         "no-source-type-test",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					SourceType:   &sourceType,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     true,
@@ -1727,10 +1661,9 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{"endpoint":"https://api.example.com/v1"}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertAPISource(ctx, sqlc.InsertAPISourceParams{
 					Name:         "missing-sync-policy-test",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					SourceType:   &sourceType,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     true,
@@ -1767,10 +1700,9 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertAPISource(ctx, sqlc.InsertAPISourceParams{
 					Name:         "managed-registry-update-test",
-					RegType:      sqlc.RegistryTypeMANAGED,
-					SourceType:   &sourceType,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     false,

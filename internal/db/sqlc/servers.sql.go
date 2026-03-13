@@ -17,7 +17,7 @@ WITH subset AS (
     SELECT v.id
       FROM entry_version v
       JOIN registry_entry e ON v.entry_id = e.id
-     WHERE e.reg_id = $1
+     WHERE e.source_id = $1
        AND v.id != ALL($2::UUID[])
 )
 DELETE FROM entry_version v
@@ -25,12 +25,12 @@ WHERE v.id IN (SELECT id FROM subset)
 `
 
 type DeleteOrphanedServersParams struct {
-	RegID   uuid.UUID   `json:"reg_id"`
-	KeepIds []uuid.UUID `json:"keep_ids"`
+	SourceID uuid.UUID   `json:"source_id"`
+	KeepIds  []uuid.UUID `json:"keep_ids"`
 }
 
 func (q *Queries) DeleteOrphanedServers(ctx context.Context, arg DeleteOrphanedServersParams) error {
-	_, err := q.db.Exec(ctx, deleteOrphanedServers, arg.RegID, arg.KeepIds)
+	_, err := q.db.Exec(ctx, deleteOrphanedServers, arg.SourceID, arg.KeepIds)
 	return err
 }
 
@@ -70,14 +70,14 @@ WITH registry_entries AS (
       FROM registry_entry e
       JOIN entry_version v ON v.entry_id = e.id
       JOIN mcp_server s ON v.id = s.version_id
-     WHERE e.reg_id = $1
+     WHERE e.source_id = $1
 )
 DELETE FROM registry_entry
  WHERE id IN (SELECT id FROM registry_entries)
 `
 
-func (q *Queries) DeleteServersByRegistry(ctx context.Context, regID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteServersByRegistry, regID)
+func (q *Queries) DeleteServersByRegistry(ctx context.Context, sourceID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteServersByRegistry, sourceID)
 	return err
 }
 
@@ -85,16 +85,16 @@ const getLatestVersionForServer = `-- name: GetLatestVersionForServer :one
 SELECT l.version
   FROM latest_entry_version l
  WHERE l.name = $1
-   AND l.reg_id = $2
+   AND l.source_id = $2
 `
 
 type GetLatestVersionForServerParams struct {
-	Name  string    `json:"name"`
-	RegID uuid.UUID `json:"reg_id"`
+	Name     string    `json:"name"`
+	SourceID uuid.UUID `json:"source_id"`
 }
 
 func (q *Queries) GetLatestVersionForServer(ctx context.Context, arg GetLatestVersionForServerParams) (string, error) {
-	row := q.db.QueryRow(ctx, getLatestVersionForServer, arg.Name, arg.RegID)
+	row := q.db.QueryRow(ctx, getLatestVersionForServer, arg.Name, arg.SourceID)
 	var version string
 	err := row.Scan(&version)
 	return version, err
@@ -105,7 +105,7 @@ SELECT s.version_id, e.name, v.version
   FROM entry_version v
   JOIN registry_entry e ON e.id = v.entry_id
   JOIN mcp_server s ON v.id = s.version_id
- WHERE e.reg_id = $1
+ WHERE e.source_id = $1
 `
 
 type GetServerIDsByRegistryNameVersionRow struct {
@@ -114,8 +114,8 @@ type GetServerIDsByRegistryNameVersionRow struct {
 	Version   string    `json:"version"`
 }
 
-func (q *Queries) GetServerIDsByRegistryNameVersion(ctx context.Context, regID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error) {
-	rows, err := q.db.Query(ctx, getServerIDsByRegistryNameVersion, regID)
+func (q *Queries) GetServerIDsByRegistryNameVersion(ctx context.Context, sourceID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error) {
+	rows, err := q.db.Query(ctx, getServerIDsByRegistryNameVersion, sourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (q *Queries) GetServerIDsByRegistryNameVersion(ctx context.Context, regID u
 }
 
 const getServerVersion = `-- name: GetServerVersion :one
-SELECT r.reg_type as registry_type,
+SELECT src.source_type as registry_type,
        v.id,
        e.name,
        v.version,
@@ -154,14 +154,14 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
-  JOIN registry r ON e.reg_id = r.id
+  JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
  WHERE e.name = $1
    AND (
        v.version = $2
        OR ($2 = 'latest' AND l.latest_version_id = v.id)
    )
-   AND ($3::text IS NULL OR r.name = $3::text)
+   AND ($3::text IS NULL OR src.name = $3::text)
 `
 
 type GetServerVersionParams struct {
@@ -171,22 +171,22 @@ type GetServerVersionParams struct {
 }
 
 type GetServerVersionRow struct {
-	RegistryType        RegistryType `json:"registry_type"`
-	ID                  uuid.UUID    `json:"id"`
-	Name                string       `json:"name"`
-	Version             string       `json:"version"`
-	IsLatest            bool         `json:"is_latest"`
-	CreatedAt           *time.Time   `json:"created_at"`
-	UpdatedAt           *time.Time   `json:"updated_at"`
-	Description         *string      `json:"description"`
-	Title               *string      `json:"title"`
-	Website             *string      `json:"website"`
-	UpstreamMeta        []byte       `json:"upstream_meta"`
-	ServerMeta          []byte       `json:"server_meta"`
-	RepositoryUrl       *string      `json:"repository_url"`
-	RepositoryID        *string      `json:"repository_id"`
-	RepositorySubfolder *string      `json:"repository_subfolder"`
-	RepositoryType      *string      `json:"repository_type"`
+	RegistryType        string     `json:"registry_type"`
+	ID                  uuid.UUID  `json:"id"`
+	Name                string     `json:"name"`
+	Version             string     `json:"version"`
+	IsLatest            bool       `json:"is_latest"`
+	CreatedAt           *time.Time `json:"created_at"`
+	UpdatedAt           *time.Time `json:"updated_at"`
+	Description         *string    `json:"description"`
+	Title               *string    `json:"title"`
+	Website             *string    `json:"website"`
+	UpstreamMeta        []byte     `json:"upstream_meta"`
+	ServerMeta          []byte     `json:"server_meta"`
+	RepositoryUrl       *string    `json:"repository_url"`
+	RepositoryID        *string    `json:"repository_id"`
+	RepositorySubfolder *string    `json:"repository_subfolder"`
+	RepositoryType      *string    `json:"repository_type"`
 }
 
 func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error) {
@@ -550,7 +550,7 @@ func (q *Queries) ListServerRemotes(ctx context.Context, versionIds []uuid.UUID)
 }
 
 const listServerVersions = `-- name: ListServerVersions :many
-SELECT r.reg_type as registry_type,
+SELECT src.source_type as registry_type,
        v.id,
        e.name,
        v.version,
@@ -569,10 +569,10 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
-  JOIN registry r ON e.reg_id = r.id
+  JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
  WHERE e.name = $1
-   AND ($2::text IS NULL OR r.name = $2::text)
+   AND ($2::text IS NULL OR src.name = $2::text)
    AND (($3::timestamp with time zone IS NULL OR v.created_at > $3)
     AND ($4::timestamp with time zone IS NULL OR v.created_at < $4))
  ORDER BY
@@ -590,22 +590,22 @@ type ListServerVersionsParams struct {
 }
 
 type ListServerVersionsRow struct {
-	RegistryType        RegistryType `json:"registry_type"`
-	ID                  uuid.UUID    `json:"id"`
-	Name                string       `json:"name"`
-	Version             string       `json:"version"`
-	IsLatest            bool         `json:"is_latest"`
-	CreatedAt           *time.Time   `json:"created_at"`
-	UpdatedAt           *time.Time   `json:"updated_at"`
-	Description         *string      `json:"description"`
-	Title               *string      `json:"title"`
-	Website             *string      `json:"website"`
-	UpstreamMeta        []byte       `json:"upstream_meta"`
-	ServerMeta          []byte       `json:"server_meta"`
-	RepositoryUrl       *string      `json:"repository_url"`
-	RepositoryID        *string      `json:"repository_id"`
-	RepositorySubfolder *string      `json:"repository_subfolder"`
-	RepositoryType      *string      `json:"repository_type"`
+	RegistryType        string     `json:"registry_type"`
+	ID                  uuid.UUID  `json:"id"`
+	Name                string     `json:"name"`
+	Version             string     `json:"version"`
+	IsLatest            bool       `json:"is_latest"`
+	CreatedAt           *time.Time `json:"created_at"`
+	UpdatedAt           *time.Time `json:"updated_at"`
+	Description         *string    `json:"description"`
+	Title               *string    `json:"title"`
+	Website             *string    `json:"website"`
+	UpstreamMeta        []byte     `json:"upstream_meta"`
+	ServerMeta          []byte     `json:"server_meta"`
+	RepositoryUrl       *string    `json:"repository_url"`
+	RepositoryID        *string    `json:"repository_id"`
+	RepositorySubfolder *string    `json:"repository_subfolder"`
+	RepositoryType      *string    `json:"repository_type"`
 }
 
 func (q *Queries) ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error) {
@@ -652,7 +652,7 @@ func (q *Queries) ListServerVersions(ctx context.Context, arg ListServerVersions
 }
 
 const listServers = `-- name: ListServers :many
-SELECT r.reg_type as registry_type,
+SELECT src.source_type as registry_type,
        v.id,
        e.name,
        v.version,
@@ -671,9 +671,9 @@ SELECT r.reg_type as registry_type,
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
-  JOIN registry r ON e.reg_id = r.id
+  JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
- WHERE ($1::text IS NULL OR r.name = $1::text)
+ WHERE ($1::text IS NULL OR src.name = $1::text)
    AND ($2::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || $2::text || '%')
        OR LOWER(v.title) LIKE LOWER('%' || $2::text || '%')
@@ -707,22 +707,22 @@ type ListServersParams struct {
 }
 
 type ListServersRow struct {
-	RegistryType        RegistryType `json:"registry_type"`
-	ID                  uuid.UUID    `json:"id"`
-	Name                string       `json:"name"`
-	Version             string       `json:"version"`
-	IsLatest            bool         `json:"is_latest"`
-	CreatedAt           *time.Time   `json:"created_at"`
-	UpdatedAt           *time.Time   `json:"updated_at"`
-	Description         *string      `json:"description"`
-	Title               *string      `json:"title"`
-	Website             *string      `json:"website"`
-	UpstreamMeta        []byte       `json:"upstream_meta"`
-	ServerMeta          []byte       `json:"server_meta"`
-	RepositoryUrl       *string      `json:"repository_url"`
-	RepositoryID        *string      `json:"repository_id"`
-	RepositorySubfolder *string      `json:"repository_subfolder"`
-	RepositoryType      *string      `json:"repository_type"`
+	RegistryType        string     `json:"registry_type"`
+	ID                  uuid.UUID  `json:"id"`
+	Name                string     `json:"name"`
+	Version             string     `json:"version"`
+	IsLatest            bool       `json:"is_latest"`
+	CreatedAt           *time.Time `json:"created_at"`
+	UpdatedAt           *time.Time `json:"updated_at"`
+	Description         *string    `json:"description"`
+	Title               *string    `json:"title"`
+	Website             *string    `json:"website"`
+	UpstreamMeta        []byte     `json:"upstream_meta"`
+	ServerMeta          []byte     `json:"server_meta"`
+	RepositoryUrl       *string    `json:"repository_url"`
+	RepositoryID        *string    `json:"repository_id"`
+	RepositorySubfolder *string    `json:"repository_subfolder"`
+	RepositoryType      *string    `json:"repository_type"`
 }
 
 // Cursor-based pagination using (name, version) compound cursor.
@@ -775,7 +775,7 @@ func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]Lis
 
 const upsertLatestServerVersion = `-- name: UpsertLatestServerVersion :one
 INSERT INTO latest_entry_version (
-    reg_id,
+    source_id,
     name,
     version,
     latest_version_id
@@ -784,7 +784,7 @@ INSERT INTO latest_entry_version (
     $2,
     $3,
     $4
-) ON CONFLICT (reg_id, name)
+) ON CONFLICT (source_id, name)
   DO UPDATE SET
     version = $3,
     latest_version_id = $4
@@ -792,7 +792,7 @@ RETURNING latest_version_id
 `
 
 type UpsertLatestServerVersionParams struct {
-	RegID     uuid.UUID `json:"reg_id"`
+	SourceID  uuid.UUID `json:"source_id"`
 	Name      string    `json:"name"`
 	Version   string    `json:"version"`
 	VersionID uuid.UUID `json:"version_id"`
@@ -800,7 +800,7 @@ type UpsertLatestServerVersionParams struct {
 
 func (q *Queries) UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, upsertLatestServerVersion,
-		arg.RegID,
+		arg.SourceID,
 		arg.Name,
 		arg.Version,
 		arg.VersionID,
