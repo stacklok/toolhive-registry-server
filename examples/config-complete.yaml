@@ -39,7 +39,7 @@ registries:
     git:
       # Repository URL (Required for git source)
       # Supports HTTP, HTTPS, and SSH protocols
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
 
       # Version selection (Choose ONE of: branch, tag, or commit)
       # Option 1: Use a branch (tracks latest commits)
@@ -52,7 +52,7 @@ registries:
       # commit: abc123def456789
 
       # Path to registry file within repository (Required)
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/registry.json
 
     # Per-registry synchronization policy
     syncPolicy:

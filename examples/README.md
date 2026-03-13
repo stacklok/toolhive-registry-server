@@ -53,17 +53,17 @@ registries:
   - name: toolhive
     format: toolhive
     git:
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/registry.json
     syncPolicy:
       interval: "30m"
 ```
 
 **What happens when you start:**
 1. Background sync coordinator starts immediately
-2. Clones `https://github.com/stacklok/toolhive.git` (shallow, depth=1)
-3. Extracts `pkg/registry/data/registry.json` from the `main` branch
+2. Clones `https://github.com/stacklok/toolhive-catalog.git` (shallow, depth=1)
+3. Extracts `pkg/catalog/toolhive/data/registry.json` from the `main` branch
 4. Stores synced data in the PostgreSQL database
 5. Repeats every 30 minutes
 
@@ -269,7 +269,7 @@ registries:
   - name: my-registry
     format: toolhive  # or "upstream"
     git:
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
 
       # Option 1: Track latest on a branch
       branch: main
@@ -280,7 +280,7 @@ registries:
       # Option 3: Pin to exact commit
       commit: abc123def456
 
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/registry.json
     syncPolicy:
       interval: "30m"
 ```
@@ -371,9 +371,9 @@ registries:
   - name: dev-registry
     format: toolhive
     git:
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
       branch: develop  # Use dev branch
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/registry.json
     syncPolicy:
       interval: "1m"  # Very frequent for testing
 ```

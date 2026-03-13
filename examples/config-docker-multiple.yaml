@@ -54,13 +54,13 @@ registries:
     #       - "official"
     #       - "stable"
 
-  # Git-based registry from ToolHive repository with different filtering
+  # Git-based registry from ToolHive catalog (upstream format)
   - name: toolhive-git
-    format: toolhive
+    format: upstream
     git:
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/official-registry.json
     syncPolicy:
       interval: "5m"  # Longer interval for Git operations
     # Optional: Per-registry filter for ToolHive servers
