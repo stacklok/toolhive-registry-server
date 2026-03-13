@@ -12,6 +12,19 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteConfigRegistriesNotInList = `-- name: DeleteConfigRegistriesNotInList :exec
+DELETE FROM registry
+WHERE creation_type = 'CONFIG'
+  AND name NOT IN (SELECT unnest($1::text[]))
+`
+
+// Delete CONFIG registry rows whose names are not in the provided list.
+// Used during config sync to clean up registry/junction rows before deleting orphaned sources.
+func (q *Queries) DeleteConfigRegistriesNotInList(ctx context.Context, keepNames []string) error {
+	_, err := q.db.Exec(ctx, deleteConfigRegistriesNotInList, keepNames)
+	return err
+}
+
 const deleteRegistry = `-- name: DeleteRegistry :execrows
 DELETE FROM registry WHERE name = $1
 `

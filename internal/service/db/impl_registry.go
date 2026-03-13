@@ -114,19 +114,14 @@ func (s *dbService) CreateRegistry(
 		return nil, fmt.Errorf("failed to insert registry: %w", err)
 	}
 
-	// Initialize sync status for the new registry
-	// Follow same pattern as CONFIG registries:
-	// - Non-synced (managed, kubernetes): COMPLETED
-	// - Synced (git, api, file): FAILED with "No previous sync status found"
-	// - Inline data: FAILED (needs processing, will be updated to COMPLETED after)
-	initialSyncStatus := sqlc.SyncStatusFAILED
-	initialErrorMsg := "No previous sync status found"
-	if req.IsNonSyncedType() && !req.IsInlineData() {
-		// Only managed/kubernetes start as COMPLETED
-		// Inline data needs processing first
-		initialSyncStatus = sqlc.SyncStatusCOMPLETED
-		initialErrorMsg = fmt.Sprintf("Non-synced registry (type: %s)", sourceType)
+	// Create corresponding registry row and link to source
+	if err := createRegistryRowAndLink(ctx, querier, name, registry.ID, sqlc.CreationTypeAPI, &now); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
 	}
+
+	// Initialize sync status for the new registry
+	initialSyncStatus, initialErrorMsg := getAPISourceInitialSyncStatus(req, sourceType)
 	err = querier.BulkInitializeSourceSyncs(ctx, sqlc.BulkInitializeSourceSyncsParams{
 		SourceIds:    []uuid.UUID{registry.ID},
 		SyncStatuses: []sqlc.SyncStatus{initialSyncStatus},
@@ -327,6 +322,14 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 	}()
 
 	querier := sqlc.New(tx)
+
+	// Delete the registry row first (cascades to registry_source junction).
+	// This removes the RESTRICT FK on source, allowing source deletion.
+	// If no registry row exists (e.g., sources created before this fix), (0, nil) is returned.
+	if _, err := querier.DeleteRegistry(ctx, name); err != nil {
+		otel.RecordError(span, err)
+		return fmt.Errorf("failed to delete registry row: %w", err)
+	}
 
 	// Delete the registry (only deletes API type registries)
 	rowsAffected, err := querier.DeleteAPISource(ctx, name)
@@ -593,6 +596,46 @@ func (s *dbService) validateFileSourceTypeChange(
 	if existingSubtype != newSubtype {
 		return fmt.Errorf("%w: cannot change file source type from '%s' to '%s', delete and recreate the registry instead",
 			service.ErrInvalidRegistryConfig, existingSubtype, newSubtype)
+	}
+
+	return nil
+}
+
+// getAPISourceInitialSyncStatus returns the initial sync status and message for an API source.
+// Non-synced types (managed, kubernetes) start as COMPLETED; synced types and inline data start as FAILED.
+func getAPISourceInitialSyncStatus(req *service.RegistryCreateRequest, sourceType string) (sqlc.SyncStatus, string) {
+	if req.IsNonSyncedType() && !req.IsInlineData() {
+		return sqlc.SyncStatusCOMPLETED, fmt.Sprintf("Non-synced registry (type: %s)", sourceType)
+	}
+	return sqlc.SyncStatusFAILED, "No previous sync status found"
+}
+
+// createRegistryRowAndLink inserts a registry row and links it to a source at position 0.
+func createRegistryRowAndLink(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	name string,
+	sourceID uuid.UUID,
+	creationType sqlc.CreationType,
+	now *time.Time,
+) error {
+	registryRow, err := querier.InsertRegistry(ctx, sqlc.InsertRegistryParams{
+		Name:         name,
+		CreationType: creationType,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to insert registry row: %w", err)
+	}
+
+	err = querier.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+		RegistryID: registryRow.ID,
+		SourceID:   sourceID,
+		Position:   0,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to link registry to source: %w", err)
 	}
 
 	return nil
