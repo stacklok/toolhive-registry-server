@@ -2,7 +2,7 @@
 -- Cursor-based pagination using (name, version) compound cursor.
 -- The cursor_name and cursor_version parameters define the starting point.
 -- When cursor is provided, results start AFTER the specified (name, version) tuple.
-SELECT r.reg_type AS registry_type,
+SELECT src.source_type AS registry_type,
        s.version_id,
        e.name,
        v.version,
@@ -23,9 +23,9 @@ SELECT r.reg_type AS registry_type,
   FROM skill s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
-  JOIN registry r ON e.reg_id = r.id
+  JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
- WHERE (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
+ WHERE (sqlc.narg(registry_name)::text IS NULL OR src.name = sqlc.narg(registry_name)::text)
    AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text)
    AND (sqlc.narg(name)::text IS NULL OR e.name = sqlc.narg(name)::text)
    AND (sqlc.narg(search)::text IS NULL OR (
@@ -42,7 +42,7 @@ SELECT r.reg_type AS registry_type,
  LIMIT sqlc.arg(size)::bigint;
 
 -- name: GetSkillVersion :one
-SELECT r.reg_type AS registry_type,
+SELECT src.source_type AS registry_type,
        v.id,
        e.name,
        v.version,
@@ -64,13 +64,13 @@ SELECT r.reg_type AS registry_type,
   FROM skill s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
-  JOIN registry r ON e.reg_id = r.id
+  JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
  WHERE e.name = sqlc.arg(name)
    AND (v.version = sqlc.arg(version)::text
        OR (sqlc.arg(version)::text = 'latest' AND l.latest_version_id = v.id)
    )
-   AND (sqlc.narg(registry_name)::text IS NULL OR r.name = sqlc.narg(registry_name)::text)
+   AND (sqlc.narg(registry_name)::text IS NULL OR src.name = sqlc.narg(registry_name)::text)
    AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text);
 
 -- name: ListSkillOciPackages :many
@@ -122,16 +122,16 @@ RETURNING version_id;
 
 -- name: UpsertLatestSkillVersion :one
 INSERT INTO latest_entry_version (
-    reg_id,
+    source_id,
     name,
     version,
     latest_version_id
 ) VALUES (
-    sqlc.arg(reg_id),
+    sqlc.arg(source_id),
     sqlc.arg(name),
     sqlc.arg(version),
     sqlc.arg(version_id)
-) ON CONFLICT (reg_id, name)
+) ON CONFLICT (source_id, name)
   DO UPDATE SET
     version = sqlc.arg(version),
     latest_version_id = sqlc.arg(version_id)
@@ -171,7 +171,7 @@ WITH skill_entries AS (
       FROM entry_version v
       JOIN registry_entry e ON v.entry_id = e.id
       JOIN skill s ON v.id = s.version_id
-     WHERE e.reg_id = sqlc.arg(reg_id)
+     WHERE e.source_id = sqlc.arg(source_id)
 )
 DELETE FROM registry_entry
  WHERE id IN (SELECT entry_id FROM skill_entries);
@@ -243,7 +243,7 @@ WITH subset AS (
     SELECT v.id
       FROM entry_version v
       JOIN registry_entry e ON v.entry_id = e.id
-     WHERE e.reg_id = sqlc.arg(reg_id)
+     WHERE e.source_id = sqlc.arg(source_id)
        AND v.id != ALL(sqlc.slice(keep_ids)::UUID[])
 )
 DELETE FROM skill s

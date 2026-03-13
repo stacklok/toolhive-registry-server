@@ -20,12 +20,12 @@ const (
 
 //nolint:thelper // We want to see these lines in the test output
 func setupRegistry(t *testing.T, queries *Queries) uuid.UUID {
-	regID, err := queries.InsertConfigRegistry(
+	regID, err := queries.InsertConfigSource(
 		context.Background(),
-		InsertConfigRegistryParams{
-			Name:     "test-registry",
-			RegType:  RegistryTypeREMOTE,
-			Syncable: true,
+		InsertConfigSourceParams{
+			Name:       "test-registry",
+			SourceType: "git",
+			Syncable:   true,
 		},
 	)
 	require.NoError(t, err)
@@ -44,7 +44,7 @@ func createEntry(
 		context.Background(),
 		InsertRegistryEntryParams{
 			Name:      name,
-			RegID:     regID,
+			SourceID:  regID,
 			EntryType: EntryTypeMCP,
 			CreatedAt: createdAt,
 			UpdatedAt: createdAt,
@@ -178,7 +178,7 @@ func TestInsertServerVersion(t *testing.T) {
 			},
 		},
 		{
-			name: "insert server version with invalid reg_id",
+			name: "insert server version with invalid source_id",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) uuid.UUID {
 				return uuid.Nil
@@ -191,7 +191,7 @@ func TestInsertServerVersion(t *testing.T) {
 					context.Background(),
 					InsertRegistryEntryParams{
 						Name:      "test-server",
-						RegID:     invalidRegID,
+						SourceID:  invalidRegID,
 						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
@@ -213,7 +213,7 @@ func TestInsertServerVersion(t *testing.T) {
 					context.Background(),
 					InsertRegistryEntryParams{
 						Name:      "test-server",
-						RegID:     regID,
+						SourceID:  regID,
 						EntryType: EntryTypeMCP,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
@@ -472,7 +472,7 @@ func TestListServers(t *testing.T) {
 				require.Len(t, servers, 1)
 				require.Equal(t, "test-server", servers[0].Name)
 				require.Equal(t, "1.0.0", servers[0].Version)
-				require.Equal(t, RegistryTypeREMOTE, servers[0].RegistryType)
+				require.Equal(t, "git", servers[0].RegistryType)
 			},
 		},
 		{
@@ -558,7 +558,7 @@ func TestListServers(t *testing.T) {
 				_, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-server",
 						Version:   "1.0.0",
 						VersionID: versionID,
@@ -649,7 +649,7 @@ func TestListServers(t *testing.T) {
 				_, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-server",
 						Version:   "2.0.0",
 						VersionID: versionIDs[1],
@@ -795,7 +795,7 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				serverID, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-server",
 						Version:   "1.0.0",
 						VersionID: ids[0],
@@ -824,7 +824,7 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				latestServerID, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-server",
 						Version:   "1.0.0",
 						VersionID: serverIDs[0],
@@ -841,7 +841,7 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				latestServerID, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-server",
 						Version:   "2.0.0",
 						VersionID: ids[0],
@@ -853,7 +853,7 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 			},
 		},
 		{
-			name: "upsert latest server version with invalid reg_id",
+			name: "upsert latest server version with invalid source_id",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) []uuid.UUID {
 				return []uuid.UUID{uuid.New()}
@@ -864,7 +864,7 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				_, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-server",
 						Version:   "1.0.0",
 						VersionID: ids[0],
@@ -884,7 +884,7 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				_, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-server",
 						Version:   "1.0.0",
 						VersionID: ids[0],
@@ -1713,7 +1713,7 @@ func TestGetServerVersion(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, serverName, server.Name)
 				require.Equal(t, version, server.Version)
-				require.Equal(t, RegistryTypeREMOTE, server.RegistryType)
+				require.Equal(t, "git", server.RegistryType)
 				require.False(t, server.IsLatest)
 				require.NotNil(t, server.ID)
 				require.NotNil(t, server.CreatedAt)
@@ -1755,7 +1755,7 @@ func TestGetServerVersion(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, serverName, server.Name)
 				require.Equal(t, version, server.Version)
-				require.Equal(t, RegistryTypeREMOTE, server.RegistryType)
+				require.Equal(t, "git", server.RegistryType)
 				require.NotNil(t, server.Description)
 				require.Equal(t, "Test description", *server.Description)
 				require.NotNil(t, server.Title)
@@ -1786,7 +1786,7 @@ func TestGetServerVersion(t *testing.T) {
 				_, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-server",
 						Version:   "1.0.0",
 						VersionID: versionID,
@@ -1824,7 +1824,7 @@ func TestGetServerVersion(t *testing.T) {
 				_, err := queries.UpsertLatestServerVersion(
 					context.Background(),
 					UpsertLatestServerVersionParams{
-						RegID:     regID,
+						SourceID:  regID,
 						Name:      "test-server",
 						Version:   "1.0.0",
 						VersionID: versionID1,

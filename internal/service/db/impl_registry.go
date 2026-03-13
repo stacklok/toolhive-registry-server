@@ -64,7 +64,7 @@ func (s *dbService) CreateRegistry(
 	querier := sqlc.New(tx)
 
 	// Check if registry already exists
-	_, err = querier.GetRegistryByName(ctx, name)
+	_, err = querier.GetSourceByName(ctx, name)
 	if err == nil {
 		err = fmt.Errorf("%w: %s", service.ErrRegistryAlreadyExists, name)
 		otel.RecordError(span, err)
@@ -88,10 +88,9 @@ func (s *dbService) CreateRegistry(
 	syncSchedule := parseSyncScheduleFromRequest(req)
 	syncable := !req.IsNonSyncedType()
 
-	params := sqlc.InsertAPIRegistryParams{
+	params := sqlc.InsertAPISourceParams{
 		Name:         name,
-		RegType:      mapSourceTypeToDBType(req.GetSourceType()),
-		SourceType:   &sourceType,
+		SourceType:   sourceType,
 		Format:       &format,
 		SourceConfig: sourceConfig,
 		FilterConfig: filterConfig,
@@ -102,7 +101,7 @@ func (s *dbService) CreateRegistry(
 	}
 
 	// Insert the registry
-	registry, err := querier.InsertAPIRegistry(ctx, params)
+	registry, err := querier.InsertAPISource(ctx, params)
 	if err != nil {
 		// Check for unique constraint violation
 		var pgErr *pgconn.PgError
@@ -128,8 +127,8 @@ func (s *dbService) CreateRegistry(
 		initialSyncStatus = sqlc.SyncStatusCOMPLETED
 		initialErrorMsg = fmt.Sprintf("Non-synced registry (type: %s)", sourceType)
 	}
-	err = querier.BulkInitializeRegistrySyncs(ctx, sqlc.BulkInitializeRegistrySyncsParams{
-		RegIds:       []uuid.UUID{registry.ID},
+	err = querier.BulkInitializeSourceSyncs(ctx, sqlc.BulkInitializeSourceSyncsParams{
+		SourceIds:    []uuid.UUID{registry.ID},
 		SyncStatuses: []sqlc.SyncStatus{initialSyncStatus},
 		ErrorMsgs:    []string{initialErrorMsg},
 	})
@@ -147,12 +146,12 @@ func (s *dbService) CreateRegistry(
 	slog.InfoContext(ctx, "Registry created",
 		"duration_ms", time.Since(start).Milliseconds(),
 		"name", name,
-		"type", registry.RegType,
+		"type", registry.SourceType,
 		"source_type", sourceType,
 		"request_id", middleware.GetReqID(ctx))
 
 	// Build and return RegistryInfo
-	return buildRegistryInfoFromDBRegistry(&registry), nil
+	return buildRegistryInfoFromDBSource(&registry), nil
 }
 
 // validateSourceTypeChange checks if the registry source type is changing and returns an error if so.
@@ -161,7 +160,7 @@ func (s *dbService) validateSourceTypeChange(
 	ctx context.Context, name string, newSourceType config.SourceType,
 ) error {
 	querier := sqlc.New(s.pool)
-	existing, err := querier.GetRegistryByName(ctx, name)
+	existing, err := querier.GetSourceByName(ctx, name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Registry doesn't exist yet, no validation needed
@@ -171,9 +170,9 @@ func (s *dbService) validateSourceTypeChange(
 	}
 
 	// Check if source type is changing
-	if existing.SourceType != nil && *existing.SourceType != string(newSourceType) {
+	if existing.SourceType != "" && existing.SourceType != string(newSourceType) {
 		return fmt.Errorf("%w: cannot change from '%s' to '%s', delete and recreate the registry instead",
-			service.ErrSourceTypeChangeNotAllowed, *existing.SourceType, newSourceType)
+			service.ErrSourceTypeChangeNotAllowed, existing.SourceType, newSourceType)
 	}
 
 	return nil
@@ -244,10 +243,9 @@ func (s *dbService) UpdateRegistry(
 	syncSchedule := parseSyncScheduleFromRequest(req)
 	syncable := !req.IsNonSyncedType()
 
-	params := sqlc.UpdateAPIRegistryParams{
+	params := sqlc.UpdateAPISourceParams{
 		Name:         name,
-		RegType:      mapSourceTypeToDBType(req.GetSourceType()),
-		SourceType:   &sourceType,
+		SourceType:   sourceType,
 		Format:       &format,
 		SourceConfig: sourceConfig,
 		FilterConfig: filterConfig,
@@ -257,11 +255,11 @@ func (s *dbService) UpdateRegistry(
 	}
 
 	// Update the registry (only updates API type registries)
-	registry, err := querier.UpdateAPIRegistry(ctx, params)
+	registry, err := querier.UpdateAPISource(ctx, params)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Registry not found or is CONFIG type, check which case
-			existing, checkErr := querier.GetRegistryByName(ctx, name)
+			existing, checkErr := querier.GetSourceByName(ctx, name)
 			if checkErr != nil {
 				if errors.Is(checkErr, pgx.ErrNoRows) {
 					err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
@@ -295,12 +293,12 @@ func (s *dbService) UpdateRegistry(
 	slog.InfoContext(ctx, "Registry updated",
 		"duration_ms", time.Since(start).Milliseconds(),
 		"name", name,
-		"type", registry.RegType,
+		"type", registry.SourceType,
 		"source_type", sourceType,
 		"request_id", middleware.GetReqID(ctx))
 
 	// Build and return RegistryInfo
-	return buildRegistryInfoFromDBRegistry(&registry), nil
+	return buildRegistryInfoFromDBSource(&registry), nil
 }
 
 // DeleteRegistry deletes an API registry
@@ -331,7 +329,7 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 	querier := sqlc.New(tx)
 
 	// Delete the registry (only deletes API type registries)
-	rowsAffected, err := querier.DeleteAPIRegistry(ctx, name)
+	rowsAffected, err := querier.DeleteAPISource(ctx, name)
 	if err != nil {
 		otel.RecordError(span, err)
 		return fmt.Errorf("failed to delete registry: %w", err)
@@ -339,7 +337,7 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 
 	if rowsAffected == 0 {
 		// Registry not found or is CONFIG type, check which case
-		existing, checkErr := querier.GetRegistryByName(ctx, name)
+		existing, checkErr := querier.GetSourceByName(ctx, name)
 		if checkErr != nil {
 			if errors.Is(checkErr, pgx.ErrNoRows) {
 				err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
@@ -441,22 +439,6 @@ func (s *dbService) ProcessInlineRegistryData(ctx context.Context, name string, 
 // Helper functions for registry CRUD operations
 // =============================================================================
 
-// mapSourceTypeToDBType maps config.SourceType to database RegistryType
-func mapSourceTypeToDBType(sourceType config.SourceType) sqlc.RegistryType {
-	switch sourceType {
-	case config.SourceTypeManaged:
-		return sqlc.RegistryTypeMANAGED
-	case config.SourceTypeFile:
-		return sqlc.RegistryTypeFILE
-	case config.SourceTypeGit, config.SourceTypeAPI:
-		return sqlc.RegistryTypeREMOTE
-	case config.SourceTypeKubernetes:
-		return sqlc.RegistryTypeKUBERNETES
-	default:
-		return sqlc.RegistryTypeREMOTE
-	}
-}
-
 // serializeSourceConfigFromRequest serializes the source config from request to JSON bytes
 func serializeSourceConfigFromRequest(req *service.RegistryCreateRequest) []byte {
 	if req == nil {
@@ -501,38 +483,38 @@ func parseSyncScheduleFromRequest(req *service.RegistryCreateRequest) pgtypes.In
 	return interval
 }
 
-// buildRegistryInfoFromDBRegistry builds a RegistryInfo from a database Registry
-func buildRegistryInfoFromDBRegistry(registry *sqlc.Registry) *service.RegistryInfo {
+// buildRegistryInfoFromDBSource builds a RegistryInfo from a database Source
+func buildRegistryInfoFromDBSource(source *sqlc.Source) *service.RegistryInfo {
 	info := &service.RegistryInfo{
-		Name:         registry.Name,
-		Type:         string(registry.RegType),
-		CreationType: service.CreationType(registry.CreationType),
+		Name:         source.Name,
+		Type:         source.SourceType,
+		CreationType: service.CreationType(source.CreationType),
 	}
 
-	if registry.SourceType != nil {
-		info.SourceType = config.SourceType(*registry.SourceType)
+	if source.SourceType != "" {
+		info.SourceType = config.SourceType(source.SourceType)
 	}
 
-	if registry.Format != nil {
-		info.Format = *registry.Format
+	if source.Format != nil {
+		info.Format = *source.Format
 	}
 
-	if registry.SourceType != nil {
-		info.SourceConfig = deserializeSourceConfig(*registry.SourceType, registry.SourceConfig)
+	if source.SourceType != "" {
+		info.SourceConfig = deserializeSourceConfig(source.SourceType, source.SourceConfig)
 	}
 
-	info.FilterConfig = deserializeFilterConfig(registry.FilterConfig)
+	info.FilterConfig = deserializeFilterConfig(source.FilterConfig)
 
-	if registry.SyncSchedule.Valid {
-		info.SyncSchedule = registry.SyncSchedule.Duration.String()
+	if source.SyncSchedule.Valid {
+		info.SyncSchedule = source.SyncSchedule.Duration.String()
 	}
 
-	if registry.CreatedAt != nil {
-		info.CreatedAt = *registry.CreatedAt
+	if source.CreatedAt != nil {
+		info.CreatedAt = *source.CreatedAt
 	}
 
-	if registry.UpdatedAt != nil {
-		info.UpdatedAt = *registry.UpdatedAt
+	if source.UpdatedAt != nil {
+		info.UpdatedAt = *source.UpdatedAt
 	}
 
 	return info
@@ -545,7 +527,7 @@ func (s *dbService) updateSyncStatusFailed(
 ) error {
 	querier := sqlc.New(s.pool)
 	endTime := time.Now()
-	return querier.UpsertRegistrySyncByName(ctx, sqlc.UpsertRegistrySyncByNameParams{
+	return querier.UpsertSourceSyncByName(ctx, sqlc.UpsertSourceSyncByNameParams{
 		Name:         name,
 		SyncStatus:   sqlc.SyncStatusFAILED,
 		ErrorMsg:     &errorMsg,
@@ -563,7 +545,7 @@ func (s *dbService) updateSyncStatusCompleted(
 ) error {
 	querier := sqlc.New(s.pool)
 	endTime := time.Now()
-	return querier.UpsertRegistrySyncByName(ctx, sqlc.UpsertRegistrySyncByNameParams{
+	return querier.UpsertSourceSyncByName(ctx, sqlc.UpsertSourceSyncByNameParams{
 		Name:         name,
 		SyncStatus:   sqlc.SyncStatusCOMPLETED,
 		ErrorMsg:     nil,
@@ -581,7 +563,7 @@ func (s *dbService) validateFileSourceTypeChange(
 ) error {
 	// Get the existing registry
 	querier := sqlc.New(s.pool)
-	existing, err := querier.GetRegistryByName(ctx, name)
+	existing, err := querier.GetSourceByName(ctx, name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Registry doesn't exist yet, no validation needed
@@ -591,7 +573,7 @@ func (s *dbService) validateFileSourceTypeChange(
 	}
 
 	// If the existing registry is not a file type, no validation needed
-	if existing.SourceType == nil || *existing.SourceType != string(config.SourceTypeFile) {
+	if existing.SourceType != string(config.SourceTypeFile) {
 		return nil
 	}
 
