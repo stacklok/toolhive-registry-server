@@ -406,9 +406,6 @@ func buildHTTPServer(
 		api.WithMiddlewares(b.middlewares...),
 		api.WithAuthInfoHandler(b.authInfoHandler),
 	}
-	if b.config != nil && b.config.EnableAggregatedEndpoints {
-		serverOpts = append(serverOpts, api.WithAggregatedEndpoints(true))
-	}
 	// Create router with middlewares
 	router := api.NewServer(svc, serverOpts...)
 
