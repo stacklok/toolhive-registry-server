@@ -36,9 +36,9 @@ registries:
 
     # Git repository configuration
     git:
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/registry.json
 
     # Per-registry automatic synchronization policy
     syncPolicy:

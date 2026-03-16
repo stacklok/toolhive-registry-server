@@ -1,19 +1,19 @@
 -- name: GetRegistryEntryByName :one
 SELECT id
   FROM registry_entry
- WHERE reg_id = sqlc.arg(reg_id)
+ WHERE source_id = sqlc.arg(source_id)
    AND entry_type = sqlc.arg(entry_type)
    AND name = sqlc.arg(name);
 
 -- name: InsertRegistryEntry :one
 INSERT INTO registry_entry (
-    reg_id,
+    source_id,
     entry_type,
     name,
     created_at,
     updated_at
 ) VALUES (
-    sqlc.arg(reg_id),
+    sqlc.arg(source_id),
     sqlc.arg(entry_type),
     sqlc.arg(name),
     sqlc.arg(created_at),
@@ -22,7 +22,7 @@ INSERT INTO registry_entry (
 
 -- name: DeleteRegistryEntry :execrows
 DELETE FROM registry_entry
-WHERE reg_id = sqlc.arg(reg_id)
+WHERE source_id = sqlc.arg(source_id)
   AND entry_type = sqlc.arg(entry_type)
   AND name = sqlc.arg(name);
 

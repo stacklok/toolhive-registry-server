@@ -48,9 +48,9 @@ data:
       - name: toolhive
         format: toolhive
         git:
-          repository: https://github.com/stacklok/toolhive.git
+          repository: https://github.com/stacklok/toolhive-catalog.git
           branch: main
-          path: pkg/registry/data/registry.json
+          path: pkg/catalog/toolhive/data/registry.json
         syncPolicy:
           interval: "15m"
     auth:
@@ -195,9 +195,9 @@ data:
       - name: toolhive
         format: toolhive
         git:
-          repository: https://github.com/stacklok/toolhive.git
+          repository: https://github.com/stacklok/toolhive-catalog.git
           branch: main
-          path: pkg/registry/data/registry.json
+          path: pkg/catalog/toolhive/data/registry.json
         syncPolicy:
           interval: "15m"
     auth:

@@ -339,13 +339,13 @@ func insertServerVersionData(
 
 	// Get or create the registry entry (one per unique name)
 	entryID, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
-		RegID:     registryID,
+		SourceID:  registryID,
 		EntryType: sqlc.EntryTypeMCP,
 		Name:      serverData.Name,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		entryID, err = querier.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
-			RegID:     registryID,
+			SourceID:  registryID,
 			EntryType: sqlc.EntryTypeMCP,
 			Name:      serverData.Name,
 			CreatedAt: &now,
@@ -505,7 +505,7 @@ func insertServerIcons(
 // validateRegistryExists validates that the registry exists.
 // Returns ErrRegistryNotFound if the registry doesn't exist.
 func validateRegistryExists(ctx context.Context, querier *sqlc.Queries, registryName string) error {
-	_, err := querier.GetRegistryByName(ctx, registryName)
+	_, err := querier.GetSourceByName(ctx, registryName)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
@@ -522,8 +522,8 @@ func validateManagedRegistry(
 	ctx context.Context,
 	querier *sqlc.Queries,
 	registryName string,
-) (*sqlc.Registry, error) {
-	registryRow, err := querier.GetRegistryByName(ctx, registryName)
+) (*sqlc.Source, error) {
+	registryRow, err := querier.GetSourceByName(ctx, registryName)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
@@ -531,22 +531,22 @@ func validateManagedRegistry(
 		return nil, fmt.Errorf("failed to get registry: %w", err)
 	}
 
-	if registryRow.RegType != sqlc.RegistryTypeMANAGED {
+	if registryRow.SourceType != "managed" {
 		return nil, fmt.Errorf("%w: registry %s has type %s",
-			service.ErrNotManagedRegistry, registryName, registryRow.RegType)
+			service.ErrNotManagedRegistry, registryName, registryRow.SourceType)
 	}
 
-	// Convert row to Registry struct
-	registry := &sqlc.Registry{
+	// Convert row to Source struct
+	source := &sqlc.Source{
 		ID:           registryRow.ID,
 		Name:         registryRow.Name,
-		RegType:      registryRow.RegType,
+		SourceType:   registryRow.SourceType,
 		CreationType: registryRow.CreationType,
 		CreatedAt:    registryRow.CreatedAt,
 		UpdatedAt:    registryRow.UpdatedAt,
 	}
 
-	return registry, nil
+	return source, nil
 }
 
 // PublishServerVersion publishes a server version to a managed registry
@@ -689,8 +689,8 @@ func (s *dbService) insertServerData(
 	// Compare with current latest before upserting — avoid regressing the pointer
 	shouldUpdateLatest := true
 	currentLatest, err := querier.GetLatestVersionForServer(ctx, sqlc.GetLatestVersionForServerParams{
-		Name:  serverData.Name,
-		RegID: registryID,
+		Name:     serverData.Name,
+		SourceID: registryID,
 	})
 	if err == nil {
 		shouldUpdateLatest = versions.IsNewerVersion(serverData.Version, currentLatest)
@@ -700,7 +700,7 @@ func (s *dbService) insertServerData(
 
 	if shouldUpdateLatest {
 		_, err = querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
-			RegID:     registryID,
+			SourceID:  registryID,
 			Name:      serverData.Name,
 			Version:   serverData.Version,
 			VersionID: serverVersionID,
@@ -856,7 +856,7 @@ func lookupAndDeleteEntryVersion(
 	version string,
 ) (uuid.UUID, error) {
 	entryID, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
-		RegID:     registryID,
+		SourceID:  registryID,
 		EntryType: entryType,
 		Name:      name,
 	})
@@ -1047,12 +1047,12 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 
 	querier := sqlc.New(tx)
 
-	// List all registries (no pagination for now)
-	params := sqlc.ListRegistriesParams{
-		Size: service.MaxPageSize, // Maximum number of registries to return
+	// List all sources (no pagination for now)
+	params := sqlc.ListSourcesParams{
+		Size: service.MaxPageSize, // Maximum number of sources to return
 	}
 
-	registries, err := querier.ListRegistries(ctx, params)
+	registries, err := querier.ListSources(ctx, params)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to list registries: %w", err)
@@ -1065,7 +1065,7 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 		info := buildRegistryInfoFromListRow(&reg)
 
 		// Fetch sync status from database
-		syncRecord, err := querier.GetRegistrySyncByName(ctx, reg.Name)
+		syncRecord, err := querier.GetSourceSyncByName(ctx, reg.Name)
 		if err != nil {
 			// It's okay if sync record doesn't exist yet (registry may not have been synced)
 			if !errors.Is(err, pgx.ErrNoRows) {
@@ -1148,7 +1148,7 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 	querier := sqlc.New(tx)
 
 	// Get the registry by name
-	registry, err := querier.GetRegistryByName(ctx, name)
+	registry, err := querier.GetSourceByName(ctx, name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
@@ -1163,7 +1163,7 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 	info := buildRegistryInfoFromGetByNameRow(&registry)
 
 	// Fetch sync status from database
-	syncRecord, err := querier.GetRegistrySyncByName(ctx, registry.Name)
+	syncRecord, err := querier.GetSourceSyncByName(ctx, registry.Name)
 	if err != nil {
 		// It's okay if sync record doesn't exist yet (registry may not have been synced)
 		if !errors.Is(err, pgx.ErrNoRows) {
@@ -1192,24 +1192,24 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 	return info, nil
 }
 
-// buildRegistryInfoFromListRow builds a RegistryInfo from a ListRegistriesRow
-func buildRegistryInfoFromListRow(row *sqlc.ListRegistriesRow) *service.RegistryInfo {
+// buildRegistryInfoFromListRow builds a RegistryInfo from a ListSourcesRow
+func buildRegistryInfoFromListRow(row *sqlc.ListSourcesRow) *service.RegistryInfo {
 	info := &service.RegistryInfo{
 		Name:         row.Name,
-		Type:         string(row.RegType),
+		Type:         row.SourceType,
 		CreationType: service.CreationType(row.CreationType),
 	}
 
-	if row.SourceType != nil {
-		info.SourceType = config.SourceType(*row.SourceType)
+	if row.SourceType != "" {
+		info.SourceType = config.SourceType(row.SourceType)
 	}
 
 	if row.Format != nil {
 		info.Format = *row.Format
 	}
 
-	if row.SourceType != nil {
-		info.SourceConfig = deserializeSourceConfig(*row.SourceType, row.SourceConfig)
+	if row.SourceType != "" {
+		info.SourceConfig = deserializeSourceConfig(row.SourceType, row.SourceConfig)
 	}
 
 	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
@@ -1229,24 +1229,24 @@ func buildRegistryInfoFromListRow(row *sqlc.ListRegistriesRow) *service.Registry
 	return info
 }
 
-// buildRegistryInfoFromGetByNameRow builds a RegistryInfo from a GetRegistryByNameRow
-func buildRegistryInfoFromGetByNameRow(row *sqlc.GetRegistryByNameRow) *service.RegistryInfo {
+// buildRegistryInfoFromGetByNameRow builds a RegistryInfo from a GetSourceByNameRow
+func buildRegistryInfoFromGetByNameRow(row *sqlc.GetSourceByNameRow) *service.RegistryInfo {
 	info := &service.RegistryInfo{
 		Name:         row.Name,
-		Type:         string(row.RegType),
+		Type:         row.SourceType,
 		CreationType: service.CreationType(row.CreationType),
 	}
 
-	if row.SourceType != nil {
-		info.SourceType = config.SourceType(*row.SourceType)
+	if row.SourceType != "" {
+		info.SourceType = config.SourceType(row.SourceType)
 	}
 
 	if row.Format != nil {
 		info.Format = *row.Format
 	}
 
-	if row.SourceType != nil {
-		info.SourceConfig = deserializeSourceConfig(*row.SourceType, row.SourceConfig)
+	if row.SourceType != "" {
+		info.SourceConfig = deserializeSourceConfig(row.SourceType, row.SourceConfig)
 	}
 
 	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)

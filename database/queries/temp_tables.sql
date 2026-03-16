@@ -11,19 +11,19 @@ SELECT * FROM registry_entry
 
 -- name: UpsertRegistryEntriesFromTemp :many
 INSERT INTO registry_entry (
-    id, reg_id, entry_type, name, created_at, updated_at
+    id, source_id, entry_type, name, created_at, updated_at
 )
 SELECT id,
-       reg_id,
+       source_id,
        entry_type,
        name,
        created_at,
        updated_at
   FROM temp_registry_entry
-    ON CONFLICT (reg_id, entry_type, name)
+    ON CONFLICT (source_id, entry_type, name)
     DO UPDATE SET
       updated_at = EXCLUDED.updated_at
-RETURNING id, reg_id, entry_type, name;
+RETURNING id, source_id, entry_type, name;
 
 -- Temp Entry Version Table Operations
 

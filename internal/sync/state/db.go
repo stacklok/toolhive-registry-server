@@ -51,48 +51,21 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	now := time.Now()
 
 	if len(registryConfigs) == 0 {
-		// No registries in config - delete all CONFIG registries from DB
-		// We can't use BulkUpsertConfigRegistries with empty arrays, so handle separately
-		err := queries.DeleteConfigRegistriesNotInList(ctx, []uuid.UUID{})
-		if err != nil {
+		// No registries in config - delete all CONFIG entries from DB.
+		// Transitional: delete registry rows first (will be removed once registry
+		// lifecycle is decoupled from sources). CASCADE removes junction rows,
+		// which unblocks the RESTRICT FK so source deletion can proceed.
+		if err := queries.DeleteConfigRegistriesNotInList(ctx, []string{}); err != nil {
+			return err
+		}
+		if err := queries.DeleteConfigSourcesNotInList(ctx, []uuid.UUID{}); err != nil {
 			return err
 		}
 		return tx.Commit(ctx)
 	}
 
-	// Prepare bulk upsert arrays
-	names := make([]string, len(registryConfigs))
-	regTypes := make([]sqlc.RegistryType, len(registryConfigs))
-	sourceTypes := make([]string, len(registryConfigs))
-	formats := make([]string, len(registryConfigs))
-	sourceConfigs := make([][]byte, len(registryConfigs))
-	filterConfigs := make([][]byte, len(registryConfigs))
-	syncSchedules := make([]pgtypes.Interval, len(registryConfigs))
-	syncables := make([]bool, len(registryConfigs))
-	createdAts := make([]time.Time, len(registryConfigs))
-	updatedAts := make([]time.Time, len(registryConfigs))
-
-	for i, reg := range registryConfigs {
-		names[i] = reg.Name
-		regType, err := mapConfigTypeToDBType(reg.GetType())
-		if err != nil {
-			return err
-		}
-		regTypes[i] = regType
-		sourceTypes[i] = string(reg.GetType())
-		formats[i] = reg.Format
-		sourceConfigs[i] = serializeSourceConfig(&reg)
-		filterConfigs[i] = serializeFilterConfig(reg.Filter)
-		syncSchedules[i] = getSyncScheduleIntervalFromConfig(&reg)
-		syncables[i] = !reg.IsNonSyncedRegistry()
-		createdAts[i] = now
-		updatedAts[i] = now
-	}
-
-	// Validate that registry types haven't changed for existing registries
-	if err := validateRegistryTypes(ctx, queries, names, regTypes); err != nil {
-		return err
-	}
+	// Prepare bulk upsert parameters
+	names, upsertParams := buildBulkUpsertParams(registryConfigs, now)
 
 	// Check for API registries that would be overwritten
 	if err := checkForAPIRegistryConflicts(ctx, queries, names); err != nil {
@@ -100,18 +73,7 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	}
 
 	// Bulk upsert all CONFIG registries - returns IDs and names
-	upsertedRegistries, err := queries.BulkUpsertConfigRegistries(ctx, sqlc.BulkUpsertConfigRegistriesParams{
-		Names:         names,
-		RegTypes:      regTypes,
-		SourceTypes:   sourceTypes,
-		Formats:       formats,
-		SourceConfigs: sourceConfigs,
-		FilterConfigs: filterConfigs,
-		SyncSchedules: syncSchedules,
-		Syncables:     syncables,
-		CreatedAts:    createdAts,
-		UpdatedAts:    updatedAts,
-	})
+	upsertedRegistries, err := queries.BulkUpsertConfigSources(ctx, upsertParams)
 	if err != nil {
 		return err
 	}
@@ -129,6 +91,13 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		upsertedIDs[i] = reg.ID
 	}
 
+	// Transitional dual-write: create matching registry rows and link to sources.
+	// This will be removed once registry creation is decoupled from source lifecycle
+	// and managed through its own API/config layer.
+	if err := upsertRegistryRowsAndLinks(ctx, queries, upsertedRegistries, &now); err != nil {
+		return err
+	}
+
 	// Prepare bulk sync initialization arrays
 	regIDs := make([]uuid.UUID, len(registryConfigs))
 	syncStatuses := make([]sqlc.SyncStatus, len(registryConfigs))
@@ -141,8 +110,8 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	}
 
 	// Bulk initialize sync statuses (ON CONFLICT DO NOTHING)
-	err = queries.BulkInitializeRegistrySyncs(ctx, sqlc.BulkInitializeRegistrySyncsParams{
-		RegIds:       regIDs,
+	err = queries.BulkInitializeSourceSyncs(ctx, sqlc.BulkInitializeSourceSyncsParams{
+		SourceIds:    regIDs,
 		SyncStatuses: syncStatuses,
 		ErrorMsgs:    errorMsgs,
 	})
@@ -150,9 +119,16 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		return err
 	}
 
-	// Delete any CONFIG registries not in the upserted list
+	// Delete CONFIG registry rows not in the upserted list.
+	// This cascades to registry_source, removing RESTRICT FK blocks on source deletion.
+	err = queries.DeleteConfigRegistriesNotInList(ctx, names)
+	if err != nil {
+		return fmt.Errorf("failed to delete orphaned registry rows: %w", err)
+	}
+
+	// Delete any CONFIG sources not in the upserted list
 	// CASCADE will automatically delete associated sync statuses
-	err = queries.DeleteConfigRegistriesNotInList(ctx, upsertedIDs)
+	err = queries.DeleteConfigSourcesNotInList(ctx, upsertedIDs)
 	if err != nil {
 		return err
 	}
@@ -161,9 +137,49 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	return tx.Commit(ctx)
 }
 
+// buildBulkUpsertParams prepares the parameter arrays for BulkUpsertConfigSources.
+func buildBulkUpsertParams(
+	registryConfigs []config.RegistryConfig, now time.Time,
+) ([]string, sqlc.BulkUpsertConfigSourcesParams) {
+	n := len(registryConfigs)
+	names := make([]string, n)
+	sourceTypes := make([]string, n)
+	formats := make([]string, n)
+	sourceConfigs := make([][]byte, n)
+	filterConfigs := make([][]byte, n)
+	syncSchedules := make([]pgtypes.Interval, n)
+	syncables := make([]bool, n)
+	createdAts := make([]time.Time, n)
+	updatedAts := make([]time.Time, n)
+
+	for i, reg := range registryConfigs {
+		names[i] = reg.Name
+		sourceTypes[i] = string(reg.GetType())
+		formats[i] = reg.Format
+		sourceConfigs[i] = serializeSourceConfig(&reg)
+		filterConfigs[i] = serializeFilterConfig(reg.Filter)
+		syncSchedules[i] = getSyncScheduleIntervalFromConfig(&reg)
+		syncables[i] = !reg.IsNonSyncedRegistry()
+		createdAts[i] = now
+		updatedAts[i] = now
+	}
+
+	return names, sqlc.BulkUpsertConfigSourcesParams{
+		Names:         names,
+		SourceTypes:   sourceTypes,
+		Formats:       formats,
+		SourceConfigs: sourceConfigs,
+		FilterConfigs: filterConfigs,
+		SyncSchedules: syncSchedules,
+		Syncables:     syncables,
+		CreatedAts:    createdAts,
+		UpdatedAts:    updatedAts,
+	}
+}
+
 // checkForAPIRegistryConflicts verifies that none of the registries being upserted are API-created registries
 func checkForAPIRegistryConflicts(ctx context.Context, queries *sqlc.Queries, names []string) error {
-	apiRegistries, err := queries.GetAPIRegistriesByNames(ctx, names)
+	apiRegistries, err := queries.GetAPISourcesByNames(ctx, names)
 	if err != nil {
 		return fmt.Errorf("failed to check for API registries: %w", err)
 	}
@@ -178,41 +194,40 @@ func checkForAPIRegistryConflicts(ctx context.Context, queries *sqlc.Queries, na
 	return nil
 }
 
-// validateRegistryTypes checks that registry types haven't changed for existing registries
-func validateRegistryTypes(ctx context.Context, queries *sqlc.Queries, names []string, regTypes []sqlc.RegistryType) error {
-	existingRegistries, err := queries.ListAllRegistryNames(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list existing registries: %w", err)
-	}
+// upsertRegistryRowsAndLinks creates or updates registry rows for each upserted source and links them.
+// InsertRegistry uses ON CONFLICT so this is safe to call when rows already exist (e.g. after migration backfill).
+func upsertRegistryRowsAndLinks(
+	ctx context.Context,
+	queries *sqlc.Queries,
+	upsertedRegistries []sqlc.BulkUpsertConfigSourcesRow,
+	now *time.Time,
+) error {
+	for i, reg := range upsertedRegistries {
+		registryRow, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
+			Name:         reg.Name,
+			CreationType: sqlc.CreationTypeCONFIG,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to upsert registry %s: %w", reg.Name, err)
+		}
 
-	// Build a map of config name -> type for quick lookup
-	configTypeMap := make(map[string]sqlc.RegistryType)
-	for i, name := range names {
-		configTypeMap[name] = regTypes[i]
-	}
-
-	// Check if any existing registry has a different type in the config
-	for _, existingName := range existingRegistries {
-		if configType, exists := configTypeMap[existingName]; exists {
-			// Registry exists in both DB and config - check if type matches
-			existingReg, err := queries.GetRegistryByName(ctx, existingName)
-			if err != nil {
-				return fmt.Errorf("failed to get registry %s: %w", existingName, err)
-			}
-			if existingReg.RegType != configType {
-				return fmt.Errorf("registry '%s' type cannot be changed from %s to %s",
-					existingName, existingReg.RegType, configType)
-			}
+		if err := queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+			RegistryID: registryRow.ID,
+			SourceID:   reg.ID,
+			Position:   int32(i),
+		}); err != nil {
+			return fmt.Errorf("failed to link registry %s to source: %w", reg.Name, err)
 		}
 	}
-
 	return nil
 }
 
 func (d *dbStatusService) ListSyncStatuses(ctx context.Context) (map[string]*status.SyncStatus, error) {
 	queries := sqlc.New(d.pool)
 
-	rows, err := queries.ListRegistrySyncs(ctx)
+	rows, err := queries.ListSourceSyncs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +244,7 @@ func (d *dbStatusService) ListSyncStatuses(ctx context.Context) (map[string]*sta
 func (d *dbStatusService) GetSyncStatus(ctx context.Context, registryName string) (*status.SyncStatus, error) {
 	queries := sqlc.New(d.pool)
 
-	registrySync, err := queries.GetRegistrySyncByName(ctx, registryName)
+	registrySync, err := queries.GetSourceSyncByName(ctx, registryName)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrRegistryNotFound
@@ -260,7 +275,7 @@ func (d *dbStatusService) UpdateSyncStatus(ctx context.Context, registryName str
 	}
 
 	// Upsert the sync status
-	err := queries.UpsertRegistrySyncByName(ctx, sqlc.UpsertRegistrySyncByNameParams{
+	err := queries.UpsertSourceSyncByName(ctx, sqlc.UpsertSourceSyncByNameParams{
 		Name:                  registryName,
 		SyncStatus:            syncPhaseToDBStatus(syncStatus.Phase),
 		ErrorMsg:              errorMsg,
@@ -302,7 +317,7 @@ func dbSyncToStatus(dbSync sqlc.RegistrySync) *status.SyncStatus {
 }
 
 // dbSyncRowToStatus converts a ListRegistrySyncsRow to a status.SyncStatus
-func dbSyncRowToStatus(row sqlc.ListRegistrySyncsRow) *status.SyncStatus {
+func dbSyncRowToStatus(row sqlc.ListSourceSyncsRow) *status.SyncStatus {
 	syncStatus := &status.SyncStatus{
 		Phase:        dbSyncStatusToPhase(row.SyncStatus),
 		LastAttempt:  row.StartedAt,
@@ -329,7 +344,7 @@ func dbSyncRowToStatus(row sqlc.ListRegistrySyncsRow) *status.SyncStatus {
 }
 
 // dbSyncRowByLastUpdateToStatus converts a ListRegistrySyncsByLastUpdateRow to a status.SyncStatus
-func dbSyncRowByLastUpdateToStatus(row sqlc.ListRegistrySyncsByLastUpdateRow) *status.SyncStatus {
+func dbSyncRowByLastUpdateToStatus(row sqlc.ListSourceSyncsByLastUpdateRow) *status.SyncStatus {
 	syncStatus := &status.SyncStatus{
 		Phase:        dbSyncStatusToPhase(row.SyncStatus),
 		LastAttempt:  row.StartedAt,
@@ -380,24 +395,6 @@ func syncPhaseToDBStatus(phase status.SyncPhase) sqlc.SyncStatus {
 		return sqlc.SyncStatusFAILED
 	default:
 		return sqlc.SyncStatusFAILED
-	}
-}
-
-// mapConfigTypeToDBType maps config source types to database registry types
-func mapConfigTypeToDBType(configType config.SourceType) (sqlc.RegistryType, error) {
-	switch configType {
-	case config.SourceTypeGit:
-		return sqlc.RegistryTypeREMOTE, nil
-	case config.SourceTypeAPI:
-		return sqlc.RegistryTypeREMOTE, nil
-	case config.SourceTypeFile:
-		return sqlc.RegistryTypeFILE, nil
-	case config.SourceTypeManaged:
-		return sqlc.RegistryTypeMANAGED, nil
-	case config.SourceTypeKubernetes:
-		return sqlc.RegistryTypeKUBERNETES, nil
-	default:
-		return "", fmt.Errorf("unrecognized registry type: %s", configType)
 	}
 }
 
@@ -455,7 +452,7 @@ func (d *dbStatusService) GetNextSyncJob(
 
 	// List all registries ordered by last update (ended_at) in ascending order
 	// Using FOR UPDATE SKIP LOCKED to prevent race conditions
-	registries, err := queries.ListRegistrySyncsByLastUpdate(ctx)
+	registries, err := queries.ListSourceSyncsByLastUpdate(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list registries: %w", err)
 	}
@@ -487,7 +484,7 @@ func (d *dbStatusService) GetNextSyncJob(
 		if predicate(regCfg, syncStatus) {
 			// Update the registry to IN_PROGRESS state
 			now := time.Now()
-			err = queries.UpdateRegistrySyncStatusByName(ctx, sqlc.UpdateRegistrySyncStatusByNameParams{
+			err = queries.UpdateSourceSyncStatusByName(ctx, sqlc.UpdateSourceSyncStatusByNameParams{
 				Name:       reg.Name,
 				SyncStatus: sqlc.SyncStatusINPROGRESS,
 				StartedAt:  &now,
@@ -557,7 +554,7 @@ func serializeFilterConfig(filter *config.FilterConfig) []byte {
 // loadRegistryConfigFromDB loads a registry configuration from the database.
 // This is used for API-created registries that are not in the config file cache.
 func loadRegistryConfigFromDB(ctx context.Context, queries *sqlc.Queries, name string) (*config.RegistryConfig, error) {
-	reg, err := queries.GetRegistryByName(ctx, name)
+	reg, err := queries.GetSourceByName(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get registry %s: %w", name, err)
 	}
@@ -584,7 +581,7 @@ func loadRegistryConfigFromDB(ctx context.Context, queries *sqlc.Queries, name s
 	}
 
 	// Determine source type and parse source config
-	sourceType := config.SourceType(stringOrEmpty(reg.SourceType))
+	sourceType := config.SourceType(reg.SourceType)
 	if reg.SourceConfig != nil {
 		if err := parseSourceConfig(regCfg, sourceType, reg.SourceConfig); err != nil {
 			return nil, fmt.Errorf("failed to parse source config for registry %s: %w", name, err)

@@ -605,7 +605,7 @@ func TestValidateFileConfig(t *testing.T) {
 	t.Parallel()
 
 	// Valid JSON for inline data tests - using a real entry from /examples/toolhive-registry.json
-	validToolhiveJSON := `{"$schema":"https://raw.githubusercontent.com/stacklok/toolhive/main/pkg/registry/data/toolhive-legacy-registry.schema.json","version":"1.0.0","last_updated":"2025-11-26T00:27:46Z","servers":{"fetch":{"description":"Allows you to fetch content from the web","tier":"Community","status":"Active","transport":"streamable-http","tools":["fetch"],"metadata":{"stars":20,"pulls":12390,"last_updated":"2025-11-13T02:33:35Z"},"repository_url":"https://github.com/stackloklabs/gofetch","tags":["content","html","markdown","fetch","fetching","get","wget","json","curl","modelcontextprotocol"],"image":"ghcr.io/stackloklabs/gofetch/server:1.0.1","target_port":8080,"permissions":{"network":{"outbound":{"insecure_allow_all":true,"allow_port":[443]}}},"provenance":{"sigstore_url":"tuf-repo-cdn.sigstore.dev","repository_uri":"https://github.com/StacklokLabs/gofetch","signer_identity":"/.github/workflows/release.yml","runner_environment":"github-hosted","cert_issuer":"https://token.actions.githubusercontent.com"}}}}`
+	validToolhiveJSON := `{"$schema":"https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/toolhive-legacy-registry.schema.json","version":"1.0.0","last_updated":"2025-11-26T00:27:46Z","servers":{"fetch":{"description":"Allows you to fetch content from the web","tier":"Community","status":"Active","transport":"streamable-http","tools":["fetch"],"metadata":{"stars":20,"pulls":12390,"last_updated":"2025-11-13T02:33:35Z"},"repository_url":"https://github.com/stackloklabs/gofetch","tags":["content","html","markdown","fetch","fetching","get","wget","json","curl","modelcontextprotocol"],"image":"ghcr.io/stackloklabs/gofetch/server:1.0.1","target_port":8080,"permissions":{"network":{"outbound":{"insecure_allow_all":true,"allow_port":[443]}}},"provenance":{"sigstore_url":"tuf-repo-cdn.sigstore.dev","repository_uri":"https://github.com/StacklokLabs/gofetch","signer_identity":"/.github/workflows/release.yml","runner_environment":"github-hosted","cert_issuer":"https://token.actions.githubusercontent.com"}}}}`
 
 	tests := []struct {
 		name    string
@@ -764,7 +764,7 @@ func TestValidateInlineDataBasic(t *testing.T) {
 
 	// Valid upstream format JSON that matches the schema
 	validUpstreamJSON := `{
-		"$schema": "https://raw.githubusercontent.com/stacklok/toolhive/main/pkg/registry/data/upstream-registry.schema.json",
+		"$schema": "https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/upstream-registry.schema.json",
 		"version": "1.0.0",
 		"meta": {
 			"last_updated": "2025-01-15T10:30:00Z"
@@ -892,7 +892,7 @@ func TestValidateInlineDataWithFormat(t *testing.T) {
 
 	// Valid upstream format JSON that matches the schema
 	validUpstreamJSON := `{
-		"$schema": "https://raw.githubusercontent.com/stacklok/toolhive/main/pkg/registry/data/upstream-registry.schema.json",
+		"$schema": "https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/upstream-registry.schema.json",
 		"version": "1.0.0",
 		"meta": {
 			"last_updated": "2025-01-15T10:30:00Z"

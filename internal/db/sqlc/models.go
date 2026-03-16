@@ -139,50 +139,6 @@ func (ns NullIconTheme) Value() (driver.Value, error) {
 	return string(ns.IconTheme), nil
 }
 
-type RegistryType string
-
-const (
-	RegistryTypeMANAGED    RegistryType = "MANAGED"
-	RegistryTypeFILE       RegistryType = "FILE"
-	RegistryTypeREMOTE     RegistryType = "REMOTE"
-	RegistryTypeKUBERNETES RegistryType = "KUBERNETES"
-)
-
-func (e *RegistryType) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = RegistryType(s)
-	case string:
-		*e = RegistryType(s)
-	default:
-		return fmt.Errorf("unsupported scan type for RegistryType: %T", src)
-	}
-	return nil
-}
-
-type NullRegistryType struct {
-	RegistryType RegistryType `json:"registry_type"`
-	Valid        bool         `json:"valid"` // Valid is true if RegistryType is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullRegistryType) Scan(value interface{}) error {
-	if value == nil {
-		ns.RegistryType, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.RegistryType.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullRegistryType) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.RegistryType), nil
-}
-
 type SkillStatus string
 
 const (
@@ -280,7 +236,7 @@ type EntryVersion struct {
 }
 
 type LatestEntryVersion struct {
-	RegID           uuid.UUID `json:"reg_id"`
+	SourceID        uuid.UUID `json:"source_id"`
 	Name            string    `json:"name"`
 	Version         string    `json:"version"`
 	LatestVersionID uuid.UUID `json:"latest_version_id"`
@@ -328,32 +284,33 @@ type McpServerRemote struct {
 }
 
 type Registry struct {
-	ID           uuid.UUID        `json:"id"`
-	Name         string           `json:"name"`
-	RegType      RegistryType     `json:"reg_type"`
-	CreatedAt    *time.Time       `json:"created_at"`
-	UpdatedAt    *time.Time       `json:"updated_at"`
-	CreationType CreationType     `json:"creation_type"`
-	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
-	SourceType   *string          `json:"source_type"`
-	Format       *string          `json:"format"`
-	SourceConfig []byte           `json:"source_config"`
-	FilterConfig []byte           `json:"filter_config"`
-	Syncable     bool             `json:"syncable"`
+	ID           uuid.UUID    `json:"id"`
+	Name         string       `json:"name"`
+	Claims       []byte       `json:"claims"`
+	CreationType CreationType `json:"creation_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
 }
 
 type RegistryEntry struct {
 	ID        uuid.UUID  `json:"id"`
-	RegID     uuid.UUID  `json:"reg_id"`
+	SourceID  uuid.UUID  `json:"source_id"`
 	EntryType EntryType  `json:"entry_type"`
 	Name      string     `json:"name"`
 	CreatedAt *time.Time `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`
 }
 
+type RegistrySource struct {
+	RegistryID uuid.UUID  `json:"registry_id"`
+	SourceID   uuid.UUID  `json:"source_id"`
+	Position   int32      `json:"position"`
+	CreatedAt  *time.Time `json:"created_at"`
+}
+
 type RegistrySync struct {
 	ID                    uuid.UUID  `json:"id"`
-	RegID                 uuid.UUID  `json:"reg_id"`
+	SourceID              uuid.UUID  `json:"source_id"`
 	SyncStatus            SyncStatus `json:"sync_status"`
 	ErrorMsg              *string    `json:"error_msg"`
 	StartedAt             *time.Time `json:"started_at"`
@@ -392,6 +349,20 @@ type SkillOciPackage struct {
 	Identifier string    `json:"identifier"`
 	Digest     *string   `json:"digest"`
 	MediaType  *string   `json:"media_type"`
+}
+
+type Source struct {
+	ID           uuid.UUID        `json:"id"`
+	Name         string           `json:"name"`
+	CreatedAt    *time.Time       `json:"created_at"`
+	UpdatedAt    *time.Time       `json:"updated_at"`
+	CreationType CreationType     `json:"creation_type"`
+	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
+	SourceType   string           `json:"source_type"`
+	Format       *string          `json:"format"`
+	SourceConfig []byte           `json:"source_config"`
+	FilterConfig []byte           `json:"filter_config"`
+	Syncable     bool             `json:"syncable"`
 }
 
 type TempEntryVersion struct {
@@ -447,7 +418,7 @@ type TempMcpServerRemote struct {
 
 type TempRegistryEntry struct {
 	ID        uuid.UUID  `json:"id"`
-	RegID     uuid.UUID  `json:"reg_id"`
+	SourceID  uuid.UUID  `json:"source_id"`
 	EntryType EntryType  `json:"entry_type"`
 	Name      string     `json:"name"`
 	CreatedAt *time.Time `json:"created_at"`
