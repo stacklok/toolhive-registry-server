@@ -45,19 +45,19 @@ func (q *Queries) DeleteEntryVersion(ctx context.Context, arg DeleteEntryVersion
 
 const deleteRegistryEntry = `-- name: DeleteRegistryEntry :execrows
 DELETE FROM registry_entry
-WHERE reg_id = $1
+WHERE source_id = $1
   AND entry_type = $2
   AND name = $3
 `
 
 type DeleteRegistryEntryParams struct {
-	RegID     uuid.UUID `json:"reg_id"`
+	SourceID  uuid.UUID `json:"source_id"`
 	EntryType EntryType `json:"entry_type"`
 	Name      string    `json:"name"`
 }
 
 func (q *Queries) DeleteRegistryEntry(ctx context.Context, arg DeleteRegistryEntryParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteRegistryEntry, arg.RegID, arg.EntryType, arg.Name)
+	result, err := q.db.Exec(ctx, deleteRegistryEntry, arg.SourceID, arg.EntryType, arg.Name)
 	if err != nil {
 		return 0, err
 	}
@@ -80,19 +80,19 @@ func (q *Queries) DeleteRegistryEntryByID(ctx context.Context, id uuid.UUID) (in
 const getRegistryEntryByName = `-- name: GetRegistryEntryByName :one
 SELECT id
   FROM registry_entry
- WHERE reg_id = $1
+ WHERE source_id = $1
    AND entry_type = $2
    AND name = $3
 `
 
 type GetRegistryEntryByNameParams struct {
-	RegID     uuid.UUID `json:"reg_id"`
+	SourceID  uuid.UUID `json:"source_id"`
 	EntryType EntryType `json:"entry_type"`
 	Name      string    `json:"name"`
 }
 
 func (q *Queries) GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getRegistryEntryByName, arg.RegID, arg.EntryType, arg.Name)
+	row := q.db.QueryRow(ctx, getRegistryEntryByName, arg.SourceID, arg.EntryType, arg.Name)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
@@ -141,7 +141,7 @@ func (q *Queries) InsertEntryVersion(ctx context.Context, arg InsertEntryVersion
 
 const insertRegistryEntry = `-- name: InsertRegistryEntry :one
 INSERT INTO registry_entry (
-    reg_id,
+    source_id,
     entry_type,
     name,
     created_at,
@@ -156,7 +156,7 @@ INSERT INTO registry_entry (
 `
 
 type InsertRegistryEntryParams struct {
-	RegID     uuid.UUID  `json:"reg_id"`
+	SourceID  uuid.UUID  `json:"source_id"`
 	EntryType EntryType  `json:"entry_type"`
 	Name      string     `json:"name"`
 	CreatedAt *time.Time `json:"created_at"`
@@ -165,7 +165,7 @@ type InsertRegistryEntryParams struct {
 
 func (q *Queries) InsertRegistryEntry(ctx context.Context, arg InsertRegistryEntryParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertRegistryEntry,
-		arg.RegID,
+		arg.SourceID,
 		arg.EntryType,
 		arg.Name,
 		arg.CreatedAt,

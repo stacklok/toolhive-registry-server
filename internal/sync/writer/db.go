@@ -82,7 +82,7 @@ func (d *dbSyncWriter) Store(
 	querier := sqlc.New(tx)
 
 	// Step 1: Validate registry exists and get registry ID
-	registry, err := querier.GetRegistryByName(ctx, registryName)
+	registry, err := querier.GetSourceByName(ctx, registryName)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("registry not found: %s", registryName)
@@ -203,8 +203,8 @@ func (*dbSyncWriter) deleteOrphanedServers(
 
 	// Delete servers not in the keepIDs list
 	return querier.DeleteOrphanedServers(ctx, sqlc.DeleteOrphanedServersParams{
-		RegID:   registryID,
-		KeepIds: keepIDs,
+		SourceID: registryID,
+		KeepIds:  keepIDs,
 	})
 }
 
@@ -278,7 +278,7 @@ func (*dbSyncWriter) updateLatestVersions(
 	// Insert latest version pointers
 	for name, latest := range latestVersions {
 		_, err := querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
-			RegID:     registryID,
+			SourceID:  registryID,
 			Name:      name,
 			Version:   latest.version,
 			VersionID: latest.serverID,
@@ -651,7 +651,7 @@ func sqlCopyEntries(
 	entryCopyCount, err := tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"temp_registry_entry"},
-		[]string{"id", "reg_id", "entry_type", "name", "created_at", "updated_at"},
+		[]string{"id", "source_id", "entry_type", "name", "created_at", "updated_at"},
 		pgx.CopyFromRows(entryRows),
 	)
 	if err != nil {

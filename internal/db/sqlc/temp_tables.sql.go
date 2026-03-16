@@ -54,7 +54,7 @@ const createTempRegistryEntryTable = `-- name: CreateTempRegistryEntryTable :exe
 
 
 CREATE TEMP TABLE temp_registry_entry ON COMMIT DROP AS
-SELECT id, reg_id, entry_type, name, created_at, updated_at FROM registry_entry
+SELECT id, source_id, entry_type, name, created_at, updated_at FROM registry_entry
   WITH NO DATA
 `
 
@@ -222,24 +222,24 @@ func (q *Queries) UpsertPackagesFromTemp(ctx context.Context) error {
 
 const upsertRegistryEntriesFromTemp = `-- name: UpsertRegistryEntriesFromTemp :many
 INSERT INTO registry_entry (
-    id, reg_id, entry_type, name, created_at, updated_at
+    id, source_id, entry_type, name, created_at, updated_at
 )
 SELECT id,
-       reg_id,
+       source_id,
        entry_type,
        name,
        created_at,
        updated_at
   FROM temp_registry_entry
-    ON CONFLICT (reg_id, entry_type, name)
+    ON CONFLICT (source_id, entry_type, name)
     DO UPDATE SET
       updated_at = EXCLUDED.updated_at
-RETURNING id, reg_id, entry_type, name
+RETURNING id, source_id, entry_type, name
 `
 
 type UpsertRegistryEntriesFromTempRow struct {
 	ID        uuid.UUID `json:"id"`
-	RegID     uuid.UUID `json:"reg_id"`
+	SourceID  uuid.UUID `json:"source_id"`
 	EntryType EntryType `json:"entry_type"`
 	Name      string    `json:"name"`
 }
@@ -255,7 +255,7 @@ func (q *Queries) UpsertRegistryEntriesFromTemp(ctx context.Context) ([]UpsertRe
 		var i UpsertRegistryEntriesFromTempRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.RegID,
+			&i.SourceID,
 			&i.EntryType,
 			&i.Name,
 		); err != nil {

@@ -13,7 +13,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/database"
 )
 
-func TestGetRegistrySync(t *testing.T) {
+func TestGetSourceSync(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -30,7 +30,7 @@ func TestGetRegistrySync(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
-				_, err := queries.GetRegistrySync(context.Background(), ids[0])
+				_, err := queries.GetSourceSync(context.Background(), ids[0])
 				require.Error(t, err)
 				require.ErrorIs(t, err, sql.ErrNoRows)
 			},
@@ -40,22 +40,22 @@ func TestGetRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry first
-				regID, err := queries.InsertConfigRegistry(
+				regID, err := queries.InsertConfigSource(
 					context.Background(),
-					InsertConfigRegistryParams{
-						Name:     "test-registry",
-						RegType:  RegistryTypeREMOTE,
-						Syncable: true,
+					InsertConfigSourceParams{
+						Name:       "test-registry",
+						SourceType: "git",
+						Syncable:   true,
 					},
 				)
 				require.NoError(t, err)
 				require.NotNil(t, regID)
 
 				// Insert a sync record
-				syncID, err := queries.InsertRegistrySync(
+				syncID, err := queries.InsertSourceSync(
 					context.Background(),
-					InsertRegistrySyncParams{
-						RegID:      regID,
+					InsertSourceSyncParams{
+						SourceID:   regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 					},
@@ -66,7 +66,7 @@ func TestGetRegistrySync(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
-				sync, err := queries.GetRegistrySync(context.Background(), ids[0])
+				sync, err := queries.GetSourceSync(context.Background(), ids[0])
 				require.NoError(t, err)
 				require.NotNil(t, sync)
 				require.Equal(t, ids[0], sync.ID)
@@ -91,7 +91,7 @@ func TestGetRegistrySync(t *testing.T) {
 	}
 }
 
-func TestInsertRegistrySync(t *testing.T) {
+func TestInsertSourceSync(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -103,12 +103,12 @@ func TestInsertRegistrySync(t *testing.T) {
 			name: "insert sync with IN_PROGRESS status",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
-				regID, err := queries.InsertConfigRegistry(
+				regID, err := queries.InsertConfigSource(
 					context.Background(),
-					InsertConfigRegistryParams{
-						Name:     "test-registry",
-						RegType:  RegistryTypeREMOTE,
-						Syncable: true,
+					InsertConfigSourceParams{
+						Name:       "test-registry",
+						SourceType: "git",
+						Syncable:   true,
 					},
 				)
 				require.NoError(t, err)
@@ -117,10 +117,10 @@ func TestInsertRegistrySync(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
-				_, err := queries.InsertRegistrySync(
+				_, err := queries.InsertSourceSync(
 					context.Background(),
-					InsertRegistrySyncParams{
-						RegID:      ids[0],
+					InsertSourceSyncParams{
+						SourceID:   ids[0],
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 					},
@@ -132,12 +132,12 @@ func TestInsertRegistrySync(t *testing.T) {
 			name: "insert sync with COMPLETED status",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
-				regID, err := queries.InsertConfigRegistry(
+				regID, err := queries.InsertConfigSource(
 					context.Background(),
-					InsertConfigRegistryParams{
-						Name:     "test-registry",
-						RegType:  RegistryTypeREMOTE,
-						Syncable: true,
+					InsertConfigSourceParams{
+						Name:       "test-registry",
+						SourceType: "git",
+						Syncable:   true,
 					},
 				)
 				require.NoError(t, err)
@@ -146,10 +146,10 @@ func TestInsertRegistrySync(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
-				_, err := queries.InsertRegistrySync(
+				_, err := queries.InsertSourceSync(
 					context.Background(),
-					InsertRegistrySyncParams{
-						RegID:      ids[0],
+					InsertSourceSyncParams{
+						SourceID:   ids[0],
 						SyncStatus: SyncStatusCOMPLETED,
 						ErrorMsg:   nil,
 					},
@@ -161,12 +161,12 @@ func TestInsertRegistrySync(t *testing.T) {
 			name: "insert sync with FAILED status",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
-				regID, err := queries.InsertConfigRegistry(
+				regID, err := queries.InsertConfigSource(
 					context.Background(),
-					InsertConfigRegistryParams{
-						Name:     "test-registry",
-						RegType:  RegistryTypeREMOTE,
-						Syncable: true,
+					InsertConfigSourceParams{
+						Name:       "test-registry",
+						SourceType: "git",
+						Syncable:   true,
 					},
 				)
 				require.NoError(t, err)
@@ -175,10 +175,10 @@ func TestInsertRegistrySync(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
-				_, err := queries.InsertRegistrySync(
+				_, err := queries.InsertSourceSync(
 					context.Background(),
-					InsertRegistrySyncParams{
-						RegID:      ids[0],
+					InsertSourceSyncParams{
+						SourceID:   ids[0],
 						SyncStatus: SyncStatusFAILED,
 						ErrorMsg:   nil,
 					},
@@ -190,12 +190,12 @@ func TestInsertRegistrySync(t *testing.T) {
 			name: "insert sync with error message",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
-				regID, err := queries.InsertConfigRegistry(
+				regID, err := queries.InsertConfigSource(
 					context.Background(),
-					InsertConfigRegistryParams{
-						Name:     "test-registry",
-						RegType:  RegistryTypeREMOTE,
-						Syncable: true,
+					InsertConfigSourceParams{
+						Name:       "test-registry",
+						SourceType: "git",
+						Syncable:   true,
 					},
 				)
 				require.NoError(t, err)
@@ -204,10 +204,10 @@ func TestInsertRegistrySync(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
-				_, err := queries.InsertRegistrySync(
+				_, err := queries.InsertSourceSync(
 					context.Background(),
-					InsertRegistrySyncParams{
-						RegID:      ids[0],
+					InsertSourceSyncParams{
+						SourceID:   ids[0],
 						SyncStatus: SyncStatusFAILED,
 						ErrorMsg:   ptr.String("sync failed with error"),
 					},
@@ -219,12 +219,12 @@ func TestInsertRegistrySync(t *testing.T) {
 			name: "insert sync without error message",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
-				regID, err := queries.InsertConfigRegistry(
+				regID, err := queries.InsertConfigSource(
 					context.Background(),
-					InsertConfigRegistryParams{
-						Name:     "test-registry",
-						RegType:  RegistryTypeREMOTE,
-						Syncable: true,
+					InsertConfigSourceParams{
+						Name:       "test-registry",
+						SourceType: "git",
+						Syncable:   true,
 					},
 				)
 				require.NoError(t, err)
@@ -233,10 +233,10 @@ func TestInsertRegistrySync(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
-				_, err := queries.InsertRegistrySync(
+				_, err := queries.InsertSourceSync(
 					context.Background(),
-					InsertRegistrySyncParams{
-						RegID:      ids[0],
+					InsertSourceSyncParams{
+						SourceID:   ids[0],
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 					},
@@ -253,10 +253,10 @@ func TestInsertRegistrySync(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
-				_, err := queries.InsertRegistrySync(
+				_, err := queries.InsertSourceSync(
 					context.Background(),
-					InsertRegistrySyncParams{
-						RegID:      ids[0],
+					InsertSourceSyncParams{
+						SourceID:   ids[0],
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 					},
@@ -281,7 +281,7 @@ func TestInsertRegistrySync(t *testing.T) {
 	}
 }
 
-func TestUpdateRegistrySync(t *testing.T) {
+func TestUpdateSourceSync(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -294,12 +294,12 @@ func TestUpdateRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry
-				regID, err := queries.InsertConfigRegistry(
+				regID, err := queries.InsertConfigSource(
 					context.Background(),
-					InsertConfigRegistryParams{
-						Name:     "test-registry",
-						RegType:  RegistryTypeREMOTE,
-						Syncable: true,
+					InsertConfigSourceParams{
+						Name:       "test-registry",
+						SourceType: "git",
+						Syncable:   true,
 					},
 				)
 				require.NoError(t, err)
@@ -307,10 +307,10 @@ func TestUpdateRegistrySync(t *testing.T) {
 
 				// Insert a sync record
 				startedAt := time.Now().UTC()
-				syncID, err := queries.InsertRegistrySync(
+				syncID, err := queries.InsertSourceSync(
 					context.Background(),
-					InsertRegistrySyncParams{
-						RegID:      regID,
+					InsertSourceSyncParams{
+						SourceID:   regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 						StartedAt:  &startedAt,
@@ -323,9 +323,9 @@ func TestUpdateRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
 				endedAt := time.Now().UTC()
-				err := queries.UpdateRegistrySync(
+				err := queries.UpdateSourceSync(
 					context.Background(),
-					UpdateRegistrySyncParams{
+					UpdateSourceSyncParams{
 						ID:         ids[0],
 						SyncStatus: SyncStatusCOMPLETED,
 						ErrorMsg:   nil,
@@ -335,7 +335,7 @@ func TestUpdateRegistrySync(t *testing.T) {
 				require.NoError(t, err)
 
 				// Verify the update
-				sync, err := queries.GetRegistrySync(context.Background(), ids[0])
+				sync, err := queries.GetSourceSync(context.Background(), ids[0])
 				require.NoError(t, err)
 				require.Equal(t, SyncStatusCOMPLETED, sync.SyncStatus)
 				require.True(t, sync.StartedAt.Before(endedAt))
@@ -347,12 +347,12 @@ func TestUpdateRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry
-				regID, err := queries.InsertConfigRegistry(
+				regID, err := queries.InsertConfigSource(
 					context.Background(),
-					InsertConfigRegistryParams{
-						Name:     "test-registry",
-						RegType:  RegistryTypeREMOTE,
-						Syncable: true,
+					InsertConfigSourceParams{
+						Name:       "test-registry",
+						SourceType: "git",
+						Syncable:   true,
 					},
 				)
 				require.NoError(t, err)
@@ -360,10 +360,10 @@ func TestUpdateRegistrySync(t *testing.T) {
 
 				// Insert a sync record
 				startedAt := time.Now().UTC()
-				syncID, err := queries.InsertRegistrySync(
+				syncID, err := queries.InsertSourceSync(
 					context.Background(),
-					InsertRegistrySyncParams{
-						RegID:      regID,
+					InsertSourceSyncParams{
+						SourceID:   regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 						StartedAt:  &startedAt,
@@ -376,9 +376,9 @@ func TestUpdateRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
 				endedAt := time.Now().UTC()
-				err := queries.UpdateRegistrySync(
+				err := queries.UpdateSourceSync(
 					context.Background(),
-					UpdateRegistrySyncParams{
+					UpdateSourceSyncParams{
 						ID:         ids[0],
 						SyncStatus: SyncStatusFAILED,
 						ErrorMsg:   ptr.String("update error message"),
@@ -388,7 +388,7 @@ func TestUpdateRegistrySync(t *testing.T) {
 				require.NoError(t, err)
 
 				// Verify the update
-				sync, err := queries.GetRegistrySync(context.Background(), ids[0])
+				sync, err := queries.GetSourceSync(context.Background(), ids[0])
 				require.NoError(t, err)
 				require.Equal(t, SyncStatusFAILED, sync.SyncStatus)
 				require.NotNil(t, sync.ErrorMsg)
@@ -402,12 +402,12 @@ func TestUpdateRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry
-				regID, err := queries.InsertConfigRegistry(
+				regID, err := queries.InsertConfigSource(
 					context.Background(),
-					InsertConfigRegistryParams{
-						Name:     "test-registry",
-						RegType:  RegistryTypeREMOTE,
-						Syncable: true,
+					InsertConfigSourceParams{
+						Name:       "test-registry",
+						SourceType: "git",
+						Syncable:   true,
 					},
 				)
 				require.NoError(t, err)
@@ -415,10 +415,10 @@ func TestUpdateRegistrySync(t *testing.T) {
 
 				// Insert a sync record
 				startedAt := time.Now().UTC()
-				syncID, err := queries.InsertRegistrySync(
+				syncID, err := queries.InsertSourceSync(
 					context.Background(),
-					InsertRegistrySyncParams{
-						RegID:      regID,
+					InsertSourceSyncParams{
+						SourceID:   regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 						StartedAt:  &startedAt,
@@ -431,9 +431,9 @@ func TestUpdateRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
 				endedAt := time.Now().UTC()
-				err := queries.UpdateRegistrySync(
+				err := queries.UpdateSourceSync(
 					context.Background(),
-					UpdateRegistrySyncParams{
+					UpdateSourceSyncParams{
 						ID:         ids[0],
 						SyncStatus: SyncStatusCOMPLETED,
 						ErrorMsg:   nil,
@@ -443,7 +443,7 @@ func TestUpdateRegistrySync(t *testing.T) {
 				require.NoError(t, err)
 
 				// Verify the update
-				sync, err := queries.GetRegistrySync(context.Background(), ids[0])
+				sync, err := queries.GetSourceSync(context.Background(), ids[0])
 				require.NoError(t, err)
 				require.True(t, sync.StartedAt.Before(endedAt))
 				require.True(t, !sync.EndedAt.IsZero())
@@ -454,12 +454,12 @@ func TestUpdateRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				// Create a registry
-				regID, err := queries.InsertConfigRegistry(
+				regID, err := queries.InsertConfigSource(
 					context.Background(),
-					InsertConfigRegistryParams{
-						Name:     "test-registry",
-						RegType:  RegistryTypeREMOTE,
-						Syncable: true,
+					InsertConfigSourceParams{
+						Name:       "test-registry",
+						SourceType: "git",
+						Syncable:   true,
 					},
 				)
 				require.NoError(t, err)
@@ -467,10 +467,10 @@ func TestUpdateRegistrySync(t *testing.T) {
 
 				// Insert a sync record
 				startedAt := time.Now().UTC()
-				syncID, err := queries.InsertRegistrySync(
+				syncID, err := queries.InsertSourceSync(
 					context.Background(),
-					InsertRegistrySyncParams{
-						RegID:      regID,
+					InsertSourceSyncParams{
+						SourceID:   regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 						StartedAt:  &startedAt,
@@ -482,9 +482,9 @@ func TestUpdateRegistrySync(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
-				err := queries.UpdateRegistrySync(
+				err := queries.UpdateSourceSync(
 					context.Background(),
-					UpdateRegistrySyncParams{
+					UpdateSourceSyncParams{
 						ID:         ids[0],
 						SyncStatus: SyncStatusCOMPLETED,
 						ErrorMsg:   nil,
@@ -493,7 +493,7 @@ func TestUpdateRegistrySync(t *testing.T) {
 				require.NoError(t, err)
 
 				// Verify the update
-				sync, err := queries.GetRegistrySync(context.Background(), ids[0])
+				sync, err := queries.GetSourceSync(context.Background(), ids[0])
 				require.NoError(t, err)
 				require.Equal(t, SyncStatusCOMPLETED, sync.SyncStatus)
 				require.Nil(t, sync.EndedAt)
@@ -509,9 +509,9 @@ func TestUpdateRegistrySync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, ids []uuid.UUID) {
 				endedAt := time.Now().UTC()
-				err := queries.UpdateRegistrySync(
+				err := queries.UpdateSourceSync(
 					context.Background(),
-					UpdateRegistrySyncParams{
+					UpdateSourceSyncParams{
 						ID:         ids[0],
 						SyncStatus: SyncStatusCOMPLETED,
 						ErrorMsg:   nil,
