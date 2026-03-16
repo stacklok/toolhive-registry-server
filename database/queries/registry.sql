@@ -11,6 +11,7 @@ FROM registry WHERE name = sqlc.arg(name);
 -- name: InsertRegistry :one
 INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
 VALUES (sqlc.arg(name), sqlc.narg(claims), sqlc.arg(creation_type), sqlc.arg(created_at), sqlc.arg(updated_at))
+ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
 RETURNING *;
 
 -- name: DeleteRegistry :execrows

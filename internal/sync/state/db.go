@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
@@ -52,10 +51,10 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 	now := time.Now()
 
 	if len(registryConfigs) == 0 {
-		// No registries in config - delete all CONFIG registries from DB
-		// We can't use BulkUpsertConfigRegistries with empty arrays, so handle separately.
-		// Delete CONFIG registry rows first (cascades to registry_source junction),
-		// which removes RESTRICT FK blocks so source deletion can proceed.
+		// No registries in config - delete all CONFIG entries from DB.
+		// Transitional: delete registry rows first (will be removed once registry
+		// lifecycle is decoupled from sources). CASCADE removes junction rows,
+		// which unblocks the RESTRICT FK so source deletion can proceed.
 		if err := queries.DeleteConfigRegistriesNotInList(ctx, []string{}); err != nil {
 			return err
 		}
@@ -92,7 +91,9 @@ func (d *dbStatusService) Initialize(ctx context.Context, registryConfigs []conf
 		upsertedIDs[i] = reg.ID
 	}
 
-	// Create/update registry rows and link to sources
+	// Transitional dual-write: create matching registry rows and link to sources.
+	// This will be removed once registry creation is decoupled from source lifecycle
+	// and managed through its own API/config layer.
 	if err := upsertRegistryRowsAndLinks(ctx, queries, upsertedRegistries, &now); err != nil {
 		return err
 	}
@@ -194,7 +195,7 @@ func checkForAPIRegistryConflicts(ctx context.Context, queries *sqlc.Queries, na
 }
 
 // upsertRegistryRowsAndLinks creates or updates registry rows for each upserted source and links them.
-// If a registry row already exists (unique constraint violation), it fetches the existing row instead.
+// InsertRegistry uses ON CONFLICT so this is safe to call when rows already exist (e.g. after migration backfill).
 func upsertRegistryRowsAndLinks(
 	ctx context.Context,
 	queries *sqlc.Queries,
@@ -202,32 +203,22 @@ func upsertRegistryRowsAndLinks(
 	now *time.Time,
 ) error {
 	for i, reg := range upsertedRegistries {
-		registryRow, insertErr := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
+		registryRow, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
 			Name:         reg.Name,
 			CreationType: sqlc.CreationTypeCONFIG,
 			CreatedAt:    now,
 			UpdatedAt:    now,
 		})
-		if insertErr != nil {
-			// If registry already exists (unique constraint violation), get existing
-			var pgErr *pgconn.PgError
-			if errors.As(insertErr, &pgErr) && pgErr.Code == "23505" {
-				var getErr error
-				registryRow, getErr = queries.GetRegistryByName(ctx, reg.Name)
-				if getErr != nil {
-					return fmt.Errorf("failed to get existing registry %s: %w", reg.Name, getErr)
-				}
-			} else {
-				return fmt.Errorf("failed to insert registry %s: %w", reg.Name, insertErr)
-			}
+		if err != nil {
+			return fmt.Errorf("failed to upsert registry %s: %w", reg.Name, err)
 		}
 
-		if linkErr := queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+		if err := queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
 			RegistryID: registryRow.ID,
 			SourceID:   reg.ID,
 			Position:   int32(i),
-		}); linkErr != nil {
-			return fmt.Errorf("failed to link registry %s to source: %w", reg.Name, linkErr)
+		}); err != nil {
+			return fmt.Errorf("failed to link registry %s to source: %w", reg.Name, err)
 		}
 	}
 	return nil

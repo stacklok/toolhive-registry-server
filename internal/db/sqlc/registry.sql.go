@@ -59,6 +59,7 @@ func (q *Queries) GetRegistryByName(ctx context.Context, name string) (Registry,
 const insertRegistry = `-- name: InsertRegistry :one
 INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
 RETURNING id, name, claims, creation_type, created_at, updated_at
 `
 
