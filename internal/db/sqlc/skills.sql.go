@@ -80,7 +80,15 @@ SELECT src.source_type AS registry_type,
    AND (v.version = $2::text
        OR ($2::text = 'latest' AND l.latest_version_id = v.id)
    )
-   AND ($3::text IS NULL OR src.name = $3::text)
+   AND ($3::text IS NULL OR e.source_id = (
+       SELECT rs2.source_id
+         FROM registry_source rs2
+         JOIN registry r2 ON rs2.registry_id = r2.id
+         JOIN registry_entry e2 ON e2.source_id = rs2.source_id AND e2.name = e.name
+        WHERE r2.name = $3::text
+        ORDER BY rs2.position ASC
+        LIMIT 1
+   ))
    AND ($4::text IS NULL OR s.namespace = $4::text)
 `
 
@@ -427,7 +435,15 @@ SELECT src.source_type AS registry_type,
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
- WHERE ($1::text IS NULL OR src.name = $1::text)
+ WHERE ($1::text IS NULL OR e.source_id = (
+       SELECT rs2.source_id
+         FROM registry_source rs2
+         JOIN registry r2 ON rs2.registry_id = r2.id
+         JOIN registry_entry e2 ON e2.source_id = rs2.source_id AND e2.name = e.name
+        WHERE r2.name = $1::text
+        ORDER BY rs2.position ASC
+        LIMIT 1
+   ))
    AND ($2::text IS NULL OR s.namespace = $2::text)
    AND ($3::text IS NULL OR e.name = $3::text)
    AND ($4::text IS NULL OR (

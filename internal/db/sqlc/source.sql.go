@@ -199,6 +199,36 @@ func (q *Queries) GetAPISourcesByNames(ctx context.Context, names []string) ([]G
 	return items, nil
 }
 
+const getManagedSource = `-- name: GetManagedSource :one
+SELECT id, name, source_type, creation_type, created_at, updated_at
+FROM source
+WHERE source_type = 'managed'
+LIMIT 1
+`
+
+type GetManagedSourceRow struct {
+	ID           uuid.UUID    `json:"id"`
+	Name         string       `json:"name"`
+	SourceType   string       `json:"source_type"`
+	CreationType CreationType `json:"creation_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
+}
+
+func (q *Queries) GetManagedSource(ctx context.Context) (GetManagedSourceRow, error) {
+	row := q.db.QueryRow(ctx, getManagedSource)
+	var i GetManagedSourceRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.SourceType,
+		&i.CreationType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getSource = `-- name: GetSource :one
 SELECT id,
        name,

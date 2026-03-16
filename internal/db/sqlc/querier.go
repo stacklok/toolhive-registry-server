@@ -55,6 +55,7 @@ type Querier interface {
 	DeleteSkillsByRegistry(ctx context.Context, sourceID uuid.UUID) error
 	GetAPISourcesByNames(ctx context.Context, names []string) ([]GetAPISourcesByNamesRow, error)
 	GetLatestVersionForServer(ctx context.Context, arg GetLatestVersionForServerParams) (string, error)
+	GetManagedSource(ctx context.Context) (GetManagedSourceRow, error)
 	GetRegistryByName(ctx context.Context, name string) (Registry, error)
 	GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (uuid.UUID, error)
 	GetServerIDsByRegistryNameVersion(ctx context.Context, sourceID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error)

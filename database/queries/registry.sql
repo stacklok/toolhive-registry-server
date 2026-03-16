@@ -39,3 +39,4 @@ FROM registry_source rs
 JOIN source s ON rs.source_id = s.id
 WHERE rs.registry_id = sqlc.arg(registry_id)
 ORDER BY rs.position;
+

@@ -63,8 +63,24 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	)
 	require.NoError(t, err)
 
-	// Create server versions
+	// Create a registry and link the source to it
 	now := time.Now().UTC()
+	registry, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
+		Name:         "test-registry",
+		CreationType: sqlc.CreationTypeCONFIG,
+		CreatedAt:    &now,
+		UpdatedAt:    &now,
+	})
+	require.NoError(t, err)
+
+	err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+		RegistryID: registry.ID,
+		SourceID:   regID,
+		Position:   0,
+	})
+	require.NoError(t, err)
+
+	// Create server versions
 
 	// Server 1: one registry entry, multiple versions
 	entryID1, err := queries.InsertRegistryEntry(
@@ -1108,7 +1124,6 @@ func TestPublishServerVersion(t *testing.T) {
 		name         string
 		setupFunc    func(*testing.T, *pgxpool.Pool)
 		serverData   *upstreamv0.ServerJSON
-		registryName string
 		validateFunc func(*testing.T, *upstreamv0.ServerJSON, error)
 	}{
 		{
@@ -1132,7 +1147,6 @@ func TestPublishServerVersion(t *testing.T) {
 				Description: "Test server description",
 				Title:       "Test Server",
 			},
-			registryName: "test-registry",
 			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
 				t.Helper()
 				require.NoError(t, err)
@@ -1174,7 +1188,6 @@ func TestPublishServerVersion(t *testing.T) {
 					},
 				},
 			},
-			registryName: "test-registry-meta",
 			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
 				t.Helper()
 				require.NoError(t, err)
@@ -1229,7 +1242,6 @@ func TestPublishServerVersion(t *testing.T) {
 					},
 				},
 			},
-			registryName: "test-registry-full",
 			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
 				t.Helper()
 				require.NoError(t, err)
@@ -1245,7 +1257,7 @@ func TestPublishServerVersion(t *testing.T) {
 			},
 		},
 		{
-			name: "failure - registry not found",
+			name: "failure - no managed source",
 			setupFunc: func(t *testing.T, _ *pgxpool.Pool) {
 				t.Helper()
 			},
@@ -1254,22 +1266,21 @@ func TestPublishServerVersion(t *testing.T) {
 				Version:     "1.0.0",
 				Description: "Test",
 			},
-			registryName: "nonexistent-registry",
 			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrRegistryNotFound)
+				require.ErrorIs(t, err, service.ErrNoManagedSource)
 			},
 		},
 		{
-			name: "failure - not a managed registry",
+			name: "failure - no managed source with only remote sources",
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a REMOTE (non-managed) source
+				// Create a REMOTE (non-managed) source — getManagedSource should still fail
 				_, err := queries.InsertConfigSource(ctx, sqlc.InsertConfigSourceParams{
 					Name:       "remote-registry",
 					SourceType: "git",
@@ -1282,12 +1293,11 @@ func TestPublishServerVersion(t *testing.T) {
 				Version:     "1.0.0",
 				Description: "Test",
 			},
-			registryName: "remote-registry",
 			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrNotManagedRegistry)
+				require.ErrorIs(t, err, service.ErrNoManagedSource)
 			},
 		},
 		{
@@ -1334,7 +1344,6 @@ func TestPublishServerVersion(t *testing.T) {
 				Version:     "1.0.0",
 				Description: "Duplicate",
 			},
-			registryName: "test-registry-dup",
 			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
 				t.Helper()
 				require.Error(t, err)
@@ -1359,7 +1368,6 @@ func TestPublishServerVersion(t *testing.T) {
 			// Call PublishServerVersion
 			result, err := svc.PublishServerVersion(
 				context.Background(),
-				service.WithRegistryName(tt.registryName),
 				service.WithServerData(tt.serverData),
 			)
 
@@ -1368,14 +1376,14 @@ func TestPublishServerVersion(t *testing.T) {
 	}
 }
 
-func TestUpdateRegistry(t *testing.T) {
+func TestUpdateSource(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name         string
 		setupFunc    func(*testing.T, *pgxpool.Pool) string // returns registry name
-		updateReq    *service.RegistryCreateRequest
-		validateFunc func(*testing.T, *service.RegistryInfo, error)
+		updateReq    *service.SourceCreateRequest
+		validateFunc func(*testing.T, *service.SourceInfo, error)
 	}{
 		{
 			name: "success - update existing API registry",
@@ -1402,7 +1410,7 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "update-test-registry"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: "toolhive",
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/updated-repo.git",
@@ -1412,7 +1420,7 @@ func TestUpdateRegistry(t *testing.T) {
 					Interval: "30m",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.NoError(t, err)
 				require.NotNil(t, result)
@@ -1451,7 +1459,7 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "same-type-test-registry"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				API: &config.APIConfig{
 					Endpoint: "https://api.example.com/v2",
@@ -1460,7 +1468,7 @@ func TestUpdateRegistry(t *testing.T) {
 					Interval: "1h",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.NoError(t, err)
 				require.NotNil(t, result)
@@ -1478,7 +1486,7 @@ func TestUpdateRegistry(t *testing.T) {
 				// No setup needed - registry doesn't exist
 				return "nonexistent-registry"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
@@ -1487,11 +1495,11 @@ func TestUpdateRegistry(t *testing.T) {
 					Interval: "1h",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrRegistryNotFound)
+				require.ErrorIs(t, err, service.ErrSourceNotFound)
 			},
 		},
 		{
@@ -1511,7 +1519,7 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "config-registry-test"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
@@ -1520,11 +1528,11 @@ func TestUpdateRegistry(t *testing.T) {
 					Interval: "1h",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrConfigRegistry)
+				require.ErrorIs(t, err, service.ErrConfigSource)
 			},
 		},
 		{
@@ -1552,7 +1560,7 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "source-type-change-test"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
@@ -1561,7 +1569,7 @@ func TestUpdateRegistry(t *testing.T) {
 					Interval: "1h",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
@@ -1593,7 +1601,7 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "invalid-config-test"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				Git: &config.GitConfig{
 					// Missing required Repository field
@@ -1603,11 +1611,11 @@ func TestUpdateRegistry(t *testing.T) {
 					Interval: "1h",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrInvalidRegistryConfig)
+				require.ErrorIs(t, err, service.ErrInvalidSourceConfig)
 			},
 		},
 		{
@@ -1635,18 +1643,18 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "no-source-type-test"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				// No source type specified (Git, API, File, Managed, or Kubernetes)
 				SyncPolicy: &config.SyncPolicyConfig{
 					Interval: "1h",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrInvalidRegistryConfig)
+				require.ErrorIs(t, err, service.ErrInvalidSourceConfig)
 			},
 		},
 		{
@@ -1674,18 +1682,18 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "missing-sync-policy-test"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				API: &config.APIConfig{
 					Endpoint: "https://api.example.com/v2",
 				},
 				// Missing required SyncPolicy for API (synced) type
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrInvalidRegistryConfig)
+				require.ErrorIs(t, err, service.ErrInvalidSourceConfig)
 			},
 		},
 		{
@@ -1713,12 +1721,12 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "managed-registry-update-test"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format:  "toolhive",
 				Managed: &config.ManagedConfig{},
 				// No SyncPolicy needed for managed type
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.NoError(t, err)
 				require.NotNil(t, result)
@@ -1739,8 +1747,8 @@ func TestUpdateRegistry(t *testing.T) {
 			// Setup registry if needed
 			registryName := tt.setupFunc(t, svc.pool)
 
-			// Call UpdateRegistry
-			result, err := svc.UpdateRegistry(
+			// Call UpdateSource
+			result, err := svc.UpdateSource(
 				context.Background(),
 				registryName,
 				tt.updateReq,

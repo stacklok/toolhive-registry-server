@@ -29,6 +29,23 @@ func setupRegistry(t *testing.T, queries *Queries) uuid.UUID {
 		},
 	)
 	require.NoError(t, err)
+
+	// Create a registry and link the source to it (needed for registry_name subquery)
+	now := time.Now().UTC()
+	reg, err := queries.InsertRegistry(context.Background(), InsertRegistryParams{
+		Name:         "test-registry",
+		CreationType: "CONFIG",
+		CreatedAt:    &now,
+		UpdatedAt:    &now,
+	})
+	require.NoError(t, err)
+	err = queries.LinkRegistrySource(context.Background(), LinkRegistrySourceParams{
+		RegistryID: reg.ID,
+		SourceID:   regID,
+		Position:   0,
+	})
+	require.NoError(t, err)
+
 	return regID
 }
 

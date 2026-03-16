@@ -14,7 +14,6 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 
-	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/otel"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -55,8 +54,7 @@ func (s *dbService) ListServers(
 	if options.RegistryName != nil {
 		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
 
-		querier := sqlc.New(s.pool)
-		if err := validateRegistryExists(ctx, querier, *options.RegistryName); err != nil {
+		if err := checkRegistryExists(ctx, s.pool, *options.RegistryName); err != nil {
 			otel.RecordError(span, err)
 			return nil, err
 		}
@@ -73,10 +71,8 @@ func (s *dbService) ListServers(
 
 	// Request one extra record to detect if there are more results
 	params := sqlc.ListServersParams{
-		Size: int64(options.Limit + 1),
-	}
-	if options.RegistryName != nil {
-		params.RegistryName = options.RegistryName
+		Size:         int64(options.Limit + 1),
+		RegistryName: options.RegistryName,
 	}
 	if options.Search != "" {
 		params.Search = &options.Search
@@ -178,24 +174,19 @@ func (s *dbService) ListServerVersions(
 	)
 	if options.RegistryName != nil {
 		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
-	}
 
-	if options.RegistryName != nil {
-		querier := sqlc.New(s.pool)
-		if err := validateRegistryExists(ctx, querier, *options.RegistryName); err != nil {
+		if err := checkRegistryExists(ctx, s.pool, *options.RegistryName); err != nil {
 			otel.RecordError(span, err)
 			return nil, err
 		}
 	}
 
 	params := sqlc.ListServerVersionsParams{
-		Name: options.Name,
-		Next: options.Next,
-		Prev: options.Prev,
-		Size: int64(options.Limit),
-	}
-	if options.RegistryName != nil {
-		params.RegistryName = options.RegistryName
+		Name:         options.Name,
+		Next:         options.Next,
+		Prev:         options.Prev,
+		Size:         int64(options.Limit),
+		RegistryName: options.RegistryName,
 	}
 
 	// Note: this function fetches a list of server versions. In case no records are
@@ -256,20 +247,19 @@ func (s *dbService) GetServerVersion(
 		span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 	}
 
+	var registryName *string
 	if options.RegistryName != "" {
-		querier := sqlc.New(s.pool)
-		if err := validateRegistryExists(ctx, querier, options.RegistryName); err != nil {
+		registryName = &options.RegistryName
+		if err := checkRegistryExists(ctx, s.pool, options.RegistryName); err != nil {
 			otel.RecordError(span, err)
 			return nil, err
 		}
 	}
 
 	params := sqlc.GetServerVersionParams{
-		Name:    options.Name,
-		Version: options.Version,
-	}
-	if options.RegistryName != "" {
-		params.RegistryName = &options.RegistryName
+		Name:         options.Name,
+		Version:      options.Version,
+		RegistryName: registryName,
 	}
 
 	// Note: this function fetches a single record given name and version.
@@ -498,51 +488,24 @@ func insertServerIcons(
 	return nil
 }
 
-// validateRegistryExists validates that the registry exists.
-// Returns ErrRegistryNotFound if the registry doesn't exist.
-func validateRegistryExists(ctx context.Context, querier *sqlc.Queries, registryName string) error {
-	_, err := querier.GetSourceByName(ctx, registryName)
+// getManagedSource finds the managed source from the database.
+// Returns ErrNoManagedSource if no managed source exists.
+func getManagedSource(ctx context.Context, querier *sqlc.Queries) (*sqlc.Source, error) {
+	row, err := querier.GetManagedSource(ctx)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
+			return nil, service.ErrNoManagedSource
 		}
-		return fmt.Errorf("failed to get registry: %w", err)
+		return nil, fmt.Errorf("failed to get managed source: %w", err)
 	}
-	return nil
-}
-
-// validateManagedRegistry validates that the registry exists and is a managed
-// registry. Returns ErrRegistryNotFound if the registry doesn't exist, or
-// ErrNotManagedRegistry if it's not of type managed.
-func validateManagedRegistry(
-	ctx context.Context,
-	querier *sqlc.Queries,
-	registryName string,
-) (*sqlc.Source, error) {
-	registryRow, err := querier.GetSourceByName(ctx, registryName)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
-		}
-		return nil, fmt.Errorf("failed to get registry: %w", err)
-	}
-
-	if registryRow.SourceType != "managed" {
-		return nil, fmt.Errorf("%w: registry %s has type %s",
-			service.ErrNotManagedRegistry, registryName, registryRow.SourceType)
-	}
-
-	// Convert row to Source struct
-	source := &sqlc.Source{
-		ID:           registryRow.ID,
-		Name:         registryRow.Name,
-		SourceType:   registryRow.SourceType,
-		CreationType: registryRow.CreationType,
-		CreatedAt:    registryRow.CreatedAt,
-		UpdatedAt:    registryRow.UpdatedAt,
-	}
-
-	return source, nil
+	return &sqlc.Source{
+		ID:           row.ID,
+		Name:         row.Name,
+		SourceType:   row.SourceType,
+		CreationType: row.CreationType,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
+	}, nil
 }
 
 // PublishServerVersion publishes a server version to a managed registry
@@ -573,7 +536,6 @@ func (s *dbService) PublishServerVersion(
 
 	// Add tracing attributes
 	span.SetAttributes(
-		otel.AttrRegistryName.String(options.RegistryName),
 		otel.AttrServerName.String(serverData.Name),
 		otel.AttrServerVersion.String(serverData.Version),
 	)
@@ -586,21 +548,19 @@ func (s *dbService) PublishServerVersion(
 	}
 
 	// Execute the publish operation in a transaction
-	if err := s.executePublishTransaction(ctx, options.RegistryName, serverData); err != nil {
+	if err := s.executePublishTransaction(ctx, serverData); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
 	slog.InfoContext(ctx, "Server version published",
 		"duration_ms", time.Since(start).Milliseconds(),
-		"registry", options.RegistryName,
 		"server", serverData.Name,
 		"version", serverData.Version,
 		"request_id", middleware.GetReqID(ctx))
 
 	// Fetch the inserted server to return it
 	result, err := s.GetServerVersion(ctx,
-		service.WithRegistryName(options.RegistryName),
 		service.WithName(serverData.Name),
 		service.WithVersion(serverData.Version),
 	)
@@ -615,7 +575,6 @@ func (s *dbService) PublishServerVersion(
 // executePublishTransaction executes the publish operation within a transaction
 func (s *dbService) executePublishTransaction(
 	ctx context.Context,
-	registryName string,
 	serverData *upstreamv0.ServerJSON,
 ) error {
 	// Begin transaction
@@ -635,8 +594,8 @@ func (s *dbService) executePublishTransaction(
 
 	querier := sqlc.New(tx)
 
-	// Validate registry exists and is managed
-	registry, err := validateManagedRegistry(ctx, querier, registryName)
+	// Find the managed source automatically
+	registry, err := getManagedSource(ctx, querier)
 	if err != nil {
 		return err
 	}
@@ -727,7 +686,6 @@ func (s *dbService) DeleteServerVersion(
 	}
 
 	span.SetAttributes(
-		otel.AttrRegistryName.String(options.RegistryName),
 		otel.AttrServerName.String(options.ServerName),
 		otel.AttrServerVersion.String(options.Version),
 	)
@@ -739,7 +697,6 @@ func (s *dbService) DeleteServerVersion(
 
 	slog.InfoContext(ctx, "Server version deleted",
 		"duration_ms", time.Since(start).Milliseconds(),
-		"registry", options.RegistryName,
 		"server", options.ServerName,
 		"version", options.Version,
 		"request_id", middleware.GetReqID(ctx))
@@ -768,7 +725,7 @@ func (s *dbService) executeDeleteTransaction(
 
 	querier := sqlc.New(tx)
 
-	registry, err := validateManagedRegistry(ctx, querier, options.RegistryName)
+	registry, err := getManagedSource(ctx, querier)
 	if err != nil {
 		return err
 	}
@@ -966,247 +923,4 @@ func (s *dbService) sharedListServersWithCursor(
 	}
 
 	return result, lastCursor, nil
-}
-
-// ListRegistries returns all configured registries
-func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.ListRegistries")
-	defer span.End()
-	start := time.Now()
-
-	// Begin a read-only transaction
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   pgx.ReadCommitted,
-		AccessMode: pgx.ReadOnly,
-	})
-	if err != nil {
-		otel.RecordError(span, err)
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		err := tx.Rollback(ctx)
-		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
-		}
-	}()
-
-	querier := sqlc.New(tx)
-
-	// List all sources (no pagination for now)
-	params := sqlc.ListSourcesParams{
-		Size: service.MaxPageSize, // Maximum number of sources to return
-	}
-
-	registries, err := querier.ListSources(ctx, params)
-	if err != nil {
-		otel.RecordError(span, err)
-		return nil, fmt.Errorf("failed to list registries: %w", err)
-	}
-
-	// Convert to API response format
-	result := make([]service.RegistryInfo, 0, len(registries))
-	for _, reg := range registries {
-		// Build RegistryInfo with all config fields
-		info := buildRegistryInfoFromListRow(&reg)
-
-		// Fetch sync status from database
-		syncRecord, err := querier.GetSourceSyncByName(ctx, reg.Name)
-		if err != nil {
-			// It's okay if sync record doesn't exist yet (registry may not have been synced)
-			if !errors.Is(err, pgx.ErrNoRows) {
-				slog.Warn("Failed to get sync status for registry",
-					"registry", reg.Name,
-					"error", err)
-			}
-			// Leave SyncStatus as nil if not found or error
-			info.SyncStatus = nil
-		} else {
-			// Convert database sync status to service type
-			info.SyncStatus = &service.RegistrySyncStatus{
-				Phase:        convertSyncPhase(syncRecord.SyncStatus),
-				LastSyncTime: syncRecord.EndedAt,   // EndedAt represents successful completion
-				LastAttempt:  syncRecord.StartedAt, // StartedAt is the last attempt time
-				AttemptCount: int(syncRecord.AttemptCount),
-				ServerCount:  int(syncRecord.ServerCount),
-				Message:      getStatusMessage(syncRecord.ErrorMsg),
-			}
-		}
-
-		result = append(result, *info)
-	}
-
-	span.SetAttributes(otel.AttrResultCount.Int(len(result)))
-	slog.DebugContext(ctx, "ListRegistries completed",
-		"duration_ms", time.Since(start).Milliseconds(),
-		"count", len(result),
-		"request_id", middleware.GetReqID(ctx))
-	return result, nil
-}
-
-// convertSyncPhase converts database SyncStatus enum to service phase string
-func convertSyncPhase(status sqlc.SyncStatus) string {
-	switch status {
-	case sqlc.SyncStatusINPROGRESS:
-		return "syncing"
-	case sqlc.SyncStatusCOMPLETED:
-		return "complete"
-	case sqlc.SyncStatusFAILED:
-		return "failed"
-	default:
-		return "unknown"
-	}
-}
-
-// getStatusMessage converts error message pointer to string
-func getStatusMessage(errorMsg *string) string {
-	if errorMsg == nil || *errorMsg == "" {
-		return ""
-	}
-	return *errorMsg
-}
-
-// GetRegistryByName returns a single registry by name
-func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*service.RegistryInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.GetRegistryByName")
-	defer span.End()
-	start := time.Now()
-
-	// Add tracing attributes
-	span.SetAttributes(otel.AttrRegistryName.String(name))
-
-	// Begin a read-only transaction
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   pgx.ReadCommitted,
-		AccessMode: pgx.ReadOnly,
-	})
-	if err != nil {
-		otel.RecordError(span, err)
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		err := tx.Rollback(ctx)
-		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
-		}
-	}()
-
-	querier := sqlc.New(tx)
-
-	// Get the registry by name
-	registry, err := querier.GetSourceByName(ctx, name)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
-			otel.RecordError(span, err)
-			return nil, err
-		}
-		otel.RecordError(span, err)
-		return nil, fmt.Errorf("failed to get registry: %w", err)
-	}
-
-	// Build RegistryInfo with all config fields
-	info := buildRegistryInfoFromGetByNameRow(&registry)
-
-	// Fetch sync status from database
-	syncRecord, err := querier.GetSourceSyncByName(ctx, registry.Name)
-	if err != nil {
-		// It's okay if sync record doesn't exist yet (registry may not have been synced)
-		if !errors.Is(err, pgx.ErrNoRows) {
-			slog.Warn("Failed to get sync status for registry",
-				"registry", registry.Name,
-				"error", err)
-		}
-		// Leave SyncStatus as nil if not found or error
-		info.SyncStatus = nil
-	} else {
-		// Convert database sync status to service type
-		info.SyncStatus = &service.RegistrySyncStatus{
-			Phase:        convertSyncPhase(syncRecord.SyncStatus),
-			LastSyncTime: syncRecord.EndedAt,   // EndedAt represents successful completion
-			LastAttempt:  syncRecord.StartedAt, // StartedAt is the last attempt time
-			AttemptCount: int(syncRecord.AttemptCount),
-			ServerCount:  int(syncRecord.ServerCount),
-			Message:      getStatusMessage(syncRecord.ErrorMsg),
-		}
-	}
-
-	slog.DebugContext(ctx, "GetRegistryByName completed",
-		"duration_ms", time.Since(start).Milliseconds(),
-		"registry", name,
-		"request_id", middleware.GetReqID(ctx))
-	return info, nil
-}
-
-// buildRegistryInfoFromListRow builds a RegistryInfo from a ListSourcesRow
-func buildRegistryInfoFromListRow(row *sqlc.ListSourcesRow) *service.RegistryInfo {
-	info := &service.RegistryInfo{
-		Name:         row.Name,
-		Type:         row.SourceType,
-		CreationType: service.CreationType(row.CreationType),
-	}
-
-	if row.SourceType != "" {
-		info.SourceType = config.SourceType(row.SourceType)
-	}
-
-	if row.Format != nil {
-		info.Format = *row.Format
-	}
-
-	if row.SourceType != "" {
-		info.SourceConfig = deserializeSourceConfig(row.SourceType, row.SourceConfig)
-	}
-
-	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
-
-	if row.SyncSchedule.Valid {
-		info.SyncSchedule = row.SyncSchedule.Duration.String()
-	}
-
-	if row.CreatedAt != nil {
-		info.CreatedAt = *row.CreatedAt
-	}
-
-	if row.UpdatedAt != nil {
-		info.UpdatedAt = *row.UpdatedAt
-	}
-
-	return info
-}
-
-// buildRegistryInfoFromGetByNameRow builds a RegistryInfo from a GetSourceByNameRow
-func buildRegistryInfoFromGetByNameRow(row *sqlc.GetSourceByNameRow) *service.RegistryInfo {
-	info := &service.RegistryInfo{
-		Name:         row.Name,
-		Type:         row.SourceType,
-		CreationType: service.CreationType(row.CreationType),
-	}
-
-	if row.SourceType != "" {
-		info.SourceType = config.SourceType(row.SourceType)
-	}
-
-	if row.Format != nil {
-		info.Format = *row.Format
-	}
-
-	if row.SourceType != "" {
-		info.SourceConfig = deserializeSourceConfig(row.SourceType, row.SourceConfig)
-	}
-
-	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
-
-	if row.SyncSchedule.Valid {
-		info.SyncSchedule = row.SyncSchedule.Duration.String()
-	}
-
-	if row.CreatedAt != nil {
-		info.CreatedAt = *row.CreatedAt
-	}
-
-	if row.UpdatedAt != nil {
-		info.UpdatedAt = *row.UpdatedAt
-	}
-
-	return info
 }

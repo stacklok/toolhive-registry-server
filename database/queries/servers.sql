@@ -23,7 +23,15 @@ SELECT src.source_type as registry_type,
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
- WHERE (sqlc.narg(registry_name)::text IS NULL OR src.name = sqlc.narg(registry_name)::text)
+ WHERE (sqlc.narg(registry_name)::text IS NULL OR e.source_id = (
+       SELECT rs2.source_id
+         FROM registry_source rs2
+         JOIN registry r2 ON rs2.registry_id = r2.id
+         JOIN registry_entry e2 ON e2.source_id = rs2.source_id AND e2.name = e.name
+        WHERE r2.name = sqlc.narg(registry_name)::text
+        ORDER BY rs2.position ASC
+        LIMIT 1
+   ))
    AND (sqlc.narg(search)::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
        OR LOWER(v.title) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
@@ -68,7 +76,15 @@ SELECT src.source_type as registry_type,
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
  WHERE e.name = sqlc.arg(name)
-   AND (sqlc.narg(registry_name)::text IS NULL OR src.name = sqlc.narg(registry_name)::text)
+   AND (sqlc.narg(registry_name)::text IS NULL OR e.source_id = (
+       SELECT rs2.source_id
+         FROM registry_source rs2
+         JOIN registry r2 ON rs2.registry_id = r2.id
+         JOIN registry_entry e2 ON e2.source_id = rs2.source_id AND e2.name = e.name
+        WHERE r2.name = sqlc.narg(registry_name)::text
+        ORDER BY rs2.position ASC
+        LIMIT 1
+   ))
    AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR v.created_at > sqlc.narg(next))
     AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR v.created_at < sqlc.narg(prev)))
  ORDER BY
@@ -103,7 +119,15 @@ SELECT src.source_type as registry_type,
        v.version = sqlc.arg(version)
        OR (sqlc.arg(version) = 'latest' AND l.latest_version_id = v.id)
    )
-   AND (sqlc.narg(registry_name)::text IS NULL OR src.name = sqlc.narg(registry_name)::text);
+   AND (sqlc.narg(registry_name)::text IS NULL OR e.source_id = (
+       SELECT rs2.source_id
+         FROM registry_source rs2
+         JOIN registry r2 ON rs2.registry_id = r2.id
+         JOIN registry_entry e2 ON e2.source_id = rs2.source_id AND e2.name = e.name
+        WHERE r2.name = sqlc.narg(registry_name)::text
+        ORDER BY rs2.position ASC
+        LIMIT 1
+   ));
 
 -- name: GetLatestVersionForServer :one
 SELECT l.version

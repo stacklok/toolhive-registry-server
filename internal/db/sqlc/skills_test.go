@@ -487,7 +487,7 @@ func TestGetSkillVersion(t *testing.T) {
 	testCases := []struct {
 		name         string
 		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string)
-		scenarioFunc func(t *testing.T, queries *Queries, skillName, version string)
+		scenarioFunc func(t *testing.T, queries *Queries, regID uuid.UUID, skillName, version string)
 	}{
 		{
 			name: "get skill version with minimal fields",
@@ -499,7 +499,7 @@ func TestGetSkillVersion(t *testing.T) {
 				return "test-skill", "1.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, skillName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
 				skill, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
@@ -544,7 +544,7 @@ func TestGetSkillVersion(t *testing.T) {
 				return "test-skill", "1.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, skillName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
 				skill, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
@@ -592,7 +592,7 @@ func TestGetSkillVersion(t *testing.T) {
 				return "test-skill", "1.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, skillName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
 				skill, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
@@ -627,7 +627,7 @@ func TestGetSkillVersion(t *testing.T) {
 				return "test-skill", "latest"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, skillName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
 				skill, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
@@ -642,7 +642,7 @@ func TestGetSkillVersion(t *testing.T) {
 			},
 		},
 		{
-			name: "get skill version filtered by registry name",
+			name: "get skill version filtered by source IDs",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
 				versionID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
@@ -650,7 +650,7 @@ func TestGetSkillVersion(t *testing.T) {
 				return "test-skill", "1.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, skillName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
 				regName := "test-registry"
 				skill, err := queries.GetSkillVersion(
 					context.Background(),
@@ -665,13 +665,13 @@ func TestGetSkillVersion(t *testing.T) {
 				require.Equal(t, version, skill.Version)
 
 				// Wrong registry name returns error
-				wrongRegName := "wrong-registry"
+				wrongName := "nonexistent-registry"
 				_, err = queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
 						Name:         skillName,
 						Version:      version,
-						RegistryName: &wrongRegName,
+						RegistryName: &wrongName,
 					},
 				)
 				require.Error(t, err)
@@ -684,7 +684,7 @@ func TestGetSkillVersion(t *testing.T) {
 				return "non-existent-skill", "1.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, skillName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
 				_, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
@@ -704,7 +704,7 @@ func TestGetSkillVersion(t *testing.T) {
 				return "test-skill", "9.9.9"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, skillName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
 				_, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
@@ -731,7 +731,7 @@ func TestGetSkillVersion(t *testing.T) {
 			require.NotNil(t, regID)
 
 			skillName, version := tc.setupFunc(t, queries, regID)
-			tc.scenarioFunc(t, queries, skillName, version)
+			tc.scenarioFunc(t, queries, regID, skillName, version)
 		})
 	}
 }
@@ -742,14 +742,14 @@ func TestListSkills(t *testing.T) {
 	testCases := []struct {
 		name         string
 		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID)
-		scenarioFunc func(t *testing.T, queries *Queries)
+		scenarioFunc func(t *testing.T, queries *Queries, regID uuid.UUID)
 	}{
 		{
 			name: "no skills",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
@@ -768,7 +768,7 @@ func TestListSkills(t *testing.T) {
 				insertSkill(t, queries, entryID, "test-namespace")
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
@@ -793,7 +793,7 @@ func TestListSkills(t *testing.T) {
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
@@ -818,7 +818,7 @@ func TestListSkills(t *testing.T) {
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				// Get first page
 				allSkills, err := queries.ListSkills(
 					context.Background(),
@@ -856,7 +856,7 @@ func TestListSkills(t *testing.T) {
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
@@ -878,7 +878,7 @@ func TestListSkills(t *testing.T) {
 				insertSkill(t, queries, entryID2, "namespace-2")
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				//nolint:goconst
 				ns := "namespace-1"
 				skills, err := queries.ListSkills(
@@ -904,7 +904,7 @@ func TestListSkills(t *testing.T) {
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				name := "skill-b"
 				skills, err := queries.ListSkills(
 					context.Background(),
@@ -931,7 +931,7 @@ func TestListSkills(t *testing.T) {
 				insertSkill(t, queries, entryID2, "test-namespace")
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				search := "code"
 				skills, err := queries.ListSkills(
 					context.Background(),
@@ -999,7 +999,7 @@ func TestListSkills(t *testing.T) {
 				insertSkill(t, queries, versionID2, "test-namespace")
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				since := time.Now().UTC().Add(-30 * time.Minute)
 				skills, err := queries.ListSkills(
 					context.Background(),
@@ -1021,7 +1021,7 @@ func TestListSkills(t *testing.T) {
 				insertSkill(t, queries, entryID, "test-namespace")
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				regName := "test-registry"
 				skills, err := queries.ListSkills(
 					context.Background(),
@@ -1034,11 +1034,11 @@ func TestListSkills(t *testing.T) {
 				require.Len(t, skills, 1)
 
 				// Wrong registry name returns empty
-				wrongRegName := "wrong-registry"
+				wrongName := "nonexistent-registry"
 				skills, err = queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						RegistryName: &wrongRegName,
+						RegistryName: &wrongName,
 						Size:         10,
 					},
 				)
@@ -1077,7 +1077,7 @@ func TestListSkills(t *testing.T) {
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
@@ -1108,7 +1108,7 @@ func TestListSkills(t *testing.T) {
 			require.NotNil(t, regID)
 
 			tc.setupFunc(t, queries, regID)
-			tc.scenarioFunc(t, queries)
+			tc.scenarioFunc(t, queries, regID)
 		})
 	}
 }

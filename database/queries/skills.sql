@@ -25,7 +25,15 @@ SELECT src.source_type AS registry_type,
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
- WHERE (sqlc.narg(registry_name)::text IS NULL OR src.name = sqlc.narg(registry_name)::text)
+ WHERE (sqlc.narg(registry_name)::text IS NULL OR e.source_id = (
+       SELECT rs2.source_id
+         FROM registry_source rs2
+         JOIN registry r2 ON rs2.registry_id = r2.id
+         JOIN registry_entry e2 ON e2.source_id = rs2.source_id AND e2.name = e.name
+        WHERE r2.name = sqlc.narg(registry_name)::text
+        ORDER BY rs2.position ASC
+        LIMIT 1
+   ))
    AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text)
    AND (sqlc.narg(name)::text IS NULL OR e.name = sqlc.narg(name)::text)
    AND (sqlc.narg(search)::text IS NULL OR (
@@ -70,7 +78,15 @@ SELECT src.source_type AS registry_type,
    AND (v.version = sqlc.arg(version)::text
        OR (sqlc.arg(version)::text = 'latest' AND l.latest_version_id = v.id)
    )
-   AND (sqlc.narg(registry_name)::text IS NULL OR src.name = sqlc.narg(registry_name)::text)
+   AND (sqlc.narg(registry_name)::text IS NULL OR e.source_id = (
+       SELECT rs2.source_id
+         FROM registry_source rs2
+         JOIN registry r2 ON rs2.registry_id = r2.id
+         JOIN registry_entry e2 ON e2.source_id = rs2.source_id AND e2.name = e.name
+        WHERE r2.name = sqlc.narg(registry_name)::text
+        ORDER BY rs2.position ASC
+        LIMIT 1
+   ))
    AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text);
 
 -- name: ListSkillOciPackages :many

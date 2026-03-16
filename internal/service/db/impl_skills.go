@@ -43,9 +43,18 @@ func (s *dbService) ListSkills(
 		return nil, fmt.Errorf("registry name is required")
 	}
 
+	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
+
 	if options.Limit > service.MaxPageSize {
 		options.Limit = service.MaxPageSize
 	}
+
+	if err := checkRegistryExists(ctx, s.pool, options.RegistryName); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
+	querier := sqlc.New(s.pool)
 
 	params := sqlc.ListSkillsParams{
 		RegistryName: &options.RegistryName,
@@ -68,13 +77,6 @@ func (s *dbService) ListSkills(
 		}
 		params.CursorName = &cursorName
 		params.CursorVersion = &cursorVersion
-	}
-
-	querier := sqlc.New(s.pool)
-
-	if err := validateRegistryExists(ctx, querier, options.RegistryName); err != nil {
-		otel.RecordError(span, err)
-		return nil, err
 	}
 
 	listRows, err := querier.ListSkills(ctx, params)
@@ -153,6 +155,15 @@ func (s *dbService) GetSkillVersion(
 		return nil, fmt.Errorf("namespace is required")
 	}
 
+	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
+
+	if err := checkRegistryExists(ctx, s.pool, options.RegistryName); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
+	querier := sqlc.New(s.pool)
+
 	params := sqlc.GetSkillVersionParams{
 		Name:         options.Name,
 		Version:      options.Version,
@@ -160,7 +171,6 @@ func (s *dbService) GetSkillVersion(
 		Namespace:    &options.Namespace,
 	}
 
-	querier := sqlc.New(s.pool)
 	row, err := querier.GetSkillVersion(ctx, params)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -252,13 +262,14 @@ func (s *dbService) PublishSkill(
 		return nil, fmt.Errorf("namespace, name, and version are required")
 	}
 
-	if err := s.executePublishSkillTransaction(ctx, options.RegistryName, skill); err != nil {
+	registryName, err := s.executePublishSkillTransaction(ctx, skill)
+	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
 	return s.GetSkillVersion(ctx,
-		service.WithRegistryName(options.RegistryName),
+		service.WithRegistryName(registryName),
 		service.WithName(skill.Name),
 		service.WithVersion(skill.Version),
 		service.WithNamespace(skill.Namespace),
@@ -266,19 +277,19 @@ func (s *dbService) PublishSkill(
 }
 
 // executePublishSkillTransaction executes the skill publish operation within a transaction.
+// Returns the managed source name for fetch-back, or an error.
 //
 //nolint:gocyclo
 func (s *dbService) executePublishSkillTransaction(
 	ctx context.Context,
-	registryName string,
 	skill *service.Skill,
-) error {
+) (string, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.Serializable,
 		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		err := tx.Rollback(ctx)
@@ -289,10 +300,11 @@ func (s *dbService) executePublishSkillTransaction(
 
 	querier := sqlc.New(tx)
 
-	registry, err := validateManagedRegistry(ctx, querier, registryName)
+	registry, err := getManagedSource(ctx, querier)
 	if err != nil {
-		return err
+		return "", err
 	}
+	registryName := registry.Name
 
 	now := time.Now().UTC()
 
@@ -312,7 +324,7 @@ func (s *dbService) executePublishSkillTransaction(
 		})
 	}
 	if err != nil {
-		return fmt.Errorf("failed to get or create registry entry: %w", err)
+		return "", fmt.Errorf("failed to get or create registry entry: %w", err)
 	}
 
 	// Insert the entry version (one per name+version)
@@ -333,19 +345,19 @@ func (s *dbService) executePublishSkillTransaction(
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return fmt.Errorf("%w: %s %s", service.ErrVersionAlreadyExists, skill.Name, skill.Version)
+			return "", fmt.Errorf("%w: %s %s", service.ErrVersionAlreadyExists, skill.Name, skill.Version)
 		}
-		return err
+		return "", err
 	}
 
 	skillParams, err := makeInsertSkillVersionParams(versionID, skill)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	_, err = querier.InsertSkillVersion(ctx, *skillParams)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	for _, pkg := range skill.Packages {
@@ -368,7 +380,7 @@ func (s *dbService) executePublishSkillTransaction(
 			})
 		}
 		if err != nil {
-			return err
+			return "", err
 		}
 	}
 
@@ -383,7 +395,7 @@ func (s *dbService) executePublishSkillTransaction(
 	if err == nil {
 		shouldUpdateLatest = versions.IsNewerVersion(skill.Version, latestSkill.Version)
 	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("failed to get current latest version: %w", err)
+		return "", fmt.Errorf("failed to get current latest version: %w", err)
 	}
 
 	if shouldUpdateLatest {
@@ -394,15 +406,15 @@ func (s *dbService) executePublishSkillTransaction(
 			VersionID: versionID,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to upsert latest skill version: %w", err)
+			return "", fmt.Errorf("failed to upsert latest skill version: %w", err)
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return "", fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return nil
+	return registryName, nil
 }
 
 func makeInsertSkillVersionParams(
@@ -500,7 +512,7 @@ func (s *dbService) executeDeleteSkillTransaction(
 
 	querier := sqlc.New(tx)
 
-	registry, err := validateManagedRegistry(ctx, querier, options.RegistryName)
+	registry, err := getManagedSource(ctx, querier)
 	if err != nil {
 		return err
 	}

@@ -9,8 +9,8 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 )
 
-// ValidateRegistryConfig validates a RegistryCreateRequest
-func ValidateRegistryConfig(req *RegistryCreateRequest) error {
+// ValidateSourceConfig validates a SourceCreateRequest
+func ValidateSourceConfig(req *SourceCreateRequest) error {
 	if req == nil {
 		return fmt.Errorf("config is required")
 	}
@@ -44,7 +44,7 @@ func ValidateRegistryConfig(req *RegistryCreateRequest) error {
 }
 
 // validateSourceSpecific validates source-specific configuration
-func validateSourceSpecific(req *RegistryCreateRequest) error {
+func validateSourceSpecific(req *SourceCreateRequest) error {
 	switch req.GetSourceType() {
 	case config.SourceTypeGit:
 		return validateGitConfig(req.Git)

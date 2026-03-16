@@ -230,3 +230,9 @@ SELECT id,
 FROM source
 WHERE name = ANY(sqlc.arg(names)::text[])
   AND creation_type = 'API';
+
+-- name: GetManagedSource :one
+SELECT id, name, source_type, creation_type, created_at, updated_at
+FROM source
+WHERE source_type = 'managed'
+LIMIT 1;
