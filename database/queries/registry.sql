@@ -49,6 +49,10 @@ DELETE FROM registry
 WHERE creation_type = 'CONFIG'
   AND name NOT IN (SELECT unnest(sqlc.arg(keep_names)::text[]));
 
+-- name: CountRegistriesBySourceID :one
+-- Count how many registries reference a given source (via registry_source junction).
+SELECT COUNT(*) FROM registry_source WHERE source_id = sqlc.arg(source_id);
+
 -- name: ListRegistrySources :many
 SELECT s.id, s.name
 FROM registry_source rs

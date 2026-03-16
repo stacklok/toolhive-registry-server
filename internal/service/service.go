@@ -53,6 +53,8 @@ var (
 	ErrConfigRegistry = errors.New("cannot modify config-created registry via API")
 	// ErrInvalidRegistryConfig is returned when registry configuration is invalid
 	ErrInvalidRegistryConfig = errors.New("invalid registry configuration")
+	// ErrSourceInUse is returned when attempting to delete a source that is linked to registries
+	ErrSourceInUse = errors.New("source is referenced by one or more registries")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service

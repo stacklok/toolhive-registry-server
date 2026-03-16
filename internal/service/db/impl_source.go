@@ -114,13 +114,7 @@ func (s *dbService) CreateSource(
 		return nil, fmt.Errorf("failed to insert source: %w", err)
 	}
 
-	// Create corresponding registry row and link to source
-	if err := createRegistryRowAndLink(ctx, querier, name, registry.ID, &now); err != nil {
-		otel.RecordError(span, err)
-		return nil, err
-	}
-
-	// Initialize sync status for the new registry
+	// Initialize sync status for the new source
 	initialSyncStatus, initialErrorMsg := getAPISourceInitialSyncStatus(req, sourceType)
 	err = querier.BulkInitializeSourceSyncs(ctx, sqlc.BulkInitializeSourceSyncsParams{
 		SourceIds:    []uuid.UUID{registry.ID},
@@ -299,43 +293,41 @@ func (s *dbService) DeleteSource(ctx context.Context, name string) error {
 
 	querier := sqlc.New(tx)
 
-	// Delete the registry row first (cascades to registry_source junction).
-	// This removes the RESTRICT FK on source, allowing source deletion.
-	// If no registry row exists (e.g., sources created before this fix), (0, nil) is returned.
-	if _, err := querier.DeleteRegistry(ctx, name); err != nil {
-		otel.RecordError(span, err)
-		return fmt.Errorf("failed to delete registry row: %w", err)
-	}
-
-	// Delete the source (only deletes API-created sources)
-	rowsAffected, err := querier.DeleteAPISource(ctx, name)
+	// Look up the source first to validate it exists and is API-created
+	existing, err := querier.GetSourceByName(ctx, name)
 	if err != nil {
-		otel.RecordError(span, err)
-		return fmt.Errorf("failed to delete source: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		// Source not found or is CONFIG type, check which case
-		existing, checkErr := querier.GetSourceByName(ctx, name)
-		if checkErr != nil {
-			if errors.Is(checkErr, pgx.ErrNoRows) {
-				err = fmt.Errorf("%w: %s", service.ErrSourceNotFound, name)
-				otel.RecordError(span, err)
-				return err
-			}
-			otel.RecordError(span, checkErr)
-			return fmt.Errorf("failed to check source: %w", checkErr)
-		}
-		// Source exists but is CONFIG type
-		if existing.CreationType == sqlc.CreationTypeCONFIG {
-			err = fmt.Errorf("%w: %s", service.ErrConfigSource, name)
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = fmt.Errorf("%w: %s", service.ErrSourceNotFound, name)
 			otel.RecordError(span, err)
 			return err
 		}
-		// Should not reach here, but return not found just in case
-		err = fmt.Errorf("%w: %s", service.ErrSourceNotFound, name)
+		otel.RecordError(span, err)
+		return fmt.Errorf("failed to get source: %w", err)
+	}
+	if existing.CreationType == sqlc.CreationTypeCONFIG {
+		err = fmt.Errorf("%w: %s", service.ErrConfigSource, name)
 		otel.RecordError(span, err)
 		return err
+	}
+
+	// Check if the source is linked to any registries.
+	// The RESTRICT FK on registry_source.source_id would block deletion anyway, but we
+	// want to return a clear error message.
+	linkCount, err := querier.CountRegistriesBySourceID(ctx, existing.ID)
+	if err != nil {
+		otel.RecordError(span, err)
+		return fmt.Errorf("failed to check registry links: %w", err)
+	}
+	if linkCount > 0 {
+		err = fmt.Errorf("%w: %s is referenced by %d registry(ies)", service.ErrSourceInUse, name, linkCount)
+		otel.RecordError(span, err)
+		return err
+	}
+
+	// Delete the source — we already verified it exists, is API-created, and is not in use.
+	if _, err := querier.DeleteAPISource(ctx, name); err != nil {
+		otel.RecordError(span, err)
+		return fmt.Errorf("failed to delete source: %w", err)
 	}
 
 	// Commit transaction
@@ -829,35 +821,6 @@ func getAPISourceInitialSyncStatus(req *service.SourceCreateRequest, sourceType 
 		return sqlc.SyncStatusCOMPLETED, fmt.Sprintf("Non-synced registry (type: %s)", sourceType)
 	}
 	return sqlc.SyncStatusFAILED, "No previous sync status found"
-}
-
-// createRegistryRowAndLink inserts an API registry row and links it to a source at position 0.
-func createRegistryRowAndLink(
-	ctx context.Context,
-	querier *sqlc.Queries,
-	name string,
-	sourceID uuid.UUID,
-	now *time.Time,
-) error {
-	registryRow, err := querier.UpsertAPIRegistry(ctx, sqlc.UpsertAPIRegistryParams{
-		Name:      name,
-		CreatedAt: now,
-		UpdatedAt: now,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to insert registry row: %w", err)
-	}
-
-	err = querier.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
-		RegistryID: registryRow.ID,
-		SourceID:   sourceID,
-		Position:   0,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to link registry to source: %w", err)
-	}
-
-	return nil
 }
 
 // getFileSourceSubtype returns which file source subtype is being used (path, url, or data)

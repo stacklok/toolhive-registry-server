@@ -12,6 +12,18 @@ import (
 	"github.com/google/uuid"
 )
 
+const countRegistriesBySourceID = `-- name: CountRegistriesBySourceID :one
+SELECT COUNT(*) FROM registry_source WHERE source_id = $1
+`
+
+// Count how many registries reference a given source (via registry_source junction).
+func (q *Queries) CountRegistriesBySourceID(ctx context.Context, sourceID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countRegistriesBySourceID, sourceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteAPIRegistry = `-- name: DeleteAPIRegistry :execrows
 DELETE FROM registry WHERE name = $1 AND creation_type = 'API'
 `

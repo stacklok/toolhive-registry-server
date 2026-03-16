@@ -15,6 +15,8 @@ type Querier interface {
 	// Bulk insert or update CONFIG sources (only updates existing CONFIG sources)
 	BulkUpsertConfigSources(ctx context.Context, arg BulkUpsertConfigSourcesParams) ([]BulkUpsertConfigSourcesRow, error)
 	CountEntryVersions(ctx context.Context, entryID uuid.UUID) (int64, error)
+	// Count how many registries reference a given source (via registry_source junction).
+	CountRegistriesBySourceID(ctx context.Context, sourceID uuid.UUID) (int64, error)
 	// Temp Entry Version Table Operations
 	CreateTempEntryVersionTable(ctx context.Context) error
 	// Temp Icon Table Operations
