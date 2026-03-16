@@ -194,8 +194,8 @@ func checkForAPIRegistryConflicts(ctx context.Context, queries *sqlc.Queries, na
 	return nil
 }
 
-// upsertRegistryRowsAndLinks creates or updates registry rows for each upserted source and links them.
-// InsertRegistry uses ON CONFLICT so this is safe to call when rows already exist (e.g. after migration backfill).
+// upsertRegistryRowsAndLinks creates or updates CONFIG registry rows for each upserted source and links them.
+// UpsertConfigRegistry uses ON CONFLICT with a creation_type='CONFIG' guard, so it cannot overwrite API registries.
 func upsertRegistryRowsAndLinks(
 	ctx context.Context,
 	queries *sqlc.Queries,
@@ -203,11 +203,10 @@ func upsertRegistryRowsAndLinks(
 	now *time.Time,
 ) error {
 	for i, reg := range upsertedRegistries {
-		registryRow, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
-			Name:         reg.Name,
-			CreationType: sqlc.CreationTypeCONFIG,
-			CreatedAt:    now,
-			UpdatedAt:    now,
+		registryRow, err := queries.UpsertConfigRegistry(ctx, sqlc.UpsertConfigRegistryParams{
+			Name:      reg.Name,
+			CreatedAt: now,
+			UpdatedAt: now,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to upsert registry %s: %w", reg.Name, err)

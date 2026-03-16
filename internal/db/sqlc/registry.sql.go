@@ -12,6 +12,19 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteAPIRegistry = `-- name: DeleteAPIRegistry :execrows
+DELETE FROM registry WHERE name = $1 AND creation_type = 'API'
+`
+
+// Delete an API registry by name (returns 0 if not found or is CONFIG type)
+func (q *Queries) DeleteAPIRegistry(ctx context.Context, name string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAPIRegistry, name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteConfigRegistriesNotInList = `-- name: DeleteConfigRegistriesNotInList :exec
 DELETE FROM registry
 WHERE creation_type = 'CONFIG'
@@ -44,41 +57,6 @@ FROM registry WHERE name = $1
 
 func (q *Queries) GetRegistryByName(ctx context.Context, name string) (Registry, error) {
 	row := q.db.QueryRow(ctx, getRegistryByName, name)
-	var i Registry
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Claims,
-		&i.CreationType,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const insertRegistry = `-- name: InsertRegistry :one
-INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
-RETURNING id, name, claims, creation_type, created_at, updated_at
-`
-
-type InsertRegistryParams struct {
-	Name         string       `json:"name"`
-	Claims       []byte       `json:"claims"`
-	CreationType CreationType `json:"creation_type"`
-	CreatedAt    *time.Time   `json:"created_at"`
-	UpdatedAt    *time.Time   `json:"updated_at"`
-}
-
-func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) (Registry, error) {
-	row := q.db.QueryRow(ctx, insertRegistry,
-		arg.Name,
-		arg.Claims,
-		arg.CreationType,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-	)
 	var i Registry
 	err := row.Scan(
 		&i.ID,
@@ -188,4 +166,76 @@ type UnlinkRegistrySourceParams struct {
 func (q *Queries) UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySourceParams) error {
 	_, err := q.db.Exec(ctx, unlinkRegistrySource, arg.RegistryID, arg.SourceID)
 	return err
+}
+
+const upsertAPIRegistry = `-- name: UpsertAPIRegistry :one
+INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
+VALUES ($1, $2, 'API', $3, $4)
+ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
+WHERE registry.creation_type = 'API'
+RETURNING id, name, claims, creation_type, created_at, updated_at
+`
+
+type UpsertAPIRegistryParams struct {
+	Name      string     `json:"name"`
+	Claims    []byte     `json:"claims"`
+	CreatedAt *time.Time `json:"created_at"`
+	UpdatedAt *time.Time `json:"updated_at"`
+}
+
+// Insert or update an API registry. The ON CONFLICT clause only fires when the
+// existing row is also API-created, preventing CONFIG registries from being overwritten.
+func (q *Queries) UpsertAPIRegistry(ctx context.Context, arg UpsertAPIRegistryParams) (Registry, error) {
+	row := q.db.QueryRow(ctx, upsertAPIRegistry,
+		arg.Name,
+		arg.Claims,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Registry
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Claims,
+		&i.CreationType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertConfigRegistry = `-- name: UpsertConfigRegistry :one
+INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
+VALUES ($1, $2, 'CONFIG', $3, $4)
+ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
+WHERE registry.creation_type = 'CONFIG'
+RETURNING id, name, claims, creation_type, created_at, updated_at
+`
+
+type UpsertConfigRegistryParams struct {
+	Name      string     `json:"name"`
+	Claims    []byte     `json:"claims"`
+	CreatedAt *time.Time `json:"created_at"`
+	UpdatedAt *time.Time `json:"updated_at"`
+}
+
+// Insert or update a CONFIG registry. The ON CONFLICT clause only fires when the
+// existing row is also CONFIG-created, preventing API registries from being overwritten.
+func (q *Queries) UpsertConfigRegistry(ctx context.Context, arg UpsertConfigRegistryParams) (Registry, error) {
+	row := q.db.QueryRow(ctx, upsertConfigRegistry,
+		arg.Name,
+		arg.Claims,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Registry
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Claims,
+		&i.CreationType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

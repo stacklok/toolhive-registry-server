@@ -9,6 +9,24 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 )
 
+// ValidateRegistryConfig validates a RegistryCreateRequest
+func ValidateRegistryConfig(req *RegistryCreateRequest) error {
+	if req == nil {
+		return fmt.Errorf("config is required")
+	}
+	if len(req.Sources) == 0 {
+		return fmt.Errorf("at least one source is required")
+	}
+	seen := make(map[string]struct{}, len(req.Sources))
+	for _, s := range req.Sources {
+		if _, ok := seen[s]; ok {
+			return fmt.Errorf("duplicate source: %s", s)
+		}
+		seen[s] = struct{}{}
+	}
+	return nil
+}
+
 // ValidateSourceConfig validates a SourceCreateRequest
 func ValidateSourceConfig(req *SourceCreateRequest) error {
 	if req == nil {

@@ -14,6 +14,8 @@ import (
 	"github.com/stacklok/toolhive-registry-server/database"
 )
 
+const testSkillVersion = "1.0.0"
+
 //nolint:thelper // We want to see these lines in the test output
 func createSkillEntry(
 	t *testing.T,
@@ -87,7 +89,7 @@ func TestInsertSkillVersion(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				versionID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				versionID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 
 				skillEntryID, err := queries.InsertSkillVersion(
 					context.Background(),
@@ -110,7 +112,7 @@ func TestInsertSkillVersion(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				versionID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0",
+				versionID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion,
 					ptr.String("A test skill"), ptr.String("Test Skill"))
 
 				skillEntryID, err := queries.InsertSkillVersion(
@@ -136,7 +138,7 @@ func TestInsertSkillVersion(t *testing.T) {
 			name: "insert duplicate skill version fails",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				versionID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				versionID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				insertSkill(t, queries, versionID, "test-namespace")
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -159,7 +161,7 @@ func TestInsertSkillVersion(t *testing.T) {
 					context.Background(),
 					InsertEntryVersionParams{
 						EntryID:   entryID,
-						Version:   "1.0.0",
+						Version:   testSkillVersion,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
@@ -171,7 +173,7 @@ func TestInsertSkillVersion(t *testing.T) {
 					context.Background(),
 					InsertEntryVersionParams{
 						EntryID:   entryID,
-						Version:   "1.0.0",
+						Version:   testSkillVersion,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
 					},
@@ -205,7 +207,7 @@ func TestInsertSkillVersion(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				versionID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				versionID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 
 				skillEntryID, err := queries.InsertSkillVersion(
 					context.Background(),
@@ -226,7 +228,7 @@ func TestInsertSkillVersion(t *testing.T) {
 					context.Background(),
 					GetSkillVersionParams{
 						Name:    "test-skill",
-						Version: "1.0.0",
+						Version: testSkillVersion,
 					},
 				)
 				require.NoError(t, err)
@@ -269,7 +271,7 @@ func TestInsertSkillVersionForSync(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				versionID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				versionID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 
 				skillEntryID, err := queries.InsertSkillVersionForSync(
 					context.Background(),
@@ -292,7 +294,7 @@ func TestInsertSkillVersionForSync(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				versionID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0",
+				versionID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion,
 					ptr.String("Sync skill"), ptr.String("Sync Skill Title"))
 
 				skillEntryID, err := queries.InsertSkillVersionForSync(
@@ -369,7 +371,7 @@ func TestUpsertSkillVersionForSync(t *testing.T) {
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				versionID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				versionID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 
 				skillEntryID, err := queries.UpsertSkillVersionForSync(
 					context.Background(),
@@ -392,7 +394,7 @@ func TestUpsertSkillVersionForSync(t *testing.T) {
 			name: "update existing skill version via upsert",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				versionID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				versionID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				insertSkill(t, queries, versionID, "test-namespace")
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -402,7 +404,7 @@ func TestUpsertSkillVersionForSync(t *testing.T) {
 					context.Background(),
 					GetSkillVersionParams{
 						Name:    "test-skill",
-						Version: "1.0.0",
+						Version: testSkillVersion,
 					},
 				)
 				require.NoError(t, err)
@@ -431,7 +433,7 @@ func TestUpsertSkillVersionForSync(t *testing.T) {
 					context.Background(),
 					GetSkillVersionParams{
 						Name:    "test-skill",
-						Version: "1.0.0",
+						Version: testSkillVersion,
 					},
 				)
 				require.NoError(t, err)
@@ -493,10 +495,10 @@ func TestGetSkillVersion(t *testing.T) {
 			name: "get skill version with minimal fields",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				insertSkill(t, queries, entryID, "test-namespace")
 				//nolint:goconst
-				return "test-skill", "1.0.0"
+				return "test-skill", testSkillVersion
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
@@ -522,7 +524,7 @@ func TestGetSkillVersion(t *testing.T) {
 			name: "get skill version with all fields",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
-				versionID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0",
+				versionID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion,
 					ptr.String("A test skill"), ptr.String("Test Skill"))
 
 				_, err := queries.InsertSkillVersion(
@@ -541,7 +543,7 @@ func TestGetSkillVersion(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
-				return "test-skill", "1.0.0"
+				return "test-skill", testSkillVersion
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
@@ -576,7 +578,7 @@ func TestGetSkillVersion(t *testing.T) {
 			name: "get skill version marked as latest",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
-				versionID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				versionID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				insertSkill(t, queries, versionID, "test-namespace")
 
 				_, err := queries.UpsertLatestSkillVersion(
@@ -584,12 +586,12 @@ func TestGetSkillVersion(t *testing.T) {
 					UpsertLatestSkillVersionParams{
 						SourceID:  regID,
 						Name:      "test-skill",
-						Version:   "1.0.0",
+						Version:   testSkillVersion,
 						VersionID: versionID,
 					},
 				)
 				require.NoError(t, err)
-				return "test-skill", "1.0.0"
+				return "test-skill", testSkillVersion
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
@@ -645,9 +647,9 @@ func TestGetSkillVersion(t *testing.T) {
 			name: "get skill version filtered by source IDs",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
-				versionID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				versionID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				insertSkill(t, queries, versionID, "test-namespace")
-				return "test-skill", "1.0.0"
+				return "test-skill", testSkillVersion
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
@@ -681,7 +683,7 @@ func TestGetSkillVersion(t *testing.T) {
 			name: "get non-existent skill version",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) (string, string) {
-				return "non-existent-skill", "1.0.0"
+				return "non-existent-skill", testSkillVersion
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
@@ -699,7 +701,7 @@ func TestGetSkillVersion(t *testing.T) {
 			name: "get skill version with wrong version",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				insertSkill(t, queries, entryID, "test-namespace")
 				return "test-skill", "9.9.9"
 			},
@@ -764,7 +766,7 @@ func TestListSkills(t *testing.T) {
 			name: "list single skill",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				insertSkill(t, queries, entryID, "test-namespace")
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -778,7 +780,7 @@ func TestListSkills(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, skills, 1)
 				require.Equal(t, "test-skill", skills[0].Name)
-				require.Equal(t, "1.0.0", skills[0].Version)
+				require.Equal(t, testSkillVersion, skills[0].Version)
 				require.Equal(t, "test-namespace", skills[0].Namespace)
 				require.Equal(t, "git", skills[0].RegistryType)
 			},
@@ -788,7 +790,7 @@ func TestListSkills(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				for _, name := range []string{"alpha-skill", "beta-skill", "gamma-skill"} {
-					entryID := createSkillEntry(t, queries, regID, name, "1.0.0", nil, nil)
+					entryID := createSkillEntry(t, queries, regID, name, testSkillVersion, nil, nil)
 					insertSkill(t, queries, entryID, "test-namespace")
 				}
 			},
@@ -813,7 +815,7 @@ func TestListSkills(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				for _, name := range []string{"alpha-skill", "beta-skill", "gamma-skill"} {
-					entryID := createSkillEntry(t, queries, regID, name, "1.0.0", nil, nil)
+					entryID := createSkillEntry(t, queries, regID, name, testSkillVersion, nil, nil)
 					insertSkill(t, queries, entryID, "test-namespace")
 				}
 			},
@@ -851,7 +853,7 @@ func TestListSkills(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				for _, name := range []string{"alpha-skill", "beta-skill", "gamma-skill"} {
-					entryID := createSkillEntry(t, queries, regID, name, "1.0.0", nil, nil)
+					entryID := createSkillEntry(t, queries, regID, name, testSkillVersion, nil, nil)
 					insertSkill(t, queries, entryID, "test-namespace")
 				}
 			},
@@ -871,10 +873,10 @@ func TestListSkills(t *testing.T) {
 			name: "list skills filtered by namespace",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				entryID1 := createSkillEntry(t, queries, regID, "skill-a", "1.0.0", nil, nil)
+				entryID1 := createSkillEntry(t, queries, regID, "skill-a", testSkillVersion, nil, nil)
 				insertSkill(t, queries, entryID1, "namespace-1")
 
-				entryID2 := createSkillEntry(t, queries, regID, "skill-b", "1.0.0", nil, nil)
+				entryID2 := createSkillEntry(t, queries, regID, "skill-b", testSkillVersion, nil, nil)
 				insertSkill(t, queries, entryID2, "namespace-2")
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -899,7 +901,7 @@ func TestListSkills(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				for _, name := range []string{"skill-a", "skill-b", "skill-c"} {
-					entryID := createSkillEntry(t, queries, regID, name, "1.0.0", nil, nil)
+					entryID := createSkillEntry(t, queries, regID, name, testSkillVersion, nil, nil)
 					insertSkill(t, queries, entryID, "test-namespace")
 				}
 			},
@@ -922,11 +924,11 @@ func TestListSkills(t *testing.T) {
 			name: "list skills with search",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				entryID1 := createSkillEntry(t, queries, regID, "code-review", "1.0.0",
+				entryID1 := createSkillEntry(t, queries, regID, "code-review", testSkillVersion,
 					ptr.String("Automated code review tool"), ptr.String("Code Review"))
 				insertSkill(t, queries, entryID1, "test-namespace")
 
-				entryID2 := createSkillEntry(t, queries, regID, "test-runner", "1.0.0",
+				entryID2 := createSkillEntry(t, queries, regID, "test-runner", testSkillVersion,
 					ptr.String("Run unit tests"), ptr.String("Test Runner"))
 				insertSkill(t, queries, entryID2, "test-namespace")
 			},
@@ -967,7 +969,7 @@ func TestListSkills(t *testing.T) {
 					context.Background(),
 					InsertEntryVersionParams{
 						EntryID:   oldEntryID,
-						Version:   "1.0.0",
+						Version:   testSkillVersion,
 						CreatedAt: &oldTime,
 						UpdatedAt: &oldTime,
 					},
@@ -990,7 +992,7 @@ func TestListSkills(t *testing.T) {
 					context.Background(),
 					InsertEntryVersionParams{
 						EntryID:   recentEntryID,
-						Version:   "1.0.0",
+						Version:   testSkillVersion,
 						CreatedAt: &recentTime,
 						UpdatedAt: &recentTime,
 					},
@@ -1017,7 +1019,7 @@ func TestListSkills(t *testing.T) {
 			name: "list skills filtered by registry name",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				insertSkill(t, queries, entryID, "test-namespace")
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -1062,7 +1064,7 @@ func TestListSkills(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
-				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
+				for _, version := range []string{testSkillVersion, "2.0.0", "3.0.0"} {
 					versionID, vErr := queries.InsertEntryVersion(
 						context.Background(),
 						InsertEntryVersionParams{
@@ -1087,7 +1089,7 @@ func TestListSkills(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, skills, 3)
 				// ORDER BY name ASC, version ASC
-				assert.Equal(t, "1.0.0", skills[0].Version)
+				assert.Equal(t, testSkillVersion, skills[0].Version)
 				assert.Equal(t, "2.0.0", skills[1].Version)
 				assert.Equal(t, "3.0.0", skills[2].Version)
 			},
@@ -1125,7 +1127,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 			name: "insert latest skill version",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				skillID := insertSkill(t, queries, entryID, "test-namespace")
 				return []uuid.UUID{skillID}
 			},
@@ -1136,7 +1138,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 					UpsertLatestSkillVersionParams{
 						SourceID:  regID,
 						Name:      "test-skill",
-						Version:   "1.0.0",
+						Version:   testSkillVersion,
 						VersionID: ids[0],
 					},
 				)
@@ -1162,7 +1164,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 				require.NoError(t, err)
 
 				var versionIDs []uuid.UUID
-				for _, version := range []string{"1.0.0", "2.0.0"} {
+				for _, version := range []string{testSkillVersion, "2.0.0"} {
 					versionID, vErr := queries.InsertEntryVersion(
 						context.Background(),
 						InsertEntryVersionParams{
@@ -1183,7 +1185,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 					UpsertLatestSkillVersionParams{
 						SourceID:  regID,
 						Name:      "test-skill",
-						Version:   "1.0.0",
+						Version:   testSkillVersion,
 						VersionID: versionIDs[0],
 					},
 				)
@@ -1221,7 +1223,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 					UpsertLatestSkillVersionParams{
 						SourceID:  uuid.New(),
 						Name:      "test-skill",
-						Version:   "1.0.0",
+						Version:   testSkillVersion,
 						VersionID: ids[0],
 					},
 				)
@@ -1241,7 +1243,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 					UpsertLatestSkillVersionParams{
 						SourceID:  regID,
 						Name:      "test-skill",
-						Version:   "1.0.0",
+						Version:   testSkillVersion,
 						VersionID: ids[0],
 					},
 				)
@@ -1283,7 +1285,7 @@ func TestDeleteOrphanedSkills(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				var entryIDs []uuid.UUID
 				for _, name := range []string{"keep-skill", "orphan-skill-1", "orphan-skill-2"} {
-					entryID := createSkillEntry(t, queries, regID, name, "1.0.0", nil, nil)
+					entryID := createSkillEntry(t, queries, regID, name, testSkillVersion, nil, nil)
 					insertSkill(t, queries, entryID, "test-namespace")
 					entryIDs = append(entryIDs, entryID)
 				}
@@ -1317,7 +1319,7 @@ func TestDeleteOrphanedSkills(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				var entryIDs []uuid.UUID
 				for _, name := range []string{"skill-a", "skill-b"} {
-					entryID := createSkillEntry(t, queries, regID, name, "1.0.0", nil, nil)
+					entryID := createSkillEntry(t, queries, regID, name, testSkillVersion, nil, nil)
 					insertSkill(t, queries, entryID, "test-namespace")
 					entryIDs = append(entryIDs, entryID)
 				}
@@ -1393,7 +1395,7 @@ func TestInsertSkillGitPackage(t *testing.T) {
 			name: "insert git package with minimal fields",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				skillVersionID := insertSkill(t, queries, entryID, "test-namespace")
 				return skillVersionID
 			},
@@ -1413,7 +1415,7 @@ func TestInsertSkillGitPackage(t *testing.T) {
 			name: "insert git package with all fields",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				skillVersionID := insertSkill(t, queries, entryID, "test-namespace")
 				return skillVersionID
 			},
@@ -1483,7 +1485,7 @@ func TestInsertSkillOciPackage(t *testing.T) {
 			name: "insert oci package with minimal fields",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				skillVersionID := insertSkill(t, queries, entryID, "test-namespace")
 				return skillVersionID
 			},
@@ -1503,7 +1505,7 @@ func TestInsertSkillOciPackage(t *testing.T) {
 			name: "insert oci package with all fields",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				skillVersionID := insertSkill(t, queries, entryID, "test-namespace")
 				return skillVersionID
 			},
@@ -1572,7 +1574,7 @@ func TestListSkillGitPackages(t *testing.T) {
 			name: "no git packages",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				insertSkill(t, queries, entryID, "test-namespace")
 				return []uuid.UUID{entryID}
 			},
@@ -1587,7 +1589,7 @@ func TestListSkillGitPackages(t *testing.T) {
 			name: "list single git package",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				skillVersionID := insertSkill(t, queries, entryID, "test-namespace")
 
 				err := queries.InsertSkillGitPackage(
@@ -1624,7 +1626,7 @@ func TestListSkillGitPackages(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				var entryIDs []uuid.UUID
 				for i, name := range []string{"skill-1", "skill-2"} {
-					entryID := createSkillEntry(t, queries, regID, name, "1.0.0", nil, nil)
+					entryID := createSkillEntry(t, queries, regID, name, testSkillVersion, nil, nil)
 					skillVersionID := insertSkill(t, queries, entryID, "test-namespace")
 
 					err := queries.InsertSkillGitPackage(
@@ -1699,7 +1701,7 @@ func TestListSkillOciPackages(t *testing.T) {
 			name: "no oci packages",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				insertSkill(t, queries, entryID, "test-namespace")
 				return []uuid.UUID{entryID}
 			},
@@ -1714,7 +1716,7 @@ func TestListSkillOciPackages(t *testing.T) {
 			name: "list single oci package",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
-				entryID := createSkillEntry(t, queries, regID, "test-skill", "1.0.0", nil, nil)
+				entryID := createSkillEntry(t, queries, regID, "test-skill", testSkillVersion, nil, nil)
 				skillVersionID := insertSkill(t, queries, entryID, "test-namespace")
 
 				err := queries.InsertSkillOciPackage(
@@ -1748,7 +1750,7 @@ func TestListSkillOciPackages(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				var entryIDs []uuid.UUID
 				for i, name := range []string{"skill-1", "skill-2"} {
-					entryID := createSkillEntry(t, queries, regID, name, "1.0.0", nil, nil)
+					entryID := createSkillEntry(t, queries, regID, name, testSkillVersion, nil, nil)
 					skillVersionID := insertSkill(t, queries, entryID, "test-namespace")
 
 					err := queries.InsertSkillOciPackage(

@@ -8,14 +8,30 @@ FROM registry ORDER BY name;
 SELECT id, name, claims, creation_type, created_at, updated_at
 FROM registry WHERE name = sqlc.arg(name);
 
--- name: InsertRegistry :one
+-- name: UpsertAPIRegistry :one
+-- Insert or update an API registry. The ON CONFLICT clause only fires when the
+-- existing row is also API-created, preventing CONFIG registries from being overwritten.
 INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
-VALUES (sqlc.arg(name), sqlc.narg(claims), sqlc.arg(creation_type), sqlc.arg(created_at), sqlc.arg(updated_at))
+VALUES (sqlc.arg(name), sqlc.narg(claims), 'API', sqlc.arg(created_at), sqlc.arg(updated_at))
 ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
+WHERE registry.creation_type = 'API'
+RETURNING *;
+
+-- name: UpsertConfigRegistry :one
+-- Insert or update a CONFIG registry. The ON CONFLICT clause only fires when the
+-- existing row is also CONFIG-created, preventing API registries from being overwritten.
+INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
+VALUES (sqlc.arg(name), sqlc.narg(claims), 'CONFIG', sqlc.arg(created_at), sqlc.arg(updated_at))
+ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
+WHERE registry.creation_type = 'CONFIG'
 RETURNING *;
 
 -- name: DeleteRegistry :execrows
 DELETE FROM registry WHERE name = sqlc.arg(name);
+
+-- name: DeleteAPIRegistry :execrows
+-- Delete an API registry by name (returns 0 if not found or is CONFIG type)
+DELETE FROM registry WHERE name = sqlc.arg(name) AND creation_type = 'API';
 
 -- name: LinkRegistrySource :exec
 INSERT INTO registry_source (registry_id, source_id, position)

@@ -115,7 +115,7 @@ func (s *dbService) CreateSource(
 	}
 
 	// Create corresponding registry row and link to source
-	if err := createRegistryRowAndLink(ctx, querier, name, registry.ID, sqlc.CreationTypeAPI, &now); err != nil {
+	if err := createRegistryRowAndLink(ctx, querier, name, registry.ID, &now); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -831,20 +831,18 @@ func getAPISourceInitialSyncStatus(req *service.SourceCreateRequest, sourceType 
 	return sqlc.SyncStatusFAILED, "No previous sync status found"
 }
 
-// createRegistryRowAndLink inserts a registry row and links it to a source at position 0.
+// createRegistryRowAndLink inserts an API registry row and links it to a source at position 0.
 func createRegistryRowAndLink(
 	ctx context.Context,
 	querier *sqlc.Queries,
 	name string,
 	sourceID uuid.UUID,
-	creationType sqlc.CreationType,
 	now *time.Time,
 ) error {
-	registryRow, err := querier.InsertRegistry(ctx, sqlc.InsertRegistryParams{
-		Name:         name,
-		CreationType: creationType,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+	registryRow, err := querier.UpsertAPIRegistry(ctx, sqlc.UpsertAPIRegistryParams{
+		Name:      name,
+		CreatedAt: now,
+		UpdatedAt: now,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to insert registry row: %w", err)

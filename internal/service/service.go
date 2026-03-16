@@ -47,6 +47,12 @@ var (
 	ErrSourceNotFound = errors.New("source not found")
 	// ErrNoManagedSource is returned when no managed source is found
 	ErrNoManagedSource = errors.New("no managed source found")
+	// ErrRegistryAlreadyExists is returned when attempting to create a registry that already exists
+	ErrRegistryAlreadyExists = errors.New("registry already exists")
+	// ErrConfigRegistry is returned when attempting to modify a CONFIG-created registry via API
+	ErrConfigRegistry = errors.New("cannot modify config-created registry via API")
+	// ErrInvalidRegistryConfig is returned when registry configuration is invalid
+	ErrInvalidRegistryConfig = errors.New("invalid registry configuration")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service

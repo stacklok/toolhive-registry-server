@@ -30,6 +30,8 @@ type Querier interface {
 	CreateTempRemoteTable(ctx context.Context) error
 	// Temp Server Table Operations
 	CreateTempServerTable(ctx context.Context) error
+	// Delete an API registry by name (returns 0 if not found or is CONFIG type)
+	DeleteAPIRegistry(ctx context.Context, name string) (int64, error)
 	// Delete an API source by name (returns 0 if not found or is CONFIG type)
 	DeleteAPISource(ctx context.Context, name string) (int64, error)
 	// Delete CONFIG registry rows whose names are not in the provided list.
@@ -77,7 +79,6 @@ type Querier interface {
 	// Insert a new CONFIG source with full configuration
 	InsertConfigSource(ctx context.Context, arg InsertConfigSourceParams) (uuid.UUID, error)
 	InsertEntryVersion(ctx context.Context, arg InsertEntryVersionParams) (uuid.UUID, error)
-	InsertRegistry(ctx context.Context, arg InsertRegistryParams) (Registry, error)
 	InsertRegistryEntry(ctx context.Context, arg InsertRegistryEntryParams) (uuid.UUID, error)
 	InsertServerIcon(ctx context.Context, arg InsertServerIconParams) error
 	// TODO: this seems unused
@@ -116,6 +117,12 @@ type Querier interface {
 	UpdateAPISource(ctx context.Context, arg UpdateAPISourceParams) (Source, error)
 	UpdateSourceSync(ctx context.Context, arg UpdateSourceSyncParams) error
 	UpdateSourceSyncStatusByName(ctx context.Context, arg UpdateSourceSyncStatusByNameParams) error
+	// Insert or update an API registry. The ON CONFLICT clause only fires when the
+	// existing row is also API-created, preventing CONFIG registries from being overwritten.
+	UpsertAPIRegistry(ctx context.Context, arg UpsertAPIRegistryParams) (Registry, error)
+	// Insert or update a CONFIG registry. The ON CONFLICT clause only fires when the
+	// existing row is also CONFIG-created, preventing API registries from being overwritten.
+	UpsertConfigRegistry(ctx context.Context, arg UpsertConfigRegistryParams) (Registry, error)
 	// Insert or update a CONFIG source (only updates if existing is CONFIG type)
 	UpsertConfigSource(ctx context.Context, arg UpsertConfigSourceParams) (uuid.UUID, error)
 	UpsertEntryVersionsFromTemp(ctx context.Context) ([]UpsertEntryVersionsFromTempRow, error)
