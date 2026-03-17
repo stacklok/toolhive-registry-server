@@ -2,9 +2,7 @@ package sources
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
-	"fmt"
 	"os"
 	"testing"
 
@@ -443,135 +441,6 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 			// Verify all mock expectations
 			mockGitClient.AssertExpectations(t)
 			mockValidator.AssertExpectations(t)
-		})
-	}
-}
-
-func TestGitRegistryHandler_CurrentHash(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name           string
-		registryConfig *config.RegistryConfig
-		setupMocks     func(*MockGitClient)
-		expectError    bool
-		errorContains  string
-		expectedHash   string
-	}{
-		{
-			name: "successful hash calculation",
-			registryConfig: &config.RegistryConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
-				Git: &config.GitConfig{
-					Repository: testGitRepoURL,
-					Branch:     testBranch,
-				},
-			},
-			setupMocks: func(gitClient *MockGitClient) {
-				repoInfo := &git.RepositoryInfo{
-					RemoteURL: testGitRepoURL,
-				}
-				testData := []byte(`{"version": "1.0.0"}`)
-
-				gitClient.On("Clone", mock.Anything, mock.MatchedBy(func(cfg *git.CloneConfig) bool {
-					return cfg.URL == testGitRepoURL && cfg.Branch == testBranch
-				})).Return(repoInfo, nil)
-
-				gitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
-				gitClient.On("Cleanup", repoInfo).Return(nil)
-			},
-			expectError:  false,
-			expectedHash: fmt.Sprintf("%x", sha256.Sum256([]byte(`{"version": "1.0.0"}`))),
-		},
-		{
-			name: "validation failure",
-			registryConfig: &config.RegistryConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
-				Git: &config.GitConfig{
-					Repository: "",
-				},
-			},
-			setupMocks: func(_ *MockGitClient) {
-				// No mocks needed as validation should fail
-			},
-			expectError:   true,
-			errorContains: "registry validation failed",
-		},
-		{
-			name: "clone failure",
-			registryConfig: &config.RegistryConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
-				Git: &config.GitConfig{
-					Repository: testGitRepoURL,
-				},
-			},
-			setupMocks: func(gitClient *MockGitClient) {
-				gitClient.On("Clone", mock.Anything, mock.Anything).Return(nil, errors.New("clone failed"))
-			},
-			expectError:   true,
-			errorContains: "failed to clone repository",
-		},
-		{
-			name: "file not found",
-			registryConfig: &config.RegistryConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
-				Git: &config.GitConfig{
-					Repository: testGitRepoURL,
-					Path:       testFilePath,
-				},
-			},
-			setupMocks: func(gitClient *MockGitClient) {
-				repoInfo := &git.RepositoryInfo{
-					RemoteURL: testGitRepoURL,
-				}
-
-				gitClient.On("Clone", mock.Anything, mock.Anything).Return(repoInfo, nil)
-				gitClient.On("GetFileContent", repoInfo, testFilePath).Return(nil, errors.New("file not found"))
-				gitClient.On("Cleanup", repoInfo).Return(nil)
-			},
-			expectError:   true,
-			errorContains: "failed to get file",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			// Create mocks
-			mockGitClient := new(MockGitClient)
-
-			// Setup mocks
-			tt.setupMocks(mockGitClient)
-
-			// Create handler with mocks
-			handler := &gitRegistryHandler{
-				gitClient: mockGitClient,
-				validator: NewRegistryDataValidator(), // Use real validator for hash tests
-			}
-
-			// Execute test
-			hash, err := handler.CurrentHash(context.Background(), tt.registryConfig)
-
-			// Verify results
-			if tt.expectError {
-				assert.Error(t, err)
-				assert.Empty(t, hash)
-				assert.Contains(t, err.Error(), tt.errorContains)
-			} else {
-				assert.NoError(t, err)
-				assert.NotEmpty(t, hash)
-				if tt.expectedHash != "" {
-					assert.Equal(t, tt.expectedHash, hash)
-				}
-			}
-
-			// Verify all mock expectations
-			mockGitClient.AssertExpectations(t)
 		})
 	}
 }

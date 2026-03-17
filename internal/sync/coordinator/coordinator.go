@@ -12,6 +12,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/otel"
+	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
@@ -170,17 +171,20 @@ func (c *defaultCoordinator) Stop() error {
 
 // processNextSyncJob gets the next job and processes it if available
 func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
+	var prefetched *sources.FetchResult
 	// Get the next sync job using the predicate to check if sync is needed
 	regCfg, err := c.statusSvc.GetNextSyncJob(
 		ctx,
 		func(regCfg *config.RegistryConfig, syncStatus *status.SyncStatus) bool {
-			reason := c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
+			reason, fetchResult := c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
 			if !reason.ShouldSync() {
 				slog.Debug("Registry does not need sync",
 					"registry", regCfg.Name,
 					"reason", reason.String())
+				return false
 			}
-			return reason.ShouldSync()
+			prefetched = fetchResult
+			return true
 		},
 	)
 	if err != nil {
@@ -193,21 +197,14 @@ func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
 		return
 	}
 
-	// Skip non-synced registries - they don't sync from external sources
-	// TODO: REMOVE
-	/*if regCfg.IsNonSyncedRegistry() {
-		slog.Debug("Skipping sync for non-synced registry",
-			"registry", regCfg.Name,
-			"type", regCfg.GetType())
-		return
-	}*/
-
 	// Perform the sync
-	c.performRegistrySync(ctx, regCfg)
+	c.performRegistrySync(ctx, regCfg, prefetched)
 }
 
 // performRegistrySync executes the sync operation for a registry
-func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *config.RegistryConfig) {
+func (c *defaultCoordinator) performRegistrySync(
+	ctx context.Context, regCfg *config.RegistryConfig, prefetched *sources.FetchResult,
+) {
 	registryName := regCfg.Name
 	startTime := time.Now()
 
@@ -238,7 +235,7 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 	slog.Info("Starting sync operation", "registry", registryName)
 
 	// Perform sync
-	result, syncErr := c.manager.PerformSync(ctx, regCfg)
+	result, syncErr := c.manager.PerformSync(ctx, regCfg, prefetched)
 
 	// Calculate sync duration for metrics and tracing
 	syncDuration := time.Since(startTime)

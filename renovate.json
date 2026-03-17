@@ -7,7 +7,25 @@
     "schedule:earlyMondays"
   ],
   "labels": ["dependencies"],
+  "prConcurrentLimit": 10,
   "packageRules": [
+    {
+      "description": "Group all Go module updates into a single PR",
+      "groupName": "go modules",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["!golang"]
+    },
+    {
+      "description": "Group all GitHub Actions updates into a single PR",
+      "groupName": "github actions",
+      "matchManagers": ["github-actions"]
+    },
+    {
+      "description": "Group all Docker image updates into a single PR",
+      "groupName": "docker images",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["!kindest/node"]
+    },
     {
       "description": "Only allow patch updates for kindest/node",
       "matchManagers": ["custom.regex"],
@@ -16,16 +34,11 @@
       "enabled": false
     },
     {
+      "description": "Group kindest/node patch versions",
       "groupName": "kindest/node patch versions",
       "matchManagers": ["custom.regex"],
       "matchPackageNames": ["kindest/node"],
       "matchUpdateTypes": ["patch"]
-    },
-    {
-      "groupName": "dockerfile template base images",
-      "matchDatasources": ["docker"],
-      "matchManagers": ["custom.regex"],
-      "matchPackageNames": ["!kindest/node"]
     }
   ],
   "postUpdateOptions": ["gomodTidy"],
