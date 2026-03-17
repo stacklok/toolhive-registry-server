@@ -26,9 +26,6 @@ type RegistryHandler interface {
 
 	// Validate validates the registry configuration
 	Validate(regCfg *config.RegistryConfig) error
-
-	// CurrentHash returns the current hash of the source data without performing a full fetch
-	CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error)
 }
 
 // FetchResult contains the result of a fetch operation
@@ -47,7 +44,7 @@ type FetchResult struct {
 }
 
 // NewFetchResult creates a new FetchResult from a UpstreamRegistry instance and pre-calculated hash
-// The hash should be calculated by the registry handler to ensure consistency with CurrentHash
+// The hash should be calculated by the registry handler from the raw source data
 func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string, format string) *FetchResult {
 	serverCount := 0
 	if reg != nil {
