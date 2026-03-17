@@ -269,12 +269,18 @@ func (s *dbService) PublishSkill(
 		return nil, fmt.Errorf("namespace, name, and version are required")
 	}
 
-	if err := s.executePublishSkillTransaction(ctx, skill); err != nil {
+	// executePublishSkillTransaction returns the managed source name, which is
+	// used as registry name for the fetch-back. Today source and registry names
+	// coincide (migration backfill); a dedicated publish fetch-back method will
+	// replace this once they diverge (v2).
+	sourceName, err := s.executePublishSkillTransaction(ctx, skill)
+	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
 	return s.GetSkillVersion(ctx,
+		service.WithRegistryName(sourceName),
 		service.WithName(skill.Name),
 		service.WithVersion(skill.Version),
 		service.WithNamespace(skill.Namespace),
@@ -282,18 +288,19 @@ func (s *dbService) PublishSkill(
 }
 
 // executePublishSkillTransaction executes the skill publish operation within a transaction.
+// Returns the managed source name (used as registry name for fetch-back), or an error.
 //
 //nolint:gocyclo
 func (s *dbService) executePublishSkillTransaction(
 	ctx context.Context,
 	skill *service.Skill,
-) error {
+) (string, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.Serializable,
 		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		err := tx.Rollback(ctx)
@@ -306,8 +313,9 @@ func (s *dbService) executePublishSkillTransaction(
 
 	managedSource, err := getManagedSource(ctx, querier)
 	if err != nil {
-		return err
+		return "", err
 	}
+	sourceName := managedSource.Name
 
 	now := time.Now().UTC()
 
@@ -327,7 +335,7 @@ func (s *dbService) executePublishSkillTransaction(
 		})
 	}
 	if err != nil {
-		return fmt.Errorf("failed to get or create registry entry: %w", err)
+		return "", fmt.Errorf("failed to get or create registry entry: %w", err)
 	}
 
 	// Insert the entry version (one per name+version)
@@ -348,19 +356,19 @@ func (s *dbService) executePublishSkillTransaction(
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return fmt.Errorf("%w: %s %s", service.ErrVersionAlreadyExists, skill.Name, skill.Version)
+			return "", fmt.Errorf("%w: %s %s", service.ErrVersionAlreadyExists, skill.Name, skill.Version)
 		}
-		return err
+		return "", err
 	}
 
 	skillParams, err := makeInsertSkillVersionParams(versionID, skill)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	_, err = querier.InsertSkillVersion(ctx, *skillParams)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	for _, pkg := range skill.Packages {
@@ -383,7 +391,7 @@ func (s *dbService) executePublishSkillTransaction(
 			})
 		}
 		if err != nil {
-			return err
+			return "", err
 		}
 	}
 
@@ -396,7 +404,7 @@ func (s *dbService) executePublishSkillTransaction(
 	if err == nil {
 		shouldUpdateLatest = versions.IsNewerVersion(skill.Version, currentLatest)
 	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("failed to get current latest version: %w", err)
+		return "", fmt.Errorf("failed to get current latest version: %w", err)
 	}
 
 	if shouldUpdateLatest {
@@ -407,15 +415,15 @@ func (s *dbService) executePublishSkillTransaction(
 			VersionID: versionID,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to upsert latest skill version: %w", err)
+			return "", fmt.Errorf("failed to upsert latest skill version: %w", err)
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return "", fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return nil
+	return sourceName, nil
 }
 
 func makeInsertSkillVersionParams(
