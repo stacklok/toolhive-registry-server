@@ -51,7 +51,7 @@ func (q *Queries) DeleteSkillsByRegistry(ctx context.Context, sourceID uuid.UUID
 	return err
 }
 
-const getSkillVersion = `-- name: GetSkillVersion :one
+const getSkillVersion = `-- name: GetSkillVersion :many
 SELECT src.source_type AS registry_type,
        v.id,
        e.name,
@@ -70,24 +70,28 @@ SELECT src.source_type AS registry_type,
        s.repository,
        s.icons,
        s.metadata,
-       s.extension_meta
+       s.extension_meta,
+       COALESCE(rs.position, 0)::integer AS position
   FROM skill s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
- WHERE e.name = $1
-   AND (v.version = $2::text
-       OR ($2::text = 'latest' AND l.latest_version_id = v.id)
+  LEFT JOIN registry r ON r.name = $1::text
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
+ WHERE e.name = $2
+   AND (v.version = $3::text
+       OR ($3::text = 'latest' AND l.latest_version_id = v.id)
    )
-   AND ($3::text IS NULL OR src.name = $3::text)
+   AND ($1::text IS NULL OR rs.registry_id IS NOT NULL)
    AND ($4::text IS NULL OR s.namespace = $4::text)
+ ORDER BY rs.position ASC
 `
 
 type GetSkillVersionParams struct {
+	RegistryName *string `json:"registry_name"`
 	Name         string  `json:"name"`
 	Version      string  `json:"version"`
-	RegistryName *string `json:"registry_name"`
 	Namespace    *string `json:"namespace"`
 }
 
@@ -111,38 +115,53 @@ type GetSkillVersionRow struct {
 	Icons          []byte      `json:"icons"`
 	Metadata       []byte      `json:"metadata"`
 	ExtensionMeta  []byte      `json:"extension_meta"`
+	Position       int32       `json:"position"`
 }
 
-func (q *Queries) GetSkillVersion(ctx context.Context, arg GetSkillVersionParams) (GetSkillVersionRow, error) {
-	row := q.db.QueryRow(ctx, getSkillVersion,
+func (q *Queries) GetSkillVersion(ctx context.Context, arg GetSkillVersionParams) ([]GetSkillVersionRow, error) {
+	rows, err := q.db.Query(ctx, getSkillVersion,
+		arg.RegistryName,
 		arg.Name,
 		arg.Version,
-		arg.RegistryName,
 		arg.Namespace,
 	)
-	var i GetSkillVersionRow
-	err := row.Scan(
-		&i.RegistryType,
-		&i.ID,
-		&i.Name,
-		&i.Version,
-		&i.IsLatest,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Description,
-		&i.Title,
-		&i.SkillVersionID,
-		&i.Namespace,
-		&i.Status,
-		&i.License,
-		&i.Compatibility,
-		&i.AllowedTools,
-		&i.Repository,
-		&i.Icons,
-		&i.Metadata,
-		&i.ExtensionMeta,
-	)
-	return i, err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetSkillVersionRow{}
+	for rows.Next() {
+		var i GetSkillVersionRow
+		if err := rows.Scan(
+			&i.RegistryType,
+			&i.ID,
+			&i.Name,
+			&i.Version,
+			&i.IsLatest,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Description,
+			&i.Title,
+			&i.SkillVersionID,
+			&i.Namespace,
+			&i.Status,
+			&i.License,
+			&i.Compatibility,
+			&i.AllowedTools,
+			&i.Repository,
+			&i.Icons,
+			&i.Metadata,
+			&i.ExtensionMeta,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const insertSkillGitPackage = `-- name: InsertSkillGitPackage :exec
@@ -421,13 +440,16 @@ SELECT src.source_type AS registry_type,
        s.repository,
        s.icons,
        s.metadata,
-       s.extension_meta
+       s.extension_meta,
+       COALESCE(rs.position, 0)::integer AS position
   FROM skill s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
- WHERE ($1::text IS NULL OR src.name = $1::text)
+  LEFT JOIN registry r ON r.name = $1::text
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
+ WHERE ($1::text IS NULL OR rs.registry_id IS NOT NULL)
    AND ($2::text IS NULL OR s.namespace = $2::text)
    AND ($3::text IS NULL OR e.name = $3::text)
    AND ($4::text IS NULL OR (
@@ -440,7 +462,7 @@ SELECT src.source_type AS registry_type,
        $6::text IS NULL
        OR (e.name, v.version) > ($6::text, $7::text)
    )
- ORDER BY e.name ASC, v.version ASC
+ ORDER BY e.name ASC, v.version ASC, rs.position ASC
  LIMIT $8::bigint
 `
 
@@ -474,11 +496,13 @@ type ListSkillsRow struct {
 	Icons         []byte      `json:"icons"`
 	Metadata      []byte      `json:"metadata"`
 	ExtensionMeta []byte      `json:"extension_meta"`
+	Position      int32       `json:"position"`
 }
 
 // Cursor-based pagination using (name, version) compound cursor.
 // The cursor_name and cursor_version parameters define the starting point.
 // When cursor is provided, results start AFTER the specified (name, version) tuple.
+// Returns position from registry_source for source priority ordering.
 func (q *Queries) ListSkills(ctx context.Context, arg ListSkillsParams) ([]ListSkillsRow, error) {
 	rows, err := q.db.Query(ctx, listSkills,
 		arg.RegistryName,
@@ -516,6 +540,7 @@ func (q *Queries) ListSkills(ctx context.Context, arg ListSkillsParams) ([]ListS
 			&i.Icons,
 			&i.Metadata,
 			&i.ExtensionMeta,
+			&i.Position,
 		); err != nil {
 			return nil, err
 		}

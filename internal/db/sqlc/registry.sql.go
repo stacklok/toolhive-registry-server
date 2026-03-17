@@ -12,6 +12,18 @@ import (
 	"github.com/google/uuid"
 )
 
+const countRegistriesBySourceID = `-- name: CountRegistriesBySourceID :one
+SELECT COUNT(*) FROM registry_source WHERE source_id = $1
+`
+
+// Count how many registries reference a given source (via registry_source junction).
+func (q *Queries) CountRegistriesBySourceID(ctx context.Context, sourceID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countRegistriesBySourceID, sourceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteConfigRegistriesNotInList = `-- name: DeleteConfigRegistriesNotInList :exec
 DELETE FROM registry
 WHERE creation_type = 'CONFIG'
@@ -29,6 +41,7 @@ const deleteRegistry = `-- name: DeleteRegistry :execrows
 DELETE FROM registry WHERE name = $1
 `
 
+// Delete a registry by name. Go callers guard against deleting wrong creation_type.
 func (q *Queries) DeleteRegistry(ctx context.Context, name string) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteRegistry, name)
 	if err != nil {
@@ -44,41 +57,6 @@ FROM registry WHERE name = $1
 
 func (q *Queries) GetRegistryByName(ctx context.Context, name string) (Registry, error) {
 	row := q.db.QueryRow(ctx, getRegistryByName, name)
-	var i Registry
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Claims,
-		&i.CreationType,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const insertRegistry = `-- name: InsertRegistry :one
-INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
-RETURNING id, name, claims, creation_type, created_at, updated_at
-`
-
-type InsertRegistryParams struct {
-	Name         string       `json:"name"`
-	Claims       []byte       `json:"claims"`
-	CreationType CreationType `json:"creation_type"`
-	CreatedAt    *time.Time   `json:"created_at"`
-	UpdatedAt    *time.Time   `json:"updated_at"`
-}
-
-func (q *Queries) InsertRegistry(ctx context.Context, arg InsertRegistryParams) (Registry, error) {
-	row := q.db.QueryRow(ctx, insertRegistry,
-		arg.Name,
-		arg.Claims,
-		arg.CreationType,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-	)
 	var i Registry
 	err := row.Scan(
 		&i.ID,
@@ -175,6 +153,15 @@ func (q *Queries) ListRegistrySources(ctx context.Context, registryID uuid.UUID)
 	return items, nil
 }
 
+const unlinkAllRegistrySources = `-- name: UnlinkAllRegistrySources :exec
+DELETE FROM registry_source WHERE registry_id = $1
+`
+
+func (q *Queries) UnlinkAllRegistrySources(ctx context.Context, registryID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, unlinkAllRegistrySources, registryID)
+	return err
+}
+
 const unlinkRegistrySource = `-- name: UnlinkRegistrySource :exec
 DELETE FROM registry_source
 WHERE registry_id = $1 AND source_id = $2
@@ -188,4 +175,41 @@ type UnlinkRegistrySourceParams struct {
 func (q *Queries) UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySourceParams) error {
 	_, err := q.db.Exec(ctx, unlinkRegistrySource, arg.RegistryID, arg.SourceID)
 	return err
+}
+
+const upsertRegistry = `-- name: UpsertRegistry :one
+INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
+RETURNING id, name, claims, creation_type, created_at, updated_at
+`
+
+type UpsertRegistryParams struct {
+	Name         string       `json:"name"`
+	Claims       []byte       `json:"claims"`
+	CreationType CreationType `json:"creation_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
+}
+
+// Insert or update a registry. The creation_type is passed as a parameter.
+// Business logic in Go guards against cross-type overwrites.
+func (q *Queries) UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (Registry, error) {
+	row := q.db.QueryRow(ctx, upsertRegistry,
+		arg.Name,
+		arg.Claims,
+		arg.CreationType,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Registry
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Claims,
+		&i.CreationType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

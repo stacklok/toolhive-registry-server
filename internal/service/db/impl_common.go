@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -21,11 +22,17 @@ func (s *dbService) CheckReadiness(ctx context.Context) error {
 	return nil
 }
 
-// GetRegistry returns the registry data with metadata
-func (*dbService) GetRegistry(
-	_ context.Context,
-) (*toolhivetypes.UpstreamRegistry, string, error) {
-	return nil, "", service.ErrNotImplemented
+// checkRegistryExists validates that a registry with the given name exists.
+// Returns ErrRegistryNotFound if the registry does not exist.
+func checkRegistryExists(ctx context.Context, pool sqlc.DBTX, registryName string) error {
+	querier := sqlc.New(pool)
+	if _, err := querier.GetRegistryByName(ctx, registryName); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
+		}
+		return err
+	}
+	return nil
 }
 
 // findHighestVersion scans a slice of ListEntryVersionsRow and returns the ID

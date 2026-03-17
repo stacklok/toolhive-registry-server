@@ -2,13 +2,6 @@ package service
 
 // PublishSkillOptions is the options for the PublishSkill operation
 type PublishSkillOptions struct {
-	RegistryName string
-}
-
-//nolint:unparam
-func (o *PublishSkillOptions) setRegistryName(registryName string) error {
-	o.RegistryName = registryName
-	return nil
 }
 
 // ListSkillsOptions is the options for the ListSkills and ListSkillVersions
@@ -99,16 +92,9 @@ func (o *GetSkillVersionOptions) setVersion(version string) error {
 
 // DeleteSkillVersionOptions is the options for the DeleteSkillVersion operation
 type DeleteSkillVersionOptions struct {
-	RegistryName string
-	Namespace    string
-	Name         string
-	Version      string
-}
-
-//nolint:unparam
-func (o *DeleteSkillVersionOptions) setRegistryName(registryName string) error {
-	o.RegistryName = registryName
-	return nil
+	Namespace string
+	Name      string
+	Version   string
 }
 
 //nolint:unparam

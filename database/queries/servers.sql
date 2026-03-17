@@ -2,6 +2,7 @@
 -- Cursor-based pagination using (name, version) compound cursor.
 -- The cursor_name and cursor_version parameters define the starting point.
 -- When cursor is provided, results start AFTER the specified (name, version) tuple.
+-- Returns position from registry_source for source priority ordering.
 SELECT src.source_type as registry_type,
        v.id,
        e.name,
@@ -17,13 +18,16 @@ SELECT src.source_type as registry_type,
        s.repository_url,
        s.repository_id,
        s.repository_subfolder,
-       s.repository_type
+       s.repository_type,
+       COALESCE(rs.position, 0)::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
- WHERE (sqlc.narg(registry_name)::text IS NULL OR src.name = sqlc.narg(registry_name)::text)
+  LEFT JOIN registry r ON r.name = sqlc.narg(registry_name)::text
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
+ WHERE (sqlc.narg(registry_name)::text IS NULL OR rs.registry_id IS NOT NULL)
    AND (sqlc.narg(search)::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
        OR LOWER(v.title) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
@@ -42,7 +46,7 @@ SELECT src.source_type as registry_type,
        v.version = sqlc.narg(version)::text OR
        (sqlc.narg(version)::text = 'latest' AND l.latest_version_id = v.id)
    )
- ORDER BY e.name ASC, v.version ASC
+ ORDER BY e.name ASC, v.version ASC, rs.position ASC
  LIMIT sqlc.arg(size)::bigint;
 
 -- name: ListServerVersions :many
@@ -61,22 +65,26 @@ SELECT src.source_type as registry_type,
        s.repository_url,
        s.repository_id,
        s.repository_subfolder,
-       s.repository_type
+       s.repository_type,
+       COALESCE(rs.position, 0)::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
+  LEFT JOIN registry r ON r.name = sqlc.narg(registry_name)::text
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
  WHERE e.name = sqlc.arg(name)
-   AND (sqlc.narg(registry_name)::text IS NULL OR src.name = sqlc.narg(registry_name)::text)
+   AND (sqlc.narg(registry_name)::text IS NULL OR rs.registry_id IS NOT NULL)
    AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR v.created_at > sqlc.narg(next))
     AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR v.created_at < sqlc.narg(prev)))
  ORDER BY
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN v.created_at END ASC,
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN v.version END DESC -- acts as tie breaker
+ CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN v.version END DESC, -- acts as tie breaker
+ rs.position ASC
  LIMIT sqlc.arg(size)::bigint;
 
--- name: GetServerVersion :one
+-- name: GetServerVersion :many
 SELECT src.source_type as registry_type,
        v.id,
        e.name,
@@ -92,18 +100,22 @@ SELECT src.source_type as registry_type,
        s.repository_url,
        s.repository_id,
        s.repository_subfolder,
-       s.repository_type
+       s.repository_type,
+       COALESCE(rs.position, 0)::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
+  LEFT JOIN registry r ON r.name = sqlc.narg(registry_name)::text
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
  WHERE e.name = sqlc.arg(name)
    AND (
        v.version = sqlc.arg(version)
        OR (sqlc.arg(version) = 'latest' AND l.latest_version_id = v.id)
    )
-   AND (sqlc.narg(registry_name)::text IS NULL OR src.name = sqlc.narg(registry_name)::text);
+   AND (sqlc.narg(registry_name)::text IS NULL OR rs.registry_id IS NOT NULL)
+ ORDER BY rs.position ASC;
 
 -- name: GetLatestVersionForServer :one
 SELECT l.version

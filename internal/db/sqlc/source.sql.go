@@ -97,36 +97,6 @@ func (q *Queries) BulkUpsertConfigSources(ctx context.Context, arg BulkUpsertCon
 	return items, nil
 }
 
-const deleteAPISource = `-- name: DeleteAPISource :execrows
-DELETE FROM source
-WHERE name = $1
-  AND creation_type = 'API'
-`
-
-// Delete an API source by name (returns 0 if not found or is CONFIG type)
-func (q *Queries) DeleteAPISource(ctx context.Context, name string) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteAPISource, name)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const deleteConfigSource = `-- name: DeleteConfigSource :execrows
-DELETE FROM source
-WHERE name = $1
-  AND creation_type = 'CONFIG'
-`
-
-// Delete a CONFIG source by name (returns 0 if not found or is API type)
-func (q *Queries) DeleteConfigSource(ctx context.Context, name string) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteConfigSource, name)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const deleteConfigSourcesNotInList = `-- name: DeleteConfigSourcesNotInList :exec
 DELETE FROM source
 WHERE id NOT IN (SELECT unnest($1::uuid[]))
@@ -137,6 +107,20 @@ WHERE id NOT IN (SELECT unnest($1::uuid[]))
 func (q *Queries) DeleteConfigSourcesNotInList(ctx context.Context, ids []uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteConfigSourcesNotInList, ids)
 	return err
+}
+
+const deleteSource = `-- name: DeleteSource :execrows
+DELETE FROM source
+WHERE name = $1
+`
+
+// Delete a source by name. Go callers guard against deleting wrong creation_type.
+func (q *Queries) DeleteSource(ctx context.Context, name string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSource, name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getAPISourcesByNames = `-- name: GetAPISourcesByNames :many
@@ -186,6 +170,47 @@ func (q *Queries) GetAPISourcesByNames(ctx context.Context, names []string) ([]G
 			&i.SourceConfig,
 			&i.FilterConfig,
 			&i.SyncSchedule,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getManagedSources = `-- name: GetManagedSources :many
+SELECT id, name, source_type, creation_type, created_at, updated_at
+FROM source WHERE source_type = 'managed'
+`
+
+type GetManagedSourcesRow struct {
+	ID           uuid.UUID    `json:"id"`
+	Name         string       `json:"name"`
+	SourceType   string       `json:"source_type"`
+	CreationType CreationType `json:"creation_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
+}
+
+func (q *Queries) GetManagedSources(ctx context.Context) ([]GetManagedSourcesRow, error) {
+	rows, err := q.db.Query(ctx, getManagedSources)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetManagedSourcesRow{}
+	for rows.Next() {
+		var i GetManagedSourcesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.SourceType,
+			&i.CreationType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -291,7 +316,7 @@ func (q *Queries) GetSourceByName(ctx context.Context, name string) (GetSourceBy
 	return i, err
 }
 
-const insertAPISource = `-- name: InsertAPISource :one
+const insertSource = `-- name: InsertSource :one
 
 INSERT INTO source (
     name,
@@ -306,7 +331,6 @@ INSERT INTO source (
     updated_at
 ) VALUES (
     $1,
-    'API',
     $2,
     $3,
     $4,
@@ -314,12 +338,14 @@ INSERT INTO source (
     $6,
     $7,
     $8,
-    $9
+    $9,
+    $10
 ) RETURNING id, name, created_at, updated_at, creation_type, sync_schedule, source_type, format, source_config, filter_config, syncable
 `
 
-type InsertAPISourceParams struct {
+type InsertSourceParams struct {
 	Name         string           `json:"name"`
+	CreationType CreationType     `json:"creation_type"`
 	SourceType   string           `json:"source_type"`
 	Format       *string          `json:"format"`
 	SourceConfig []byte           `json:"source_config"`
@@ -331,12 +357,13 @@ type InsertAPISourceParams struct {
 }
 
 // ============================================================================
-// API Source Queries (only operate on creation_type='API')
+// Source Queries (unified, creation_type guards are in Go)
 // ============================================================================
-// Insert a new API source with full configuration
-func (q *Queries) InsertAPISource(ctx context.Context, arg InsertAPISourceParams) (Source, error) {
-	row := q.db.QueryRow(ctx, insertAPISource,
+// Insert a new source with full configuration. creation_type is passed as a parameter.
+func (q *Queries) InsertSource(ctx context.Context, arg InsertSourceParams) (Source, error) {
+	row := q.db.QueryRow(ctx, insertSource,
 		arg.Name,
+		arg.CreationType,
 		arg.SourceType,
 		arg.Format,
 		arg.SourceConfig,
@@ -361,66 +388,6 @@ func (q *Queries) InsertAPISource(ctx context.Context, arg InsertAPISourceParams
 		&i.Syncable,
 	)
 	return i, err
-}
-
-const insertConfigSource = `-- name: InsertConfigSource :one
-
-INSERT INTO source (
-    name,
-    creation_type,
-    source_type,
-    format,
-    source_config,
-    filter_config,
-    sync_schedule,
-    syncable,
-    created_at,
-    updated_at
-) VALUES (
-    $1,
-    'CONFIG',
-    $2,
-    $3,
-    $4,
-    $5,
-    $6,
-    $7,
-    $8,
-    $9
-) RETURNING id
-`
-
-type InsertConfigSourceParams struct {
-	Name         string           `json:"name"`
-	SourceType   string           `json:"source_type"`
-	Format       *string          `json:"format"`
-	SourceConfig []byte           `json:"source_config"`
-	FilterConfig []byte           `json:"filter_config"`
-	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
-	Syncable     bool             `json:"syncable"`
-	CreatedAt    *time.Time       `json:"created_at"`
-	UpdatedAt    *time.Time       `json:"updated_at"`
-}
-
-// ============================================================================
-// CONFIG Source Queries (only operate on creation_type='CONFIG')
-// ============================================================================
-// Insert a new CONFIG source with full configuration
-func (q *Queries) InsertConfigSource(ctx context.Context, arg InsertConfigSourceParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, insertConfigSource,
-		arg.Name,
-		arg.SourceType,
-		arg.Format,
-		arg.SourceConfig,
-		arg.FilterConfig,
-		arg.SyncSchedule,
-		arg.Syncable,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-	)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
 }
 
 const listAllSourceNames = `-- name: ListAllSourceNames :many
@@ -521,7 +488,7 @@ func (q *Queries) ListSources(ctx context.Context, arg ListSourcesParams) ([]Lis
 	return items, nil
 }
 
-const updateAPISource = `-- name: UpdateAPISource :one
+const updateSource = `-- name: UpdateSource :one
 UPDATE source SET
     source_type = $1,
     format = $2,
@@ -531,11 +498,10 @@ UPDATE source SET
     syncable = $6,
     updated_at = $7
 WHERE name = $8
-  AND creation_type = 'API'
 RETURNING id, name, created_at, updated_at, creation_type, sync_schedule, source_type, format, source_config, filter_config, syncable
 `
 
-type UpdateAPISourceParams struct {
+type UpdateSourceParams struct {
 	SourceType   string           `json:"source_type"`
 	Format       *string          `json:"format"`
 	SourceConfig []byte           `json:"source_config"`
@@ -546,9 +512,9 @@ type UpdateAPISourceParams struct {
 	Name         string           `json:"name"`
 }
 
-// Update an existing API source (returns NULL if not found or is CONFIG type)
-func (q *Queries) UpdateAPISource(ctx context.Context, arg UpdateAPISourceParams) (Source, error) {
-	row := q.db.QueryRow(ctx, updateAPISource,
+// Update an existing source. Go callers guard against modifying wrong creation_type.
+func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error) {
+	row := q.db.QueryRow(ctx, updateSource,
 		arg.SourceType,
 		arg.Format,
 		arg.SourceConfig,
@@ -575,7 +541,8 @@ func (q *Queries) UpdateAPISource(ctx context.Context, arg UpdateAPISourceParams
 	return i, err
 }
 
-const upsertConfigSource = `-- name: UpsertConfigSource :one
+const upsertSource = `-- name: UpsertSource :one
+
 INSERT INTO source (
     name,
     creation_type,
@@ -589,7 +556,6 @@ INSERT INTO source (
     updated_at
 ) VALUES (
     $1,
-    'CONFIG',
     $2,
     $3,
     $4,
@@ -597,7 +563,8 @@ INSERT INTO source (
     $6,
     $7,
     $8,
-    $9
+    $9,
+    $10
 )
 ON CONFLICT (name) DO UPDATE SET
     source_type = EXCLUDED.source_type,
@@ -607,12 +574,12 @@ ON CONFLICT (name) DO UPDATE SET
     sync_schedule = EXCLUDED.sync_schedule,
     syncable = EXCLUDED.syncable,
     updated_at = EXCLUDED.updated_at
-WHERE source.creation_type = 'CONFIG'
 RETURNING id
 `
 
-type UpsertConfigSourceParams struct {
+type UpsertSourceParams struct {
 	Name         string           `json:"name"`
+	CreationType CreationType     `json:"creation_type"`
 	SourceType   string           `json:"source_type"`
 	Format       *string          `json:"format"`
 	SourceConfig []byte           `json:"source_config"`
@@ -623,10 +590,15 @@ type UpsertConfigSourceParams struct {
 	UpdatedAt    *time.Time       `json:"updated_at"`
 }
 
-// Insert or update a CONFIG source (only updates if existing is CONFIG type)
-func (q *Queries) UpsertConfigSource(ctx context.Context, arg UpsertConfigSourceParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, upsertConfigSource,
+// ============================================================================
+// CONFIG Source Queries (only operate on creation_type='CONFIG')
+// ============================================================================
+// Insert or update a source. The creation_type is passed as a parameter.
+// Business logic in Go guards against cross-type overwrites.
+func (q *Queries) UpsertSource(ctx context.Context, arg UpsertSourceParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, upsertSource,
 		arg.Name,
+		arg.CreationType,
 		arg.SourceType,
 		arg.Format,
 		arg.SourceConfig,
