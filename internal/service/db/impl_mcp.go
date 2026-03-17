@@ -273,8 +273,9 @@ func (s *dbService) GetServerVersion(
 	}
 
 	// Note: this function fetches a single record given name and version.
-	// In case no record is found, the called function should return an
-	// `sql.ErrNoRows` error as it's customary in Go.
+	// In case no record is found, the called function maps the underlying
+	// `pgx.ErrNoRows` to `service.ErrNotFound`, and callers should expect
+	// to receive `service.ErrNotFound` for a missing record.
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
 		server, err := querier.GetServerVersion(ctx, params)
 		if err != nil {
