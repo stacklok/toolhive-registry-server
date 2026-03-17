@@ -517,6 +517,10 @@ func (s *dbService) executeDeleteSkillTransaction(
 		return err
 	}
 
+	if err := rePointLatestSkillVersionIfNeeded(ctx, querier, registry.ID, options.Name, entryID, options.RegistryName); err != nil {
+		return err
+	}
+
 	if err := cleanupOrphanedEntry(ctx, querier, entryID); err != nil {
 		return err
 	}
@@ -525,5 +529,52 @@ func (s *dbService) executeDeleteSkillTransaction(
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	return nil
+}
+
+// rePointLatestSkillVersionIfNeeded checks whether the latest_entry_version pointer was cascade-deleted
+// (because the deleted version was the current latest) and, if so, re-points it to the
+// next-highest remaining semantic version.
+func rePointLatestSkillVersionIfNeeded(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	registryID uuid.UUID,
+	skillName string,
+	entryID uuid.UUID,
+	registryName string,
+) error {
+	_, err := querier.GetSkillVersion(ctx, sqlc.GetSkillVersionParams{
+		Name:         skillName,
+		Version:      "latest",
+		RegistryName: &registryName,
+	})
+	if err == nil {
+		// Pointer still exists — deleted version was not the latest, nothing to do.
+		return nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("failed to check latest skill version: %w", err)
+	}
+
+	// Pointer was cascade-deleted. Find the next-highest remaining version.
+	remaining, err := querier.ListEntryVersions(ctx, entryID)
+	if err != nil {
+		return fmt.Errorf("failed to list remaining skill versions: %w", err)
+	}
+
+	newVersionID, newVersion := findHighestVersion(remaining)
+	if newVersionID == uuid.Nil {
+		// No remaining versions — the cascade on registry_entry will handle full cleanup.
+		return nil
+	}
+
+	if _, err := querier.UpsertLatestSkillVersion(ctx, sqlc.UpsertLatestSkillVersionParams{
+		RegID:     registryID,
+		Name:      skillName,
+		Version:   newVersion,
+		VersionID: newVersionID,
+	}); err != nil {
+		return fmt.Errorf("failed to upsert latest skill version: %w", err)
+	}
 	return nil
 }

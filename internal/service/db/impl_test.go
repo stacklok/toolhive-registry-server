@@ -1818,3 +1818,299 @@ func TestUpdateRegistry(t *testing.T) {
 		})
 	}
 }
+
+func TestDeleteServerVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		registryName string
+		serverName   string
+		// versions to publish in order before the delete
+		publishVersions []string
+		// version to delete
+		deleteVersion string
+		// if non-empty, the version we expect "latest" to resolve to after deletion
+		expectLatestVersion string
+		// if true, GET latest should return ErrNotFound after deletion
+		expectLatestNotFound bool
+		// if true, the delete call itself should return an error
+		expectDeleteErr bool
+		// expected error from the delete call (wrapped with ErrorIs)
+		expectDeleteErrIs error
+		// if true, use a non-managed (REMOTE) registry
+		useRemoteRegistry bool
+	}{
+		{
+			name:                "delete latest version re-points to next highest",
+			registryName:        "del-srv-repoint",
+			serverName:          "com.example/test-server",
+			publishVersions:     []string{"1.0.0", "1.1.0", "2.0.0"},
+			deleteVersion:       "2.0.0",
+			expectLatestVersion: "1.1.0",
+		},
+		{
+			name:                "delete non-latest version does not change pointer",
+			registryName:        "del-srv-nonlatest",
+			serverName:          "com.example/test-server",
+			publishVersions:     []string{"1.0.0", "2.0.0"},
+			deleteVersion:       "1.0.0",
+			expectLatestVersion: "2.0.0",
+		},
+		{
+			name:                 "delete the only version removes entry entirely",
+			registryName:         "del-srv-only",
+			serverName:           "com.example/test-server",
+			publishVersions:      []string{"1.0.0"},
+			deleteVersion:        "1.0.0",
+			expectLatestNotFound: true,
+		},
+		{
+			name:              "delete non-existent version returns error",
+			registryName:      "del-srv-noexist",
+			serverName:        "com.example/test-server",
+			publishVersions:   []string{"1.0.0"},
+			deleteVersion:     "9.9.9",
+			expectDeleteErr:   true,
+			expectDeleteErrIs: service.ErrNotFound,
+		},
+		{
+			name:              "delete on non-managed registry returns error",
+			registryName:      "del-srv-remote",
+			serverName:        "com.example/test-server",
+			publishVersions:   nil,
+			deleteVersion:     "1.0.0",
+			useRemoteRegistry: true,
+			expectDeleteErr:   true,
+			expectDeleteErrIs: service.ErrNotManagedRegistry,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			ctx := context.Background()
+			queries := sqlc.New(svc.pool)
+
+			// Create the registry.
+			if tt.useRemoteRegistry {
+				_, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
+					Name:     tt.registryName,
+					RegType:  sqlc.RegistryTypeREMOTE,
+					Syncable: true,
+				})
+				require.NoError(t, err)
+			} else {
+				_, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
+					Name:     tt.registryName,
+					RegType:  sqlc.RegistryTypeMANAGED,
+					Syncable: false,
+				})
+				require.NoError(t, err)
+			}
+
+			// Publish the requested versions.
+			for _, ver := range tt.publishVersions {
+				_, err := svc.PublishServerVersion(
+					ctx,
+					service.WithRegistryName(tt.registryName),
+					service.WithServerData(&upstreamv0.ServerJSON{
+						Name:    tt.serverName,
+						Version: ver,
+					}),
+				)
+				require.NoError(t, err)
+			}
+
+			// Perform the delete.
+			deleteErr := svc.DeleteServerVersion(
+				ctx,
+				service.WithRegistryName(tt.registryName),
+				service.WithName(tt.serverName),
+				service.WithVersion(tt.deleteVersion),
+			)
+
+			if tt.expectDeleteErr {
+				require.Error(t, deleteErr)
+				if tt.expectDeleteErrIs != nil {
+					require.ErrorIs(t, deleteErr, tt.expectDeleteErrIs)
+				}
+				return
+			}
+			require.NoError(t, deleteErr)
+
+			// Verify the latest pointer.
+			result, err := svc.GetServerVersion(
+				ctx,
+				service.WithRegistryName(tt.registryName),
+				service.WithName(tt.serverName),
+				service.WithVersion("latest"),
+			)
+
+			if tt.expectLatestNotFound {
+				require.ErrorIs(t, err, service.ErrNotFound)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, tt.expectLatestVersion, result.Version)
+		})
+	}
+}
+
+func TestDeleteSkillVersion(t *testing.T) {
+	t.Parallel()
+
+	const namespace = "com.example"
+
+	tests := []struct {
+		name         string
+		registryName string
+		skillName    string
+		// versions to publish in order before the delete
+		publishVersions []string
+		// version to delete
+		deleteVersion string
+		// if non-empty, the version we expect "latest" to resolve to after deletion
+		expectLatestVersion string
+		// if true, GET latest should return ErrNotFound after deletion
+		expectLatestNotFound bool
+		// if true, the delete call itself should return an error
+		expectDeleteErr bool
+		// expected error from the delete call (wrapped with ErrorIs)
+		expectDeleteErrIs error
+		// if true, use a non-managed (REMOTE) registry
+		useRemoteRegistry bool
+	}{
+		{
+			name:                "delete latest version re-points to next highest",
+			registryName:        "del-skill-repoint",
+			skillName:           "test-skill",
+			publishVersions:     []string{"1.0.0", "1.1.0", "2.0.0"},
+			deleteVersion:       "2.0.0",
+			expectLatestVersion: "1.1.0",
+		},
+		{
+			name:                "delete non-latest version does not change pointer",
+			registryName:        "del-skill-nonlatest",
+			skillName:           "test-skill",
+			publishVersions:     []string{"1.0.0", "2.0.0"},
+			deleteVersion:       "1.0.0",
+			expectLatestVersion: "2.0.0",
+		},
+		{
+			name:                 "delete the only version removes entry entirely",
+			registryName:         "del-skill-only",
+			skillName:            "test-skill",
+			publishVersions:      []string{"1.0.0"},
+			deleteVersion:        "1.0.0",
+			expectLatestNotFound: true,
+		},
+		{
+			name:              "delete non-existent version returns error",
+			registryName:      "del-skill-noexist",
+			skillName:         "test-skill",
+			publishVersions:   []string{"1.0.0"},
+			deleteVersion:     "9.9.9",
+			expectDeleteErr:   true,
+			expectDeleteErrIs: service.ErrNotFound,
+		},
+		{
+			name:              "delete on non-managed registry returns error",
+			registryName:      "del-skill-remote",
+			skillName:         "test-skill",
+			publishVersions:   nil,
+			deleteVersion:     "1.0.0",
+			useRemoteRegistry: true,
+			expectDeleteErr:   true,
+			expectDeleteErrIs: service.ErrNotManagedRegistry,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			ctx := context.Background()
+			queries := sqlc.New(svc.pool)
+
+			// Create the registry.
+			if tt.useRemoteRegistry {
+				_, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
+					Name:     tt.registryName,
+					RegType:  sqlc.RegistryTypeREMOTE,
+					Syncable: true,
+				})
+				require.NoError(t, err)
+			} else {
+				_, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
+					Name:     tt.registryName,
+					RegType:  sqlc.RegistryTypeMANAGED,
+					Syncable: false,
+				})
+				require.NoError(t, err)
+			}
+
+			// Publish the requested versions.
+			for _, ver := range tt.publishVersions {
+				skill := &service.Skill{
+					Name:      tt.skillName,
+					Namespace: namespace,
+					Version:   ver,
+					Title:     "Test Skill",
+				}
+				_, err := svc.PublishSkill(
+					ctx,
+					skill,
+					service.WithRegistryName(tt.registryName),
+				)
+				require.NoError(t, err)
+			}
+
+			// Perform the delete.
+			deleteErr := svc.DeleteSkillVersion(
+				ctx,
+				service.WithRegistryName(tt.registryName),
+				service.WithName(tt.skillName),
+				service.WithVersion(tt.deleteVersion),
+				service.WithNamespace(namespace),
+			)
+
+			if tt.expectDeleteErr {
+				require.Error(t, deleteErr)
+				if tt.expectDeleteErrIs != nil {
+					require.ErrorIs(t, deleteErr, tt.expectDeleteErrIs)
+				}
+				return
+			}
+			require.NoError(t, deleteErr)
+
+			// Verify the latest pointer.
+			result, err := svc.GetSkillVersion(
+				ctx,
+				service.WithRegistryName(tt.registryName),
+				service.WithName(tt.skillName),
+				service.WithVersion("latest"),
+				service.WithNamespace(namespace),
+			)
+
+			if tt.expectLatestNotFound {
+				require.ErrorIs(t, err, service.ErrNotFound)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, tt.expectLatestVersion, result.Version)
+			require.True(t, result.IsLatest)
+		})
+	}
+}
