@@ -799,7 +799,8 @@ func (s *dbService) executeDeleteTransaction(
 
 // rePointLatestServerVersionIfNeeded checks whether the latest_entry_version pointer was cascade-deleted
 // (because the deleted version was the current latest) and, if so, re-points it to the
-// next-highest remaining semantic version.
+// next-highest remaining version according to versions.IsNewerVersion (semantic when possible,
+// with lexicographic ordering as a fallback).
 func rePointLatestServerVersionIfNeeded(
 	ctx context.Context,
 	querier *sqlc.Queries,
@@ -819,7 +820,8 @@ func rePointLatestServerVersionIfNeeded(
 		return fmt.Errorf("failed to check latest server version: %w", err)
 	}
 
-	// Pointer was cascade-deleted. Find the next-highest remaining version.
+	// Pointer was cascade-deleted. Find the next-highest remaining version using the same
+	// ordering rules as versions.IsNewerVersion (semantic when possible, lexicographic otherwise).
 	remaining, err := querier.ListEntryVersions(ctx, entryID)
 	if err != nil {
 		return fmt.Errorf("failed to list remaining server versions: %w", err)
