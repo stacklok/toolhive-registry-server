@@ -134,7 +134,7 @@ func (q *Queries) GetServerIDsByRegistryNameVersion(ctx context.Context, sourceI
 	return items, nil
 }
 
-const getServerVersion = `-- name: GetServerVersion :one
+const getServerVersion = `-- name: GetServerVersion :many
 SELECT src.source_type as registry_type,
        v.id,
        e.name,
@@ -150,32 +150,28 @@ SELECT src.source_type as registry_type,
        s.repository_url,
        s.repository_id,
        s.repository_subfolder,
-       s.repository_type
+       s.repository_type,
+       COALESCE(rs.position, 0)::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
- WHERE e.name = $1
+  LEFT JOIN registry r ON r.name = $1::text
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
+ WHERE e.name = $2
    AND (
-       v.version = $2
-       OR ($2 = 'latest' AND l.latest_version_id = v.id)
+       v.version = $3
+       OR ($3 = 'latest' AND l.latest_version_id = v.id)
    )
-   AND ($3::text IS NULL OR e.source_id = (
-       SELECT rs2.source_id
-         FROM registry_source rs2
-         JOIN registry r2 ON rs2.registry_id = r2.id
-         JOIN registry_entry e2 ON e2.source_id = rs2.source_id AND e2.name = e.name
-        WHERE r2.name = $3::text
-        ORDER BY rs2.position ASC
-        LIMIT 1
-   ))
+   AND ($1::text IS NULL OR rs.registry_id IS NOT NULL)
+ ORDER BY rs.position ASC
 `
 
 type GetServerVersionParams struct {
+	RegistryName *string `json:"registry_name"`
 	Name         string  `json:"name"`
 	Version      string  `json:"version"`
-	RegistryName *string `json:"registry_name"`
 }
 
 type GetServerVersionRow struct {
@@ -195,30 +191,45 @@ type GetServerVersionRow struct {
 	RepositoryID        *string    `json:"repository_id"`
 	RepositorySubfolder *string    `json:"repository_subfolder"`
 	RepositoryType      *string    `json:"repository_type"`
+	Position            int32      `json:"position"`
 }
 
-func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error) {
-	row := q.db.QueryRow(ctx, getServerVersion, arg.Name, arg.Version, arg.RegistryName)
-	var i GetServerVersionRow
-	err := row.Scan(
-		&i.RegistryType,
-		&i.ID,
-		&i.Name,
-		&i.Version,
-		&i.IsLatest,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Description,
-		&i.Title,
-		&i.Website,
-		&i.UpstreamMeta,
-		&i.ServerMeta,
-		&i.RepositoryUrl,
-		&i.RepositoryID,
-		&i.RepositorySubfolder,
-		&i.RepositoryType,
-	)
-	return i, err
+func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionParams) ([]GetServerVersionRow, error) {
+	rows, err := q.db.Query(ctx, getServerVersion, arg.RegistryName, arg.Name, arg.Version)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetServerVersionRow{}
+	for rows.Next() {
+		var i GetServerVersionRow
+		if err := rows.Scan(
+			&i.RegistryType,
+			&i.ID,
+			&i.Name,
+			&i.Version,
+			&i.IsLatest,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Description,
+			&i.Title,
+			&i.Website,
+			&i.UpstreamMeta,
+			&i.ServerMeta,
+			&i.RepositoryUrl,
+			&i.RepositoryID,
+			&i.RepositorySubfolder,
+			&i.RepositoryType,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const insertServerIcon = `-- name: InsertServerIcon :exec
@@ -573,33 +584,28 @@ SELECT src.source_type as registry_type,
        s.repository_url,
        s.repository_id,
        s.repository_subfolder,
-       s.repository_type
+       s.repository_type,
+       COALESCE(rs.position, 0)::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
- WHERE e.name = $1
-   AND ($2::text IS NULL OR e.source_id = (
-       SELECT rs2.source_id
-         FROM registry_source rs2
-         JOIN registry r2 ON rs2.registry_id = r2.id
-         JOIN registry_entry e2 ON e2.source_id = rs2.source_id AND e2.name = e.name
-        WHERE r2.name = $2::text
-        ORDER BY rs2.position ASC
-        LIMIT 1
-   ))
+  LEFT JOIN registry r ON r.name = $1::text
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
+ WHERE e.name = $2
+   AND ($1::text IS NULL OR rs.registry_id IS NOT NULL)
    AND (($3::timestamp with time zone IS NULL OR v.created_at > $3)
     AND ($4::timestamp with time zone IS NULL OR v.created_at < $4))
- ORDER BY
+ ORDER BY rs.position ASC,
  CASE WHEN $3::timestamp with time zone IS NULL THEN v.created_at END ASC,
  CASE WHEN $3::timestamp with time zone IS NULL THEN v.version END DESC -- acts as tie breaker
  LIMIT $5::bigint
 `
 
 type ListServerVersionsParams struct {
-	Name         string     `json:"name"`
 	RegistryName *string    `json:"registry_name"`
+	Name         string     `json:"name"`
 	Next         *time.Time `json:"next"`
 	Prev         *time.Time `json:"prev"`
 	Size         int64      `json:"size"`
@@ -622,12 +628,13 @@ type ListServerVersionsRow struct {
 	RepositoryID        *string    `json:"repository_id"`
 	RepositorySubfolder *string    `json:"repository_subfolder"`
 	RepositoryType      *string    `json:"repository_type"`
+	Position            int32      `json:"position"`
 }
 
 func (q *Queries) ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error) {
 	rows, err := q.db.Query(ctx, listServerVersions,
-		arg.Name,
 		arg.RegistryName,
+		arg.Name,
 		arg.Next,
 		arg.Prev,
 		arg.Size,
@@ -656,6 +663,7 @@ func (q *Queries) ListServerVersions(ctx context.Context, arg ListServerVersions
 			&i.RepositoryID,
 			&i.RepositorySubfolder,
 			&i.RepositoryType,
+			&i.Position,
 		); err != nil {
 			return nil, err
 		}
@@ -683,21 +691,16 @@ SELECT src.source_type as registry_type,
        s.repository_url,
        s.repository_id,
        s.repository_subfolder,
-       s.repository_type
+       s.repository_type,
+       COALESCE(rs.position, 0)::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
- WHERE ($1::text IS NULL OR e.source_id = (
-       SELECT rs2.source_id
-         FROM registry_source rs2
-         JOIN registry r2 ON rs2.registry_id = r2.id
-         JOIN registry_entry e2 ON e2.source_id = rs2.source_id AND e2.name = e.name
-        WHERE r2.name = $1::text
-        ORDER BY rs2.position ASC
-        LIMIT 1
-   ))
+  LEFT JOIN registry r ON r.name = $1::text
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
+ WHERE ($1::text IS NULL OR rs.registry_id IS NOT NULL)
    AND ($2::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || $2::text || '%')
        OR LOWER(v.title) LIKE LOWER('%' || $2::text || '%')
@@ -716,7 +719,7 @@ SELECT src.source_type as registry_type,
        v.version = $6::text OR
        ($6::text = 'latest' AND l.latest_version_id = v.id)
    )
- ORDER BY e.name ASC, v.version ASC
+ ORDER BY rs.position ASC, e.name ASC, v.version ASC
  LIMIT $7::bigint
 `
 
@@ -747,11 +750,13 @@ type ListServersRow struct {
 	RepositoryID        *string    `json:"repository_id"`
 	RepositorySubfolder *string    `json:"repository_subfolder"`
 	RepositoryType      *string    `json:"repository_type"`
+	Position            int32      `json:"position"`
 }
 
 // Cursor-based pagination using (name, version) compound cursor.
 // The cursor_name and cursor_version parameters define the starting point.
 // When cursor is provided, results start AFTER the specified (name, version) tuple.
+// Returns position from registry_source for source priority ordering.
 func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error) {
 	rows, err := q.db.Query(ctx, listServers,
 		arg.RegistryName,
@@ -786,6 +791,7 @@ func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]Lis
 			&i.RepositoryID,
 			&i.RepositorySubfolder,
 			&i.RepositoryType,
+			&i.Position,
 		); err != nil {
 			return nil, err
 		}

@@ -171,10 +171,11 @@ func (s *dbService) CreateRegistry(
 
 	// Insert the registry row
 	now := time.Now()
-	inserted, err := querier.UpsertAPIRegistry(ctx, sqlc.UpsertAPIRegistryParams{
-		Name:      name,
-		CreatedAt: &now,
-		UpdatedAt: &now,
+	inserted, err := querier.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+		Name:         name,
+		CreationType: sqlc.CreationTypeAPI,
+		CreatedAt:    &now,
+		UpdatedAt:    &now,
 	})
 	if err != nil {
 		otel.RecordError(span, err)
@@ -250,15 +251,15 @@ func (s *dbService) UpdateRegistry(
 		return nil, err
 	}
 
-	// Upsert registry row to bump updated_at. UpsertAPIRegistry only updates
-	// updated_at on conflict — all other columns (claims, creation_type, created_at)
-	// are preserved. The WHERE creation_type = 'API' guard prevents overwriting
-	// CONFIG registries. Source links are the mutable part and are updated above.
+	// Upsert registry row to bump updated_at. The Go-level getExistingAPIRegistry
+	// check above already verified this is an API registry.
+	// Source links are the mutable part and are updated above.
 	now := time.Now()
-	upserted, err := querier.UpsertAPIRegistry(ctx, sqlc.UpsertAPIRegistryParams{
-		Name:      name,
-		CreatedAt: existing.CreatedAt,
-		UpdatedAt: &now,
+	upserted, err := querier.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+		Name:         name,
+		CreationType: sqlc.CreationTypeAPI,
+		CreatedAt:    existing.CreatedAt,
+		UpdatedAt:    &now,
 	})
 	if err != nil {
 		otel.RecordError(span, err)
@@ -314,8 +315,8 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 	}
 
 	// Delete the registry (cascades to registry_source junction).
-	// DeleteAPIRegistry filters on creation_type='API' as defense-in-depth.
-	if _, err := querier.DeleteAPIRegistry(ctx, name); err != nil {
+	// Go-level getExistingAPIRegistry check above already verified this is an API registry.
+	if _, err := querier.DeleteRegistry(ctx, name); err != nil {
 		otel.RecordError(span, err)
 		return fmt.Errorf("failed to delete registry: %w", err)
 	}

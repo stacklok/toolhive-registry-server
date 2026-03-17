@@ -96,8 +96,9 @@ func (s *dbService) CreateSource(
 	syncSchedule := parseSyncScheduleFromRequest(req)
 	syncable := !req.IsNonSyncedType()
 
-	params := sqlc.InsertAPISourceParams{
+	params := sqlc.InsertSourceParams{
 		Name:         name,
+		CreationType: sqlc.CreationTypeAPI,
 		SourceType:   sourceType,
 		Format:       &format,
 		SourceConfig: sourceConfig,
@@ -109,7 +110,7 @@ func (s *dbService) CreateSource(
 	}
 
 	// Insert the source
-	source, err := querier.InsertAPISource(ctx, params)
+	source, err := querier.InsertSource(ctx, params)
 	if err != nil {
 		// Check for unique constraint violation
 		var pgErr *pgconn.PgError
@@ -152,6 +153,8 @@ func (s *dbService) CreateSource(
 }
 
 // UpdateSource updates an existing API source
+//
+//nolint:gocyclo // complexity from creation_type guard is intentional
 func (s *dbService) UpdateSource(
 	ctx context.Context,
 	name string,
@@ -195,6 +198,13 @@ func (s *dbService) UpdateSource(
 		return nil, fmt.Errorf("failed to get existing source: %w", err)
 	}
 
+	// Guard: cannot modify CONFIG sources via API
+	if existing.CreationType == sqlc.CreationTypeCONFIG {
+		err = fmt.Errorf("%w: %s", service.ErrConfigSource, name)
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
 	// Check if source type is changing (not allowed)
 	if err := validateSourceTypeChange(&existing, req.GetSourceType()); err != nil {
 		otel.RecordError(span, err)
@@ -230,7 +240,7 @@ func (s *dbService) UpdateSource(
 	syncSchedule := parseSyncScheduleFromRequest(req)
 	syncable := !req.IsNonSyncedType()
 
-	params := sqlc.UpdateAPISourceParams{
+	params := sqlc.UpdateSourceParams{
 		Name:         name,
 		SourceType:   sourceType,
 		Format:       &format,
@@ -241,8 +251,8 @@ func (s *dbService) UpdateSource(
 		UpdatedAt:    &now,
 	}
 
-	// Update the source (only updates API-created sources)
-	source, err := querier.UpdateAPISource(ctx, params)
+	// Update the source (creation_type guard is above)
+	source, err := querier.UpdateSource(ctx, params)
 	if err != nil {
 		updateErr := classifyUpdateSourceError(ctx, querier, name, err)
 		otel.RecordError(span, updateErr)
@@ -325,7 +335,7 @@ func (s *dbService) DeleteSource(ctx context.Context, name string) error {
 	}
 
 	// Delete the source — we already verified it exists, is API-created, and is not in use.
-	if _, err := querier.DeleteAPISource(ctx, name); err != nil {
+	if _, err := querier.DeleteSource(ctx, name); err != nil {
 		otel.RecordError(span, err)
 		return fmt.Errorf("failed to delete source: %w", err)
 	}
@@ -554,8 +564,8 @@ func validateFileSourceTypeChange(existing *sqlc.GetSourceByNameRow, newConfig *
 	return nil
 }
 
-// classifyUpdateSourceError determines the appropriate error when UpdateAPISource returns ErrNoRows.
-// The update may have failed because the source doesn't exist or because it's CONFIG-created.
+// classifyUpdateSourceError determines the appropriate error when UpdateSource returns ErrNoRows.
+// The update may have failed because the source doesn't exist.
 func classifyUpdateSourceError(ctx context.Context, querier *sqlc.Queries, name string, err error) error {
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("failed to update source: %w", err)

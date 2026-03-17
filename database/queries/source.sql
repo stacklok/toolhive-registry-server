@@ -53,8 +53,9 @@ SELECT id,
 -- CONFIG Source Queries (only operate on creation_type='CONFIG')
 -- ============================================================================
 
--- name: InsertConfigSource :one
--- Insert a new CONFIG source with full configuration
+-- name: UpsertSource :one
+-- Insert or update a source. The creation_type is passed as a parameter.
+-- Business logic in Go guards against cross-type overwrites.
 INSERT INTO source (
     name,
     creation_type,
@@ -68,33 +69,7 @@ INSERT INTO source (
     updated_at
 ) VALUES (
     sqlc.arg(name),
-    'CONFIG',
-    sqlc.arg(source_type),
-    sqlc.narg(format),
-    sqlc.narg(source_config),
-    sqlc.narg(filter_config),
-    sqlc.narg(sync_schedule),
-    sqlc.arg(syncable),
-    sqlc.arg(created_at),
-    sqlc.arg(updated_at)
-) RETURNING id;
-
--- name: UpsertConfigSource :one
--- Insert or update a CONFIG source (only updates if existing is CONFIG type)
-INSERT INTO source (
-    name,
-    creation_type,
-    source_type,
-    format,
-    source_config,
-    filter_config,
-    sync_schedule,
-    syncable,
-    created_at,
-    updated_at
-) VALUES (
-    sqlc.arg(name),
-    'CONFIG',
+    sqlc.arg(creation_type),
     sqlc.arg(source_type),
     sqlc.narg(format),
     sqlc.narg(source_config),
@@ -112,7 +87,6 @@ ON CONFLICT (name) DO UPDATE SET
     sync_schedule = EXCLUDED.sync_schedule,
     syncable = EXCLUDED.syncable,
     updated_at = EXCLUDED.updated_at
-WHERE source.creation_type = 'CONFIG'
 RETURNING id;
 
 -- name: BulkUpsertConfigSources :many
@@ -157,18 +131,17 @@ DELETE FROM source
 WHERE id NOT IN (SELECT unnest(sqlc.arg(ids)::uuid[]))
   AND creation_type = 'CONFIG';
 
--- name: DeleteConfigSource :execrows
--- Delete a CONFIG source by name (returns 0 if not found or is API type)
+-- name: DeleteSource :execrows
+-- Delete a source by name. Go callers guard against deleting wrong creation_type.
 DELETE FROM source
-WHERE name = sqlc.arg(name)
-  AND creation_type = 'CONFIG';
+WHERE name = sqlc.arg(name);
 
 -- ============================================================================
--- API Source Queries (only operate on creation_type='API')
+-- Source Queries (unified, creation_type guards are in Go)
 -- ============================================================================
 
--- name: InsertAPISource :one
--- Insert a new API source with full configuration
+-- name: InsertSource :one
+-- Insert a new source with full configuration. creation_type is passed as a parameter.
 INSERT INTO source (
     name,
     creation_type,
@@ -182,7 +155,7 @@ INSERT INTO source (
     updated_at
 ) VALUES (
     sqlc.arg(name),
-    'API',
+    sqlc.arg(creation_type),
     sqlc.arg(source_type),
     sqlc.narg(format),
     sqlc.narg(source_config),
@@ -193,8 +166,8 @@ INSERT INTO source (
     sqlc.arg(updated_at)
 ) RETURNING *;
 
--- name: UpdateAPISource :one
--- Update an existing API source (returns NULL if not found or is CONFIG type)
+-- name: UpdateSource :one
+-- Update an existing source. Go callers guard against modifying wrong creation_type.
 UPDATE source SET
     source_type = sqlc.arg(source_type),
     format = sqlc.narg(format),
@@ -204,14 +177,7 @@ UPDATE source SET
     syncable = sqlc.arg(syncable),
     updated_at = sqlc.arg(updated_at)
 WHERE name = sqlc.arg(name)
-  AND creation_type = 'API'
 RETURNING *;
-
--- name: DeleteAPISource :execrows
--- Delete an API source by name (returns 0 if not found or is CONFIG type)
-DELETE FROM source
-WHERE name = sqlc.arg(name)
-  AND creation_type = 'API';
 
 -- name: ListAllSourceNames :many
 SELECT name FROM source ORDER BY name;
@@ -231,8 +197,6 @@ FROM source
 WHERE name = ANY(sqlc.arg(names)::text[])
   AND creation_type = 'API';
 
--- name: GetManagedSource :one
+-- name: GetManagedSources :many
 SELECT id, name, source_type, creation_type, created_at, updated_at
-FROM source
-WHERE source_type = 'managed'
-LIMIT 1;
+FROM source WHERE source_type = 'managed';

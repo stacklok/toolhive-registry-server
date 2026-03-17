@@ -105,12 +105,12 @@ func (s *dbService) ListServers(
 			return nil, err
 		}
 
-		helpers := make([]helper, len(servers))
-		for i, server := range servers {
-			helpers[i] = listServersRowToHelper(server)
+		helpers := make([]helper, 0, len(servers))
+		for _, server := range servers {
+			helpers = append(helpers, listServersRowToHelper(server))
 		}
 
-		return helpers, nil
+		return deduplicateHelpers(helpers), nil
 	}
 
 	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit)
@@ -198,12 +198,12 @@ func (s *dbService) ListServerVersions(
 			return nil, err
 		}
 
-		helpers := make([]helper, len(servers))
-		for i, server := range servers {
-			helpers[i] = listServerVersionsRowToHelper(server)
+		helpers := make([]helper, 0, len(servers))
+		for _, server := range servers {
+			helpers = append(helpers, listServerVersionsRowToHelper(server))
 		}
 
-		return helpers, nil
+		return deduplicateHelpers(helpers), nil
 	}
 
 	results, err := s.sharedListServers(ctx, querierFunc)
@@ -262,16 +262,19 @@ func (s *dbService) GetServerVersion(
 		RegistryName: registryName,
 	}
 
-	// Note: this function fetches a single record given name and version.
-	// In case no record is found, the called function should return an
-	// `sql.ErrNoRows` error as it's customary in Go.
+	// GetServerVersion now returns multiple rows (one per source); pick the first
+	// (ordered by position ascending = highest priority source).
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
-		server, err := querier.GetServerVersion(ctx, params)
+		servers, err := querier.GetServerVersion(ctx, params)
 		if err != nil {
 			return nil, err
 		}
+		if len(servers) == 0 {
+			return nil, pgx.ErrNoRows
+		}
 
-		return []helper{getServerVersionRowToHelper(server)}, nil
+		// Return only the first row (highest priority by position)
+		return []helper{getServerVersionRowToHelper(servers[0])}, nil
 	}
 
 	res, err := s.sharedListServers(ctx, querierFunc)
@@ -280,9 +283,6 @@ func (s *dbService) GetServerVersion(
 		return nil, err
 	}
 
-	// Note: the `queryFunc` function is expected to return an error
-	// sooner if no records are found, so getting this far with
-	// a length result slice other than 1 means there's a bug.
 	if len(res) != 1 {
 		err := fmt.Errorf("%w: number of servers returned is not 1", ErrBug)
 		otel.RecordError(span, err)
@@ -490,14 +490,19 @@ func insertServerIcons(
 
 // getManagedSource finds the managed source from the database.
 // Returns ErrNoManagedSource if no managed source exists.
+// Returns an error if more than one managed source is found.
 func getManagedSource(ctx context.Context, querier *sqlc.Queries) (*sqlc.Source, error) {
-	row, err := querier.GetManagedSource(ctx)
+	rows, err := querier.GetManagedSources(ctx)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, service.ErrNoManagedSource
-		}
 		return nil, fmt.Errorf("failed to get managed source: %w", err)
 	}
+	if len(rows) == 0 {
+		return nil, service.ErrNoManagedSource
+	}
+	if len(rows) > 1 {
+		return nil, fmt.Errorf("expected exactly one managed source, found %d", len(rows))
+	}
+	row := rows[0]
 	return &sqlc.Source{
 		ID:           row.ID,
 		Name:         row.Name,

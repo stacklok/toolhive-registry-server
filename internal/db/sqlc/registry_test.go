@@ -29,14 +29,15 @@ func TestInsertSource(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertConfigSource(
+				id, err := queries.UpsertSource(
 					context.Background(),
-					InsertConfigSourceParams{
-						Name:       "test-source",
-						SourceType: "file",
-						Syncable:   true,
-						CreatedAt:  &createdAt,
-						UpdatedAt:  &createdAt,
+					UpsertSourceParams{
+						CreationType: CreationTypeCONFIG,
+						Name:         "test-source",
+						SourceType:   "file",
+						Syncable:     true,
+						CreatedAt:    &createdAt,
+						UpdatedAt:    &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -50,14 +51,15 @@ func TestInsertSource(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertConfigSource(
+				id, err := queries.UpsertSource(
 					context.Background(),
-					InsertConfigSourceParams{
-						Name:       "test-source",
-						SourceType: "managed",
-						Syncable:   false, // managed sources are not syncable
-						CreatedAt:  &createdAt,
-						UpdatedAt:  &createdAt,
+					UpsertSourceParams{
+						CreationType: CreationTypeCONFIG,
+						Name:         "test-source",
+						SourceType:   "managed",
+						Syncable:     false, // managed sources are not syncable
+						CreatedAt:    &createdAt,
+						UpdatedAt:    &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -71,14 +73,15 @@ func TestInsertSource(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertConfigSource(
+				id, err := queries.UpsertSource(
 					context.Background(),
-					InsertConfigSourceParams{
-						Name:       "test-source",
-						SourceType: "git",
-						Syncable:   true,
-						CreatedAt:  &createdAt,
-						UpdatedAt:  &createdAt,
+					UpsertSourceParams{
+						CreationType: CreationTypeCONFIG,
+						Name:         "test-source",
+						SourceType:   "git",
+						Syncable:     true,
+						CreatedAt:    &createdAt,
+						UpdatedAt:    &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -92,14 +95,15 @@ func TestInsertSource(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertConfigSource(
+				id, err := queries.UpsertSource(
 					context.Background(),
-					InsertConfigSourceParams{
-						Name:       "test-source",
-						SourceType: "file",
-						Syncable:   true,
-						CreatedAt:  &createdAt,
-						UpdatedAt:  &createdAt,
+					UpsertSourceParams{
+						CreationType: CreationTypeCONFIG,
+						Name:         "test-source",
+						SourceType:   "file",
+						Syncable:     true,
+						CreatedAt:    &createdAt,
+						UpdatedAt:    &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -111,34 +115,35 @@ func TestInsertSource(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertConfigSource(
+				source, err := queries.InsertSource(
 					context.Background(),
-					InsertConfigSourceParams{
-						Name:       "test-source",
-						SourceType: "managed",
-						Syncable:   false, // managed sources are not syncable
-						CreatedAt:  &createdAt,
-						UpdatedAt:  &createdAt,
+					InsertSourceParams{
+						CreationType: CreationTypeCONFIG,
+						Name:         "test-source",
+						SourceType:   "managed",
+						Syncable:     false, // managed sources are not syncable
+						CreatedAt:    &createdAt,
+						UpdatedAt:    &createdAt,
 					},
 				)
 				require.NoError(t, err)
-				require.NotNil(t, id)
+				require.NotEmpty(t, source.ID)
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertConfigSource(
+				_, err := queries.InsertSource(
 					context.Background(),
-					InsertConfigSourceParams{
-						Name:       "test-source",
-						SourceType: "managed",
-						Syncable:   false, // managed sources are not syncable
-						CreatedAt:  &createdAt,
-						UpdatedAt:  &createdAt,
+					InsertSourceParams{
+						CreationType: CreationTypeCONFIG,
+						Name:         "test-source",
+						SourceType:   "managed",
+						Syncable:     false, // managed sources are not syncable
+						CreatedAt:    &createdAt,
+						UpdatedAt:    &createdAt,
 					},
 				)
 				require.Error(t, err)
-				require.NotNil(t, id)
 			},
 		},
 	}
@@ -184,14 +189,15 @@ func TestListSources(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertConfigSource(
+				id, err := queries.UpsertSource(
 					context.Background(),
-					InsertConfigSourceParams{
-						Name:       "test-source",
-						SourceType: "git",
-						Syncable:   true,
-						CreatedAt:  &createdAt,
-						UpdatedAt:  &createdAt,
+					UpsertSourceParams{
+						CreationType: CreationTypeCONFIG,
+						Name:         "test-source",
+						SourceType:   "git",
+						Syncable:     true,
+						CreatedAt:    &createdAt,
+						UpdatedAt:    &createdAt,
 					},
 				)
 				require.NoError(t, err)
@@ -216,14 +222,15 @@ func TestListSources(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i := range 2 {
 					createdAt = createdAt.Add(1 * time.Second)
-					id, err := queries.InsertConfigSource(
+					id, err := queries.UpsertSource(
 						context.Background(),
-						InsertConfigSourceParams{
-							Name:       fmt.Sprintf("test-source-%d", i),
-							SourceType: "git",
-							Syncable:   true,
-							CreatedAt:  &createdAt,
-							UpdatedAt:  &createdAt,
+						UpsertSourceParams{
+							CreationType: CreationTypeCONFIG,
+							Name:         fmt.Sprintf("test-source-%d", i),
+							SourceType:   "git",
+							Syncable:     true,
+							CreatedAt:    &createdAt,
+							UpdatedAt:    &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -251,14 +258,15 @@ func TestListSources(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i := range 2 {
 					createdAt = createdAt.Add(1 * time.Second)
-					id, err := queries.InsertConfigSource(
+					id, err := queries.UpsertSource(
 						context.Background(),
-						InsertConfigSourceParams{
-							Name:       fmt.Sprintf("test-source-%d", i),
-							SourceType: "git",
-							Syncable:   true,
-							CreatedAt:  &createdAt,
-							UpdatedAt:  &createdAt,
+						UpsertSourceParams{
+							CreationType: CreationTypeCONFIG,
+							Name:         fmt.Sprintf("test-source-%d", i),
+							SourceType:   "git",
+							Syncable:     true,
+							CreatedAt:    &createdAt,
+							UpdatedAt:    &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -292,14 +300,15 @@ func TestListSources(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i := range 2 {
 					createdAt = createdAt.Add(1 * time.Second)
-					id, err := queries.InsertConfigSource(
+					id, err := queries.UpsertSource(
 						context.Background(),
-						InsertConfigSourceParams{
-							Name:       fmt.Sprintf("test-source-%d", i),
-							SourceType: "git",
-							Syncable:   true,
-							CreatedAt:  &createdAt,
-							UpdatedAt:  &createdAt,
+						UpsertSourceParams{
+							CreationType: CreationTypeCONFIG,
+							Name:         fmt.Sprintf("test-source-%d", i),
+							SourceType:   "git",
+							Syncable:     true,
+							CreatedAt:    &createdAt,
+							UpdatedAt:    &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -333,14 +342,15 @@ func TestListSources(t *testing.T) {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
 				for i := range 2 {
 					createdAt = createdAt.Add(1 * time.Second)
-					id, err := queries.InsertConfigSource(
+					id, err := queries.UpsertSource(
 						context.Background(),
-						InsertConfigSourceParams{
-							Name:       fmt.Sprintf("test-source-%d", i),
-							SourceType: "git",
-							Syncable:   true,
-							CreatedAt:  &createdAt,
-							UpdatedAt:  &createdAt,
+						UpsertSourceParams{
+							CreationType: CreationTypeCONFIG,
+							Name:         fmt.Sprintf("test-source-%d", i),
+							SourceType:   "git",
+							Syncable:     true,
+							CreatedAt:    &createdAt,
+							UpdatedAt:    &createdAt,
 						},
 					)
 					require.NoError(t, err)
@@ -404,12 +414,13 @@ func TestGetSource(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				createdAt := time.Now().UTC()
-				id, err := queries.InsertConfigSource(context.Background(), InsertConfigSourceParams{
-					Name:       "test-source",
-					SourceType: "git",
-					Syncable:   true,
-					CreatedAt:  &createdAt,
-					UpdatedAt:  &createdAt,
+				id, err := queries.UpsertSource(context.Background(), UpsertSourceParams{
+					CreationType: CreationTypeCONFIG,
+					Name:         "test-source",
+					SourceType:   "git",
+					Syncable:     true,
+					CreatedAt:    &createdAt,
+					UpdatedAt:    &createdAt,
 				})
 				require.NoError(t, err)
 				require.NotNil(t, id)
@@ -477,12 +488,13 @@ func TestBulkUpsertSources(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC()
-				_, err := queries.InsertConfigSource(context.Background(), InsertConfigSourceParams{
-					Name:       "config-src",
-					SourceType: "git",
-					Syncable:   true,
-					CreatedAt:  &now,
-					UpdatedAt:  &now,
+				_, err := queries.UpsertSource(context.Background(), UpsertSourceParams{
+					CreationType: CreationTypeCONFIG,
+					Name:         "config-src",
+					SourceType:   "git",
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
 				})
 				require.NoError(t, err)
 			},
@@ -510,12 +522,13 @@ func TestBulkUpsertSources(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC()
-				_, err := queries.InsertAPISource(context.Background(), InsertAPISourceParams{
-					Name:       "api-src",
-					SourceType: "managed",
-					Syncable:   false, // managed sources are not syncable
-					CreatedAt:  &now,
-					UpdatedAt:  &now,
+				_, err := queries.InsertSource(context.Background(), InsertSourceParams{
+					CreationType: CreationTypeAPI,
+					Name:         "api-src",
+					SourceType:   "managed",
+					Syncable:     false, // managed sources are not syncable
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
 				})
 				require.NoError(t, err)
 			},
@@ -575,21 +588,23 @@ func TestDeleteConfigSourcesNotInList(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				now := time.Now().UTC()
-				id1, err := queries.InsertConfigSource(context.Background(), InsertConfigSourceParams{
-					Name:       "keep-src",
-					SourceType: "git",
-					Syncable:   true,
-					CreatedAt:  &now,
-					UpdatedAt:  &now,
+				id1, err := queries.UpsertSource(context.Background(), UpsertSourceParams{
+					CreationType: CreationTypeCONFIG,
+					Name:         "keep-src",
+					SourceType:   "git",
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
 				})
 				require.NoError(t, err)
 
-				_, err = queries.InsertConfigSource(context.Background(), InsertConfigSourceParams{
-					Name:       "delete-src",
-					SourceType: "file",
-					Syncable:   true,
-					CreatedAt:  &now,
-					UpdatedAt:  &now,
+				_, err = queries.UpsertSource(context.Background(), UpsertSourceParams{
+					CreationType: CreationTypeCONFIG,
+					Name:         "delete-src",
+					SourceType:   "file",
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
 				})
 				require.NoError(t, err)
 
@@ -614,21 +629,23 @@ func TestDeleteConfigSourcesNotInList(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) []uuid.UUID {
 				now := time.Now().UTC()
-				id1, err := queries.InsertConfigSource(context.Background(), InsertConfigSourceParams{
-					Name:       "config-src",
-					SourceType: "git",
-					Syncable:   true,
-					CreatedAt:  &now,
-					UpdatedAt:  &now,
+				id1, err := queries.UpsertSource(context.Background(), UpsertSourceParams{
+					CreationType: CreationTypeCONFIG,
+					Name:         "config-src",
+					SourceType:   "git",
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
 				})
 				require.NoError(t, err)
 
-				_, err = queries.InsertAPISource(context.Background(), InsertAPISourceParams{
-					Name:       "api-src",
-					SourceType: "managed",
-					Syncable:   false, // managed sources are not syncable
-					CreatedAt:  &now,
-					UpdatedAt:  &now,
+				_, err = queries.InsertSource(context.Background(), InsertSourceParams{
+					CreationType: CreationTypeAPI,
+					Name:         "api-src",
+					SourceType:   "managed",
+					Syncable:     false, // managed sources are not syncable
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
 				})
 				require.NoError(t, err)
 
@@ -678,21 +695,23 @@ func TestGetAPISourcesByNames(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC()
-				_, err := queries.InsertAPISource(context.Background(), InsertAPISourceParams{
-					Name:       "api-src",
-					SourceType: "managed",
-					Syncable:   false, // managed sources are not syncable
-					CreatedAt:  &now,
-					UpdatedAt:  &now,
+				_, err := queries.InsertSource(context.Background(), InsertSourceParams{
+					CreationType: CreationTypeAPI,
+					Name:         "api-src",
+					SourceType:   "managed",
+					Syncable:     false, // managed sources are not syncable
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
 				})
 				require.NoError(t, err)
 
-				_, err = queries.InsertConfigSource(context.Background(), InsertConfigSourceParams{
-					Name:       "config-src",
-					SourceType: "git",
-					Syncable:   true,
-					CreatedAt:  &now,
-					UpdatedAt:  &now,
+				_, err = queries.UpsertSource(context.Background(), UpsertSourceParams{
+					CreationType: CreationTypeCONFIG,
+					Name:         "config-src",
+					SourceType:   "git",
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
 				})
 				require.NoError(t, err)
 			},
@@ -710,12 +729,13 @@ func TestGetAPISourcesByNames(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC()
-				_, err := queries.InsertConfigSource(context.Background(), InsertConfigSourceParams{
-					Name:       "config-src",
-					SourceType: "git",
-					Syncable:   true,
-					CreatedAt:  &now,
-					UpdatedAt:  &now,
+				_, err := queries.UpsertSource(context.Background(), UpsertSourceParams{
+					CreationType: CreationTypeCONFIG,
+					Name:         "config-src",
+					SourceType:   "git",
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
 				})
 				require.NoError(t, err)
 			},

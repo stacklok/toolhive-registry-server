@@ -20,9 +20,9 @@ const (
 
 //nolint:thelper // We want to see these lines in the test output
 func setupRegistry(t *testing.T, queries *Queries) uuid.UUID {
-	regID, err := queries.InsertConfigSource(
+	regID, err := queries.UpsertSource(
 		context.Background(),
-		InsertConfigSourceParams{
+		UpsertSourceParams{CreationType: CreationTypeCONFIG,
 			Name:       "test-registry",
 			SourceType: "git",
 			Syncable:   true,
@@ -32,7 +32,7 @@ func setupRegistry(t *testing.T, queries *Queries) uuid.UUID {
 
 	// Create a registry and link the source to it (needed for registry_name subquery)
 	now := time.Now().UTC()
-	reg, err := queries.UpsertConfigRegistry(context.Background(), UpsertConfigRegistryParams{
+	reg, err := queries.UpsertRegistry(context.Background(), UpsertRegistryParams{CreationType: CreationTypeCONFIG,
 		Name:      "test-registry",
 		CreatedAt: &now,
 		UpdatedAt: &now,
@@ -1719,7 +1719,7 @@ func TestGetServerVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
-				server, err := queries.GetServerVersion(
+				serverRows, err := queries.GetServerVersion(
 					context.Background(),
 					GetServerVersionParams{
 						Name:    serverName,
@@ -1727,6 +1727,8 @@ func TestGetServerVersion(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
+				require.NotEmpty(t, serverRows)
+				server := serverRows[0]
 				require.Equal(t, serverName, server.Name)
 				require.Equal(t, version, server.Version)
 				require.Equal(t, "git", server.RegistryType)
@@ -1761,7 +1763,7 @@ func TestGetServerVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
-				server, err := queries.GetServerVersion(
+				serverRows, err := queries.GetServerVersion(
 					context.Background(),
 					GetServerVersionParams{
 						Name:    serverName,
@@ -1769,6 +1771,8 @@ func TestGetServerVersion(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
+				require.NotEmpty(t, serverRows)
+				server := serverRows[0]
 				require.Equal(t, serverName, server.Name)
 				require.Equal(t, version, server.Version)
 				require.Equal(t, "git", server.RegistryType)
@@ -1813,7 +1817,7 @@ func TestGetServerVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
-				server, err := queries.GetServerVersion(
+				serverRows, err := queries.GetServerVersion(
 					context.Background(),
 					GetServerVersionParams{
 						Name:    serverName,
@@ -1821,6 +1825,8 @@ func TestGetServerVersion(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
+				require.NotEmpty(t, serverRows)
+				server := serverRows[0]
 				require.Equal(t, serverName, server.Name)
 				require.Equal(t, version, server.Version)
 				require.True(t, server.IsLatest)
@@ -1856,7 +1862,7 @@ func TestGetServerVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
-				server, err := queries.GetServerVersion(
+				serverRows, err := queries.GetServerVersion(
 					context.Background(),
 					GetServerVersionParams{
 						Name:    serverName,
@@ -1864,6 +1870,8 @@ func TestGetServerVersion(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
+				require.NotEmpty(t, serverRows)
+				server := serverRows[0]
 				require.Equal(t, serverName, server.Name)
 				require.Equal(t, version, server.Version)
 				require.False(t, server.IsLatest)
@@ -1877,14 +1885,15 @@ func TestGetServerVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
-				_, err := queries.GetServerVersion(
+				serverRows, err := queries.GetServerVersion(
 					context.Background(),
 					GetServerVersionParams{
 						Name:    serverName,
 						Version: version,
 					},
 				)
-				require.Error(t, err)
+				require.NoError(t, err)
+				require.Empty(t, serverRows)
 			},
 		},
 		{
@@ -1899,14 +1908,15 @@ func TestGetServerVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
-				_, err := queries.GetServerVersion(
+				serverRows, err := queries.GetServerVersion(
 					context.Background(),
 					GetServerVersionParams{
 						Name:    serverName,
 						Version: version,
 					},
 				)
-				require.Error(t, err)
+				require.NoError(t, err)
+				require.Empty(t, serverRows)
 			},
 		},
 	}

@@ -224,7 +224,7 @@ func TestInsertSkillVersion(t *testing.T) {
 				require.NoError(t, err)
 
 				// Verify the status defaulted to ACTIVE by fetching
-				skill, err := queries.GetSkillVersion(
+				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
 						Name:    "test-skill",
@@ -232,8 +232,9 @@ func TestInsertSkillVersion(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
-				require.Equal(t, skillEntryID, skill.SkillVersionID)
-				require.Equal(t, SkillStatusACTIVE, skill.Status)
+				require.NotEmpty(t, skillRows)
+				require.Equal(t, skillEntryID, skillRows[0].SkillVersionID)
+				require.Equal(t, SkillStatusACTIVE, skillRows[0].Status)
 			},
 		},
 	}
@@ -400,7 +401,7 @@ func TestUpsertSkillVersionForSync(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
 				// Look up the entry_id for the existing skill
-				existing, err := queries.GetSkillVersion(
+				existingRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
 						Name:    "test-skill",
@@ -408,6 +409,8 @@ func TestUpsertSkillVersionForSync(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
+				require.NotEmpty(t, existingRows)
+				existing := existingRows[0]
 
 				// Upsert should update the existing row
 				skillVersionID, err := queries.UpsertSkillVersionForSync(
@@ -429,7 +432,7 @@ func TestUpsertSkillVersionForSync(t *testing.T) {
 				require.Equal(t, existing.SkillVersionID, skillVersionID)
 
 				// Verify the update
-				skill, err := queries.GetSkillVersion(
+				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
 						Name:    "test-skill",
@@ -437,9 +440,10 @@ func TestUpsertSkillVersionForSync(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
-				require.Equal(t, SkillStatusDEPRECATED, skill.Status)
-				require.NotNil(t, skill.License)
-				require.Equal(t, "Apache-2.0", *skill.License)
+				require.NotEmpty(t, skillRows)
+				require.Equal(t, SkillStatusDEPRECATED, skillRows[0].Status)
+				require.NotNil(t, skillRows[0].License)
+				require.Equal(t, "Apache-2.0", *skillRows[0].License)
 			},
 		},
 		{
@@ -502,7 +506,7 @@ func TestGetSkillVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
-				skill, err := queries.GetSkillVersion(
+				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
 						Name:    skillName,
@@ -510,6 +514,8 @@ func TestGetSkillVersion(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
+				require.NotEmpty(t, skillRows)
+				skill := skillRows[0]
 				require.Equal(t, skillName, skill.Name)
 				require.Equal(t, version, skill.Version)
 				require.Equal(t, "git", skill.RegistryType)
@@ -547,7 +553,7 @@ func TestGetSkillVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
-				skill, err := queries.GetSkillVersion(
+				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
 						Name:    skillName,
@@ -555,6 +561,8 @@ func TestGetSkillVersion(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
+				require.NotEmpty(t, skillRows)
+				skill := skillRows[0]
 				require.Equal(t, skillName, skill.Name)
 				require.Equal(t, version, skill.Version)
 				require.NotNil(t, skill.Description)
@@ -595,7 +603,7 @@ func TestGetSkillVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
-				skill, err := queries.GetSkillVersion(
+				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
 						Name:    skillName,
@@ -603,6 +611,8 @@ func TestGetSkillVersion(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
+				require.NotEmpty(t, skillRows)
+				skill := skillRows[0]
 				require.Equal(t, skillName, skill.Name)
 				require.Equal(t, version, skill.Version)
 				require.True(t, skill.IsLatest)
@@ -630,7 +640,7 @@ func TestGetSkillVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
-				skill, err := queries.GetSkillVersion(
+				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
 						Name:    skillName,
@@ -638,6 +648,8 @@ func TestGetSkillVersion(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
+				require.NotEmpty(t, skillRows)
+				skill := skillRows[0]
 				require.Equal(t, skillName, skill.Name)
 				require.Equal(t, "2.0.0", skill.Version)
 				require.True(t, skill.IsLatest)
@@ -654,7 +666,7 @@ func TestGetSkillVersion(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
 				regName := "test-registry"
-				skill, err := queries.GetSkillVersion(
+				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
 						Name:         skillName,
@@ -663,12 +675,13 @@ func TestGetSkillVersion(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
-				require.Equal(t, skillName, skill.Name)
-				require.Equal(t, version, skill.Version)
+				require.NotEmpty(t, skillRows)
+				require.Equal(t, skillName, skillRows[0].Name)
+				require.Equal(t, version, skillRows[0].Version)
 
-				// Wrong registry name returns error
+				// Wrong registry name returns empty results
 				wrongName := "nonexistent-registry"
-				_, err = queries.GetSkillVersion(
+				wrongRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
 						Name:         skillName,
@@ -676,7 +689,8 @@ func TestGetSkillVersion(t *testing.T) {
 						RegistryName: &wrongName,
 					},
 				)
-				require.Error(t, err)
+				require.NoError(t, err)
+				require.Empty(t, wrongRows)
 			},
 		},
 		{
@@ -687,14 +701,15 @@ func TestGetSkillVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
-				_, err := queries.GetSkillVersion(
+				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
 						Name:    skillName,
 						Version: version,
 					},
 				)
-				require.Error(t, err)
+				require.NoError(t, err)
+				require.Empty(t, skillRows)
 			},
 		},
 		{
@@ -707,14 +722,15 @@ func TestGetSkillVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
-				_, err := queries.GetSkillVersion(
+				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
 						Name:    skillName,
 						Version: version,
 					},
 				)
-				require.Error(t, err)
+				require.NoError(t, err)
+				require.Empty(t, skillRows)
 			},
 		},
 	}

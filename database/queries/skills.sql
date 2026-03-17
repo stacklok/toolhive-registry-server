@@ -2,6 +2,7 @@
 -- Cursor-based pagination using (name, version) compound cursor.
 -- The cursor_name and cursor_version parameters define the starting point.
 -- When cursor is provided, results start AFTER the specified (name, version) tuple.
+-- Returns position from registry_source for source priority ordering.
 SELECT src.source_type AS registry_type,
        s.version_id,
        e.name,
@@ -19,21 +20,16 @@ SELECT src.source_type AS registry_type,
        s.repository,
        s.icons,
        s.metadata,
-       s.extension_meta
+       s.extension_meta,
+       COALESCE(rs.position, 0)::integer AS position
   FROM skill s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
- WHERE (sqlc.narg(registry_name)::text IS NULL OR e.source_id = (
-       SELECT rs2.source_id
-         FROM registry_source rs2
-         JOIN registry r2 ON rs2.registry_id = r2.id
-         JOIN registry_entry e2 ON e2.source_id = rs2.source_id AND e2.name = e.name
-        WHERE r2.name = sqlc.narg(registry_name)::text
-        ORDER BY rs2.position ASC
-        LIMIT 1
-   ))
+  LEFT JOIN registry r ON r.name = sqlc.narg(registry_name)::text
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
+ WHERE (sqlc.narg(registry_name)::text IS NULL OR rs.registry_id IS NOT NULL)
    AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text)
    AND (sqlc.narg(name)::text IS NULL OR e.name = sqlc.narg(name)::text)
    AND (sqlc.narg(search)::text IS NULL OR (
@@ -46,10 +42,10 @@ SELECT src.source_type AS registry_type,
        sqlc.narg(cursor_name)::text IS NULL
        OR (e.name, v.version) > (sqlc.narg(cursor_name)::text, sqlc.narg(cursor_version)::text)
    )
- ORDER BY e.name ASC, v.version ASC
+ ORDER BY rs.position ASC, e.name ASC, v.version ASC
  LIMIT sqlc.arg(size)::bigint;
 
--- name: GetSkillVersion :one
+-- name: GetSkillVersion :many
 SELECT src.source_type AS registry_type,
        v.id,
        e.name,
@@ -68,26 +64,22 @@ SELECT src.source_type AS registry_type,
        s.repository,
        s.icons,
        s.metadata,
-       s.extension_meta
+       s.extension_meta,
+       COALESCE(rs.position, 0)::integer AS position
   FROM skill s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
+  LEFT JOIN registry r ON r.name = sqlc.narg(registry_name)::text
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
  WHERE e.name = sqlc.arg(name)
    AND (v.version = sqlc.arg(version)::text
        OR (sqlc.arg(version)::text = 'latest' AND l.latest_version_id = v.id)
    )
-   AND (sqlc.narg(registry_name)::text IS NULL OR e.source_id = (
-       SELECT rs2.source_id
-         FROM registry_source rs2
-         JOIN registry r2 ON rs2.registry_id = r2.id
-         JOIN registry_entry e2 ON e2.source_id = rs2.source_id AND e2.name = e.name
-        WHERE r2.name = sqlc.narg(registry_name)::text
-        ORDER BY rs2.position ASC
-        LIMIT 1
-   ))
-   AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text);
+   AND (sqlc.narg(registry_name)::text IS NULL OR rs.registry_id IS NOT NULL)
+   AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text)
+ ORDER BY rs.position ASC;
 
 -- name: ListSkillOciPackages :many
 SELECT p.id,

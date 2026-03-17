@@ -24,19 +24,6 @@ func (q *Queries) CountRegistriesBySourceID(ctx context.Context, sourceID uuid.U
 	return count, err
 }
 
-const deleteAPIRegistry = `-- name: DeleteAPIRegistry :execrows
-DELETE FROM registry WHERE name = $1 AND creation_type = 'API'
-`
-
-// Delete an API registry by name (returns 0 if not found or is CONFIG type)
-func (q *Queries) DeleteAPIRegistry(ctx context.Context, name string) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteAPIRegistry, name)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const deleteConfigRegistriesNotInList = `-- name: DeleteConfigRegistriesNotInList :exec
 DELETE FROM registry
 WHERE creation_type = 'CONFIG'
@@ -48,6 +35,19 @@ WHERE creation_type = 'CONFIG'
 func (q *Queries) DeleteConfigRegistriesNotInList(ctx context.Context, keepNames []string) error {
 	_, err := q.db.Exec(ctx, deleteConfigRegistriesNotInList, keepNames)
 	return err
+}
+
+const deleteRegistry = `-- name: DeleteRegistry :execrows
+DELETE FROM registry WHERE name = $1
+`
+
+// Delete a registry by name. Go callers guard against deleting wrong creation_type.
+func (q *Queries) DeleteRegistry(ctx context.Context, name string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRegistry, name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getRegistryByName = `-- name: GetRegistryByName :one
@@ -177,63 +177,28 @@ func (q *Queries) UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySo
 	return err
 }
 
-const upsertAPIRegistry = `-- name: UpsertAPIRegistry :one
+const upsertRegistry = `-- name: UpsertRegistry :one
 INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
-VALUES ($1, $2, 'API', $3, $4)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
-WHERE registry.creation_type = 'API'
 RETURNING id, name, claims, creation_type, created_at, updated_at
 `
 
-type UpsertAPIRegistryParams struct {
-	Name      string     `json:"name"`
-	Claims    []byte     `json:"claims"`
-	CreatedAt *time.Time `json:"created_at"`
-	UpdatedAt *time.Time `json:"updated_at"`
+type UpsertRegistryParams struct {
+	Name         string       `json:"name"`
+	Claims       []byte       `json:"claims"`
+	CreationType CreationType `json:"creation_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
 }
 
-// Insert or update an API registry. The ON CONFLICT clause only fires when the
-// existing row is also API-created, preventing CONFIG registries from being overwritten.
-func (q *Queries) UpsertAPIRegistry(ctx context.Context, arg UpsertAPIRegistryParams) (Registry, error) {
-	row := q.db.QueryRow(ctx, upsertAPIRegistry,
+// Insert or update a registry. The creation_type is passed as a parameter.
+// Business logic in Go guards against cross-type overwrites.
+func (q *Queries) UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (Registry, error) {
+	row := q.db.QueryRow(ctx, upsertRegistry,
 		arg.Name,
 		arg.Claims,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-	)
-	var i Registry
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Claims,
-		&i.CreationType,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const upsertConfigRegistry = `-- name: UpsertConfigRegistry :one
-INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
-VALUES ($1, $2, 'CONFIG', $3, $4)
-ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
-WHERE registry.creation_type = 'CONFIG'
-RETURNING id, name, claims, creation_type, created_at, updated_at
-`
-
-type UpsertConfigRegistryParams struct {
-	Name      string     `json:"name"`
-	Claims    []byte     `json:"claims"`
-	CreatedAt *time.Time `json:"created_at"`
-	UpdatedAt *time.Time `json:"updated_at"`
-}
-
-// Insert or update a CONFIG registry. The ON CONFLICT clause only fires when the
-// existing row is also CONFIG-created, preventing API registries from being overwritten.
-func (q *Queries) UpsertConfigRegistry(ctx context.Context, arg UpsertConfigRegistryParams) (Registry, error) {
-	row := q.db.QueryRow(ctx, upsertConfigRegistry,
-		arg.Name,
-		arg.Claims,
+		arg.CreationType,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
