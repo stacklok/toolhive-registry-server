@@ -23,7 +23,7 @@ func TestFindHighestVersion(t *testing.T) {
 		expectedVersion string
 	}{
 		{
-			name:            "empty slice returns nil",
+			name:            "empty slice returns zero values",
 			rows:            []sqlc.ListEntryVersionsRow{},
 			expectedID:      uuid.Nil,
 			expectedVersion: "",
