@@ -84,6 +84,7 @@ type Querier interface {
 	InsertSkillVersion(ctx context.Context, arg InsertSkillVersionParams) (uuid.UUID, error)
 	InsertSkillVersionForSync(ctx context.Context, arg InsertSkillVersionForSyncParams) (uuid.UUID, error)
 	ListAllRegistryNames(ctx context.Context) ([]string, error)
+	ListEntryVersions(ctx context.Context, entryID uuid.UUID) ([]ListEntryVersionsRow, error)
 	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]ListRegistriesRow, error)
 	ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow, error)
 	ListRegistrySyncsByLastUpdate(ctx context.Context) ([]ListRegistrySyncsByLastUpdateRow, error)

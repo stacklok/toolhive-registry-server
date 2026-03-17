@@ -273,11 +273,15 @@ func (s *dbService) GetServerVersion(
 	}
 
 	// Note: this function fetches a single record given name and version.
-	// In case no record is found, the called function should return an
-	// `sql.ErrNoRows` error as it's customary in Go.
+	// In case no record is found, the called function maps the underlying
+	// `pgx.ErrNoRows` to `service.ErrNotFound`, and callers should expect
+	// to receive `service.ErrNotFound` for a missing record.
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
 		server, err := querier.GetServerVersion(ctx, params)
 		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
+			}
 			return nil, err
 		}
 
@@ -778,6 +782,10 @@ func (s *dbService) executeDeleteTransaction(
 		return err
 	}
 
+	if err := rePointLatestServerVersionIfNeeded(ctx, querier, registry.ID, options.ServerName, entryID); err != nil {
+		return err
+	}
+
 	if err := cleanupOrphanedEntry(ctx, querier, entryID); err != nil {
 		return err
 	}
@@ -786,6 +794,53 @@ func (s *dbService) executeDeleteTransaction(
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	return nil
+}
+
+// rePointLatestServerVersionIfNeeded checks whether the latest_entry_version pointer was cascade-deleted
+// (because the deleted version was the current latest) and, if so, re-points it to the
+// next-highest remaining version according to versions.IsNewerVersion (semantic when possible,
+// with lexicographic ordering as a fallback).
+func rePointLatestServerVersionIfNeeded(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	registryID uuid.UUID,
+	serverName string,
+	entryID uuid.UUID,
+) error {
+	_, err := querier.GetLatestVersionForServer(ctx, sqlc.GetLatestVersionForServerParams{
+		Name:  serverName,
+		RegID: registryID,
+	})
+	if err == nil {
+		// Pointer still exists — deleted version was not the latest, nothing to do.
+		return nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("failed to check latest server version: %w", err)
+	}
+
+	// Pointer was cascade-deleted. Find the next-highest remaining version using the same
+	// ordering rules as versions.IsNewerVersion (semantic when possible, lexicographic otherwise).
+	remaining, err := querier.ListEntryVersions(ctx, entryID)
+	if err != nil {
+		return fmt.Errorf("failed to list remaining server versions: %w", err)
+	}
+
+	newVersionID, newVersion := findHighestVersion(remaining)
+	if newVersionID == uuid.Nil {
+		// No remaining versions — the cascade on registry_entry will handle full cleanup.
+		return nil
+	}
+
+	if _, err := querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
+		RegID:     registryID,
+		Name:      serverName,
+		Version:   newVersion,
+		VersionID: newVersionID,
+	}); err != nil {
+		return fmt.Errorf("failed to upsert latest server version: %w", err)
+	}
 	return nil
 }
 

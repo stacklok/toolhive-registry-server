@@ -55,3 +55,9 @@ WHERE entry_id = sqlc.arg(entry_id);
 -- name: DeleteRegistryEntryByID :execrows
 DELETE FROM registry_entry
 WHERE id = sqlc.arg(id);
+
+-- name: ListEntryVersions :many
+SELECT id, version
+  FROM entry_version
+ WHERE entry_id = sqlc.arg(entry_id)
+ ORDER BY version ASC;

@@ -175,3 +175,35 @@ func (q *Queries) InsertRegistryEntry(ctx context.Context, arg InsertRegistryEnt
 	err := row.Scan(&id)
 	return id, err
 }
+
+const listEntryVersions = `-- name: ListEntryVersions :many
+SELECT id, version
+  FROM entry_version
+ WHERE entry_id = $1
+ ORDER BY version ASC
+`
+
+type ListEntryVersionsRow struct {
+	ID      uuid.UUID `json:"id"`
+	Version string    `json:"version"`
+}
+
+func (q *Queries) ListEntryVersions(ctx context.Context, entryID uuid.UUID) ([]ListEntryVersionsRow, error) {
+	rows, err := q.db.Query(ctx, listEntryVersions, entryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEntryVersionsRow{}
+	for rows.Next() {
+		var i ListEntryVersionsRow
+		if err := rows.Scan(&i.ID, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
