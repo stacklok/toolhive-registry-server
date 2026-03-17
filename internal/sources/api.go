@@ -70,23 +70,6 @@ func (h *apiRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.R
 	return handler.FetchRegistry(ctx, regCfg)
 }
 
-// CurrentHash returns the current hash of the API response
-func (h *apiRegistryHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
-	// Validate registry configuration
-	if err := h.Validate(regCfg); err != nil {
-		return "", fmt.Errorf("registry validation failed: %w", err)
-	}
-
-	// Validate Upstream format and get appropriate handler
-	handler, err := h.validateUstreamFormat(ctx, regCfg)
-	if err != nil {
-		return "", fmt.Errorf("upstream format validation failed: %w", err)
-	}
-
-	// Delegate to the appropriate handler
-	return handler.CurrentHash(ctx, regCfg)
-}
-
 // validateUstreamFormat validates the Upstream format and returns the appropriate handler
 func (h *apiRegistryHandler) validateUstreamFormat(
 	ctx context.Context,

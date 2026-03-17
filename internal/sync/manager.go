@@ -130,20 +130,26 @@ func (e *Error) Unwrap() error {
 //
 //go:generate mockgen -destination=mocks/mock_manager.go -package=mocks github.com/stacklok/toolhive-registry-server/internal/sync Manager
 type Manager interface {
-	// ShouldSync determines if a sync operation is needed for a specific registry
-	// Returns the sync reason which encodes both whether sync is needed and the reason
+	// ShouldSync determines if a sync operation is needed for a specific registry.
+	// Returns the sync reason and, when sync is needed, a prefetched FetchResult that
+	// PerformSync can reuse to avoid a second fetch.
 	ShouldSync(
 		ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus, manualSyncRequested bool,
-	) Reason
+	) (Reason, *sources.FetchResult)
 
-	// PerformSync executes the complete sync operation for a specific registry
-	PerformSync(ctx context.Context, regCfg *config.RegistryConfig) (*Result, *Error)
+	// PerformSync executes the complete sync operation for a specific registry.
+	// If prefetched is non-nil, it is used directly instead of fetching again.
+	PerformSync(ctx context.Context, regCfg *config.RegistryConfig, prefetched *sources.FetchResult) (*Result, *Error)
 }
 
 // DataChangeDetector detects changes in source data
 type DataChangeDetector interface {
-	// IsDataChanged checks if source data has changed by comparing hashes for a specific registry
-	IsDataChanged(ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus) (bool, error)
+	// IsDataChanged checks if source data has changed by comparing hashes for a specific registry.
+	// Returns (changed, fetchResult, error). When data has changed, fetchResult contains the
+	// already-fetched data so it can be reused by PerformSync without a second fetch.
+	IsDataChanged(
+		ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus,
+	) (bool, *sources.FetchResult, error)
 }
 
 // AutomaticSyncChecker handles automatic sync timing logic
@@ -176,17 +182,18 @@ func NewDefaultSyncManager(
 	}
 }
 
-// ShouldSync determines if a sync operation is needed for a specific registry
-// Returns a Reason which encodes both whether sync is needed and the reason
+// ShouldSync determines if a sync operation is needed for a specific registry.
+// Returns a Reason which encodes both whether sync is needed and the reason,
+// along with a prefetched FetchResult when data has changed.
 func (s *defaultSyncManager) ShouldSync(
 	ctx context.Context,
 	regCfg *config.RegistryConfig,
 	syncStatus *status.SyncStatus,
 	manualSyncRequested bool,
-) Reason {
+) (Reason, *sources.FetchResult) {
 	// If registry is currently syncing, don't start another sync
 	if syncStatus.Phase == status.SyncPhaseSyncing {
-		return ReasonAlreadyInProgress
+		return ReasonAlreadyInProgress, nil
 	}
 
 	// Check if sync is needed based on registry state
@@ -197,22 +204,24 @@ func (s *defaultSyncManager) ShouldSync(
 	checkIntervalElapsed, _, err := s.automaticSyncChecker.IsIntervalSyncNeeded(regCfg, syncStatus)
 	if err != nil {
 		slog.Error("Failed to determine if interval has elapsed", "error", err)
-		return ReasonErrorCheckingSyncNeed
+		return ReasonErrorCheckingSyncNeed, nil
 	}
 
 	reason := ReasonUpToDateNoPolicy
 
 	// Check if update is needed for state, manual sync, or filter change
 	dataChangedString := "N/A"
+	var prefetched *sources.FetchResult
 	if syncNeededForState || manualSyncRequested || filterChanged || checkIntervalElapsed {
-		// Check if source data has changed
-		dataChanged, err := s.dataChangeDetector.IsDataChanged(ctx, regCfg, syncStatus)
+		// Fetch current data and check if it has changed; reuse the fetched data in PerformSync
+		dataChanged, fetchResult, err := s.dataChangeDetector.IsDataChanged(ctx, regCfg, syncStatus)
 		if err != nil {
 			slog.Error("Failed to determine if data has changed", "error", err)
 			reason = ReasonErrorCheckingChanges
 		} else {
 			slog.Info("Checked data changes", "dataChanged", dataChanged)
 			if dataChanged {
+				prefetched = fetchResult
 				if syncNeededForState {
 					reason = ReasonRegistryNotReady
 				} else if manualSyncRequested {
@@ -235,7 +244,7 @@ func (s *defaultSyncManager) ShouldSync(
 		"manualSyncRequested", manualSyncRequested, "checkIntervalElapsed", checkIntervalElapsed, "dataChanged", dataChangedString)
 	slog.Info("ShouldSync returning", "reason", reason.String(), "shouldSync", reason.ShouldSync())
 
-	return reason
+	return reason, prefetched
 }
 
 // isSyncNeededForState checks if sync is needed based on the registry's current state
@@ -283,13 +292,14 @@ func (*defaultSyncManager) isFilterChanged(
 	return currentHashStr != lastHash
 }
 
-// PerformSync performs the complete sync operation for a specific registry
-// Returns sync result on success, or error on failure
+// PerformSync performs the complete sync operation for a specific registry.
+// If prefetched is non-nil, it is used directly instead of fetching again.
+// Returns sync result on success, or error on failure.
 func (s *defaultSyncManager) PerformSync(
-	ctx context.Context, regCfg *config.RegistryConfig,
+	ctx context.Context, regCfg *config.RegistryConfig, prefetched *sources.FetchResult,
 ) (*Result, *Error) {
-	// Fetch and process registry data
-	fetchResult, err := s.fetchAndProcessRegistryData(ctx, regCfg)
+	// Fetch and process registry data (uses prefetched data if available)
+	fetchResult, err := s.fetchAndProcessRegistryData(ctx, regCfg, prefetched)
 	if err != nil {
 		return nil, err
 	}
@@ -308,50 +318,63 @@ func (s *defaultSyncManager) PerformSync(
 	return syncResult, nil
 }
 
-// fetchAndProcessRegistryData handles registry handler creation, validation, fetch, and filtering
+// fetchAndProcessRegistryData handles registry handler creation, validation, fetch, and filtering.
+// If prefetched is non-nil, the fetch step is skipped and the prefetched data is used directly.
 func (s *defaultSyncManager) fetchAndProcessRegistryData(
 	ctx context.Context,
-	regCfg *config.RegistryConfig) (*sources.FetchResult, *Error) {
-	// Get registry handler
-	registryHandler, err := s.registryHandlerFactory.CreateHandler(regCfg)
-	if err != nil {
-		slog.Error("Failed to create registry handler", "error", err)
-		return nil, &Error{
-			Err:             err,
-			Message:         fmt.Sprintf("Failed to create registry handler: %v", err),
-			ConditionType:   ConditionSourceAvailable,
-			ConditionReason: conditionReasonHandlerCreationFailed,
-		}
-	}
+	regCfg *config.RegistryConfig,
+	prefetched *sources.FetchResult,
+) (*sources.FetchResult, *Error) {
+	var fetchResult *sources.FetchResult
 
-	// Validate registry configuration
-	if err := registryHandler.Validate(regCfg); err != nil {
-		slog.Error("Registry validation failed", "error", err)
-		return nil, &Error{
-			Err:             err,
-			Message:         fmt.Sprintf("Registry validation failed: %v", err),
-			ConditionType:   ConditionSourceAvailable,
-			ConditionReason: conditionReasonValidationFailed,
+	if prefetched != nil {
+		// Reuse data fetched during change detection — skip the second fetch.
+		// Validation was already performed by FetchRegistry inside IsDataChanged.
+		slog.Info("Reusing prefetched registry data",
+			"serverCount", prefetched.ServerCount,
+			"format", prefetched.Format,
+			"hash", prefetched.Hash)
+		fetchResult = prefetched
+	} else {
+		// No prefetched data available — perform a full fetch
+		registryHandler, err := s.registryHandlerFactory.CreateHandler(regCfg)
+		if err != nil {
+			slog.Error("Failed to create registry handler", "error", err)
+			return nil, &Error{
+				Err:             err,
+				Message:         fmt.Sprintf("Failed to create registry handler: %v", err),
+				ConditionType:   ConditionSourceAvailable,
+				ConditionReason: conditionReasonHandlerCreationFailed,
+			}
 		}
-	}
 
-	// Execute fetch operation
-	fetchResult, err := registryHandler.FetchRegistry(ctx, regCfg)
-	if err != nil {
-		slog.Error("Fetch operation failed", "error", err)
-		// Sync attempt counting is now handled by the controller via status collector
-		return nil, &Error{
-			Err:             err,
-			Message:         fmt.Sprintf("Fetch failed: %v", err),
-			ConditionType:   ConditionSyncSuccessful,
-			ConditionReason: conditionReasonFetchFailed,
+		if err := registryHandler.Validate(regCfg); err != nil {
+			slog.Error("Registry validation failed", "error", err)
+			return nil, &Error{
+				Err:             err,
+				Message:         fmt.Sprintf("Registry validation failed: %v", err),
+				ConditionType:   ConditionSourceAvailable,
+				ConditionReason: conditionReasonValidationFailed,
+			}
 		}
-	}
 
-	slog.Info("Registry data fetched successfully from source",
-		"serverCount", fetchResult.ServerCount,
-		"format", fetchResult.Format,
-		"hash", fetchResult.Hash)
+		result, err := registryHandler.FetchRegistry(ctx, regCfg)
+		if err != nil {
+			slog.Error("Fetch operation failed", "error", err)
+			return nil, &Error{
+				Err:             err,
+				Message:         fmt.Sprintf("Fetch failed: %v", err),
+				ConditionType:   ConditionSyncSuccessful,
+				ConditionReason: conditionReasonFetchFailed,
+			}
+		}
+
+		slog.Info("Registry data fetched successfully from source",
+			"serverCount", result.ServerCount,
+			"format", result.Format,
+			"hash", result.Hash)
+		fetchResult = result
+	}
 
 	// Apply filtering if configured
 	if err := s.applyFilteringIfConfigured(ctx, regCfg, fetchResult); err != nil {
