@@ -459,6 +459,10 @@ func (s *dbService) GetSourceByName(ctx context.Context, name string) (*service.
 
 // ProcessInlineSourceData processes inline source data synchronously.
 // It parses the data, validates it, and stores the servers in the database.
+//
+// TODO: When wired to an API handler, this must be called asynchronously.
+// The API handler should only be responsible for creating the source record
+// in the database; the sync/processing that follows must not block the response.
 func (s *dbService) ProcessInlineSourceData(ctx context.Context, name string, data string, format string) error {
 	// Capture actual start time for accurate timing
 	startTime := time.Now()

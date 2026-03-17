@@ -71,8 +71,10 @@ func (s *dbService) ListServers(
 
 	// Request one extra record to detect if there are more results
 	params := sqlc.ListServersParams{
-		Size:         int64(options.Limit + 1),
-		RegistryName: options.RegistryName,
+		Size: int64(options.Limit + 1),
+	}
+	if options.RegistryName != nil {
+		params.RegistryName = options.RegistryName
 	}
 	if options.Search != "" {
 		params.Search = &options.Search
