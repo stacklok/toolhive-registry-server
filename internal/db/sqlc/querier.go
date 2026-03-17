@@ -113,6 +113,7 @@ type Querier interface {
 	ListSourceSyncs(ctx context.Context) ([]ListSourceSyncsRow, error)
 	ListSourceSyncsByLastUpdate(ctx context.Context) ([]ListSourceSyncsByLastUpdateRow, error)
 	ListSources(ctx context.Context, arg ListSourcesParams) ([]ListSourcesRow, error)
+	UnlinkAllRegistrySources(ctx context.Context, registryID uuid.UUID) error
 	UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySourceParams) error
 	// Update an existing API source (returns NULL if not found or is CONFIG type)
 	UpdateAPISource(ctx context.Context, arg UpdateAPISourceParams) (Source, error)

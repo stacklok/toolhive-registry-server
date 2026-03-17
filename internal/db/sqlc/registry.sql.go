@@ -153,6 +153,15 @@ func (q *Queries) ListRegistrySources(ctx context.Context, registryID uuid.UUID)
 	return items, nil
 }
 
+const unlinkAllRegistrySources = `-- name: UnlinkAllRegistrySources :exec
+DELETE FROM registry_source WHERE registry_id = $1
+`
+
+func (q *Queries) UnlinkAllRegistrySources(ctx context.Context, registryID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, unlinkAllRegistrySources, registryID)
+	return err
+}
+
 const unlinkRegistrySource = `-- name: UnlinkRegistrySource :exec
 DELETE FROM registry_source
 WHERE registry_id = $1 AND source_id = $2

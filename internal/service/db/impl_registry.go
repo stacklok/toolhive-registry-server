@@ -365,12 +365,7 @@ func replaceRegistrySources(
 		return err
 	}
 
-	currentSources, err := querier.ListRegistrySources(ctx, registryID)
-	if err != nil {
-		return fmt.Errorf("failed to list current sources: %w", err)
-	}
-
-	if err := unlinkAllSources(ctx, querier, registryID, currentSources); err != nil {
+	if err := unlinkAllSources(ctx, querier, registryID); err != nil {
 		return fmt.Errorf("failed to unlink sources: %w", err)
 	}
 
@@ -440,16 +435,7 @@ func linkSources(ctx context.Context, querier *sqlc.Queries, registryID uuid.UUI
 
 // unlinkAllSources removes all source links from a registry.
 func unlinkAllSources(
-	ctx context.Context, querier *sqlc.Queries, registryID uuid.UUID, current []sqlc.ListRegistrySourcesRow,
+	ctx context.Context, querier *sqlc.Queries, registryID uuid.UUID,
 ) error {
-	for _, src := range current {
-		err := querier.UnlinkRegistrySource(ctx, sqlc.UnlinkRegistrySourceParams{
-			RegistryID: registryID,
-			SourceID:   src.ID,
-		})
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return querier.UnlinkAllRegistrySources(ctx, registryID)
 }

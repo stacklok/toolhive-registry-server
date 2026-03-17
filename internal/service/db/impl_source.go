@@ -83,8 +83,16 @@ func (s *dbService) CreateSource(
 		format = "upstream" // default format
 	}
 
-	sourceConfig := serializeSourceConfigFromRequest(req)
-	filterConfig := serializeFilterConfigFromRequest(req.Filter)
+	sourceConfig, err := serializeSourceConfigFromRequest(req)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+	filterConfig, err := serializeFilterConfigFromRequest(req.Filter)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
 	syncSchedule := parseSyncScheduleFromRequest(req)
 	syncable := !req.IsNonSyncedType()
 
@@ -101,7 +109,7 @@ func (s *dbService) CreateSource(
 	}
 
 	// Insert the source
-	registry, err := querier.InsertAPISource(ctx, params)
+	source, err := querier.InsertAPISource(ctx, params)
 	if err != nil {
 		// Check for unique constraint violation
 		var pgErr *pgconn.PgError
@@ -117,7 +125,7 @@ func (s *dbService) CreateSource(
 	// Initialize sync status for the new source
 	initialSyncStatus, initialErrorMsg := getAPISourceInitialSyncStatus(req, sourceType)
 	err = querier.BulkInitializeSourceSyncs(ctx, sqlc.BulkInitializeSourceSyncsParams{
-		SourceIds:    []uuid.UUID{registry.ID},
+		SourceIds:    []uuid.UUID{source.ID},
 		SyncStatuses: []sqlc.SyncStatus{initialSyncStatus},
 		ErrorMsgs:    []string{initialErrorMsg},
 	})
@@ -135,12 +143,12 @@ func (s *dbService) CreateSource(
 	slog.InfoContext(ctx, "Source created",
 		"duration_ms", time.Since(start).Milliseconds(),
 		"name", name,
-		"type", registry.SourceType,
+		"type", source.SourceType,
 		"source_type", sourceType,
 		"request_id", middleware.GetReqID(ctx))
 
 	// Build and return SourceInfo
-	return buildSourceInfoFromDBSource(&registry), nil
+	return buildSourceInfoFromDBSource(&source), nil
 }
 
 // UpdateSource updates an existing API source
@@ -162,21 +170,6 @@ func (s *dbService) UpdateSource(
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidSourceConfig, err)
 	}
 
-	// Check if source type is changing (not allowed)
-	if err := s.validateSourceTypeChange(ctx, name, req.GetSourceType()); err != nil {
-		otel.RecordError(span, err)
-		return nil, err
-	}
-
-	// For file source types, check if the subtype (path/url/data) is changing
-	// We don't allow changing between path, url, and data - user must delete and recreate
-	if req.GetSourceType() == config.SourceTypeFile {
-		if err := s.validateFileSourceTypeChange(ctx, name, req); err != nil {
-			otel.RecordError(span, err)
-			return nil, err
-		}
-	}
-
 	// Begin transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.Serializable,
@@ -195,6 +188,27 @@ func (s *dbService) UpdateSource(
 
 	querier := sqlc.New(tx)
 
+	// Fetch existing source and validate type constraints
+	existing, err := querier.GetSourceByName(ctx, name)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		otel.RecordError(span, err)
+		return nil, fmt.Errorf("failed to get existing source: %w", err)
+	}
+
+	// Check if source type is changing (not allowed)
+	if err := validateSourceTypeChange(&existing, req.GetSourceType()); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
+	// For file source types, check if the subtype (path/url/data) is changing
+	if req.GetSourceType() == config.SourceTypeFile {
+		if err := validateFileSourceTypeChange(&existing, req); err != nil {
+			otel.RecordError(span, err)
+			return nil, err
+		}
+	}
+
 	// Prepare update parameters
 	now := time.Now()
 	sourceType := string(req.GetSourceType())
@@ -203,8 +217,16 @@ func (s *dbService) UpdateSource(
 		format = "upstream" // default format
 	}
 
-	sourceConfig := serializeSourceConfigFromRequest(req)
-	filterConfig := serializeFilterConfigFromRequest(req.Filter)
+	sourceConfig, err := serializeSourceConfigFromRequest(req)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+	filterConfig, err := serializeFilterConfigFromRequest(req.Filter)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
 	syncSchedule := parseSyncScheduleFromRequest(req)
 	syncable := !req.IsNonSyncedType()
 
@@ -220,33 +242,11 @@ func (s *dbService) UpdateSource(
 	}
 
 	// Update the source (only updates API-created sources)
-	registry, err := querier.UpdateAPISource(ctx, params)
+	source, err := querier.UpdateAPISource(ctx, params)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			// Source not found or is CONFIG type, check which case
-			existing, checkErr := querier.GetSourceByName(ctx, name)
-			if checkErr != nil {
-				if errors.Is(checkErr, pgx.ErrNoRows) {
-					err = fmt.Errorf("%w: %s", service.ErrSourceNotFound, name)
-					otel.RecordError(span, err)
-					return nil, err
-				}
-				otel.RecordError(span, checkErr)
-				return nil, fmt.Errorf("failed to check source: %w", checkErr)
-			}
-			// Source exists but is CONFIG type
-			if existing.CreationType == sqlc.CreationTypeCONFIG {
-				err = fmt.Errorf("%w: %s", service.ErrConfigSource, name)
-				otel.RecordError(span, err)
-				return nil, err
-			}
-			// Should not reach here, but return not found just in case
-			err = fmt.Errorf("%w: %s", service.ErrSourceNotFound, name)
-			otel.RecordError(span, err)
-			return nil, err
-		}
-		otel.RecordError(span, err)
-		return nil, fmt.Errorf("failed to update source: %w", err)
+		updateErr := classifyUpdateSourceError(ctx, querier, name, err)
+		otel.RecordError(span, updateErr)
+		return nil, updateErr
 	}
 
 	// Commit transaction
@@ -258,12 +258,12 @@ func (s *dbService) UpdateSource(
 	slog.InfoContext(ctx, "Source updated",
 		"duration_ms", time.Since(start).Milliseconds(),
 		"name", name,
-		"type", registry.SourceType,
+		"type", source.SourceType,
 		"source_type", sourceType,
 		"request_id", middleware.GetReqID(ctx))
 
 	// Build and return SourceInfo
-	return buildSourceInfoFromDBSource(&registry), nil
+	return buildSourceInfoFromDBSource(&source), nil
 }
 
 // DeleteSource deletes an API source
@@ -384,29 +384,7 @@ func (s *dbService) ListSources(ctx context.Context) ([]service.SourceInfo, erro
 	for _, src := range dbSources {
 		// Build SourceInfo with all config fields
 		info := buildSourceInfoFromListRow(&src)
-
-		// Fetch sync status from database
-		syncRecord, err := querier.GetSourceSyncByName(ctx, src.Name)
-		if err != nil {
-			// It's okay if sync record doesn't exist yet (source may not have been synced)
-			if !errors.Is(err, pgx.ErrNoRows) {
-				slog.Warn("Failed to get sync status for source",
-					"source", src.Name,
-					"error", err)
-			}
-			// Leave SyncStatus as nil if not found or error
-			info.SyncStatus = nil
-		} else {
-			// Convert database sync status to service type
-			info.SyncStatus = &service.SourceSyncStatus{
-				Phase:        convertSyncPhase(syncRecord.SyncStatus),
-				LastSyncTime: syncRecord.EndedAt,   // EndedAt represents successful completion
-				LastAttempt:  syncRecord.StartedAt, // StartedAt is the last attempt time
-				AttemptCount: int(syncRecord.AttemptCount),
-				ServerCount:  int(syncRecord.ServerCount),
-				Message:      getStatusMessage(syncRecord.ErrorMsg),
-			}
-		}
+		info.SyncStatus = fetchSyncStatus(ctx, querier, src.Name)
 
 		result = append(result, *info)
 	}
@@ -460,29 +438,7 @@ func (s *dbService) GetSourceByName(ctx context.Context, name string) (*service.
 
 	// Build SourceInfo with all config fields
 	info := buildSourceInfoFromGetByNameRow(&source)
-
-	// Fetch sync status from database
-	syncRecord, err := querier.GetSourceSyncByName(ctx, source.Name)
-	if err != nil {
-		// It's okay if sync record doesn't exist yet (source may not have been synced)
-		if !errors.Is(err, pgx.ErrNoRows) {
-			slog.Warn("Failed to get sync status for source",
-				"source", source.Name,
-				"error", err)
-		}
-		// Leave SyncStatus as nil if not found or error
-		info.SyncStatus = nil
-	} else {
-		// Convert database sync status to service type
-		info.SyncStatus = &service.SourceSyncStatus{
-			Phase:        convertSyncPhase(syncRecord.SyncStatus),
-			LastSyncTime: syncRecord.EndedAt,   // EndedAt represents successful completion
-			LastAttempt:  syncRecord.StartedAt, // StartedAt is the last attempt time
-			AttemptCount: int(syncRecord.AttemptCount),
-			ServerCount:  int(syncRecord.ServerCount),
-			Message:      getStatusMessage(syncRecord.ErrorMsg),
-		}
-	}
+	info.SyncStatus = fetchSyncStatus(ctx, querier, source.Name)
 
 	slog.DebugContext(ctx, "GetSourceByName completed",
 		"duration_ms", time.Since(start).Milliseconds(),
@@ -559,44 +515,19 @@ func (s *dbService) ProcessInlineSourceData(ctx context.Context, name string, da
 
 // validateSourceTypeChange checks if the source type is changing and returns an error if so.
 // Users cannot change a source's type (e.g., git to file) - they must delete and recreate.
-func (s *dbService) validateSourceTypeChange(
-	ctx context.Context, name string, newSourceType config.SourceType,
-) error {
-	querier := sqlc.New(s.pool)
-	existing, err := querier.GetSourceByName(ctx, name)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			// Source doesn't exist yet, no validation needed
-			return nil
-		}
-		return fmt.Errorf("failed to get existing source: %w", err)
-	}
-
-	// Check if source type is changing
+// existing may be a zero-value row if the source doesn't exist yet.
+func validateSourceTypeChange(existing *sqlc.GetSourceByNameRow, newSourceType config.SourceType) error {
 	if existing.SourceType != "" && existing.SourceType != string(newSourceType) {
 		return fmt.Errorf("%w: cannot change from '%s' to '%s', delete and recreate the source instead",
 			service.ErrSourceTypeChangeNotAllowed, existing.SourceType, newSourceType)
 	}
-
 	return nil
 }
 
 // validateFileSourceTypeChange checks if the file source subtype (path/url/data) is changing
 // and returns an error if so. Users must delete and recreate to change file source subtypes.
-func (s *dbService) validateFileSourceTypeChange(
-	ctx context.Context, name string, newConfig *service.SourceCreateRequest,
-) error {
-	// Get the existing source
-	querier := sqlc.New(s.pool)
-	existing, err := querier.GetSourceByName(ctx, name)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			// Source doesn't exist yet, no validation needed
-			return nil
-		}
-		return fmt.Errorf("failed to get existing source: %w", err)
-	}
-
+// existing may be a zero-value row if the source doesn't exist yet.
+func validateFileSourceTypeChange(existing *sqlc.GetSourceByNameRow, newConfig *service.SourceCreateRequest) error {
 	// If the existing source is not a file type, no validation needed
 	if existing.SourceType != string(config.SourceTypeFile) {
 		return nil
@@ -623,35 +554,54 @@ func (s *dbService) validateFileSourceTypeChange(
 	return nil
 }
 
+// classifyUpdateSourceError determines the appropriate error when UpdateAPISource returns ErrNoRows.
+// The update may have failed because the source doesn't exist or because it's CONFIG-created.
+func classifyUpdateSourceError(ctx context.Context, querier *sqlc.Queries, name string, err error) error {
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("failed to update source: %w", err)
+	}
+	existing, checkErr := querier.GetSourceByName(ctx, name)
+	if checkErr != nil {
+		if errors.Is(checkErr, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: %s", service.ErrSourceNotFound, name)
+		}
+		return fmt.Errorf("failed to check source: %w", checkErr)
+	}
+	if existing.CreationType == sqlc.CreationTypeCONFIG {
+		return fmt.Errorf("%w: %s", service.ErrConfigSource, name)
+	}
+	return fmt.Errorf("%w: %s", service.ErrSourceNotFound, name)
+}
+
 // serializeSourceConfigFromRequest serializes the source config from request to JSON bytes
-func serializeSourceConfigFromRequest(req *service.SourceCreateRequest) []byte {
+func serializeSourceConfigFromRequest(req *service.SourceCreateRequest) ([]byte, error) {
 	if req == nil {
-		return nil
+		return nil, nil
 	}
 
 	sourceConfig := req.GetSourceConfig()
 	if sourceConfig == nil {
-		return nil
+		return nil, nil
 	}
 
 	data, err := json.Marshal(sourceConfig)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("failed to serialize source config: %w", err)
 	}
-	return data
+	return data, nil
 }
 
 // serializeFilterConfigFromRequest serializes the filter config from request to JSON bytes
-func serializeFilterConfigFromRequest(filter *config.FilterConfig) []byte {
+func serializeFilterConfigFromRequest(filter *config.FilterConfig) ([]byte, error) {
 	if filter == nil {
-		return nil
+		return nil, nil
 	}
 
 	data, err := json.Marshal(filter)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("failed to serialize filter config: %w", err)
 	}
-	return data
+	return data, nil
 }
 
 // parseSyncScheduleFromRequest parses the sync schedule from request to pgtypes.Interval
@@ -667,115 +617,121 @@ func parseSyncScheduleFromRequest(req *service.SourceCreateRequest) pgtypes.Inte
 	return interval
 }
 
-// buildSourceInfoFromDBSource builds a SourceInfo from a database Source
+// sourceRow is a common representation of source data from different sqlc row types.
+type sourceRow struct {
+	Name         string
+	SourceType   string
+	CreationType sqlc.CreationType
+	Format       *string
+	SourceConfig []byte
+	FilterConfig []byte
+	SyncSchedule pgtypes.Interval
+	CreatedAt    *time.Time
+	UpdatedAt    *time.Time
+}
+
+// buildSourceInfo builds a SourceInfo from the common sourceRow representation.
+func buildSourceInfo(row *sourceRow) *service.SourceInfo {
+	info := &service.SourceInfo{
+		Name:         row.Name,
+		Type:         row.SourceType,
+		CreationType: service.CreationType(row.CreationType),
+	}
+
+	if row.SourceType != "" {
+		info.SourceType = config.SourceType(row.SourceType)
+	}
+
+	if row.Format != nil {
+		info.Format = *row.Format
+	}
+
+	if row.SourceType != "" {
+		info.SourceConfig = deserializeSourceConfig(row.SourceType, row.SourceConfig)
+	}
+
+	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
+
+	if row.SyncSchedule.Valid {
+		info.SyncSchedule = row.SyncSchedule.Duration.String()
+	}
+
+	if row.CreatedAt != nil {
+		info.CreatedAt = *row.CreatedAt
+	}
+
+	if row.UpdatedAt != nil {
+		info.UpdatedAt = *row.UpdatedAt
+	}
+
+	return info
+}
+
+// buildSourceInfoFromDBSource builds a SourceInfo from a database Source.
 func buildSourceInfoFromDBSource(source *sqlc.Source) *service.SourceInfo {
-	info := &service.SourceInfo{
+	return buildSourceInfo(&sourceRow{
 		Name:         source.Name,
-		Type:         source.SourceType,
-		CreationType: service.CreationType(source.CreationType),
-	}
-
-	if source.SourceType != "" {
-		info.SourceType = config.SourceType(source.SourceType)
-	}
-
-	if source.Format != nil {
-		info.Format = *source.Format
-	}
-
-	if source.SourceType != "" {
-		info.SourceConfig = deserializeSourceConfig(source.SourceType, source.SourceConfig)
-	}
-
-	info.FilterConfig = deserializeFilterConfig(source.FilterConfig)
-
-	if source.SyncSchedule.Valid {
-		info.SyncSchedule = source.SyncSchedule.Duration.String()
-	}
-
-	if source.CreatedAt != nil {
-		info.CreatedAt = *source.CreatedAt
-	}
-
-	if source.UpdatedAt != nil {
-		info.UpdatedAt = *source.UpdatedAt
-	}
-
-	return info
+		SourceType:   source.SourceType,
+		CreationType: source.CreationType,
+		Format:       source.Format,
+		SourceConfig: source.SourceConfig,
+		FilterConfig: source.FilterConfig,
+		SyncSchedule: source.SyncSchedule,
+		CreatedAt:    source.CreatedAt,
+		UpdatedAt:    source.UpdatedAt,
+	})
 }
 
-// buildSourceInfoFromListRow builds a SourceInfo from a ListSourcesRow
+// buildSourceInfoFromListRow builds a SourceInfo from a ListSourcesRow.
 func buildSourceInfoFromListRow(row *sqlc.ListSourcesRow) *service.SourceInfo {
-	info := &service.SourceInfo{
+	return buildSourceInfo(&sourceRow{
 		Name:         row.Name,
-		Type:         row.SourceType,
-		CreationType: service.CreationType(row.CreationType),
-	}
-
-	if row.SourceType != "" {
-		info.SourceType = config.SourceType(row.SourceType)
-	}
-
-	if row.Format != nil {
-		info.Format = *row.Format
-	}
-
-	if row.SourceType != "" {
-		info.SourceConfig = deserializeSourceConfig(row.SourceType, row.SourceConfig)
-	}
-
-	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
-
-	if row.SyncSchedule.Valid {
-		info.SyncSchedule = row.SyncSchedule.Duration.String()
-	}
-
-	if row.CreatedAt != nil {
-		info.CreatedAt = *row.CreatedAt
-	}
-
-	if row.UpdatedAt != nil {
-		info.UpdatedAt = *row.UpdatedAt
-	}
-
-	return info
+		SourceType:   row.SourceType,
+		CreationType: row.CreationType,
+		Format:       row.Format,
+		SourceConfig: row.SourceConfig,
+		FilterConfig: row.FilterConfig,
+		SyncSchedule: row.SyncSchedule,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
+	})
 }
 
-// buildSourceInfoFromGetByNameRow builds a SourceInfo from a GetSourceByNameRow
+// buildSourceInfoFromGetByNameRow builds a SourceInfo from a GetSourceByNameRow.
 func buildSourceInfoFromGetByNameRow(row *sqlc.GetSourceByNameRow) *service.SourceInfo {
-	info := &service.SourceInfo{
+	return buildSourceInfo(&sourceRow{
 		Name:         row.Name,
-		Type:         row.SourceType,
-		CreationType: service.CreationType(row.CreationType),
+		SourceType:   row.SourceType,
+		CreationType: row.CreationType,
+		Format:       row.Format,
+		SourceConfig: row.SourceConfig,
+		FilterConfig: row.FilterConfig,
+		SyncSchedule: row.SyncSchedule,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
+	})
+}
+
+// fetchSyncStatus retrieves and converts sync status for a source.
+// Returns nil if sync record doesn't exist.
+func fetchSyncStatus(ctx context.Context, querier *sqlc.Queries, sourceName string) *service.SourceSyncStatus {
+	syncRecord, err := querier.GetSourceSyncByName(ctx, sourceName)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Warn("Failed to get sync status for source",
+				"source", sourceName,
+				"error", err)
+		}
+		return nil
 	}
-
-	if row.SourceType != "" {
-		info.SourceType = config.SourceType(row.SourceType)
+	return &service.SourceSyncStatus{
+		Phase:        convertSyncPhase(syncRecord.SyncStatus),
+		LastSyncTime: syncRecord.EndedAt,
+		LastAttempt:  syncRecord.StartedAt,
+		AttemptCount: int(syncRecord.AttemptCount),
+		ServerCount:  int(syncRecord.ServerCount),
+		Message:      getStatusMessage(syncRecord.ErrorMsg),
 	}
-
-	if row.Format != nil {
-		info.Format = *row.Format
-	}
-
-	if row.SourceType != "" {
-		info.SourceConfig = deserializeSourceConfig(row.SourceType, row.SourceConfig)
-	}
-
-	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
-
-	if row.SyncSchedule.Valid {
-		info.SyncSchedule = row.SyncSchedule.Duration.String()
-	}
-
-	if row.CreatedAt != nil {
-		info.CreatedAt = *row.CreatedAt
-	}
-
-	if row.UpdatedAt != nil {
-		info.UpdatedAt = *row.UpdatedAt
-	}
-
-	return info
 }
 
 // updateSyncStatusFailed updates the sync status to failed with an error message.
