@@ -517,7 +517,7 @@ func (s *dbService) executeDeleteSkillTransaction(
 		return err
 	}
 
-	if err := rePointLatestSkillVersionIfNeeded(ctx, querier, registry.ID, options.Name, entryID, options.RegistryName); err != nil {
+	if err := repointLatestSkillVersionIfNeeded(ctx, querier, registry.ID, options.Name, entryID, options.RegistryName); err != nil {
 		return err
 	}
 
@@ -532,10 +532,10 @@ func (s *dbService) executeDeleteSkillTransaction(
 	return nil
 }
 
-// rePointLatestSkillVersionIfNeeded checks whether the latest_entry_version pointer was cascade-deleted
+// repointLatestSkillVersionIfNeeded checks whether the latest_entry_version pointer was cascade-deleted
 // (because the deleted version was the current latest) and, if so, re-points it to the
 // next-highest remaining semantic version.
-func rePointLatestSkillVersionIfNeeded(
+func repointLatestSkillVersionIfNeeded(
 	ctx context.Context,
 	querier *sqlc.Queries,
 	registryID uuid.UUID,
