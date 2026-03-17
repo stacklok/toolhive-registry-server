@@ -462,7 +462,7 @@ SELECT src.source_type AS registry_type,
        $6::text IS NULL
        OR (e.name, v.version) > ($6::text, $7::text)
    )
- ORDER BY rs.position ASC, e.name ASC, v.version ASC
+ ORDER BY e.name ASC, v.version ASC, rs.position ASC
  LIMIT $8::bigint
 `
 

@@ -597,9 +597,10 @@ SELECT src.source_type as registry_type,
    AND ($1::text IS NULL OR rs.registry_id IS NOT NULL)
    AND (($3::timestamp with time zone IS NULL OR v.created_at > $3)
     AND ($4::timestamp with time zone IS NULL OR v.created_at < $4))
- ORDER BY rs.position ASC,
+ ORDER BY
  CASE WHEN $3::timestamp with time zone IS NULL THEN v.created_at END ASC,
- CASE WHEN $3::timestamp with time zone IS NULL THEN v.version END DESC -- acts as tie breaker
+ CASE WHEN $3::timestamp with time zone IS NULL THEN v.version END DESC, -- acts as tie breaker
+ rs.position ASC
  LIMIT $5::bigint
 `
 
@@ -719,7 +720,7 @@ SELECT src.source_type as registry_type,
        v.version = $6::text OR
        ($6::text = 'latest' AND l.latest_version_id = v.id)
    )
- ORDER BY rs.position ASC, e.name ASC, v.version ASC
+ ORDER BY e.name ASC, v.version ASC, rs.position ASC
  LIMIT $7::bigint
 `
 

@@ -46,7 +46,7 @@ SELECT src.source_type as registry_type,
        v.version = sqlc.narg(version)::text OR
        (sqlc.narg(version)::text = 'latest' AND l.latest_version_id = v.id)
    )
- ORDER BY rs.position ASC, e.name ASC, v.version ASC
+ ORDER BY e.name ASC, v.version ASC, rs.position ASC
  LIMIT sqlc.arg(size)::bigint;
 
 -- name: ListServerVersions :many
@@ -78,9 +78,10 @@ SELECT src.source_type as registry_type,
    AND (sqlc.narg(registry_name)::text IS NULL OR rs.registry_id IS NOT NULL)
    AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR v.created_at > sqlc.narg(next))
     AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR v.created_at < sqlc.narg(prev)))
- ORDER BY rs.position ASC,
+ ORDER BY
  CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN v.created_at END ASC,
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN v.version END DESC -- acts as tie breaker
+ CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN v.version END DESC, -- acts as tie breaker
+ rs.position ASC
  LIMIT sqlc.arg(size)::bigint;
 
 -- name: GetServerVersion :many

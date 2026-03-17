@@ -554,7 +554,7 @@ func deduplicateSkillRows(rows []sqlc.ListSkillsRow) []sqlc.ListSkillsRow {
 	seen := make(map[string]struct{}, len(rows))
 	result := make([]sqlc.ListSkillsRow, 0, len(rows))
 	for _, r := range rows {
-		key := r.Name + "\x00" + r.Version
+		key := r.Name + "/" + r.Version
 		if _, ok := seen[key]; ok {
 			continue
 		}

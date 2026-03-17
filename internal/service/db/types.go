@@ -46,7 +46,7 @@ func deduplicateHelpers(helpers []helper) []helper {
 	seen := make(map[string]struct{}, len(helpers))
 	result := make([]helper, 0, len(helpers))
 	for _, h := range helpers {
-		key := h.Name + "\x00" + h.Version
+		key := h.Name + "/" + h.Version
 		if _, ok := seen[key]; ok {
 			continue
 		}

@@ -42,7 +42,7 @@ SELECT src.source_type AS registry_type,
        sqlc.narg(cursor_name)::text IS NULL
        OR (e.name, v.version) > (sqlc.narg(cursor_name)::text, sqlc.narg(cursor_version)::text)
    )
- ORDER BY rs.position ASC, e.name ASC, v.version ASC
+ ORDER BY e.name ASC, v.version ASC, rs.position ASC
  LIMIT sqlc.arg(size)::bigint;
 
 -- name: GetSkillVersion :many
