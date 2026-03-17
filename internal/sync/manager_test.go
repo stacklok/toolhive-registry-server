@@ -130,7 +130,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			reason := syncManager.ShouldSync(ctx, tt.config, tt.syncStatus, tt.manualSyncRequested)
+			reason, _ := syncManager.ShouldSync(ctx, tt.config, tt.syncStatus, tt.manualSyncRequested)
 
 			assert.Equal(t, tt.expectedReason, reason, "Expected specific sync reason for "+tt.name)
 			assert.Equal(t, tt.expectedReason.ShouldSync(), reason.ShouldSync(), "ShouldSync() should match expected reason")
@@ -283,7 +283,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			syncResult, syncErr := syncManager.PerformSync(ctx, tt.config)
+			syncResult, syncErr := syncManager.PerformSync(ctx, tt.config, nil)
 
 			if tt.expectedError {
 				assert.NotNil(t, syncErr)
@@ -300,6 +300,52 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDefaultSyncManager_PerformSync_WithPrefetched(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Build a FetchResult directly without a real file source
+	testReg := registry.NewTestToolHiveRegistry(
+		registry.WithImageServer("prefetched-server", "test/image:latest"),
+	)
+	testData := registry.ToolHiveRegistryToJSON(testReg)
+	validator := sources.NewRegistryDataValidator()
+	reg, err := validator.ValidateData(testData, config.SourceFormatToolHive)
+	require.NoError(t, err)
+	hash := fmt.Sprintf("%x", sha256.Sum256(testData))
+	prefetched := sources.NewFetchResult(reg, hash, config.SourceFormatToolHive)
+
+	mockWriter := writermocks.NewMockSyncWriter(ctrl)
+	mockWriter.EXPECT().
+		Store(gomock.Any(), "test-registry", gomock.Any()).
+		Return(nil).
+		Times(1)
+
+	// Config points to a non-existent path — if PerformSync attempts a fetch it will fail,
+	// proving the prefetched data was reused instead.
+	regCfg := &config.RegistryConfig{
+		Name:   "test-registry",
+		Format: config.SourceFormatToolHive,
+		File: &config.FileConfig{
+			Path: "/nonexistent/path/registry.json",
+		},
+	}
+
+	syncManager := NewDefaultSyncManager(sources.NewRegistryHandlerFactory(), mockWriter)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, syncErr := syncManager.PerformSync(ctx, regCfg, prefetched)
+
+	require.Nil(t, syncErr)
+	require.NotNil(t, result)
+	assert.Equal(t, hash, result.Hash)
+	assert.Equal(t, 1, result.ServerCount)
 }
 
 func TestIsManualSync(t *testing.T) {

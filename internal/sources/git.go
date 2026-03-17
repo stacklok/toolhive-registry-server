@@ -178,18 +178,6 @@ func (h *gitRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.R
 	return NewFetchResult(reg, hash, regCfg.Format), nil
 }
 
-// CurrentHash returns the current hash of the source data after fetching the registry data
-func (h *gitRegistryHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
-	registryData, err := h.fetchRegistryData(ctx, regCfg)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch registry data: %w", err)
-	}
-
-	// Compute and return hash of the data
-	hash := fmt.Sprintf("%x", sha256.Sum256(registryData))
-	return hash, nil
-}
-
 // logMemoryStatsAfterOperation logs the memory stats after an operation
 func logMemoryStatsAfterOperation(memBefore *runtime.MemStats) {
 	// Log memory stats after cleanup and GC
