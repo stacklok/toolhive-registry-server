@@ -1375,6 +1375,148 @@ func TestPublishServerVersion(t *testing.T) {
 	}
 }
 
+func TestDeleteSource(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *pgxpool.Pool) string
+		validateFunc func(*testing.T, *dbService, string, error)
+	}{
+		{
+			name: "happy path - API source not linked to any registry",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				_, err := queries.InsertAPISource(ctx, sqlc.InsertAPISourceParams{
+					Name:         "delete-src-happy",
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				return "delete-src-happy"
+			},
+			validateFunc: func(t *testing.T, svc *dbService, name string, err error) {
+				t.Helper()
+				require.NoError(t, err)
+
+				// Verify the source is gone
+				_, getErr := svc.GetSourceByName(context.Background(), name)
+				require.Error(t, getErr)
+				require.ErrorIs(t, getErr, service.ErrSourceNotFound)
+			},
+		},
+		{
+			name: "failure - source not found",
+			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) string {
+				return "delete-src-nonexistent"
+			},
+			validateFunc: func(t *testing.T, _ *dbService, _ string, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.ErrorIs(t, err, service.ErrSourceNotFound)
+			},
+		},
+		{
+			name: "failure - cannot delete CONFIG source",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				_, err := queries.InsertConfigSource(ctx, sqlc.InsertConfigSourceParams{
+					Name:       "delete-src-config",
+					SourceType: "git",
+					Syncable:   true,
+				})
+				require.NoError(t, err)
+
+				return "delete-src-config"
+			},
+			validateFunc: func(t *testing.T, _ *dbService, _ string, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.ErrorIs(t, err, service.ErrConfigSource)
+			},
+		},
+		{
+			name: "failure - source in use by a registry",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				// Create an API source
+				src, err := queries.InsertAPISource(ctx, sqlc.InsertAPISourceParams{
+					Name:         "delete-src-in-use",
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				// Create a registry that references this source
+				reg, err := queries.UpsertAPIRegistry(ctx, sqlc.UpsertAPIRegistryParams{
+					Name:      "delete-src-in-use-registry",
+					CreatedAt: &now,
+					UpdatedAt: &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   src.ID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+
+				return "delete-src-in-use"
+			},
+			validateFunc: func(t *testing.T, svc *dbService, name string, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.ErrorIs(t, err, service.ErrSourceInUse)
+
+				// Verify the source still exists
+				src, getErr := svc.GetSourceByName(context.Background(), name)
+				require.NoError(t, getErr)
+				require.Equal(t, name, src.Name)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			sourceName := tt.setupFunc(t, svc.pool)
+
+			err := svc.DeleteSource(context.Background(), sourceName)
+
+			tt.validateFunc(t, svc, sourceName, err)
+		})
+	}
+}
+
 func TestUpdateSource(t *testing.T) {
 	t.Parallel()
 

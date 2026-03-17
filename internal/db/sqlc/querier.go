@@ -49,7 +49,6 @@ type Querier interface {
 	DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedServers(ctx context.Context, arg DeleteOrphanedServersParams) error
 	DeleteOrphanedSkills(ctx context.Context, arg DeleteOrphanedSkillsParams) error
-	DeleteRegistry(ctx context.Context, name string) (int64, error)
 	DeleteRegistryEntry(ctx context.Context, arg DeleteRegistryEntryParams) (int64, error)
 	DeleteRegistryEntryByID(ctx context.Context, id uuid.UUID) (int64, error)
 	DeleteServerIconsByServerId(ctx context.Context, serverID uuid.UUID) error

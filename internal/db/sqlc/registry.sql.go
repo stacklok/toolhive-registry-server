@@ -50,18 +50,6 @@ func (q *Queries) DeleteConfigRegistriesNotInList(ctx context.Context, keepNames
 	return err
 }
 
-const deleteRegistry = `-- name: DeleteRegistry :execrows
-DELETE FROM registry WHERE name = $1
-`
-
-func (q *Queries) DeleteRegistry(ctx context.Context, name string) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteRegistry, name)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const getRegistryByName = `-- name: GetRegistryByName :one
 SELECT id, name, claims, creation_type, created_at, updated_at
 FROM registry WHERE name = $1

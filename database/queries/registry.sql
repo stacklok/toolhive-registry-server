@@ -26,9 +26,6 @@ ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
 WHERE registry.creation_type = 'CONFIG'
 RETURNING *;
 
--- name: DeleteRegistry :execrows
-DELETE FROM registry WHERE name = sqlc.arg(name);
-
 -- name: DeleteAPIRegistry :execrows
 -- Delete an API registry by name (returns 0 if not found or is CONFIG type)
 DELETE FROM registry WHERE name = sqlc.arg(name) AND creation_type = 'API';
