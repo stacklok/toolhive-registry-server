@@ -10,7 +10,7 @@ require (
 	github.com/aws/smithy-go v1.24.2
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-git/go-billy/v5 v5.8.0
-	github.com/go-git/go-git/v5 v5.16.5
+	github.com/go-git/go-git/v5 v5.17.0
 	github.com/go-logr/logr v1.4.3
 	github.com/gobwas/glob v0.2.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
