@@ -15,8 +15,8 @@ const (
 	CreationTypeCONFIG CreationType = "CONFIG"
 )
 
-// RegistryCreateRequest represents the request body for PUT /registries/{name}
-type RegistryCreateRequest struct {
+// SourceCreateRequest represents the request body for creating or updating a source
+type SourceCreateRequest struct {
 	Format     string                   `json:"format,omitempty"`     // "toolhive" or "upstream"
 	Git        *config.GitConfig        `json:"git,omitempty"`        // Git repository source
 	API        *config.APIConfig        `json:"api,omitempty"`        // API endpoint source
@@ -28,7 +28,7 @@ type RegistryCreateRequest struct {
 }
 
 // GetSourceType returns the source type based on which config is set
-func (r *RegistryCreateRequest) GetSourceType() config.SourceType {
+func (r *SourceCreateRequest) GetSourceType() config.SourceType {
 	switch {
 	case r.Git != nil:
 		return config.SourceTypeGit
@@ -46,7 +46,7 @@ func (r *RegistryCreateRequest) GetSourceType() config.SourceType {
 }
 
 // CountSourceTypes returns the number of source types configured
-func (r *RegistryCreateRequest) CountSourceTypes() int {
+func (r *SourceCreateRequest) CountSourceTypes() int {
 	count := 0
 	if r.Git != nil {
 		count++
@@ -67,7 +67,7 @@ func (r *RegistryCreateRequest) CountSourceTypes() int {
 }
 
 // IsNonSyncedType returns true if the source type doesn't require syncing
-func (r *RegistryCreateRequest) IsNonSyncedType() bool {
+func (r *SourceCreateRequest) IsNonSyncedType() bool {
 	sourceType := r.GetSourceType()
 	// Managed and Kubernetes don't sync
 	if sourceType == config.SourceTypeManaged || sourceType == config.SourceTypeKubernetes {
@@ -81,12 +81,12 @@ func (r *RegistryCreateRequest) IsNonSyncedType() bool {
 }
 
 // IsInlineData returns true if this is a file source with inline data
-func (r *RegistryCreateRequest) IsInlineData() bool {
+func (r *SourceCreateRequest) IsInlineData() bool {
 	return r.File != nil && r.File.Data != ""
 }
 
 // GetSourceConfig returns the active source configuration
-func (r *RegistryCreateRequest) GetSourceConfig() any {
+func (r *SourceCreateRequest) GetSourceConfig() any {
 	switch {
 	case r.Git != nil:
 		return r.Git
@@ -112,4 +112,9 @@ type DeployedServer struct {
 	Transport   string `json:"transport"`
 	Ready       bool   `json:"ready"`
 	EndpointURL string `json:"endpoint_url,omitempty"`
+}
+
+// RegistryCreateRequest represents the request body for creating or updating a registry
+type RegistryCreateRequest struct {
+	Sources []string `json:"sources"` // ordered list of source names
 }

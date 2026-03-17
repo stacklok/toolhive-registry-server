@@ -39,6 +39,23 @@ type helper struct {
 	RepositoryType      *string
 }
 
+// deduplicateHelpers removes duplicate entries by (name, version), keeping the
+// first occurrence. Rows are expected to be ordered by source position ascending,
+// so the first occurrence is from the highest-priority source.
+func deduplicateHelpers(helpers []helper) []helper {
+	seen := make(map[string]struct{}, len(helpers))
+	result := make([]helper, 0, len(helpers))
+	for _, h := range helpers {
+		key := h.Name + "/" + h.Version
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, h)
+	}
+	return result
+}
+
 func listServersRowToHelper(
 	dbServer sqlc.ListServersRow,
 ) helper {

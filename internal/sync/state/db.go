@@ -194,8 +194,8 @@ func checkForAPIRegistryConflicts(ctx context.Context, queries *sqlc.Queries, na
 	return nil
 }
 
-// upsertRegistryRowsAndLinks creates or updates registry rows for each upserted source and links them.
-// InsertRegistry uses ON CONFLICT so this is safe to call when rows already exist (e.g. after migration backfill).
+// upsertRegistryRowsAndLinks creates or updates CONFIG registry rows for each upserted source and links them.
+// The Go-level checkForAPIRegistryConflicts guard prevents overwriting API registries.
 func upsertRegistryRowsAndLinks(
 	ctx context.Context,
 	queries *sqlc.Queries,
@@ -203,7 +203,7 @@ func upsertRegistryRowsAndLinks(
 	now *time.Time,
 ) error {
 	for i, reg := range upsertedRegistries {
-		registryRow, err := queries.InsertRegistry(ctx, sqlc.InsertRegistryParams{
+		registryRow, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
 			Name:         reg.Name,
 			CreationType: sqlc.CreationTypeCONFIG,
 			CreatedAt:    now,

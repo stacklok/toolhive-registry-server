@@ -15,6 +15,8 @@ type Querier interface {
 	// Bulk insert or update CONFIG sources (only updates existing CONFIG sources)
 	BulkUpsertConfigSources(ctx context.Context, arg BulkUpsertConfigSourcesParams) ([]BulkUpsertConfigSourcesRow, error)
 	CountEntryVersions(ctx context.Context, entryID uuid.UUID) (int64, error)
+	// Count how many registries reference a given source (via registry_source junction).
+	CountRegistriesBySourceID(ctx context.Context, sourceID uuid.UUID) (int64, error)
 	// Temp Entry Version Table Operations
 	CreateTempEntryVersionTable(ctx context.Context) error
 	// Temp Icon Table Operations
@@ -30,13 +32,9 @@ type Querier interface {
 	CreateTempRemoteTable(ctx context.Context) error
 	// Temp Server Table Operations
 	CreateTempServerTable(ctx context.Context) error
-	// Delete an API source by name (returns 0 if not found or is CONFIG type)
-	DeleteAPISource(ctx context.Context, name string) (int64, error)
 	// Delete CONFIG registry rows whose names are not in the provided list.
 	// Used during config sync to clean up registry/junction rows before deleting orphaned sources.
 	DeleteConfigRegistriesNotInList(ctx context.Context, keepNames []string) error
-	// Delete a CONFIG source by name (returns 0 if not found or is API type)
-	DeleteConfigSource(ctx context.Context, name string) (int64, error)
 	// Delete CONFIG sources not in the provided list (for config file sync)
 	DeleteConfigSourcesNotInList(ctx context.Context, ids []uuid.UUID) error
 	DeleteEntryVersion(ctx context.Context, arg DeleteEntryVersionParams) (int64, error)
@@ -45,6 +43,7 @@ type Querier interface {
 	DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedServers(ctx context.Context, arg DeleteOrphanedServersParams) error
 	DeleteOrphanedSkills(ctx context.Context, arg DeleteOrphanedSkillsParams) error
+	// Delete a registry by name. Go callers guard against deleting wrong creation_type.
 	DeleteRegistry(ctx context.Context, name string) (int64, error)
 	DeleteRegistryEntry(ctx context.Context, arg DeleteRegistryEntryParams) (int64, error)
 	DeleteRegistryEntryByID(ctx context.Context, id uuid.UUID) (int64, error)
@@ -53,30 +52,22 @@ type Querier interface {
 	DeleteServerRemotesByServerId(ctx context.Context, serverID uuid.UUID) error
 	DeleteServersByRegistry(ctx context.Context, sourceID uuid.UUID) error
 	DeleteSkillsByRegistry(ctx context.Context, sourceID uuid.UUID) error
+	// Delete a source by name. Go callers guard against deleting wrong creation_type.
+	DeleteSource(ctx context.Context, name string) (int64, error)
 	GetAPISourcesByNames(ctx context.Context, names []string) ([]GetAPISourcesByNamesRow, error)
 	GetLatestVersionForServer(ctx context.Context, arg GetLatestVersionForServerParams) (string, error)
+	GetManagedSources(ctx context.Context) ([]GetManagedSourcesRow, error)
 	GetRegistryByName(ctx context.Context, name string) (Registry, error)
 	GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (uuid.UUID, error)
 	GetServerIDsByRegistryNameVersion(ctx context.Context, sourceID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error)
-	GetServerVersion(ctx context.Context, arg GetServerVersionParams) (GetServerVersionRow, error)
-	GetSkillVersion(ctx context.Context, arg GetSkillVersionParams) (GetSkillVersionRow, error)
+	GetServerVersion(ctx context.Context, arg GetServerVersionParams) ([]GetServerVersionRow, error)
+	GetSkillVersion(ctx context.Context, arg GetSkillVersionParams) ([]GetSkillVersionRow, error)
 	GetSource(ctx context.Context, id uuid.UUID) (GetSourceRow, error)
 	GetSourceByName(ctx context.Context, name string) (GetSourceByNameRow, error)
 	GetSourceSync(ctx context.Context, id uuid.UUID) (RegistrySync, error)
 	GetSourceSyncByName(ctx context.Context, name string) (RegistrySync, error)
 	InitializeSourceSync(ctx context.Context, arg InitializeSourceSyncParams) error
-	// ============================================================================
-	// API Source Queries (only operate on creation_type='API')
-	// ============================================================================
-	// Insert a new API source with full configuration
-	InsertAPISource(ctx context.Context, arg InsertAPISourceParams) (Source, error)
-	// ============================================================================
-	// CONFIG Source Queries (only operate on creation_type='CONFIG')
-	// ============================================================================
-	// Insert a new CONFIG source with full configuration
-	InsertConfigSource(ctx context.Context, arg InsertConfigSourceParams) (uuid.UUID, error)
 	InsertEntryVersion(ctx context.Context, arg InsertEntryVersionParams) (uuid.UUID, error)
-	InsertRegistry(ctx context.Context, arg InsertRegistryParams) (Registry, error)
 	InsertRegistryEntry(ctx context.Context, arg InsertRegistryEntryParams) (uuid.UUID, error)
 	InsertServerIcon(ctx context.Context, arg InsertServerIconParams) error
 	// TODO: this seems unused
@@ -88,6 +79,11 @@ type Querier interface {
 	InsertSkillOciPackage(ctx context.Context, arg InsertSkillOciPackageParams) error
 	InsertSkillVersion(ctx context.Context, arg InsertSkillVersionParams) (uuid.UUID, error)
 	InsertSkillVersionForSync(ctx context.Context, arg InsertSkillVersionForSyncParams) (uuid.UUID, error)
+	// ============================================================================
+	// Source Queries (unified, creation_type guards are in Go)
+	// ============================================================================
+	// Insert a new source with full configuration. creation_type is passed as a parameter.
+	InsertSource(ctx context.Context, arg InsertSourceParams) (Source, error)
 	InsertSourceSync(ctx context.Context, arg InsertSourceSyncParams) (uuid.UUID, error)
 	LinkRegistrySource(ctx context.Context, arg LinkRegistrySourceParams) error
 	ListAllSourceNames(ctx context.Context) ([]string, error)
@@ -100,33 +96,43 @@ type Querier interface {
 	// Cursor-based pagination using (name, version) compound cursor.
 	// The cursor_name and cursor_version parameters define the starting point.
 	// When cursor is provided, results start AFTER the specified (name, version) tuple.
+	// Returns position from registry_source for source priority ordering.
 	ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error)
 	ListSkillGitPackages(ctx context.Context, versionIds []uuid.UUID) ([]SkillGitPackage, error)
 	ListSkillOciPackages(ctx context.Context, versionIds []uuid.UUID) ([]SkillOciPackage, error)
 	// Cursor-based pagination using (name, version) compound cursor.
 	// The cursor_name and cursor_version parameters define the starting point.
 	// When cursor is provided, results start AFTER the specified (name, version) tuple.
+	// Returns position from registry_source for source priority ordering.
 	ListSkills(ctx context.Context, arg ListSkillsParams) ([]ListSkillsRow, error)
 	ListSourceSyncs(ctx context.Context) ([]ListSourceSyncsRow, error)
 	ListSourceSyncsByLastUpdate(ctx context.Context) ([]ListSourceSyncsByLastUpdateRow, error)
 	ListSources(ctx context.Context, arg ListSourcesParams) ([]ListSourcesRow, error)
+	UnlinkAllRegistrySources(ctx context.Context, registryID uuid.UUID) error
 	UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySourceParams) error
-	// Update an existing API source (returns NULL if not found or is CONFIG type)
-	UpdateAPISource(ctx context.Context, arg UpdateAPISourceParams) (Source, error)
+	// Update an existing source. Go callers guard against modifying wrong creation_type.
+	UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error)
 	UpdateSourceSync(ctx context.Context, arg UpdateSourceSyncParams) error
 	UpdateSourceSyncStatusByName(ctx context.Context, arg UpdateSourceSyncStatusByNameParams) error
-	// Insert or update a CONFIG source (only updates if existing is CONFIG type)
-	UpsertConfigSource(ctx context.Context, arg UpsertConfigSourceParams) (uuid.UUID, error)
 	UpsertEntryVersionsFromTemp(ctx context.Context) ([]UpsertEntryVersionsFromTempRow, error)
 	UpsertIconsFromTemp(ctx context.Context) error
 	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (uuid.UUID, error)
 	UpsertLatestSkillVersion(ctx context.Context, arg UpsertLatestSkillVersionParams) (uuid.UUID, error)
 	UpsertPackagesFromTemp(ctx context.Context) error
+	// Insert or update a registry. The creation_type is passed as a parameter.
+	// Business logic in Go guards against cross-type overwrites.
+	UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (Registry, error)
 	UpsertRegistryEntriesFromTemp(ctx context.Context) ([]UpsertRegistryEntriesFromTempRow, error)
 	UpsertRemotesFromTemp(ctx context.Context) error
 	UpsertServerVersionForSync(ctx context.Context, arg UpsertServerVersionForSyncParams) (uuid.UUID, error)
 	UpsertServersFromTemp(ctx context.Context) error
 	UpsertSkillVersionForSync(ctx context.Context, arg UpsertSkillVersionForSyncParams) (uuid.UUID, error)
+	// ============================================================================
+	// CONFIG Source Queries (only operate on creation_type='CONFIG')
+	// ============================================================================
+	// Insert or update a source. The creation_type is passed as a parameter.
+	// Business logic in Go guards against cross-type overwrites.
+	UpsertSource(ctx context.Context, arg UpsertSourceParams) (uuid.UUID, error)
 	UpsertSourceSyncByName(ctx context.Context, arg UpsertSourceSyncByNameParams) error
 }
 
