@@ -237,6 +237,14 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "internal_api_v1.publishEntryRequest": {
+                "properties": {
+                    "server": {
+                        "$ref": "#/components/schemas/v0.ServerJSON"
+                    }
+                },
+                "type": "object"
+            },
             "internal_api_v1.registryListResponse": {
                 "properties": {
                     "registries": {
@@ -1661,13 +1669,34 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "type": "object"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/internal_api_v1.publishEntryRequest",
+                                        "summary": "request",
+                                        "description": "Entry to publish"
+                                    }
+                                ]
                             }
                         }
-                    }
+                    },
+                    "description": "Entry to publish",
+                    "required": true
                 },
                 "responses": {
-                    "501": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/v0.ServerJSON"
+                                }
+                            }
+                        },
+                        "description": "Published server"
+                    },
+                    "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1678,7 +1707,33 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Bad request"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Conflict"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "Publish entry",
@@ -1795,6 +1850,9 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -1808,7 +1866,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "501": {
+                    "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1819,7 +1877,20 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Not found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "Delete published entry",

@@ -547,19 +547,22 @@ func (s *dbService) executeDeleteSkillTransaction(
 	return nil
 }
 
-// deduplicateSkillRows removes duplicate entries by (name, version), keeping
-// the first occurrence. Rows are expected to be ordered by source position
-// ascending, so the first occurrence is from the highest-priority source.
+// deduplicateSkillRows removes duplicate entries at the entry name level, keeping
+// all versions from the highest-priority source (lowest position value).
 func deduplicateSkillRows(rows []sqlc.ListSkillsRow) []sqlc.ListSkillsRow {
-	seen := make(map[string]struct{}, len(rows))
+	// Pass 1: determine winning position per entry name (lowest position wins)
+	winningPosition := make(map[string]int32, len(rows))
+	for _, r := range rows {
+		if pos, ok := winningPosition[r.Name]; !ok || r.Position < pos {
+			winningPosition[r.Name] = r.Position
+		}
+	}
+	// Pass 2: keep only versions from the winning source (by position)
 	result := make([]sqlc.ListSkillsRow, 0, len(rows))
 	for _, r := range rows {
-		key := r.Name + "/" + r.Version
-		if _, ok := seen[key]; ok {
-			continue
+		if r.Position == winningPosition[r.Name] {
+			result = append(result, r)
 		}
-		seen[key] = struct{}{}
-		result = append(result, r)
 	}
 	return result
 }

@@ -22,7 +22,7 @@ func TestV1StubEndpoints(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 
 	tests := []struct {
 		name      string
@@ -42,19 +42,6 @@ func TestV1StubEndpoints(t *testing.T) {
 			method:    "GET",
 			path:      "/registries/my-registry/entries",
 			wantError: "Listing registry entries is not yet implemented",
-		},
-		// Entry endpoints
-		{
-			name:      "publish entry",
-			method:    "POST",
-			path:      "/entries",
-			wantError: "Publishing entry is not yet implemented",
-		},
-		{
-			name:      "delete published entry",
-			method:    "DELETE",
-			path:      "/entries/server/my-entry/versions/1.0.0",
-			wantError: "Deleting published entry is not yet implemented",
 		},
 		{
 			name:      "update entry claims",
@@ -94,7 +81,7 @@ func TestListSources(t *testing.T) {
 		{Name: "src1", Type: "MANAGED", CreatedAt: now, UpdatedAt: now},
 	}, nil)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	req, err := http.NewRequest("GET", "/sources", nil)
 	require.NoError(t, err)
 
@@ -120,7 +107,7 @@ func TestGetSource(t *testing.T) {
 	mockSvc.EXPECT().GetSourceByName(gomock.Any(), "my-source").Return(
 		&service.SourceInfo{Name: "my-source", Type: "MANAGED", CreatedAt: now, UpdatedAt: now}, nil)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	req, err := http.NewRequest("GET", "/sources/my-source", nil)
 	require.NoError(t, err)
 
@@ -143,7 +130,7 @@ func TestGetSourceNotFound(t *testing.T) {
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	mockSvc.EXPECT().GetSourceByName(gomock.Any(), "missing").Return(nil, service.ErrSourceNotFound)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	req, err := http.NewRequest("GET", "/sources/missing", nil)
 	require.NoError(t, err)
 
@@ -163,7 +150,7 @@ func TestUpsertSourceCreate(t *testing.T) {
 	mockSvc.EXPECT().CreateSource(gomock.Any(), "new-source", gomock.Any()).Return(
 		&service.SourceInfo{Name: "new-source", Type: "MANAGED", CreatedAt: now, UpdatedAt: now}, nil)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	body, _ := json.Marshal(service.SourceCreateRequest{})
 	req, err := http.NewRequest("PUT", "/sources/new-source", bytes.NewReader(body))
 	require.NoError(t, err)
@@ -185,7 +172,7 @@ func TestUpsertSourceUpdate(t *testing.T) {
 	mockSvc.EXPECT().UpdateSource(gomock.Any(), "existing", gomock.Any()).Return(
 		&service.SourceInfo{Name: "existing", Type: "MANAGED", CreatedAt: now, UpdatedAt: now}, nil)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	body, _ := json.Marshal(service.SourceCreateRequest{})
 	req, err := http.NewRequest("PUT", "/sources/existing", bytes.NewReader(body))
 	require.NoError(t, err)
@@ -202,7 +189,7 @@ func TestUpsertSourceBadBody(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 
 	req, err := http.NewRequest("PUT", "/sources/my-source", bytes.NewReader([]byte("not-json")))
 	require.NoError(t, err)
@@ -221,7 +208,7 @@ func TestDeleteSource(t *testing.T) {
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	mockSvc.EXPECT().DeleteSource(gomock.Any(), "my-source").Return(nil)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	req, err := http.NewRequest("DELETE", "/sources/my-source", nil)
 	require.NoError(t, err)
 
@@ -239,7 +226,7 @@ func TestDeleteSourceNotFound(t *testing.T) {
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	mockSvc.EXPECT().DeleteSource(gomock.Any(), "missing").Return(service.ErrSourceNotFound)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	req, err := http.NewRequest("DELETE", "/sources/missing", nil)
 	require.NoError(t, err)
 
@@ -257,7 +244,7 @@ func TestDeleteSourceInUse(t *testing.T) {
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	mockSvc.EXPECT().DeleteSource(gomock.Any(), "busy").Return(service.ErrSourceInUse)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	req, err := http.NewRequest("DELETE", "/sources/busy", nil)
 	require.NoError(t, err)
 
@@ -278,7 +265,7 @@ func TestListRegistries(t *testing.T) {
 		{Name: "reg1", Sources: []string{"src1"}, CreatedAt: now, UpdatedAt: now},
 	}, nil)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	req, err := http.NewRequest("GET", "/registries", nil)
 	require.NoError(t, err)
 
@@ -304,7 +291,7 @@ func TestGetRegistry(t *testing.T) {
 	mockSvc.EXPECT().GetRegistryByName(gomock.Any(), "my-reg").Return(
 		&service.RegistryInfo{Name: "my-reg", Sources: []string{"src1"}, CreatedAt: now, UpdatedAt: now}, nil)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	req, err := http.NewRequest("GET", "/registries/my-reg", nil)
 	require.NoError(t, err)
 
@@ -327,7 +314,7 @@ func TestGetRegistryNotFound(t *testing.T) {
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	mockSvc.EXPECT().GetRegistryByName(gomock.Any(), "missing").Return(nil, service.ErrRegistryNotFound)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	req, err := http.NewRequest("GET", "/registries/missing", nil)
 	require.NoError(t, err)
 
@@ -347,7 +334,7 @@ func TestUpsertRegistryCreate(t *testing.T) {
 	mockSvc.EXPECT().CreateRegistry(gomock.Any(), "new-reg", gomock.Any()).Return(
 		&service.RegistryInfo{Name: "new-reg", Sources: []string{"src1"}, CreatedAt: now, UpdatedAt: now}, nil)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	body, _ := json.Marshal(service.RegistryCreateRequest{Sources: []string{"src1"}})
 	req, err := http.NewRequest("PUT", "/registries/new-reg", bytes.NewReader(body))
 	require.NoError(t, err)
@@ -369,7 +356,7 @@ func TestUpsertRegistryUpdate(t *testing.T) {
 	mockSvc.EXPECT().UpdateRegistry(gomock.Any(), "existing", gomock.Any()).Return(
 		&service.RegistryInfo{Name: "existing", Sources: []string{"src1"}, CreatedAt: now, UpdatedAt: now}, nil)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	body, _ := json.Marshal(service.RegistryCreateRequest{Sources: []string{"src1"}})
 	req, err := http.NewRequest("PUT", "/registries/existing", bytes.NewReader(body))
 	require.NoError(t, err)
@@ -388,7 +375,7 @@ func TestDeleteRegistry(t *testing.T) {
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	mockSvc.EXPECT().DeleteRegistry(gomock.Any(), "my-reg").Return(nil)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	req, err := http.NewRequest("DELETE", "/registries/my-reg", nil)
 	require.NoError(t, err)
 
@@ -406,7 +393,7 @@ func TestDeleteRegistryNotFound(t *testing.T) {
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	mockSvc.EXPECT().DeleteRegistry(gomock.Any(), "missing").Return(service.ErrRegistryNotFound)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	req, err := http.NewRequest("DELETE", "/registries/missing", nil)
 	require.NoError(t, err)
 
@@ -424,7 +411,7 @@ func TestDeleteRegistryForbidden(t *testing.T) {
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	mockSvc.EXPECT().DeleteRegistry(gomock.Any(), "config-reg").Return(service.ErrConfigRegistry)
 
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 	req, err := http.NewRequest("DELETE", "/registries/config-reg", nil)
 	require.NoError(t, err)
 
@@ -440,7 +427,7 @@ func TestV1URLParamValidation(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
-	router := Router(mockSvc)
+	router := Router(mockSvc, nil)
 
 	tests := []struct {
 		name       string

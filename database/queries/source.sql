@@ -107,7 +107,7 @@ SELECT
     unnest(sqlc.arg(names)::text[]),
     'CONFIG',
     unnest(sqlc.arg(source_types)::text[]),
-    unnest(sqlc.arg(formats)::text[]),
+    NULLIF(unnest(sqlc.arg(formats)::text[]), ''),
     unnest(sqlc.arg(source_configs)::jsonb[]),
     unnest(sqlc.arg(filter_configs)::jsonb[]),
     unnest(sqlc.arg(sync_schedules)::interval[]),

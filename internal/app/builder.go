@@ -402,9 +402,16 @@ func buildHTTPServer(
 	authMw := auth.WrapWithPublicPaths(b.authMiddleware, publicPaths)
 	b.middlewares = append(b.middlewares, authMw)
 
+	// Extract authorization config if available
+	var authzCfg *config.AuthzConfig
+	if b.config != nil && b.config.Auth != nil {
+		authzCfg = b.config.Auth.Authz
+	}
+
 	serverOpts := []api.ServerOption{
 		api.WithMiddlewares(b.middlewares...),
 		api.WithAuthInfoHandler(b.authInfoHandler),
+		api.WithAuthzConfig(authzCfg),
 	}
 	// Create router with middlewares
 	router := api.NewServer(svc, serverOpts...)
