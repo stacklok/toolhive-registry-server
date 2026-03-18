@@ -13,11 +13,9 @@
 #   - Volume paths matching Docker Compose mounts
 #   - Shorter sync intervals for testing
 
-registryName: multi-source-registry
-
-# Multiple registries from different sources
-registries:
-  # File-based registry with ToolHive format
+# Multiple sources from different origins
+sources:
+  # File-based source with ToolHive format
   - name: toolhive-file
     format: toolhive
     file:
@@ -26,7 +24,7 @@ registries:
     syncPolicy:
       interval: "30s"  # Short interval for testing
 
-  # File-based registry with upstream format
+  # File-based source with upstream format
   - name: upstream-file
     format: upstream
     file:
@@ -34,7 +32,7 @@ registries:
     syncPolicy:
       interval: "30s"
 
-  # API-based registry from MCP official registry with filtering
+  # API-based source from MCP official registry with filtering
   - name: mcp-api
     format: upstream
     api:
@@ -54,7 +52,7 @@ registries:
     #       - "official"
     #       - "stable"
 
-  # Git-based registry from ToolHive catalog (upstream format)
+  # Git-based source from ToolHive catalog (upstream format)
   - name: toolhive-git
     format: upstream
     git:
@@ -73,6 +71,10 @@ registries:
     #   tags:
     #     include:
     #       - "production"
+
+registries:
+  - name: default
+    sources: ["toolhive-file", "upstream-file", "mcp-api", "toolhive-git"]
 
 auth:
   mode: anonymous
