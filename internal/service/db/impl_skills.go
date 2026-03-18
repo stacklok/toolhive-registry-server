@@ -82,10 +82,11 @@ func (s *dbService) ListSkills(
 	// Fetch skills in a loop to ensure we have enough results after dedup.
 	// Dedup can remove entries when multiple sources provide the same name,
 	// so a single SQL fetch may yield fewer than the target count.
+	const maxFetchIterations = 10 // safety cap to prevent runaway loops
 	target := options.Limit + 1
 	var allRows []sqlc.ListSkillsRow
 	batchParams := params
-	for {
+	for range maxFetchIterations {
 		rows, err := querier.ListSkills(ctx, batchParams)
 		if err != nil {
 			otel.RecordError(span, err)

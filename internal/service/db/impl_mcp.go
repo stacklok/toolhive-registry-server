@@ -106,11 +106,12 @@ func (s *dbService) ListServers(
 	// consistent cross-batch dedup (a name's winning source must be the
 	// same regardless of batch boundaries).
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
-		target := options.Limit + 1 // +1 to detect hasMore
+		const maxFetchIterations = 10 // safety cap to prevent runaway loops
+		target := options.Limit + 1   // +1 to detect hasMore
 		var allHelpers []helper
 		batchParams := params // copy so we can mutate cursor
 
-		for {
+		for range maxFetchIterations {
 			servers, err := querier.ListServers(ctx, batchParams)
 			if err != nil {
 				return nil, err
@@ -133,6 +134,9 @@ func (s *dbService) ListServers(
 			batchParams.CursorName = &lastRow.Name
 			batchParams.CursorVersion = &lastRow.Version
 		}
+
+		// Iteration cap reached — return what we have
+		return deduplicateHelpers(allHelpers), nil
 	}
 
 	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit)
