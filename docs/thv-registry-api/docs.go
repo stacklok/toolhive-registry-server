@@ -112,6 +112,136 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "github_com_stacklok_toolhive-registry-server_internal_service.Skill": {
+                "properties": {
+                    "_meta": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    },
+                    "allowedTools": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "compatibility": {
+                        "type": "string"
+                    },
+                    "createdAt": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "icons": {
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SkillIcon"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "isLatest": {
+                        "type": "boolean"
+                    },
+                    "license": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "namespace": {
+                        "type": "string"
+                    },
+                    "packages": {
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SkillPackage"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "repository": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SkillRepository"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "type": "string"
+                    },
+                    "version": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.SkillIcon": {
+                "properties": {
+                    "label": {
+                        "type": "string"
+                    },
+                    "size": {
+                        "type": "string"
+                    },
+                    "src": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.SkillPackage": {
+                "properties": {
+                    "commit": {
+                        "type": "string"
+                    },
+                    "digest": {
+                        "type": "string"
+                    },
+                    "identifier": {
+                        "type": "string"
+                    },
+                    "mediaType": {
+                        "type": "string"
+                    },
+                    "ref": {
+                        "type": "string"
+                    },
+                    "registryType": {
+                        "type": "string"
+                    },
+                    "subfolder": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.SkillRepository": {
+                "properties": {
+                    "type": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo": {
                 "properties": {
                     "createdAt": {
@@ -239,8 +369,15 @@ const docTemplate = `{
             },
             "internal_api_v1.publishEntryRequest": {
                 "properties": {
+                    "claims": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    },
                     "server": {
                         "$ref": "#/components/schemas/v0.ServerJSON"
+                    },
+                    "skill": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.Skill"
                     }
                 },
                 "type": "object"
@@ -1664,7 +1801,7 @@ const docTemplate = `{
         },
         "/v1/entries": {
             "post": {
-                "description": "Publish a new entry",
+                "description": "Publish a new server or skill entry. Exactly one of 'server' or 'skill' must be provided.",
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -1676,13 +1813,13 @@ const docTemplate = `{
                                     {
                                         "$ref": "#/components/schemas/internal_api_v1.publishEntryRequest",
                                         "summary": "request",
-                                        "description": "Entry to publish"
+                                        "description": "Entry to publish (server or skill)"
                                     }
                                 ]
                             }
                         }
                     },
-                    "description": "Entry to publish",
+                    "description": "Entry to publish (server or skill)",
                     "required": true
                 },
                 "responses": {
@@ -1690,11 +1827,11 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/v0.ServerJSON"
+                                    "type": "object"
                                 }
                             }
                         },
-                        "description": "Published server"
+                        "description": "Published entry (server or skill)"
                     },
                     "400": {
                         "content": {

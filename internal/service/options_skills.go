@@ -2,6 +2,13 @@ package service
 
 // PublishSkillOptions is the options for the PublishSkill operation
 type PublishSkillOptions struct {
+	Claims map[string]any
+}
+
+//nolint:unparam
+func (o *PublishSkillOptions) setClaims(claims map[string]any) error {
+	o.Claims = claims
+	return nil
 }
 
 // ListSkillsOptions is the options for the ListSkills and ListSkillVersions

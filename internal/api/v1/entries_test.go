@@ -48,11 +48,11 @@ func TestPublishEntry(t *testing.T) {
 			wantError:  "invalid request body:",
 		},
 		{
-			name:       "nil server field",
-			body:       mustMarshal(publishEntryRequest{Server: nil}),
+			name:       "neither server nor skill provided",
+			body:       mustMarshal(publishEntryRequest{}),
 			setupMock:  func(_ *mocks.MockRegistryService) {},
 			wantStatus: http.StatusBadRequest,
-			wantError:  "server data is required",
+			wantError:  "exactly one of 'server' or 'skill' must be provided",
 		},
 		{
 			name: "version already exists",
@@ -147,11 +147,19 @@ func TestDeletePublishedEntry(t *testing.T) {
 			wantStatus: http.StatusNoContent,
 		},
 		{
-			name:       "unsupported type - skill",
-			path:       "/entries/skill/test%2Fserver/versions/1.0.0",
+			name: "success - skill type",
+			path: "/entries/skill/test%2Fskill/versions/1.0.0",
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().DeleteSkillVersion(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			},
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name:       "unsupported type",
+			path:       "/entries/unknown/test%2Fentry/versions/1.0.0",
 			setupMock:  func(_ *mocks.MockRegistryService) {},
 			wantStatus: http.StatusBadRequest,
-			wantError:  "only server type is currently supported",
+			wantError:  "unsupported entry type",
 		},
 		{
 			name: "not found",

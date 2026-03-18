@@ -13,19 +13,22 @@ import (
 )
 
 // publishEntryRequest is the request body for publishing an entry.
+// Exactly one of Server or Skill must be provided.
 type publishEntryRequest struct {
+	Claims map[string]any         `json:"claims,omitempty"`
 	Server *upstreamv0.ServerJSON `json:"server,omitempty"`
+	Skill  *service.Skill         `json:"skill,omitempty"`
 }
 
 // publishEntry handles POST /v1/entries
 //
 // @Summary		Publish entry
-// @Description	Publish a new entry
+// @Description	Publish a new server or skill entry. Exactly one of 'server' or 'skill' must be provided.
 // @Tags		v1
 // @Accept		json
 // @Produce		json
-// @Param		request	body		publishEntryRequest	true	"Entry to publish"
-// @Success		201	{object}	upstreamv0.ServerJSON	"Published server"
+// @Param		request	body		publishEntryRequest	true	"Entry to publish (server or skill)"
+// @Success		201	{object}	interface{}	"Published entry (server or skill)"
 // @Failure		400	{object}	map[string]string	"Bad request"
 // @Failure		409	{object}	map[string]string	"Conflict"
 // @Failure		500	{object}	map[string]string	"Internal server error"
@@ -37,27 +40,58 @@ func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Server == nil {
-		common.WriteErrorResponse(w, "server data is required", http.StatusBadRequest)
+	hasServer := req.Server != nil
+	hasSkill := req.Skill != nil
+	if hasServer == hasSkill {
+		common.WriteErrorResponse(w, "exactly one of 'server' or 'skill' must be provided", http.StatusBadRequest)
 		return
 	}
 
-	published, err := routes.service.PublishServerVersion(r.Context(), service.WithServerData(req.Server))
-	if err != nil {
-		if errors.Is(err, service.ErrVersionAlreadyExists) {
-			common.WriteErrorResponse(w, err.Error(), http.StatusConflict)
+	if req.Server != nil {
+		opts := []service.Option{service.WithServerData(req.Server)}
+		if req.Claims != nil {
+			opts = append(opts, service.WithClaims(req.Claims))
+		}
+		published, err := routes.service.PublishServerVersion(r.Context(), opts...)
+		if err != nil {
+			writePublishError(w, r, err)
 			return
 		}
-		if errors.Is(err, service.ErrNoManagedSource) {
-			common.WriteErrorResponse(w, "no managed source available for publishing", http.StatusInternalServerError)
-			return
-		}
-		slog.ErrorContext(r.Context(), "failed to publish server version", "error", err)
-		common.WriteErrorResponse(w, "failed to publish entry", http.StatusInternalServerError)
+		common.WriteJSONResponse(w, published, http.StatusCreated)
 		return
 	}
 
-	common.WriteJSONResponse(w, published, http.StatusCreated)
+	if req.Skill != nil {
+		var opts []service.Option
+		if req.Claims != nil {
+			opts = append(opts, service.WithClaims(req.Claims))
+		}
+		published, err := routes.service.PublishSkill(r.Context(), req.Skill, opts...)
+		if err != nil {
+			writePublishError(w, r, err)
+			return
+		}
+		common.WriteJSONResponse(w, published, http.StatusCreated)
+		return
+	}
+}
+
+// writePublishError maps service-layer publish errors to HTTP responses.
+func writePublishError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, service.ErrVersionAlreadyExists) {
+		common.WriteErrorResponse(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if errors.Is(err, service.ErrClaimsMismatch) {
+		common.WriteErrorResponse(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if errors.Is(err, service.ErrNoManagedSource) {
+		common.WriteErrorResponse(w, "no managed source available for publishing", http.StatusInternalServerError)
+		return
+	}
+	slog.ErrorContext(r.Context(), "failed to publish entry", "error", err)
+	common.WriteErrorResponse(w, "failed to publish entry", http.StatusInternalServerError)
 }
 
 // deletePublishedEntry handles DELETE /v1/entries/{type}/{name}/versions/{version}
@@ -82,11 +116,6 @@ func (routes *Routes) deletePublishedEntry(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if entryType != "server" {
-		common.WriteErrorResponse(w, "only server type is currently supported", http.StatusBadRequest)
-		return
-	}
-
 	name, err := common.GetAndValidateURLParam(r, "name")
 	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
@@ -99,7 +128,17 @@ func (routes *Routes) deletePublishedEntry(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := routes.service.DeleteServerVersion(r.Context(), service.WithName(name), service.WithVersion(version)); err != nil {
+	switch entryType {
+	case "server":
+		err = routes.service.DeleteServerVersion(r.Context(), service.WithName(name), service.WithVersion(version))
+	case "skill":
+		err = routes.service.DeleteSkillVersion(r.Context(), service.WithName(name), service.WithVersion(version))
+	default:
+		common.WriteErrorResponse(w, "unsupported entry type: must be 'server' or 'skill'", http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
 		if errors.Is(err, service.ErrNotFound) {
 			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
 			return
@@ -108,7 +147,7 @@ func (routes *Routes) deletePublishedEntry(w http.ResponseWriter, r *http.Reques
 			common.WriteErrorResponse(w, "no managed source available for deletion", http.StatusInternalServerError)
 			return
 		}
-		slog.ErrorContext(r.Context(), "failed to delete server version", "error", err)
+		slog.ErrorContext(r.Context(), "failed to delete entry", "error", err, "type", entryType)
 		common.WriteErrorResponse(w, "failed to delete entry", http.StatusInternalServerError)
 		return
 	}
