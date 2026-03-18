@@ -6,11 +6,8 @@
 # Usage:
 #   thv-registry-api serve --config examples/config-git.yaml
 
-# Registry name/identifier (optional, defaults to "default")
-registryName: toolhive
-
-# Registries configuration (can have multiple registries)
-registries:
+# Sources configuration (can have multiple sources)
+sources:
   - name: toolhive
     # Data format: toolhive (native) or upstream (MCP registry format)
     format: toolhive
@@ -36,6 +33,10 @@ registries:
     syncPolicy:
       # Sync interval (valid duration: 1m, 5m, 30m, 1h, 24h, etc.)
       interval: "30m"
+
+registries:
+  - name: default
+    sources: ["toolhive"]
 
 auth:
   mode: anonymous

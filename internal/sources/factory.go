@@ -18,7 +18,7 @@ func NewRegistryHandlerFactory() RegistryHandlerFactory {
 
 // CreateHandler creates a registry handler for the given registry configuration
 // The source type is inferred from which field is present (Git/API/File)
-func (*defaultRegistryHandlerFactory) CreateHandler(regCfg *config.RegistryConfig) (RegistryHandler, error) {
+func (*defaultRegistryHandlerFactory) CreateHandler(regCfg *config.SourceConfig) (RegistryHandler, error) {
 	if regCfg == nil {
 		return nil, fmt.Errorf("registry configuration cannot be nil")
 	}
