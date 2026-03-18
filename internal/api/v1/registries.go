@@ -173,6 +173,8 @@ func writeRegistryError(w http.ResponseWriter, err error) {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 	case errors.Is(err, service.ErrRegistryAlreadyExists):
 		common.WriteErrorResponse(w, err.Error(), http.StatusConflict)
+	case errors.Is(err, service.ErrSourceNotFound):
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 	default:
 		slog.Error("unexpected registry error", "error", err)
 		common.WriteErrorResponse(w, "internal server error", http.StatusInternalServerError)

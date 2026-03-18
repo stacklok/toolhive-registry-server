@@ -96,21 +96,43 @@ func (s *dbService) ListServers(
 		params.Version = &options.Version
 	}
 
-	// Note: this function fetches a list of servers. In case no records are
-	// found, the called function should return an empty slice as it's
-	// customary in Go.
+	// Fetch servers in a loop to ensure we have enough results after dedup.
+	// Dedup can remove entries when multiple sources provide the same name,
+	// so a single SQL fetch of limit+1 rows may yield fewer than limit
+	// deduplicated results. We loop, advancing the SQL cursor, until we
+	// have enough or the database is exhausted.
+	//
+	// All fetched helpers are accumulated and deduped together to ensure
+	// consistent cross-batch dedup (a name's winning source must be the
+	// same regardless of batch boundaries).
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
-		servers, err := querier.ListServers(ctx, params)
-		if err != nil {
-			return nil, err
-		}
+		target := options.Limit + 1 // +1 to detect hasMore
+		var allHelpers []helper
+		batchParams := params // copy so we can mutate cursor
 
-		helpers := make([]helper, 0, len(servers))
-		for _, server := range servers {
-			helpers = append(helpers, listServersRowToHelper(server))
-		}
+		for {
+			servers, err := querier.ListServers(ctx, batchParams)
+			if err != nil {
+				return nil, err
+			}
 
-		return deduplicateHelpers(helpers), nil
+			for _, server := range servers {
+				allHelpers = append(allHelpers, listServersRowToHelper(server))
+			}
+
+			deduped := deduplicateHelpers(allHelpers)
+
+			// Stop if we have enough deduplicated results or SQL returned
+			// fewer rows than requested (no more data).
+			if len(deduped) >= target || int64(len(servers)) < batchParams.Size {
+				return deduped, nil
+			}
+
+			// Advance cursor to the last fetched row's (name, version)
+			lastRow := servers[len(servers)-1]
+			batchParams.CursorName = &lastRow.Name
+			batchParams.CursorVersion = &lastRow.Version
+		}
 	}
 
 	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit)
