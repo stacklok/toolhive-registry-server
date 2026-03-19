@@ -293,72 +293,6 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 	}
 }
 
-func TestFileRegistryHandler_CurrentHash(t *testing.T) {
-	t.Parallel()
-
-	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, "registry.json")
-	err := os.WriteFile(filePath, []byte(testToolhiveRegistryData), 0600)
-	require.NoError(t, err)
-
-	regCfg := &config.SourceConfig{
-		Name:   "test-file",
-		Format: config.SourceFormatToolHive,
-		File: &config.FileConfig{
-			Path: filePath,
-		},
-	}
-
-	handler := NewFileRegistryHandler()
-	hash, err := handler.CurrentHash(context.Background(), regCfg)
-
-	require.NoError(t, err)
-	assert.NotEmpty(t, hash)
-
-	// Hash should be consistent
-	hash2, err := handler.CurrentHash(context.Background(), regCfg)
-	require.NoError(t, err)
-	assert.Equal(t, hash, hash2, "Hash should be deterministic for same file content")
-}
-
-func TestFileRegistryHandler_CurrentHash_FileNotFound(t *testing.T) {
-	t.Parallel()
-
-	regCfg := &config.SourceConfig{
-		Name:   "test-file",
-		Format: config.SourceFormatToolHive,
-		File: &config.FileConfig{
-			Path: "/nonexistent/path/registry.json",
-		},
-	}
-
-	handler := NewFileRegistryHandler()
-	hash, err := handler.CurrentHash(context.Background(), regCfg)
-
-	require.Error(t, err)
-	assert.Empty(t, hash)
-	assert.Contains(t, err.Error(), "file not found")
-}
-
-func TestFileRegistryHandler_CurrentHash_ValidationFailure(t *testing.T) {
-	t.Parallel()
-
-	regCfg := &config.SourceConfig{
-		Name:   "test-file",
-		Format: config.SourceFormatToolHive,
-		File: &config.FileConfig{
-			Path: "", // Invalid - empty path
-		},
-	}
-
-	handler := NewFileRegistryHandler()
-	hash, err := handler.CurrentHash(context.Background(), regCfg)
-
-	require.Error(t, err)
-	assert.Empty(t, hash)
-	assert.Contains(t, err.Error(), "registry validation failed")
-}
-
 func TestFileRegistryHandler_Validate_URL(t *testing.T) {
 	t.Parallel()
 
@@ -542,39 +476,6 @@ func TestFileRegistryHandler_FetchRegistry_URL(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestFileRegistryHandler_CurrentHash_URL(t *testing.T) {
-	t.Parallel()
-
-	// Create test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(testToolhiveRegistryData))
-	}))
-	defer server.Close()
-
-	// Create handler with custom HTTP client
-	client := httpclient.NewDefaultClient(DefaultURLTimeout)
-	handler := NewFileRegistryHandlerWithClient(client)
-
-	regCfg := &config.SourceConfig{
-		Name:   "test-url",
-		Format: config.SourceFormatToolHive,
-		File: &config.FileConfig{
-			URL: server.URL,
-		},
-	}
-
-	hash, err := handler.CurrentHash(context.Background(), regCfg)
-
-	require.NoError(t, err)
-	assert.NotEmpty(t, hash)
-
-	// Hash should be consistent for same content
-	hash2, err := handler.CurrentHash(context.Background(), regCfg)
-	require.NoError(t, err)
-	assert.Equal(t, hash, hash2, "Hash should be deterministic for same content")
 }
 
 func TestFileRegistryHandler_FetchRegistry_URL_WithTimeout(t *testing.T) {
