@@ -831,6 +831,13 @@ const docTemplate = `{
                     "status": {
                         "$ref": "#/components/schemas/model.Status"
                     },
+                    "statusChangedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "statusMessage": {
+                        "type": "string"
+                    },
                     "updatedAt": {
                         "format": "date-time",
                         "type": "string"
