@@ -2,9 +2,11 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -96,21 +98,47 @@ func (s *dbService) ListServers(
 		params.Version = &options.Version
 	}
 
-	// Note: this function fetches a list of servers. In case no records are
-	// found, the called function should return an empty slice as it's
-	// customary in Go.
+	// Fetch servers in a loop to ensure we have enough results after dedup.
+	// Dedup can remove entries when multiple sources provide the same name,
+	// so a single SQL fetch of limit+1 rows may yield fewer than limit
+	// deduplicated results. We loop, advancing the SQL cursor, until we
+	// have enough or the database is exhausted.
+	//
+	// All fetched helpers are accumulated and deduped together to ensure
+	// consistent cross-batch dedup (a name's winning source must be the
+	// same regardless of batch boundaries).
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
-		servers, err := querier.ListServers(ctx, params)
-		if err != nil {
-			return nil, err
+		const maxFetchIterations = 10 // safety cap to prevent runaway loops
+		target := options.Limit + 1   // +1 to detect hasMore
+		var allHelpers []helper
+		batchParams := params // copy so we can mutate cursor
+
+		for range maxFetchIterations {
+			servers, err := querier.ListServers(ctx, batchParams)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, server := range servers {
+				allHelpers = append(allHelpers, listServersRowToHelper(server))
+			}
+
+			deduped := deduplicateHelpers(allHelpers)
+
+			// Stop if we have enough deduplicated results or SQL returned
+			// fewer rows than requested (no more data).
+			if len(deduped) >= target || int64(len(servers)) < batchParams.Size {
+				return deduped, nil
+			}
+
+			// Advance cursor to the last fetched row's (name, version)
+			lastRow := servers[len(servers)-1]
+			batchParams.CursorName = &lastRow.Name
+			batchParams.CursorVersion = &lastRow.Version
 		}
 
-		helpers := make([]helper, 0, len(servers))
-		for _, server := range servers {
-			helpers = append(helpers, listServersRowToHelper(server))
-		}
-
-		return deduplicateHelpers(helpers), nil
+		// Iteration cap reached — return what we have
+		return deduplicateHelpers(allHelpers), nil
 	}
 
 	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit)
@@ -304,12 +332,14 @@ func (s *dbService) GetServerVersion(
 
 // insertServerVersionData inserts the server version record and returns the entry_version ID.
 // It validates unique constraints on (entry_id, version) and returns ErrVersionAlreadyExists if violated.
+// When claimsJSON is non-nil it is stored on new entries and verified against existing entries.
 func insertServerVersionData(
 	ctx context.Context,
 	querier *sqlc.Queries,
 	serverData *upstreamv0.ServerJSON,
 	registryID uuid.UUID,
 	maxMetaSize int,
+	claimsJSON []byte,
 ) (uuid.UUID, error) {
 	// Prepare repository fields
 	var repoURL, repoID, repoSubfolder, repoType *string
@@ -329,7 +359,8 @@ func insertServerVersionData(
 	now := time.Now()
 
 	// Get or create the registry entry (one per unique name)
-	entryID, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
+	var entryID uuid.UUID
+	existing, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
 		SourceID:  registryID,
 		EntryType: sqlc.EntryTypeMCP,
 		Name:      serverData.Name,
@@ -339,9 +370,19 @@ func insertServerVersionData(
 			SourceID:  registryID,
 			EntryType: sqlc.EntryTypeMCP,
 			Name:      serverData.Name,
+			Claims:    claimsJSON,
 			CreatedAt: &now,
 			UpdatedAt: &now,
 		})
+	} else if err == nil {
+		entryID = existing.ID
+		// Verify claim consistency: if both the existing entry and the new
+		// publish request carry claims, they must match.
+		if claimsJSON != nil && existing.Claims != nil {
+			if !claimsMatch(existing.Claims, claimsJSON) {
+				return uuid.Nil, fmt.Errorf("%w: claims do not match existing entry", service.ErrClaimsMismatch)
+			}
+		}
 	}
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("failed to get or create registry entry: %w", err)
@@ -557,8 +598,19 @@ func (s *dbService) PublishServerVersion(
 		return nil, err
 	}
 
+	// Serialize claims to JSON for storage
+	var claimsJSON []byte
+	if options.Claims != nil {
+		var err error
+		claimsJSON, err = json.Marshal(options.Claims)
+		if err != nil {
+			otel.RecordError(span, err)
+			return nil, fmt.Errorf("failed to serialize claims: %w", err)
+		}
+	}
+
 	// Execute the publish operation in a transaction
-	if err := s.executePublishTransaction(ctx, serverData); err != nil {
+	if err := s.executePublishTransaction(ctx, serverData, claimsJSON); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -586,6 +638,7 @@ func (s *dbService) PublishServerVersion(
 func (s *dbService) executePublishTransaction(
 	ctx context.Context,
 	serverData *upstreamv0.ServerJSON,
+	claimsJSON []byte,
 ) error {
 	// Begin transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
@@ -611,7 +664,7 @@ func (s *dbService) executePublishTransaction(
 	}
 
 	// Insert server and related data
-	if err := s.insertServerData(ctx, querier, serverData, registry.ID); err != nil {
+	if err := s.insertServerData(ctx, querier, serverData, registry.ID, claimsJSON); err != nil {
 		return err
 	}
 
@@ -629,9 +682,10 @@ func (s *dbService) insertServerData(
 	querier *sqlc.Queries,
 	serverData *upstreamv0.ServerJSON,
 	registryID uuid.UUID,
+	claimsJSON []byte,
 ) error {
 	// Insert the server version
-	serverVersionID, err := insertServerVersionData(ctx, querier, serverData, registryID, s.maxMetaSize)
+	serverVersionID, err := insertServerVersionData(ctx, querier, serverData, registryID, s.maxMetaSize, claimsJSON)
 	if err != nil {
 		return err
 	}
@@ -818,7 +872,7 @@ func lookupAndDeleteEntryVersion(
 	name string,
 	version string,
 ) (uuid.UUID, error) {
-	entryID, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
+	existing, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
 		SourceID:  registryID,
 		EntryType: entryType,
 		Name:      name,
@@ -831,7 +885,7 @@ func lookupAndDeleteEntryVersion(
 	}
 
 	rowsAffected, err := querier.DeleteEntryVersion(ctx, sqlc.DeleteEntryVersionParams{
-		EntryID: entryID,
+		EntryID: existing.ID,
 		Version: version,
 	})
 	if err != nil {
@@ -842,7 +896,7 @@ func lookupAndDeleteEntryVersion(
 		return uuid.Nil, fmt.Errorf("%w: %s@%s", service.ErrNotFound, name, version)
 	}
 
-	return entryID, nil
+	return existing.ID, nil
 }
 
 // cleanupOrphanedEntry removes the parent registry entry if no versions remain.
@@ -861,6 +915,18 @@ func cleanupOrphanedEntry(
 		}
 	}
 	return nil
+}
+
+// claimsMatch compares two JSONB claim values for equality.
+func claimsMatch(a, b []byte) bool {
+	var ma, mb map[string]any
+	if err := json.Unmarshal(a, &ma); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(b, &mb); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(ma, mb)
 }
 
 // querierFunction is a function that uses the given querier object to run the

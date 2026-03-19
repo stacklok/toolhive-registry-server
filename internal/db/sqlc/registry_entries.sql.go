@@ -78,7 +78,7 @@ func (q *Queries) DeleteRegistryEntryByID(ctx context.Context, id uuid.UUID) (in
 }
 
 const getRegistryEntryByName = `-- name: GetRegistryEntryByName :one
-SELECT id
+SELECT id, claims
   FROM registry_entry
  WHERE source_id = $1
    AND entry_type = $2
@@ -91,11 +91,16 @@ type GetRegistryEntryByNameParams struct {
 	Name      string    `json:"name"`
 }
 
-func (q *Queries) GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (uuid.UUID, error) {
+type GetRegistryEntryByNameRow struct {
+	ID     uuid.UUID `json:"id"`
+	Claims []byte    `json:"claims"`
+}
+
+func (q *Queries) GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (GetRegistryEntryByNameRow, error) {
 	row := q.db.QueryRow(ctx, getRegistryEntryByName, arg.SourceID, arg.EntryType, arg.Name)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
+	var i GetRegistryEntryByNameRow
+	err := row.Scan(&i.ID, &i.Claims)
+	return i, err
 }
 
 const insertEntryVersion = `-- name: InsertEntryVersion :one
@@ -144,6 +149,7 @@ INSERT INTO registry_entry (
     source_id,
     entry_type,
     name,
+    claims,
     created_at,
     updated_at
 ) VALUES (
@@ -151,7 +157,8 @@ INSERT INTO registry_entry (
     $2,
     $3,
     $4,
-    $5
+    $5,
+    $6
 ) RETURNING id
 `
 
@@ -159,6 +166,7 @@ type InsertRegistryEntryParams struct {
 	SourceID  uuid.UUID  `json:"source_id"`
 	EntryType EntryType  `json:"entry_type"`
 	Name      string     `json:"name"`
+	Claims    []byte     `json:"claims"`
 	CreatedAt *time.Time `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`
 }
@@ -168,6 +176,7 @@ func (q *Queries) InsertRegistryEntry(ctx context.Context, arg InsertRegistryEnt
 		arg.SourceID,
 		arg.EntryType,
 		arg.Name,
+		arg.Claims,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

@@ -58,7 +58,7 @@ type Querier interface {
 	GetLatestVersionForServer(ctx context.Context, arg GetLatestVersionForServerParams) (string, error)
 	GetManagedSources(ctx context.Context) ([]GetManagedSourcesRow, error)
 	GetRegistryByName(ctx context.Context, name string) (Registry, error)
-	GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (uuid.UUID, error)
+	GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (GetRegistryEntryByNameRow, error)
 	GetServerIDsByRegistryNameVersion(ctx context.Context, sourceID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error)
 	GetServerVersion(ctx context.Context, arg GetServerVersionParams) ([]GetServerVersionRow, error)
 	GetSkillVersion(ctx context.Context, arg GetSkillVersionParams) ([]GetSkillVersionRow, error)

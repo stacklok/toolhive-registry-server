@@ -84,7 +84,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 
 	slog.Info("Loaded configuration",
 		"config_path", configPath,
-		"registry_name", cfg.GetRegistryName(),
+		"source_count", len(cfg.Sources),
 		"registry_count", len(cfg.Registries),
 		"auth_mode", cfg.Auth.Mode,
 	)
