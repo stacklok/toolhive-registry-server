@@ -115,7 +115,7 @@ func calculatePollingInterval() time.Duration {
 
 // Start begins background sync coordination for all registries
 func (c *defaultCoordinator) Start(ctx context.Context) error {
-	slog.Info("Starting background sync coordinator", "source_count", len(c.config.Sources))
+	slog.Info("Starting background sync coordinator", "registry_count", len(c.config.Registries))
 
 	// Create cancellable context for this coordinator
 	coordCtx, cancel := context.WithCancel(ctx)
@@ -126,7 +126,7 @@ func (c *defaultCoordinator) Start(ctx context.Context) error {
 	}()
 
 	// Load or initialize sync status for all registries
-	if err := c.statusSvc.Initialize(ctx, c.config); err != nil {
+	if err := c.statusSvc.Initialize(ctx, c.config.Registries); err != nil {
 		return fmt.Errorf("failed to initialize registry sync status: %w", err)
 	}
 

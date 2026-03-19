@@ -22,8 +22,11 @@
 #   postgres:5432:registry:db_app:app_password
 #   postgres:5432:registry:db_migrator:migration_password
 
-# Sources configuration (can have multiple sources)
-sources:
+# Registry name/identifier
+registryName: docker-registry
+
+# Registries configuration (can have multiple registries)
+registries:
   - name: local-file
     # Data format: toolhive (native) or upstream (MCP registry format)
     format: upstream
@@ -38,10 +41,6 @@ sources:
     syncPolicy:
       # Check for file changes every 5 minutes
       interval: "5m"
-
-registries:
-  - name: default
-    sources: ["local-file"]
 
 auth:
   mode: anonymous

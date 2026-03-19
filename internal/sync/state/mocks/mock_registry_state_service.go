@@ -43,10 +43,10 @@ func (m *MockRegistryStateService) EXPECT() *MockRegistryStateServiceMockRecorde
 }
 
 // GetNextSyncJob mocks base method.
-func (m *MockRegistryStateService) GetNextSyncJob(ctx context.Context, predicate func(*config.SourceConfig, *status.SyncStatus) bool) (*config.SourceConfig, error) {
+func (m *MockRegistryStateService) GetNextSyncJob(ctx context.Context, predicate func(*config.RegistryConfig, *status.SyncStatus) bool) (*config.RegistryConfig, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetNextSyncJob", ctx, predicate)
-	ret0, _ := ret[0].(*config.SourceConfig)
+	ret0, _ := ret[0].(*config.RegistryConfig)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -73,17 +73,17 @@ func (mr *MockRegistryStateServiceMockRecorder) GetSyncStatus(ctx, registryName 
 }
 
 // Initialize mocks base method.
-func (m *MockRegistryStateService) Initialize(ctx context.Context, cfg *config.Config) error {
+func (m *MockRegistryStateService) Initialize(ctx context.Context, registryConfigs []config.RegistryConfig) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Initialize", ctx, cfg)
+	ret := m.ctrl.Call(m, "Initialize", ctx, registryConfigs)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Initialize indicates an expected call of Initialize.
-func (mr *MockRegistryStateServiceMockRecorder) Initialize(ctx, cfg any) *gomock.Call {
+func (mr *MockRegistryStateServiceMockRecorder) Initialize(ctx, registryConfigs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Initialize", reflect.TypeOf((*MockRegistryStateService)(nil).Initialize), ctx, cfg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Initialize", reflect.TypeOf((*MockRegistryStateService)(nil).Initialize), ctx, registryConfigs)
 }
 
 // ListSyncStatuses mocks base method.

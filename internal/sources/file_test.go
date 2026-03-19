@@ -73,13 +73,13 @@ func TestFileRegistryHandler_Validate(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		registryConfig *config.SourceConfig
+		registryConfig *config.RegistryConfig
 		expectError    bool
 		errorContains  string
 	}{
 		{
 			name: "valid file config with absolute path",
-			registryConfig: &config.SourceConfig{
+			registryConfig: &config.RegistryConfig{
 				Name: "test-file",
 				File: &config.FileConfig{
 					Path: "/tmp/registry.json",
@@ -89,7 +89,7 @@ func TestFileRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "valid file config with relative path",
-			registryConfig: &config.SourceConfig{
+			registryConfig: &config.RegistryConfig{
 				Name: "test-file",
 				File: &config.FileConfig{
 					Path: "./data/registry.json",
@@ -105,7 +105,7 @@ func TestFileRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "nil file config",
-			registryConfig: &config.SourceConfig{
+			registryConfig: &config.RegistryConfig{
 				Name: "test-file",
 				File: nil,
 			},
@@ -114,7 +114,7 @@ func TestFileRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "empty file path and url",
-			registryConfig: &config.SourceConfig{
+			registryConfig: &config.RegistryConfig{
 				Name: "test-file",
 				File: &config.FileConfig{
 					Path: "",
@@ -150,7 +150,7 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 	tests := []struct {
 		name           string
 		setupFile      func(t *testing.T) string
-		registryConfig func(filePath string) *config.SourceConfig
+		registryConfig func(filePath string) *config.RegistryConfig
 		expectError    bool
 		errorContains  string
 		checkResult    func(t *testing.T, result *FetchResult)
@@ -165,8 +165,8 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 				require.NoError(t, err)
 				return filePath
 			},
-			registryConfig: func(filePath string) *config.SourceConfig {
-				return &config.SourceConfig{
+			registryConfig: func(filePath string) *config.RegistryConfig {
+				return &config.RegistryConfig{
 					Name:   "test-file",
 					Format: config.SourceFormatToolHive,
 					File: &config.FileConfig{
@@ -193,8 +193,8 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 				require.NoError(t, err)
 				return filePath
 			},
-			registryConfig: func(filePath string) *config.SourceConfig {
-				return &config.SourceConfig{
+			registryConfig: func(filePath string) *config.RegistryConfig {
+				return &config.RegistryConfig{
 					Name:   "test-file",
 					Format: config.SourceFormatToolHive,
 					File: &config.FileConfig{
@@ -216,8 +216,8 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 			setupFile: func(_ *testing.T) string {
 				return "/nonexistent/path/registry.json"
 			},
-			registryConfig: func(filePath string) *config.SourceConfig {
-				return &config.SourceConfig{
+			registryConfig: func(filePath string) *config.RegistryConfig {
+				return &config.RegistryConfig{
 					Name:   "test-file",
 					Format: config.SourceFormatToolHive,
 					File: &config.FileConfig{
@@ -238,8 +238,8 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 				require.NoError(t, err)
 				return filePath
 			},
-			registryConfig: func(filePath string) *config.SourceConfig {
-				return &config.SourceConfig{
+			registryConfig: func(filePath string) *config.RegistryConfig {
+				return &config.RegistryConfig{
 					Name:   "test-file",
 					Format: config.SourceFormatToolHive,
 					File: &config.FileConfig{
@@ -255,8 +255,8 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 			setupFile: func(_ *testing.T) string {
 				return "/tmp/registry.json"
 			},
-			registryConfig: func(_ string) *config.SourceConfig {
-				return &config.SourceConfig{
+			registryConfig: func(_ string) *config.RegistryConfig {
+				return &config.RegistryConfig{
 					Name: "test-file",
 					File: &config.FileConfig{
 						Path: "", // Invalid - empty path
@@ -298,13 +298,13 @@ func TestFileRegistryHandler_Validate_URL(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		registryConfig *config.SourceConfig
+		registryConfig *config.RegistryConfig
 		expectError    bool
 		errorContains  string
 	}{
 		{
 			name: "valid url config",
-			registryConfig: &config.SourceConfig{
+			registryConfig: &config.RegistryConfig{
 				Name: "test-url",
 				File: &config.FileConfig{
 					URL: "https://example.com/registry.json",
@@ -314,7 +314,7 @@ func TestFileRegistryHandler_Validate_URL(t *testing.T) {
 		},
 		{
 			name: "valid url config with timeout",
-			registryConfig: &config.SourceConfig{
+			registryConfig: &config.RegistryConfig{
 				Name: "test-url",
 				File: &config.FileConfig{
 					URL:     "https://example.com/registry.json",
@@ -325,7 +325,7 @@ func TestFileRegistryHandler_Validate_URL(t *testing.T) {
 		},
 		{
 			name: "both path and url specified",
-			registryConfig: &config.SourceConfig{
+			registryConfig: &config.RegistryConfig{
 				Name: "test-file",
 				File: &config.FileConfig{
 					Path: "/tmp/registry.json",
@@ -337,7 +337,7 @@ func TestFileRegistryHandler_Validate_URL(t *testing.T) {
 		},
 		{
 			name: "neither path nor url specified",
-			registryConfig: &config.SourceConfig{
+			registryConfig: &config.RegistryConfig{
 				Name: "test-file",
 				File: &config.FileConfig{},
 			},
@@ -452,7 +452,7 @@ func TestFileRegistryHandler_FetchRegistry_URL(t *testing.T) {
 			client := httpclient.NewDefaultClient(DefaultURLTimeout)
 			handler := NewFileRegistryHandlerWithClient(client)
 
-			regCfg := &config.SourceConfig{
+			regCfg := &config.RegistryConfig{
 				Name:   "test-url",
 				Format: tt.format,
 				File: &config.FileConfig{
@@ -492,7 +492,7 @@ func TestFileRegistryHandler_FetchRegistry_URL_WithTimeout(t *testing.T) {
 	client := httpclient.NewDefaultClient(DefaultURLTimeout)
 	handler := NewFileRegistryHandlerWithClient(client)
 
-	regCfg := &config.SourceConfig{
+	regCfg := &config.RegistryConfig{
 		Name:   "test-url",
 		Format: config.SourceFormatToolHive,
 		File: &config.FileConfig{

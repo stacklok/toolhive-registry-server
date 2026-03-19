@@ -55,7 +55,7 @@ type defaultAutomaticSyncChecker struct{}
 // Returns: (syncNeeded, nextSyncTime, error)
 // nextSyncTime is a future time when the next sync should occur, or zero time if no schedule configured
 func (*defaultAutomaticSyncChecker) IsIntervalSyncNeeded(
-	_ *config.SourceConfig, syncStatus *status.SyncStatus,
+	_ *config.RegistryConfig, syncStatus *status.SyncStatus,
 ) (bool, time.Time, error) {
 	// Read sync schedule from stored state instead of config
 	// Non-synced registries (managed, kubernetes) will have an empty SyncSchedule

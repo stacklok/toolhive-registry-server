@@ -53,7 +53,9 @@ extraVolumeMounts:
 
 # Registry server configuration with CNPG PostgreSQL
 config:
-  sources:
+  registryName: "toolhive-dev"
+
+  registries:
     - name: toolhive
       format: toolhive
       git:
@@ -62,10 +64,6 @@ config:
         path: pkg/catalog/toolhive/data/registry.json
       syncPolicy:
         interval: "5m"
-
-  registries:
-    - name: default
-      sources: ["toolhive"]
 
   # CNPG PostgreSQL database configuration
   # Uses the CNPG read-write service (registry-db-rw)

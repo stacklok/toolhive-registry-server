@@ -132,8 +132,8 @@ func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 			Database:      database.DBName,
 			SSLMode:       "disable",
 		},
-		Sources: []config.SourceConfig{
-			// Add a minimal source config to satisfy validation
+		Registries: []config.RegistryConfig{
+			// Add a minimal registry config to satisfy validation
 			{
 				Name:   "test",
 				Format: "toolhive",

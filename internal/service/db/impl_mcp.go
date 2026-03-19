@@ -96,47 +96,21 @@ func (s *dbService) ListServers(
 		params.Version = &options.Version
 	}
 
-	// Fetch servers in a loop to ensure we have enough results after dedup.
-	// Dedup can remove entries when multiple sources provide the same name,
-	// so a single SQL fetch of limit+1 rows may yield fewer than limit
-	// deduplicated results. We loop, advancing the SQL cursor, until we
-	// have enough or the database is exhausted.
-	//
-	// All fetched helpers are accumulated and deduped together to ensure
-	// consistent cross-batch dedup (a name's winning source must be the
-	// same regardless of batch boundaries).
+	// Note: this function fetches a list of servers. In case no records are
+	// found, the called function should return an empty slice as it's
+	// customary in Go.
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
-		const maxFetchIterations = 10 // safety cap to prevent runaway loops
-		target := options.Limit + 1   // +1 to detect hasMore
-		var allHelpers []helper
-		batchParams := params // copy so we can mutate cursor
-
-		for range maxFetchIterations {
-			servers, err := querier.ListServers(ctx, batchParams)
-			if err != nil {
-				return nil, err
-			}
-
-			for _, server := range servers {
-				allHelpers = append(allHelpers, listServersRowToHelper(server))
-			}
-
-			deduped := deduplicateHelpers(allHelpers)
-
-			// Stop if we have enough deduplicated results or SQL returned
-			// fewer rows than requested (no more data).
-			if len(deduped) >= target || int64(len(servers)) < batchParams.Size {
-				return deduped, nil
-			}
-
-			// Advance cursor to the last fetched row's (name, version)
-			lastRow := servers[len(servers)-1]
-			batchParams.CursorName = &lastRow.Name
-			batchParams.CursorVersion = &lastRow.Version
+		servers, err := querier.ListServers(ctx, params)
+		if err != nil {
+			return nil, err
 		}
 
-		// Iteration cap reached — return what we have
-		return deduplicateHelpers(allHelpers), nil
+		helpers := make([]helper, 0, len(servers))
+		for _, server := range servers {
+			helpers = append(helpers, listServersRowToHelper(server))
+		}
+
+		return deduplicateHelpers(helpers), nil
 	}
 
 	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit)

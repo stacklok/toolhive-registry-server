@@ -156,7 +156,7 @@ type DataChangeDetector interface {
 type AutomaticSyncChecker interface {
 	// IsIntervalSyncNeeded checks if sync is needed based on time interval for a specific registry
 	// Returns (syncNeeded, nextSyncTime, error) where nextSyncTime is always in the future
-	IsIntervalSyncNeeded(regCfg *config.SourceConfig, syncStatus *status.SyncStatus) (bool, time.Time, error)
+	IsIntervalSyncNeeded(regCfg *config.RegistryConfig, syncStatus *status.SyncStatus) (bool, time.Time, error)
 }
 
 // defaultSyncManager is the default implementation of Manager
@@ -187,7 +187,7 @@ func NewDefaultSyncManager(
 // along with a prefetched FetchResult when data has changed.
 func (s *defaultSyncManager) ShouldSync(
 	ctx context.Context,
-	regCfg *config.SourceConfig,
+	regCfg *config.RegistryConfig,
 	syncStatus *status.SyncStatus,
 	manualSyncRequested bool,
 ) (Reason, *sources.FetchResult) {
@@ -276,7 +276,7 @@ func (*defaultSyncManager) isSyncNeededForState(syncStatus *status.SyncStatus) b
 
 // isFilterChanged checks if the filter has changed compared to the last applied configuration
 func (*defaultSyncManager) isFilterChanged(
-	_ context.Context, regCfg *config.SourceConfig, syncStatus *status.SyncStatus,
+	_ context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus,
 ) bool {
 	currentFilter := regCfg.Filter
 	currentFilterJSON, err := json.Marshal(currentFilter)
@@ -393,7 +393,7 @@ func (s *defaultSyncManager) fetchAndProcessRegistryData(
 // applyFilteringIfConfigured applies filtering to fetch result if registry has filter configuration
 func (s *defaultSyncManager) applyFilteringIfConfigured(
 	ctx context.Context,
-	regCfg *config.SourceConfig,
+	regCfg *config.RegistryConfig,
 	fetchResult *sources.FetchResult) *Error {
 	if regCfg.Filter != nil {
 		slog.Info("Applying registry filters",
@@ -431,7 +431,7 @@ func (s *defaultSyncManager) applyFilteringIfConfigured(
 // storeRegistryData stores the registry data using the storage manager
 func (s *defaultSyncManager) storeRegistryData(
 	ctx context.Context,
-	regCfg *config.SourceConfig,
+	regCfg *config.RegistryConfig,
 	fetchResult *sources.FetchResult) *Error {
 	if err := s.writer.Store(ctx, regCfg.Name, fetchResult.Registry); err != nil {
 		slog.Error("Failed to store registry data", "error", err)
