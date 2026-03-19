@@ -235,6 +235,12 @@ func (s *defaultSyncManager) ShouldSync(
 				if manualSyncRequested {
 					reason = ReasonManualNoChanges
 				}
+				if filterChanged {
+					// Source data hasn't changed, but filter configuration has —
+					// re-apply filters to the existing data.
+					prefetched = fetchResult
+					reason = ReasonFilterChanged
+				}
 			}
 		}
 		dataChangedString = fmt.Sprintf("%t", dataChanged)
