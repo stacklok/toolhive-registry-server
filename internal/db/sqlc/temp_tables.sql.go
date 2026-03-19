@@ -54,7 +54,7 @@ const createTempRegistryEntryTable = `-- name: CreateTempRegistryEntryTable :exe
 
 
 CREATE TEMP TABLE temp_registry_entry ON COMMIT DROP AS
-SELECT id, source_id, entry_type, name, created_at, updated_at FROM registry_entry
+SELECT id, source_id, entry_type, name, created_at, updated_at, claims FROM registry_entry
   WITH NO DATA
 `
 

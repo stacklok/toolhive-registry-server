@@ -48,11 +48,11 @@ func TestPublishEntry(t *testing.T) {
 			wantError:  "invalid request body:",
 		},
 		{
-			name:       "server field required",
+			name:       "neither server nor skill provided",
 			body:       mustMarshal(publishEntryRequest{}),
 			setupMock:  func(_ *mocks.MockRegistryService) {},
 			wantStatus: http.StatusBadRequest,
-			wantError:  "server field is required",
+			wantError:  "exactly one of 'server' or 'skill' must be provided",
 		},
 		{
 			name: "version already exists",
@@ -101,7 +101,7 @@ func TestPublishEntry(t *testing.T) {
 			mockSvc := mocks.NewMockRegistryService(ctrl)
 			tt.setupMock(mockSvc)
 
-			router := Router(mockSvc)
+			router := Router(mockSvc, nil)
 			req, err := http.NewRequest("POST", "/entries", bytes.NewReader(tt.body))
 			require.NoError(t, err)
 
@@ -201,7 +201,7 @@ func TestDeletePublishedEntry(t *testing.T) {
 			mockSvc := mocks.NewMockRegistryService(ctrl)
 			tt.setupMock(mockSvc)
 
-			router := Router(mockSvc)
+			router := Router(mockSvc, nil)
 			req, err := http.NewRequest("DELETE", tt.path, nil)
 			require.NoError(t, err)
 

@@ -287,7 +287,18 @@ func (s *dbService) PublishSkill(
 		return nil, fmt.Errorf("namespace, name, and version are required")
 	}
 
-	sourceName, err := s.executePublishSkillTransaction(ctx, skill)
+	// Serialize claims to JSON for storage
+	var claimsJSON []byte
+	if options.Claims != nil {
+		var err error
+		claimsJSON, err = json.Marshal(options.Claims)
+		if err != nil {
+			otel.RecordError(span, err)
+			return nil, fmt.Errorf("failed to serialize claims: %w", err)
+		}
+	}
+
+	sourceName, err := s.executePublishSkillTransaction(ctx, skill, claimsJSON)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -308,6 +319,7 @@ func (s *dbService) PublishSkill(
 func (s *dbService) executePublishSkillTransaction(
 	ctx context.Context,
 	skill *service.Skill,
+	claimsJSON []byte,
 ) (string, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.Serializable,
@@ -334,7 +346,8 @@ func (s *dbService) executePublishSkillTransaction(
 	now := time.Now().UTC()
 
 	// Get or create the registry entry (one per unique name)
-	entryID, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
+	var entryID uuid.UUID
+	existing, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
 		SourceID:  managedSource.ID,
 		EntryType: sqlc.EntryTypeSKILL,
 		Name:      skill.Name,
@@ -344,9 +357,19 @@ func (s *dbService) executePublishSkillTransaction(
 			SourceID:  managedSource.ID,
 			EntryType: sqlc.EntryTypeSKILL,
 			Name:      skill.Name,
+			Claims:    claimsJSON,
 			CreatedAt: &now,
 			UpdatedAt: &now,
 		})
+	} else if err == nil {
+		entryID = existing.ID
+		// Verify claim consistency: if both the existing entry and the new
+		// publish request carry claims, they must match.
+		if claimsJSON != nil && existing.Claims != nil {
+			if !claimsMatch(existing.Claims, claimsJSON) {
+				return "", fmt.Errorf("%w: claims do not match existing entry", service.ErrClaimsMismatch)
+			}
+		}
 	}
 	if err != nil {
 		return "", fmt.Errorf("failed to get or create registry entry: %w", err)

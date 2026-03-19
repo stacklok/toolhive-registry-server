@@ -325,7 +325,7 @@ const (
 	DefaultAuthMode AuthMode = AuthModeOAuth
 )
 
-// AuthzConfig defines authorization configuration (parsed but not enforced in Phase 1)
+// AuthzConfig defines authorization configuration for role-based access control
 type AuthzConfig struct {
 	Roles RolesConfig `yaml:"roles,omitempty"`
 }
@@ -354,7 +354,7 @@ type AuthConfig struct {
 	// Required when Mode is "oauth"
 	OAuth *OAuthConfig `yaml:"oauth,omitempty"`
 
-	// Authz contains authorization configuration (parsed but not enforced in Phase 1)
+	// Authz contains authorization configuration for role-based access control
 	Authz *AuthzConfig `yaml:"authz,omitempty"`
 }
 

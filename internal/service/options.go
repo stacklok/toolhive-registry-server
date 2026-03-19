@@ -54,6 +54,10 @@ type serverDataOption interface {
 	setServerData(serverData *upstreamv0.ServerJSON) error
 }
 
+type claimsOption interface {
+	setClaims(claims map[string]any) error
+}
+
 // WithCursor sets the cursor for the ListServers operation
 func WithCursor(cursor string) Option {
 	return func(o any) error {
@@ -212,6 +216,18 @@ func WithLimit(limit int) Option {
 		switch o := o.(type) {
 		case limitOption:
 			return o.setLimit(limit)
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+	}
+}
+
+// WithClaims sets the claims for the PublishServerVersion or PublishSkill operation
+func WithClaims(claims map[string]any) Option {
+	return func(o any) error {
+		switch o := o.(type) {
+		case claimsOption:
+			return o.setClaims(claims)
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
