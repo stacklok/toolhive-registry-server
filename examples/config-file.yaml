@@ -9,11 +9,8 @@
 # Usage:
 #   thv-registry-api serve --config examples/config-file.yaml
 
-# Registry name/identifier (optional, defaults to "default")
-registryName: toolhive
-
-# Registries configuration (can have multiple registries)
-registries:
+# Sources configuration (can have multiple sources)
+sources:
   - name: local-file
     # Data format: toolhive (native) or upstream (MCP registry format)
     format: toolhive
@@ -47,6 +44,10 @@ registries:
     #       - "stable"
     #     exclude:
     #       - "experimental"
+
+registries:
+  - name: default
+    sources: ["local-file"]
 
 auth:
   mode: anonymous

@@ -424,7 +424,7 @@ func buildHTTPServer(
 
 // setupKubernetesReconciler creates a Kubernetes reconciler if any registry uses the Kubernetes source type.
 func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWriter writer.SyncWriter) error {
-	for _, reg := range cfg.Registries {
+	for _, reg := range cfg.Sources {
 		if reg.GetType() != config.SourceTypeKubernetes {
 			continue
 		}
