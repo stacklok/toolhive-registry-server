@@ -50,6 +50,10 @@ type registryNameOption interface {
 	setRegistryName(registryName string) error
 }
 
+type sourceNameOption interface {
+	setSourceName(sourceName string) error
+}
+
 type serverDataOption interface {
 	setServerData(serverData *upstreamv0.ServerJSON) error
 }
@@ -117,6 +121,22 @@ func WithRegistryName(registryName string) Option {
 		switch o := o.(type) {
 		case registryNameOption:
 			return o.setRegistryName(registryName)
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+	}
+}
+
+// WithSourceName sets the source name for the GetSkillVersion operation
+func WithSourceName(sourceName string) Option {
+	return func(o any) error {
+		if sourceName == "" {
+			return fmt.Errorf("invalid source name: %s", sourceName)
+		}
+
+		switch o := o.(type) {
+		case sourceNameOption:
+			return o.setSourceName(sourceName)
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}

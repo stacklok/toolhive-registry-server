@@ -55,7 +55,7 @@ type Querier interface {
 	// Delete a source by name. Go callers guard against deleting wrong creation_type.
 	DeleteSource(ctx context.Context, name string) (int64, error)
 	GetAPISourcesByNames(ctx context.Context, names []string) ([]GetAPISourcesByNamesRow, error)
-	GetLatestVersionForServer(ctx context.Context, arg GetLatestVersionForServerParams) (string, error)
+	GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error)
 	GetManagedSources(ctx context.Context) ([]GetManagedSourcesRow, error)
 	GetRegistryByName(ctx context.Context, name string) (Registry, error)
 	GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (GetRegistryEntryByNameRow, error)
@@ -79,11 +79,18 @@ type Querier interface {
 	InsertSkillOciPackage(ctx context.Context, arg InsertSkillOciPackageParams) error
 	InsertSkillVersion(ctx context.Context, arg InsertSkillVersionParams) (uuid.UUID, error)
 	InsertSkillVersionForSync(ctx context.Context, arg InsertSkillVersionForSyncParams) (uuid.UUID, error)
-	ListAllRegistryNames(ctx context.Context) ([]string, error)
+	// ============================================================================
+	// Source Queries (unified, creation_type guards are in Go)
+	// ============================================================================
+	// Insert a new source with full configuration. creation_type is passed as a parameter.
+	InsertSource(ctx context.Context, arg InsertSourceParams) (Source, error)
+	InsertSourceSync(ctx context.Context, arg InsertSourceSyncParams) (uuid.UUID, error)
+	LinkRegistrySource(ctx context.Context, arg LinkRegistrySourceParams) error
+	ListAllSourceNames(ctx context.Context) ([]string, error)
 	ListEntryVersions(ctx context.Context, entryID uuid.UUID) ([]ListEntryVersionsRow, error)
-	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]ListRegistriesRow, error)
-	ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow, error)
-	ListRegistrySyncsByLastUpdate(ctx context.Context) ([]ListRegistrySyncsByLastUpdateRow, error)
+	// Queries for the new lightweight registry table and registry_source junction.
+	ListRegistries(ctx context.Context) ([]Registry, error)
+	ListRegistrySources(ctx context.Context, registryID uuid.UUID) ([]ListRegistrySourcesRow, error)
 	ListServerPackages(ctx context.Context, versionIds []uuid.UUID) ([]ListServerPackagesRow, error)
 	ListServerRemotes(ctx context.Context, versionIds []uuid.UUID) ([]McpServerRemote, error)
 	ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error)

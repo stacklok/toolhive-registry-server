@@ -78,6 +78,7 @@ SELECT src.source_type AS registry_type,
        OR (sqlc.arg(version)::text = 'latest' AND l.latest_version_id = v.id)
    )
    AND (sqlc.narg(registry_name)::text IS NULL OR rs.registry_id IS NOT NULL)
+   AND (sqlc.narg(source_name)::text IS NULL OR src.name = sqlc.narg(source_name)::text)
    AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text)
  ORDER BY rs.position ASC;
 

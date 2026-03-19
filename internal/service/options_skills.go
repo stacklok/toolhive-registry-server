@@ -68,6 +68,7 @@ func (o *ListSkillsOptions) setCursor(cursor string) error {
 // GetSkillVersionOptions is the options for the GetSkillVersion operation.
 type GetSkillVersionOptions struct {
 	RegistryName string
+	SourceName   string
 	Namespace    string
 	Name         string
 	Version      string
@@ -76,6 +77,12 @@ type GetSkillVersionOptions struct {
 //nolint:unparam
 func (o *GetSkillVersionOptions) setRegistryName(registryName string) error {
 	o.RegistryName = registryName
+	return nil
+}
+
+//nolint:unparam
+func (o *GetSkillVersionOptions) setSourceName(sourceName string) error {
+	o.SourceName = sourceName
 	return nil
 }
 

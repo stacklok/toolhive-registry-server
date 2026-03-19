@@ -25,7 +25,7 @@ type RegistryHandler interface {
 	FetchRegistry(ctx context.Context, regCfg *config.SourceConfig) (*FetchResult, error)
 
 	// Validate validates the registry configuration
-	Validate(regCfg *config.RegistryConfig) error
+	Validate(regCfg *config.SourceConfig) error
 }
 
 // FetchResult contains the result of a fetch operation

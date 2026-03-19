@@ -77,6 +77,25 @@ func (q *Queries) DeleteRegistryEntryByID(ctx context.Context, id uuid.UUID) (in
 	return result.RowsAffected(), nil
 }
 
+const getLatestEntryVersion = `-- name: GetLatestEntryVersion :one
+SELECT l.version
+  FROM latest_entry_version l
+ WHERE l.name = $1
+   AND l.source_id = $2
+`
+
+type GetLatestEntryVersionParams struct {
+	Name     string    `json:"name"`
+	SourceID uuid.UUID `json:"source_id"`
+}
+
+func (q *Queries) GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error) {
+	row := q.db.QueryRow(ctx, getLatestEntryVersion, arg.Name, arg.SourceID)
+	var version string
+	err := row.Scan(&version)
+	return version, err
+}
+
 const getRegistryEntryByName = `-- name: GetRegistryEntryByName :one
 SELECT id, claims
   FROM registry_entry

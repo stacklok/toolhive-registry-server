@@ -2644,7 +2644,7 @@ func TestDeleteServerVersion(t *testing.T) {
 			deleteVersion:     "1.0.0",
 			useRemoteRegistry: true,
 			expectDeleteErr:   true,
-			expectDeleteErrIs: service.ErrNotManagedRegistry,
+			expectDeleteErrIs: service.ErrNoManagedSource,
 		},
 	}
 
@@ -2660,17 +2660,19 @@ func TestDeleteServerVersion(t *testing.T) {
 
 			// Create the registry.
 			if tt.useRemoteRegistry {
-				_, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     tt.registryName,
-					RegType:  sqlc.RegistryTypeREMOTE,
-					Syncable: true,
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         tt.registryName,
+					SourceType:   "git",
+					CreationType: sqlc.CreationTypeAPI,
+					Syncable:     true,
 				})
 				require.NoError(t, err)
 			} else {
-				_, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     tt.registryName,
-					RegType:  sqlc.RegistryTypeMANAGED,
-					Syncable: false,
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         tt.registryName,
+					SourceType:   "managed",
+					CreationType: sqlc.CreationTypeCONFIG,
+					Syncable:     false,
 				})
 				require.NoError(t, err)
 			}
@@ -2679,7 +2681,6 @@ func TestDeleteServerVersion(t *testing.T) {
 			for _, ver := range tt.publishVersions {
 				_, err := svc.PublishServerVersion(
 					ctx,
-					service.WithRegistryName(tt.registryName),
 					service.WithServerData(&upstreamv0.ServerJSON{
 						Name:    tt.serverName,
 						Version: ver,
@@ -2691,7 +2692,6 @@ func TestDeleteServerVersion(t *testing.T) {
 			// Perform the delete.
 			deleteErr := svc.DeleteServerVersion(
 				ctx,
-				service.WithRegistryName(tt.registryName),
 				service.WithName(tt.serverName),
 				service.WithVersion(tt.deleteVersion),
 			)
@@ -2708,7 +2708,6 @@ func TestDeleteServerVersion(t *testing.T) {
 			// Verify the latest pointer.
 			result, err := svc.GetServerVersion(
 				ctx,
-				service.WithRegistryName(tt.registryName),
 				service.WithName(tt.serverName),
 				service.WithVersion("latest"),
 			)
@@ -2790,7 +2789,7 @@ func TestDeleteSkillVersion(t *testing.T) {
 			deleteVersion:     "1.0.0",
 			useRemoteRegistry: true,
 			expectDeleteErr:   true,
-			expectDeleteErrIs: service.ErrNotManagedRegistry,
+			expectDeleteErrIs: service.ErrNoManagedSource,
 		},
 	}
 
@@ -2806,17 +2805,35 @@ func TestDeleteSkillVersion(t *testing.T) {
 
 			// Create the registry.
 			if tt.useRemoteRegistry {
-				_, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     tt.registryName,
-					RegType:  sqlc.RegistryTypeREMOTE,
-					Syncable: true,
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         tt.registryName,
+					SourceType:   "git",
+					CreationType: sqlc.CreationTypeAPI,
+					Syncable:     true,
 				})
 				require.NoError(t, err)
 			} else {
-				_, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     tt.registryName,
-					RegType:  sqlc.RegistryTypeMANAGED,
-					Syncable: false,
+				src, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         tt.registryName,
+					SourceType:   "managed",
+					CreationType: sqlc.CreationTypeCONFIG,
+					Syncable:     false,
+				})
+				require.NoError(t, err)
+
+				now := time.Now()
+				reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         tt.registryName,
+					CreationType: sqlc.CreationTypeCONFIG,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   src.ID,
+					Position:   0,
 				})
 				require.NoError(t, err)
 			}
@@ -2832,7 +2849,6 @@ func TestDeleteSkillVersion(t *testing.T) {
 				_, err := svc.PublishSkill(
 					ctx,
 					skill,
-					service.WithRegistryName(tt.registryName),
 				)
 				require.NoError(t, err)
 			}
@@ -2840,7 +2856,6 @@ func TestDeleteSkillVersion(t *testing.T) {
 			// Perform the delete.
 			deleteErr := svc.DeleteSkillVersion(
 				ctx,
-				service.WithRegistryName(tt.registryName),
 				service.WithName(tt.skillName),
 				service.WithVersion(tt.deleteVersion),
 				service.WithNamespace(namespace),

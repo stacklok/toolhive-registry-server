@@ -81,25 +81,6 @@ func (q *Queries) DeleteServersByRegistry(ctx context.Context, sourceID uuid.UUI
 	return err
 }
 
-const getLatestVersionForServer = `-- name: GetLatestVersionForServer :one
-SELECT l.version
-  FROM latest_entry_version l
- WHERE l.name = $1
-   AND l.source_id = $2
-`
-
-type GetLatestVersionForServerParams struct {
-	Name     string    `json:"name"`
-	SourceID uuid.UUID `json:"source_id"`
-}
-
-func (q *Queries) GetLatestVersionForServer(ctx context.Context, arg GetLatestVersionForServerParams) (string, error) {
-	row := q.db.QueryRow(ctx, getLatestVersionForServer, arg.Name, arg.SourceID)
-	var version string
-	err := row.Scan(&version)
-	return version, err
-}
-
 const getServerIDsByRegistryNameVersion = `-- name: GetServerIDsByRegistryNameVersion :many
 SELECT s.version_id, e.name, v.version
   FROM entry_version v
@@ -165,6 +146,7 @@ SELECT src.source_type as registry_type,
        OR ($3 = 'latest' AND l.latest_version_id = v.id)
    )
    AND ($1::text IS NULL OR rs.registry_id IS NOT NULL)
+   AND ($4::text IS NULL OR src.name = $4::text)
  ORDER BY rs.position ASC
 `
 
@@ -172,6 +154,7 @@ type GetServerVersionParams struct {
 	RegistryName *string `json:"registry_name"`
 	Name         string  `json:"name"`
 	Version      string  `json:"version"`
+	SourceName   *string `json:"source_name"`
 }
 
 type GetServerVersionRow struct {
@@ -195,7 +178,12 @@ type GetServerVersionRow struct {
 }
 
 func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionParams) ([]GetServerVersionRow, error) {
-	rows, err := q.db.Query(ctx, getServerVersion, arg.RegistryName, arg.Name, arg.Version)
+	rows, err := q.db.Query(ctx, getServerVersion,
+		arg.RegistryName,
+		arg.Name,
+		arg.Version,
+		arg.SourceName,
+	)
 	if err != nil {
 		return nil, err
 	}

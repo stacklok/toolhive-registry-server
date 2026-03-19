@@ -115,13 +115,8 @@ SELECT src.source_type as registry_type,
        OR (sqlc.arg(version) = 'latest' AND l.latest_version_id = v.id)
    )
    AND (sqlc.narg(registry_name)::text IS NULL OR rs.registry_id IS NOT NULL)
+   AND (sqlc.narg(source_name)::text IS NULL OR src.name = sqlc.narg(source_name)::text)
  ORDER BY rs.position ASC;
-
--- name: GetLatestVersionForServer :one
-SELECT l.version
-  FROM latest_entry_version l
- WHERE l.name = sqlc.arg(name)
-   AND l.source_id = sqlc.arg(source_id);
 
 -- name: ListServerPackages :many
 SELECT p.server_id,

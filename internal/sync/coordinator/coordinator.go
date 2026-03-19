@@ -175,7 +175,7 @@ func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
 	// Get the next sync job using the predicate to check if sync is needed
 	regCfg, err := c.statusSvc.GetNextSyncJob(
 		ctx,
-		func(regCfg *config.RegistryConfig, syncStatus *status.SyncStatus) bool {
+		func(regCfg *config.SourceConfig, syncStatus *status.SyncStatus) bool {
 			reason, fetchResult := c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
 			if !reason.ShouldSync() {
 				slog.Debug("Registry does not need sync",
@@ -203,7 +203,7 @@ func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
 
 // performRegistrySync executes the sync operation for a registry
 func (c *defaultCoordinator) performRegistrySync(
-	ctx context.Context, regCfg *config.RegistryConfig, prefetched *sources.FetchResult,
+	ctx context.Context, regCfg *config.SourceConfig, prefetched *sources.FetchResult,
 ) {
 	registryName := regCfg.Name
 	startTime := time.Now()

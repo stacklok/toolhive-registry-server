@@ -63,3 +63,9 @@ SELECT id, version
   FROM entry_version
  WHERE entry_id = sqlc.arg(entry_id)
  ORDER BY version ASC;
+
+-- name: GetLatestEntryVersion :one
+SELECT l.version
+  FROM latest_entry_version l
+ WHERE l.name = sqlc.arg(name)
+   AND l.source_id = sqlc.arg(source_id);

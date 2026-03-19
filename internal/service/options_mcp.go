@@ -94,6 +94,7 @@ func (o *ListServerVersionsOptions) setLimit(limit int) error {
 // GetServerVersionOptions is the options for the GetServerVersion operation
 type GetServerVersionOptions struct {
 	RegistryName string
+	SourceName   string
 	Name         string
 	Version      string
 }
@@ -101,6 +102,12 @@ type GetServerVersionOptions struct {
 //nolint:unparam
 func (o *GetServerVersionOptions) setRegistryName(registryName string) error {
 	o.RegistryName = registryName
+	return nil
+}
+
+//nolint:unparam
+func (o *GetServerVersionOptions) setSourceName(sourceName string) error {
+	o.SourceName = sourceName
 	return nil
 }
 

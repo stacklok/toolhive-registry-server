@@ -327,7 +327,7 @@ func TestDefaultSyncManager_PerformSync_WithPrefetched(t *testing.T) {
 
 	// Config points to a non-existent path — if PerformSync attempts a fetch it will fail,
 	// proving the prefetched data was reused instead.
-	regCfg := &config.RegistryConfig{
+	regCfg := &config.SourceConfig{
 		Name:   "test-registry",
 		Format: config.SourceFormatToolHive,
 		File: &config.FileConfig{

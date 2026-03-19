@@ -17,7 +17,7 @@ type defaultDataChangeDetector struct {
 // IsDataChanged checks if source data has changed by comparing hashes for a specific registry.
 // Returns the fetched data so PerformSync can reuse it without a second fetch.
 func (d *defaultDataChangeDetector) IsDataChanged(
-	ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus,
+	ctx context.Context, regCfg *config.SourceConfig, syncStatus *status.SyncStatus,
 ) (bool, *sources.FetchResult, error) {
 	// Check for hash in syncStatus first, then fallback
 	var lastSyncHash string

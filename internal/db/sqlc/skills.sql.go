@@ -84,7 +84,8 @@ SELECT src.source_type AS registry_type,
        OR ($3::text = 'latest' AND l.latest_version_id = v.id)
    )
    AND ($1::text IS NULL OR rs.registry_id IS NOT NULL)
-   AND ($4::text IS NULL OR s.namespace = $4::text)
+   AND ($4::text IS NULL OR src.name = $4::text)
+   AND ($5::text IS NULL OR s.namespace = $5::text)
  ORDER BY rs.position ASC
 `
 
@@ -92,6 +93,7 @@ type GetSkillVersionParams struct {
 	RegistryName *string `json:"registry_name"`
 	Name         string  `json:"name"`
 	Version      string  `json:"version"`
+	SourceName   *string `json:"source_name"`
 	Namespace    *string `json:"namespace"`
 }
 
@@ -123,6 +125,7 @@ func (q *Queries) GetSkillVersion(ctx context.Context, arg GetSkillVersionParams
 		arg.RegistryName,
 		arg.Name,
 		arg.Version,
+		arg.SourceName,
 		arg.Namespace,
 	)
 	if err != nil {

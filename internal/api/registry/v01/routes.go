@@ -283,7 +283,7 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 
 	server, err := routes.service.GetServerVersion(r.Context(), opts...)
 	if err != nil {
-		if errors.Is(err, service.ErrRegistryNotFound) {
+		if errors.Is(err, service.ErrRegistryNotFound) || errors.Is(err, service.ErrNotFound) {
 			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
 			return
 		}

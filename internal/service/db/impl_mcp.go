@@ -275,9 +275,7 @@ func (s *dbService) GetServerVersion(
 		span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 	}
 
-	var registryName *string
 	if options.RegistryName != "" {
-		registryName = &options.RegistryName
 		if err := checkRegistryExists(ctx, s.pool, options.RegistryName); err != nil {
 			otel.RecordError(span, err)
 			return nil, err
@@ -285,9 +283,14 @@ func (s *dbService) GetServerVersion(
 	}
 
 	params := sqlc.GetServerVersionParams{
-		Name:         options.Name,
-		Version:      options.Version,
-		RegistryName: registryName,
+		Name:    options.Name,
+		Version: options.Version,
+	}
+	if options.RegistryName != "" {
+		params.RegistryName = &options.RegistryName
+	}
+	if options.SourceName != "" {
+		params.SourceName = &options.SourceName
 	}
 
 	// Note: this function fetches a single record given name and version.
@@ -303,7 +306,7 @@ func (s *dbService) GetServerVersion(
 			return nil, err
 		}
 		if len(servers) == 0 {
-			return nil, pgx.ErrNoRows
+			return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
 		}
 
 		// Return only the first row (highest priority by position)
@@ -610,7 +613,8 @@ func (s *dbService) PublishServerVersion(
 	}
 
 	// Execute the publish operation in a transaction
-	if err := s.executePublishTransaction(ctx, serverData, claimsJSON); err != nil {
+	sourceName, err := s.executePublishTransaction(ctx, serverData, claimsJSON)
+	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -623,6 +627,7 @@ func (s *dbService) PublishServerVersion(
 
 	// Fetch the inserted server to return it
 	result, err := s.GetServerVersion(ctx,
+		service.WithSourceName(sourceName),
 		service.WithName(serverData.Name),
 		service.WithVersion(serverData.Version),
 	)
@@ -639,14 +644,14 @@ func (s *dbService) executePublishTransaction(
 	ctx context.Context,
 	serverData *upstreamv0.ServerJSON,
 	claimsJSON []byte,
-) error {
+) (string, error) {
 	// Begin transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.Serializable,
 		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		err := tx.Rollback(ctx)
@@ -658,22 +663,22 @@ func (s *dbService) executePublishTransaction(
 	querier := sqlc.New(tx)
 
 	// Find the managed source automatically
-	registry, err := getManagedSource(ctx, querier)
+	source, err := getManagedSource(ctx, querier)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Insert server and related data
-	if err := s.insertServerData(ctx, querier, serverData, registry.ID, claimsJSON); err != nil {
-		return err
+	if err := s.insertServerData(ctx, querier, serverData, source.ID, claimsJSON); err != nil {
+		return "", err
 	}
 
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return "", fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return nil
+	return source.Name, nil
 }
 
 // insertServerData inserts the server version and all related data
@@ -707,7 +712,7 @@ func (s *dbService) insertServerData(
 
 	// Compare with current latest before upserting — avoid regressing the pointer
 	shouldUpdateLatest := true
-	currentLatest, err := querier.GetLatestVersionForServer(ctx, sqlc.GetLatestVersionForServerParams{
+	currentLatest, err := querier.GetLatestEntryVersion(ctx, sqlc.GetLatestEntryVersionParams{
 		Name:     serverData.Name,
 		SourceID: registryID,
 	})
@@ -789,17 +794,26 @@ func (s *dbService) executeDeleteTransaction(
 
 	querier := sqlc.New(tx)
 
-	registry, err := getManagedSource(ctx, querier)
+	source, err := getManagedSource(ctx, querier)
 	if err != nil {
 		return err
 	}
 
-	entryID, err := lookupAndDeleteEntryVersion(ctx, querier, registry.ID, sqlc.EntryTypeMCP, options.ServerName, options.Version)
+	entryID, err := lookupAndDeleteEntryVersion(ctx, querier, source.ID, sqlc.EntryTypeMCP, options.ServerName, options.Version)
 	if err != nil {
 		return err
 	}
 
-	if err := rePointLatestServerVersionIfNeeded(ctx, querier, registry.ID, options.ServerName, entryID); err != nil {
+	if err := rePointLatestVersionIfNeeded(ctx, querier, source.ID, options.ServerName, entryID,
+		func(ctx context.Context, querier *sqlc.Queries, sourceID uuid.UUID, name, version string, versionID uuid.UUID) error {
+			_, err := querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
+				SourceID:  sourceID,
+				Name:      name,
+				Version:   version,
+				VersionID: versionID,
+			})
+			return err
+		}); err != nil {
 		return err
 	}
 
@@ -814,66 +828,19 @@ func (s *dbService) executeDeleteTransaction(
 	return nil
 }
 
-// rePointLatestServerVersionIfNeeded checks whether the latest_entry_version pointer was cascade-deleted
-// (because the deleted version was the current latest) and, if so, re-points it to the
-// next-highest remaining version according to versions.IsNewerVersion (semantic when possible,
-// with lexicographic ordering as a fallback).
-func rePointLatestServerVersionIfNeeded(
-	ctx context.Context,
-	querier *sqlc.Queries,
-	registryID uuid.UUID,
-	serverName string,
-	entryID uuid.UUID,
-) error {
-	_, err := querier.GetLatestVersionForServer(ctx, sqlc.GetLatestVersionForServerParams{
-		Name:  serverName,
-		RegID: registryID,
-	})
-	if err == nil {
-		// Pointer still exists — deleted version was not the latest, nothing to do.
-		return nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("failed to check latest server version: %w", err)
-	}
-
-	// Pointer was cascade-deleted. Find the next-highest remaining version using the same
-	// ordering rules as versions.IsNewerVersion (semantic when possible, lexicographic otherwise).
-	remaining, err := querier.ListEntryVersions(ctx, entryID)
-	if err != nil {
-		return fmt.Errorf("failed to list remaining server versions: %w", err)
-	}
-
-	newVersionID, newVersion := findHighestVersion(remaining)
-	if newVersionID == uuid.Nil {
-		// No remaining versions — the cascade on registry_entry will handle full cleanup.
-		return nil
-	}
-
-	if _, err := querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
-		RegID:     registryID,
-		Name:      serverName,
-		Version:   newVersion,
-		VersionID: newVersionID,
-	}); err != nil {
-		return fmt.Errorf("failed to upsert latest server version: %w", err)
-	}
-	return nil
-}
-
 // lookupAndDeleteEntryVersion finds the registry entry by name and entry type,
 // then deletes the specified version. Returns the entry ID for potential
 // cleanup, or an error if the entry or version is not found.
 func lookupAndDeleteEntryVersion(
 	ctx context.Context,
 	querier *sqlc.Queries,
-	registryID uuid.UUID,
+	sourceID uuid.UUID,
 	entryType sqlc.EntryType,
 	name string,
 	version string,
 ) (uuid.UUID, error) {
 	existing, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
-		SourceID:  registryID,
+		SourceID:  sourceID,
 		EntryType: entryType,
 		Name:      name,
 	})
