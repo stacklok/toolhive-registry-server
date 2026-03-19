@@ -83,7 +83,7 @@ func (m *MockRegistryHandler) EXPECT() *MockRegistryHandlerMockRecorder {
 }
 
 // CurrentHash mocks base method.
-func (m *MockRegistryHandler) CurrentHash(ctx context.Context, regCfg *config.SourceConfig) (string, error) {
+func (m *MockRegistryHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CurrentHash", ctx, regCfg)
 	ret0, _ := ret[0].(string)
@@ -98,7 +98,7 @@ func (mr *MockRegistryHandlerMockRecorder) CurrentHash(ctx, regCfg any) *gomock.
 }
 
 // FetchRegistry mocks base method.
-func (m *MockRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.SourceConfig) (*sources.FetchResult, error) {
+func (m *MockRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*sources.FetchResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FetchRegistry", ctx, regCfg)
 	ret0, _ := ret[0].(*sources.FetchResult)
@@ -113,7 +113,7 @@ func (mr *MockRegistryHandlerMockRecorder) FetchRegistry(ctx, regCfg any) *gomoc
 }
 
 // Validate mocks base method.
-func (m *MockRegistryHandler) Validate(regCfg *config.SourceConfig) error {
+func (m *MockRegistryHandler) Validate(regCfg *config.RegistryConfig) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Validate", regCfg)
 	ret0, _ := ret[0].(error)
@@ -151,7 +151,7 @@ func (m *MockRegistryHandlerFactory) EXPECT() *MockRegistryHandlerFactoryMockRec
 }
 
 // CreateHandler mocks base method.
-func (m *MockRegistryHandlerFactory) CreateHandler(regCfg *config.SourceConfig) (sources.RegistryHandler, error) {
+func (m *MockRegistryHandlerFactory) CreateHandler(regCfg *config.RegistryConfig) (sources.RegistryHandler, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateHandler", regCfg)
 	ret0, _ := ret[0].(sources.RegistryHandler)

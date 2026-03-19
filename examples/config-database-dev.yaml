@@ -25,8 +25,11 @@
 #
 # Note: Database migrations run automatically when the server starts
 
-# Sources configuration (can have multiple sources)
-sources:
+# Registry name/identifier
+registryName: dev-registry
+
+# Registries configuration (can have multiple registries)
+registries:
   - name: toolhive
     # Data format: toolhive (native) or upstream (MCP registry format)
     format: toolhive
@@ -41,10 +44,6 @@ sources:
     syncPolicy:
       # More frequent syncs for development
       interval: "5m"
-
-registries:
-  - name: default
-    sources: ["toolhive"]
 
 auth:
   mode: anonymous

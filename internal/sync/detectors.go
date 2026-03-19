@@ -16,7 +16,7 @@ type defaultDataChangeDetector struct {
 
 // IsDataChanged checks if source data has changed by comparing hashes for a specific registry
 func (d *defaultDataChangeDetector) IsDataChanged(
-	ctx context.Context, regCfg *config.SourceConfig, syncStatus *status.SyncStatus,
+	ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus,
 ) (bool, error) {
 	// Check for hash in syncStatus first, then fallback
 	var lastSyncHash string
@@ -54,7 +54,7 @@ type defaultAutomaticSyncChecker struct{}
 // Returns: (syncNeeded, nextSyncTime, error)
 // nextSyncTime is a future time when the next sync should occur, or zero time if no schedule configured
 func (*defaultAutomaticSyncChecker) IsIntervalSyncNeeded(
-	_ *config.SourceConfig, syncStatus *status.SyncStatus,
+	_ *config.RegistryConfig, syncStatus *status.SyncStatus,
 ) (bool, time.Time, error) {
 	// Read sync schedule from stored state instead of config
 	// Non-synced registries (managed, kubernetes) will have an empty SyncSchedule

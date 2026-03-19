@@ -46,14 +46,14 @@ func TestGetInitialSyncStatus(t *testing.T) {
 			isNonSynced:    true,
 			regType:        config.SourceTypeManaged,
 			wantStatus:     sqlc.SyncStatusCOMPLETED,
-			wantErrMessage: "Non-synced source (type: managed)",
+			wantErrMessage: "Non-synced registry (type: managed)",
 		},
 		{
 			name:           "kubernetes registry returns COMPLETED",
 			isNonSynced:    true,
 			regType:        config.SourceTypeKubernetes,
 			wantStatus:     sqlc.SyncStatusCOMPLETED,
-			wantErrMessage: "Non-synced source (type: kubernetes)",
+			wantErrMessage: "Non-synced registry (type: kubernetes)",
 		},
 		{
 			name:           "synced registry returns FAILED",

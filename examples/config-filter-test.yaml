@@ -14,7 +14,9 @@
 #   thv-registry-api serve --config examples/config-filter-test.yaml
 #   CONFIG_FILE=config-filter-test.yaml docker-compose up
 
-sources:
+registryName: filter-test-registry
+
+registries:
   # Test 1: Include only database-related servers by name pattern
   - name: database-servers
     format: toolhive
@@ -86,18 +88,6 @@ sources:
     syncPolicy:
       interval: "30s"
     # No filter - should include all 12 servers
-
-registries:
-  - name: database-servers
-    sources: ["database-servers"]
-  - name: security-and-database
-    sources: ["security-and-database"]
-  - name: version-control
-    sources: ["version-control"]
-  - name: dev-tools
-    sources: ["dev-tools"]
-  - name: all-servers
-    sources: ["all-servers"]
 
 auth:
   mode: anonymous

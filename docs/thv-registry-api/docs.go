@@ -8,192 +8,6 @@ const docTemplate = `{
     "schemes": {{ marshal .Schemes }},
     "components": {
         "schemas": {
-            "github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig": {
-                "description": "Filtering rules",
-                "properties": {
-                    "names": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig"
-                    },
-                    "tags": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig": {
-                "properties": {
-                    "exclude": {
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    },
-                    "include": {
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.SourceType": {
-                "description": "git, api, file, managed, kubernetes",
-                "enum": [
-                    "git",
-                    "api",
-                    "file",
-                    "managed",
-                    "kubernetes"
-                ],
-                "type": "string",
-                "x-enum-varnames": [
-                    "SourceTypeGit",
-                    "SourceTypeAPI",
-                    "SourceTypeFile",
-                    "SourceTypeManaged",
-                    "SourceTypeKubernetes"
-                ]
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig": {
-                "properties": {
-                    "exclude": {
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    },
-                    "include": {
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.CreationType": {
-                "description": "API or CONFIG",
-                "enum": [
-                    "API",
-                    "CONFIG"
-                ],
-                "type": "string",
-                "x-enum-varnames": [
-                    "CreationTypeAPI",
-                    "CreationTypeCONFIG"
-                ]
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo": {
-                "properties": {
-                    "createdAt": {
-                        "type": "string"
-                    },
-                    "creationType": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.CreationType"
-                    },
-                    "name": {
-                        "type": "string"
-                    },
-                    "sources": {
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    },
-                    "updatedAt": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo": {
-                "properties": {
-                    "createdAt": {
-                        "type": "string"
-                    },
-                    "creationType": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.CreationType"
-                    },
-                    "filterConfig": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig"
-                    },
-                    "format": {
-                        "description": "toolhive or upstream",
-                        "type": "string"
-                    },
-                    "name": {
-                        "type": "string"
-                    },
-                    "sourceConfig": {
-                        "description": "Type-specific source configuration"
-                    },
-                    "sourceType": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SourceType"
-                    },
-                    "syncSchedule": {
-                        "description": "Sync interval string",
-                        "type": "string"
-                    },
-                    "syncStatus": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceSyncStatus"
-                    },
-                    "type": {
-                        "description": "MANAGED, FILE, REMOTE, KUBERNETES",
-                        "type": "string"
-                    },
-                    "updatedAt": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.SourceListResponse": {
-                "properties": {
-                    "sources": {
-                        "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.SourceSyncStatus": {
-                "properties": {
-                    "attemptCount": {
-                        "description": "Number of sync attempts",
-                        "type": "integer"
-                    },
-                    "lastAttempt": {
-                        "description": "Last sync attempt",
-                        "type": "string"
-                    },
-                    "lastSyncTime": {
-                        "description": "Last successful sync",
-                        "type": "string"
-                    },
-                    "message": {
-                        "description": "Status or error message",
-                        "type": "string"
-                    },
-                    "phase": {
-                        "description": "complete, syncing, failed",
-                        "type": "string"
-                    },
-                    "serverCount": {
-                        "description": "Number of servers in registry",
-                        "type": "integer"
-                    }
-                },
-                "type": "object"
-            },
             "internal_api.HealthResponse": {
                 "properties": {
                     "status": {
@@ -233,26 +47,6 @@ const docTemplate = `{
                     "version": {
                         "example": "v0.1.0",
                         "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api_v1.publishEntryRequest": {
-                "properties": {
-                    "server": {
-                        "$ref": "#/components/schemas/v0.ServerJSON"
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api_v1.registryListResponse": {
-                "properties": {
-                    "registries": {
-                        "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
                     }
                 },
                 "type": "object"
@@ -1664,39 +1458,18 @@ const docTemplate = `{
         },
         "/v1/entries": {
             "post": {
-                "description": "Publish a new server entry.",
+                "description": "Publish a new entry",
                 "requestBody": {
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/internal_api_v1.publishEntryRequest",
-                                        "summary": "request",
-                                        "description": "Entry to publish (server)"
-                                    }
-                                ]
+                                "type": "object"
                             }
                         }
-                    },
-                    "description": "Entry to publish (server)",
-                    "required": true
+                    }
                 },
                 "responses": {
-                    "201": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Published entry"
-                    },
-                    "400": {
+                    "501": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1707,33 +1480,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Bad request"
-                    },
-                    "409": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Conflict"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
+                        "description": "Not implemented"
                     }
                 },
                 "summary": "Publish entry",
@@ -1850,9 +1597,6 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
-                    "204": {
-                        "description": "No Content"
-                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -1866,7 +1610,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "404": {
+                    "501": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1877,20 +1621,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not found"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
+                        "description": "Not implemented"
                     }
                 },
                 "summary": "Delete published entry",
@@ -1912,17 +1643,7 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/internal_api_v1.registryListResponse"
-                                }
-                            }
-                        },
-                        "description": "Registries list"
-                    },
-                    "500": {
+                    "501": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1933,7 +1654,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Not implemented"
                     }
                 },
                 "summary": "List registries",
@@ -1966,9 +1687,6 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
-                    "204": {
-                        "description": "Registry deleted"
-                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -1982,7 +1700,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "403": {
+                    "501": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1993,33 +1711,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Cannot modify config-created registry"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Registry not found"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
+                        "description": "Not implemented"
                     }
                 },
                 "summary": "Delete registry",
@@ -2050,16 +1742,6 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
-                                }
-                            }
-                        },
-                        "description": "Registry details"
-                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -2073,7 +1755,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "404": {
+                    "501": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2084,20 +1766,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Registry not found"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
+                        "description": "Not implemented"
                     }
                 },
                 "summary": "Get registry",
@@ -2128,26 +1797,6 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
-                                }
-                            }
-                        },
-                        "description": "Registry updated"
-                    },
-                    "201": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
-                                }
-                            }
-                        },
-                        "description": "Registry created"
-                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -2161,7 +1810,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "403": {
+                    "501": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2172,20 +1821,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Cannot modify config-created registry"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
+                        "description": "Not implemented"
                     }
                 },
                 "summary": "Create or update registry",
@@ -2264,17 +1900,7 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceListResponse"
-                                }
-                            }
-                        },
-                        "description": "Sources list"
-                    },
-                    "500": {
+                    "501": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2285,7 +1911,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Not implemented"
                     }
                 },
                 "summary": "List sources",
@@ -2318,9 +1944,6 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
-                    "204": {
-                        "description": "Source deleted"
-                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -2334,7 +1957,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "403": {
+                    "501": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2345,46 +1968,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Cannot modify config-created source"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Source not found"
-                    },
-                    "409": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Source in use"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
+                        "description": "Not implemented"
                     }
                 },
                 "summary": "Delete source",
@@ -2415,16 +1999,6 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo"
-                                }
-                            }
-                        },
-                        "description": "Source details"
-                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -2438,7 +2012,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "404": {
+                    "501": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2449,20 +2023,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Source not found"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
+                        "description": "Not implemented"
                     }
                 },
                 "summary": "Get source",
@@ -2493,26 +2054,6 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo"
-                                }
-                            }
-                        },
-                        "description": "Source updated"
-                    },
-                    "201": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo"
-                                }
-                            }
-                        },
-                        "description": "Source created"
-                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -2526,7 +2067,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "403": {
+                    "501": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2537,20 +2078,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Cannot modify config-created source"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
+                        "description": "Not implemented"
                     }
                 },
                 "summary": "Create or update source",

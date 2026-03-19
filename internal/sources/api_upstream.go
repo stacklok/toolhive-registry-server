@@ -99,7 +99,7 @@ func (h *upstreamAPIHandler) Validate(ctx context.Context, endpoint string) erro
 
 // FetchRegistry retrieves registry data from the upstream MCP Registry API endpoint
 // It fetches all servers via pagination and converts them to ToolHive's UpstreamRegistry format
-func (h *upstreamAPIHandler) FetchRegistry(ctx context.Context, regCfg *config.SourceConfig) (*FetchResult, error) {
+func (h *upstreamAPIHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
 	logger := log.FromContext(ctx)
 	baseURL := getBaseURL(regCfg)
 
@@ -127,7 +127,7 @@ func (h *upstreamAPIHandler) FetchRegistry(ctx context.Context, regCfg *config.S
 // CurrentHash returns the current hash of the API response
 // TODO: Optimize this - could use HEAD request, ETag header, or last-modified header
 // For now, perform full fetch to get hash (simple but consistent with git/file handlers)
-func (h *upstreamAPIHandler) CurrentHash(ctx context.Context, regCfg *config.SourceConfig) (string, error) {
+func (h *upstreamAPIHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
 	result, err := h.FetchRegistry(ctx, regCfg)
 	if err != nil {
 		return "", err
@@ -231,7 +231,7 @@ func (*upstreamAPIHandler) calculateHash(reg *toolhivetypes.UpstreamRegistry) (s
 }
 
 // getBaseURL extracts and normalizes the base URL from the registry configuration
-func getBaseURL(regCfg *config.SourceConfig) string {
+func getBaseURL(regCfg *config.RegistryConfig) string {
 	baseURL := regCfg.API.Endpoint
 
 	// Remove trailing slash

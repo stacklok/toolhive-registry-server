@@ -25,7 +25,8 @@ import (
 func TestNewRegistryAppBuilder(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{
-		Sources: []config.SourceConfig{
+		RegistryName: "test-registry",
+		Registries: []config.RegistryConfig{
 			{
 				Name:   "test-registry-1",
 				Format: config.SourceFormatToolHive,
@@ -82,7 +83,8 @@ func TestRegistryAppBuilder_WithAddress(t *testing.T) {
 // createValidTestConfig creates a minimal valid config for testing
 func createValidTestConfig() *config.Config {
 	return &config.Config{
-		Sources: []config.SourceConfig{
+		RegistryName: "test-registry",
+		Registries: []config.RegistryConfig{
 			{
 				Name:   "test-registry-1",
 				Format: config.SourceFormatToolHive,
@@ -754,7 +756,7 @@ func TestNewRegistryApp(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, app)
 		assert.NotNil(t, app.config)
-		assert.Equal(t, 1, len(app.config.Sources))
+		assert.Equal(t, "test-registry", app.config.RegistryName)
 		assert.NotNil(t, app.components)
 		assert.NotNil(t, app.components.SyncCoordinator)
 		assert.NotNil(t, app.components.RegistryService)

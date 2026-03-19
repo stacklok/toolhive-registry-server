@@ -72,7 +72,9 @@ extraVolumeMounts:
 
 # Registry server configuration with PostgreSQL
 config:
-  sources:
+  registryName: "ci-postgres-test"
+
+  registries:
     - name: toolhive
       format: toolhive
       git:
@@ -81,10 +83,6 @@ config:
         path: pkg/catalog/toolhive/data/registry.json
       syncPolicy:
         interval: "30m"
-
-  registries:
-    - name: default
-      sources: ["toolhive"]
 
   database:
     host: postgres
