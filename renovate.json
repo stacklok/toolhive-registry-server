@@ -6,34 +6,77 @@
     ":semanticCommitsDisabled",
     "schedule:earlyMondays"
   ],
-  "labels": ["dependencies"],
+  "labels": [
+    "dependencies"
+  ],
+  "prConcurrentLimit": 10,
   "packageRules": [
     {
+      "description": "Group all Go module updates into a single PR",
+      "groupName": "go modules",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchPackageNames": [
+        "!golang"
+      ]
+    },
+    {
+      "description": "Group all GitHub Actions updates into a single PR",
+      "groupName": "github actions",
+      "matchManagers": [
+        "github-actions"
+      ]
+    },
+    {
+      "description": "Group all Docker image updates into a single PR",
+      "groupName": "docker images",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "!kindest/node"
+      ]
+    },
+    {
       "description": "Only allow patch updates for kindest/node",
-      "matchManagers": ["custom.regex"],
-      "matchPackageNames": ["kindest/node"],
-      "matchUpdateTypes": ["minor", "major"],
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchPackageNames": [
+        "kindest/node"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "major"
+      ],
       "enabled": false
     },
     {
+      "description": "Group kindest/node patch versions",
       "groupName": "kindest/node patch versions",
-      "matchManagers": ["custom.regex"],
-      "matchPackageNames": ["kindest/node"],
-      "matchUpdateTypes": ["patch"]
-    },
-    {
-      "groupName": "dockerfile template base images",
-      "matchDatasources": ["docker"],
-      "matchManagers": ["custom.regex"],
-      "matchPackageNames": ["!kindest/node"]
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchPackageNames": [
+        "kindest/node"
+      ],
+      "matchUpdateTypes": [
+        "patch"
+      ]
     }
   ],
-  "postUpdateOptions": ["gomodTidy"],
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
   "customManagers": [
     {
       "customType": "regex",
       "description": "Update kindest/node versions in GitHub workflows",
-      "fileMatch": [".github/workflows/*.yml", ".github/workflows/*.yaml"],
+      "managerFilePatterns": [
+        "/.github/workflows/*.yml/",
+        "/.github/workflows/*.yaml/"
+      ],
       "matchStrings": [
         "\"(?<depName>kindest/node):v(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
       ],
@@ -42,15 +85,21 @@
     },
     {
       "customType": "regex",
-      "fileMatch": ["(^|/)go\\.mod$"],
-      "matchStrings": ["go (?<currentValue>\\d+\\.\\d+(\\.\\d+)?)"],
+      "managerFilePatterns": [
+        "/(^|/)go\\.mod$/"
+      ],
+      "matchStrings": [
+        "go (?<currentValue>\\d+\\.\\d+(\\.\\d+)?)"
+      ],
       "depNameTemplate": "golang",
       "datasourceTemplate": "golang-version",
       "versioningTemplate": "loose"
     },
     {
       "customType": "regex",
-      "fileMatch": ["^\\.github/workflows/create-release-pr\\.yml$"],
+      "managerFilePatterns": [
+        "/^\\.github/workflows/create-release-pr\\.yml$/"
+      ],
       "matchStrings": [
         "releaseo_version:\\s*(?<currentValue>v[\\d.]+)"
       ],
