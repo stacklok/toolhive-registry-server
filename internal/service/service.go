@@ -55,6 +55,8 @@ var (
 	ErrInvalidRegistryConfig = errors.New("invalid registry configuration")
 	// ErrSourceInUse is returned when attempting to delete a source that is linked to registries
 	ErrSourceInUse = errors.New("source is referenced by one or more registries")
+	// ErrClaimsMismatch is returned when publish claims do not match the existing entry's claims
+	ErrClaimsMismatch = errors.New("claims mismatch")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service

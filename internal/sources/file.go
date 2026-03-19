@@ -144,15 +144,3 @@ func (h *fileRegistryHandler) fetchURLData(ctx context.Context, regCfg *config.S
 
 	return data, hash, nil
 }
-
-// CurrentHash returns the current hash of the source without performing a full parse
-func (h *fileRegistryHandler) CurrentHash(ctx context.Context, regCfg *config.SourceConfig) (string, error) {
-	// For file/URL sources, we read and hash the content
-	// This is nearly as expensive as a full fetch, but maintains the interface
-	_, hash, err := h.fetchData(ctx, regCfg)
-	if err != nil {
-		return "", err
-	}
-
-	return hash, nil
-}

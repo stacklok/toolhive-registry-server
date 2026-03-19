@@ -16,6 +16,7 @@ import (
 	_ "github.com/stacklok/toolhive-registry-server/docs/thv-registry-api"
 	v01 "github.com/stacklok/toolhive-registry-server/internal/api/registry/v01"
 	apiv1 "github.com/stacklok/toolhive-registry-server/internal/api/v1"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
@@ -28,6 +29,7 @@ type serverConfig struct {
 	// shared with the other layers of the application.
 	middlewares     []func(http.Handler) http.Handler
 	authInfoHandler http.Handler
+	authzConfig     *config.AuthzConfig
 }
 
 // WithMiddlewares adds middleware to the server
@@ -41,6 +43,13 @@ func WithMiddlewares(mw ...func(http.Handler) http.Handler) ServerOption {
 func WithAuthInfoHandler(handler http.Handler) ServerOption {
 	return func(cfg *serverConfig) {
 		cfg.authInfoHandler = handler
+	}
+}
+
+// WithAuthzConfig sets the authorization configuration for role-based access control
+func WithAuthzConfig(authzCfg *config.AuthzConfig) ServerOption {
+	return func(cfg *serverConfig) {
+		cfg.authzConfig = authzCfg
 	}
 }
 
@@ -78,7 +87,7 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 
 	// Mount MCP Registry API v0.1 routes
 	r.Mount("/registry", v01.Router(svc))
-	r.Mount("/v1", apiv1.Router(svc))
+	r.Mount("/v1", apiv1.Router(svc, cfg.authzConfig))
 
 	return r
 }

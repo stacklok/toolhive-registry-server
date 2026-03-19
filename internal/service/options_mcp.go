@@ -119,11 +119,18 @@ func (o *GetServerVersionOptions) setVersion(version string) error {
 // PublishServerVersionOptions is the options for the PublishServerVersion operation
 type PublishServerVersionOptions struct {
 	ServerData *upstreamv0.ServerJSON
+	Claims     map[string]any
 }
 
 //nolint:unparam
 func (o *PublishServerVersionOptions) setServerData(serverData *upstreamv0.ServerJSON) error {
 	o.ServerData = serverData
+	return nil
+}
+
+//nolint:unparam
+func (o *PublishServerVersionOptions) setClaims(claims map[string]any) error {
+	o.Claims = claims
 	return nil
 }
 

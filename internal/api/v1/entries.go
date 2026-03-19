@@ -12,20 +12,23 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
-// publishEntryRequest is the request body for publishing a server entry.
+// publishEntryRequest is the request body for publishing an entry.
+// Exactly one of Server or Skill must be provided.
 type publishEntryRequest struct {
+	Claims map[string]any         `json:"claims,omitempty"`
 	Server *upstreamv0.ServerJSON `json:"server,omitempty"`
+	Skill  *service.Skill         `json:"skill,omitempty"`
 }
 
 // publishEntry handles POST /v1/entries
 //
 // @Summary		Publish entry
-// @Description	Publish a new server entry.
+// @Description	Publish a new server or skill entry. Exactly one of 'server' or 'skill' must be provided.
 // @Tags		v1
 // @Accept		json
 // @Produce		json
-// @Param		request	body		publishEntryRequest	true	"Entry to publish (server)"
-// @Success		201	{object}	interface{}	"Published entry"
+// @Param		request	body		publishEntryRequest	true	"Entry to publish (server or skill)"
+// @Success		201	{object}	interface{}	"Published entry (server or skill)"
 // @Failure		400	{object}	map[string]string	"Bad request"
 // @Failure		409	{object}	map[string]string	"Conflict"
 // @Failure		500	{object}	map[string]string	"Internal server error"
@@ -37,28 +40,58 @@ func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Server == nil {
-		common.WriteErrorResponse(w, "server field is required", http.StatusBadRequest)
+	hasServer := req.Server != nil
+	hasSkill := req.Skill != nil
+	if hasServer == hasSkill {
+		common.WriteErrorResponse(w, "exactly one of 'server' or 'skill' must be provided", http.StatusBadRequest)
 		return
 	}
 
-	published, err := routes.service.PublishServerVersion(r.Context(),
-		service.WithServerData(req.Server),
-	)
-	if err != nil {
-		if errors.Is(err, service.ErrVersionAlreadyExists) {
-			common.WriteErrorResponse(w, err.Error(), http.StatusConflict)
+	if req.Server != nil {
+		opts := []service.Option{service.WithServerData(req.Server)}
+		if req.Claims != nil {
+			opts = append(opts, service.WithClaims(req.Claims))
+		}
+		published, err := routes.service.PublishServerVersion(r.Context(), opts...)
+		if err != nil {
+			writePublishError(w, r, err)
 			return
 		}
-		if errors.Is(err, service.ErrNoManagedSource) {
-			common.WriteErrorResponse(w, "no managed source available for publishing", http.StatusInternalServerError)
-			return
-		}
-		slog.ErrorContext(r.Context(), "failed to publish entry", "error", err)
-		common.WriteErrorResponse(w, "failed to publish entry", http.StatusInternalServerError)
+		common.WriteJSONResponse(w, published, http.StatusCreated)
 		return
 	}
-	common.WriteJSONResponse(w, published, http.StatusCreated)
+
+	if req.Skill != nil {
+		var opts []service.Option
+		if req.Claims != nil {
+			opts = append(opts, service.WithClaims(req.Claims))
+		}
+		published, err := routes.service.PublishSkill(r.Context(), req.Skill, opts...)
+		if err != nil {
+			writePublishError(w, r, err)
+			return
+		}
+		common.WriteJSONResponse(w, published, http.StatusCreated)
+		return
+	}
+}
+
+// writePublishError maps service-layer publish errors to HTTP responses.
+func writePublishError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, service.ErrVersionAlreadyExists) {
+		common.WriteErrorResponse(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if errors.Is(err, service.ErrClaimsMismatch) {
+		common.WriteErrorResponse(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if errors.Is(err, service.ErrNoManagedSource) {
+		common.WriteErrorResponse(w, "no managed source available for publishing", http.StatusInternalServerError)
+		return
+	}
+	slog.ErrorContext(r.Context(), "failed to publish entry", "error", err)
+	common.WriteErrorResponse(w, "failed to publish entry", http.StatusInternalServerError)
 }
 
 // deletePublishedEntry handles DELETE /v1/entries/{type}/{name}/versions/{version}

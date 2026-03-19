@@ -1,5 +1,5 @@
 -- name: GetRegistryEntryByName :one
-SELECT id
+SELECT id, claims
   FROM registry_entry
  WHERE source_id = sqlc.arg(source_id)
    AND entry_type = sqlc.arg(entry_type)
@@ -10,12 +10,14 @@ INSERT INTO registry_entry (
     source_id,
     entry_type,
     name,
+    claims,
     created_at,
     updated_at
 ) VALUES (
     sqlc.arg(source_id),
     sqlc.arg(entry_type),
     sqlc.arg(name),
+    sqlc.arg(claims),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 ) RETURNING id;
