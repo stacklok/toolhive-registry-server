@@ -23,7 +23,7 @@ func TestAPIRegistryHandler_FetchRegistry(t *testing.T) {
 	tests := []struct {
 		name               string
 		setupServer        func() *httptest.Server
-		registryConfig     *config.SourceConfig
+		registryConfig     *config.RegistryConfig
 		expectError        bool
 		errorContains      string
 		expectedFormat     string
@@ -71,7 +71,7 @@ openapi: 3.1.0
 					}
 				}))
 			},
-			registryConfig: &config.SourceConfig{
+			registryConfig: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatUpstream,
 			},
@@ -87,7 +87,7 @@ openapi: 3.1.0
 					w.WriteHeader(http.StatusNotFound)
 				}))
 			},
-			registryConfig: &config.SourceConfig{
+			registryConfig: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 			},
@@ -101,7 +101,7 @@ openapi: 3.1.0
 					w.WriteHeader(http.StatusNotFound)
 				}))
 			},
-			registryConfig: &config.SourceConfig{
+			registryConfig: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatUpstream,
 			},
@@ -115,7 +115,7 @@ openapi: 3.1.0
 					w.WriteHeader(http.StatusInternalServerError)
 				}))
 			},
-			registryConfig: &config.SourceConfig{
+			registryConfig: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatUpstream,
 			},
@@ -228,7 +228,7 @@ openapi: 3.1.0
 	handler := sources.NewAPIRegistryHandler()
 	ctx := context.Background()
 
-	registryConfig := &config.SourceConfig{
+	registryConfig := &config.RegistryConfig{
 		Name:   "test-registry",
 		Format: config.SourceFormatUpstream,
 		API: &config.APIConfig{
@@ -264,7 +264,7 @@ func TestAPIRegistryHandler_NilAPIConfig(t *testing.T) {
 	handler := sources.NewAPIRegistryHandler()
 	ctx := context.Background()
 
-	registryConfig := &config.SourceConfig{
+	registryConfig := &config.RegistryConfig{
 		Name:   "test-registry",
 		Format: config.SourceFormatUpstream,
 		API:    nil,

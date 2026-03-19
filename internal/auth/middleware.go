@@ -143,10 +143,8 @@ func (m *multiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 			"subject", result.Claims["sub"],
 			"remote_addr", r.RemoteAddr,
 			"path", r.URL.Path)
-
-		// Store validated claims in request context for downstream authorization
-		ctx := ContextWithClaims(r.Context(), result.Claims)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		// TODO: Store claims in request context for downstream handlers (needed for authorization/scope enforcement)
+		next.ServeHTTP(w, r)
 	})
 }
 

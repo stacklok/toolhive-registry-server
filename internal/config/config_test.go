@@ -21,9 +21,8 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{
 			name: "valid_config_matching_spec",
-			yamlContent: `sources:
+			yamlContent: `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
@@ -32,9 +31,6 @@ func TestLoadConfig(t *testing.T) {
       tags:
         include: ["database", "production"]
         exclude: ["experimental", "deprecated", "beta"]
-registries:
-  - name: default
-    sources: ["test-registry"]
 database:
   host: localhost
   port: 5432
@@ -44,7 +40,7 @@ auth:
   mode: anonymous
 `,
 			wantConfig: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -61,9 +57,6 @@ auth:
 						},
 					},
 				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"test-registry"}},
-				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
 					Port:     5432,
@@ -78,9 +71,8 @@ auth:
 		},
 		{
 			name: "minimal_config",
-			yamlContent: `sources:
+			yamlContent: `registries:
   - name: minimal-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
@@ -89,9 +81,6 @@ auth:
       tags:
         include: []
         exclude: []
-registries:
-  - name: default
-    sources: ["minimal-registry"]
 database:
   host: localhost
   port: 5432
@@ -101,7 +90,7 @@ auth:
   mode: anonymous
 `,
 			wantConfig: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "minimal-registry",
 						File: &FileConfig{
@@ -118,9 +107,6 @@ auth:
 						},
 					},
 				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"minimal-registry"}},
-				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
 					Port:     5432,
@@ -135,9 +121,8 @@ auth:
 		},
 		{
 			name: "config_with_only_include_tags",
-			yamlContent: `sources:
+			yamlContent: `registries:
   - name: include-tags-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
@@ -145,9 +130,6 @@ auth:
     filter:
       tags:
         include: ["api", "backend", "frontend"]
-registries:
-  - name: default
-    sources: ["include-tags-registry"]
 database:
   host: localhost
   port: 5432
@@ -157,7 +139,7 @@ auth:
   mode: anonymous
 `,
 			wantConfig: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "include-tags-registry",
 						File: &FileConfig{
@@ -174,9 +156,6 @@ auth:
 						},
 					},
 				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"include-tags-registry"}},
-				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
 					Port:     5432,
@@ -191,9 +170,8 @@ auth:
 		},
 		{
 			name: "config_with_only_exclude_tags",
-			yamlContent: `sources:
+			yamlContent: `registries:
   - name: exclude-tags-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
@@ -201,9 +179,6 @@ auth:
     filter:
       tags:
         exclude: ["test", "debug", "experimental"]
-registries:
-  - name: default
-    sources: ["exclude-tags-registry"]
 database:
   host: localhost
   port: 5432
@@ -213,7 +188,7 @@ auth:
   mode: anonymous
 `,
 			wantConfig: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "exclude-tags-registry",
 						File: &FileConfig{
@@ -230,9 +205,6 @@ auth:
 						},
 					},
 				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"exclude-tags-registry"}},
-				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
 					Port:     5432,
@@ -247,7 +219,7 @@ auth:
 		},
 		{
 			name:        "invalid_yaml",
-			yamlContent: `sources: [invalid yaml`,
+			yamlContent: `registries: [invalid yaml`,
 			wantConfig:  nil,
 			wantErr:     true,
 		},
@@ -294,7 +266,7 @@ func TestConfigStructure(t *testing.T) {
 	t.Parallel()
 	// Test that the Config struct can be properly marshaled and unmarshaled
 	originalConfig := &Config{
-		Sources: []SourceConfig{
+		Registries: []RegistryConfig{
 			{
 				Name: "test-registry",
 				File: &FileConfig{
@@ -310,9 +282,6 @@ func TestConfigStructure(t *testing.T) {
 					},
 				},
 			},
-		},
-		Registries: []RegistryConfig{
-			{Name: "default", Sources: []string{"test-registry"}},
 		},
 		Database: &DatabaseConfig{
 			Host:     "localhost",
@@ -330,9 +299,8 @@ func TestConfigStructure(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "test-config.yaml")
 
 	// Write the config using YAML
-	yamlContent := `sources:
+	yamlContent := `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
@@ -341,9 +309,6 @@ func TestConfigStructure(t *testing.T) {
       tags:
         include: ["prod", "stable"]
         exclude: ["beta", "alpha"]
-registries:
-  - name: default
-    sources: ["test-registry"]
 database:
   host: localhost
   port: 5432
@@ -375,7 +340,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid_config",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -385,9 +350,6 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"test-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -404,7 +366,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "missing_registry_name",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						File: &FileConfig{
 							Path: "/data/registry.json",
@@ -422,9 +384,9 @@ func TestConfigValidate(t *testing.T) {
 			errMsg:  "name is required",
 		},
 		{
-			name: "missing_source_type",
+			name: "missing_file_when_no_source_configured",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						SyncPolicy: &SyncPolicyConfig{
@@ -442,7 +404,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "missing_file_path_or_url",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{},
@@ -461,7 +423,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "file_path_and_url_mutually_exclusive",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -483,7 +445,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid_file_url",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -493,9 +455,6 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"test-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -512,7 +471,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid_file_url_with_timeout",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -523,9 +482,6 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"test-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -542,7 +498,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "invalid_file_url_timeout",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -564,7 +520,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "invalid_file_url_scheme",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -585,7 +541,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "invalid_file_url_no_host",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -606,7 +562,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "missing_sync_interval",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -625,7 +581,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "invalid_sync_interval",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -652,18 +608,18 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "empty_registries",
 			config: &Config{
-				Sources: []SourceConfig{},
+				Registries: []RegistryConfig{},
 				Auth: &AuthConfig{
 					Mode: AuthModeAnonymous,
 				},
 			},
 			wantErr: true,
-			errMsg:  "at least one source must be configured",
+			errMsg:  "at least one registry must be configured",
 		},
 		{
 			name: "valid_file_source",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -673,9 +629,6 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"test-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -692,7 +645,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "duplicate_registry_names",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "duplicate",
 						File: &FileConfig{
@@ -717,12 +670,12 @@ func TestConfigValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "duplicate source name",
+			errMsg:  "duplicate registry name",
 		},
 		{
 			name: "invalid_format_when_using_api",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name:   "api-registry",
 						Format: "toolhive",
@@ -744,7 +697,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "multiple_source_types_specified",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "multi-source",
 						File: &FileConfig{
@@ -768,15 +721,12 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid_managed_registry_no_sync_policy",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name:    "managed-registry",
 						Managed: &ManagedConfig{},
 						// No SyncPolicy required for managed registries
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"managed-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -793,7 +743,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid_managed_registry_with_ignored_sync_policy",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name:    "managed-registry",
 						Managed: &ManagedConfig{},
@@ -802,9 +752,6 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"managed-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -821,7 +768,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid_managed_registry_with_ignored_filter",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name:    "managed-registry",
 						Managed: &ManagedConfig{},
@@ -832,9 +779,6 @@ func TestConfigValidate(t *testing.T) {
 							},
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"managed-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -851,15 +795,12 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid_kubernetes_registry_no_sync_policy",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name:       "kubernetes-registry",
 						Kubernetes: &KubernetesConfig{},
 						// No SyncPolicy required for kubernetes registries
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"kubernetes-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -876,7 +817,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid_kubernetes_registry_with_ignored_sync_policy",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name:       "kubernetes-registry",
 						Kubernetes: &KubernetesConfig{},
@@ -885,9 +826,6 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"kubernetes-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -904,7 +842,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid_kubernetes_registry_with_ignored_filter",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name:       "kubernetes-registry",
 						Kubernetes: &KubernetesConfig{},
@@ -915,9 +853,6 @@ func TestConfigValidate(t *testing.T) {
 							},
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"kubernetes-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -934,7 +869,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "managed_and_file_source_specified",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name:    "multi-source",
 						Managed: &ManagedConfig{},
@@ -953,7 +888,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "managed_and_git_source_specified",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name:    "multi-source",
 						Managed: &ManagedConfig{},
@@ -972,7 +907,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "managed_and_api_source_specified",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name:    "multi-source",
 						Managed: &ManagedConfig{},
@@ -991,7 +926,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "mixed_managed_and_synced_registries",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "file-registry",
 						File: &FileConfig{
@@ -1015,9 +950,6 @@ func TestConfigValidate(t *testing.T) {
 						},
 					},
 				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"file-registry", "managed-registry", "git-registry"}},
-				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
 					Port:     5432,
@@ -1033,7 +965,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid_config_with_database_storage",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -1043,9 +975,6 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"test-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -1062,7 +991,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "missing_database_configuration",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -1072,9 +1001,6 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"test-registry"}},
 				},
 				Auth: &AuthConfig{
 					Mode: AuthModeAnonymous,
@@ -1086,7 +1012,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "database_storage_missing_host",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -1096,9 +1022,6 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"test-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Port:     5432,
@@ -1112,7 +1035,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "database_storage_missing_port",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -1122,9 +1045,6 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"test-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -1138,7 +1058,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "database_storage_missing_user",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -1148,9 +1068,6 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"test-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -1164,7 +1081,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "database_storage_missing_database",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -1174,9 +1091,6 @@ func TestConfigValidate(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"test-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host: "localhost",
@@ -1206,7 +1120,42 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
-// TestGetRegistryName removed - GetRegistryName and RegistryName field have been removed
+func TestGetRegistryName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		config   *Config
+		expected string
+	}{
+		{
+			name: "with_registry_name",
+			config: &Config{
+				RegistryName: "my-registry",
+			},
+			expected: "my-registry",
+		},
+		{
+			name:     "without_registry_name",
+			config:   &Config{},
+			expected: "default",
+		},
+		{
+			name: "empty_registry_name",
+			config: &Config{
+				RegistryName: "",
+			},
+			expected: "default",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := tt.config.GetRegistryName()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
 
 func TestWithConfigPath(t *testing.T) {
 	t.Parallel()
@@ -1486,16 +1435,12 @@ func TestLoadConfigWithDatabase(t *testing.T) {
 	}{
 		{
 			name: "config_with_database_minimal",
-			yamlContent: `sources:
+			yamlContent: `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]
 auth:
   mode: anonymous
 database:
@@ -1504,7 +1449,7 @@ database:
   user: testuser
   database: testdb`,
 			wantConfig: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "test-registry",
 						File: &FileConfig{
@@ -1514,9 +1459,6 @@ database:
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"test-registry"}},
 				},
 				Auth: &AuthConfig{
 					Mode: AuthModeAnonymous,
@@ -1532,16 +1474,12 @@ database:
 		},
 		{
 			name: "config_with_database_full",
-			yamlContent: `sources:
+			yamlContent: `registries:
   - name: production-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "1h"
-registries:
-  - name: default
-    sources: ["production-registry"]
 auth:
   mode: anonymous
 database:
@@ -1555,7 +1493,7 @@ database:
   maxIdleConns: 10
   connMaxLifetime: "1h"`,
 			wantConfig: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "production-registry",
 						File: &FileConfig{
@@ -1565,9 +1503,6 @@ database:
 							Interval: "1h",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"production-registry"}},
 				},
 				Auth: &AuthConfig{
 					Mode: AuthModeAnonymous,
@@ -1588,16 +1523,12 @@ database:
 		},
 		{
 			name: "config_without_database",
-			yamlContent: `sources:
+			yamlContent: `registries:
   - name: simple-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["simple-registry"]
 auth:
   mode: anonymous
 `,
@@ -1645,30 +1576,22 @@ func TestAuthConfigLoading(t *testing.T) {
 	}{
 		{
 			name: "no auth section results in nil Auth",
-			yaml: `sources:
+			yaml: `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
-      interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]`,
+      interval: "30m"`,
 			check: nil,
 		},
 		{
 			name: "oauth with providers is parsed correctly",
-			yaml: `sources:
+			yaml: `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]
 database:
   host: localhost
   port: 5432
@@ -1696,16 +1619,12 @@ auth:
 		},
 		{
 			name: "oauth provider with introspection url",
-			yaml: `sources:
+			yaml: `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]
 database:
   host: localhost
   port: 5432
@@ -1735,16 +1654,12 @@ auth:
 		},
 		{
 			name: "explicit anonymous mode is parsed correctly",
-			yaml: `sources:
+			yaml: `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]
 database:
   host: localhost
   port: 5432
@@ -1760,16 +1675,12 @@ auth:
 		},
 		{
 			name: "empty mode is parsed as empty string",
-			yaml: `sources:
+			yaml: `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]
 auth:
   mode: ""`,
 			check: nil,
@@ -2023,12 +1934,12 @@ func TestRegistryConfig_GetType(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		registryConf *SourceConfig
+		registryConf *RegistryConfig
 		expectedType SourceType
 	}{
 		{
 			name: "git type",
-			registryConf: &SourceConfig{
+			registryConf: &RegistryConfig{
 				Name: "git-registry",
 				Git: &GitConfig{
 					Repository: "https://github.com/example/repo.git",
@@ -2038,7 +1949,7 @@ func TestRegistryConfig_GetType(t *testing.T) {
 		},
 		{
 			name: "api type",
-			registryConf: &SourceConfig{
+			registryConf: &RegistryConfig{
 				Name: "api-registry",
 				API: &APIConfig{
 					Endpoint: "https://api.example.com",
@@ -2048,7 +1959,7 @@ func TestRegistryConfig_GetType(t *testing.T) {
 		},
 		{
 			name: "file type",
-			registryConf: &SourceConfig{
+			registryConf: &RegistryConfig{
 				Name: "file-registry",
 				File: &FileConfig{
 					Path: "/data/registry.json",
@@ -2058,7 +1969,7 @@ func TestRegistryConfig_GetType(t *testing.T) {
 		},
 		{
 			name: "managed type",
-			registryConf: &SourceConfig{
+			registryConf: &RegistryConfig{
 				Name:    "managed-registry",
 				Managed: &ManagedConfig{},
 			},
@@ -2066,7 +1977,7 @@ func TestRegistryConfig_GetType(t *testing.T) {
 		},
 		{
 			name: "kubernetes type",
-			registryConf: &SourceConfig{
+			registryConf: &RegistryConfig{
 				Name:       "kubernetes-registry",
 				Kubernetes: &KubernetesConfig{},
 			},
@@ -2074,7 +1985,7 @@ func TestRegistryConfig_GetType(t *testing.T) {
 		},
 		{
 			name: "no type configured returns empty string",
-			registryConf: &SourceConfig{
+			registryConf: &RegistryConfig{
 				Name: "invalid-registry",
 			},
 			expectedType: "",
@@ -2090,17 +2001,17 @@ func TestRegistryConfig_GetType(t *testing.T) {
 	}
 }
 
-func TestRegistryConfig_IsNonSyncedSource(t *testing.T) {
+func TestRegistryConfig_IsNonSyncedRegistry(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name         string
-		registryConf *SourceConfig
+		registryConf *RegistryConfig
 		expected     bool
 	}{
 		{
 			name: "git type is synced",
-			registryConf: &SourceConfig{
+			registryConf: &RegistryConfig{
 				Name: "git-registry",
 				Git: &GitConfig{
 					Repository: "https://github.com/example/repo.git",
@@ -2110,7 +2021,7 @@ func TestRegistryConfig_IsNonSyncedSource(t *testing.T) {
 		},
 		{
 			name: "api type is synced",
-			registryConf: &SourceConfig{
+			registryConf: &RegistryConfig{
 				Name: "api-registry",
 				API: &APIConfig{
 					Endpoint: "https://api.example.com",
@@ -2120,7 +2031,7 @@ func TestRegistryConfig_IsNonSyncedSource(t *testing.T) {
 		},
 		{
 			name: "file type is synced",
-			registryConf: &SourceConfig{
+			registryConf: &RegistryConfig{
 				Name: "file-registry",
 				File: &FileConfig{
 					Path: "/data/registry.json",
@@ -2130,7 +2041,7 @@ func TestRegistryConfig_IsNonSyncedSource(t *testing.T) {
 		},
 		{
 			name: "managed type is non-synced",
-			registryConf: &SourceConfig{
+			registryConf: &RegistryConfig{
 				Name:    "managed-registry",
 				Managed: &ManagedConfig{},
 			},
@@ -2138,7 +2049,7 @@ func TestRegistryConfig_IsNonSyncedSource(t *testing.T) {
 		},
 		{
 			name: "kubernetes type is non-synced",
-			registryConf: &SourceConfig{
+			registryConf: &RegistryConfig{
 				Name:       "kubernetes-registry",
 				Kubernetes: &KubernetesConfig{},
 			},
@@ -2146,7 +2057,7 @@ func TestRegistryConfig_IsNonSyncedSource(t *testing.T) {
 		},
 		{
 			name: "no type configured is synced (needs validation to catch)",
-			registryConf: &SourceConfig{
+			registryConf: &RegistryConfig{
 				Name: "invalid-registry",
 			},
 			expected: false,
@@ -2156,7 +2067,7 @@ func TestRegistryConfig_IsNonSyncedSource(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := tt.registryConf.IsNonSyncedSource()
+			result := tt.registryConf.IsNonSyncedRegistry()
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -2195,23 +2106,53 @@ func TestEnvPrefix(t *testing.T) {
 	assert.Equal(t, "THV_REGISTRY", EnvPrefix, "EnvPrefix should be THV_REGISTRY")
 }
 
-// TestViperEnvOverrideRegistryName removed - RegistryName field has been removed
+// TestViperEnvOverrideRegistryName tests that THV_REGISTRY_REGISTRYNAME can override the registryName
+// Note: Environment variable tests cannot be run in parallel because they share the same
+// environment namespace, even when using different prefixes
+func TestViperEnvOverrideRegistryName(t *testing.T) {
+	// Create a temporary config file
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	yamlContent := `registryName: original-name
+registries:
+  - name: test-registry
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
+database:
+  host: localhost
+  port: 5432
+  user: testuser
+  database: testdb
+auth:
+  mode: anonymous
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
+	require.NoError(t, err)
+
+	// Set environment variable override
+	t.Setenv("THV_REGISTRY_REGISTRYNAME", "overridden-name")
+
+	// Load config
+	cfg, err := LoadConfig(WithConfigPath(configPath))
+	require.NoError(t, err)
+
+	// Verify the environment variable override took effect
+	assert.Equal(t, "overridden-name", cfg.RegistryName)
+}
 
 // TestViperEnvOverrideDatabaseHost tests that THV_REGISTRY_DATABASE_HOST can override database.host
 func TestViperEnvOverrideDatabaseHost(t *testing.T) {
 	// Create a temporary config file
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `sources:
+	yamlContent := `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]
 auth:
   mode: anonymous
 database:
@@ -2240,16 +2181,12 @@ func TestViperEnvOverrideDatabasePort(t *testing.T) {
 	// Create a temporary config file
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `sources:
+	yamlContent := `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]
 auth:
   mode: anonymous
 database:
@@ -2278,16 +2215,12 @@ func TestViperEnvOverrideAuthMode(t *testing.T) {
 	// Create a temporary config file
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `sources:
+	yamlContent := `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]
 database:
   host: localhost
   port: 5432
@@ -2321,17 +2254,13 @@ func TestViperConfigPrecedence(t *testing.T) {
 	// Create a temporary config file with all values set
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `
-sources:
+	yamlContent := `registryName: file-registry-name
+registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]
 auth:
   mode: anonymous
 database:
@@ -2344,6 +2273,7 @@ database:
 	require.NoError(t, err)
 
 	// Set multiple environment variable overrides
+	t.Setenv("THV_REGISTRY_REGISTRYNAME", "env-registry-name")
 	t.Setenv("THV_REGISTRY_DATABASE_HOST", "env-host")
 	t.Setenv("THV_REGISTRY_DATABASE_USER", "env-user")
 
@@ -2352,6 +2282,7 @@ database:
 	require.NoError(t, err)
 
 	// Verify that environment variable overrides took precedence
+	assert.Equal(t, "env-registry-name", cfg.RegistryName)
 	require.NotNil(t, cfg.Database)
 	assert.Equal(t, "env-host", cfg.Database.Host)
 	assert.Equal(t, "env-user", cfg.Database.User)
@@ -2367,8 +2298,8 @@ func TestViperValidationStillWorks(t *testing.T) {
 	// Create a temporary config file with invalid config (missing registries)
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `
-sources: []
+	yamlContent := `registryName: test
+registries: []
 auth:
   mode: anonymous
 `
@@ -2378,7 +2309,7 @@ auth:
 	// Load config - should fail validation
 	_, err = LoadConfig(WithConfigPath(configPath))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "at least one source must be configured")
+	assert.Contains(t, err.Error(), "at least one registry must be configured")
 }
 
 // TestViperInvalidYAML tests that invalid YAML still returns an error
@@ -2387,7 +2318,7 @@ func TestViperInvalidYAML(t *testing.T) {
 	// Create a temporary config file with invalid YAML
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	yamlContent := `sources: [invalid yaml`
+	yamlContent := `registries: [invalid yaml`
 	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
 	require.NoError(t, err)
 
@@ -2414,16 +2345,12 @@ func TestViperConfigFileNotFound(t *testing.T) {
 func TestOAuthProviderAllowPrivateIP(t *testing.T) {
 	t.Parallel()
 
-	yaml := `sources:
+	yaml := `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]
 database:
   host: localhost
   port: 5432
@@ -2455,16 +2382,12 @@ auth:
 func TestOAuthProviderJwksUrl(t *testing.T) {
 	t.Parallel()
 
-	yaml := `sources:
+	yaml := `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]
 database:
   host: localhost
   port: 5432
@@ -2496,16 +2419,12 @@ auth:
 func TestOAuthProviderAuthTokenFile(t *testing.T) {
 	t.Parallel()
 
-	yaml := `sources:
+	yaml := `registries:
   - name: test-registry
-    type: file
     file:
       path: /data/registry.json
     syncPolicy:
       interval: "30m"
-registries:
-  - name: default
-    sources: ["test-registry"]
 database:
   host: localhost
   port: 5432
@@ -2631,7 +2550,7 @@ func TestConfigValidateGitAuth(t *testing.T) {
 		{
 			name: "valid git config with auth (both username and passwordFile set)",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "git-registry",
 						Git: &GitConfig{
@@ -2645,9 +2564,6 @@ func TestConfigValidateGitAuth(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"git-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -2664,7 +2580,7 @@ func TestConfigValidateGitAuth(t *testing.T) {
 		{
 			name: "git.auth.username only (missing passwordFile) should fail",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "git-registry",
 						Git: &GitConfig{
@@ -2688,7 +2604,7 @@ func TestConfigValidateGitAuth(t *testing.T) {
 		{
 			name: "git.auth.passwordFile only (missing username) should fail",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "git-registry",
 						Git: &GitConfig{
@@ -2712,7 +2628,7 @@ func TestConfigValidateGitAuth(t *testing.T) {
 		{
 			name: "git.auth.passwordFile with relative path should fail",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "git-registry",
 						Git: &GitConfig{
@@ -2737,7 +2653,7 @@ func TestConfigValidateGitAuth(t *testing.T) {
 		{
 			name: "git config without auth is valid",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "git-registry",
 						Git: &GitConfig{
@@ -2747,9 +2663,6 @@ func TestConfigValidateGitAuth(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"git-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",
@@ -2766,7 +2679,7 @@ func TestConfigValidateGitAuth(t *testing.T) {
 		{
 			name: "git config with empty auth struct is valid",
 			config: &Config{
-				Sources: []SourceConfig{
+				Registries: []RegistryConfig{
 					{
 						Name: "git-registry",
 						Git: &GitConfig{
@@ -2777,9 +2690,6 @@ func TestConfigValidateGitAuth(t *testing.T) {
 							Interval: "30m",
 						},
 					},
-				},
-				Registries: []RegistryConfig{
-					{Name: "default", Sources: []string{"git-registry"}},
 				},
 				Database: &DatabaseConfig{
 					Host:     "localhost",

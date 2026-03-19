@@ -129,8 +129,11 @@ initContainers: []
 # any new fields without modifying the chart templates.
 
 config:
-  # Sources configuration - at least one source must be configured
-  sources:
+  # Registry name/identifier for this instance
+  registryName: "default"
+
+  # Registry sources configuration - at least one registry must be configured
+  registries:
     - name: toolhive
       format: toolhive
       git:
@@ -139,11 +142,6 @@ config:
         path: pkg/catalog/toolhive/data/registry.json
       syncPolicy:
         interval: "30m"
-
-  # Registries configuration - at least one registry must be configured
-  registries:
-    - name: default
-      sources: ["toolhive"]
 
   # Authentication configuration
   auth:
@@ -161,7 +159,8 @@ config:
 
 # Example database configuration (uncomment and customize):
 # config:
-#   sources:
+#   registryName: "production"
+#   registries:
 #     - name: toolhive
 #       format: toolhive
 #       git:
@@ -170,9 +169,6 @@ config:
 #         path: pkg/catalog/toolhive/data/registry.json
 #       syncPolicy:
 #         interval: "1h"
-#   registries:
-#     - name: default
-#       sources: ["toolhive"]
 #   database:
 #     host: postgres.example.com
 #     port: 5432

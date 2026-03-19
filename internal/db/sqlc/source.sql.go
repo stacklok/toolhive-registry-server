@@ -30,7 +30,7 @@ SELECT
     unnest($1::text[]),
     'CONFIG',
     unnest($2::text[]),
-    NULLIF(unnest($3::text[]), ''),
+    unnest($3::text[]),
     unnest($4::jsonb[]),
     unnest($5::jsonb[]),
     unnest($6::interval[]),

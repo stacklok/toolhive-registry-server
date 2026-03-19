@@ -31,6 +31,7 @@ func TestNewDatabaseFactory(t *testing.T) {
 		{
 			name: "valid config with database settings",
 			cfg: &config.Config{
+				RegistryName: "test-registry",
 				Database: &config.DatabaseConfig{
 					Host:     db.Config().Host,
 					Port:     int(db.Config().Port),
@@ -50,7 +51,8 @@ func TestNewDatabaseFactory(t *testing.T) {
 		{
 			name: "config with nil database field returns error",
 			cfg: &config.Config{
-				Database: nil,
+				RegistryName: "test-registry",
+				Database:     nil,
 			},
 			wantErr: true,
 			errMsg:  "database configuration is required",
@@ -58,6 +60,7 @@ func TestNewDatabaseFactory(t *testing.T) {
 		{
 			name: "valid config with connection pool settings",
 			cfg: &config.Config{
+				RegistryName: "test-registry",
 				Database: &config.DatabaseConfig{
 					Host:            db.Config().Host,
 					Port:            int(db.Config().Port),
@@ -119,6 +122,7 @@ func TestDatabaseFactory_CreateStateService(t *testing.T) {
 			setup: func(t *testing.T) *DatabaseFactory {
 				t.Helper()
 				cfg := &config.Config{
+					RegistryName: "test-registry",
 					Database: &config.DatabaseConfig{
 						Host:     db.Config().Host,
 						Port:     int(db.Config().Port),
@@ -176,6 +180,7 @@ func TestDatabaseFactory_CreateSyncWriter(t *testing.T) {
 			setup: func(t *testing.T) *DatabaseFactory {
 				t.Helper()
 				cfg := &config.Config{
+					RegistryName: "test-registry",
 					Database: &config.DatabaseConfig{
 						Host:     db.Config().Host,
 						Port:     int(db.Config().Port),
@@ -233,6 +238,7 @@ func TestDatabaseFactory_CreateRegistryService(t *testing.T) {
 			setup: func(t *testing.T) *DatabaseFactory {
 				t.Helper()
 				cfg := &config.Config{
+					RegistryName: "test-registry",
 					Database: &config.DatabaseConfig{
 						Host:     db.Config().Host,
 						Port:     int(db.Config().Port),
@@ -289,6 +295,7 @@ func TestDatabaseFactory_Cleanup(t *testing.T) {
 			setup: func(t *testing.T) *DatabaseFactory {
 				t.Helper()
 				cfg := &config.Config{
+					RegistryName: "test-registry",
 					Database: &config.DatabaseConfig{
 						Host:     db.Config().Host,
 						Port:     int(db.Config().Port),
@@ -307,6 +314,7 @@ func TestDatabaseFactory_Cleanup(t *testing.T) {
 			setup: func(t *testing.T) *DatabaseFactory {
 				t.Helper()
 				cfg := &config.Config{
+					RegistryName: "test-registry",
 					Database: &config.DatabaseConfig{
 						Host:     db.Config().Host,
 						Port:     int(db.Config().Port),

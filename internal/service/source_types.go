@@ -25,7 +25,6 @@ type SourceCreateRequest struct {
 	Kubernetes *config.KubernetesConfig `json:"kubernetes,omitempty"` // Kubernetes discovery source
 	SyncPolicy *config.SyncPolicyConfig `json:"syncPolicy,omitempty"` // Sync schedule configuration
 	Filter     *config.FilterConfig     `json:"filter,omitempty"`     // Name/tag filtering rules
-	Claims     map[string]any           `json:"claims,omitempty"`     // Authorization claims
 }
 
 // GetSourceType returns the source type based on which config is set
@@ -117,6 +116,5 @@ type DeployedServer struct {
 
 // RegistryCreateRequest represents the request body for creating or updating a registry
 type RegistryCreateRequest struct {
-	Sources []string       `json:"sources"`          // ordered list of source names
-	Claims  map[string]any `json:"claims,omitempty"` // Authorization claims
+	Sources []string `json:"sources"` // ordered list of source names
 }

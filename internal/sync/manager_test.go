@@ -50,14 +50,14 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 	tests := []struct {
 		name                string
 		manualSyncRequested bool
-		config              *config.SourceConfig
+		config              *config.RegistryConfig
 		syncStatus          *status.SyncStatus
 		expectedReason      Reason
 	}{
 		{
 			name:                "sync needed when registry is in failed state",
 			manualSyncRequested: false,
-			config: &config.SourceConfig{
+			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -72,7 +72,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 		{
 			name:                "sync not needed when already syncing",
 			manualSyncRequested: false,
-			config: &config.SourceConfig{
+			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -87,7 +87,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 		{
 			name:                "sync needed when registry is in failed state",
 			manualSyncRequested: false,
-			config: &config.SourceConfig{
+			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -103,7 +103,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 		{
 			name:                "manual sync not needed with new trigger value and same hash",
 			manualSyncRequested: true,
-			config: &config.SourceConfig{
+			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -162,14 +162,14 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 
 	tests := []struct {
 		name                string
-		config              *config.SourceConfig
+		config              *config.RegistryConfig
 		expectedError       bool
 		expectedServerCount *int // nil means don't validate
 		errorContains       string
 	}{
 		{
 			name: "successful sync with valid data",
-			config: &config.SourceConfig{
+			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -181,7 +181,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		},
 		{
 			name: "sync fails when source file not found",
-			config: &config.SourceConfig{
+			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -194,7 +194,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		},
 		{
 			name: "successful sync with empty registry data",
-			config: &config.SourceConfig{
+			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -206,7 +206,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		},
 		{
 			name: "successful sync with name filtering",
-			config: &config.SourceConfig{
+			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -223,7 +223,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		},
 		{
 			name: "successful sync with tag filtering",
-			config: &config.SourceConfig{
+			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -240,7 +240,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		},
 		{
 			name: "successful sync with combined name and tag filtering",
-			config: &config.SourceConfig{
+			config: &config.RegistryConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{

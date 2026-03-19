@@ -106,7 +106,8 @@ func createTestApp(t *testing.T, ctrl *gomock.Controller, addr string) *Registry
 // createTestAppConfig creates a minimal valid config for testing
 func createTestAppConfig() *config.Config {
 	return &config.Config{
-		Sources: []config.SourceConfig{
+		RegistryName: "test-registry",
+		Registries: []config.RegistryConfig{
 			{
 				Name:   "test-registry-1",
 				Format: config.SourceFormatToolHive,
@@ -395,7 +396,7 @@ func TestRegistryApp_GetConfig(t *testing.T) {
 	cfg := app.GetConfig()
 
 	require.NotNil(t, cfg)
-	assert.Equal(t, 1, len(cfg.Sources))
+	assert.Equal(t, "test-registry", cfg.RegistryName)
 }
 
 func TestRegistryApp_GetHTTPServer(t *testing.T) {

@@ -11,8 +11,11 @@
 # Usage:
 #   thv-registry-api serve --config examples/config-api.yaml
 
-# Sources configuration (can have multiple sources)
-sources:
+# Registry name/identifier (optional, defaults to "default")
+registryName: mcp-registry
+
+# Registries configuration (can have multiple registries)
+registries:
   - name: mcp-upstream
     # Data format: only 'upstream' is supported for API sources
     format: upstream
@@ -32,10 +35,6 @@ sources:
       # Sync interval (valid duration: 1m, 5m, 30m, 1h, 24h, etc.)
       # Less frequent for upstream API to be respectful of external services
       interval: "1h"
-
-registries:
-  - name: default
-    sources: ["mcp-upstream"]
 
 auth:
   mode: anonymous
