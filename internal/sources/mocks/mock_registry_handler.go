@@ -82,21 +82,6 @@ func (m *MockRegistryHandler) EXPECT() *MockRegistryHandlerMockRecorder {
 	return m.recorder
 }
 
-// CurrentHash mocks base method.
-func (m *MockRegistryHandler) CurrentHash(ctx context.Context, regCfg *config.SourceConfig) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CurrentHash", ctx, regCfg)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CurrentHash indicates an expected call of CurrentHash.
-func (mr *MockRegistryHandlerMockRecorder) CurrentHash(ctx, regCfg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentHash", reflect.TypeOf((*MockRegistryHandler)(nil).CurrentHash), ctx, regCfg)
-}
-
 // FetchRegistry mocks base method.
 func (m *MockRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.SourceConfig) (*sources.FetchResult, error) {
 	m.ctrl.T.Helper()
