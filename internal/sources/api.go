@@ -29,7 +29,7 @@ func NewAPIRegistryHandler() RegistryHandler {
 }
 
 // Validate validates the API registry configuration
-func (*apiRegistryHandler) Validate(regCfg *config.RegistryConfig) error {
+func (*apiRegistryHandler) Validate(regCfg *config.SourceConfig) error {
 	if regCfg == nil {
 		return fmt.Errorf("registry configuration cannot be nil")
 	}
@@ -52,7 +52,7 @@ func (*apiRegistryHandler) Validate(regCfg *config.RegistryConfig) error {
 
 // FetchRegistry retrieves registry data from the API endpoint
 // It validates the Upstream format and delegates to the appropriate handler
-func (h *apiRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
+func (h *apiRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.SourceConfig) (*FetchResult, error) {
 	// Validate registry configuration
 	if err := h.Validate(regCfg); err != nil {
 		return nil, fmt.Errorf("registry validation failed: %w", err)
@@ -73,7 +73,7 @@ func (h *apiRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.R
 // validateUstreamFormat validates the Upstream format and returns the appropriate handler
 func (h *apiRegistryHandler) validateUstreamFormat(
 	ctx context.Context,
-	regCfg *config.RegistryConfig,
+	regCfg *config.SourceConfig,
 ) (*upstreamAPIHandler, error) {
 	endpoint := h.getBaseURL(regCfg)
 
@@ -89,7 +89,7 @@ func (h *apiRegistryHandler) validateUstreamFormat(
 }
 
 // getBaseURL extracts and normalizes the base URL
-func (*apiRegistryHandler) getBaseURL(regCfg *config.RegistryConfig) string {
+func (*apiRegistryHandler) getBaseURL(regCfg *config.SourceConfig) string {
 	baseURL := regCfg.API.Endpoint
 
 	// Remove trailing slash

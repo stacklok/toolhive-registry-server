@@ -12,11 +12,9 @@
 # - Different sync intervals for each registry
 # - How the server merges data from multiple sources
 
-registryName: dual-registry-demo
-
-# Two file-based registries with different formats
-registries:
-  # Registry 1: Upstream format (MCP standard)
+# Two file-based sources with different formats
+sources:
+  # Source 1: Upstream format (MCP standard)
   - name: upstream-servers
     format: upstream
     file:
@@ -24,13 +22,17 @@ registries:
     syncPolicy:
       interval: "30s"  # Quick sync for testing
 
-  # Registry 2: ToolHive format (legacy)
+  # Source 2: ToolHive format (legacy)
   - name: toolhive-servers
     format: toolhive
     file:
       path: /examples/toolhive-registry.json  # All examples files are mounted
     syncPolicy:
       interval: "45s"  # Different interval
+
+registries:
+  - name: default
+    sources: ["upstream-servers", "toolhive-servers"]
 
 # Authentication configuration
 auth:

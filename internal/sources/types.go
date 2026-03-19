@@ -22,7 +22,7 @@ type RegistryDataValidator interface {
 // RegistryHandler is an interface with methods to fetch data from external data sources
 type RegistryHandler interface {
 	// FetchRegistry retrieves data from the source and returns the result
-	FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error)
+	FetchRegistry(ctx context.Context, regCfg *config.SourceConfig) (*FetchResult, error)
 
 	// Validate validates the registry configuration
 	Validate(regCfg *config.RegistryConfig) error
@@ -63,7 +63,7 @@ func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string, format str
 type RegistryHandlerFactory interface {
 	// CreateHandler creates a registry handler for the given registry configuration
 	// The source type is inferred from which field is present (Git/API/File)
-	CreateHandler(regCfg *config.RegistryConfig) (RegistryHandler, error)
+	CreateHandler(regCfg *config.SourceConfig) (RegistryHandler, error)
 }
 
 // defaultRegistryDataValidator is the default implementation of RegistryDataValidator
