@@ -43,19 +43,6 @@ func TestV1StubEndpoints(t *testing.T) {
 			path:      "/registries/my-registry/entries",
 			wantError: "Listing registry entries is not yet implemented",
 		},
-		// Entry endpoints
-		{
-			name:      "publish entry",
-			method:    "POST",
-			path:      "/entries",
-			wantError: "Publishing entry is not yet implemented",
-		},
-		{
-			name:      "delete published entry",
-			method:    "DELETE",
-			path:      "/entries/server/my-entry/versions/1.0.0",
-			wantError: "Deleting published entry is not yet implemented",
-		},
 		{
 			name:      "update entry claims",
 			method:    "PUT",
