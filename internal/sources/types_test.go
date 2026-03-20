@@ -161,7 +161,7 @@ func TestDefaultRegistryDataValidator_ValidateData(t *testing.T) {
 	}`)
 
 	validUpstreamData := []byte(`{
-		"$schema": "https://raw.githubusercontent.com/stacklok/toolhive/main/pkg/registry/data/upstream-registry.schema.json",
+		"$schema": "https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/upstream-registry.schema.json",
 		"version": "1.0.0",
 		"meta": {
 			"last_updated": "2025-01-15T10:30:00Z"

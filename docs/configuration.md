@@ -62,9 +62,9 @@ registries:
   - name: toolhive
     format: toolhive
     git:
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/registry.json
     syncPolicy:
       interval: "30m"
     filter:
@@ -132,11 +132,11 @@ Clone and sync from Git repositories. Ideal for version-controlled registries.
 
 ```yaml
 git:
-  repository: https://github.com/stacklok/toolhive.git
+  repository: https://github.com/stacklok/toolhive-catalog.git
   branch: main                    # Optional: defaults to default branch
   tag: v1.0.0                     # Optional: use specific tag
   commit: abc123                  # Optional: pin to specific commit
-  path: pkg/registry/data/registry.json
+  path: pkg/catalog/toolhive/data/registry.json
   auth:                           # Optional: for private repos
     username: user
     passwordFile: /secrets/git-password
@@ -420,9 +420,9 @@ registries:
   - name: toolhive
     format: toolhive
     git:
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/registry.json
     syncPolicy:
       interval: "15m"
       retryLimit: 5
@@ -463,9 +463,9 @@ registries:
   - name: toolhive
     format: toolhive
     git:
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/registry.json
     syncPolicy:
       interval: "30m"
 

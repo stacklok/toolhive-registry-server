@@ -7,7 +7,6 @@ import (
 	"time"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
-	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
@@ -34,18 +33,30 @@ var (
 	ErrNotImplemented = errors.New("not implemented")
 	// ErrRegistryNotFound is returned when a registry is not found
 	ErrRegistryNotFound = errors.New("registry not found")
-	// ErrNotManagedRegistry is returned when attempting write operations on a non-managed registry
-	ErrNotManagedRegistry = errors.New("registry is not managed")
 	// ErrVersionAlreadyExists is returned when attempting to publish a version that already exists
 	ErrVersionAlreadyExists = errors.New("version already exists")
+	// ErrConfigSource is returned when attempting to modify a CONFIG-created source via API
+	ErrConfigSource = errors.New("cannot modify config-created source via API")
+	// ErrInvalidSourceConfig is returned when source configuration is invalid
+	ErrInvalidSourceConfig = errors.New("invalid source configuration")
+	// ErrSourceAlreadyExists is returned when attempting to create a source that already exists
+	ErrSourceAlreadyExists = errors.New("source already exists")
+	// ErrSourceTypeChangeNotAllowed is returned when attempting to change a source's type
+	ErrSourceTypeChangeNotAllowed = errors.New("changing source type is not allowed")
+	// ErrSourceNotFound is returned when a source is not found
+	ErrSourceNotFound = errors.New("source not found")
+	// ErrNoManagedSource is returned when no managed source is found
+	ErrNoManagedSource = errors.New("no managed source found")
+	// ErrRegistryAlreadyExists is returned when attempting to create a registry that already exists
+	ErrRegistryAlreadyExists = errors.New("registry already exists")
 	// ErrConfigRegistry is returned when attempting to modify a CONFIG-created registry via API
 	ErrConfigRegistry = errors.New("cannot modify config-created registry via API")
 	// ErrInvalidRegistryConfig is returned when registry configuration is invalid
 	ErrInvalidRegistryConfig = errors.New("invalid registry configuration")
-	// ErrRegistryAlreadyExists is returned when attempting to create a registry that already exists
-	ErrRegistryAlreadyExists = errors.New("registry already exists")
-	// ErrSourceTypeChangeNotAllowed is returned when attempting to change a registry's source type
-	ErrSourceTypeChangeNotAllowed = errors.New("changing registry source type is not allowed")
+	// ErrSourceInUse is returned when attempting to delete a source that is linked to registries
+	ErrSourceInUse = errors.New("source is referenced by one or more registries")
+	// ErrClaimsMismatch is returned when publish claims do not match the existing entry's claims
+	ErrClaimsMismatch = errors.New("claims mismatch")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service
@@ -58,9 +69,6 @@ type RegistryService interface {
 	// CheckReadiness checks if the regSvc is ready to serve requests
 	CheckReadiness(ctx context.Context) error
 
-	// GetRegistry returns the registry data with metadata
-	GetRegistry(ctx context.Context) (*toolhivetypes.UpstreamRegistry, string, error) // returns registry, source, error
-
 	// ********** MCP OPERATIONS **********
 
 	// ListServers returns all servers in the registry with pagination info
@@ -69,7 +77,7 @@ type RegistryService interface {
 	// ListServerVersions returns all versions of a specific server
 	ListServerVersions(ctx context.Context, opts ...Option) ([]*upstreamv0.ServerJSON, error)
 
-	// GetServer returns a specific server by name
+	// GetServerVersion returns a specific server version by name
 	GetServerVersion(ctx context.Context, opts ...Option) (*upstreamv0.ServerJSON, error)
 
 	// PublishServerVersion publishes a server version to a managed registry
@@ -77,6 +85,23 @@ type RegistryService interface {
 
 	// DeleteServerVersion removes a server version from a managed registry
 	DeleteServerVersion(ctx context.Context, opts ...Option) error
+
+	// ********** SOURCE OPERATIONS **********
+
+	// ListSources returns all configured sources
+	ListSources(ctx context.Context) ([]SourceInfo, error)
+
+	// GetSourceByName returns a single source by name
+	GetSourceByName(ctx context.Context, name string) (*SourceInfo, error)
+
+	// CreateSource creates a new API-managed source
+	CreateSource(ctx context.Context, name string, req *SourceCreateRequest) (*SourceInfo, error)
+
+	// UpdateSource updates an existing API-managed source
+	UpdateSource(ctx context.Context, name string, req *SourceCreateRequest) (*SourceInfo, error)
+
+	// DeleteSource deletes an API-managed source
+	DeleteSource(ctx context.Context, name string) error
 
 	// ********** REGISTRY OPERATIONS **********
 
@@ -95,8 +120,8 @@ type RegistryService interface {
 	// DeleteRegistry deletes an API-managed registry
 	DeleteRegistry(ctx context.Context, name string) error
 
-	// ProcessInlineRegistryData processes inline data for a managed/file registry
-	ProcessInlineRegistryData(ctx context.Context, name string, data string, format string) error
+	// ProcessInlineSourceData processes inline data for a managed/file registry
+	ProcessInlineSourceData(ctx context.Context, name string, data string, format string) error
 
 	// ********** SKILL OPERATIONS **********
 
@@ -114,8 +139,8 @@ type RegistryService interface {
 	DeleteSkillVersion(ctx context.Context, opts ...Option) error
 }
 
-// RegistryInfo represents detailed information about a registry
-type RegistryInfo struct {
+// SourceInfo represents detailed information about a source
+type SourceInfo struct {
 	Name         string               `json:"name"`
 	Type         string               `json:"type"`                   // MANAGED, FILE, REMOTE, KUBERNETES
 	CreationType CreationType         `json:"creationType,omitempty"` // API or CONFIG
@@ -124,13 +149,22 @@ type RegistryInfo struct {
 	SourceConfig any                  `json:"sourceConfig,omitempty"` // Type-specific source configuration
 	FilterConfig *config.FilterConfig `json:"filterConfig,omitempty"` // Filtering rules
 	SyncSchedule string               `json:"syncSchedule,omitempty"` // Sync interval string
-	SyncStatus   *RegistrySyncStatus  `json:"syncStatus,omitempty"`
+	SyncStatus   *SourceSyncStatus    `json:"syncStatus,omitempty"`
 	CreatedAt    time.Time            `json:"createdAt"`
 	UpdatedAt    time.Time            `json:"updatedAt"`
 }
 
-// RegistrySyncStatus represents the sync status of a registry
-type RegistrySyncStatus struct {
+// RegistryInfo represents detailed information about a registry
+type RegistryInfo struct {
+	Name         string       `json:"name"`
+	CreationType CreationType `json:"creationType,omitempty"`
+	Sources      []string     `json:"sources"`
+	CreatedAt    time.Time    `json:"createdAt"`
+	UpdatedAt    time.Time    `json:"updatedAt"`
+}
+
+// SourceSyncStatus represents the sync status of a registry
+type SourceSyncStatus struct {
 	Phase        string     `json:"phase"`                  // complete, syncing, failed
 	LastSyncTime *time.Time `json:"lastSyncTime,omitempty"` // Last successful sync
 	LastAttempt  *time.Time `json:"lastAttempt,omitempty"`  // Last sync attempt
@@ -139,9 +173,9 @@ type RegistrySyncStatus struct {
 	Message      string     `json:"message,omitempty"`      // Status or error message
 }
 
-// RegistryListResponse represents the response for listing registries
-type RegistryListResponse struct {
-	Registries []RegistryInfo `json:"registries"`
+// SourceListResponse represents the response for listing sources
+type SourceListResponse struct {
+	Sources []SourceInfo `json:"sources"`
 }
 
 // ListServersResult contains the result of a ListServers operation with pagination info.

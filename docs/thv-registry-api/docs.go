@@ -8,38 +8,6 @@ const docTemplate = `{
     "schemes": {{ marshal .Schemes }},
     "components": {
         "schemas": {
-            "github_com_stacklok_toolhive-registry-server_internal_config.APIConfig": {
-                "description": "API endpoint source",
-                "properties": {
-                    "endpoint": {
-                        "description": "Endpoint is the base API URL (without path)\nThe registry handler will append the appropriate paths for the MCP Registry API v0.1:\n  - /v0.1/servers - List all servers\n  - /v0.1/servers/{name}/versions - List server versions\n  - /v0.1/servers/{name}/versions/{version} - Get specific version\nExample: \"http://my-registry-api.default.svc.cluster.local/registry\"",
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.FileConfig": {
-                "description": "Local file or URL source",
-                "properties": {
-                    "data": {
-                        "description": "Data is the inline registry data as a JSON string\nMutually exclusive with Path and URL - exactly one must be specified\nUseful for API-created registries where the data is provided directly",
-                        "type": "string"
-                    },
-                    "path": {
-                        "description": "Path is the path to the registry.json file on the local filesystem\nCan be absolute or relative to the working directory\nMutually exclusive with URL and Data - exactly one must be specified",
-                        "type": "string"
-                    },
-                    "timeout": {
-                        "description": "Timeout is the timeout for HTTP requests when using URL\nDefaults to 30s if not specified\nOnly applicable when URL is set",
-                        "type": "string"
-                    },
-                    "url": {
-                        "description": "URL is the HTTP/HTTPS URL to fetch the registry file from\nMutually exclusive with Path and Data - exactly one must be specified\nHTTPS is required unless the host is localhost or THV_REGISTRY_INSECURE_URL=true",
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
             "github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig": {
                 "description": "Filtering rules",
                 "properties": {
@@ -50,57 +18,6 @@ const docTemplate = `{
                         "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig"
                     }
                 },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig": {
-                "description": "Auth contains optional authentication for private repositories",
-                "properties": {
-                    "passwordFile": {
-                        "description": "PasswordFile is the path to a file containing the Git password/token\nMust be an absolute path; whitespace is trimmed from the content",
-                        "type": "string"
-                    },
-                    "username": {
-                        "description": "Username is the Git username for HTTP Basic authentication",
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.GitConfig": {
-                "description": "Git repository source",
-                "properties": {
-                    "auth": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig"
-                    },
-                    "branch": {
-                        "description": "Branch is the Git branch to use (mutually exclusive with Tag and Commit)",
-                        "type": "string"
-                    },
-                    "commit": {
-                        "description": "Commit is the Git commit SHA to use (mutually exclusive with Branch and Tag)",
-                        "type": "string"
-                    },
-                    "path": {
-                        "description": "Path is the path to the registry file within the repository",
-                        "type": "string"
-                    },
-                    "repository": {
-                        "description": "Repository is the Git repository URL (HTTP/HTTPS/SSH)",
-                        "type": "string"
-                    },
-                    "tag": {
-                        "description": "Tag is the Git tag to use (mutually exclusive with Branch and Commit)",
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig": {
-                "description": "Kubernetes discovery source",
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig": {
-                "description": "Managed registry (no sync)",
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig": {
@@ -140,15 +57,6 @@ const docTemplate = `{
                     "SourceTypeKubernetes"
                 ]
             },
-            "github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig": {
-                "description": "Sync schedule configuration",
-                "properties": {
-                    "interval": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
             "github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig": {
                 "properties": {
                     "exclude": {
@@ -180,37 +88,161 @@ const docTemplate = `{
                     "CreationTypeCONFIG"
                 ]
             },
-            "github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest": {
+            "github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo": {
                 "properties": {
-                    "api": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.APIConfig"
-                    },
-                    "file": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FileConfig"
-                    },
-                    "filter": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig"
-                    },
-                    "format": {
-                        "description": "\"toolhive\" or \"upstream\"",
+                    "createdAt": {
                         "type": "string"
                     },
-                    "git": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitConfig"
+                    "creationType": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.CreationType"
                     },
-                    "kubernetes": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig"
+                    "name": {
+                        "type": "string"
                     },
-                    "managed": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig"
+                    "sources": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
                     },
-                    "syncPolicy": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig"
+                    "updatedAt": {
+                        "type": "string"
                     }
                 },
                 "type": "object"
             },
-            "github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo": {
+            "github_com_stacklok_toolhive-registry-server_internal_service.Skill": {
+                "properties": {
+                    "_meta": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    },
+                    "allowedTools": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "compatibility": {
+                        "type": "string"
+                    },
+                    "createdAt": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "icons": {
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SkillIcon"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "isLatest": {
+                        "type": "boolean"
+                    },
+                    "license": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "namespace": {
+                        "type": "string"
+                    },
+                    "packages": {
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SkillPackage"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "repository": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SkillRepository"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "type": "string"
+                    },
+                    "version": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.SkillIcon": {
+                "properties": {
+                    "label": {
+                        "type": "string"
+                    },
+                    "size": {
+                        "type": "string"
+                    },
+                    "src": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.SkillPackage": {
+                "properties": {
+                    "commit": {
+                        "type": "string"
+                    },
+                    "digest": {
+                        "type": "string"
+                    },
+                    "identifier": {
+                        "type": "string"
+                    },
+                    "mediaType": {
+                        "type": "string"
+                    },
+                    "ref": {
+                        "type": "string"
+                    },
+                    "registryType": {
+                        "type": "string"
+                    },
+                    "subfolder": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.SkillRepository": {
+                "properties": {
+                    "type": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo": {
                 "properties": {
                     "createdAt": {
                         "type": "string"
@@ -239,7 +271,7 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "syncStatus": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistrySyncStatus"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceSyncStatus"
                     },
                     "type": {
                         "description": "MANAGED, FILE, REMOTE, KUBERNETES",
@@ -251,11 +283,11 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "github_com_stacklok_toolhive-registry-server_internal_service.RegistryListResponse": {
+            "github_com_stacklok_toolhive-registry-server_internal_service.SourceListResponse": {
                 "properties": {
-                    "registries": {
+                    "sources": {
                         "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -263,7 +295,7 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "github_com_stacklok_toolhive-registry-server_internal_service.RegistrySyncStatus": {
+            "github_com_stacklok_toolhive-registry-server_internal_service.SourceSyncStatus": {
                 "properties": {
                     "attemptCount": {
                         "description": "Number of sync attempts",
@@ -331,6 +363,33 @@ const docTemplate = `{
                     "version": {
                         "example": "v0.1.0",
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "internal_api_v1.publishEntryRequest": {
+                "properties": {
+                    "claims": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    },
+                    "server": {
+                        "$ref": "#/components/schemas/v0.ServerJSON"
+                    },
+                    "skill": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.Skill"
+                    }
+                },
+                "type": "object"
+            },
+            "internal_api_v1.registryListResponse": {
+                "properties": {
+                    "registries": {
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
                     }
                 },
                 "type": "object"
@@ -922,423 +981,6 @@ const docTemplate = `{
         "url": ""
     },
     "paths": {
-        "/extension/v0/registries": {
-            "get": {
-                "description": "List all registries",
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryListResponse"
-                                }
-                            }
-                        },
-                        "description": "List of registries"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "List registries",
-                "tags": [
-                    "extension"
-                ]
-            }
-        },
-        "/extension/v0/registries/{registryName}": {
-            "delete": {
-                "description": "Delete a registry by name. Only registries created via API can be deleted.",
-                "parameters": [
-                    {
-                        "description": "Registry Name",
-                        "in": "path",
-                        "name": "registryName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "204": {
-                        "description": "Registry deleted"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "403": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Forbidden - cannot delete CONFIG registry"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Registry not found"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
-                    },
-                    "501": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Not implemented"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "Delete registry",
-                "tags": [
-                    "extension"
-                ]
-            },
-            "get": {
-                "description": "Get a registry by name",
-                "parameters": [
-                    {
-                        "description": "Registry Name",
-                        "in": "path",
-                        "name": "registryName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
-                                }
-                            }
-                        },
-                        "description": "Registry details"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Registry not found"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
-                    },
-                    "501": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Not implemented"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "Get registry",
-                "tags": [
-                    "extension"
-                ]
-            },
-            "put": {
-                "description": "Create a new registry or update an existing one. Only registries created via API can be updated.",
-                "parameters": [
-                    {
-                        "description": "Registry Name",
-                        "in": "path",
-                        "name": "registryName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest",
-                                        "summary": "body",
-                                        "description": "Registry configuration"
-                                    }
-                                ]
-                            }
-                        }
-                    },
-                    "description": "Registry configuration",
-                    "required": true
-                },
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
-                                }
-                            }
-                        },
-                        "description": "Registry updated"
-                    },
-                    "201": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
-                                }
-                            }
-                        },
-                        "description": "Registry created"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request - invalid configuration"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "403": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Forbidden - cannot modify CONFIG registry"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
-                    },
-                    "501": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Not implemented"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "Create or update registry",
-                "tags": [
-                    "extension"
-                ]
-            }
-        },
         "/health": {
             "get": {
                 "description": "Check if the registry API is healthy",
@@ -1425,335 +1067,6 @@ const docTemplate = `{
                 "summary": "Readiness check",
                 "tags": [
                     "system"
-                ]
-            }
-        },
-        "/registry/v0.1/publish": {
-            "post": {
-                "deprecated": true,
-                "description": "Publish a server to the registry. This server does not support publishing via this endpoint.\nUse the registry-specific endpoint /{registryName}/v0.1/publish instead.",
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "501": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Not implemented"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "Publish server (not supported)",
-                "tags": [
-                    "registry-aggregated"
-                ]
-            }
-        },
-        "/registry/v0.1/servers": {
-            "get": {
-                "deprecated": true,
-                "description": "Get a list of available servers from all registries (aggregated view)",
-                "parameters": [
-                    {
-                        "description": "Pagination cursor for retrieving next set of results",
-                        "in": "query",
-                        "name": "cursor",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Maximum number of items to return",
-                        "in": "query",
-                        "name": "limit",
-                        "schema": {
-                            "type": "integer"
-                        }
-                    },
-                    {
-                        "description": "Search servers by name (substring match)",
-                        "in": "query",
-                        "name": "search",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Filter by version ('latest' for latest version, or an exact version like '1.2.3')",
-                        "in": "query",
-                        "name": "version",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/v0.ServerListResponse"
-                                }
-                            }
-                        },
-                        "description": "OK"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "List servers (aggregated)",
-                "tags": [
-                    "registry-aggregated"
-                ]
-            }
-        },
-        "/registry/v0.1/servers/{serverName}/versions": {
-            "get": {
-                "deprecated": true,
-                "description": "Returns all available versions for a specific MCP server from all registries (aggregated view)",
-                "parameters": [
-                    {
-                        "description": "URL-encoded server name (e.g., \\",
-                        "in": "path",
-                        "name": "serverName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/v0.ServerListResponse"
-                                }
-                            }
-                        },
-                        "description": "A list of all versions for the server"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Server not found"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "List all versions of an MCP server (aggregated)",
-                "tags": [
-                    "registry-aggregated"
-                ]
-            }
-        },
-        "/registry/v0.1/servers/{serverName}/versions/{version}": {
-            "get": {
-                "deprecated": true,
-                "description": "Returns detailed information about a specific version of an MCP server from all registries.\nUse the special version ` + "`" + `latest` + "`" + ` to get the latest version.",
-                "parameters": [
-                    {
-                        "description": "URL-encoded server name (e.g., \\",
-                        "in": "path",
-                        "name": "serverName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "URL-encoded version to retrieve (e.g., \\",
-                        "in": "path",
-                        "name": "version",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/v0.ServerResponse"
-                                }
-                            }
-                        },
-                        "description": "Detailed server information"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Server or version not found"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "Get specific MCP server version (aggregated)",
-                "tags": [
-                    "registry-aggregated"
                 ]
             }
         },
@@ -1969,126 +1282,6 @@ const docTemplate = `{
             }
         },
         "/registry/{registryName}/v0.1/servers/{serverName}/versions/{version}": {
-            "delete": {
-                "description": "Delete a server version from a specific managed registry",
-                "parameters": [
-                    {
-                        "description": "Registry name",
-                        "in": "path",
-                        "name": "registryName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Server name (URL-encoded)",
-                        "in": "path",
-                        "name": "serverName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Version (URL-encoded)",
-                        "in": "path",
-                        "name": "version",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "204": {
-                        "description": "No content"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "403": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Not a managed registry"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Server version not found"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "Delete server version from specific registry",
-                "tags": [
-                    "registry"
-                ]
-            },
             "get": {
                 "description": "Returns detailed information about a specific version of an MCP server from a specific registry.\nUse the special version ` + "`" + `latest` + "`" + ` to get the latest version.",
                 "parameters": [
@@ -2290,126 +1483,6 @@ const docTemplate = `{
                     }
                 ],
                 "summary": "List skills in registry",
-                "tags": [
-                    "skills"
-                ]
-            },
-            "post": {
-                "description": "Publish a skill version to the registry.",
-                "parameters": [
-                    {
-                        "description": "Registry name",
-                        "in": "path",
-                        "name": "registryName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/registry.Skill",
-                                        "summary": "body",
-                                        "description": "Skill data"
-                                    }
-                                ]
-                            }
-                        }
-                    },
-                    "description": "Skill data",
-                    "required": true
-                },
-                "responses": {
-                    "201": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/registry.Skill"
-                                }
-                            }
-                        },
-                        "description": "Created"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "403": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Not a managed registry"
-                    },
-                    "409": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Version already exists"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "Publish skill",
                 "tags": [
                     "skills"
                 ]
@@ -2622,135 +1695,6 @@ const docTemplate = `{
             }
         },
         "/registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions/{version}": {
-            "delete": {
-                "description": "Delete a specific version of a skill from the registry.",
-                "parameters": [
-                    {
-                        "description": "Registry name",
-                        "in": "path",
-                        "name": "registryName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Skill namespace (reverse-DNS)",
-                        "in": "path",
-                        "name": "namespace",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Skill name",
-                        "in": "path",
-                        "name": "name",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Skill version",
-                        "in": "path",
-                        "name": "version",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "204": {
-                        "description": "No content"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "403": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Not a managed registry"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Skill version not found"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "Delete skill version",
-                "tags": [
-                    "skills"
-                ]
-            },
             "get": {
                 "description": "Get a specific version of a skill.",
                 "parameters": [
@@ -2864,18 +1808,39 @@ const docTemplate = `{
         },
         "/v1/entries": {
             "post": {
-                "description": "Publish a new entry",
+                "description": "Publish a new server or skill entry. Exactly one of 'server' or 'skill' must be provided.",
                 "requestBody": {
                     "content": {
                         "application/json": {
                             "schema": {
-                                "type": "object"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/internal_api_v1.publishEntryRequest",
+                                        "summary": "request",
+                                        "description": "Entry to publish (server or skill)"
+                                    }
+                                ]
                             }
                         }
-                    }
+                    },
+                    "description": "Entry to publish (server or skill)",
+                    "required": true
                 },
                 "responses": {
-                    "501": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Published entry (server or skill)"
+                    },
+                    "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2886,7 +1851,33 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Bad request"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Conflict"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "Publish entry",
@@ -3003,6 +1994,9 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -3016,7 +2010,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "501": {
+                    "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3027,7 +2021,20 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Not found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "Delete published entry",
@@ -3049,7 +2056,17 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
-                    "501": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/internal_api_v1.registryListResponse"
+                                }
+                            }
+                        },
+                        "description": "Registries list"
+                    },
+                    "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3060,7 +2077,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "List registries",
@@ -3093,6 +2110,9 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
+                    "204": {
+                        "description": "Registry deleted"
+                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -3106,7 +2126,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "501": {
+                    "403": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3117,7 +2137,33 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Cannot modify config-created registry"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Registry not found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "Delete registry",
@@ -3148,6 +2194,16 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
+                                }
+                            }
+                        },
+                        "description": "Registry details"
+                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -3161,7 +2217,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "501": {
+                    "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3172,7 +2228,20 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Registry not found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "Get registry",
@@ -3203,6 +2272,26 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
+                                }
+                            }
+                        },
+                        "description": "Registry updated"
+                    },
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
+                                }
+                            }
+                        },
+                        "description": "Registry created"
+                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -3216,7 +2305,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "501": {
+                    "403": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3227,7 +2316,20 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Cannot modify config-created registry"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "Create or update registry",
@@ -3306,7 +2408,17 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
-                    "501": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceListResponse"
+                                }
+                            }
+                        },
+                        "description": "Sources list"
+                    },
+                    "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3317,7 +2429,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "List sources",
@@ -3350,6 +2462,9 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
+                    "204": {
+                        "description": "Source deleted"
+                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -3363,7 +2478,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "501": {
+                    "403": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3374,7 +2489,46 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Cannot modify config-created source"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Source not found"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Source in use"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "Delete source",
@@ -3405,6 +2559,16 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo"
+                                }
+                            }
+                        },
+                        "description": "Source details"
+                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -3418,7 +2582,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "501": {
+                    "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3429,7 +2593,20 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Source not found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "Get source",
@@ -3460,6 +2637,26 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo"
+                                }
+                            }
+                        },
+                        "description": "Source updated"
+                    },
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo"
+                                }
+                            }
+                        },
+                        "description": "Source created"
+                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -3473,7 +2670,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "501": {
+                    "403": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3484,7 +2681,20 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Cannot modify config-created source"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "Create or update source",
@@ -3568,141 +2778,6 @@ const docTemplate = `{
                 "summary": "Version information",
                 "tags": [
                     "system"
-                ]
-            }
-        },
-        "/{registryName}/v0.1/publish": {
-            "post": {
-                "description": "Publish a server version to a specific managed registry",
-                "parameters": [
-                    {
-                        "description": "Registry name",
-                        "in": "path",
-                        "name": "registryName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/v0.ServerJSON",
-                                        "summary": "server",
-                                        "description": "Server data"
-                                    }
-                                ]
-                            }
-                        }
-                    },
-                    "description": "Server data",
-                    "required": true
-                },
-                "responses": {
-                    "201": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/v0.ServerJSON"
-                                }
-                            }
-                        },
-                        "description": "Created"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "401": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Unauthorized"
-                    },
-                    "403": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Not a managed registry"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Registry not found"
-                    },
-                    "409": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Version already exists"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "Publish server to specific registry",
-                "tags": [
-                    "registry"
                 ]
             }
         }

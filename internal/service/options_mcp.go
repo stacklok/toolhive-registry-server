@@ -94,6 +94,7 @@ func (o *ListServerVersionsOptions) setLimit(limit int) error {
 // GetServerVersionOptions is the options for the GetServerVersion operation
 type GetServerVersionOptions struct {
 	RegistryName string
+	SourceName   string
 	Name         string
 	Version      string
 }
@@ -101,6 +102,12 @@ type GetServerVersionOptions struct {
 //nolint:unparam
 func (o *GetServerVersionOptions) setRegistryName(registryName string) error {
 	o.RegistryName = registryName
+	return nil
+}
+
+//nolint:unparam
+func (o *GetServerVersionOptions) setSourceName(sourceName string) error {
+	o.SourceName = sourceName
 	return nil
 }
 
@@ -118,14 +125,8 @@ func (o *GetServerVersionOptions) setVersion(version string) error {
 
 // PublishServerVersionOptions is the options for the PublishServerVersion operation
 type PublishServerVersionOptions struct {
-	RegistryName string
-	ServerData   *upstreamv0.ServerJSON
-}
-
-//nolint:unparam
-func (o *PublishServerVersionOptions) setRegistryName(registryName string) error {
-	o.RegistryName = registryName
-	return nil
+	ServerData *upstreamv0.ServerJSON
+	Claims     map[string]any
 }
 
 //nolint:unparam
@@ -134,17 +135,16 @@ func (o *PublishServerVersionOptions) setServerData(serverData *upstreamv0.Serve
 	return nil
 }
 
-// DeleteServerVersionOptions is the options for the DeleteServerVersion operation
-type DeleteServerVersionOptions struct {
-	RegistryName string
-	ServerName   string
-	Version      string
+//nolint:unparam
+func (o *PublishServerVersionOptions) setClaims(claims map[string]any) error {
+	o.Claims = claims
+	return nil
 }
 
-//nolint:unparam
-func (o *DeleteServerVersionOptions) setRegistryName(registryName string) error {
-	o.RegistryName = registryName
-	return nil
+// DeleteServerVersionOptions is the options for the DeleteServerVersion operation
+type DeleteServerVersionOptions struct {
+	ServerName string
+	Version    string
 }
 
 //nolint:unparam

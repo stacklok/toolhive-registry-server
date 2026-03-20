@@ -94,24 +94,16 @@ func WithConfigPath(path string) Option {
 
 // Config represents the root configuration structure
 type Config struct {
-	// RegistryName is the name/identifier for this registry instance
-	// Defaults to "default" if not specified
-	RegistryName string            `yaml:"registryName,omitempty"`
-	Registries   []RegistryConfig  `yaml:"registries"`
-	Database     *DatabaseConfig   `yaml:"database,omitempty"`
-	Auth         *AuthConfig       `yaml:"auth,omitempty"`
-	Telemetry    *telemetry.Config `yaml:"telemetry,omitempty"`
+	Sources    []SourceConfig    `yaml:"sources"`
+	Registries []RegistryConfig  `yaml:"registries,omitempty"`
+	Database   *DatabaseConfig   `yaml:"database,omitempty"`
+	Auth       *AuthConfig       `yaml:"auth,omitempty"`
+	Telemetry  *telemetry.Config `yaml:"telemetry,omitempty"`
 
 	// insecureAllowHTTP allows HTTP URLs for OAuth issuer URLs (development only)
 	// Can be set via THV_REGISTRY_INSECURE_URL environment variable
 	// Not loaded from YAML file - environment variable only
 	insecureAllowHTTP bool
-
-	// EnableAggregatedEndpoints enables aggregated endpoints that access all
-	// configured registries.
-	// Can be set via THV_REGISTRY_ENABLE_AGGREGATED_ENDPOINTS environment variable
-	// Not loaded from YAML file - environment variable only
-	EnableAggregatedEndpoints bool
 
 	// WatchNamespace is the namespace to watch for MCP servers.
 	// Can be set via THV_REGISTRY_WATCH_NAMESPACE environment variable
@@ -124,9 +116,9 @@ type Config struct {
 	LeaderElectionID string
 }
 
-// RegistryConfig defines a single registry data source configuration
-type RegistryConfig struct {
-	// Name is the identifier for this registry
+// SourceConfig defines a single data source configuration
+type SourceConfig struct {
+	// Name is the identifier for this source
 	Name string `yaml:"name"`
 
 	// Format specifies the data format (toolhive or upstream)
@@ -139,13 +131,30 @@ type RegistryConfig struct {
 	Managed    *ManagedConfig    `yaml:"managed,omitempty"`
 	Kubernetes *KubernetesConfig `yaml:"kubernetes,omitempty"`
 
-	// Per-registry sync policy
-	// Note: Not applicable for non-synced registries (managed and kubernetes) - will be ignored if set
+	// Per-source sync policy
+	// Note: Not applicable for non-synced sources (managed and kubernetes) - will be ignored if set
 	SyncPolicy *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
 
-	// Per-registry filtering rules
-	// Note: Not applicable for non-synced registries (managed and kubernetes) - will be ignored if set
+	// Per-source filtering rules
+	// Note: Not applicable for non-synced sources (managed and kubernetes) - will be ignored if set
 	Filter *FilterConfig `yaml:"filter,omitempty"`
+
+	// Claims are key-value pairs attached to this source for authorization purposes
+	// Values must be string or []string
+	Claims map[string]any `yaml:"claims,omitempty"`
+}
+
+// RegistryConfig defines a lightweight registry view that aggregates sources
+type RegistryConfig struct {
+	// Name is the identifier for this registry
+	Name string `yaml:"name"`
+
+	// Claims are key-value pairs attached to this registry for authorization purposes
+	// Values must be string or []string
+	Claims map[string]any `yaml:"claims,omitempty"`
+
+	// Sources is an ordered list of source names that feed this registry
+	Sources []string `yaml:"sources"`
 }
 
 // GitConfig defines Git source settings
@@ -268,8 +277,15 @@ type ManagedConfig struct {
 
 // KubernetesConfig defines configuration for Kubernetes-based registries
 // Kubernetes registries discover MCP servers from running Kubernetes resources
-// No configuration is actually needed here.
-type KubernetesConfig struct{}
+type KubernetesConfig struct {
+	// Namespaces is a list of Kubernetes namespaces to watch for MCP servers
+	// If empty, watches the namespace configured via WatchNamespace environment variable
+	Namespaces []string `yaml:"namespaces,omitempty"`
+
+	// ClaimMapping maps Kubernetes labels/annotations to claims for authorization
+	// Keys are claim names, values are label/annotation paths
+	ClaimMapping map[string]string `yaml:"claimMapping,omitempty"`
+}
 
 // SyncPolicyConfig defines synchronization settings
 type SyncPolicyConfig struct {
@@ -309,6 +325,19 @@ const (
 	DefaultAuthMode AuthMode = AuthModeOAuth
 )
 
+// AuthzConfig defines authorization configuration for role-based access control
+type AuthzConfig struct {
+	Roles RolesConfig `yaml:"roles,omitempty"`
+}
+
+// RolesConfig defines role-based authorization rules
+type RolesConfig struct {
+	SuperAdmin       []map[string]any `yaml:"superAdmin,omitempty"`
+	ManageSources    []map[string]any `yaml:"manageSources,omitempty"`
+	ManageRegistries []map[string]any `yaml:"manageRegistries,omitempty"`
+	ManageEntries    []map[string]any `yaml:"manageEntries,omitempty"`
+}
+
 // AuthConfig defines authentication configuration for the registry server
 type AuthConfig struct {
 	// Mode specifies the authentication mode (anonymous or oauth)
@@ -324,6 +353,9 @@ type AuthConfig struct {
 	// OAuth contains OAuth/OIDC specific configuration
 	// Required when Mode is "oauth"
 	OAuth *OAuthConfig `yaml:"oauth,omitempty"`
+
+	// Authz contains authorization configuration for role-based access control
+	Authz *AuthzConfig `yaml:"authz,omitempty"`
 }
 
 // OAuthConfig defines OAuth/OIDC specific authentication settings
@@ -677,10 +709,6 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	// This is not loaded from YAML - environment variable only for security
 	config.insecureAllowHTTP = v.GetBool("insecure_url")
 
-	// Set enableAggregatedEndpoints from environment variable (THV_REGISTRY_ENABLE_AGGREGATED_ENDPOINTS)
-	// This is not loaded from YAML - environment variable only
-	config.EnableAggregatedEndpoints = v.GetBool("enable_aggregated_endpoints")
-
 	// Set watchNamespace from environment variable (THV_REGISTRY_WATCH_NAMESPACE)
 	// This is not loaded from YAML - environment variable only
 	config.WatchNamespace = v.GetString("watch_namespace")
@@ -697,18 +725,40 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	return &config, nil
 }
 
-// GetRegistryName returns the registry name, using "default" if not specified
-func (c *Config) GetRegistryName() string {
-	if c.RegistryName == "" {
-		return "default"
-	}
-	return c.RegistryName
-}
-
 // Validate performs validation on the configuration
 func (c *Config) validate() error {
 	if c == nil {
 		return fmt.Errorf("config cannot be nil")
+	}
+
+	// Validate at least one source is configured
+	if len(c.Sources) == 0 {
+		return fmt.Errorf("at least one source must be configured")
+	}
+
+	// Validate each source configuration
+	sourceNames := make(map[string]bool)
+	for i, src := range c.Sources {
+		// Validate source name
+		if src.Name == "" {
+			return fmt.Errorf("source[%d]: name is required", i)
+		}
+
+		// Check for duplicate source names
+		if sourceNames[src.Name] {
+			return fmt.Errorf("source[%d]: duplicate source name '%s'", i, src.Name)
+		}
+		sourceNames[src.Name] = true
+
+		// Validate source-specific configuration
+		if err := c.validateSourceConfig(&src, i); err != nil {
+			return err
+		}
+
+		// Validate claims if present
+		if err := validateClaims(src.Claims, fmt.Sprintf("source[%d] (%s)", i, src.Name)); err != nil {
+			return err
+		}
 	}
 
 	// Validate at least one registry is configured
@@ -716,24 +766,9 @@ func (c *Config) validate() error {
 		return fmt.Errorf("at least one registry must be configured")
 	}
 
-	// Validate each registry configuration
-	registryNames := make(map[string]bool)
-	for i, reg := range c.Registries {
-		// Validate registry name
-		if reg.Name == "" {
-			return fmt.Errorf("registry[%d]: name is required", i)
-		}
-
-		// Check for duplicate registry names
-		if registryNames[reg.Name] {
-			return fmt.Errorf("registry[%d]: duplicate registry name '%s'", i, reg.Name)
-		}
-		registryNames[reg.Name] = true
-
-		// Validate registry-specific configuration
-		if err := c.validateRegistryConfig(&reg, i); err != nil {
-			return err
-		}
+	// Validate registries
+	if err := c.validateRegistries(sourceNames); err != nil {
+		return err
 	}
 
 	// Validate storage configuration
@@ -745,28 +780,61 @@ func (c *Config) validate() error {
 	return c.validateAuth()
 }
 
-// validateRegistryConfig validates a single registry configuration
-func (*Config) validateRegistryConfig(reg *RegistryConfig, index int) error {
-	prefix := fmt.Sprintf("registry[%d] (%s)", index, reg.Name)
+// validateSourceConfig validates a single source configuration
+func (*Config) validateSourceConfig(src *SourceConfig, index int) error {
+	prefix := fmt.Sprintf("source[%d] (%s)", index, src.Name)
 
 	// Validate exactly one source type is configured
-	if err := validateSourceTypeCount(reg, prefix); err != nil {
+	if err := validateSourceTypeCount(src, prefix); err != nil {
 		return err
 	}
 
-	// Non-synced registries (managed and kubernetes) don't require sync policy or filter
-	// If syncPolicy or filter are set for these registries, they will be silently ignored
-	if reg.IsNonSyncedRegistry() {
+	// Non-synced sources (managed and kubernetes) don't require sync policy or filter
+	// If syncPolicy or filter are set for these sources, they will be silently ignored
+	if src.IsNonSyncedSource() {
 		return nil
 	}
 
-	// Synced registries require sync policy
-	if err := validateSyncPolicy(reg.SyncPolicy, prefix); err != nil {
+	// Synced sources require sync policy
+	if err := validateSyncPolicy(src.SyncPolicy, prefix); err != nil {
 		return err
 	}
 
 	// Validate type-specific settings
-	return validateSourceSpecificConfig(reg, prefix)
+	return validateSourceSpecificConfig(src, prefix)
+}
+
+// validateRegistries validates the registries section of the configuration
+func (c *Config) validateRegistries(sourceNames map[string]bool) error {
+	registryNames := make(map[string]bool)
+	for i, reg := range c.Registries {
+		if reg.Name == "" {
+			return fmt.Errorf("registries[%d]: name is required", i)
+		}
+
+		if registryNames[reg.Name] {
+			return fmt.Errorf("registries[%d]: duplicate registry name '%s'", i, reg.Name)
+		}
+		registryNames[reg.Name] = true
+
+		// Validate that at least one source is referenced
+		if len(reg.Sources) == 0 {
+			return fmt.Errorf("registries[%d] (%s): at least one source is required", i, reg.Name)
+		}
+
+		// Validate that each referenced source exists
+		for _, srcName := range reg.Sources {
+			if !sourceNames[srcName] {
+				return fmt.Errorf("registries[%d] (%s): references unknown source '%s'", i, reg.Name, srcName)
+			}
+		}
+
+		// Validate claims if present
+		if err := validateClaims(reg.Claims, fmt.Sprintf("registries[%d] (%s)", i, reg.Name)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // validateSyncPolicy validates the sync policy configuration
@@ -784,21 +852,21 @@ func validateSyncPolicy(policy *SyncPolicyConfig, prefix string) error {
 }
 
 // validateSourceTypeCount ensures exactly one source type is configured
-func validateSourceTypeCount(reg *RegistryConfig, prefix string) error {
+func validateSourceTypeCount(src *SourceConfig, prefix string) error {
 	configCount := 0
-	if reg.Git != nil {
+	if src.Git != nil {
 		configCount++
 	}
-	if reg.API != nil {
+	if src.API != nil {
 		configCount++
 	}
-	if reg.File != nil {
+	if src.File != nil {
 		configCount++
 	}
-	if reg.Managed != nil {
+	if src.Managed != nil {
 		configCount++
 	}
-	if reg.Kubernetes != nil {
+	if src.Kubernetes != nil {
 		configCount++
 	}
 
@@ -813,19 +881,40 @@ func validateSourceTypeCount(reg *RegistryConfig, prefix string) error {
 }
 
 // validateSourceSpecificConfig validates the configuration for each source type
-func validateSourceSpecificConfig(reg *RegistryConfig, prefix string) error {
-	if reg.Git != nil {
-		return validateGitConfig(reg.Git, prefix)
+func validateSourceSpecificConfig(src *SourceConfig, prefix string) error {
+	if src.Git != nil {
+		return validateGitConfig(src.Git, prefix)
 	}
 
-	if reg.API != nil {
-		return validateAPIConfig(reg.API, reg.Format, prefix)
+	if src.API != nil {
+		return validateAPIConfig(src.API, src.Format, prefix)
 	}
 
-	if reg.File != nil {
-		return validateFileConfig(reg.File, prefix)
+	if src.File != nil {
+		return validateFileConfig(src.File, prefix)
 	}
 
+	return nil
+}
+
+// validateClaims validates that all claim values are string or []string
+func validateClaims(claims map[string]any, prefix string) error {
+	for key, val := range claims {
+		switch v := val.(type) {
+		case string:
+			// OK
+		case []any:
+			for i, elem := range v {
+				if _, ok := elem.(string); !ok {
+					return fmt.Errorf("%s: claims[%s][%d] must be a string, got %T", prefix, key, i, elem)
+				}
+			}
+		case []string:
+			// OK
+		default:
+			return fmt.Errorf("%s: claims[%s] must be a string or []string, got %T", prefix, key, val)
+		}
+	}
 	return nil
 }
 
@@ -955,32 +1044,32 @@ func readSecretFromFile(filePath string) (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
-// GetType returns the inferred type of the registry config based on which field is present
-func (r *RegistryConfig) GetType() SourceType {
-	if r.Git != nil {
+// GetType returns the type of the source config, inferred from which configuration field is present.
+func (s *SourceConfig) GetType() SourceType {
+	if s.Git != nil {
 		return SourceTypeGit
 	}
-	if r.API != nil {
+	if s.API != nil {
 		return SourceTypeAPI
 	}
-	if r.File != nil {
+	if s.File != nil {
 		return SourceTypeFile
 	}
-	if r.Managed != nil {
+	if s.Managed != nil {
 		return SourceTypeManaged
 	}
-	if r.Kubernetes != nil {
+	if s.Kubernetes != nil {
 		return SourceTypeKubernetes
 	}
 	return ""
 }
 
-// IsNonSyncedRegistry returns true if the registry type doesn't sync from external sources.
-// This includes managed registries (manipulated via API) and kubernetes registries (query live deployments).
-// Non-synced registries do not require sync policy configuration and skip the sync loop.
-func (r *RegistryConfig) IsNonSyncedRegistry() bool {
-	regType := r.GetType()
-	return regType == SourceTypeManaged || regType == SourceTypeKubernetes
+// IsNonSyncedSource returns true if the source type doesn't sync from external sources.
+// This includes managed sources (manipulated via API) and kubernetes sources (query live deployments).
+// Non-synced sources do not require sync policy configuration and skip the sync loop.
+func (s *SourceConfig) IsNonSyncedSource() bool {
+	srcType := s.GetType()
+	return srcType == SourceTypeManaged || srcType == SourceTypeKubernetes
 }
 
 // validateAuth validates the auth configuration if present

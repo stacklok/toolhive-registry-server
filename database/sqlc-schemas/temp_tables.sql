@@ -6,7 +6,7 @@
 
 CREATE TABLE temp_registry_entry (
     id UUID PRIMARY KEY,
-    reg_id UUID NOT NULL,
+    source_id UUID NOT NULL,
     entry_type entry_type NOT NULL,
     name TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE,

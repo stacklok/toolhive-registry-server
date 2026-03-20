@@ -9,12 +9,12 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
-func TestValidateRegistryConfig(t *testing.T) {
+func TestValidateSourceConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name    string
-		req     *RegistryCreateRequest
+		req     *SourceCreateRequest
 		wantErr bool
 		errMsg  string
 	}{
@@ -29,7 +29,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		// No source type specified
 		{
 			name:    "no_source_type_returns_error",
-			req:     &RegistryCreateRequest{},
+			req:     &SourceCreateRequest{},
 			wantErr: true,
 			errMsg:  "one of git, api, file, managed, or kubernetes must be specified",
 		},
@@ -37,7 +37,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		// Multiple source types specified
 		{
 			name: "multiple_source_types_git_and_api_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -50,7 +50,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "multiple_source_types_git_and_file_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -63,7 +63,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "multiple_source_types_file_and_managed_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
 				},
@@ -74,7 +74,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "multiple_source_types_all_five_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -94,7 +94,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		// Valid Git source configurations
 		{
 			name: "valid_git_source_with_sync_policy",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -106,7 +106,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "valid_git_source_with_branch",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 					Branch:     "main",
@@ -119,7 +119,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "valid_git_source_with_tag",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 					Tag:        "v1.0.0",
@@ -132,7 +132,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "valid_git_source_with_commit",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 					Commit:     "abc123def456",
@@ -147,7 +147,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		// Valid API source configurations
 		{
 			name: "valid_api_source_with_sync_policy",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				API: &config.APIConfig{
 					Endpoint: "https://api.example.com",
 				},
@@ -161,7 +161,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		// Valid File source configurations
 		{
 			name: "valid_file_source_with_path",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
 				},
@@ -173,7 +173,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "valid_file_source_with_url",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					URL: "https://example.com/registry.json",
 				},
@@ -185,7 +185,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "valid_file_source_with_inline_data_no_sync_policy_required",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					Data: `{"version":"1.0.0","last_updated":"2025-01-15T10:30:00Z","servers":{"test-server":{"name":"test-server","description":"A test server","image":"test/image:latest","tier":"Community","status":"Active","transport":"stdio","tools":["test_tool"]}}}`,
 				},
@@ -196,7 +196,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		// Valid Managed source configurations
 		{
 			name: "valid_managed_source_no_sync_policy_required",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Managed: &config.ManagedConfig{},
 			},
 			wantErr: false,
@@ -205,7 +205,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		// Valid Kubernetes source configurations
 		{
 			name: "valid_kubernetes_source_no_sync_policy_required",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Kubernetes: &config.KubernetesConfig{},
 			},
 			wantErr: false,
@@ -214,7 +214,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		// Sync policy validation for synced types
 		{
 			name: "git_source_missing_sync_policy_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -224,7 +224,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "git_source_empty_sync_interval_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -237,7 +237,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "git_source_invalid_sync_interval_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -250,7 +250,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "api_source_missing_sync_policy_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				API: &config.APIConfig{
 					Endpoint: "https://api.example.com",
 				},
@@ -260,7 +260,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "file_source_with_path_missing_sync_policy_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
 				},
@@ -270,7 +270,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "file_source_with_url_missing_sync_policy_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					URL: "https://example.com/registry.json",
 				},
@@ -282,7 +282,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		// Format validation
 		{
 			name: "valid_toolhive_format",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Format: "toolhive",
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
@@ -295,7 +295,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "valid_upstream_format",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Format: "upstream",
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
@@ -308,7 +308,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "valid_empty_format",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Format: "",
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
@@ -321,7 +321,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "invalid_format_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Format: "invalid-format",
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
@@ -337,7 +337,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		// Managed and Kubernetes ignore sync policy if provided
 		{
 			name: "managed_with_sync_policy_is_valid_but_ignored",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Managed: &config.ManagedConfig{},
 				SyncPolicy: &config.SyncPolicyConfig{
 					Interval: "30m",
@@ -347,7 +347,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 		},
 		{
 			name: "kubernetes_with_sync_policy_is_valid_but_ignored",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Kubernetes: &config.KubernetesConfig{},
 				SyncPolicy: &config.SyncPolicyConfig{
 					Interval: "30m",
@@ -360,7 +360,7 @@ func TestValidateRegistryConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := ValidateRegistryConfig(tt.req)
+			err := ValidateSourceConfig(tt.req)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -605,7 +605,7 @@ func TestValidateFileConfig(t *testing.T) {
 	t.Parallel()
 
 	// Valid JSON for inline data tests - using a real entry from /examples/toolhive-registry.json
-	validToolhiveJSON := `{"$schema":"https://raw.githubusercontent.com/stacklok/toolhive/main/pkg/registry/data/toolhive-legacy-registry.schema.json","version":"1.0.0","last_updated":"2025-11-26T00:27:46Z","servers":{"fetch":{"description":"Allows you to fetch content from the web","tier":"Community","status":"Active","transport":"streamable-http","tools":["fetch"],"metadata":{"stars":20,"pulls":12390,"last_updated":"2025-11-13T02:33:35Z"},"repository_url":"https://github.com/stackloklabs/gofetch","tags":["content","html","markdown","fetch","fetching","get","wget","json","curl","modelcontextprotocol"],"image":"ghcr.io/stackloklabs/gofetch/server:1.0.1","target_port":8080,"permissions":{"network":{"outbound":{"insecure_allow_all":true,"allow_port":[443]}}},"provenance":{"sigstore_url":"tuf-repo-cdn.sigstore.dev","repository_uri":"https://github.com/StacklokLabs/gofetch","signer_identity":"/.github/workflows/release.yml","runner_environment":"github-hosted","cert_issuer":"https://token.actions.githubusercontent.com"}}}}`
+	validToolhiveJSON := `{"$schema":"https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/toolhive-legacy-registry.schema.json","version":"1.0.0","last_updated":"2025-11-26T00:27:46Z","servers":{"fetch":{"description":"Allows you to fetch content from the web","tier":"Community","status":"Active","transport":"streamable-http","tools":["fetch"],"metadata":{"stars":20,"pulls":12390,"last_updated":"2025-11-13T02:33:35Z"},"repository_url":"https://github.com/stackloklabs/gofetch","tags":["content","html","markdown","fetch","fetching","get","wget","json","curl","modelcontextprotocol"],"image":"ghcr.io/stackloklabs/gofetch/server:1.0.1","target_port":8080,"permissions":{"network":{"outbound":{"insecure_allow_all":true,"allow_port":[443]}}},"provenance":{"sigstore_url":"tuf-repo-cdn.sigstore.dev","repository_uri":"https://github.com/StacklokLabs/gofetch","signer_identity":"/.github/workflows/release.yml","runner_environment":"github-hosted","cert_issuer":"https://token.actions.githubusercontent.com"}}}}`
 
 	tests := []struct {
 		name    string
@@ -764,7 +764,7 @@ func TestValidateInlineDataBasic(t *testing.T) {
 
 	// Valid upstream format JSON that matches the schema
 	validUpstreamJSON := `{
-		"$schema": "https://raw.githubusercontent.com/stacklok/toolhive/main/pkg/registry/data/upstream-registry.schema.json",
+		"$schema": "https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/upstream-registry.schema.json",
 		"version": "1.0.0",
 		"meta": {
 			"last_updated": "2025-01-15T10:30:00Z"
@@ -892,7 +892,7 @@ func TestValidateInlineDataWithFormat(t *testing.T) {
 
 	// Valid upstream format JSON that matches the schema
 	validUpstreamJSON := `{
-		"$schema": "https://raw.githubusercontent.com/stacklok/toolhive/main/pkg/registry/data/upstream-registry.schema.json",
+		"$schema": "https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/upstream-registry.schema.json",
 		"version": "1.0.0",
 		"meta": {
 			"last_updated": "2025-01-15T10:30:00Z"
@@ -1088,13 +1088,13 @@ func TestValidateSourceSpecific(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		req     *RegistryCreateRequest
+		req     *SourceCreateRequest
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "git_source_validation",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -1103,7 +1103,7 @@ func TestValidateSourceSpecific(t *testing.T) {
 		},
 		{
 			name: "git_source_missing_repository_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{},
 			},
 			wantErr: true,
@@ -1111,7 +1111,7 @@ func TestValidateSourceSpecific(t *testing.T) {
 		},
 		{
 			name: "api_source_validation",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				API: &config.APIConfig{
 					Endpoint: "https://api.example.com",
 				},
@@ -1120,7 +1120,7 @@ func TestValidateSourceSpecific(t *testing.T) {
 		},
 		{
 			name: "api_source_missing_endpoint_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				API: &config.APIConfig{},
 			},
 			wantErr: true,
@@ -1128,7 +1128,7 @@ func TestValidateSourceSpecific(t *testing.T) {
 		},
 		{
 			name: "file_source_validation",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
 				},
@@ -1137,7 +1137,7 @@ func TestValidateSourceSpecific(t *testing.T) {
 		},
 		{
 			name: "file_source_empty_returns_error",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{},
 			},
 			wantErr: true,
@@ -1145,21 +1145,21 @@ func TestValidateSourceSpecific(t *testing.T) {
 		},
 		{
 			name: "managed_source_no_validation_required",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Managed: &config.ManagedConfig{},
 			},
 			wantErr: false,
 		},
 		{
 			name: "kubernetes_source_no_validation_required",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Kubernetes: &config.KubernetesConfig{},
 			},
 			wantErr: false,
 		},
 		{
 			name: "unknown_source_type_returns_error",
-			req:  &RegistryCreateRequest{
+			req:  &SourceCreateRequest{
 				// All source types are nil
 			},
 			wantErr: true,
@@ -1184,17 +1184,17 @@ func TestValidateSourceSpecific(t *testing.T) {
 	}
 }
 
-func TestRegistryCreateRequest_GetSourceType(t *testing.T) {
+func TestSourceCreateRequest_GetSourceType(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
-		req      *RegistryCreateRequest
+		req      *SourceCreateRequest
 		expected config.SourceType
 	}{
 		{
 			name: "git_source_type",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -1203,7 +1203,7 @@ func TestRegistryCreateRequest_GetSourceType(t *testing.T) {
 		},
 		{
 			name: "api_source_type",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				API: &config.APIConfig{
 					Endpoint: "https://api.example.com",
 				},
@@ -1212,7 +1212,7 @@ func TestRegistryCreateRequest_GetSourceType(t *testing.T) {
 		},
 		{
 			name: "file_source_type",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
 				},
@@ -1221,21 +1221,21 @@ func TestRegistryCreateRequest_GetSourceType(t *testing.T) {
 		},
 		{
 			name: "managed_source_type",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Managed: &config.ManagedConfig{},
 			},
 			expected: config.SourceTypeManaged,
 		},
 		{
 			name: "kubernetes_source_type",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Kubernetes: &config.KubernetesConfig{},
 			},
 			expected: config.SourceTypeKubernetes,
 		},
 		{
 			name:     "no_source_type_returns_empty",
-			req:      &RegistryCreateRequest{},
+			req:      &SourceCreateRequest{},
 			expected: config.SourceType(""),
 		},
 	}
@@ -1249,22 +1249,22 @@ func TestRegistryCreateRequest_GetSourceType(t *testing.T) {
 	}
 }
 
-func TestRegistryCreateRequest_CountSourceTypes(t *testing.T) {
+func TestSourceCreateRequest_CountSourceTypes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
-		req      *RegistryCreateRequest
+		req      *SourceCreateRequest
 		expected int
 	}{
 		{
 			name:     "no_source_types",
-			req:      &RegistryCreateRequest{},
+			req:      &SourceCreateRequest{},
 			expected: 0,
 		},
 		{
 			name: "one_source_type_git",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -1273,7 +1273,7 @@ func TestRegistryCreateRequest_CountSourceTypes(t *testing.T) {
 		},
 		{
 			name: "one_source_type_api",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				API: &config.APIConfig{
 					Endpoint: "https://api.example.com",
 				},
@@ -1282,7 +1282,7 @@ func TestRegistryCreateRequest_CountSourceTypes(t *testing.T) {
 		},
 		{
 			name: "one_source_type_file",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
 				},
@@ -1291,21 +1291,21 @@ func TestRegistryCreateRequest_CountSourceTypes(t *testing.T) {
 		},
 		{
 			name: "one_source_type_managed",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Managed: &config.ManagedConfig{},
 			},
 			expected: 1,
 		},
 		{
 			name: "one_source_type_kubernetes",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Kubernetes: &config.KubernetesConfig{},
 			},
 			expected: 1,
 		},
 		{
 			name: "two_source_types",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -1317,7 +1317,7 @@ func TestRegistryCreateRequest_CountSourceTypes(t *testing.T) {
 		},
 		{
 			name: "three_source_types",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -1332,7 +1332,7 @@ func TestRegistryCreateRequest_CountSourceTypes(t *testing.T) {
 		},
 		{
 			name: "all_five_source_types",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -1358,17 +1358,17 @@ func TestRegistryCreateRequest_CountSourceTypes(t *testing.T) {
 	}
 }
 
-func TestRegistryCreateRequest_IsNonSyncedType(t *testing.T) {
+func TestSourceCreateRequest_IsNonSyncedType(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
-		req      *RegistryCreateRequest
+		req      *SourceCreateRequest
 		expected bool
 	}{
 		{
 			name: "git_is_synced",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -1377,7 +1377,7 @@ func TestRegistryCreateRequest_IsNonSyncedType(t *testing.T) {
 		},
 		{
 			name: "api_is_synced",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				API: &config.APIConfig{
 					Endpoint: "https://api.example.com",
 				},
@@ -1386,7 +1386,7 @@ func TestRegistryCreateRequest_IsNonSyncedType(t *testing.T) {
 		},
 		{
 			name: "file_with_path_is_synced",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
 				},
@@ -1395,7 +1395,7 @@ func TestRegistryCreateRequest_IsNonSyncedType(t *testing.T) {
 		},
 		{
 			name: "file_with_url_is_synced",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					URL: "https://example.com/registry.json",
 				},
@@ -1404,7 +1404,7 @@ func TestRegistryCreateRequest_IsNonSyncedType(t *testing.T) {
 		},
 		{
 			name: "file_with_inline_data_is_non_synced",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					Data: `{"version":"1.0","meta":{},"data":{"servers":[]}}`,
 				},
@@ -1413,21 +1413,21 @@ func TestRegistryCreateRequest_IsNonSyncedType(t *testing.T) {
 		},
 		{
 			name: "managed_is_non_synced",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Managed: &config.ManagedConfig{},
 			},
 			expected: true,
 		},
 		{
 			name: "kubernetes_is_non_synced",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Kubernetes: &config.KubernetesConfig{},
 			},
 			expected: true,
 		},
 		{
 			name:     "no_source_type_is_synced",
-			req:      &RegistryCreateRequest{},
+			req:      &SourceCreateRequest{},
 			expected: false,
 		},
 	}
@@ -1441,22 +1441,22 @@ func TestRegistryCreateRequest_IsNonSyncedType(t *testing.T) {
 	}
 }
 
-func TestRegistryCreateRequest_IsInlineData(t *testing.T) {
+func TestSourceCreateRequest_IsInlineData(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
-		req      *RegistryCreateRequest
+		req      *SourceCreateRequest
 		expected bool
 	}{
 		{
 			name:     "no_file_config_returns_false",
-			req:      &RegistryCreateRequest{},
+			req:      &SourceCreateRequest{},
 			expected: false,
 		},
 		{
 			name: "file_config_with_path_returns_false",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
 				},
@@ -1465,7 +1465,7 @@ func TestRegistryCreateRequest_IsInlineData(t *testing.T) {
 		},
 		{
 			name: "file_config_with_url_returns_false",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					URL: "https://example.com/registry.json",
 				},
@@ -1474,7 +1474,7 @@ func TestRegistryCreateRequest_IsInlineData(t *testing.T) {
 		},
 		{
 			name: "file_config_with_data_returns_true",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					Data: `{"version":"1.0"}`,
 				},
@@ -1483,7 +1483,7 @@ func TestRegistryCreateRequest_IsInlineData(t *testing.T) {
 		},
 		{
 			name: "file_config_with_empty_data_returns_false",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: &config.FileConfig{
 					Data: "",
 				},
@@ -1501,7 +1501,7 @@ func TestRegistryCreateRequest_IsInlineData(t *testing.T) {
 	}
 }
 
-func TestRegistryCreateRequest_GetSourceConfig(t *testing.T) {
+func TestSourceCreateRequest_GetSourceConfig(t *testing.T) {
 	t.Parallel()
 
 	gitConfig := &config.GitConfig{Repository: "https://github.com/example/repo.git"}
@@ -1512,47 +1512,47 @@ func TestRegistryCreateRequest_GetSourceConfig(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		req      *RegistryCreateRequest
+		req      *SourceCreateRequest
 		expected any
 	}{
 		{
 			name: "returns_git_config",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Git: gitConfig,
 			},
 			expected: gitConfig,
 		},
 		{
 			name: "returns_api_config",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				API: apiConfig,
 			},
 			expected: apiConfig,
 		},
 		{
 			name: "returns_file_config",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				File: fileConfig,
 			},
 			expected: fileConfig,
 		},
 		{
 			name: "returns_managed_config",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Managed: managedConfig,
 			},
 			expected: managedConfig,
 		},
 		{
 			name: "returns_kubernetes_config",
-			req: &RegistryCreateRequest{
+			req: &SourceCreateRequest{
 				Kubernetes: kubernetesConfig,
 			},
 			expected: kubernetesConfig,
 		},
 		{
 			name:     "returns_nil_when_no_source",
-			req:      &RegistryCreateRequest{},
+			req:      &SourceCreateRequest{},
 			expected: nil,
 		},
 	}

@@ -31,69 +31,6 @@ func TestNewDBStateService(t *testing.T) {
 // These are better tested as integration tests rather than unit tests with mocks.
 // The helper functions and conversion logic are tested below.
 
-func TestMapConfigTypeToDBType(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name       string
-		configType config.SourceType
-		want       sqlc.RegistryType
-		wantErr    bool
-	}{
-		{
-			name:       "maps git to REMOTE",
-			configType: config.SourceTypeGit,
-			want:       sqlc.RegistryTypeREMOTE,
-			wantErr:    false,
-		},
-		{
-			name:       "maps api to REMOTE",
-			configType: config.SourceTypeAPI,
-			want:       sqlc.RegistryTypeREMOTE,
-			wantErr:    false,
-		},
-		{
-			name:       "maps file to FILE",
-			configType: config.SourceTypeFile,
-			want:       sqlc.RegistryTypeFILE,
-			wantErr:    false,
-		},
-		{
-			name:       "maps managed to MANAGED",
-			configType: config.SourceTypeManaged,
-			want:       sqlc.RegistryTypeMANAGED,
-			wantErr:    false,
-		},
-		{
-			name:       "returns error for unknown type",
-			configType: "unknown",
-			want:       "",
-			wantErr:    true,
-		},
-		{
-			name:       "returns error for empty string",
-			configType: "",
-			want:       "",
-			wantErr:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, err := mapConfigTypeToDBType(tt.configType)
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Empty(t, got)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.want, got)
-			}
-		})
-	}
-}
-
 func TestGetInitialSyncStatus(t *testing.T) {
 	t.Parallel()
 
@@ -109,14 +46,14 @@ func TestGetInitialSyncStatus(t *testing.T) {
 			isNonSynced:    true,
 			regType:        config.SourceTypeManaged,
 			wantStatus:     sqlc.SyncStatusCOMPLETED,
-			wantErrMessage: "Non-synced registry (type: managed)",
+			wantErrMessage: "Non-synced source (type: managed)",
 		},
 		{
 			name:           "kubernetes registry returns COMPLETED",
 			isNonSynced:    true,
 			regType:        config.SourceTypeKubernetes,
 			wantStatus:     sqlc.SyncStatusCOMPLETED,
-			wantErrMessage: "Non-synced registry (type: kubernetes)",
+			wantErrMessage: "Non-synced source (type: kubernetes)",
 		},
 		{
 			name:           "synced registry returns FAILED",
@@ -246,7 +183,7 @@ func TestDBSyncToStatus(t *testing.T) {
 			name: "converts full sync status with all fields",
 			dbSync: sqlc.RegistrySync{
 				ID:                    uuid.New(),
-				RegID:                 uuid.New(),
+				SourceID:              uuid.New(),
 				SyncStatus:            sqlc.SyncStatusCOMPLETED,
 				ErrorMsg:              &errorMsg,
 				StartedAt:             &attemptTime,
@@ -271,7 +208,7 @@ func TestDBSyncToStatus(t *testing.T) {
 			name: "converts sync status with nil optional fields",
 			dbSync: sqlc.RegistrySync{
 				ID:                    uuid.New(),
-				RegID:                 uuid.New(),
+				SourceID:              uuid.New(),
 				SyncStatus:            sqlc.SyncStatusFAILED,
 				ErrorMsg:              nil,
 				StartedAt:             nil,
@@ -292,7 +229,7 @@ func TestDBSyncToStatus(t *testing.T) {
 			name: "converts IN_PROGRESS status",
 			dbSync: sqlc.RegistrySync{
 				ID:           uuid.New(),
-				RegID:        uuid.New(),
+				SourceID:     uuid.New(),
 				SyncStatus:   sqlc.SyncStatusINPROGRESS,
 				ErrorMsg:     nil,
 				StartedAt:    &syncTime,
@@ -312,7 +249,7 @@ func TestDBSyncToStatus(t *testing.T) {
 			name: "handles empty string hash values",
 			dbSync: sqlc.RegistrySync{
 				ID:                    uuid.New(),
-				RegID:                 uuid.New(),
+				SourceID:              uuid.New(),
 				SyncStatus:            sqlc.SyncStatusCOMPLETED,
 				LastSyncHash:          &[]string{""}[0],
 				LastAppliedFilterHash: &[]string{""}[0],
@@ -369,15 +306,15 @@ func TestDBSyncRowToStatus(t *testing.T) {
 
 	tests := []struct {
 		name string
-		row  sqlc.ListRegistrySyncsRow
+		row  sqlc.ListSourceSyncsRow
 		want *status.SyncStatus
 	}{
 		{
 			name: "converts full row with all fields",
-			row: sqlc.ListRegistrySyncsRow{
+			row: sqlc.ListSourceSyncsRow{
 				Name:                  "registry1",
 				ID:                    uuid.New(),
-				RegID:                 uuid.New(),
+				SourceID:              uuid.New(),
 				SyncStatus:            sqlc.SyncStatusINPROGRESS,
 				ErrorMsg:              &errorMsg,
 				StartedAt:             &attemptTime,
@@ -400,10 +337,10 @@ func TestDBSyncRowToStatus(t *testing.T) {
 		},
 		{
 			name: "converts row with nil optional fields",
-			row: sqlc.ListRegistrySyncsRow{
+			row: sqlc.ListSourceSyncsRow{
 				Name:                  "registry2",
 				ID:                    uuid.New(),
-				RegID:                 uuid.New(),
+				SourceID:              uuid.New(),
 				SyncStatus:            sqlc.SyncStatusCOMPLETED,
 				ErrorMsg:              nil,
 				StartedAt:             nil,
@@ -422,10 +359,10 @@ func TestDBSyncRowToStatus(t *testing.T) {
 		},
 		{
 			name: "converts FAILED row",
-			row: sqlc.ListRegistrySyncsRow{
+			row: sqlc.ListSourceSyncsRow{
 				Name:         "registry3",
 				ID:           uuid.New(),
-				RegID:        uuid.New(),
+				SourceID:     uuid.New(),
 				SyncStatus:   sqlc.SyncStatusFAILED,
 				ErrorMsg:     &errorMsg,
 				StartedAt:    &syncTime,
@@ -442,10 +379,10 @@ func TestDBSyncRowToStatus(t *testing.T) {
 		},
 		{
 			name: "handles rows with partial hash data",
-			row: sqlc.ListRegistrySyncsRow{
+			row: sqlc.ListSourceSyncsRow{
 				Name:                  "registry4",
 				ID:                    uuid.New(),
-				RegID:                 uuid.New(),
+				SourceID:              uuid.New(),
 				SyncStatus:            sqlc.SyncStatusCOMPLETED,
 				LastSyncHash:          &hash,
 				LastAppliedFilterHash: nil,
@@ -525,36 +462,6 @@ func TestDBSyncStatusToPhase_Consistency(t *testing.T) {
 	}
 }
 
-func TestMapConfigTypeToDBType_AllSourceTypes(t *testing.T) {
-	t.Parallel()
-
-	// Verify all defined source types have mappings
-	sourceTypes := []config.SourceType{
-		config.SourceTypeGit,
-		config.SourceTypeAPI,
-		config.SourceTypeFile,
-		config.SourceTypeManaged,
-		config.SourceTypeKubernetes,
-	}
-
-	for _, sourceType := range sourceTypes {
-		t.Run(string(sourceType), func(t *testing.T) {
-			t.Parallel()
-
-			result, err := mapConfigTypeToDBType(sourceType)
-			// Should not return error for valid source types
-			assert.NoError(t, err)
-			assert.NotEmpty(t, result)
-			assert.Contains(t, []sqlc.RegistryType{
-				sqlc.RegistryTypeMANAGED,
-				sqlc.RegistryTypeFILE,
-				sqlc.RegistryTypeREMOTE,
-				sqlc.RegistryTypeKUBERNETES,
-			}, result)
-		})
-	}
-}
-
 func TestErrRegistryNotFound(t *testing.T) {
 	t.Parallel()
 
@@ -578,7 +485,7 @@ func TestDBSyncToStatus_PreservesAllFields(t *testing.T) {
 
 	dbSync := sqlc.RegistrySync{
 		ID:                    id,
-		RegID:                 regID,
+		SourceID:              regID,
 		SyncStatus:            sqlc.SyncStatusCOMPLETED,
 		ErrorMsg:              &errorMsg,
 		StartedAt:             &attemptTime,
@@ -616,10 +523,10 @@ func TestDBSyncRowToStatus_PreservesAllFields(t *testing.T) {
 	filterHash := "filter-hash-012"
 	errorMsg := "Test row error"
 
-	row := sqlc.ListRegistrySyncsRow{
+	row := sqlc.ListSourceSyncsRow{
 		Name:                  "test-registry",
 		ID:                    id,
-		RegID:                 regID,
+		SourceID:              regID,
 		SyncStatus:            sqlc.SyncStatusFAILED,
 		ErrorMsg:              &errorMsg,
 		StartedAt:             &attemptTime,

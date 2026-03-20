@@ -134,12 +134,12 @@ type Manager interface {
 	// Returns the sync reason and, when sync is needed, a prefetched FetchResult that
 	// PerformSync can reuse to avoid a second fetch.
 	ShouldSync(
-		ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus, manualSyncRequested bool,
+		ctx context.Context, regCfg *config.SourceConfig, syncStatus *status.SyncStatus, manualSyncRequested bool,
 	) (Reason, *sources.FetchResult)
 
 	// PerformSync executes the complete sync operation for a specific registry.
 	// If prefetched is non-nil, it is used directly instead of fetching again.
-	PerformSync(ctx context.Context, regCfg *config.RegistryConfig, prefetched *sources.FetchResult) (*Result, *Error)
+	PerformSync(ctx context.Context, regCfg *config.SourceConfig, prefetched *sources.FetchResult) (*Result, *Error)
 }
 
 // DataChangeDetector detects changes in source data
@@ -148,7 +148,7 @@ type DataChangeDetector interface {
 	// Returns (changed, fetchResult, error). When data has changed, fetchResult contains the
 	// already-fetched data so it can be reused by PerformSync without a second fetch.
 	IsDataChanged(
-		ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus,
+		ctx context.Context, regCfg *config.SourceConfig, syncStatus *status.SyncStatus,
 	) (bool, *sources.FetchResult, error)
 }
 
@@ -156,7 +156,7 @@ type DataChangeDetector interface {
 type AutomaticSyncChecker interface {
 	// IsIntervalSyncNeeded checks if sync is needed based on time interval for a specific registry
 	// Returns (syncNeeded, nextSyncTime, error) where nextSyncTime is always in the future
-	IsIntervalSyncNeeded(regCfg *config.RegistryConfig, syncStatus *status.SyncStatus) (bool, time.Time, error)
+	IsIntervalSyncNeeded(regCfg *config.SourceConfig, syncStatus *status.SyncStatus) (bool, time.Time, error)
 }
 
 // defaultSyncManager is the default implementation of Manager
@@ -187,7 +187,7 @@ func NewDefaultSyncManager(
 // along with a prefetched FetchResult when data has changed.
 func (s *defaultSyncManager) ShouldSync(
 	ctx context.Context,
-	regCfg *config.RegistryConfig,
+	regCfg *config.SourceConfig,
 	syncStatus *status.SyncStatus,
 	manualSyncRequested bool,
 ) (Reason, *sources.FetchResult) {
@@ -276,7 +276,7 @@ func (*defaultSyncManager) isSyncNeededForState(syncStatus *status.SyncStatus) b
 
 // isFilterChanged checks if the filter has changed compared to the last applied configuration
 func (*defaultSyncManager) isFilterChanged(
-	_ context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus,
+	_ context.Context, regCfg *config.SourceConfig, syncStatus *status.SyncStatus,
 ) bool {
 	currentFilter := regCfg.Filter
 	currentFilterJSON, err := json.Marshal(currentFilter)
@@ -302,7 +302,7 @@ func (*defaultSyncManager) isFilterChanged(
 // If prefetched is non-nil, it is used directly instead of fetching again.
 // Returns sync result on success, or error on failure.
 func (s *defaultSyncManager) PerformSync(
-	ctx context.Context, regCfg *config.RegistryConfig, prefetched *sources.FetchResult,
+	ctx context.Context, regCfg *config.SourceConfig, prefetched *sources.FetchResult,
 ) (*Result, *Error) {
 	// Fetch and process registry data (uses prefetched data if available)
 	fetchResult, err := s.fetchAndProcessRegistryData(ctx, regCfg, prefetched)
@@ -328,7 +328,7 @@ func (s *defaultSyncManager) PerformSync(
 // If prefetched is non-nil, the fetch step is skipped and the prefetched data is used directly.
 func (s *defaultSyncManager) fetchAndProcessRegistryData(
 	ctx context.Context,
-	regCfg *config.RegistryConfig,
+	regCfg *config.SourceConfig,
 	prefetched *sources.FetchResult,
 ) (*sources.FetchResult, *Error) {
 	var fetchResult *sources.FetchResult
@@ -393,7 +393,7 @@ func (s *defaultSyncManager) fetchAndProcessRegistryData(
 // applyFilteringIfConfigured applies filtering to fetch result if registry has filter configuration
 func (s *defaultSyncManager) applyFilteringIfConfigured(
 	ctx context.Context,
-	regCfg *config.RegistryConfig,
+	regCfg *config.SourceConfig,
 	fetchResult *sources.FetchResult) *Error {
 	if regCfg.Filter != nil {
 		slog.Info("Applying registry filters",
@@ -431,7 +431,7 @@ func (s *defaultSyncManager) applyFilteringIfConfigured(
 // storeRegistryData stores the registry data using the storage manager
 func (s *defaultSyncManager) storeRegistryData(
 	ctx context.Context,
-	regCfg *config.RegistryConfig,
+	regCfg *config.SourceConfig,
 	fetchResult *sources.FetchResult) *Error {
 	if err := s.writer.Store(ctx, regCfg.Name, fetchResult.Registry); err != nil {
 		slog.Error("Failed to store registry data", "error", err)
