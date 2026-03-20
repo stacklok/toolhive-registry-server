@@ -271,7 +271,7 @@ func TestInsertServerVersion(t *testing.T) {
 	}
 }
 
-func TestListServerVersions(t *testing.T) {
+func TestListServersByName(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -287,10 +287,10 @@ func TestListServerVersions(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, serverName string) {
-				versions, err := queries.ListServerVersions(
+				versions, err := queries.ListServers(
 					context.Background(),
-					ListServerVersionsParams{
-						Name: serverName,
+					ListServersParams{
+						Name: &serverName,
 						Size: 10,
 					},
 				)
@@ -311,10 +311,10 @@ func TestListServerVersions(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, serverName string) {
-				versions, err := queries.ListServerVersions(
+				versions, err := queries.ListServers(
 					context.Background(),
-					ListServerVersionsParams{
-						Name: serverName,
+					ListServersParams{
+						Name: &serverName,
 						Size: 10,
 					},
 				)
@@ -339,10 +339,10 @@ func TestListServerVersions(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, serverName string) {
-				versions, err := queries.ListServerVersions(
+				versions, err := queries.ListServers(
 					context.Background(),
-					ListServerVersionsParams{
-						Name: serverName,
+					ListServersParams{
+						Name: &serverName,
 						Size: 10,
 					},
 				)
@@ -352,7 +352,7 @@ func TestListServerVersions(t *testing.T) {
 			},
 		},
 		{
-			name: "list server versions with pagination",
+			name: "list server versions with cursor pagination",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) string {
 				createdAt := time.Now().UTC().Add(-1 * time.Minute)
@@ -366,34 +366,36 @@ func TestListServerVersions(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, serverName string) {
-				// Get first page
-				versions, err := queries.ListServerVersions(
+				// Get all versions
+				allVersions, err := queries.ListServers(
 					context.Background(),
-					ListServerVersionsParams{
-						Name: serverName,
+					ListServersParams{
+						Name: &serverName,
 						Size: 10,
 					},
 				)
 				require.NoError(t, err)
-				require.Len(t, versions, 3)
-				assert.Equal(t, "1.0.0", versions[0].Version)
-				assert.Equal(t, "2.0.0", versions[1].Version)
-				assert.Equal(t, "3.0.0", versions[2].Version)
+				require.Len(t, allVersions, 3)
+				assert.Equal(t, "1.0.0", allVersions[0].Version)
+				assert.Equal(t, "2.0.0", allVersions[1].Version)
+				assert.Equal(t, "3.0.0", allVersions[2].Version)
 
-				// Get next page
-				nextTime := versions[1].CreatedAt.UTC()
-
-				nextVersions, err := queries.ListServerVersions(
+				// Use cursor to skip past first version
+				cursorName := allVersions[0].Name
+				cursorVersion := allVersions[0].Version
+				nextVersions, err := queries.ListServers(
 					context.Background(),
-					ListServerVersionsParams{
-						Name: serverName,
-						Next: &nextTime,
-						Size: 10,
+					ListServersParams{
+						Name:          &serverName,
+						CursorName:    &cursorName,
+						CursorVersion: &cursorVersion,
+						Size:          10,
 					},
 				)
 				require.NoError(t, err)
-				assert.Len(t, nextVersions, 1)
-				assert.Equal(t, "3.0.0", nextVersions[0].Version)
+				assert.Len(t, nextVersions, 2)
+				assert.Equal(t, "2.0.0", nextVersions[0].Version)
+				assert.Equal(t, "3.0.0", nextVersions[1].Version)
 			},
 		},
 		{
@@ -411,10 +413,10 @@ func TestListServerVersions(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, serverName string) {
-				versions, err := queries.ListServerVersions(
+				versions, err := queries.ListServers(
 					context.Background(),
-					ListServerVersionsParams{
-						Name: serverName,
+					ListServersParams{
+						Name: &serverName,
 						Size: 2,
 					},
 				)
