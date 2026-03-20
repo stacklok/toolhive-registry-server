@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/otel"
@@ -96,6 +97,8 @@ func (s *dbService) CreateSource(
 	syncSchedule := parseSyncScheduleFromRequest(req)
 	syncable := !req.IsNonSyncedType()
 
+	claimsJSON := db.SerializeClaims(req.Claims)
+
 	params := sqlc.InsertSourceParams{
 		Name:         name,
 		CreationType: sqlc.CreationTypeAPI,
@@ -105,6 +108,7 @@ func (s *dbService) CreateSource(
 		FilterConfig: filterConfig,
 		SyncSchedule: syncSchedule,
 		Syncable:     syncable,
+		Claims:       claimsJSON,
 		CreatedAt:    &now,
 		UpdatedAt:    &now,
 	}
@@ -240,6 +244,8 @@ func (s *dbService) UpdateSource(
 	syncSchedule := parseSyncScheduleFromRequest(req)
 	syncable := !req.IsNonSyncedType()
 
+	claimsJSON := db.SerializeClaims(req.Claims)
+
 	params := sqlc.UpdateSourceParams{
 		Name:         name,
 		SourceType:   sourceType,
@@ -248,6 +254,7 @@ func (s *dbService) UpdateSource(
 		FilterConfig: filterConfig,
 		SyncSchedule: syncSchedule,
 		Syncable:     syncable,
+		Claims:       claimsJSON,
 		UpdatedAt:    &now,
 	}
 
@@ -636,6 +643,7 @@ type sourceRow struct {
 	SourceConfig []byte
 	FilterConfig []byte
 	SyncSchedule pgtypes.Interval
+	Claims       []byte
 	CreatedAt    *time.Time
 	UpdatedAt    *time.Time
 }
@@ -661,6 +669,7 @@ func buildSourceInfo(row *sourceRow) *service.SourceInfo {
 	}
 
 	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
+	info.Claims = db.DeserializeClaims(row.Claims)
 
 	if row.SyncSchedule.Valid {
 		info.SyncSchedule = row.SyncSchedule.Duration.String()
@@ -687,6 +696,7 @@ func buildSourceInfoFromDBSource(source *sqlc.Source) *service.SourceInfo {
 		SourceConfig: source.SourceConfig,
 		FilterConfig: source.FilterConfig,
 		SyncSchedule: source.SyncSchedule,
+		Claims:       source.Claims,
 		CreatedAt:    source.CreatedAt,
 		UpdatedAt:    source.UpdatedAt,
 	})
@@ -702,6 +712,7 @@ func buildSourceInfoFromListRow(row *sqlc.ListSourcesRow) *service.SourceInfo {
 		SourceConfig: row.SourceConfig,
 		FilterConfig: row.FilterConfig,
 		SyncSchedule: row.SyncSchedule,
+		Claims:       row.Claims,
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
 	})
@@ -717,6 +728,7 @@ func buildSourceInfoFromGetByNameRow(row *sqlc.GetSourceByNameRow) *service.Sour
 		SourceConfig: row.SourceConfig,
 		FilterConfig: row.FilterConfig,
 		SyncSchedule: row.SyncSchedule,
+		Claims:       row.Claims,
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
 	})

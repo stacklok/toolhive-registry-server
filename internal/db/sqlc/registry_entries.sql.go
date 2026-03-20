@@ -235,3 +235,23 @@ func (q *Queries) ListEntryVersions(ctx context.Context, entryID uuid.UUID) ([]L
 	}
 	return items, nil
 }
+
+const propagateSourceClaimsToEntries = `-- name: PropagateSourceClaimsToEntries :exec
+UPDATE registry_entry
+   SET claims = $1,
+       updated_at = NOW()
+ WHERE source_id = $2
+   AND (claims IS DISTINCT FROM $1)
+`
+
+type PropagateSourceClaimsToEntriesParams struct {
+	Claims   []byte    `json:"claims"`
+	SourceID uuid.UUID `json:"source_id"`
+}
+
+// Update all registry entries for a source to match the source's current claims.
+// Used during initialization to fix drift when source claims change without data change.
+func (q *Queries) PropagateSourceClaimsToEntries(ctx context.Context, arg PropagateSourceClaimsToEntriesParams) error {
+	_, err := q.db.Exec(ctx, propagateSourceClaimsToEntries, arg.Claims, arg.SourceID)
+	return err
+}

@@ -91,7 +91,7 @@ func (d *dbSyncWriter) Store(
 	}
 
 	// Step 2: Upsert all servers using temp table and COPY, collect their IDs
-	serverIDMap, err := d.storeSyncInTempTables(ctx, tx, registry.ID, reg.Data.Servers)
+	serverIDMap, err := d.storeSyncInTempTables(ctx, tx, registry.ID, reg.Data.Servers, registry.Claims)
 	if err != nil {
 		return fmt.Errorf("failed to upsert servers: %w", err)
 	}
@@ -132,6 +132,7 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 	tx pgx.Tx,
 	registryID uuid.UUID,
 	servers []upstreamv0.ServerJSON,
+	claims []byte,
 ) (map[string]uuid.UUID, error) {
 	if len(servers) == 0 {
 		return make(map[string]uuid.UUID), nil
@@ -140,7 +141,7 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 	querier := sqlc.New(tx)
 
 	// 1. Upsert registry entries (one per unique name)
-	entryMap, err := sqlCopyEntries(ctx, tx, registryID, servers)
+	entryMap, err := sqlCopyEntries(ctx, tx, registryID, servers, claims)
 	if err != nil {
 		return nil, fmt.Errorf("failed to copy entries: %w", err)
 	}
@@ -616,6 +617,7 @@ func sqlCopyEntries(
 	tx pgx.Tx,
 	registryID uuid.UUID,
 	servers []upstreamv0.ServerJSON,
+	claims []byte,
 ) (map[string]uuid.UUID, error) {
 	querier := sqlc.New(tx)
 
@@ -643,6 +645,7 @@ func sqlCopyEntries(
 			registryID,
 			sqlc.EntryTypeMCP,
 			server.Name,
+			claims,
 			&now,
 			&now,
 		})
@@ -651,7 +654,7 @@ func sqlCopyEntries(
 	entryCopyCount, err := tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"temp_registry_entry"},
-		[]string{"id", "source_id", "entry_type", "name", "created_at", "updated_at"},
+		[]string{"id", "source_id", "entry_type", "name", "claims", "created_at", "updated_at"},
 		pgx.CopyFromRows(entryRows),
 	)
 	if err != nil {

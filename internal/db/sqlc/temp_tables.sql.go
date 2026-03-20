@@ -222,17 +222,19 @@ func (q *Queries) UpsertPackagesFromTemp(ctx context.Context) error {
 
 const upsertRegistryEntriesFromTemp = `-- name: UpsertRegistryEntriesFromTemp :many
 INSERT INTO registry_entry (
-    id, source_id, entry_type, name, created_at, updated_at
+    id, source_id, entry_type, name, claims, created_at, updated_at
 )
 SELECT id,
        source_id,
        entry_type,
        name,
+       claims,
        created_at,
        updated_at
   FROM temp_registry_entry
     ON CONFLICT (source_id, entry_type, name)
     DO UPDATE SET
+      claims = EXCLUDED.claims,
       updated_at = EXCLUDED.updated_at
 RETURNING id, source_id, entry_type, name
 `

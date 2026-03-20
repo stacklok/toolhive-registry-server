@@ -1,0 +1,43 @@
+# Claims inheritance test configuration
+# Tests that source-level claims flow to entries during sync
+sources:
+  - name: trusted-source
+    format: upstream
+    file:
+      path: /examples/upstream-registry.json
+    syncPolicy:
+      interval: "30s"
+    claims:
+      org: "acme-corp"
+      tier: "premium"
+
+  - name: community-source
+    format: upstream
+    file:
+      path: /examples/upstream-registry-overlap.json
+    syncPolicy:
+      interval: "30s"
+    claims:
+      org: "community"
+      tier: "free"
+
+  - name: no-claims-source
+    managed: {}
+
+registries:
+  - name: default
+    sources: ["trusted-source", "community-source", "no-claims-source"]
+
+auth:
+  mode: anonymous
+
+database:
+  host: postgres
+  port: 5432
+  user: db_app
+  migrationUser: db_migrator
+  database: registry
+  sslMode: disable
+  maxOpenConns: 10
+  maxIdleConns: 2
+  connMaxLifetime: "30m"

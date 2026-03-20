@@ -69,3 +69,12 @@ SELECT l.version
   FROM latest_entry_version l
  WHERE l.name = sqlc.arg(name)
    AND l.source_id = sqlc.arg(source_id);
+
+-- name: PropagateSourceClaimsToEntries :exec
+-- Update all registry entries for a source to match the source's current claims.
+-- Used during initialization to fix drift when source claims change without data change.
+UPDATE registry_entry
+   SET claims = sqlc.narg(claims),
+       updated_at = NOW()
+ WHERE source_id = sqlc.arg(source_id)
+   AND (claims IS DISTINCT FROM sqlc.narg(claims));
