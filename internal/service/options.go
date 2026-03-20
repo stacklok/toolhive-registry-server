@@ -50,8 +50,16 @@ type registryNameOption interface {
 	setRegistryName(registryName string) error
 }
 
+type sourceNameOption interface {
+	setSourceName(sourceName string) error
+}
+
 type serverDataOption interface {
 	setServerData(serverData *upstreamv0.ServerJSON) error
+}
+
+type claimsOption interface {
+	setClaims(claims map[string]any) error
 }
 
 // WithCursor sets the cursor for the ListServers operation
@@ -113,6 +121,22 @@ func WithRegistryName(registryName string) Option {
 		switch o := o.(type) {
 		case registryNameOption:
 			return o.setRegistryName(registryName)
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+	}
+}
+
+// WithSourceName sets the source name for the GetSkillVersion operation
+func WithSourceName(sourceName string) Option {
+	return func(o any) error {
+		if sourceName == "" {
+			return fmt.Errorf("invalid source name: %s", sourceName)
+		}
+
+		switch o := o.(type) {
+		case sourceNameOption:
+			return o.setSourceName(sourceName)
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
@@ -212,6 +236,18 @@ func WithLimit(limit int) Option {
 		switch o := o.(type) {
 		case limitOption:
 			return o.setLimit(limit)
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+	}
+}
+
+// WithClaims sets the claims for the PublishServerVersion or PublishSkill operation
+func WithClaims(claims map[string]any) Option {
+	return func(o any) error {
+		switch o := o.(type) {
+		case claimsOption:
+			return o.setClaims(claims)
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}

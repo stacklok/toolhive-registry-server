@@ -14,6 +14,24 @@ func ValidateRegistryConfig(req *RegistryCreateRequest) error {
 	if req == nil {
 		return fmt.Errorf("config is required")
 	}
+	if len(req.Sources) == 0 {
+		return fmt.Errorf("at least one source is required")
+	}
+	seen := make(map[string]struct{}, len(req.Sources))
+	for _, s := range req.Sources {
+		if _, ok := seen[s]; ok {
+			return fmt.Errorf("duplicate source: %s", s)
+		}
+		seen[s] = struct{}{}
+	}
+	return nil
+}
+
+// ValidateSourceConfig validates a SourceCreateRequest
+func ValidateSourceConfig(req *SourceCreateRequest) error {
+	if req == nil {
+		return fmt.Errorf("config is required")
+	}
 
 	// Exactly one source type must be set
 	sourceCount := req.CountSourceTypes()
@@ -44,7 +62,7 @@ func ValidateRegistryConfig(req *RegistryCreateRequest) error {
 }
 
 // validateSourceSpecific validates source-specific configuration
-func validateSourceSpecific(req *RegistryCreateRequest) error {
+func validateSourceSpecific(req *SourceCreateRequest) error {
 	switch req.GetSourceType() {
 	case config.SourceTypeGit:
 		return validateGitConfig(req.Git)

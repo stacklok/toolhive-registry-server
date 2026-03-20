@@ -60,13 +60,14 @@ The command removes all the Kubernetes components associated with the chart and 
 | config.database.port | int | `5432` |  |
 | config.database.sslMode | string | `"require"` |  |
 | config.database.user | string | `"thv_user"` |  |
-| config.registries[0].format | string | `"toolhive"` |  |
-| config.registries[0].git.branch | string | `"main"` |  |
-| config.registries[0].git.path | string | `"pkg/registry/data/registry.json"` |  |
-| config.registries[0].git.repository | string | `"https://github.com/stacklok/toolhive.git"` |  |
-| config.registries[0].name | string | `"toolhive"` |  |
-| config.registries[0].syncPolicy.interval | string | `"30m"` |  |
-| config.registryName | string | `"default"` |  |
+| config.registries[0].name | string | `"default"` |  |
+| config.registries[0].sources[0] | string | `"toolhive"` |  |
+| config.sources[0].format | string | `"toolhive"` |  |
+| config.sources[0].git.branch | string | `"main"` |  |
+| config.sources[0].git.path | string | `"pkg/catalog/toolhive/data/registry.json"` |  |
+| config.sources[0].git.repository | string | `"https://github.com/stacklok/toolhive-catalog.git"` |  |
+| config.sources[0].name | string | `"toolhive"` |  |
+| config.sources[0].syncPolicy.interval | string | `"30m"` |  |
 | extraEnv | list | `[]` | Additional environment variables to add to the container Use this for secrets, feature flags, or runtime configuration |
 | extraEnvFrom | list | `[]` | Additional environment variables from ConfigMap or Secret references |
 | extraVolumeMounts | list | `[]` | Additional volume mounts to add to the container |

@@ -45,7 +45,7 @@ func (m *MockManager) EXPECT() *MockManagerMockRecorder {
 }
 
 // PerformSync mocks base method.
-func (m *MockManager) PerformSync(ctx context.Context, regCfg *config.RegistryConfig, prefetched *sources.FetchResult) (*sync.Result, *sync.Error) {
+func (m *MockManager) PerformSync(ctx context.Context, regCfg *config.SourceConfig, prefetched *sources.FetchResult) (*sync.Result, *sync.Error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PerformSync", ctx, regCfg, prefetched)
 	ret0, _ := ret[0].(*sync.Result)
@@ -60,7 +60,7 @@ func (mr *MockManagerMockRecorder) PerformSync(ctx, regCfg, prefetched any) *gom
 }
 
 // ShouldSync mocks base method.
-func (m *MockManager) ShouldSync(ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus, manualSyncRequested bool) (sync.Reason, *sources.FetchResult) {
+func (m *MockManager) ShouldSync(ctx context.Context, regCfg *config.SourceConfig, syncStatus *status.SyncStatus, manualSyncRequested bool) (sync.Reason, *sources.FetchResult) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ShouldSync", ctx, regCfg, syncStatus, manualSyncRequested)
 	ret0, _ := ret[0].(sync.Reason)

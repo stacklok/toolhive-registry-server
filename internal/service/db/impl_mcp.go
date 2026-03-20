@@ -2,9 +2,11 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -14,7 +16,6 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 
-	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/otel"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -55,8 +56,7 @@ func (s *dbService) ListServers(
 	if options.RegistryName != nil {
 		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
 
-		querier := sqlc.New(s.pool)
-		if err := validateRegistryExists(ctx, querier, *options.RegistryName); err != nil {
+		if err := checkRegistryExists(ctx, s.pool, *options.RegistryName); err != nil {
 			otel.RecordError(span, err)
 			return nil, err
 		}
@@ -73,10 +73,8 @@ func (s *dbService) ListServers(
 
 	// Request one extra record to detect if there are more results
 	params := sqlc.ListServersParams{
-		Size: int64(options.Limit + 1),
-	}
-	if options.RegistryName != nil {
-		params.RegistryName = options.RegistryName
+		Size:         int64(options.Limit + 1),
+		RegistryName: options.RegistryName,
 	}
 	if options.Search != "" {
 		params.Search = &options.Search
@@ -100,21 +98,47 @@ func (s *dbService) ListServers(
 		params.Version = &options.Version
 	}
 
-	// Note: this function fetches a list of servers. In case no records are
-	// found, the called function should return an empty slice as it's
-	// customary in Go.
+	// Fetch servers in a loop to ensure we have enough results after dedup.
+	// Dedup can remove entries when multiple sources provide the same name,
+	// so a single SQL fetch of limit+1 rows may yield fewer than limit
+	// deduplicated results. We loop, advancing the SQL cursor, until we
+	// have enough or the database is exhausted.
+	//
+	// All fetched helpers are accumulated and deduped together to ensure
+	// consistent cross-batch dedup (a name's winning source must be the
+	// same regardless of batch boundaries).
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
-		servers, err := querier.ListServers(ctx, params)
-		if err != nil {
-			return nil, err
+		const maxFetchIterations = 10 // safety cap to prevent runaway loops
+		target := options.Limit + 1   // +1 to detect hasMore
+		var allHelpers []helper
+		batchParams := params // copy so we can mutate cursor
+
+		for range maxFetchIterations {
+			servers, err := querier.ListServers(ctx, batchParams)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, server := range servers {
+				allHelpers = append(allHelpers, listServersRowToHelper(server))
+			}
+
+			deduped := deduplicateHelpers(allHelpers)
+
+			// Stop if we have enough deduplicated results or SQL returned
+			// fewer rows than requested (no more data).
+			if len(deduped) >= target || int64(len(servers)) < batchParams.Size {
+				return deduped, nil
+			}
+
+			// Advance cursor to the last fetched row's (name, version)
+			lastRow := servers[len(servers)-1]
+			batchParams.CursorName = &lastRow.Name
+			batchParams.CursorVersion = &lastRow.Version
 		}
 
-		helpers := make([]helper, len(servers))
-		for i, server := range servers {
-			helpers[i] = listServersRowToHelper(server)
-		}
-
-		return helpers, nil
+		// Iteration cap reached — return what we have
+		return deduplicateHelpers(allHelpers), nil
 	}
 
 	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit)
@@ -178,24 +202,19 @@ func (s *dbService) ListServerVersions(
 	)
 	if options.RegistryName != nil {
 		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
-	}
 
-	if options.RegistryName != nil {
-		querier := sqlc.New(s.pool)
-		if err := validateRegistryExists(ctx, querier, *options.RegistryName); err != nil {
+		if err := checkRegistryExists(ctx, s.pool, *options.RegistryName); err != nil {
 			otel.RecordError(span, err)
 			return nil, err
 		}
 	}
 
 	params := sqlc.ListServerVersionsParams{
-		Name: options.Name,
-		Next: options.Next,
-		Prev: options.Prev,
-		Size: int64(options.Limit),
-	}
-	if options.RegistryName != nil {
-		params.RegistryName = options.RegistryName
+		Name:         options.Name,
+		Next:         options.Next,
+		Prev:         options.Prev,
+		Size:         int64(options.Limit),
+		RegistryName: options.RegistryName,
 	}
 
 	// Note: this function fetches a list of server versions. In case no records are
@@ -207,12 +226,12 @@ func (s *dbService) ListServerVersions(
 			return nil, err
 		}
 
-		helpers := make([]helper, len(servers))
-		for i, server := range servers {
-			helpers[i] = listServerVersionsRowToHelper(server)
+		helpers := make([]helper, 0, len(servers))
+		for _, server := range servers {
+			helpers = append(helpers, listServerVersionsRowToHelper(server))
 		}
 
-		return helpers, nil
+		return deduplicateHelpers(helpers), nil
 	}
 
 	results, err := s.sharedListServers(ctx, querierFunc)
@@ -257,8 +276,7 @@ func (s *dbService) GetServerVersion(
 	}
 
 	if options.RegistryName != "" {
-		querier := sqlc.New(s.pool)
-		if err := validateRegistryExists(ctx, querier, options.RegistryName); err != nil {
+		if err := checkRegistryExists(ctx, s.pool, options.RegistryName); err != nil {
 			otel.RecordError(span, err)
 			return nil, err
 		}
@@ -271,21 +289,28 @@ func (s *dbService) GetServerVersion(
 	if options.RegistryName != "" {
 		params.RegistryName = &options.RegistryName
 	}
+	if options.SourceName != "" {
+		params.SourceName = &options.SourceName
+	}
 
 	// Note: this function fetches a single record given name and version.
 	// In case no record is found, the called function maps the underlying
 	// `pgx.ErrNoRows` to `service.ErrNotFound`, and callers should expect
 	// to receive `service.ErrNotFound` for a missing record.
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
-		server, err := querier.GetServerVersion(ctx, params)
+		servers, err := querier.GetServerVersion(ctx, params)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
 			}
 			return nil, err
 		}
+		if len(servers) == 0 {
+			return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
+		}
 
-		return []helper{getServerVersionRowToHelper(server)}, nil
+		// Return only the first row (highest priority by position)
+		return []helper{getServerVersionRowToHelper(servers[0])}, nil
 	}
 
 	res, err := s.sharedListServers(ctx, querierFunc)
@@ -294,9 +319,6 @@ func (s *dbService) GetServerVersion(
 		return nil, err
 	}
 
-	// Note: the `queryFunc` function is expected to return an error
-	// sooner if no records are found, so getting this far with
-	// a length result slice other than 1 means there's a bug.
 	if len(res) != 1 {
 		err := fmt.Errorf("%w: number of servers returned is not 1", ErrBug)
 		otel.RecordError(span, err)
@@ -313,12 +335,14 @@ func (s *dbService) GetServerVersion(
 
 // insertServerVersionData inserts the server version record and returns the entry_version ID.
 // It validates unique constraints on (entry_id, version) and returns ErrVersionAlreadyExists if violated.
+// When claimsJSON is non-nil it is stored on new entries and verified against existing entries.
 func insertServerVersionData(
 	ctx context.Context,
 	querier *sqlc.Queries,
 	serverData *upstreamv0.ServerJSON,
 	registryID uuid.UUID,
 	maxMetaSize int,
+	claimsJSON []byte,
 ) (uuid.UUID, error) {
 	// Prepare repository fields
 	var repoURL, repoID, repoSubfolder, repoType *string
@@ -338,19 +362,30 @@ func insertServerVersionData(
 	now := time.Now()
 
 	// Get or create the registry entry (one per unique name)
-	entryID, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
-		RegID:     registryID,
+	var entryID uuid.UUID
+	existing, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
+		SourceID:  registryID,
 		EntryType: sqlc.EntryTypeMCP,
 		Name:      serverData.Name,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		entryID, err = querier.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
-			RegID:     registryID,
+			SourceID:  registryID,
 			EntryType: sqlc.EntryTypeMCP,
 			Name:      serverData.Name,
+			Claims:    claimsJSON,
 			CreatedAt: &now,
 			UpdatedAt: &now,
 		})
+	} else if err == nil {
+		entryID = existing.ID
+		// Verify claim consistency: if both the existing entry and the new
+		// publish request carry claims, they must match.
+		if claimsJSON != nil && existing.Claims != nil {
+			if !claimsMatch(existing.Claims, claimsJSON) {
+				return uuid.Nil, fmt.Errorf("%w: claims do not match existing entry", service.ErrClaimsMismatch)
+			}
+		}
 	}
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("failed to get or create registry entry: %w", err)
@@ -502,51 +537,29 @@ func insertServerIcons(
 	return nil
 }
 
-// validateRegistryExists validates that the registry exists.
-// Returns ErrRegistryNotFound if the registry doesn't exist.
-func validateRegistryExists(ctx context.Context, querier *sqlc.Queries, registryName string) error {
-	_, err := querier.GetRegistryByName(ctx, registryName)
+// getManagedSource finds the managed source from the database.
+// Returns ErrNoManagedSource if no managed source exists.
+// Returns an error if more than one managed source is found.
+func getManagedSource(ctx context.Context, querier *sqlc.Queries) (*sqlc.Source, error) {
+	rows, err := querier.GetManagedSources(ctx)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
-		}
-		return fmt.Errorf("failed to get registry: %w", err)
+		return nil, fmt.Errorf("failed to get managed source: %w", err)
 	}
-	return nil
-}
-
-// validateManagedRegistry validates that the registry exists and is a managed
-// registry. Returns ErrRegistryNotFound if the registry doesn't exist, or
-// ErrNotManagedRegistry if it's not of type managed.
-func validateManagedRegistry(
-	ctx context.Context,
-	querier *sqlc.Queries,
-	registryName string,
-) (*sqlc.Registry, error) {
-	registryRow, err := querier.GetRegistryByName(ctx, registryName)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
-		}
-		return nil, fmt.Errorf("failed to get registry: %w", err)
+	if len(rows) == 0 {
+		return nil, service.ErrNoManagedSource
 	}
-
-	if registryRow.RegType != sqlc.RegistryTypeMANAGED {
-		return nil, fmt.Errorf("%w: registry %s has type %s",
-			service.ErrNotManagedRegistry, registryName, registryRow.RegType)
+	if len(rows) > 1 {
+		return nil, fmt.Errorf("expected exactly one managed source, found %d", len(rows))
 	}
-
-	// Convert row to Registry struct
-	registry := &sqlc.Registry{
-		ID:           registryRow.ID,
-		Name:         registryRow.Name,
-		RegType:      registryRow.RegType,
-		CreationType: registryRow.CreationType,
-		CreatedAt:    registryRow.CreatedAt,
-		UpdatedAt:    registryRow.UpdatedAt,
-	}
-
-	return registry, nil
+	row := rows[0]
+	return &sqlc.Source{
+		ID:           row.ID,
+		Name:         row.Name,
+		SourceType:   row.SourceType,
+		CreationType: row.CreationType,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
+	}, nil
 }
 
 // PublishServerVersion publishes a server version to a managed registry
@@ -577,7 +590,6 @@ func (s *dbService) PublishServerVersion(
 
 	// Add tracing attributes
 	span.SetAttributes(
-		otel.AttrRegistryName.String(options.RegistryName),
 		otel.AttrServerName.String(serverData.Name),
 		otel.AttrServerVersion.String(serverData.Version),
 	)
@@ -589,22 +601,33 @@ func (s *dbService) PublishServerVersion(
 		return nil, err
 	}
 
+	// Serialize claims to JSON for storage
+	var claimsJSON []byte
+	if options.Claims != nil {
+		var err error
+		claimsJSON, err = json.Marshal(options.Claims)
+		if err != nil {
+			otel.RecordError(span, err)
+			return nil, fmt.Errorf("failed to serialize claims: %w", err)
+		}
+	}
+
 	// Execute the publish operation in a transaction
-	if err := s.executePublishTransaction(ctx, options.RegistryName, serverData); err != nil {
+	sourceName, err := s.executePublishTransaction(ctx, serverData, claimsJSON)
+	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
 	slog.InfoContext(ctx, "Server version published",
 		"duration_ms", time.Since(start).Milliseconds(),
-		"registry", options.RegistryName,
 		"server", serverData.Name,
 		"version", serverData.Version,
 		"request_id", middleware.GetReqID(ctx))
 
 	// Fetch the inserted server to return it
 	result, err := s.GetServerVersion(ctx,
-		service.WithRegistryName(options.RegistryName),
+		service.WithSourceName(sourceName),
 		service.WithName(serverData.Name),
 		service.WithVersion(serverData.Version),
 	)
@@ -619,16 +642,16 @@ func (s *dbService) PublishServerVersion(
 // executePublishTransaction executes the publish operation within a transaction
 func (s *dbService) executePublishTransaction(
 	ctx context.Context,
-	registryName string,
 	serverData *upstreamv0.ServerJSON,
-) error {
+	claimsJSON []byte,
+) (string, error) {
 	// Begin transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.Serializable,
 		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		err := tx.Rollback(ctx)
@@ -639,23 +662,23 @@ func (s *dbService) executePublishTransaction(
 
 	querier := sqlc.New(tx)
 
-	// Validate registry exists and is managed
-	registry, err := validateManagedRegistry(ctx, querier, registryName)
+	// Find the managed source automatically
+	source, err := getManagedSource(ctx, querier)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Insert server and related data
-	if err := s.insertServerData(ctx, querier, serverData, registry.ID); err != nil {
-		return err
+	if err := s.insertServerData(ctx, querier, serverData, source.ID, claimsJSON); err != nil {
+		return "", err
 	}
 
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return "", fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return nil
+	return source.Name, nil
 }
 
 // insertServerData inserts the server version and all related data
@@ -664,9 +687,10 @@ func (s *dbService) insertServerData(
 	querier *sqlc.Queries,
 	serverData *upstreamv0.ServerJSON,
 	registryID uuid.UUID,
+	claimsJSON []byte,
 ) error {
 	// Insert the server version
-	serverVersionID, err := insertServerVersionData(ctx, querier, serverData, registryID, s.maxMetaSize)
+	serverVersionID, err := insertServerVersionData(ctx, querier, serverData, registryID, s.maxMetaSize, claimsJSON)
 	if err != nil {
 		return err
 	}
@@ -688,9 +712,9 @@ func (s *dbService) insertServerData(
 
 	// Compare with current latest before upserting — avoid regressing the pointer
 	shouldUpdateLatest := true
-	currentLatest, err := querier.GetLatestVersionForServer(ctx, sqlc.GetLatestVersionForServerParams{
-		Name:  serverData.Name,
-		RegID: registryID,
+	currentLatest, err := querier.GetLatestEntryVersion(ctx, sqlc.GetLatestEntryVersionParams{
+		Name:     serverData.Name,
+		SourceID: registryID,
 	})
 	if err == nil {
 		shouldUpdateLatest = versions.IsNewerVersion(serverData.Version, currentLatest)
@@ -700,7 +724,7 @@ func (s *dbService) insertServerData(
 
 	if shouldUpdateLatest {
 		_, err = querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
-			RegID:     registryID,
+			SourceID:  registryID,
 			Name:      serverData.Name,
 			Version:   serverData.Version,
 			VersionID: serverVersionID,
@@ -731,7 +755,6 @@ func (s *dbService) DeleteServerVersion(
 	}
 
 	span.SetAttributes(
-		otel.AttrRegistryName.String(options.RegistryName),
 		otel.AttrServerName.String(options.ServerName),
 		otel.AttrServerVersion.String(options.Version),
 	)
@@ -743,7 +766,6 @@ func (s *dbService) DeleteServerVersion(
 
 	slog.InfoContext(ctx, "Server version deleted",
 		"duration_ms", time.Since(start).Milliseconds(),
-		"registry", options.RegistryName,
 		"server", options.ServerName,
 		"version", options.Version,
 		"request_id", middleware.GetReqID(ctx))
@@ -772,17 +794,26 @@ func (s *dbService) executeDeleteTransaction(
 
 	querier := sqlc.New(tx)
 
-	registry, err := validateManagedRegistry(ctx, querier, options.RegistryName)
+	source, err := getManagedSource(ctx, querier)
 	if err != nil {
 		return err
 	}
 
-	entryID, err := lookupAndDeleteEntryVersion(ctx, querier, registry.ID, sqlc.EntryTypeMCP, options.ServerName, options.Version)
+	entryID, err := lookupAndDeleteEntryVersion(ctx, querier, source.ID, sqlc.EntryTypeMCP, options.ServerName, options.Version)
 	if err != nil {
 		return err
 	}
 
-	if err := rePointLatestServerVersionIfNeeded(ctx, querier, registry.ID, options.ServerName, entryID); err != nil {
+	if err := rePointLatestVersionIfNeeded(ctx, querier, source.ID, options.ServerName, entryID,
+		func(ctx context.Context, querier *sqlc.Queries, sourceID uuid.UUID, name, version string, versionID uuid.UUID) error {
+			_, err := querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
+				SourceID:  sourceID,
+				Name:      name,
+				Version:   version,
+				VersionID: versionID,
+			})
+			return err
+		}); err != nil {
 		return err
 	}
 
@@ -797,66 +828,19 @@ func (s *dbService) executeDeleteTransaction(
 	return nil
 }
 
-// rePointLatestServerVersionIfNeeded checks whether the latest_entry_version pointer was cascade-deleted
-// (because the deleted version was the current latest) and, if so, re-points it to the
-// next-highest remaining version according to versions.IsNewerVersion (semantic when possible,
-// with lexicographic ordering as a fallback).
-func rePointLatestServerVersionIfNeeded(
-	ctx context.Context,
-	querier *sqlc.Queries,
-	registryID uuid.UUID,
-	serverName string,
-	entryID uuid.UUID,
-) error {
-	_, err := querier.GetLatestVersionForServer(ctx, sqlc.GetLatestVersionForServerParams{
-		Name:  serverName,
-		RegID: registryID,
-	})
-	if err == nil {
-		// Pointer still exists — deleted version was not the latest, nothing to do.
-		return nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("failed to check latest server version: %w", err)
-	}
-
-	// Pointer was cascade-deleted. Find the next-highest remaining version using the same
-	// ordering rules as versions.IsNewerVersion (semantic when possible, lexicographic otherwise).
-	remaining, err := querier.ListEntryVersions(ctx, entryID)
-	if err != nil {
-		return fmt.Errorf("failed to list remaining server versions: %w", err)
-	}
-
-	newVersionID, newVersion := findHighestVersion(remaining)
-	if newVersionID == uuid.Nil {
-		// No remaining versions — the cascade on registry_entry will handle full cleanup.
-		return nil
-	}
-
-	if _, err := querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
-		RegID:     registryID,
-		Name:      serverName,
-		Version:   newVersion,
-		VersionID: newVersionID,
-	}); err != nil {
-		return fmt.Errorf("failed to upsert latest server version: %w", err)
-	}
-	return nil
-}
-
 // lookupAndDeleteEntryVersion finds the registry entry by name and entry type,
 // then deletes the specified version. Returns the entry ID for potential
 // cleanup, or an error if the entry or version is not found.
 func lookupAndDeleteEntryVersion(
 	ctx context.Context,
 	querier *sqlc.Queries,
-	registryID uuid.UUID,
+	sourceID uuid.UUID,
 	entryType sqlc.EntryType,
 	name string,
 	version string,
 ) (uuid.UUID, error) {
-	entryID, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
-		RegID:     registryID,
+	existing, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
+		SourceID:  sourceID,
 		EntryType: entryType,
 		Name:      name,
 	})
@@ -868,7 +852,7 @@ func lookupAndDeleteEntryVersion(
 	}
 
 	rowsAffected, err := querier.DeleteEntryVersion(ctx, sqlc.DeleteEntryVersionParams{
-		EntryID: entryID,
+		EntryID: existing.ID,
 		Version: version,
 	})
 	if err != nil {
@@ -879,7 +863,7 @@ func lookupAndDeleteEntryVersion(
 		return uuid.Nil, fmt.Errorf("%w: %s@%s", service.ErrNotFound, name, version)
 	}
 
-	return entryID, nil
+	return existing.ID, nil
 }
 
 // cleanupOrphanedEntry removes the parent registry entry if no versions remain.
@@ -898,6 +882,18 @@ func cleanupOrphanedEntry(
 		}
 	}
 	return nil
+}
+
+// claimsMatch compares two JSONB claim values for equality.
+func claimsMatch(a, b []byte) bool {
+	var ma, mb map[string]any
+	if err := json.Unmarshal(a, &ma); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(b, &mb); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(ma, mb)
 }
 
 // querierFunction is a function that uses the given querier object to run the
@@ -1021,247 +1017,4 @@ func (s *dbService) sharedListServersWithCursor(
 	}
 
 	return result, lastCursor, nil
-}
-
-// ListRegistries returns all configured registries
-func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.ListRegistries")
-	defer span.End()
-	start := time.Now()
-
-	// Begin a read-only transaction
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   pgx.ReadCommitted,
-		AccessMode: pgx.ReadOnly,
-	})
-	if err != nil {
-		otel.RecordError(span, err)
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		err := tx.Rollback(ctx)
-		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
-		}
-	}()
-
-	querier := sqlc.New(tx)
-
-	// List all registries (no pagination for now)
-	params := sqlc.ListRegistriesParams{
-		Size: service.MaxPageSize, // Maximum number of registries to return
-	}
-
-	registries, err := querier.ListRegistries(ctx, params)
-	if err != nil {
-		otel.RecordError(span, err)
-		return nil, fmt.Errorf("failed to list registries: %w", err)
-	}
-
-	// Convert to API response format
-	result := make([]service.RegistryInfo, 0, len(registries))
-	for _, reg := range registries {
-		// Build RegistryInfo with all config fields
-		info := buildRegistryInfoFromListRow(&reg)
-
-		// Fetch sync status from database
-		syncRecord, err := querier.GetRegistrySyncByName(ctx, reg.Name)
-		if err != nil {
-			// It's okay if sync record doesn't exist yet (registry may not have been synced)
-			if !errors.Is(err, pgx.ErrNoRows) {
-				slog.Warn("Failed to get sync status for registry",
-					"registry", reg.Name,
-					"error", err)
-			}
-			// Leave SyncStatus as nil if not found or error
-			info.SyncStatus = nil
-		} else {
-			// Convert database sync status to service type
-			info.SyncStatus = &service.RegistrySyncStatus{
-				Phase:        convertSyncPhase(syncRecord.SyncStatus),
-				LastSyncTime: syncRecord.EndedAt,   // EndedAt represents successful completion
-				LastAttempt:  syncRecord.StartedAt, // StartedAt is the last attempt time
-				AttemptCount: int(syncRecord.AttemptCount),
-				ServerCount:  int(syncRecord.ServerCount),
-				Message:      getStatusMessage(syncRecord.ErrorMsg),
-			}
-		}
-
-		result = append(result, *info)
-	}
-
-	span.SetAttributes(otel.AttrResultCount.Int(len(result)))
-	slog.DebugContext(ctx, "ListRegistries completed",
-		"duration_ms", time.Since(start).Milliseconds(),
-		"count", len(result),
-		"request_id", middleware.GetReqID(ctx))
-	return result, nil
-}
-
-// convertSyncPhase converts database SyncStatus enum to service phase string
-func convertSyncPhase(status sqlc.SyncStatus) string {
-	switch status {
-	case sqlc.SyncStatusINPROGRESS:
-		return "syncing"
-	case sqlc.SyncStatusCOMPLETED:
-		return "complete"
-	case sqlc.SyncStatusFAILED:
-		return "failed"
-	default:
-		return "unknown"
-	}
-}
-
-// getStatusMessage converts error message pointer to string
-func getStatusMessage(errorMsg *string) string {
-	if errorMsg == nil || *errorMsg == "" {
-		return ""
-	}
-	return *errorMsg
-}
-
-// GetRegistryByName returns a single registry by name
-func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*service.RegistryInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.GetRegistryByName")
-	defer span.End()
-	start := time.Now()
-
-	// Add tracing attributes
-	span.SetAttributes(otel.AttrRegistryName.String(name))
-
-	// Begin a read-only transaction
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   pgx.ReadCommitted,
-		AccessMode: pgx.ReadOnly,
-	})
-	if err != nil {
-		otel.RecordError(span, err)
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		err := tx.Rollback(ctx)
-		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
-		}
-	}()
-
-	querier := sqlc.New(tx)
-
-	// Get the registry by name
-	registry, err := querier.GetRegistryByName(ctx, name)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
-			otel.RecordError(span, err)
-			return nil, err
-		}
-		otel.RecordError(span, err)
-		return nil, fmt.Errorf("failed to get registry: %w", err)
-	}
-
-	// Build RegistryInfo with all config fields
-	info := buildRegistryInfoFromGetByNameRow(&registry)
-
-	// Fetch sync status from database
-	syncRecord, err := querier.GetRegistrySyncByName(ctx, registry.Name)
-	if err != nil {
-		// It's okay if sync record doesn't exist yet (registry may not have been synced)
-		if !errors.Is(err, pgx.ErrNoRows) {
-			slog.Warn("Failed to get sync status for registry",
-				"registry", registry.Name,
-				"error", err)
-		}
-		// Leave SyncStatus as nil if not found or error
-		info.SyncStatus = nil
-	} else {
-		// Convert database sync status to service type
-		info.SyncStatus = &service.RegistrySyncStatus{
-			Phase:        convertSyncPhase(syncRecord.SyncStatus),
-			LastSyncTime: syncRecord.EndedAt,   // EndedAt represents successful completion
-			LastAttempt:  syncRecord.StartedAt, // StartedAt is the last attempt time
-			AttemptCount: int(syncRecord.AttemptCount),
-			ServerCount:  int(syncRecord.ServerCount),
-			Message:      getStatusMessage(syncRecord.ErrorMsg),
-		}
-	}
-
-	slog.DebugContext(ctx, "GetRegistryByName completed",
-		"duration_ms", time.Since(start).Milliseconds(),
-		"registry", name,
-		"request_id", middleware.GetReqID(ctx))
-	return info, nil
-}
-
-// buildRegistryInfoFromListRow builds a RegistryInfo from a ListRegistriesRow
-func buildRegistryInfoFromListRow(row *sqlc.ListRegistriesRow) *service.RegistryInfo {
-	info := &service.RegistryInfo{
-		Name:         row.Name,
-		Type:         string(row.RegType),
-		CreationType: service.CreationType(row.CreationType),
-	}
-
-	if row.SourceType != nil {
-		info.SourceType = config.SourceType(*row.SourceType)
-	}
-
-	if row.Format != nil {
-		info.Format = *row.Format
-	}
-
-	if row.SourceType != nil {
-		info.SourceConfig = deserializeSourceConfig(*row.SourceType, row.SourceConfig)
-	}
-
-	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
-
-	if row.SyncSchedule.Valid {
-		info.SyncSchedule = row.SyncSchedule.Duration.String()
-	}
-
-	if row.CreatedAt != nil {
-		info.CreatedAt = *row.CreatedAt
-	}
-
-	if row.UpdatedAt != nil {
-		info.UpdatedAt = *row.UpdatedAt
-	}
-
-	return info
-}
-
-// buildRegistryInfoFromGetByNameRow builds a RegistryInfo from a GetRegistryByNameRow
-func buildRegistryInfoFromGetByNameRow(row *sqlc.GetRegistryByNameRow) *service.RegistryInfo {
-	info := &service.RegistryInfo{
-		Name:         row.Name,
-		Type:         string(row.RegType),
-		CreationType: service.CreationType(row.CreationType),
-	}
-
-	if row.SourceType != nil {
-		info.SourceType = config.SourceType(*row.SourceType)
-	}
-
-	if row.Format != nil {
-		info.Format = *row.Format
-	}
-
-	if row.SourceType != nil {
-		info.SourceConfig = deserializeSourceConfig(*row.SourceType, row.SourceConfig)
-	}
-
-	info.FilterConfig = deserializeFilterConfig(row.FilterConfig)
-
-	if row.SyncSchedule.Valid {
-		info.SyncSchedule = row.SyncSchedule.Duration.String()
-	}
-
-	if row.CreatedAt != nil {
-		info.CreatedAt = *row.CreatedAt
-	}
-
-	if row.UpdatedAt != nil {
-		info.UpdatedAt = *row.UpdatedAt
-	}
-
-	return info
 }

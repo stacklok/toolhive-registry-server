@@ -243,3 +243,107 @@ func TestSerializePublisherProvidedMeta(t *testing.T) {
 		})
 	}
 }
+
+func TestDeduplicateHelpers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		input  []helper
+		expect []helper
+	}{
+		{
+			name:   "empty input returns empty slice",
+			input:  []helper{},
+			expect: []helper{},
+		},
+		{
+			name: "single entry single version returned as-is",
+			input: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 0},
+			},
+			expect: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 0},
+			},
+		},
+		{
+			name: "single entry name multiple versions from same source all kept",
+			input: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 2},
+				{Name: "server-a", Version: "2.0.0", Position: 2},
+				{Name: "server-a", Version: "3.0.0", Position: 2},
+			},
+			expect: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 2},
+				{Name: "server-a", Version: "2.0.0", Position: 2},
+				{Name: "server-a", Version: "3.0.0", Position: 2},
+			},
+		},
+		{
+			name: "same entry name from two sources keeps only lowest position",
+			input: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 1},
+				{Name: "server-a", Version: "2.0.0", Position: 1},
+				{Name: "server-a", Version: "1.0.0", Position: 5},
+				{Name: "server-a", Version: "3.0.0", Position: 5},
+			},
+			expect: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 1},
+				{Name: "server-a", Version: "2.0.0", Position: 1},
+			},
+		},
+		{
+			name: "multiple entry names independently resolved",
+			input: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 3},
+				{Name: "server-a", Version: "2.0.0", Position: 3},
+				{Name: "server-a", Version: "1.0.0", Position: 7},
+				{Name: "server-b", Version: "1.0.0", Position: 7},
+				{Name: "server-b", Version: "2.0.0", Position: 7},
+				{Name: "server-b", Version: "1.0.0", Position: 3},
+			},
+			expect: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 3},
+				{Name: "server-a", Version: "2.0.0", Position: 3},
+				{Name: "server-b", Version: "1.0.0", Position: 3},
+			},
+		},
+		{
+			name: "lowest position wins regardless of input order",
+			input: []helper{
+				{Name: "server-x", Version: "old", Position: 10},
+				{Name: "server-x", Version: "newer", Position: 10},
+				{Name: "server-x", Version: "best", Position: 2},
+				{Name: "server-x", Version: "also-best", Position: 2},
+				{Name: "server-x", Version: "mid", Position: 5},
+			},
+			expect: []helper{
+				{Name: "server-x", Version: "best", Position: 2},
+				{Name: "server-x", Version: "also-best", Position: 2},
+			},
+		},
+		{
+			name: "same position for different names keeps both",
+			input: []helper{
+				{Name: "alpha", Version: "1.0.0", Position: 4},
+				{Name: "beta", Version: "1.0.0", Position: 4},
+				{Name: "beta", Version: "2.0.0", Position: 4},
+			},
+			expect: []helper{
+				{Name: "alpha", Version: "1.0.0", Position: 4},
+				{Name: "beta", Version: "1.0.0", Position: 4},
+				{Name: "beta", Version: "2.0.0", Position: 4},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := deduplicateHelpers(tt.input)
+
+			assert.Equal(t, tt.expect, got)
+		})
+	}
+}

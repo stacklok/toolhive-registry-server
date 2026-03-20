@@ -53,17 +53,19 @@ extraVolumeMounts:
 
 # Registry server configuration with CNPG PostgreSQL
 config:
-  registryName: "toolhive-dev"
-
-  registries:
+  sources:
     - name: toolhive
       format: toolhive
       git:
-        repository: https://github.com/stacklok/toolhive.git
+        repository: https://github.com/stacklok/toolhive-catalog.git
         branch: main
-        path: pkg/registry/data/registry.json
+        path: pkg/catalog/toolhive/data/registry.json
       syncPolicy:
         interval: "5m"
+
+  registries:
+    - name: default
+      sources: ["toolhive"]
 
   # CNPG PostgreSQL database configuration
   # Uses the CNPG read-write service (registry-db-rw)

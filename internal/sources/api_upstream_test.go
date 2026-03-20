@@ -305,7 +305,7 @@ func TestUpstreamAPIHandler_FetchRegistry(t *testing.T) {
 			handler := NewUpstreamAPIHandler(httpClient)
 			ctx := context.Background()
 
-			registryConfig := &config.RegistryConfig{
+			registryConfig := &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatUpstream,
 				API: &config.APIConfig{
@@ -397,7 +397,7 @@ func TestUpstreamAPIHandler_FetchRegistry_Pagination(t *testing.T) {
 	handler := NewUpstreamAPIHandler(httpClient)
 	ctx := context.Background()
 
-	registryConfig := &config.RegistryConfig{
+	registryConfig := &config.SourceConfig{
 		Name:   "test-registry",
 		Format: config.SourceFormatUpstream,
 		API: &config.APIConfig{
@@ -443,7 +443,7 @@ func TestUpstreamAPIHandler_EmptyServers(t *testing.T) {
 	handler := NewUpstreamAPIHandler(httpClient)
 	ctx := context.Background()
 
-	registryConfig := &config.RegistryConfig{
+	registryConfig := &config.SourceConfig{
 		Name:   "test-registry",
 		Format: config.SourceFormatUpstream,
 		API: &config.APIConfig{
@@ -503,7 +503,7 @@ func TestUpstreamAPIHandler_MultiplePages(t *testing.T) {
 	handler := NewUpstreamAPIHandler(httpClient)
 	ctx := context.Background()
 
-	registryConfig := &config.RegistryConfig{
+	registryConfig := &config.SourceConfig{
 		Name:   "test-registry",
 		Format: config.SourceFormatUpstream,
 		API: &config.APIConfig{
@@ -562,7 +562,7 @@ func TestUpstreamAPIHandler_HTTPErrorCodes(t *testing.T) {
 			handler := NewUpstreamAPIHandler(httpClient)
 			ctx := context.Background()
 
-			registryConfig := &config.RegistryConfig{
+			registryConfig := &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatUpstream,
 				API: &config.APIConfig{

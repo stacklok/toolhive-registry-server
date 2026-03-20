@@ -86,7 +86,7 @@ func SetupTestDB(t *testing.T) (*pgx.Conn, func()) {
 // registerTestArrayCodecs registers codecs for all custom enum array types
 // This is needed for tests that use array parameters with custom enum types
 func registerTestArrayCodecs(ctx context.Context, conn *pgx.Conn) error {
-	enumTypes := []string{"registry_type", "sync_status", "icon_theme", "creation_type"}
+	enumTypes := []string{"sync_status", "icon_theme", "creation_type"}
 
 	for _, enumName := range enumTypes {
 		var enumOID uint32

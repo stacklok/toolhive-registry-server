@@ -1,28 +1,30 @@
 -- name: GetRegistryEntryByName :one
-SELECT id
+SELECT id, claims
   FROM registry_entry
- WHERE reg_id = sqlc.arg(reg_id)
+ WHERE source_id = sqlc.arg(source_id)
    AND entry_type = sqlc.arg(entry_type)
    AND name = sqlc.arg(name);
 
 -- name: InsertRegistryEntry :one
 INSERT INTO registry_entry (
-    reg_id,
+    source_id,
     entry_type,
     name,
+    claims,
     created_at,
     updated_at
 ) VALUES (
-    sqlc.arg(reg_id),
+    sqlc.arg(source_id),
     sqlc.arg(entry_type),
     sqlc.arg(name),
+    sqlc.arg(claims),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 ) RETURNING id;
 
 -- name: DeleteRegistryEntry :execrows
 DELETE FROM registry_entry
-WHERE reg_id = sqlc.arg(reg_id)
+WHERE source_id = sqlc.arg(source_id)
   AND entry_type = sqlc.arg(entry_type)
   AND name = sqlc.arg(name);
 
@@ -61,3 +63,9 @@ SELECT id, version
   FROM entry_version
  WHERE entry_id = sqlc.arg(entry_id)
  ORDER BY version ASC;
+
+-- name: GetLatestEntryVersion :one
+SELECT l.version
+  FROM latest_entry_version l
+ WHERE l.name = sqlc.arg(name)
+   AND l.source_id = sqlc.arg(source_id);

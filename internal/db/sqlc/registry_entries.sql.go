@@ -45,19 +45,19 @@ func (q *Queries) DeleteEntryVersion(ctx context.Context, arg DeleteEntryVersion
 
 const deleteRegistryEntry = `-- name: DeleteRegistryEntry :execrows
 DELETE FROM registry_entry
-WHERE reg_id = $1
+WHERE source_id = $1
   AND entry_type = $2
   AND name = $3
 `
 
 type DeleteRegistryEntryParams struct {
-	RegID     uuid.UUID `json:"reg_id"`
+	SourceID  uuid.UUID `json:"source_id"`
 	EntryType EntryType `json:"entry_type"`
 	Name      string    `json:"name"`
 }
 
 func (q *Queries) DeleteRegistryEntry(ctx context.Context, arg DeleteRegistryEntryParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteRegistryEntry, arg.RegID, arg.EntryType, arg.Name)
+	result, err := q.db.Exec(ctx, deleteRegistryEntry, arg.SourceID, arg.EntryType, arg.Name)
 	if err != nil {
 		return 0, err
 	}
@@ -77,25 +77,49 @@ func (q *Queries) DeleteRegistryEntryByID(ctx context.Context, id uuid.UUID) (in
 	return result.RowsAffected(), nil
 }
 
+const getLatestEntryVersion = `-- name: GetLatestEntryVersion :one
+SELECT l.version
+  FROM latest_entry_version l
+ WHERE l.name = $1
+   AND l.source_id = $2
+`
+
+type GetLatestEntryVersionParams struct {
+	Name     string    `json:"name"`
+	SourceID uuid.UUID `json:"source_id"`
+}
+
+func (q *Queries) GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error) {
+	row := q.db.QueryRow(ctx, getLatestEntryVersion, arg.Name, arg.SourceID)
+	var version string
+	err := row.Scan(&version)
+	return version, err
+}
+
 const getRegistryEntryByName = `-- name: GetRegistryEntryByName :one
-SELECT id
+SELECT id, claims
   FROM registry_entry
- WHERE reg_id = $1
+ WHERE source_id = $1
    AND entry_type = $2
    AND name = $3
 `
 
 type GetRegistryEntryByNameParams struct {
-	RegID     uuid.UUID `json:"reg_id"`
+	SourceID  uuid.UUID `json:"source_id"`
 	EntryType EntryType `json:"entry_type"`
 	Name      string    `json:"name"`
 }
 
-func (q *Queries) GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getRegistryEntryByName, arg.RegID, arg.EntryType, arg.Name)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
+type GetRegistryEntryByNameRow struct {
+	ID     uuid.UUID `json:"id"`
+	Claims []byte    `json:"claims"`
+}
+
+func (q *Queries) GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (GetRegistryEntryByNameRow, error) {
+	row := q.db.QueryRow(ctx, getRegistryEntryByName, arg.SourceID, arg.EntryType, arg.Name)
+	var i GetRegistryEntryByNameRow
+	err := row.Scan(&i.ID, &i.Claims)
+	return i, err
 }
 
 const insertEntryVersion = `-- name: InsertEntryVersion :one
@@ -141,9 +165,10 @@ func (q *Queries) InsertEntryVersion(ctx context.Context, arg InsertEntryVersion
 
 const insertRegistryEntry = `-- name: InsertRegistryEntry :one
 INSERT INTO registry_entry (
-    reg_id,
+    source_id,
     entry_type,
     name,
+    claims,
     created_at,
     updated_at
 ) VALUES (
@@ -151,23 +176,26 @@ INSERT INTO registry_entry (
     $2,
     $3,
     $4,
-    $5
+    $5,
+    $6
 ) RETURNING id
 `
 
 type InsertRegistryEntryParams struct {
-	RegID     uuid.UUID  `json:"reg_id"`
+	SourceID  uuid.UUID  `json:"source_id"`
 	EntryType EntryType  `json:"entry_type"`
 	Name      string     `json:"name"`
+	Claims    []byte     `json:"claims"`
 	CreatedAt *time.Time `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`
 }
 
 func (q *Queries) InsertRegistryEntry(ctx context.Context, arg InsertRegistryEntryParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertRegistryEntry,
-		arg.RegID,
+		arg.SourceID,
 		arg.EntryType,
 		arg.Name,
+		arg.Claims,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

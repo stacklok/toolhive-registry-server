@@ -9,29 +9,18 @@
 #   - config-file.yaml: Local file source
 
 # ==============================================================================
-# REGISTRY IDENTIFICATION (Optional)
+# SOURCES CONFIGURATION (Required)
 # ==============================================================================
 
-# Registry name/identifier
-# This name is used for:
-#   - Identifying this registry instance in logs
-#   - Naming Kubernetes resources (if deployed)
-#   - API responses and metadata
-# Defaults to "default" if not specified
-registryName: my-registry
+# Sources define where registry data comes from.
+# Each source has its own name, type, sync policy, filters, and source-specific configuration.
 
-# ==============================================================================
-# REGISTRIES CONFIGURATION (Required)
-# ==============================================================================
-
-# Registries configuration allows you to sync from multiple sources simultaneously
-# Each registry has its own name, sync policy, filters, and source configuration
-
-registries:
+sources:
   # ------------------------------------------------------------------------------
-  # FIRST REGISTRY: Git Source (ToolHive Format)
+  # FIRST SOURCE: Git Source (ToolHive Format)
   # ------------------------------------------------------------------------------
   - name: toolhive
+    # Explicit source type (git, api, file, managed, kubernetes)
     # Data format: toolhive (native) or upstream (MCP registry format)
     format: toolhive
 
@@ -39,7 +28,7 @@ registries:
     git:
       # Repository URL (Required for git source)
       # Supports HTTP, HTTPS, and SSH protocols
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
 
       # Version selection (Choose ONE of: branch, tag, or commit)
       # Option 1: Use a branch (tracks latest commits)
@@ -52,7 +41,7 @@ registries:
       # commit: abc123def456789
 
       # Path to registry file within repository (Required)
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/registry.json
 
     # Per-registry synchronization policy
     syncPolicy:
@@ -85,7 +74,7 @@ registries:
           - "beta"
 
   # ------------------------------------------------------------------------------
-  # SECOND REGISTRY: API Source (Upstream MCP Format)
+  # SECOND SOURCE: API Source (Upstream MCP Format)
   # ------------------------------------------------------------------------------
   - name: mcp-upstream
     # Data format: upstream is required for API sources
@@ -123,10 +112,11 @@ registries:
           - "verified"
 
   # ------------------------------------------------------------------------------
-  # THIRD REGISTRY: File Source (Local Testing)
+  # THIRD SOURCE: File Source (Local Testing)
   # ------------------------------------------------------------------------------
-  # Uncomment to add a local file registry for testing
+  # Uncomment to add a local file source for testing
   # - name: local-test
+  #   type: file
   #   format: toolhive
   #
   #   # Local file configuration
@@ -154,6 +144,17 @@ registries:
   #     tags:
   #       include:
   #         - "development"
+
+# ==============================================================================
+# REGISTRIES CONFIGURATION (Optional)
+# ==============================================================================
+
+# Registries aggregate one or more sources into a named view.
+# If omitted, each source is treated as its own registry (backward compatible).
+
+registries:
+  - name: default
+    sources: ["toolhive", "mcp-upstream"]
 
 # ==============================================================================
 # DATABASE CONFIGURATION (Required)

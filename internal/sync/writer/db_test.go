@@ -28,7 +28,7 @@ const (
 	SELECT COUNT(s.*) FROM mcp_server s
 	  JOIN entry_version v ON s.version_id = v.id
 	  JOIN registry_entry e ON v.entry_id = e.id
-	 WHERE e.reg_id = $1
+	 WHERE e.source_id = $1
 	   AND e.entry_type = 'MCP'
 	`
 )
@@ -56,18 +56,19 @@ func setupTestDB(t *testing.T) (*pgxpool.Pool, func()) {
 	return pool, poolCleanup
 }
 
-// createTestRegistry creates a test registry in the database and returns its ID
-// Uses REMOTE registry type by default, which is the typical type for synced registries
+// createTestRegistry creates a test source in the database and returns its ID
+// Uses "git" source type by default, which is the typical type for synced registries
 func createTestRegistry(t *testing.T, pool *pgxpool.Pool, name string) uuid.UUID {
 	t.Helper()
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
 
-	regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-		Name:     name,
-		RegType:  sqlc.RegistryTypeREMOTE,
-		Syncable: true,
+	regID, err := queries.UpsertSource(ctx, sqlc.UpsertSourceParams{
+		Name:         name,
+		CreationType: sqlc.CreationTypeCONFIG,
+		SourceType:   "git",
+		Syncable:     true,
 	})
 	require.NoError(t, err)
 
@@ -441,11 +442,13 @@ func TestDbSyncWriter_Store(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				server, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+				serverRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 					Name:    "test.org/server",
 					Version: "1.0.0",
 				})
 				require.NoError(t, err)
+				require.NotEmpty(t, serverRows)
+				server := serverRows[0]
 				require.NotNil(t, server.RepositoryUrl)
 				assert.Equal(t, "https://github.com/test/repo", *server.RepositoryUrl)
 			},
@@ -466,11 +469,13 @@ func TestDbSyncWriter_Store(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				server, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+				serverRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 					Name:    "test.org/server",
 					Version: "1.0.0",
 				})
 				require.NoError(t, err)
+				require.NotEmpty(t, serverRows)
+				server := serverRows[0]
 				require.NotNil(t, server.ServerMeta)
 			},
 		},
@@ -533,7 +538,7 @@ func TestDbSyncWriter_Store(t *testing.T) {
 
 				// Insert registry entry
 				entryID, err := queries.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
-					RegID:     regID,
+					SourceID:  regID,
 					EntryType: sqlc.EntryTypeMCP,
 					Name:      "test.org/old-server",
 				})
@@ -583,11 +588,13 @@ func TestDbSyncWriter_Store(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				server, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+				serverRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 					Name:    "test.org/server",
 					Version: "1.0.0",
 				})
 				require.NoError(t, err)
+				require.NotEmpty(t, serverRows)
+				server := serverRows[0]
 				// Single version should be marked as latest
 				assert.True(t, server.IsLatest)
 			},
@@ -611,27 +618,33 @@ func TestDbSyncWriter_Store(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				// Version 2.0.0 should be latest
-				server, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+				serverRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 					Name:    "test.org/server",
 					Version: "2.0.0",
 				})
 				require.NoError(t, err)
+				require.NotEmpty(t, serverRows)
+				server := serverRows[0]
 				assert.True(t, server.IsLatest)
 
 				// Version 1.0.0 should not be latest
-				server, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+				serverRows, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 					Name:    "test.org/server",
 					Version: "1.0.0",
 				})
 				require.NoError(t, err)
+				require.NotEmpty(t, serverRows)
+				server = serverRows[0]
 				assert.False(t, server.IsLatest)
 
 				// Version 1.5.0 should not be latest
-				server, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+				serverRows, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 					Name:    "test.org/server",
 					Version: "1.5.0",
 				})
 				require.NoError(t, err)
+				require.NotEmpty(t, serverRows)
+				server = serverRows[0]
 				assert.False(t, server.IsLatest)
 			},
 		},
@@ -699,11 +712,13 @@ func TestDbSyncWriter_Store(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				server, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+				serverRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 					Name:    "test.org/minimal",
 					Version: "1.0.0",
 				})
 				require.NoError(t, err)
+				require.NotEmpty(t, serverRows)
+				server := serverRows[0]
 				assert.Nil(t, server.Description)
 				assert.Nil(t, server.Title)
 				assert.Nil(t, server.Website)
@@ -1330,11 +1345,13 @@ func TestDbSyncWriter_Store_LatestVersionDetermination(t *testing.T) {
 			queries := sqlc.New(pool)
 
 			for _, version := range tt.versions {
-				server, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+				serverRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 					Name:    tt.serverName,
 					Version: version,
 				})
 				require.NoError(t, err)
+				require.NotEmpty(t, serverRows)
+				server := serverRows[0]
 
 				if version == tt.expectedLatest {
 					assert.True(t, server.IsLatest, "Expected %s to be latest", version)
@@ -1373,17 +1390,21 @@ func TestDbSyncWriter_Store_UUIDStability(t *testing.T) {
 	require.NoError(t, err)
 
 	// Query DB and record server UUIDs and created_at timestamps
-	serverA1, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverA1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-a",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverA1Rows)
+	serverA1 := serverA1Rows[0]
 
-	serverB1, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverB1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-b",
 		Version: "2.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverB1Rows)
+	serverB1 := serverB1Rows[0]
 
 	// Store original UUIDs and timestamps
 	originalUUIDA := serverA1.ID
@@ -1396,17 +1417,21 @@ func TestDbSyncWriter_Store_UUIDStability(t *testing.T) {
 	require.NoError(t, err)
 
 	// Query DB again and verify UUIDs are identical
-	serverA2, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverA2Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-a",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverA2Rows)
+	serverA2 := serverA2Rows[0]
 
-	serverB2, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverB2Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-b",
 		Version: "2.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverB2Rows)
+	serverB2 := serverB2Rows[0]
 
 	// Verify UUIDs are the same (not new UUIDs)
 	assert.Equal(t, originalUUIDA, serverA2.ID, "Server A UUID should be preserved after re-sync")
@@ -1447,11 +1472,13 @@ func TestDbSyncWriter_Store_UpdatePreservesUUID(t *testing.T) {
 	require.NoError(t, err)
 
 	// Query and record original UUID and description
-	serverV1, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverV1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverV1Rows)
+	serverV1 := serverV1Rows[0]
 
 	originalUUID := serverV1.ID
 	originalCreatedAt := serverV1.CreatedAt
@@ -1470,11 +1497,13 @@ func TestDbSyncWriter_Store_UpdatePreservesUUID(t *testing.T) {
 	require.NoError(t, err)
 
 	// Query and verify UUID is the same but description is updated
-	serverV2, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverV2Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverV2Rows)
+	serverV2 := serverV2Rows[0]
 
 	// Verify UUID is preserved
 	assert.Equal(t, originalUUID, serverV2.ID, "Server UUID should be preserved after update")
@@ -1524,11 +1553,13 @@ func TestDbSyncWriter_Store_OrphanedServerCleanup(t *testing.T) {
 	require.Len(t, servers, 3, "Should have 3 servers after first sync")
 
 	// Record UUID for server-a to verify it persists
-	serverA, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverARows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-a",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverARows)
+	serverA := serverARows[0]
 	originalUUIDA := serverA.ID
 
 	// Second sync with only 2 servers (server-b removed)
@@ -1546,26 +1577,30 @@ func TestDbSyncWriter_Store_OrphanedServerCleanup(t *testing.T) {
 	require.Len(t, servers, 2, "Should have 2 servers after second sync")
 
 	// Verify server-a still exists with same UUID
-	serverAUpdated, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverAUpdatedRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-a",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverAUpdatedRows)
+	serverAUpdated := serverAUpdatedRows[0]
 	assert.Equal(t, originalUUIDA, serverAUpdated.ID, "Server A UUID should be preserved")
 
 	// Verify server-c exists
-	_, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	discardRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-c",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, discardRows)
 
 	// Verify server-b was deleted (should return error)
-	_, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	discardRows, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-b",
 		Version: "1.0.0",
 	})
-	require.Error(t, err, "Server B should have been deleted")
+	require.NoError(t, err)
+	require.Empty(t, discardRows, "Server B should have been deleted")
 }
 
 // TestDbSyncWriter_Store_PackageCleanup verifies that when a package is changed or removed
@@ -1631,11 +1666,13 @@ func TestDbSyncWriter_Store_PackageCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify server UUID is preserved
-	serverAfterUpdate, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverAfterUpdateRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverAfterUpdateRows)
+	serverAfterUpdate := serverAfterUpdateRows[0]
 	assert.Equal(t, originalUUID, serverAfterUpdate.ID, "Server UUID should be preserved")
 
 	// Verify package was replaced with new package
@@ -1654,11 +1691,13 @@ func TestDbSyncWriter_Store_PackageCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify server UUID is still preserved
-	serverAfterRemoval, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverAfterRemovalRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverAfterRemovalRows)
+	serverAfterRemoval := serverAfterRemovalRows[0]
 	assert.Equal(t, originalUUID, serverAfterRemoval.ID, "Server UUID should be preserved after package removal")
 
 	// Verify no packages exist
@@ -1726,11 +1765,13 @@ func TestDbSyncWriter_Store_RemoteCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify server UUID is preserved
-	serverAfterUpdate, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverAfterUpdateRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverAfterUpdateRows)
+	serverAfterUpdate := serverAfterUpdateRows[0]
 	assert.Equal(t, originalUUID, serverAfterUpdate.ID, "Server UUID should be preserved")
 
 	// Verify only 1 remote exists
@@ -1808,11 +1849,13 @@ func TestDbSyncWriter_Store_IconCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify server UUID is preserved
-	serverAfterUpdate, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverAfterUpdateRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverAfterUpdateRows)
+	serverAfterUpdate := serverAfterUpdateRows[0]
 	assert.Equal(t, originalUUID, serverAfterUpdate.ID, "Server UUID should be preserved")
 
 	// Verify only 1 icon exists
@@ -1874,32 +1917,40 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	assert.Equal(t, 2, countB, "Registry B should have 2 servers")
 
 	// Step 7: Record server UUIDs for all 4 servers
-	server1, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	server1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-1",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, server1Rows)
+	server1 := server1Rows[0]
 	uuidServer1 := server1.ID
 
-	server2, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	server2Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-2",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, server2Rows)
+	server2 := server2Rows[0]
 	uuidServer2 := server2.ID
 
-	server3, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	server3Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-3",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, server3Rows)
+	server3 := server3Rows[0]
 	uuidServer3 := server3.ID
 
-	server4, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	server4Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-4",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, server4Rows)
+	server4 := server4Rows[0]
 	uuidServer4 := server4.ID
 
 	// Step 8: Create new UpstreamRegistry for registry-A with only 1 server (server-2 removed)
@@ -1918,19 +1969,22 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	assert.Equal(t, 1, countA, "Registry A should have 1 server after update")
 
 	// Verify server-1 still exists with same UUID
-	server1After, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	server1AfterRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-1",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, server1AfterRows)
+	server1After := server1AfterRows[0]
 	assert.Equal(t, uuidServer1, server1After.ID, "Server 1 UUID should be preserved")
 
 	// Verify server-2 was deleted
-	_, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	discardRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-2",
 		Version: "1.0.0",
 	})
-	require.Error(t, err, "Server 2 should have been deleted from registry A")
+	require.NoError(t, err)
+	require.Empty(t, discardRows, "Server 2 should have been deleted from registry A")
 	_ = uuidServer2 // Server 2 was deleted, UUID no longer in DB
 
 	// 10b: registry-B: both "server-3" and "server-4" still exist (unchanged!)
@@ -1939,19 +1993,23 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	assert.Equal(t, 2, countB, "Registry B should still have 2 servers (unaffected by registry A changes)")
 
 	// Verify server-3 still exists with same UUID
-	server3After, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	server3AfterRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-3",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, server3AfterRows)
+	server3After := server3AfterRows[0]
 	assert.Equal(t, uuidServer3, server3After.ID, "Server 3 UUID should be preserved (registry B unaffected)")
 
 	// Verify server-4 still exists with same UUID
-	server4After, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	server4AfterRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-4",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, server4AfterRows)
+	server4After := server4AfterRows[0]
 	assert.Equal(t, uuidServer4, server4After.ID, "Server 4 UUID should be preserved (registry B unaffected)")
 
 	// 10c: Verify total server count is 3
@@ -1974,11 +2032,13 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	assert.Equal(t, 1, countA, "Registry A should still have 1 server (unaffected by registry B changes)")
 
 	// Verify server-1 in registry-A still has same UUID
-	server1Final, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	server1FinalRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-1",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, server1FinalRows)
+	server1Final := server1FinalRows[0]
 	assert.Equal(t, uuidServer1, server1Final.ID, "Server 1 UUID should still be preserved")
 
 	// Verify registry-B now has 1 server
@@ -1987,19 +2047,22 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	assert.Equal(t, 1, countB, "Registry B should have 1 server after update")
 
 	// Verify server-3 still exists with same UUID
-	server3Final, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	server3FinalRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-3",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, server3FinalRows)
+	server3Final := server3FinalRows[0]
 	assert.Equal(t, uuidServer3, server3Final.ID, "Server 3 UUID should be preserved")
 
 	// Verify server-4 was deleted
-	_, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	discardRows, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-4",
 		Version: "1.0.0",
 	})
-	require.Error(t, err, "Server 4 should have been deleted from registry B")
+	require.NoError(t, err)
+	require.Empty(t, discardRows, "Server 4 should have been deleted from registry B")
 
 	// Final verification: total server count is 2
 	servers, err = queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
@@ -2174,11 +2237,13 @@ func TestDbSyncWriter_Store_MultiplePackagesOrphanedCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify server UUID is preserved
-	serverAfterUpdate, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverAfterUpdateRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverAfterUpdateRows)
+	serverAfterUpdate := serverAfterUpdateRows[0]
 	assert.Equal(t, serverID, serverAfterUpdate.ID, "Server UUID should be preserved")
 
 	// Verify only 3 packages exist (package-1, package-3, package-4)
@@ -2337,25 +2402,31 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 	require.NoError(t, err)
 
 	// Record all UUIDs
-	serverAV1, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverAV1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-a",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverAV1Rows)
+	serverAV1 := serverAV1Rows[0]
 	uuidA := serverAV1.ID
 
-	serverBV1, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverBV1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-b",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverBV1Rows)
+	serverBV1 := serverBV1Rows[0]
 	_ = serverBV1.ID // Server B will be deleted
 
-	serverCV1, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverCV1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-c",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverCV1Rows)
+	serverCV1 := serverCV1Rows[0]
 	uuidC := serverCV1.ID
 
 	// Second sync:
@@ -2394,11 +2465,13 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 
 	// Verify results
 	// Server A: same UUID, updated description
-	serverAV2, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverAV2Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-a",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverAV2Rows)
+	serverAV2 := serverAV2Rows[0]
 	assert.Equal(t, uuidA, serverAV2.ID, "Server A UUID should be preserved")
 	require.NotNil(t, serverAV2.Description)
 	assert.Equal(t, "Server A updated description", *serverAV2.Description)
@@ -2413,28 +2486,33 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 	require.Len(t, remotesA, 1, "Server A should still have 1 remote")
 
 	// Server B: deleted
-	_, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	discardRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-b",
 		Version: "1.0.0",
 	})
-	require.Error(t, err, "Server B should have been deleted")
+	require.NoError(t, err)
+	require.Empty(t, discardRows, "Server B should have been deleted")
 
 	// Server C: same UUID, no changes
-	serverCV2, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverCV2Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-c",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverCV2Rows)
+	serverCV2 := serverCV2Rows[0]
 	assert.Equal(t, uuidC, serverCV2.ID, "Server C UUID should be preserved")
 	require.NotNil(t, serverCV2.Description)
 	assert.Equal(t, "Server C unchanged", *serverCV2.Description)
 
 	// Server D: new UUID, inserted
-	serverDV1, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
+	serverDV1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
 		Name:    "test.org/server-d",
 		Version: "1.0.0",
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, serverDV1Rows)
+	serverDV1 := serverDV1Rows[0]
 	assert.NotEqual(t, uuid.Nil, serverDV1.ID, "Server D should have a valid UUID")
 	require.NotNil(t, serverDV1.Description)
 	assert.Equal(t, "Server D new", *serverDV1.Description)
