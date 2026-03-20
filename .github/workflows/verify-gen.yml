@@ -1,4 +1,4 @@
-name: Codegen
+name: Verify Generated Files
 
 on:
   workflow_call:
@@ -7,8 +7,8 @@ permissions:
   contents: read
 
 jobs:
-  verify-code-generation:
-    name: Verify Code Generation
+  verify-generated-files:
+    name: Verify Generated Files
     runs-on: ubuntu-latest
 
     steps:
@@ -23,14 +23,18 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install codegen tools
         run: task install-codegen
+      - name: Install swag
+        run: task install-swagger
       - name: Generate code files
         run: task gen
-      - name: Check for changes
+      - name: Check for codegen changes
         run: |
-          if ! git diff --exit-code docs/thv-registry-api/; then
+          if ! git diff --exit-code -- . ':!docs/'; then
             echo "❌ Generated code files are not up to date!"
             echo "Please run 'task gen' and commit the changes."
             exit 1
           else
             echo "✅ Generated code files are up to date!"
           fi
+      - name: Verify docs
+        run: ./cmd/help/verify.sh
