@@ -523,53 +523,6 @@ func TestListServerVersions(t *testing.T) {
 			},
 		},
 		{
-			name: "list versions with next cursor",
-			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				setupTestData(t, pool)
-			},
-			options: []service.Option{
-				service.WithName("com.example/test-server-1"),
-				func(opts any) error {
-					// Set nextTime to 30 minutes from now, so only versions created at +1h and +2h are returned
-					nextTime := time.Now().Add(30 * time.Minute).UTC()
-
-					castOpts := opts.(*service.ListServerVersionsOptions)
-					castOpts.Next = &nextTime
-					castOpts.Limit = 10
-
-					return nil
-				},
-			},
-			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 2)
-			},
-		},
-		{
-			name: "list versions with prev cursor",
-			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				setupTestData(t, pool)
-			},
-			options: []service.Option{
-				service.WithName("com.example/test-server-1"),
-				func(opts any) error {
-					prevTime := time.Now().Add(1 * time.Hour).UTC()
-
-					castOpts := opts.(*service.ListServerVersionsOptions)
-					castOpts.Prev = &prevTime
-					castOpts.Limit = 10
-
-					return nil
-				},
-			},
-			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 2)
-			},
-		},
-		{
 			name: "invalid name option",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {

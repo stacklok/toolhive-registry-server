@@ -184,12 +184,6 @@ func (s *dbService) ListServerVersions(
 		}
 	}
 
-	if options.Next != nil && options.Prev != nil {
-		err := fmt.Errorf("next and prev cannot be set at the same time")
-		otel.RecordError(span, err)
-		return nil, err
-	}
-
 	// Cap the limit at service.MaxPageSize to prevent potential DoS
 	if options.Limit > service.MaxPageSize {
 		options.Limit = service.MaxPageSize
@@ -209,10 +203,8 @@ func (s *dbService) ListServerVersions(
 		}
 	}
 
-	params := sqlc.ListServerVersionsParams{
-		Name:         options.Name,
-		Next:         options.Next,
-		Prev:         options.Prev,
+	params := sqlc.ListServersParams{
+		Name:         &options.Name,
 		Size:         int64(options.Limit),
 		RegistryName: options.RegistryName,
 	}
@@ -221,14 +213,14 @@ func (s *dbService) ListServerVersions(
 	// found, the called function should return an empty slice as it's
 	// customary in Go.
 	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
-		servers, err := querier.ListServerVersions(ctx, params)
+		servers, err := querier.ListServers(ctx, params)
 		if err != nil {
 			return nil, err
 		}
 
 		helpers := make([]helper, 0, len(servers))
 		for _, server := range servers {
-			helpers = append(helpers, listServerVersionsRowToHelper(server))
+			helpers = append(helpers, listServersRowToHelper(server))
 		}
 
 		return deduplicateHelpers(helpers), nil

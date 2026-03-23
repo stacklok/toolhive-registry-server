@@ -5,6 +5,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/aws/smithy-go/ptr"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
@@ -682,8 +683,8 @@ func TestDbSyncWriter_Store(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				versions, err := queries.ListServerVersions(ctx, sqlc.ListServerVersionsParams{
-					Name: "test.org/server",
+				versions, err := queries.ListServers(ctx, sqlc.ListServersParams{
+					Name: ptr.String("test.org/server"),
 					Size: 100,
 				})
 				require.NoError(t, err)

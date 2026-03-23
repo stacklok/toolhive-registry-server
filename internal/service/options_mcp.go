@@ -56,8 +56,6 @@ func (o *ListServersOptions) setVersion(version string) error {
 type ListServerVersionsOptions struct {
 	RegistryName *string
 	Name         string
-	Next         *time.Time
-	Prev         *time.Time
 	Limit        int
 }
 
@@ -70,18 +68,6 @@ func (o *ListServerVersionsOptions) setRegistryName(registryName string) error {
 //nolint:unparam
 func (o *ListServerVersionsOptions) setName(name string) error {
 	o.Name = name
-	return nil
-}
-
-//nolint:unparam
-func (o *ListServerVersionsOptions) setNext(next time.Time) error {
-	o.Next = &next
-	return nil
-}
-
-//nolint:unparam
-func (o *ListServerVersionsOptions) setPrev(prev time.Time) error {
-	o.Prev = &prev
 	return nil
 }
 

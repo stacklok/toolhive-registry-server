@@ -132,7 +132,9 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       COALESCE(rs.position, 0)::integer AS position
+       -- Sources not linked to the requested registry have no position; default to max int16
+       -- so they sort after all explicitly positioned sources (lower position = higher priority).
+       COALESCE(rs.position, 32767)::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
@@ -556,114 +558,6 @@ func (q *Queries) ListServerRemotes(ctx context.Context, versionIds []uuid.UUID)
 	return items, nil
 }
 
-const listServerVersions = `-- name: ListServerVersions :many
-SELECT src.source_type as registry_type,
-       v.id,
-       e.name,
-       v.version,
-       (l.latest_version_id IS NOT NULL)::boolean AS is_latest,
-       v.created_at,
-       v.updated_at,
-       v.description,
-       v.title,
-       s.website,
-       s.upstream_meta,
-       s.server_meta,
-       s.repository_url,
-       s.repository_id,
-       s.repository_subfolder,
-       s.repository_type,
-       COALESCE(rs.position, 0)::integer AS position
-  FROM mcp_server s
-  JOIN entry_version v ON s.version_id = v.id
-  JOIN registry_entry e ON v.entry_id = e.id
-  JOIN source src ON e.source_id = src.id
-  LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
-  LEFT JOIN registry r ON r.name = $1::text
-  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
- WHERE e.name = $2
-   AND ($1::text IS NULL OR rs.registry_id IS NOT NULL)
-   AND (($3::timestamp with time zone IS NULL OR v.created_at > $3)
-    AND ($4::timestamp with time zone IS NULL OR v.created_at < $4))
- ORDER BY
- CASE WHEN $3::timestamp with time zone IS NULL THEN v.created_at END ASC,
- CASE WHEN $3::timestamp with time zone IS NULL THEN v.version END DESC, -- acts as tie breaker
- rs.position ASC
- LIMIT $5::bigint
-`
-
-type ListServerVersionsParams struct {
-	RegistryName *string    `json:"registry_name"`
-	Name         string     `json:"name"`
-	Next         *time.Time `json:"next"`
-	Prev         *time.Time `json:"prev"`
-	Size         int64      `json:"size"`
-}
-
-type ListServerVersionsRow struct {
-	RegistryType        string     `json:"registry_type"`
-	ID                  uuid.UUID  `json:"id"`
-	Name                string     `json:"name"`
-	Version             string     `json:"version"`
-	IsLatest            bool       `json:"is_latest"`
-	CreatedAt           *time.Time `json:"created_at"`
-	UpdatedAt           *time.Time `json:"updated_at"`
-	Description         *string    `json:"description"`
-	Title               *string    `json:"title"`
-	Website             *string    `json:"website"`
-	UpstreamMeta        []byte     `json:"upstream_meta"`
-	ServerMeta          []byte     `json:"server_meta"`
-	RepositoryUrl       *string    `json:"repository_url"`
-	RepositoryID        *string    `json:"repository_id"`
-	RepositorySubfolder *string    `json:"repository_subfolder"`
-	RepositoryType      *string    `json:"repository_type"`
-	Position            int32      `json:"position"`
-}
-
-func (q *Queries) ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error) {
-	rows, err := q.db.Query(ctx, listServerVersions,
-		arg.RegistryName,
-		arg.Name,
-		arg.Next,
-		arg.Prev,
-		arg.Size,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListServerVersionsRow{}
-	for rows.Next() {
-		var i ListServerVersionsRow
-		if err := rows.Scan(
-			&i.RegistryType,
-			&i.ID,
-			&i.Name,
-			&i.Version,
-			&i.IsLatest,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Description,
-			&i.Title,
-			&i.Website,
-			&i.UpstreamMeta,
-			&i.ServerMeta,
-			&i.RepositoryUrl,
-			&i.RepositoryID,
-			&i.RepositorySubfolder,
-			&i.RepositoryType,
-			&i.Position,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listServers = `-- name: ListServers :many
 SELECT src.source_type as registry_type,
        v.id,
@@ -681,7 +575,9 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       COALESCE(rs.position, 0)::integer AS position
+       -- Sources not linked to the requested registry have no position; default to max int16
+       -- so they sort after all explicitly positioned sources (lower position = higher priority).
+       COALESCE(rs.position, 32767)::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
@@ -690,30 +586,32 @@ SELECT src.source_type as registry_type,
   LEFT JOIN registry r ON r.name = $1::text
   LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
  WHERE ($1::text IS NULL OR rs.registry_id IS NOT NULL)
-   AND ($2::text IS NULL OR (
-       LOWER(e.name) LIKE LOWER('%' || $2::text || '%')
-       OR LOWER(v.title) LIKE LOWER('%' || $2::text || '%')
-       OR LOWER(v.description) LIKE LOWER('%' || $2::text || '%')
+   AND ($2::text IS NULL OR e.name = $2::text)
+   AND ($3::text IS NULL OR (
+       LOWER(e.name) LIKE LOWER('%' || $3::text || '%')
+       OR LOWER(v.title) LIKE LOWER('%' || $3::text || '%')
+       OR LOWER(v.description) LIKE LOWER('%' || $3::text || '%')
    ))
    -- Filter by updated_since if provided
-   AND ($3::timestamp with time zone IS NULL OR v.updated_at > $3::timestamp with time zone)
+   AND ($4::timestamp with time zone IS NULL OR v.updated_at > $4::timestamp with time zone)
    -- Compound cursor comparison: (name, version) > (cursor_name, cursor_version)
    -- This ensures deterministic pagination even when timestamps are identical
    AND (
-       $4::text IS NULL
-       OR (e.name, v.version) > ($4::text, $5::text)
+       $5::text IS NULL
+       OR (e.name, v.version) > ($5::text, $6::text)
    )
    AND (
-       $6::text IS NULL OR
-       v.version = $6::text OR
-       ($6::text = 'latest' AND l.latest_version_id = v.id)
+       $7::text IS NULL OR
+       v.version = $7::text OR
+       ($7::text = 'latest' AND l.latest_version_id = v.id)
    )
  ORDER BY e.name ASC, v.version ASC, rs.position ASC
- LIMIT $7::bigint
+ LIMIT $8::bigint
 `
 
 type ListServersParams struct {
 	RegistryName  *string    `json:"registry_name"`
+	Name          *string    `json:"name"`
 	Search        *string    `json:"search"`
 	UpdatedSince  *time.Time `json:"updated_since"`
 	CursorName    *string    `json:"cursor_name"`
@@ -746,9 +644,11 @@ type ListServersRow struct {
 // The cursor_name and cursor_version parameters define the starting point.
 // When cursor is provided, results start AFTER the specified (name, version) tuple.
 // Returns position from registry_source for source priority ordering.
+// When name is provided, results are filtered to versions of that specific server.
 func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error) {
 	rows, err := q.db.Query(ctx, listServers,
 		arg.RegistryName,
+		arg.Name,
 		arg.Search,
 		arg.UpdatedSince,
 		arg.CursorName,

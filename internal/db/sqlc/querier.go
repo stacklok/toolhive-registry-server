@@ -93,11 +93,11 @@ type Querier interface {
 	ListRegistrySources(ctx context.Context, registryID uuid.UUID) ([]ListRegistrySourcesRow, error)
 	ListServerPackages(ctx context.Context, versionIds []uuid.UUID) ([]ListServerPackagesRow, error)
 	ListServerRemotes(ctx context.Context, versionIds []uuid.UUID) ([]McpServerRemote, error)
-	ListServerVersions(ctx context.Context, arg ListServerVersionsParams) ([]ListServerVersionsRow, error)
 	// Cursor-based pagination using (name, version) compound cursor.
 	// The cursor_name and cursor_version parameters define the starting point.
 	// When cursor is provided, results start AFTER the specified (name, version) tuple.
 	// Returns position from registry_source for source priority ordering.
+	// When name is provided, results are filtered to versions of that specific server.
 	ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error)
 	ListSkillGitPackages(ctx context.Context, versionIds []uuid.UUID) ([]SkillGitPackage, error)
 	ListSkillOciPackages(ctx context.Context, versionIds []uuid.UUID) ([]SkillOciPackage, error)

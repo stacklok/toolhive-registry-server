@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/smithy-go/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -269,98 +268,6 @@ func TestWithRegistryNameGetServerVersion(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedValue, opts.RegistryName)
-		})
-	}
-}
-
-func TestWithNext(t *testing.T) {
-	t.Parallel()
-	validTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
-	zeroTime := time.Time{}
-
-	tests := []struct {
-		name          string
-		next          time.Time
-		expectedValue *time.Time
-	}{
-		{
-			name:          "valid time",
-			next:          validTime,
-			expectedValue: &validTime,
-		},
-		{
-			name:          "zero time",
-			next:          zeroTime,
-			expectedValue: nil,
-		},
-		{
-			name:          "time with nanoseconds",
-			next:          time.Date(2024, 1, 15, 10, 30, 45, 123456789, time.UTC),
-			expectedValue: ptr.Time(time.Date(2024, 1, 15, 10, 30, 45, 123456789, time.UTC)),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			opt := service.WithNext(tt.next)
-			opts := &service.ListServerVersionsOptions{}
-
-			err := opt(opts)
-
-			if tt.expectedValue == nil {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-			assert.Equal(t, *tt.expectedValue, *opts.Next)
-		})
-	}
-}
-
-func TestWithPrev(t *testing.T) {
-	t.Parallel()
-	validTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
-	zeroTime := time.Time{}
-
-	tests := []struct {
-		name          string
-		prev          time.Time
-		expectedValue *time.Time
-	}{
-		{
-			name:          "valid time",
-			prev:          validTime,
-			expectedValue: &validTime,
-		},
-		{
-			name:          "zero time",
-			prev:          zeroTime,
-			expectedValue: nil,
-		},
-		{
-			name:          "time in the past",
-			prev:          time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
-			expectedValue: ptr.Time(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			opt := service.WithPrev(tt.prev)
-			opts := &service.ListServerVersionsOptions{}
-
-			err := opt(opts)
-
-			if tt.expectedValue == nil {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-			assert.Equal(t, *tt.expectedValue, *opts.Prev)
 		})
 	}
 }
