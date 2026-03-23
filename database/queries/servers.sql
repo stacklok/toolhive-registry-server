@@ -3,6 +3,7 @@
 -- The cursor_name and cursor_version parameters define the starting point.
 -- When cursor is provided, results start AFTER the specified (name, version) tuple.
 -- Returns position from registry_source for source priority ordering.
+-- When name is provided, results are filtered to versions of that specific server.
 SELECT src.source_type as registry_type,
        v.id,
        e.name,
@@ -19,7 +20,9 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       COALESCE(rs.position, 0)::integer AS position
+       -- Sources not linked to the requested registry have no position; default to max int16
+       -- so they sort after all explicitly positioned sources (lower position = higher priority).
+       COALESCE(rs.position, 32767)::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
@@ -28,6 +31,7 @@ SELECT src.source_type as registry_type,
   LEFT JOIN registry r ON r.name = sqlc.narg(registry_name)::text
   LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
  WHERE (sqlc.narg(registry_name)::text IS NULL OR rs.registry_id IS NOT NULL)
+   AND (sqlc.narg(name)::text IS NULL OR e.name = sqlc.narg(name)::text)
    AND (sqlc.narg(search)::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
        OR LOWER(v.title) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
@@ -49,41 +53,6 @@ SELECT src.source_type as registry_type,
  ORDER BY e.name ASC, v.version ASC, rs.position ASC
  LIMIT sqlc.arg(size)::bigint;
 
--- name: ListServerVersions :many
-SELECT src.source_type as registry_type,
-       v.id,
-       e.name,
-       v.version,
-       (l.latest_version_id IS NOT NULL)::boolean AS is_latest,
-       v.created_at,
-       v.updated_at,
-       v.description,
-       v.title,
-       s.website,
-       s.upstream_meta,
-       s.server_meta,
-       s.repository_url,
-       s.repository_id,
-       s.repository_subfolder,
-       s.repository_type,
-       COALESCE(rs.position, 0)::integer AS position
-  FROM mcp_server s
-  JOIN entry_version v ON s.version_id = v.id
-  JOIN registry_entry e ON v.entry_id = e.id
-  JOIN source src ON e.source_id = src.id
-  LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
-  LEFT JOIN registry r ON r.name = sqlc.narg(registry_name)::text
-  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
- WHERE e.name = sqlc.arg(name)
-   AND (sqlc.narg(registry_name)::text IS NULL OR rs.registry_id IS NOT NULL)
-   AND ((sqlc.narg(next)::timestamp with time zone IS NULL OR v.created_at > sqlc.narg(next))
-    AND (sqlc.narg(prev)::timestamp with time zone IS NULL OR v.created_at < sqlc.narg(prev)))
- ORDER BY
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN v.created_at END ASC,
- CASE WHEN sqlc.narg(next)::timestamp with time zone IS NULL THEN v.version END DESC, -- acts as tie breaker
- rs.position ASC
- LIMIT sqlc.arg(size)::bigint;
-
 -- name: GetServerVersion :many
 SELECT src.source_type as registry_type,
        v.id,
@@ -101,7 +70,9 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       COALESCE(rs.position, 0)::integer AS position
+       -- Sources not linked to the requested registry have no position; default to max int16
+       -- so they sort after all explicitly positioned sources (lower position = higher priority).
+       COALESCE(rs.position, 32767)::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id

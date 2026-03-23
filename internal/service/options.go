@@ -34,14 +34,6 @@ type updatedSinceOption interface {
 	setUpdatedSince(updatedSince time.Time) error
 }
 
-type nextOption interface {
-	setNext(next time.Time) error
-}
-
-type prevOption interface {
-	setPrev(prev time.Time) error
-}
-
 type namespaceOption interface {
 	setNamespace(namespace string) error
 }
@@ -111,7 +103,7 @@ func WithUpdatedSince(updatedSince time.Time) Option {
 }
 
 // WithRegistryName sets the registry name for the ListServers, ListServerVersions,
-// GetServerVersion, PublishServerVersion, or DeleteServerVersion operation
+// GetServerVersion, or DeleteServerVersion operation
 func WithRegistryName(registryName string) Option {
 	return func(o any) error {
 		if registryName == "" {
@@ -154,38 +146,6 @@ func WithNamespace(namespace string) Option {
 		switch o := o.(type) {
 		case namespaceOption:
 			return o.setNamespace(namespace)
-		default:
-			return fmt.Errorf("invalid option type: %T", o)
-		}
-	}
-}
-
-// WithNext sets the next time for the ListServerVersions operation
-func WithNext(next time.Time) Option {
-	return func(o any) error {
-		if next.IsZero() {
-			return fmt.Errorf("invalid next: %s", next)
-		}
-
-		switch o := o.(type) {
-		case nextOption:
-			return o.setNext(next)
-		default:
-			return fmt.Errorf("invalid option type: %T", o)
-		}
-	}
-}
-
-// WithPrev sets the prev time for the ListServerVersions operation
-func WithPrev(prev time.Time) Option {
-	return func(o any) error {
-		if prev.IsZero() {
-			return fmt.Errorf("invalid prev: %s", prev)
-		}
-
-		switch o := o.(type) {
-		case prevOption:
-			return o.setPrev(prev)
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}

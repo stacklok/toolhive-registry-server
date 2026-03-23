@@ -83,29 +83,6 @@ func listServersRowToHelper(
 	}
 }
 
-func listServerVersionsRowToHelper(
-	dbServer sqlc.ListServerVersionsRow,
-) helper {
-	return helper{
-		ID:                  dbServer.ID,
-		Name:                dbServer.Name,
-		Version:             dbServer.Version,
-		IsLatest:            dbServer.IsLatest,
-		CreatedAt:           dbServer.CreatedAt,
-		UpdatedAt:           dbServer.UpdatedAt,
-		Description:         dbServer.Description,
-		Title:               dbServer.Title,
-		Website:             dbServer.Website,
-		UpstreamMeta:        dbServer.UpstreamMeta,
-		ServerMeta:          dbServer.ServerMeta,
-		RepositoryUrl:       dbServer.RepositoryUrl,
-		RepositoryID:        dbServer.RepositoryID,
-		RepositorySubfolder: dbServer.RepositorySubfolder,
-		RepositoryType:      dbServer.RepositoryType,
-		Position:            dbServer.Position,
-	}
-}
-
 func getServerVersionRowToHelper(
 	dbServer sqlc.GetServerVersionRow,
 ) helper {
