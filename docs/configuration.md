@@ -36,9 +36,7 @@ thv-registry-api serve --config config.yaml
 ### Minimal Configuration
 
 ```yaml
-registryName: my-registry
-
-registries:
+sources:
   - name: default
     format: toolhive
     file:
@@ -54,11 +52,8 @@ database:
 ### Complete Configuration
 
 ```yaml
-# Registry name/identifier (optional, defaults to "default")
-registryName: my-registry
-
-# Registries configuration - multiple registries can be configured
-registries:
+# Sources define where registry data comes from
+sources:
   - name: toolhive
     format: toolhive
     git:
@@ -75,7 +70,12 @@ registries:
         include: ["production"]
         exclude: ["experimental"]
 
-# Authentication configuration (optional, defaults to OAuth)
+# Registries aggregate one or more sources into a named view (required)
+registries:
+  - name: default
+    sources: ["toolhive"]
+
+# Authentication configuration (required)
 auth:
   mode: oauth
   oauth:
@@ -97,32 +97,44 @@ database:
   connMaxLifetime: "5m"
 ```
 
-## Registry Configuration
+## Source Configuration
 
-Multiple registries can be configured, each with its own data source and settings.
+Sources define where registry data comes from. Multiple sources can be configured, each with its own data provider, sync policy, and filters.
 
 ### Top-Level Fields
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `registryName` | string | No | `default` | Global registry name identifier |
-| `registries` | array | Yes | - | List of registry configurations |
+| `sources` | array | Yes | - | List of data source configurations |
+| `registries` | array | Yes | - | List of registry aggregations (at least one required) |
 
-### Registry Entry Fields
+### Source Entry Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | Yes | Unique name for this registry |
+| `name` | string | Yes | Unique name for this source |
 | `format` | string | Yes | Data format: `toolhive` or `upstream` |
 | `git` | object | No* | Git repository configuration |
 | `api` | object | No* | API endpoint configuration |
 | `file` | object | No* | Local file configuration |
 | `managed` | object | No* | Managed registry configuration |
 | `kubernetes` | object | No* | Kubernetes resource configuration |
-| `syncPolicy` | object | No | Sync policy configuration |
+| `syncPolicy` | object | Yes† | Sync policy configuration |
 | `filter` | object | No | Server filtering rules |
+| `claims` | map | No | Key-value pairs for authorization purposes |
 
-\* Exactly one data source must be configured per registry
+\* Exactly one data source must be configured per source entry
+† Required for synced sources (git, api, file); not applicable for managed or kubernetes sources
+
+### Registry Entry Fields
+
+The `registries:` block aggregates sources into named registry views. At least one registry must be configured.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Unique name for this registry |
+| `sources` | array | Yes | Ordered list of source names that feed this registry |
+| `claims` | map | No | Key-value pairs for authorization purposes |
 
 ## Data Sources
 
@@ -165,19 +177,14 @@ Sync from upstream MCP Registry APIs. Ideal for federation scenarios.
 
 ```yaml
 api:
-  url: https://registry.example.com/v0.1
-  headers:                        # Optional: custom headers
-    Authorization: Bearer token
-  timeout: 30s                    # Optional: request timeout
+  endpoint: https://registry.example.com
 ```
 
 **Fields:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `url` | string | Yes | API endpoint URL |
-| `headers` | map | No | Custom HTTP headers |
-| `timeout` | string | No | Request timeout (default: "30s") |
+| `endpoint` | string | Yes | Base API URL (without path); the server appends MCP Registry API v0.1 paths automatically |
 
 **Supports:**
 - Automatic background synchronization
@@ -227,17 +234,18 @@ Discover MCP servers from Kubernetes deployments.
 
 ```yaml
 kubernetes:
-  namespace: default             # Optional: specific namespace
-  labelSelector:                 # Optional: filter by labels
-    app: mcp-server
+  namespaces:                    # Optional: specific namespaces to watch
+    - default
+  claimMapping:                  # Optional: map labels/annotations to claims
+    org: ["engineering"]
 ```
 
 **Fields:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `namespace` | string | No | Kubernetes namespace (empty = all namespaces) |
-| `labelSelector` | map | No | Label selector for filtering pods |
+| `namespaces` | array | No | Kubernetes namespaces to watch (empty = uses `THV_REGISTRY_WATCH_NAMESPACE` env var) |
+| `claimMapping` | map | No | Maps Kubernetes labels/annotations to claims for authorization |
 
 **Features:**
 - Queries running Kubernetes resources
@@ -255,17 +263,13 @@ Controls automatic background synchronization for Git, API, and File registries.
 ```yaml
 syncPolicy:
   interval: "30m"                # Sync interval
-  retryInterval: "5m"            # Retry interval on failure
-  retryLimit: 3                  # Maximum retry attempts
 ```
 
 **Fields:**
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `interval` | string | No | `30m` | Sync interval (e.g., "30m", "1h", "24h") |
-| `retryInterval` | string | No | `5m` | Retry interval on sync failure |
-| `retryLimit` | int | No | `3` | Maximum number of retry attempts |
+| `interval` | string | Yes | - | Sync interval (e.g., "30m", "1h", "24h") |
 
 **Not applicable for:**
 - Managed registries (no sync)
@@ -392,9 +396,7 @@ See [Database Configuration](database.md#password-security) for password managem
 ### Development (Local File)
 
 ```yaml
-registryName: dev-registry
-
-registries:
+sources:
   - name: local
     format: toolhive
     file:
@@ -414,9 +416,7 @@ database:
 ### Production (Git + Database + OAuth)
 
 ```yaml
-registryName: prod-registry
-
-registries:
+sources:
   - name: toolhive
     format: toolhive
     git:
@@ -425,12 +425,15 @@ registries:
       path: pkg/catalog/toolhive/data/registry.json
     syncPolicy:
       interval: "15m"
-      retryLimit: 5
     filter:
       names:
         include: ["official/*"]
       tags:
         exclude: ["experimental"]
+
+registries:
+  - name: default
+    sources: ["toolhive"]
 
 auth:
   mode: oauth
@@ -456,9 +459,7 @@ database:
 ### Multi-Registry Setup
 
 ```yaml
-registryName: multi-registry
-
-registries:
+sources:
   # Official ToolHive registry
   - name: toolhive
     format: toolhive
@@ -473,9 +474,7 @@ registries:
   - name: internal
     format: upstream
     api:
-      url: https://internal-registry.company.com/v0.1
-      headers:
-        Authorization: Bearer ${INTERNAL_REGISTRY_TOKEN}
+      endpoint: https://internal-registry.company.com
     syncPolicy:
       interval: "1h"
     filter:
@@ -491,9 +490,12 @@ registries:
   - name: k8s-deployed
     format: toolhive
     kubernetes:
-      namespace: mcp-servers
-      labelSelector:
-        environment: production
+      namespaces:
+        - mcp-servers
+
+registries:
+  - name: default
+    sources: ["toolhive", "internal", "custom", "k8s-deployed"]
 
 auth:
   mode: oauth

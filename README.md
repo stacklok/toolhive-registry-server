@@ -131,17 +131,22 @@ The Registry Server enables enterprises to curate MCP catalogs from multiple sou
 **Configuration example:**
 
 ```yaml
-registries:
+sources:
   - name: local
     format: toolhive
     file:
       path: /data/registry.json
+
+registries:
+  - name: my-registry
+    sources:
+      - local
 ```
 
-For Git-based registries:
+For Git-based sources:
 
 ```yaml
-registries:
+sources:
   - name: toolhive
     format: toolhive
     git:
@@ -150,6 +155,11 @@ registries:
       path: pkg/catalog/toolhive/data/registry.json
     syncPolicy:
       interval: '30m'
+
+registries:
+  - name: my-registry
+    sources:
+      - toolhive
 ```
 
 See [Configuration Guide](docs/configuration.md) for complete details.
@@ -162,13 +172,13 @@ The server follows clean architecture with clear separation of concerns:
 ┌─────────────────────────────────────────────┐
 │  API Layer (Chi Router)                     │
 │  ├─ Registry API v0.1                       │
-│  ├─ Extension API v0                        │
+│  ├─ Admin API v1                            │
 │  └─ OAuth/OIDC Middleware                   │
 └─────────────────────────────────────────────┘
                     │
 ┌─────────────────────────────────────────────┐
-│  Service Layer                              │
-│  └─ DB Service (PostgreSQL)                 │
+│  Service Layer (RegistryService)            │
+│  └─ PostgreSQL backend                      │
 └─────────────────────────────────────────────┘
                     │
 ┌─────────────────────────────────────────────┐
@@ -193,45 +203,48 @@ The server follows clean architecture with clear separation of concerns:
 - `internal/sync/` - Background synchronization
 - `internal/auth/` - OAuth/OIDC authentication
 - `internal/db/` - Database access (sqlc generated)
+- `internal/config/` - Configuration loading
+- `internal/app/` - Application builder and startup
+- `internal/telemetry/` - OpenTelemetry integration
 - `database/` - SQL migrations and queries
 
 ## API endpoints
 
-The server provides two types of registry endpoints to support different use cases:
+### Registry API v0.1 (read-only, standards-compliant)
 
-### 1. Aggregated registry endpoints (read-only)
-
-**Unified view across all configured registries** - ideal for enterprise-wide discovery:
-
-- `GET /registry/v0.1/servers` - List all MCP servers from all registries
-- `GET /registry/v0.1/servers/{name}/versions` - List all versions of a server
-- `GET /registry/v0.1/servers/{name}/versions/{version}` - Get a specific server version
-
-### 2. Per-registry endpoints (standards-compliant)
-
-**Individual registry access** - fully compatible with upstream MCP Registry API specification:
-
-**Read operations (all registry types):**
+Fully compatible with the upstream MCP Registry API specification:
 
 - `GET /registry/{registryName}/v0.1/servers` - List servers from a specific registry
-- `GET /registry/{registryName}/v0.1/servers/{name}/versions` - List versions from a specific registry
-- `GET /registry/{registryName}/v0.1/servers/{name}/versions/{version}` - Get specific version from a specific registry
+- `GET /registry/{registryName}/v0.1/servers/{name}/versions` - List all versions of a server
+- `GET /registry/{registryName}/v0.1/servers/{name}/versions/{version}` - Get a specific server version
 
-**Write operations (managed registries only):**
+**Note:** Git, API, File, and Kubernetes sources are read-only through the registry API.
 
-- `POST /registry/{registryName}/v0.1/publish` - Publish a server to a managed registry
-- `DELETE /registry/{registryName}/v0.1/servers/{name}/versions/{version}` - Delete a server version from a managed registry
+### Admin API v1
 
-**Note:** Write operations (POST, DELETE) are only supported for `managed` registry types. Git, API, File, and Kubernetes registries are read-only through the API.
+ToolHive-specific endpoints for managing sources, registries, and entries:
 
-### Extension API (v0)
+**Source management** (requires `manageSources` role):
 
-ToolHive-specific extensions for querying registry status:
+- `GET /v1/sources` - List all configured sources
+- `GET /v1/sources/{name}` - Get a source by name
+- `PUT /v1/sources/{name}` - Create or update a source
+- `DELETE /v1/sources/{name}` - Delete a source
+- `GET /v1/sources/{name}/entries` - List entries for a source
 
-- `GET /extension/v0/registries` - List all configured registries with status
-- `GET /extension/v0/registries/{name}` - Get registry details and sync status
+**Registry management** (reads: authenticated; writes require `manageRegistries` role):
 
-**Note:** Dynamic registry and server management endpoints (PUT/DELETE operations) are not yet implemented.
+- `GET /v1/registries` - List all configured registries with status
+- `GET /v1/registries/{name}` - Get registry details and sync status
+- `GET /v1/registries/{name}/entries` - List entries for a registry
+- `PUT /v1/registries/{name}` - Create or update a registry
+- `DELETE /v1/registries/{name}` - Delete a registry
+
+**Entry management** (requires `manageEntries` role):
+
+- `POST /v1/entries` - Publish a server or skill entry
+- `DELETE /v1/entries/{type}/{name}/versions/{version}` - Delete a published entry
+- `PUT /v1/entries/{type}/{name}/claims` - Update entry claims
 
 ### Operational endpoints
 
@@ -242,9 +255,8 @@ ToolHive-specific extensions for querying registry status:
 
 ### Use cases
 
-- **Aggregated endpoints**: Enterprise UI showing unified catalog of all MCPs
-- **Per-registry endpoints**: Direct access to specific registries (e.g., only upstream verified MCPs)
-- **Extension API**: Query registry status and configuration
+- **Registry API**: Standards-compliant MCP discovery for clients and upstream integrations
+- **Admin API**: Manage sources and registries, publish entries, query registry status
 
 See the [MCP Registry API specification](https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/api/openapi.yaml) for full API details.
 
@@ -255,26 +267,34 @@ All configuration is done via YAML files. The server requires a `--config` flag.
 ### Basic example
 
 ```yaml
-registryName: my-registry
-
-registries:
+sources:
   - name: local
     format: toolhive
     file:
       path: /data/registry.json
 
+registries:
+  - name: my-registry
+    sources:
+      - local
+
 auth:
   mode: anonymous # Use "oauth" for production
 
-# Optional: Add more registries
-# - name: toolhive
-#   format: toolhive
-#   git:
-#     repository: https://github.com/stacklok/toolhive-catalog.git
-#     branch: main
-#     path: pkg/catalog/toolhive/data/registry.json
-#   syncPolicy:
-#     interval: "30m"
+# Optional: Add a Git-based source
+# sources:
+#   - name: toolhive
+#     format: toolhive
+#     git:
+#       repository: https://github.com/stacklok/toolhive-catalog.git
+#       branch: main
+#       path: pkg/catalog/toolhive/data/registry.json
+#     syncPolicy:
+#       interval: "30m"
+# registries:
+#   - name: my-registry
+#     sources:
+#       - toolhive
 
 # Optional: Database backend
 # database:
@@ -412,11 +432,12 @@ internal/                # Internal packages
 ├── config/              # Configuration loading
 ├── db/                  # Database access (sqlc generated)
 ├── service/             # Business logic
-├── sources/             # Data source handlers
+├── sources/             # Data source handlers (Git, API, File, Managed, Kubernetes)
 ├── sync/                # Background sync coordination
+├── app/                 # Application builder and startup
 ├── filtering/           # Registry entry filtering
-├── git/                 # Git operations
-├── kubernetes/          # Kubernetes discovery
+├── telemetry/           # OpenTelemetry integration
+├── validators/          # Input validation
 └── registry/            # Registry data models
 
 database/                # Database schema and queries
