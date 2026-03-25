@@ -364,6 +364,7 @@ type Source struct {
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
 	Syncable     bool             `json:"syncable"`
+	Claims       []byte           `json:"claims"`
 }
 
 type TempEntryVersion struct {
@@ -422,6 +423,7 @@ type TempRegistryEntry struct {
 	SourceID  uuid.UUID  `json:"source_id"`
 	EntryType EntryType  `json:"entry_type"`
 	Name      string     `json:"name"`
+	Claims    []byte     `json:"claims"`
 	CreatedAt *time.Time `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`
 }

@@ -149,6 +149,7 @@ type SourceInfo struct {
 	SourceConfig any                  `json:"sourceConfig,omitempty"` // Type-specific source configuration
 	FilterConfig *config.FilterConfig `json:"filterConfig,omitempty"` // Filtering rules
 	SyncSchedule string               `json:"syncSchedule,omitempty"` // Sync interval string
+	Claims       map[string]any       `json:"claims,omitempty"`       // Authorization claims
 	SyncStatus   *SourceSyncStatus    `json:"syncStatus,omitempty"`
 	CreatedAt    time.Time            `json:"createdAt"`
 	UpdatedAt    time.Time            `json:"updatedAt"`

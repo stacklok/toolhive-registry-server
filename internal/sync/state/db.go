@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
@@ -88,6 +89,11 @@ func (d *dbStatusService) Initialize(ctx context.Context, cfg *config.Config) er
 	for i, src := range upsertedSources {
 		sourceNameToID[src.Name] = src.ID
 		upsertedIDs[i] = src.ID
+	}
+
+	// Propagate source claims to existing entries (drift correction for claims-only changes)
+	if err := propagateSourceClaimsToEntries(ctx, queries, sourceConfigs, sourceNameToID); err != nil {
+		return err
 	}
 
 	// Upsert registry rows and link to sources based on config
@@ -168,6 +174,7 @@ func buildBulkUpsertParams(
 	filterConfigs := make([][]byte, n)
 	syncSchedules := make([]pgtypes.Interval, n)
 	syncables := make([]bool, n)
+	claimsArr := make([][]byte, n)
 	createdAts := make([]time.Time, n)
 	updatedAts := make([]time.Time, n)
 
@@ -179,6 +186,7 @@ func buildBulkUpsertParams(
 		filterConfigs[i] = serializeFilterConfig(src.Filter)
 		syncSchedules[i] = getSyncScheduleIntervalFromConfig(&src)
 		syncables[i] = !src.IsNonSyncedSource()
+		claimsArr[i] = db.SerializeClaims(src.Claims)
 		createdAts[i] = now
 		updatedAts[i] = now
 	}
@@ -191,6 +199,7 @@ func buildBulkUpsertParams(
 		FilterConfigs: filterConfigs,
 		SyncSchedules: syncSchedules,
 		Syncables:     syncables,
+		Claims:        claimsArr,
 		CreatedAts:    createdAts,
 		UpdatedAts:    updatedAts,
 	}
@@ -221,7 +230,7 @@ func upsertRegistryRowsAndLinks(
 	now *time.Time,
 ) error {
 	for _, reg := range registries {
-		claims := serializeClaims(reg.Claims)
+		claims := db.SerializeClaims(reg.Claims)
 
 		registryRow, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
 			Name:         reg.Name,
@@ -256,16 +265,28 @@ func upsertRegistryRowsAndLinks(
 	return nil
 }
 
-// serializeClaims serializes claims map to JSON bytes for database storage
-func serializeClaims(claims map[string]any) []byte {
-	if len(claims) == 0 {
-		return nil
+// propagateSourceClaimsToEntries updates entry claims to match their source's current claims.
+// This handles drift correction when source claims change in config but data doesn't change,
+// so the sync coordinator won't re-sync and entry claims would otherwise stay stale.
+func propagateSourceClaimsToEntries(
+	ctx context.Context,
+	queries *sqlc.Queries,
+	sourceConfigs []config.SourceConfig,
+	sourceNameToID map[string]uuid.UUID,
+) error {
+	for _, src := range sourceConfigs {
+		sourceID, ok := sourceNameToID[src.Name]
+		if !ok {
+			continue
+		}
+		if err := queries.PropagateSourceClaimsToEntries(ctx, sqlc.PropagateSourceClaimsToEntriesParams{
+			Claims:   db.SerializeClaims(src.Claims),
+			SourceID: sourceID,
+		}); err != nil {
+			return fmt.Errorf("failed to propagate claims for source %s: %w", src.Name, err)
+		}
 	}
-	data, err := json.Marshal(claims)
-	if err != nil {
-		return nil
-	}
-	return data
+	return nil
 }
 
 func (d *dbStatusService) ListSyncStatuses(ctx context.Context) (map[string]*status.SyncStatus, error) {

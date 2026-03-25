@@ -109,6 +109,9 @@ type Querier interface {
 	ListSourceSyncs(ctx context.Context) ([]ListSourceSyncsRow, error)
 	ListSourceSyncsByLastUpdate(ctx context.Context) ([]ListSourceSyncsByLastUpdateRow, error)
 	ListSources(ctx context.Context, arg ListSourcesParams) ([]ListSourcesRow, error)
+	// Update all registry entries for a source to match the source's current claims.
+	// Used during initialization to fix drift when source claims change without data change.
+	PropagateSourceClaimsToEntries(ctx context.Context, arg PropagateSourceClaimsToEntriesParams) error
 	UnlinkAllRegistrySources(ctx context.Context, registryID uuid.UUID) error
 	UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySourceParams) error
 	// Update an existing source. Go callers guard against modifying wrong creation_type.

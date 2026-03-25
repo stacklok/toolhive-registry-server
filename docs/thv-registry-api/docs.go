@@ -244,6 +244,11 @@ const docTemplate = `{
             },
             "github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo": {
                 "properties": {
+                    "claims": {
+                        "additionalProperties": {},
+                        "description": "Authorization claims",
+                        "type": "object"
+                    },
                     "createdAt": {
                         "type": "string"
                     },

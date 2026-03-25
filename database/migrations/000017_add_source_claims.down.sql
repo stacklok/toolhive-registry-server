@@ -1,0 +1,1 @@
+ALTER TABLE source DROP COLUMN IF EXISTS claims;
