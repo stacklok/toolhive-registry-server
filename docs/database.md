@@ -203,7 +203,7 @@ docker run -d --name postgres \
   -e POSTGRES_PASSWORD=devpassword \
   -e POSTGRES_DB=toolhive_registry \
   -p 5432:5432 \
-  postgres:18
+  postgres:18-alpine
 
 # 2. Create pgpass file with credentials
 cat > ~/.pgpass <<EOF
