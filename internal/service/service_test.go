@@ -1,7 +1,6 @@
 package service_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -10,11 +9,6 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
-
-// alwaysKeepFilter is a simple RecordFilter that keeps every record.
-var alwaysKeepFilter service.RecordFilter = func(context.Context, any) (bool, error) {
-	return true, nil
-}
 
 func TestWithCursor(t *testing.T) {
 	t.Parallel()
@@ -536,80 +530,6 @@ func TestWithLimitListServerVersions(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedValue, opts.Limit)
-		})
-	}
-}
-
-func TestWithFilter(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		opts    any
-		wantErr bool
-		check   func(t *testing.T, opts any)
-	}{
-		{
-			name: "sets filter on ListServersOptions",
-			opts: &service.ListServersOptions{},
-			check: func(t *testing.T, opts any) {
-				t.Helper()
-				assert.NotNil(t, opts.(*service.ListServersOptions).Filter)
-			},
-		},
-		{
-			name: "sets filter on ListServerVersionsOptions",
-			opts: &service.ListServerVersionsOptions{},
-			check: func(t *testing.T, opts any) {
-				t.Helper()
-				assert.NotNil(t, opts.(*service.ListServerVersionsOptions).Filter)
-			},
-		},
-		{
-			name: "sets filter on GetServerVersionOptions",
-			opts: &service.GetServerVersionOptions{},
-			check: func(t *testing.T, opts any) {
-				t.Helper()
-				assert.NotNil(t, opts.(*service.GetServerVersionOptions).Filter)
-			},
-		},
-		{
-			name: "sets filter on ListSkillsOptions",
-			opts: &service.ListSkillsOptions{},
-			check: func(t *testing.T, opts any) {
-				t.Helper()
-				assert.NotNil(t, opts.(*service.ListSkillsOptions).Filter)
-			},
-		},
-		{
-			name: "sets filter on GetSkillVersionOptions",
-			opts: &service.GetSkillVersionOptions{},
-			check: func(t *testing.T, opts any) {
-				t.Helper()
-				assert.NotNil(t, opts.(*service.GetSkillVersionOptions).Filter)
-			},
-		},
-		{
-			name:    "returns error for incompatible type",
-			opts:    &service.PublishServerVersionOptions{},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			opt := service.WithFilter(alwaysKeepFilter)
-			err := opt(tt.opts)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-			tt.check(t, tt.opts)
 		})
 	}
 }

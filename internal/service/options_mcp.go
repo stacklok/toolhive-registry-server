@@ -14,13 +14,7 @@ type ListServersOptions struct {
 	Search       string
 	UpdatedSince time.Time
 	Version      string
-	Filter       RecordFilter
-}
-
-//nolint:unparam
-func (o *ListServersOptions) setFilter(filter RecordFilter) error {
-	o.Filter = filter
-	return nil
+	Claims       map[string]any
 }
 
 //nolint:unparam
@@ -59,18 +53,18 @@ func (o *ListServersOptions) setVersion(version string) error {
 	return nil
 }
 
+//nolint:unparam
+func (o *ListServersOptions) setClaims(claims map[string]any) error {
+	o.Claims = claims
+	return nil
+}
+
 // ListServerVersionsOptions is the options for the ListServerVersions operation
 type ListServerVersionsOptions struct {
 	RegistryName *string
 	Name         string
 	Limit        int
-	Filter       RecordFilter
-}
-
-//nolint:unparam
-func (o *ListServerVersionsOptions) setFilter(filter RecordFilter) error {
-	o.Filter = filter
-	return nil
+	Claims       map[string]any
 }
 
 //nolint:unparam
@@ -91,19 +85,19 @@ func (o *ListServerVersionsOptions) setLimit(limit int) error {
 	return nil
 }
 
+//nolint:unparam
+func (o *ListServerVersionsOptions) setClaims(claims map[string]any) error {
+	o.Claims = claims
+	return nil
+}
+
 // GetServerVersionOptions is the options for the GetServerVersion operation
 type GetServerVersionOptions struct {
 	RegistryName string
 	SourceName   string
 	Name         string
 	Version      string
-	Filter       RecordFilter
-}
-
-//nolint:unparam
-func (o *GetServerVersionOptions) setFilter(filter RecordFilter) error {
-	o.Filter = filter
-	return nil
+	Claims       map[string]any
 }
 
 //nolint:unparam
@@ -127,6 +121,12 @@ func (o *GetServerVersionOptions) setName(name string) error {
 //nolint:unparam
 func (o *GetServerVersionOptions) setVersion(version string) error {
 	o.Version = version
+	return nil
+}
+
+//nolint:unparam
+func (o *GetServerVersionOptions) setClaims(claims map[string]any) error {
+	o.Claims = claims
 	return nil
 }
 

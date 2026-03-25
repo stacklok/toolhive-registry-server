@@ -13,6 +13,7 @@ import (
 	thvregistry "github.com/stacklok/toolhive-core/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api/common"
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
@@ -79,6 +80,9 @@ func (routes *Routes) listSkills(w http.ResponseWriter, r *http.Request) {
 	if query.Cursor != "" {
 		opts = append(opts, service.WithCursor(query.Cursor))
 	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		opts = append(opts, service.WithClaims(map[string]any(jwtClaims)))
+	}
 
 	result, err := routes.service.ListSkills(r.Context(), opts...)
 	if err != nil {
@@ -130,12 +134,17 @@ func (routes *Routes) getLatestVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	skill, err := routes.service.GetSkillVersion(r.Context(),
+	skillOpts := []service.Option{
 		service.WithRegistryName(registryName),
 		service.WithNamespace(namespace),
 		service.WithName(name),
 		service.WithVersion("latest"),
-	)
+	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		skillOpts = append(skillOpts, service.WithClaims(map[string]any(jwtClaims)))
+	}
+
+	skill, err := routes.service.GetSkillVersion(r.Context(), skillOpts...)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -177,11 +186,16 @@ func (routes *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := routes.service.ListSkills(r.Context(),
+	listOpts := []service.Option{
 		service.WithRegistryName(registryName),
 		service.WithNamespace(namespace),
 		service.WithName(name),
-	)
+	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		listOpts = append(listOpts, service.WithClaims(map[string]any(jwtClaims)))
+	}
+
+	result, err := routes.service.ListSkills(r.Context(), listOpts...)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -237,12 +251,17 @@ func (routes *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	skill, err := routes.service.GetSkillVersion(r.Context(),
+	versionOpts := []service.Option{
 		service.WithRegistryName(registryName),
 		service.WithNamespace(namespace),
 		service.WithName(name),
 		service.WithVersion(version),
-	)
+	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		versionOpts = append(versionOpts, service.WithClaims(map[string]any(jwtClaims)))
+	}
+
+	skill, err := routes.service.GetSkillVersion(r.Context(), versionOpts...)
 	if err != nil {
 		writeServiceError(w, err)
 		return
