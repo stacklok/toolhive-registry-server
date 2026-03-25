@@ -42,6 +42,10 @@ sources:
     file:
       path: /data/registry.json
 
+registries:
+  - name: default
+    sources: ["default"]
+
 database:
   host: localhost
   port: 5432
