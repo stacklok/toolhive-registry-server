@@ -130,7 +130,7 @@ Feature: Registry Server smoke tests
     Then the response status is 404
 
   Scenario: Create a managed source
-    When I PUT /v1/sources/managed-test with sourceType "managed"
+    When I PUT /v1/sources/managed-test with body {"managed":{}}
     Then the response status is 201
     And the body contains "managed-test"
 

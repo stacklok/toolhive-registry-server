@@ -98,50 +98,24 @@ func (s *dbService) ListServers(
 		params.Version = &options.Version
 	}
 
-	// Fetch servers in a loop to ensure we have enough results after dedup.
-	// Dedup can remove entries when multiple sources provide the same name,
-	// so a single SQL fetch of limit+1 rows may yield fewer than limit
-	// deduplicated results. We loop, advancing the SQL cursor, until we
-	// have enough or the database is exhausted.
-	//
-	// All fetched helpers are accumulated and deduped together to ensure
-	// consistent cross-batch dedup (a name's winning source must be the
-	// same regardless of batch boundaries).
-	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
-		const maxFetchIterations = 10 // safety cap to prevent runaway loops
-		target := options.Limit + 1   // +1 to detect hasMore
-		var allHelpers []helper
-		batchParams := params // copy so we can mutate cursor
-
-		for range maxFetchIterations {
-			servers, err := querier.ListServers(ctx, batchParams)
-			if err != nil {
-				return nil, err
-			}
-
-			for _, server := range servers {
-				allHelpers = append(allHelpers, listServersRowToHelper(server))
-			}
-
-			deduped := deduplicateHelpers(allHelpers)
-
-			// Stop if we have enough deduplicated results or SQL returned
-			// fewer rows than requested (no more data).
-			if len(deduped) >= target || int64(len(servers)) < batchParams.Size {
-				return deduped, nil
-			}
-
-			// Advance cursor to the last fetched row's (name, version)
-			lastRow := servers[len(servers)-1]
-			batchParams.CursorName = &lastRow.Name
-			batchParams.CursorVersion = &lastRow.Version
+	querierFunc := func(ctx context.Context, querier sqlc.Querier, cursor *serverCursor) ([]helper, error) {
+		p := params // copy so we can mutate cursor
+		if cursor != nil {
+			p.CursorName = &cursor.Name
+			p.CursorVersion = &cursor.Version
 		}
-
-		// Iteration cap reached — return what we have
-		return deduplicateHelpers(allHelpers), nil
+		rows, err := querier.ListServers(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		helpers := make([]helper, 0, len(rows))
+		for _, row := range rows {
+			helpers = append(helpers, listServersRowToHelper(row))
+		}
+		return helpers, nil
 	}
 
-	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit)
+	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit, options.Filter)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -212,7 +186,7 @@ func (s *dbService) ListServerVersions(
 	// Note: this function fetches a list of server versions. In case no records are
 	// found, the called function should return an empty slice as it's
 	// customary in Go.
-	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
+	querierFunc := func(ctx context.Context, querier sqlc.Querier, _ *serverCursor) ([]helper, error) {
 		servers, err := querier.ListServers(ctx, params)
 		if err != nil {
 			return nil, err
@@ -223,10 +197,10 @@ func (s *dbService) ListServerVersions(
 			helpers = append(helpers, listServersRowToHelper(server))
 		}
 
-		return deduplicateHelpers(helpers), nil
+		return helpers, nil
 	}
 
-	results, err := s.sharedListServers(ctx, querierFunc)
+	results, err := s.sharedListServers(ctx, querierFunc, options.Filter)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -289,7 +263,7 @@ func (s *dbService) GetServerVersion(
 	// In case no record is found, the called function maps the underlying
 	// `pgx.ErrNoRows` to `service.ErrNotFound`, and callers should expect
 	// to receive `service.ErrNotFound` for a missing record.
-	querierFunc := func(ctx context.Context, querier sqlc.Querier) ([]helper, error) {
+	querierFunc := func(ctx context.Context, querier sqlc.Querier, _ *serverCursor) ([]helper, error) {
 		servers, err := querier.GetServerVersion(ctx, params)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -305,13 +279,18 @@ func (s *dbService) GetServerVersion(
 		return []helper{getServerVersionRowToHelper(servers[0])}, nil
 	}
 
-	res, err := s.sharedListServers(ctx, querierFunc)
+	res, err := s.sharedListServers(ctx, querierFunc, options.Filter)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
-	if len(res) != 1 {
+	if len(res) == 0 {
+		err := fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
+		otel.RecordError(span, err)
+		return nil, err
+	}
+	if len(res) > 1 {
 		err := fmt.Errorf("%w: number of servers returned is not 1", ErrBug)
 		otel.RecordError(span, err)
 		return nil, err
@@ -896,7 +875,103 @@ func claimsMatch(a, b []byte) bool {
 //
 // Note that the underlying table does not have to be the `mcp_server` table
 // as it is used now, as long as the result is a slice of helpers.
-type querierFunction func(ctx context.Context, querier sqlc.Querier) ([]helper, error)
+type querierFunction func(ctx context.Context, querier sqlc.Querier, cursor *serverCursor) ([]helper, error)
+
+// newDeduplicatingFilterWith returns a stateful RecordFilter that deduplicates records
+// by entry name, keeping only records from the highest-priority source (lowest position).
+// SQL must return records in position-ascending order per name.
+// extract retrieves the name and source position from a record; returning ok=false causes
+// the filter to reject the record with a type error.
+func newDeduplicatingFilterWith(
+	extract func(record any) (name string, pos int32, ok bool),
+) service.RecordFilter {
+	seen := make(map[string]int32) // name → winning source position
+	return func(_ context.Context, record any) (bool, error) {
+		name, pos, ok := extract(record)
+		if !ok {
+			return false, fmt.Errorf("unexpected record type: %T", record)
+		}
+		winPos, exists := seen[name]
+		if !exists {
+			seen[name] = pos
+			return true, nil
+		}
+		return pos == winPos, nil
+	}
+}
+
+// streamHelpers fetches helpers in batches, applying the auth filter then the dedup
+// filter to each record, until limit+1 records are accumulated or the DB is exhausted.
+// It returns the trimmed slice (≤ limit) and the cursor for the next page, if any.
+func streamHelpers(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	querierFunc querierFunction,
+	filter service.RecordFilter,
+	limit int,
+) ([]helper, *serverCursor, error) {
+	dedupFilter := newDeduplicatingFilter()
+	var accumulated []helper
+	var cursor *serverCursor
+
+	for {
+		batch, err := querierFunc(ctx, querier, cursor)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		for _, h := range batch {
+			keep := true
+			var ferr error
+			if filter != nil {
+				keep, ferr = filter(ctx, h)
+				if ferr != nil {
+					return nil, nil, ferr
+				}
+			}
+			if keep {
+				keep, ferr = dedupFilter(ctx, h)
+				if ferr != nil {
+					return nil, nil, ferr
+				}
+			}
+			if keep {
+				accumulated = append(accumulated, h)
+			}
+		}
+
+		if len(accumulated) >= limit+1 || len(batch) < limit+1 {
+			break
+		}
+
+		// Advance cursor to continue fetching
+		if len(batch) > 0 {
+			lastRow := batch[len(batch)-1]
+			cursor = &serverCursor{Name: lastRow.Name, Version: lastRow.Version}
+		}
+	}
+
+	// Trim to limit and compute next-page cursor
+	var lastCursor *serverCursor
+	if len(accumulated) > limit {
+		last := accumulated[limit-1]
+		lastCursor = &serverCursor{Name: last.Name, Version: last.Version}
+		accumulated = accumulated[:limit]
+	}
+
+	return accumulated, lastCursor, nil
+}
+
+// newDeduplicatingFilter returns a stateful RecordFilter that deduplicates helpers
+// by entry name, keeping only records from the highest-priority source (lowest position).
+func newDeduplicatingFilter() service.RecordFilter {
+	return newDeduplicatingFilterWith(
+		func(record any) (string, int32, bool) {
+			h, ok := record.(helper)
+			return h.Name, h.Position, ok
+		},
+	)
+}
 
 // sharedListServers is a helper function to list servers and mapping them to
 // the API schema.
@@ -915,10 +990,11 @@ type querierFunction func(ctx context.Context, querier sqlc.Querier) ([]helper, 
 func (s *dbService) sharedListServers(
 	ctx context.Context,
 	querierFunc querierFunction,
+	filter service.RecordFilter,
 ) ([]*upstreamv0.ServerJSON, error) {
 	// Delegate to sharedListServersWithCursor with a high limit and discard the cursor.
 	// This avoids duplicating the transaction and fetch logic.
-	result, _, err := s.sharedListServersWithCursor(ctx, querierFunc, service.MaxPageSize)
+	result, _, err := s.sharedListServersWithCursor(ctx, querierFunc, service.MaxPageSize, filter)
 	return result, err
 }
 
@@ -933,6 +1009,7 @@ func (s *dbService) sharedListServersWithCursor(
 	ctx context.Context,
 	querierFunc querierFunction,
 	limit int,
+	filter service.RecordFilter,
 ) ([]*upstreamv0.ServerJSON, *serverCursor, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.ReadCommitted,
@@ -950,28 +1027,26 @@ func (s *dbService) sharedListServersWithCursor(
 
 	querier := sqlc.New(tx)
 
-	servers, err := querierFunc(ctx, querier)
+	accumulated, lastCursor, err := streamHelpers(ctx, querier, querierFunc, filter, limit)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Check if there are more results
-	var lastCursor *serverCursor
-	hasMore := len(servers) > limit
-	if hasMore {
-		// Trim to the requested limit
-		servers = servers[:limit]
-		// Get the Name and Version of the last server for the next cursor
-		if len(servers) > 0 {
-			lastServer := servers[len(servers)-1]
-			lastCursor = &serverCursor{
-				Name:    lastServer.Name,
-				Version: lastServer.Version,
-			}
-		}
+	result, err := fetchAndMapServers(ctx, querier, accumulated)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	// Fetch packages and remotes for all servers
+	return result, lastCursor, nil
+}
+
+// fetchAndMapServers fetches packages and remotes for the given server helpers and
+// maps them to the API schema.
+func fetchAndMapServers(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	servers []helper,
+) ([]*upstreamv0.ServerJSON, error) {
 	ids := make([]uuid.UUID, len(servers))
 	for i, server := range servers {
 		ids[i] = server.ID
@@ -979,7 +1054,7 @@ func (s *dbService) sharedListServersWithCursor(
 
 	packages, err := querier.ListServerPackages(ctx, ids)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	packagesMap := make(map[uuid.UUID][]sqlc.ListServerPackagesRow)
 	for _, pkg := range packages {
@@ -988,7 +1063,7 @@ func (s *dbService) sharedListServersWithCursor(
 
 	remotes, err := querier.ListServerRemotes(ctx, ids)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	remotesMap := make(map[uuid.UUID][]sqlc.McpServerRemote)
 	for _, remote := range remotes {
@@ -1003,10 +1078,10 @@ func (s *dbService) sharedListServersWithCursor(
 			remotesMap[dbServer.ID],
 		)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		result = append(result, &server)
 	}
 
-	return result, lastCursor, nil
+	return result, nil
 }

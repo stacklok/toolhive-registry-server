@@ -21,6 +21,13 @@ type ListSkillsOptions struct {
 	Search       *string
 	Limit        int
 	Cursor       *string
+	Filter       RecordFilter
+}
+
+//nolint:unparam
+func (o *ListSkillsOptions) setFilter(filter RecordFilter) error {
+	o.Filter = filter
+	return nil
 }
 
 //nolint:unparam
@@ -72,6 +79,13 @@ type GetSkillVersionOptions struct {
 	Namespace    string
 	Name         string
 	Version      string
+	Filter       RecordFilter
+}
+
+//nolint:unparam
+func (o *GetSkillVersionOptions) setFilter(filter RecordFilter) error {
+	o.Filter = filter
+	return nil
 }
 
 //nolint:unparam
