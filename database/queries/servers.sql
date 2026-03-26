@@ -20,6 +20,7 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
+       e.claims,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
        COALESCE(rs.position, 32767)::integer AS position
@@ -54,6 +55,10 @@ SELECT src.source_type as registry_type,
  LIMIT sqlc.arg(size)::bigint;
 
 -- name: GetServerVersion :many
+-- Despite the name, this query returns multiple rows. The careful reader will
+-- note that there is no limit clause, which might seem a bug, but the actual
+-- number of records is bounded by the number of sources that provide the same
+-- name and version, which we currently don't expect to be more than a few.
 SELECT src.source_type as registry_type,
        v.id,
        e.name,
@@ -70,6 +75,7 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
+       e.claims,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
        COALESCE(rs.position, 32767)::integer AS position

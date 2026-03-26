@@ -115,7 +115,14 @@ func (s *dbService) ListServers(
 		return helpers, nil
 	}
 
-	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit, options.Filter)
+	claimsFilter := newClaimsFilterWith(
+		options.Claims,
+		func(record any) ([]byte, bool) {
+			h, ok := record.(helper)
+			return h.Claims, ok
+		},
+	)
+	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit, claimsFilter)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -200,7 +207,14 @@ func (s *dbService) ListServerVersions(
 		return helpers, nil
 	}
 
-	results, err := s.sharedListServers(ctx, querierFunc, options.Filter)
+	claimsFilter := newClaimsFilterWith(
+		options.Claims,
+		func(record any) ([]byte, bool) {
+			h, ok := record.(helper)
+			return h.Claims, ok
+		},
+	)
+	results, err := s.sharedListServers(ctx, querierFunc, claimsFilter)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -275,11 +289,23 @@ func (s *dbService) GetServerVersion(
 			return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
 		}
 
-		// Return only the first row (highest priority by position)
-		return []helper{getServerVersionRowToHelper(servers[0])}, nil
+		// Return all rows ordered by position so the claims filter can promote
+		// lower-priority sources when higher-priority ones fail the claims check.
+		helpers := make([]helper, len(servers))
+		for i, sv := range servers {
+			helpers[i] = getServerVersionRowToHelper(sv)
+		}
+		return helpers, nil
 	}
 
-	res, err := s.sharedListServers(ctx, querierFunc, options.Filter)
+	claimsFilter := newClaimsFilterWith(
+		options.Claims,
+		func(record any) ([]byte, bool) {
+			h, ok := record.(helper)
+			return h.Claims, ok
+		},
+	)
+	res, err := s.sharedListServers(ctx, querierFunc, claimsFilter)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err

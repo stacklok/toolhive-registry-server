@@ -21,13 +21,7 @@ type ListSkillsOptions struct {
 	Search       *string
 	Limit        int
 	Cursor       *string
-	Filter       RecordFilter
-}
-
-//nolint:unparam
-func (o *ListSkillsOptions) setFilter(filter RecordFilter) error {
-	o.Filter = filter
-	return nil
+	Claims       map[string]any
 }
 
 //nolint:unparam
@@ -72,6 +66,12 @@ func (o *ListSkillsOptions) setCursor(cursor string) error {
 	return nil
 }
 
+//nolint:unparam
+func (o *ListSkillsOptions) setClaims(claims map[string]any) error {
+	o.Claims = claims
+	return nil
+}
+
 // GetSkillVersionOptions is the options for the GetSkillVersion operation.
 type GetSkillVersionOptions struct {
 	RegistryName string
@@ -79,13 +79,7 @@ type GetSkillVersionOptions struct {
 	Namespace    string
 	Name         string
 	Version      string
-	Filter       RecordFilter
-}
-
-//nolint:unparam
-func (o *GetSkillVersionOptions) setFilter(filter RecordFilter) error {
-	o.Filter = filter
-	return nil
+	Claims       map[string]any
 }
 
 //nolint:unparam
@@ -115,6 +109,12 @@ func (o *GetSkillVersionOptions) setName(name string) error {
 //nolint:unparam
 func (o *GetSkillVersionOptions) setVersion(version string) error {
 	o.Version = version
+	return nil
+}
+
+//nolint:unparam
+func (o *GetSkillVersionOptions) setClaims(claims map[string]any) error {
+	o.Claims = claims
 	return nil
 }
 

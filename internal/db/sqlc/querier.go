@@ -60,7 +60,15 @@ type Querier interface {
 	GetRegistryByName(ctx context.Context, name string) (Registry, error)
 	GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (GetRegistryEntryByNameRow, error)
 	GetServerIDsByRegistryNameVersion(ctx context.Context, sourceID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error)
+	// Despite the name, this query returns multiple rows. The careful reader will
+	// note that there is no limit clause, which might seem a bug, but the actual
+	// number of records is bounded by the number of sources that provide the same
+	// name and version, which we currently don't expect to be more than a few.
 	GetServerVersion(ctx context.Context, arg GetServerVersionParams) ([]GetServerVersionRow, error)
+	// Despite the name, this query returns multiple rows. The careful reader will
+	// note that there is no limit clause, which might seem a bug, but the actual
+	// number of records is bounded by the number of sources that provide the same
+	// name and version, which we currently don't expect to be more than a few.
 	GetSkillVersion(ctx context.Context, arg GetSkillVersionParams) ([]GetSkillVersionRow, error)
 	GetSource(ctx context.Context, id uuid.UUID) (GetSourceRow, error)
 	GetSourceByName(ctx context.Context, name string) (GetSourceByNameRow, error)

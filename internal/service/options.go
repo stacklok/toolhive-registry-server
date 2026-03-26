@@ -54,10 +54,6 @@ type claimsOption interface {
 	setClaims(claims map[string]any) error
 }
 
-type filterOption interface {
-	setFilter(filter RecordFilter) error
-}
-
 // WithCursor sets the cursor for the ListServers operation
 func WithCursor(cursor string) Option {
 	return func(o any) error {
@@ -212,18 +208,6 @@ func WithClaims(claims map[string]any) Option {
 		switch o := o.(type) {
 		case claimsOption:
 			return o.setClaims(claims)
-		default:
-			return fmt.Errorf("invalid option type: %T", o)
-		}
-	}
-}
-
-// WithFilter sets a filter predicate for ListServers or ListSkills operations.
-func WithFilter(filter RecordFilter) Option {
-	return func(o any) error {
-		switch o := o.(type) {
-		case filterOption:
-			return o.setFilter(filter)
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}

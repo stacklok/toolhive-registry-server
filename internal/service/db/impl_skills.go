@@ -79,7 +79,14 @@ func (s *dbService) ListSkills(
 		params.CursorVersion = &cursorVersion
 	}
 
-	listRows, nextCursor, err := streamSkillRows(ctx, querier, params, options.Filter, options.Limit)
+	claimsFilter := newClaimsFilterWith(
+		options.Claims,
+		func(record any) ([]byte, bool) {
+			r, ok := record.(sqlc.ListSkillsRow)
+			return r.Claims, ok
+		},
+	)
+	listRows, nextCursor, err := streamSkillRows(ctx, querier, params, claimsFilter, options.Limit)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -196,18 +203,21 @@ func (s *dbService) GetSkillVersion(
 		return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
 	}
 
-	// Pick the first row (ordered by position ascending = highest priority source)
-	row := rows[0]
-
-	if options.Filter != nil {
-		keep, err := options.Filter(ctx, row)
-		if err != nil {
-			otel.RecordError(span, err)
-			return nil, err
+	// Iterate rows in priority order (position ascending) and pick the first
+	// one that passes the claims check, promoting lower-priority sources when
+	// higher-priority ones fail.
+	callerJSON := marshalClaims(options.Claims)
+	var row sqlc.GetSkillVersionRow
+	found := false
+	for _, r := range rows {
+		if callerJSON == nil || checkClaims(callerJSON, r.Claims) {
+			row = r
+			found = true
+			break
 		}
-		if !keep {
-			return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
-		}
+	}
+	if !found {
+		return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
 	}
 
 	ociPackages, err := querier.ListSkillOciPackages(ctx, []uuid.UUID{row.SkillVersionID})

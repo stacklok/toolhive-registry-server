@@ -14,6 +14,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/api/common"
 	"github.com/stacklok/toolhive-registry-server/internal/api/x/skills"
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
@@ -111,6 +112,9 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 	if registryName != "" {
 		opts = append(opts, service.WithRegistryName(registryName))
 	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		opts = append(opts, service.WithClaims(map[string]any(jwtClaims)))
+	}
 
 	listResult, err := routes.service.ListServers(r.Context(), opts...)
 	if err != nil {
@@ -194,6 +198,9 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 	}
 	if serverName != "" {
 		opts = append(opts, service.WithName(serverName))
+	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		opts = append(opts, service.WithClaims(map[string]any(jwtClaims)))
 	}
 
 	versions, err := routes.service.ListServerVersions(r.Context(), opts...)
@@ -279,6 +286,9 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 	}
 	if version != "" {
 		opts = append(opts, service.WithVersion(version))
+	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		opts = append(opts, service.WithClaims(map[string]any(jwtClaims)))
 	}
 
 	server, err := routes.service.GetServerVersion(r.Context(), opts...)
