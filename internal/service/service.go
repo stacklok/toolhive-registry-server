@@ -103,6 +103,9 @@ type RegistryService interface {
 	// DeleteSource deletes an API-managed source
 	DeleteSource(ctx context.Context, name string) error
 
+	// ListSourceEntries returns all entries for a source (unshadowed, all types)
+	ListSourceEntries(ctx context.Context, sourceName string) ([]SourceEntryInfo, error)
+
 	// ********** REGISTRY OPERATIONS **********
 
 	// ListRegistries returns all configured registries
@@ -119,6 +122,9 @@ type RegistryService interface {
 
 	// DeleteRegistry deletes an API-managed registry
 	DeleteRegistry(ctx context.Context, name string) error
+
+	// ListRegistryEntries returns all entries across a registry's linked sources (unshadowed, lightweight)
+	ListRegistryEntries(ctx context.Context, registryName string) ([]RegistryEntryInfo, error)
 
 	// ProcessInlineSourceData processes inline data for a managed/file registry
 	ProcessInlineSourceData(ctx context.Context, name string, data string, format string) error
@@ -187,4 +193,39 @@ type ListServersResult struct {
 	// NextCursor is the cursor to use for fetching the next page of results.
 	// Empty string indicates no more results are available.
 	NextCursor string
+}
+
+// SourceEntryInfo represents a single entry within a source, including all versions.
+type SourceEntryInfo struct {
+	EntryType string             `json:"entryType"`
+	Name      string             `json:"name"`
+	Claims    map[string]any     `json:"claims,omitempty"`
+	Versions  []EntryVersionInfo `json:"versions"`
+}
+
+// EntryVersionInfo represents a single version of an entry.
+type EntryVersionInfo struct {
+	Version     string    `json:"version"`
+	Title       string    `json:"title,omitempty"`
+	Description string    `json:"description,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+// SourceEntriesResponse is the JSON envelope for listing source entries.
+type SourceEntriesResponse struct {
+	Entries []SourceEntryInfo `json:"entries"`
+}
+
+// RegistryEntryInfo represents a lightweight entry in a registry listing.
+type RegistryEntryInfo struct {
+	EntryType  string `json:"entryType"`
+	Name       string `json:"name"`
+	Version    string `json:"version"`
+	SourceName string `json:"sourceName"`
+}
+
+// RegistryEntriesResponse is the JSON envelope for listing registry entries.
+type RegistryEntriesResponse struct {
+	Entries []RegistryEntryInfo `json:"entries"`
 }

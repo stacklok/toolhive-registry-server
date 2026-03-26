@@ -204,6 +204,109 @@ func (q *Queries) InsertRegistryEntry(ctx context.Context, arg InsertRegistryEnt
 	return id, err
 }
 
+const listEntriesByRegistry = `-- name: ListEntriesByRegistry :many
+SELECT e.entry_type,
+       e.name,
+       v.version,
+       src.name AS source_name,
+       rs.position
+  FROM registry_source rs
+  JOIN source src ON rs.source_id = src.id
+  JOIN registry_entry e ON e.source_id = rs.source_id
+  JOIN entry_version v ON v.entry_id = e.id
+ WHERE rs.registry_id = $1
+ ORDER BY rs.position ASC, e.name ASC, v.version ASC
+`
+
+type ListEntriesByRegistryRow struct {
+	EntryType  EntryType `json:"entry_type"`
+	Name       string    `json:"name"`
+	Version    string    `json:"version"`
+	SourceName string    `json:"source_name"`
+	Position   int32     `json:"position"`
+}
+
+func (q *Queries) ListEntriesByRegistry(ctx context.Context, registryID uuid.UUID) ([]ListEntriesByRegistryRow, error) {
+	rows, err := q.db.Query(ctx, listEntriesByRegistry, registryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEntriesByRegistryRow{}
+	for rows.Next() {
+		var i ListEntriesByRegistryRow
+		if err := rows.Scan(
+			&i.EntryType,
+			&i.Name,
+			&i.Version,
+			&i.SourceName,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEntriesBySource = `-- name: ListEntriesBySource :many
+SELECT e.entry_type,
+       e.name,
+       e.claims,
+       v.version,
+       v.title,
+       v.description,
+       v.created_at,
+       v.updated_at
+  FROM registry_entry e
+  JOIN entry_version v ON v.entry_id = e.id
+ WHERE e.source_id = $1
+ ORDER BY e.name ASC, v.version ASC
+`
+
+type ListEntriesBySourceRow struct {
+	EntryType   EntryType  `json:"entry_type"`
+	Name        string     `json:"name"`
+	Claims      []byte     `json:"claims"`
+	Version     string     `json:"version"`
+	Title       *string    `json:"title"`
+	Description *string    `json:"description"`
+	CreatedAt   *time.Time `json:"created_at"`
+	UpdatedAt   *time.Time `json:"updated_at"`
+}
+
+func (q *Queries) ListEntriesBySource(ctx context.Context, sourceID uuid.UUID) ([]ListEntriesBySourceRow, error) {
+	rows, err := q.db.Query(ctx, listEntriesBySource, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEntriesBySourceRow{}
+	for rows.Next() {
+		var i ListEntriesBySourceRow
+		if err := rows.Scan(
+			&i.EntryType,
+			&i.Name,
+			&i.Claims,
+			&i.Version,
+			&i.Title,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEntryVersions = `-- name: ListEntryVersions :many
 SELECT id, version
   FROM entry_version

@@ -78,3 +78,30 @@ UPDATE registry_entry
        updated_at = NOW()
  WHERE source_id = sqlc.arg(source_id)
    AND (claims IS DISTINCT FROM sqlc.narg(claims));
+
+-- name: ListEntriesBySource :many
+SELECT e.entry_type,
+       e.name,
+       e.claims,
+       v.version,
+       v.title,
+       v.description,
+       v.created_at,
+       v.updated_at
+  FROM registry_entry e
+  JOIN entry_version v ON v.entry_id = e.id
+ WHERE e.source_id = sqlc.arg(source_id)
+ ORDER BY e.name ASC, v.version ASC;
+
+-- name: ListEntriesByRegistry :many
+SELECT e.entry_type,
+       e.name,
+       v.version,
+       src.name AS source_name,
+       rs.position
+  FROM registry_source rs
+  JOIN source src ON rs.source_id = src.id
+  JOIN registry_entry e ON e.source_id = rs.source_id
+  JOIN entry_version v ON v.entry_id = e.id
+ WHERE rs.registry_id = sqlc.arg(registry_id)
+ ORDER BY rs.position ASC, e.name ASC, v.version ASC;

@@ -149,17 +149,26 @@ func (routes *Routes) deleteRegistry(w http.ResponseWriter, r *http.Request) {
 // @Tags		v1
 // @Accept		json
 // @Produce		json
-// @Param		name	path	string	true	"Registry Name"
-// @Failure		400	{object}	map[string]string	"Bad request"
-// @Failure		501	{object}	map[string]string	"Not implemented"
+// @Param		name	path		string							true	"Registry Name"
+// @Success		200		{object}	service.RegistryEntriesResponse	"Registry entries"
+// @Failure		400		{object}	map[string]string				"Bad request"
+// @Failure		404		{object}	map[string]string				"Registry not found"
+// @Failure		500		{object}	map[string]string				"Internal server error"
 // @Router		/v1/registries/{name}/entries [get]
-func (*Routes) listRegistryEntries(w http.ResponseWriter, r *http.Request) {
-	if _, err := common.GetAndValidateURLParam(r, "name"); err != nil {
+func (routes *Routes) listRegistryEntries(w http.ResponseWriter, r *http.Request) {
+	name, err := common.GetAndValidateURLParam(r, "name")
+	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	common.WriteErrorResponse(w, "Listing registry entries is not yet implemented", http.StatusNotImplemented)
+	entries, err := routes.service.ListRegistryEntries(r.Context(), name)
+	if err != nil {
+		writeRegistryError(w, err)
+		return
+	}
+
+	common.WriteJSONResponse(w, service.RegistryEntriesResponse{Entries: entries}, http.StatusOK)
 }
 
 // writeRegistryError maps service-layer registry errors to HTTP responses.

@@ -145,17 +145,26 @@ func (routes *Routes) deleteSource(w http.ResponseWriter, r *http.Request) {
 // @Tags		v1
 // @Accept		json
 // @Produce		json
-// @Param		name	path	string	true	"Source Name"
-// @Failure		400	{object}	map[string]string	"Bad request"
-// @Failure		501	{object}	map[string]string	"Not implemented"
+// @Param		name	path		string						true	"Source Name"
+// @Success		200		{object}	service.SourceEntriesResponse	"Source entries"
+// @Failure		400		{object}	map[string]string				"Bad request"
+// @Failure		404		{object}	map[string]string				"Source not found"
+// @Failure		500		{object}	map[string]string				"Internal server error"
 // @Router		/v1/sources/{name}/entries [get]
-func (*Routes) listSourceEntries(w http.ResponseWriter, r *http.Request) {
-	if _, err := common.GetAndValidateURLParam(r, "name"); err != nil {
+func (routes *Routes) listSourceEntries(w http.ResponseWriter, r *http.Request) {
+	name, err := common.GetAndValidateURLParam(r, "name")
+	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	common.WriteErrorResponse(w, "Listing source entries is not yet implemented", http.StatusNotImplemented)
+	entries, err := routes.service.ListSourceEntries(r.Context(), name)
+	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
+
+	common.WriteJSONResponse(w, service.SourceEntriesResponse{Entries: entries}, http.StatusOK)
 }
 
 // writeSourceError maps service-layer source errors to HTTP responses.

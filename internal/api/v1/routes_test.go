@@ -3,6 +3,7 @@ package v1
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -31,18 +32,6 @@ func TestV1StubEndpoints(t *testing.T) {
 		wantError string
 	}{
 		// Endpoints still returning 501
-		{
-			name:      "list source entries",
-			method:    "GET",
-			path:      "/sources/my-source/entries",
-			wantError: "Listing source entries is not yet implemented",
-		},
-		{
-			name:      "list registry entries",
-			method:    "GET",
-			path:      "/registries/my-registry/entries",
-			wantError: "Listing registry entries is not yet implemented",
-		},
 		{
 			name:      "update entry claims",
 			method:    "PUT",
@@ -610,6 +599,160 @@ func TestV1URLParamValidation(t *testing.T) {
 			err = json.Unmarshal(rr.Body.Bytes(), &response)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantError, response["error"])
+		})
+	}
+}
+
+func TestListSourceEntries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		sourceName string
+		mockReturn []service.SourceEntryInfo
+		mockErr    error
+		wantStatus int
+		wantLen    int
+	}{
+		{
+			name:       "happy path",
+			sourceName: "my-source",
+			mockReturn: []service.SourceEntryInfo{
+				{
+					EntryType: "MCP",
+					Name:      "my-server",
+					Versions: []service.EntryVersionInfo{
+						{
+							Version:   "1.0.0",
+							Title:     "My Server",
+							CreatedAt: time.Now(),
+							UpdatedAt: time.Now(),
+						},
+					},
+				},
+			},
+			wantStatus: http.StatusOK,
+			wantLen:    1,
+		},
+		{
+			name:       "empty entries returns empty array",
+			sourceName: "empty-source",
+			mockReturn: []service.SourceEntryInfo{},
+			wantStatus: http.StatusOK,
+			wantLen:    0,
+		},
+		{
+			name:       "source not found",
+			sourceName: "missing",
+			mockErr:    service.ErrSourceNotFound,
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "internal server error",
+			sourceName: "broken",
+			mockErr:    errors.New("unexpected database error"),
+			wantStatus: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+			mockSvc.EXPECT().ListSourceEntries(gomock.Any(), tt.sourceName).Return(tt.mockReturn, tt.mockErr)
+
+			router := Router(mockSvc, nil)
+			req, err := http.NewRequest("GET", "/sources/"+tt.sourceName+"/entries", nil)
+			require.NoError(t, err)
+
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.wantStatus, rr.Code)
+
+			if tt.wantStatus == http.StatusOK {
+				var resp service.SourceEntriesResponse
+				err = json.Unmarshal(rr.Body.Bytes(), &resp)
+				require.NoError(t, err)
+				assert.Len(t, resp.Entries, tt.wantLen)
+			}
+		})
+	}
+}
+
+func TestListRegistryEntries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		registryName string
+		mockReturn   []service.RegistryEntryInfo
+		mockErr      error
+		wantStatus   int
+		wantLen      int
+	}{
+		{
+			name:         "happy path",
+			registryName: "my-registry",
+			mockReturn: []service.RegistryEntryInfo{
+				{
+					EntryType:  "MCP",
+					Name:       "my-server",
+					Version:    "1.0.0",
+					SourceName: "src1",
+				},
+			},
+			wantStatus: http.StatusOK,
+			wantLen:    1,
+		},
+		{
+			name:         "empty entries returns empty array",
+			registryName: "empty-registry",
+			mockReturn:   []service.RegistryEntryInfo{},
+			wantStatus:   http.StatusOK,
+			wantLen:      0,
+		},
+		{
+			name:         "registry not found",
+			registryName: "missing",
+			mockErr:      service.ErrRegistryNotFound,
+			wantStatus:   http.StatusNotFound,
+		},
+		{
+			name:         "internal server error",
+			registryName: "broken",
+			mockErr:      errors.New("unexpected database error"),
+			wantStatus:   http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+			mockSvc.EXPECT().ListRegistryEntries(gomock.Any(), tt.registryName).Return(tt.mockReturn, tt.mockErr)
+
+			router := Router(mockSvc, nil)
+			req, err := http.NewRequest("GET", "/registries/"+tt.registryName+"/entries", nil)
+			require.NoError(t, err)
+
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.wantStatus, rr.Code)
+
+			if tt.wantStatus == http.StatusOK {
+				var resp service.RegistryEntriesResponse
+				err = json.Unmarshal(rr.Body.Bytes(), &resp)
+				require.NoError(t, err)
+				assert.Len(t, resp.Entries, tt.wantLen)
+			}
 		})
 	}
 }
