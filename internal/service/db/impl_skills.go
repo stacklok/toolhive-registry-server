@@ -79,63 +79,16 @@ func (s *dbService) ListSkills(
 		params.CursorVersion = &cursorVersion
 	}
 
-	// Fetch skills in a loop to ensure we have enough results after dedup.
-	// Dedup can remove entries when multiple sources provide the same name,
-	// so a single SQL fetch may yield fewer than the target count.
-	const maxFetchIterations = 10 // safety cap to prevent runaway loops
-	target := options.Limit + 1
-	var allRows []sqlc.ListSkillsRow
-	batchParams := params
-	for range maxFetchIterations {
-		rows, err := querier.ListSkills(ctx, batchParams)
-		if err != nil {
-			otel.RecordError(span, err)
-			return nil, err
-		}
-
-		allRows = append(allRows, rows...)
-		deduped := deduplicateSkillRows(allRows)
-
-		if len(deduped) >= target || int64(len(rows)) < batchParams.Size {
-			allRows = deduped
-			break
-		}
-
-		lastRow := rows[len(rows)-1]
-		batchParams.CursorName = &lastRow.Name
-		batchParams.CursorVersion = &lastRow.Version
-	}
-	listRows := allRows
-
-	ids := make([]uuid.UUID, 0)
-	for _, row := range listRows {
-		ids = append(ids, row.VersionID)
-	}
-
-	ociPackages, err := querier.ListSkillOciPackages(ctx, ids)
-	if err != nil {
-		otel.RecordError(span, err)
-		return nil, err
-	}
-	gitPackages, err := querier.ListSkillGitPackages(ctx, ids)
+	listRows, nextCursor, err := streamSkillRows(ctx, querier, params, options.Filter, options.Limit)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
-	packages := make(map[uuid.UUID][]service.SkillPackage)
-	for _, pkg := range ociPackages {
-		packages[pkg.SkillID] = append(packages[pkg.SkillID], toServiceSkillOciPackage(pkg))
-	}
-	for _, pkg := range gitPackages {
-		packages[pkg.SkillID] = append(packages[pkg.SkillID], toServiceSkillGitPackage(pkg))
-	}
-
-	nextCursor := ""
-	if len(listRows) > options.Limit {
-		last := listRows[options.Limit-1]
-		nextCursor = service.EncodeCursor(last.Name, last.Version)
-		listRows = listRows[:options.Limit]
+	packages, err := fetchSkillPackages(ctx, querier, listRows)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
 	}
 
 	skills := make([]*service.Skill, len(listRows))
@@ -149,6 +102,38 @@ func (s *dbService) ListSkills(
 		Skills:     skills,
 		NextCursor: nextCursor,
 	}, nil
+}
+
+// fetchSkillPackages fetches OCI and Git packages for the given skill rows and
+// returns them keyed by skill version ID.
+func fetchSkillPackages(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	rows []sqlc.ListSkillsRow,
+) (map[uuid.UUID][]service.SkillPackage, error) {
+	ids := make([]uuid.UUID, len(rows))
+	for i, row := range rows {
+		ids[i] = row.VersionID
+	}
+
+	ociPackages, err := querier.ListSkillOciPackages(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	gitPackages, err := querier.ListSkillGitPackages(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	packages := make(map[uuid.UUID][]service.SkillPackage)
+	for _, pkg := range ociPackages {
+		packages[pkg.SkillID] = append(packages[pkg.SkillID], toServiceSkillOciPackage(pkg))
+	}
+	for _, pkg := range gitPackages {
+		packages[pkg.SkillID] = append(packages[pkg.SkillID], toServiceSkillGitPackage(pkg))
+	}
+
+	return packages, nil
 }
 
 // GetSkillVersion returns a specific skill version by name and version.
@@ -213,6 +198,17 @@ func (s *dbService) GetSkillVersion(
 
 	// Pick the first row (ordered by position ascending = highest priority source)
 	row := rows[0]
+
+	if options.Filter != nil {
+		keep, err := options.Filter(ctx, row)
+		if err != nil {
+			otel.RecordError(span, err)
+			return nil, err
+		}
+		if !keep {
+			return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
+		}
+	}
 
 	ociPackages, err := querier.ListSkillOciPackages(ctx, []uuid.UUID{row.SkillVersionID})
 	if err != nil {
@@ -615,22 +611,74 @@ func (s *dbService) executeDeleteSkillTransaction(
 	return nil
 }
 
-// deduplicateSkillRows removes duplicate entries at the entry name level, keeping
-// all versions from the highest-priority source (lowest position value).
-func deduplicateSkillRows(rows []sqlc.ListSkillsRow) []sqlc.ListSkillsRow {
-	// Pass 1: determine winning position per entry name (lowest position wins)
-	winningPosition := make(map[string]int32, len(rows))
-	for _, r := range rows {
-		if pos, ok := winningPosition[r.Name]; !ok || r.Position < pos {
-			winningPosition[r.Name] = r.Position
+// streamSkillRows fetches skill rows in batches, applying the auth filter then the
+// dedup filter to each record, until limit+1 rows are accumulated or the DB is
+// exhausted. It returns the trimmed slice (≤ limit) and the encoded cursor for the
+// next page, if any.
+func streamSkillRows(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	params sqlc.ListSkillsParams,
+	filter service.RecordFilter,
+	limit int,
+) ([]sqlc.ListSkillsRow, string, error) {
+	dedupFilter := newDeduplicatingSkillFilter()
+	var accumulated []sqlc.ListSkillsRow
+	batchParams := params
+
+	for {
+		batch, err := querier.ListSkills(ctx, batchParams)
+		if err != nil {
+			return nil, "", err
 		}
-	}
-	// Pass 2: keep only versions from the winning source (by position)
-	result := make([]sqlc.ListSkillsRow, 0, len(rows))
-	for _, r := range rows {
-		if r.Position == winningPosition[r.Name] {
-			result = append(result, r)
+
+		for _, row := range batch {
+			keep := true
+			var ferr error
+			if filter != nil {
+				keep, ferr = filter(ctx, row)
+				if ferr != nil {
+					return nil, "", ferr
+				}
+			}
+			if keep {
+				keep, ferr = dedupFilter(ctx, row)
+				if ferr != nil {
+					return nil, "", ferr
+				}
+			}
+			if keep {
+				accumulated = append(accumulated, row)
+			}
 		}
+
+		if len(accumulated) >= limit+1 || int64(len(batch)) < batchParams.Size {
+			break
+		}
+
+		lastRow := batch[len(batch)-1]
+		batchParams.CursorName = &lastRow.Name
+		batchParams.CursorVersion = &lastRow.Version
 	}
-	return result
+
+	nextCursor := ""
+	if len(accumulated) > limit {
+		last := accumulated[limit-1]
+		nextCursor = service.EncodeCursor(last.Name, last.Version)
+		accumulated = accumulated[:limit]
+	}
+
+	return accumulated, nextCursor, nil
+}
+
+// newDeduplicatingSkillFilter returns a stateful RecordFilter that deduplicates
+// skill rows by entry name, keeping only records from the highest-priority source
+// (lowest position). SQL must return records in position-ascending order per name.
+func newDeduplicatingSkillFilter() service.RecordFilter {
+	return newDeduplicatingFilterWith(
+		func(record any) (string, int32, bool) {
+			r, ok := record.(sqlc.ListSkillsRow)
+			return r.Name, r.Position, ok
+		},
+	)
 }

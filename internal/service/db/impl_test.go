@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -429,6 +430,47 @@ func TestListServers(t *testing.T) {
 				require.Len(t, result.Servers, 1)
 				require.Equal(t, "com.example/test-server-1", result.Servers[0].Name)
 				require.Equal(t, "2.0.0", result.Servers[0].Version)
+			},
+		},
+		{
+			name: "app-level filter keeps only server-1 records",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option{
+				service.WithLimit(10),
+				service.WithFilter(service.RecordFilter(func(_ context.Context, record any) (bool, error) {
+					h, ok := record.(helper)
+					if !ok {
+						return false, nil
+					}
+					return h.Name == "com.example/test-server-1", nil
+				})),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 3)
+				for _, server := range result.Servers {
+					require.Equal(t, "com.example/test-server-1", server.Name)
+				}
+			},
+		},
+		{
+			name: "app-level filter drops all records returns empty list",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option{
+				service.WithLimit(10),
+				service.WithFilter(service.RecordFilter(func(context.Context, any) (bool, error) {
+					return false, nil
+				})),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, result *service.ListServersResult) {
+				require.Len(t, result.Servers, 0)
 			},
 		},
 	}
@@ -862,6 +904,20 @@ func TestGetServerVersion(t *testing.T) {
 				service.WithName("com.example/test-server-1"),
 				service.WithVersion("1.0.0"),
 				service.WithRegistryName("non-existent-registry"),
+			},
+		},
+		{
+			name: "filter rejects record returns error",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				setupTestData(t, pool)
+			},
+			options: []service.Option{
+				service.WithName("com.example/test-server-1"),
+				service.WithVersion("1.0.0"),
+				service.WithFilter(service.RecordFilter(func(context.Context, any) (bool, error) {
+					return false, nil
+				})),
 			},
 		},
 	}
@@ -2841,6 +2897,218 @@ func TestDeleteSkillVersion(t *testing.T) {
 			require.NotNil(t, result)
 			require.Equal(t, tt.expectLatestVersion, result.Version)
 			require.True(t, result.IsLatest)
+		})
+	}
+}
+
+// setupSkillTestData creates a managed source, registry, and publishes skills for testing.
+//
+//nolint:thelper // We want to see these lines in the test output
+func setupSkillTestData(t *testing.T, svc *dbService, skills []string) {
+	ctx := context.Background()
+	queries := sqlc.New(svc.pool)
+	now := time.Now()
+
+	src, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+		Name:         "managed",
+		SourceType:   "managed",
+		CreationType: sqlc.CreationTypeCONFIG,
+		Syncable:     false,
+	})
+	require.NoError(t, err)
+
+	reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+		Name:         "test-skills-registry",
+		CreationType: sqlc.CreationTypeCONFIG,
+		CreatedAt:    &now,
+		UpdatedAt:    &now,
+	})
+	require.NoError(t, err)
+
+	err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+		RegistryID: reg.ID,
+		SourceID:   src.ID,
+		Position:   0,
+	})
+	require.NoError(t, err)
+
+	for _, name := range skills {
+		_, err := svc.PublishSkill(ctx, &service.Skill{
+			Name:      name,
+			Namespace: "com.example",
+			Version:   "1.0.0",
+			Title:     name,
+		})
+		require.NoError(t, err)
+	}
+}
+
+func TestListSkills(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *dbService)
+		options      []service.Option
+		validateFunc func(*testing.T, *service.ListSkillsResult)
+	}{
+		{
+			name: "list all skills returns all published",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, svc *dbService) {
+				setupSkillTestData(t, svc, []string{"skill-a", "skill-b"})
+			},
+			options: []service.Option{
+				service.WithRegistryName("test-skills-registry"),
+				service.WithNamespace("com.example"),
+				service.WithLimit(10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, result *service.ListSkillsResult) {
+				require.Len(t, result.Skills, 2)
+				names := make([]string, len(result.Skills))
+				for i, s := range result.Skills {
+					names[i] = s.Name
+				}
+				require.Contains(t, names, "skill-a")
+				require.Contains(t, names, "skill-b")
+			},
+		},
+		{
+			name: "app-level filter keeps only skill-a",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, svc *dbService) {
+				setupSkillTestData(t, svc, []string{"skill-a", "skill-b"})
+			},
+			options: []service.Option{
+				service.WithRegistryName("test-skills-registry"),
+				service.WithNamespace("com.example"),
+				service.WithLimit(10),
+				service.WithFilter(service.RecordFilter(func(_ context.Context, record any) (bool, error) {
+					row, ok := record.(sqlc.ListSkillsRow)
+					if !ok {
+						return false, nil
+					}
+					return row.Name == "skill-a", nil
+				})),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, result *service.ListSkillsResult) {
+				require.Len(t, result.Skills, 1)
+				require.Equal(t, "skill-a", result.Skills[0].Name)
+			},
+		},
+		{
+			name: "app-level filter drops all returns empty list",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, svc *dbService) {
+				setupSkillTestData(t, svc, []string{"skill-a", "skill-b"})
+			},
+			options: []service.Option{
+				service.WithRegistryName("test-skills-registry"),
+				service.WithNamespace("com.example"),
+				service.WithLimit(10),
+				service.WithFilter(service.RecordFilter(func(context.Context, any) (bool, error) {
+					return false, nil
+				})),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, result *service.ListSkillsResult) {
+				require.Len(t, result.Skills, 0)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc)
+
+			result, err := svc.ListSkills(context.Background(), tt.options...)
+
+			if tt.validateFunc == nil {
+				require.Error(t, err)
+				require.Nil(t, result)
+				return
+			}
+
+			require.NoError(t, err)
+			tt.validateFunc(t, result)
+		})
+	}
+}
+
+func TestGetSkillVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *dbService)
+		options      []service.Option
+		validateFunc func(*testing.T, *service.Skill)
+	}{
+		{
+			name: "get existing skill version",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, svc *dbService) {
+				setupSkillTestData(t, svc, []string{"skill-a"})
+			},
+			options: []service.Option{
+				service.WithRegistryName("test-skills-registry"),
+				service.WithNamespace("com.example"),
+				service.WithName("skill-a"),
+				service.WithVersion("1.0.0"),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, skill *service.Skill) {
+				require.NotNil(t, skill)
+				require.Equal(t, "skill-a", skill.Name)
+				require.Equal(t, "1.0.0", skill.Version)
+				require.Equal(t, "com.example", skill.Namespace)
+			},
+		},
+		{
+			name: "filter rejects record returns ErrNotFound",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, svc *dbService) {
+				setupSkillTestData(t, svc, []string{"skill-a"})
+			},
+			options: []service.Option{
+				service.WithRegistryName("test-skills-registry"),
+				service.WithNamespace("com.example"),
+				service.WithName("skill-a"),
+				service.WithVersion("1.0.0"),
+				service.WithFilter(service.RecordFilter(func(context.Context, any) (bool, error) {
+					return false, nil
+				})),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc)
+
+			skill, err := svc.GetSkillVersion(context.Background(), tt.options...)
+
+			if tt.validateFunc == nil {
+				require.Error(t, err)
+				require.True(t, errors.Is(err, service.ErrNotFound))
+				require.Nil(t, skill)
+				return
+			}
+
+			require.NoError(t, err)
+			tt.validateFunc(t, skill)
 		})
 	}
 }

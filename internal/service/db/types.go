@@ -40,26 +40,6 @@ type helper struct {
 	Position            int32
 }
 
-// deduplicateHelpers removes duplicate entries at the entry name level, keeping
-// all versions from the highest-priority source (lowest position value).
-func deduplicateHelpers(helpers []helper) []helper {
-	// Pass 1: determine winning position per entry name (lowest position wins)
-	winningPosition := make(map[string]int32, len(helpers))
-	for _, h := range helpers {
-		if pos, ok := winningPosition[h.Name]; !ok || h.Position < pos {
-			winningPosition[h.Name] = h.Position
-		}
-	}
-	// Pass 2: keep only versions from the winning source (by position)
-	result := make([]helper, 0, len(helpers))
-	for _, h := range helpers {
-		if h.Position == winningPosition[h.Name] {
-			result = append(result, h)
-		}
-	}
-	return result
-}
-
 func listServersRowToHelper(
 	dbServer sqlc.ListServersRow,
 ) helper {

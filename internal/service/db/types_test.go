@@ -244,7 +244,7 @@ func TestSerializePublisherProvidedMeta(t *testing.T) {
 	}
 }
 
-func TestDeduplicateHelpers(t *testing.T) {
+func TestNewDeduplicatingFilter(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -280,7 +280,7 @@ func TestDeduplicateHelpers(t *testing.T) {
 			},
 		},
 		{
-			name: "same entry name from two sources keeps only lowest position",
+			name: "same entry name from two sources keeps only first-seen position",
 			input: []helper{
 				{Name: "server-a", Version: "1.0.0", Position: 1},
 				{Name: "server-a", Version: "2.0.0", Position: 1},
@@ -293,14 +293,14 @@ func TestDeduplicateHelpers(t *testing.T) {
 			},
 		},
 		{
-			name: "multiple entry names independently resolved",
+			name: "multiple entry names independently resolved with position-ascending input",
 			input: []helper{
 				{Name: "server-a", Version: "1.0.0", Position: 3},
 				{Name: "server-a", Version: "2.0.0", Position: 3},
+				{Name: "server-b", Version: "1.0.0", Position: 3},
 				{Name: "server-a", Version: "1.0.0", Position: 7},
 				{Name: "server-b", Version: "1.0.0", Position: 7},
 				{Name: "server-b", Version: "2.0.0", Position: 7},
-				{Name: "server-b", Version: "1.0.0", Position: 3},
 			},
 			expect: []helper{
 				{Name: "server-a", Version: "1.0.0", Position: 3},
@@ -309,13 +309,13 @@ func TestDeduplicateHelpers(t *testing.T) {
 			},
 		},
 		{
-			name: "lowest position wins regardless of input order",
+			name: "first-seen position wins with position-ascending input",
 			input: []helper{
-				{Name: "server-x", Version: "old", Position: 10},
-				{Name: "server-x", Version: "newer", Position: 10},
 				{Name: "server-x", Version: "best", Position: 2},
 				{Name: "server-x", Version: "also-best", Position: 2},
 				{Name: "server-x", Version: "mid", Position: 5},
+				{Name: "server-x", Version: "old", Position: 10},
+				{Name: "server-x", Version: "newer", Position: 10},
 			},
 			expect: []helper{
 				{Name: "server-x", Version: "best", Position: 2},
@@ -341,7 +341,19 @@ func TestDeduplicateHelpers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := deduplicateHelpers(tt.input)
+			filter := newDeduplicatingFilter()
+			var got []helper
+			for _, h := range tt.input {
+				keep, err := filter(t.Context(), h)
+				require.NoError(t, err)
+				if keep {
+					got = append(got, h)
+				}
+			}
+			// Normalize nil to empty slice for comparison
+			if got == nil {
+				got = []helper{}
+			}
 
 			assert.Equal(t, tt.expect, got)
 		})

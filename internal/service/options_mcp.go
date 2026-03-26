@@ -14,6 +14,13 @@ type ListServersOptions struct {
 	Search       string
 	UpdatedSince time.Time
 	Version      string
+	Filter       RecordFilter
+}
+
+//nolint:unparam
+func (o *ListServersOptions) setFilter(filter RecordFilter) error {
+	o.Filter = filter
+	return nil
 }
 
 //nolint:unparam
@@ -57,6 +64,13 @@ type ListServerVersionsOptions struct {
 	RegistryName *string
 	Name         string
 	Limit        int
+	Filter       RecordFilter
+}
+
+//nolint:unparam
+func (o *ListServerVersionsOptions) setFilter(filter RecordFilter) error {
+	o.Filter = filter
+	return nil
 }
 
 //nolint:unparam
@@ -83,6 +97,13 @@ type GetServerVersionOptions struct {
 	SourceName   string
 	Name         string
 	Version      string
+	Filter       RecordFilter
+}
+
+//nolint:unparam
+func (o *GetServerVersionOptions) setFilter(filter RecordFilter) error {
+	o.Filter = filter
+	return nil
 }
 
 //nolint:unparam
