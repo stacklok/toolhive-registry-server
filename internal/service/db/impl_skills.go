@@ -381,7 +381,10 @@ func (s *dbService) executePublishSkillTransaction(
 		// Verify claim consistency: if both the existing entry and the new
 		// publish request carry claims, they must match.
 		if claimsJSON != nil && existing.Claims != nil {
-			if !claimsMatch(existing.Claims, claimsJSON) {
+			var existingClaims, incoming map[string]any
+			_ = json.Unmarshal(existing.Claims, &existingClaims)
+			_ = json.Unmarshal(claimsJSON, &incoming)
+			if !claimsContain(incoming, existingClaims) {
 				return "", fmt.Errorf("%w: claims do not match existing entry", service.ErrClaimsMismatch)
 			}
 		}
