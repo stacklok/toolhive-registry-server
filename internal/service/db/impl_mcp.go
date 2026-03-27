@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"reflect"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -379,7 +378,10 @@ func insertServerVersionData(
 		// Verify claim consistency: if both the existing entry and the new
 		// publish request carry claims, they must match.
 		if claimsJSON != nil && existing.Claims != nil {
-			if !claimsMatch(existing.Claims, claimsJSON) {
+			var existingClaims, incoming map[string]any
+			_ = json.Unmarshal(existing.Claims, &existingClaims)
+			_ = json.Unmarshal(claimsJSON, &incoming)
+			if !claimsContain(incoming, existingClaims) {
 				return uuid.Nil, fmt.Errorf("%w: claims do not match existing entry", service.ErrClaimsMismatch)
 			}
 		}
@@ -881,16 +883,43 @@ func cleanupOrphanedEntry(
 	return nil
 }
 
-// claimsMatch compares two JSONB claim values for equality.
-func claimsMatch(a, b []byte) bool {
-	var ma, mb map[string]any
-	if err := json.Unmarshal(a, &ma); err != nil {
-		return false
+// claimsContain reports whether callerClaims satisfies every claim in recordClaims.
+// For each key K in recordClaims the caller must have K, and every value required
+// by the record must appear in the caller's value(s) for K.
+// Both plain strings and []string values are supported.
+func claimsContain(caller, record map[string]any) bool {
+	for k, rv := range record {
+		cv, ok := caller[k]
+		if !ok {
+			return false
+		}
+		required := toStringSet(rv)
+		have := toStringSet(cv)
+		for v := range required {
+			if _, found := have[v]; !found {
+				return false
+			}
+		}
 	}
-	if err := json.Unmarshal(b, &mb); err != nil {
-		return false
+	return true
+}
+
+// toStringSet normalises a claim value (string or []any of strings) to a set.
+func toStringSet(v any) map[string]struct{} {
+	switch val := v.(type) {
+	case string:
+		return map[string]struct{}{val: {}}
+	case []any:
+		s := make(map[string]struct{}, len(val))
+		for _, elem := range val {
+			if str, ok := elem.(string); ok {
+				s[str] = struct{}{}
+			}
+		}
+		return s
+	default:
+		return map[string]struct{}{}
 	}
-	return reflect.DeepEqual(ma, mb)
 }
 
 // querierFunction is a function that uses the given querier object to run the

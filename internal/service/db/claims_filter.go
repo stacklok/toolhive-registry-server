@@ -44,11 +44,18 @@ func marshalClaims(callerClaims map[string]any) []byte {
 	return b
 }
 
-// checkClaims returns true only when both callerJSON and recordJSON are
-// non-empty and represent the same JSON object.
+// checkClaims returns true only when callerJSON satisfies every claim in recordJSON.
+// The caller's claims must be a superset of the record's claims (containment, not equality).
 func checkClaims(callerJSON, recordJSON []byte) bool {
 	if len(callerJSON) == 0 || len(recordJSON) == 0 {
 		return false
 	}
-	return claimsMatch(callerJSON, recordJSON)
+	var caller, record map[string]any
+	if err := json.Unmarshal(callerJSON, &caller); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(recordJSON, &record); err != nil {
+		return false
+	}
+	return claimsContain(caller, record)
 }

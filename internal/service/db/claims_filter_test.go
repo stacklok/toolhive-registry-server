@@ -60,6 +60,12 @@ func TestNewClaimsFilterWith(t *testing.T) {
 			wantKeep:     false,
 		},
 		{
+			name:         "caller superset of record claims keeps record",
+			callerClaims: map[string]any{"sub": "user1", "org": "acme"},
+			record:       mustMarshal(t, map[string]any{"sub": "user1"}),
+			wantKeep:     true,
+		},
+		{
 			name:         "wrong record type returns error",
 			callerClaims: map[string]any{"sub": "user1"},
 			record:       "not-bytes",
@@ -147,6 +153,42 @@ func TestCheckClaims(t *testing.T) {
 			name:       "invalid record JSON returns false",
 			callerJSON: []byte(`{"sub":"user1"}`),
 			recordJSON: []byte(`{invalid`),
+			want:       false,
+		},
+		{
+			name:       "caller superset keeps record",
+			callerJSON: []byte(`{"sub":"u1","org":"acme"}`),
+			recordJSON: []byte(`{"sub":"u1"}`),
+			want:       true,
+		},
+		{
+			name:       "caller missing required key drops record",
+			callerJSON: []byte(`{"org":"acme"}`),
+			recordJSON: []byte(`{"sub":"u1"}`),
+			want:       false,
+		},
+		{
+			name:       "record list subset of caller list",
+			callerJSON: []byte(`{"roles":["a","b","c"]}`),
+			recordJSON: []byte(`{"roles":["a","b"]}`),
+			want:       true,
+		},
+		{
+			name:       "record list not subset of caller list drops record",
+			callerJSON: []byte(`{"roles":["a"]}`),
+			recordJSON: []byte(`{"roles":["a","b"]}`),
+			want:       false,
+		},
+		{
+			name:       "record string caller list containing it",
+			callerJSON: []byte(`{"sub":["u1","u2"]}`),
+			recordJSON: []byte(`{"sub":"u1"}`),
+			want:       true,
+		},
+		{
+			name:       "record string caller list not containing it drops record",
+			callerJSON: []byte(`{"sub":["u2"]}`),
+			recordJSON: []byte(`{"sub":"u1"}`),
 			want:       false,
 		},
 	}
