@@ -22,17 +22,25 @@ func (s *dbService) CheckReadiness(ctx context.Context) error {
 	return nil
 }
 
+// lookupRegistryID returns the UUID for the registry with the given name.
+// Returns ErrRegistryNotFound if the registry does not exist.
+func lookupRegistryID(ctx context.Context, pool sqlc.DBTX, registryName string) (uuid.UUID, error) {
+	querier := sqlc.New(pool)
+	row, err := querier.GetRegistryByName(ctx, registryName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
+		}
+		return uuid.Nil, err
+	}
+	return row.ID, nil
+}
+
 // checkRegistryExists validates that a registry with the given name exists.
 // Returns ErrRegistryNotFound if the registry does not exist.
 func checkRegistryExists(ctx context.Context, pool sqlc.DBTX, registryName string) error {
-	querier := sqlc.New(pool)
-	if _, err := querier.GetRegistryByName(ctx, registryName); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
-		}
-		return err
-	}
-	return nil
+	_, err := lookupRegistryID(ctx, pool, registryName)
+	return err
 }
 
 // upsertLatestFunc is a callback used by rePointLatestVersionIfNeeded to update

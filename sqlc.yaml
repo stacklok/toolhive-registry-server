@@ -26,6 +26,7 @@ sql:
             go_type:
               import: "github.com/google/uuid"
               type: "UUID"
+              pointer: true
 
           # Time types
           - db_type: "pg_catalog.timestamp"

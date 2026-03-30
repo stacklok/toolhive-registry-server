@@ -591,9 +591,9 @@ SELECT src.source_type as registry_type,
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
-  LEFT JOIN registry r ON r.name = $1::text
-  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
- WHERE ($1::text IS NULL OR rs.registry_id IS NOT NULL)
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id
+                               AND rs.registry_id = $1::uuid
+ WHERE ($1::uuid IS NULL OR rs.source_id IS NOT NULL)
    AND ($2::text IS NULL OR e.name = $2::text)
    AND ($3::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || $3::text || '%')
@@ -606,19 +606,19 @@ SELECT src.source_type as registry_type,
    -- This ensures deterministic pagination even when timestamps are identical
    AND (
        $5::text IS NULL
-       OR (e.name, v.version) > ($5::text, $6::text)
+       OR (v.name, v.version) > ($5::text, $6::text)
    )
    AND (
        $7::text IS NULL OR
        v.version = $7::text OR
        ($7::text = 'latest' AND l.latest_version_id = v.id)
    )
- ORDER BY e.name ASC, v.version ASC, rs.position ASC
+ ORDER BY v.name ASC, v.version ASC, rs.position ASC
  LIMIT $8::bigint
 `
 
 type ListServersParams struct {
-	RegistryName  *string    `json:"registry_name"`
+	RegistryID    *uuid.UUID `json:"registry_id"`
 	Name          *string    `json:"name"`
 	Search        *string    `json:"search"`
 	UpdatedSince  *time.Time `json:"updated_since"`
@@ -656,7 +656,7 @@ type ListServersRow struct {
 // When name is provided, results are filtered to versions of that specific server.
 func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]ListServersRow, error) {
 	rows, err := q.db.Query(ctx, listServers,
-		arg.RegistryName,
+		arg.RegistryID,
 		arg.Name,
 		arg.Search,
 		arg.UpdatedSince,

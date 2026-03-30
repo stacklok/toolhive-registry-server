@@ -55,7 +55,7 @@ func TestGetSourceSync(t *testing.T) {
 				syncID, err := queries.InsertSourceSync(
 					context.Background(),
 					InsertSourceSyncParams{
-						SourceID:   regID,
+						SourceID:   &regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 					},
@@ -120,7 +120,7 @@ func TestInsertSourceSync(t *testing.T) {
 				_, err := queries.InsertSourceSync(
 					context.Background(),
 					InsertSourceSyncParams{
-						SourceID:   ids[0],
+						SourceID:   &ids[0],
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 					},
@@ -149,7 +149,7 @@ func TestInsertSourceSync(t *testing.T) {
 				_, err := queries.InsertSourceSync(
 					context.Background(),
 					InsertSourceSyncParams{
-						SourceID:   ids[0],
+						SourceID:   &ids[0],
 						SyncStatus: SyncStatusCOMPLETED,
 						ErrorMsg:   nil,
 					},
@@ -178,7 +178,7 @@ func TestInsertSourceSync(t *testing.T) {
 				_, err := queries.InsertSourceSync(
 					context.Background(),
 					InsertSourceSyncParams{
-						SourceID:   ids[0],
+						SourceID:   &ids[0],
 						SyncStatus: SyncStatusFAILED,
 						ErrorMsg:   nil,
 					},
@@ -207,7 +207,7 @@ func TestInsertSourceSync(t *testing.T) {
 				_, err := queries.InsertSourceSync(
 					context.Background(),
 					InsertSourceSyncParams{
-						SourceID:   ids[0],
+						SourceID:   &ids[0],
 						SyncStatus: SyncStatusFAILED,
 						ErrorMsg:   ptr.String("sync failed with error"),
 					},
@@ -236,7 +236,7 @@ func TestInsertSourceSync(t *testing.T) {
 				_, err := queries.InsertSourceSync(
 					context.Background(),
 					InsertSourceSyncParams{
-						SourceID:   ids[0],
+						SourceID:   &ids[0],
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 					},
@@ -256,7 +256,7 @@ func TestInsertSourceSync(t *testing.T) {
 				_, err := queries.InsertSourceSync(
 					context.Background(),
 					InsertSourceSyncParams{
-						SourceID:   ids[0],
+						SourceID:   &ids[0],
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 					},
@@ -310,7 +310,7 @@ func TestUpdateSourceSync(t *testing.T) {
 				syncID, err := queries.InsertSourceSync(
 					context.Background(),
 					InsertSourceSyncParams{
-						SourceID:   regID,
+						SourceID:   &regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 						StartedAt:  &startedAt,
@@ -363,7 +363,7 @@ func TestUpdateSourceSync(t *testing.T) {
 				syncID, err := queries.InsertSourceSync(
 					context.Background(),
 					InsertSourceSyncParams{
-						SourceID:   regID,
+						SourceID:   &regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 						StartedAt:  &startedAt,
@@ -418,7 +418,7 @@ func TestUpdateSourceSync(t *testing.T) {
 				syncID, err := queries.InsertSourceSync(
 					context.Background(),
 					InsertSourceSyncParams{
-						SourceID:   regID,
+						SourceID:   &regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 						StartedAt:  &startedAt,
@@ -470,7 +470,7 @@ func TestUpdateSourceSync(t *testing.T) {
 				syncID, err := queries.InsertSourceSync(
 					context.Background(),
 					InsertSourceSyncParams{
-						SourceID:   regID,
+						SourceID:   &regID,
 						SyncStatus: SyncStatusINPROGRESS,
 						ErrorMsg:   nil,
 						StartedAt:  &startedAt,

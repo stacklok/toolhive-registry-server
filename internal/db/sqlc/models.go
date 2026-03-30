@@ -233,6 +233,7 @@ type EntryVersion struct {
 	Description *string    `json:"description"`
 	CreatedAt   *time.Time `json:"created_at"`
 	UpdatedAt   *time.Time `json:"updated_at"`
+	Name        string     `json:"name"`
 }
 
 type LatestEntryVersion struct {
@@ -311,7 +312,7 @@ type RegistrySource struct {
 
 type RegistrySync struct {
 	ID                    uuid.UUID  `json:"id"`
-	SourceID              uuid.UUID  `json:"source_id"`
+	SourceID              *uuid.UUID `json:"source_id"`
 	SyncStatus            SyncStatus `json:"sync_status"`
 	ErrorMsg              *string    `json:"error_msg"`
 	StartedAt             *time.Time `json:"started_at"`
