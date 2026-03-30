@@ -93,7 +93,7 @@ SELECT e.entry_type,
   FROM registry_entry e
   JOIN entry_version v ON v.entry_id = e.id
  WHERE e.source_id = sqlc.arg(source_id)
- ORDER BY e.name ASC, v.version ASC;
+ ORDER BY v.name ASC, v.version ASC;
 
 -- name: ListEntriesByRegistry :many
 SELECT e.entry_type,
@@ -106,4 +106,4 @@ SELECT e.entry_type,
   JOIN registry_entry e ON e.source_id = rs.source_id
   JOIN entry_version v ON v.entry_id = e.id
  WHERE rs.registry_id = sqlc.arg(registry_id)
- ORDER BY rs.position ASC, e.name ASC, v.version ASC;
+ ORDER BY v.name ASC, v.version ASC, rs.position ASC;
