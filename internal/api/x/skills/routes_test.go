@@ -196,6 +196,26 @@ func TestListSkillsRegistryNotFoundReturns404(t *testing.T) {
 	assert.Contains(t, body["error"], "registry not found")
 }
 
+func TestListSkillsInsufficientClaimsReturns403(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	mockSvc := mocks.NewMockRegistryService(ctrl)
+
+	mockSvc.EXPECT().ListSkills(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("%w: gated-reg", service.ErrClaimsInsufficient))
+
+	router := skillsRouterWithRegistryMount(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/gated-reg/v0.1/x/dev.toolhive/skills", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+	assert.Contains(t, body["error"], "forbidden")
+}
+
 func TestGetLatestVersion(t *testing.T) {
 	t.Parallel()
 
@@ -228,6 +248,15 @@ func TestGetLatestVersion(t *testing.T) {
 					Return(nil, fmt.Errorf("%w: nonexistent", service.ErrNotFound))
 			},
 			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "insufficient claims returns 403",
+			path: "/gated/v0.1/x/dev.toolhive/skills/io.github.stacklok/pdf-processor",
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().GetSkillVersion(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil, fmt.Errorf("%w: gated", service.ErrClaimsInsufficient))
+			},
+			wantStatus: http.StatusForbidden,
 		},
 		{
 			name:       "empty namespace returns 400",
@@ -293,6 +322,26 @@ func TestListVersions(t *testing.T) {
 	assert.Equal(t, 2, resp.Metadata.Count)
 }
 
+func TestListVersionsInsufficientClaimsReturns403(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	mockSvc := mocks.NewMockRegistryService(ctrl)
+
+	mockSvc.EXPECT().ListSkills(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("%w: gated-reg", service.ErrClaimsInsufficient))
+
+	router := skillsRouterWithRegistryMount(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/gated-reg/v0.1/x/dev.toolhive/skills/io.github.stacklok/pdf-processor/versions", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+	assert.Contains(t, body["error"], "forbidden")
+}
+
 func TestGetVersion(t *testing.T) {
 	t.Parallel()
 
@@ -325,6 +374,15 @@ func TestGetVersion(t *testing.T) {
 					Return(nil, fmt.Errorf("%w: pdf-processor@9.9.9", service.ErrNotFound))
 			},
 			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "insufficient claims returns 403",
+			path: "/gated/v0.1/x/dev.toolhive/skills/io.github.stacklok/pdf-processor/versions/1.0.0",
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().GetSkillVersion(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil, fmt.Errorf("%w: gated", service.ErrClaimsInsufficient))
+			},
+			wantStatus: http.StatusForbidden,
 		},
 		{
 			name:       "empty version returns 400",
