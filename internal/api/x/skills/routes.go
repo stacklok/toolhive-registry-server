@@ -297,6 +297,8 @@ func parseListSkillsQuery(r *http.Request) (*ListSkillsQuery, error) {
 // writeServiceError maps service-layer errors to HTTP responses.
 func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, service.ErrClaimsInsufficient):
+		common.WriteErrorResponse(w, "forbidden: insufficient claims for registry", http.StatusForbidden)
 	case errors.Is(err, service.ErrNotFound):
 		common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
 	case errors.Is(err, service.ErrRegistryNotFound):

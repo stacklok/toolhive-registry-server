@@ -54,6 +54,8 @@ func registryRouter(routes *Routes) http.Handler {
 }
 
 // handleListServers is a shared helper that handles listing servers with a registry name.
+//
+//nolint:gocyclo // complexity driven by many optional query parameters
 func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, registryName string) {
 	// Parse query parameters
 	query := r.URL.Query()
@@ -118,6 +120,10 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 
 	listResult, err := routes.service.ListServers(r.Context(), opts...)
 	if err != nil {
+		if errors.Is(err, service.ErrClaimsInsufficient) {
+			common.WriteErrorResponse(w, "forbidden: insufficient claims for registry", http.StatusForbidden)
+			return
+		}
 		if errors.Is(err, service.ErrRegistryNotFound) {
 			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
 			return
@@ -205,6 +211,10 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 
 	versions, err := routes.service.ListServerVersions(r.Context(), opts...)
 	if err != nil {
+		if errors.Is(err, service.ErrClaimsInsufficient) {
+			common.WriteErrorResponse(w, "forbidden: insufficient claims for registry", http.StatusForbidden)
+			return
+		}
 		if errors.Is(err, service.ErrRegistryNotFound) {
 			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
 			return
@@ -293,6 +303,10 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 
 	server, err := routes.service.GetServerVersion(r.Context(), opts...)
 	if err != nil {
+		if errors.Is(err, service.ErrClaimsInsufficient) {
+			common.WriteErrorResponse(w, "forbidden: insufficient claims for registry", http.StatusForbidden)
+			return
+		}
 		if errors.Is(err, service.ErrRegistryNotFound) || errors.Is(err, service.ErrNotFound) {
 			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
 			return

@@ -22,9 +22,13 @@ func (s *dbService) CheckReadiness(ctx context.Context) error {
 	return nil
 }
 
-// lookupRegistryID returns the UUID for the registry with the given name.
-// Returns ErrRegistryNotFound if the registry does not exist.
-func lookupRegistryID(ctx context.Context, pool sqlc.DBTX, registryName string) (uuid.UUID, error) {
+// lookupRegistryIDWithGate returns the UUID for the registry with the given name
+// after verifying the caller's claims satisfy the registry's access gate.
+// Returns ErrClaimsInsufficient if the caller's JWT claims do not cover the
+// registry's claims. Returns ErrRegistryNotFound if the registry does not exist.
+func lookupRegistryIDWithGate(
+	ctx context.Context, pool sqlc.DBTX, registryName string, callerClaims map[string]any,
+) (uuid.UUID, error) {
 	querier := sqlc.New(pool)
 	row, err := querier.GetRegistryByName(ctx, registryName)
 	if err != nil {
@@ -33,7 +37,17 @@ func lookupRegistryID(ctx context.Context, pool sqlc.DBTX, registryName string) 
 		}
 		return uuid.Nil, err
 	}
+	if err := validateClaimsSubsetBytes(ctx, callerClaims, row.Claims); err != nil {
+		return uuid.Nil, err
+	}
 	return row.ID, nil
+}
+
+// checkRegistryExistsWithGate validates that a registry exists and the caller's
+// claims satisfy the registry's access gate.
+func checkRegistryExistsWithGate(ctx context.Context, pool sqlc.DBTX, registryName string, callerClaims map[string]any) error {
+	_, err := lookupRegistryIDWithGate(ctx, pool, registryName, callerClaims)
+	return err
 }
 
 // upsertLatestFunc is a callback used by rePointLatestVersionIfNeeded to update

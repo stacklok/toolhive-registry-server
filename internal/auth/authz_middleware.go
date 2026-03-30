@@ -34,6 +34,10 @@ func RequireRole(role Role, authzCfg *config.AuthzConfig) func(http.Handler) htt
 			}
 
 			roles := ResolveRoles(claims, authzCfg)
+			// Store resolved roles in context for downstream authorization checks
+			// (e.g., super-admin bypass in claim validation).
+			r = r.WithContext(ContextWithRoles(r.Context(), roles))
+
 			if !HasRole(roles, role) {
 				common.WriteErrorResponse(w, "forbidden: insufficient permissions", http.StatusForbidden)
 				return

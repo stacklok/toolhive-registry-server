@@ -58,7 +58,7 @@ func (s *dbService) ListServers(
 	}
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	registryID, err := lookupRegistryID(ctx, s.pool, options.RegistryName)
+	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -182,7 +182,7 @@ func (s *dbService) ListServerVersions(
 	}
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	registryIDForVersions, err := lookupRegistryID(ctx, s.pool, options.RegistryName)
+	registryIDForVersions, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -261,7 +261,7 @@ func (s *dbService) GetServerVersion(
 		otel.AttrRegistryName.String(options.RegistryName),
 	)
 
-	registryID, err := lookupRegistryID(ctx, s.pool, options.RegistryName)
+	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -609,6 +609,12 @@ func (s *dbService) PublishServerVersion(
 		return nil, err
 	}
 
+	// Validate published claims are a subset of the publisher's JWT claims
+	if err := validateClaimsSubset(ctx, options.JWTClaims, options.Claims); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
 	// Serialize claims to JSON for storage
 	var claimsJSON []byte
 	if options.Claims != nil {
@@ -839,6 +845,24 @@ func (s *dbService) executeDeleteTransaction(
 	source, err := getManagedSource(ctx, querier)
 	if err != nil {
 		return err
+	}
+
+	// Verify the caller's JWT claims cover the entry's claims before deleting
+	if options.JWTClaims != nil {
+		existing, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
+			SourceID:  source.ID,
+			EntryType: sqlc.EntryTypeMCP,
+			Name:      options.ServerName,
+		})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("%w: %s@%s", service.ErrNotFound, options.ServerName, options.Version)
+			}
+			return fmt.Errorf("failed to look up registry entry: %w", err)
+		}
+		if err := validateClaimsSubsetBytes(ctx, options.JWTClaims, existing.Claims); err != nil {
+			return err
+		}
 	}
 
 	entryID, err := lookupAndDeleteEntryVersion(ctx, querier, source.ID, sqlc.EntryTypeMCP, options.ServerName, options.Version)

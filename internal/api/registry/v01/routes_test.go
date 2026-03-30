@@ -130,6 +130,18 @@ func TestListServers(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 		{
+			name: "list servers with registry name - insufficient claims",
+			path: "/gated/v0.1/servers",
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().ListServers(gomock.Any(), gomock.Any()).
+					Return(nil, service.ErrClaimsInsufficient)
+			},
+			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
+				return Router(mockSvc)
+			},
+			wantStatus: http.StatusForbidden,
+		},
+		{
 			name: "list servers with registry name - registry not found",
 			path: "/nonexistent/v0.1/servers",
 			setupMocks: func(m *mocks.MockRegistryService) {
@@ -209,6 +221,18 @@ func TestListVersions(t *testing.T) {
 				return Router(mockSvc)
 			},
 			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name: "list versions with registry name - insufficient claims",
+			path: "/gated/v0.1/servers/com.example%2Ftest-server/versions",
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().ListServerVersions(gomock.Any(), gomock.Any()).
+					Return(nil, service.ErrClaimsInsufficient)
+			},
+			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
+				return Router(mockSvc)
+			},
+			wantStatus: http.StatusForbidden,
 		},
 		{
 			name: "list versions with registry name - registry not found",
@@ -319,6 +343,18 @@ func TestGetVersion(t *testing.T) {
 				return Router(mockSvc)
 			},
 			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name: "get version with registry name - insufficient claims",
+			path: "/gated/v0.1/servers/com.example%2Ftest-server/versions/1.0.0",
+			setupMocks: func(m *mocks.MockRegistryService) {
+				m.EXPECT().GetServerVersion(gomock.Any(), gomock.Any()).
+					Return(nil, service.ErrClaimsInsufficient)
+			},
+			setupRouter: func(mockSvc *mocks.MockRegistryService) http.Handler {
+				return Router(mockSvc)
+			},
+			wantStatus: http.StatusForbidden,
 		},
 		{
 			name: "get version with registry name - registry not found",

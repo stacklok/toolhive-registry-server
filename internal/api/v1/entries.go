@@ -9,6 +9,7 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api/common"
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
@@ -47,8 +48,14 @@ func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Extract JWT claims for authorization (subset validation)
+	var jwtOpts []service.Option
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		jwtOpts = append(jwtOpts, service.WithJWTClaims(map[string]any(jwtClaims)))
+	}
+
 	if req.Server != nil {
-		opts := []service.Option{service.WithServerData(req.Server)}
+		opts := append([]service.Option{service.WithServerData(req.Server)}, jwtOpts...)
 		if req.Claims != nil {
 			opts = append(opts, service.WithClaims(req.Claims))
 		}
@@ -62,7 +69,7 @@ func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Skill != nil {
-		var opts []service.Option
+		opts := append([]service.Option{}, jwtOpts...)
 		if req.Claims != nil {
 			opts = append(opts, service.WithClaims(req.Claims))
 		}
@@ -78,6 +85,10 @@ func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 
 // writePublishError maps service-layer publish errors to HTTP responses.
 func writePublishError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, service.ErrClaimsInsufficient) {
+		common.WriteErrorResponse(w, err.Error(), http.StatusForbidden)
+		return
+	}
 	if errors.Is(err, service.ErrVersionAlreadyExists) {
 		common.WriteErrorResponse(w, err.Error(), http.StatusConflict)
 		return
@@ -128,17 +139,27 @@ func (routes *Routes) deletePublishedEntry(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Build options with JWT claims for authorization
+	opts := []service.Option{service.WithName(name), service.WithVersion(version)}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		opts = append(opts, service.WithJWTClaims(map[string]any(jwtClaims)))
+	}
+
 	switch entryType {
 	case "server":
-		err = routes.service.DeleteServerVersion(r.Context(), service.WithName(name), service.WithVersion(version))
+		err = routes.service.DeleteServerVersion(r.Context(), opts...)
 	case "skill":
-		err = routes.service.DeleteSkillVersion(r.Context(), service.WithName(name), service.WithVersion(version))
+		err = routes.service.DeleteSkillVersion(r.Context(), opts...)
 	default:
 		common.WriteErrorResponse(w, "unsupported entry type: must be 'server' or 'skill'", http.StatusBadRequest)
 		return
 	}
 
 	if err != nil {
+		if errors.Is(err, service.ErrClaimsInsufficient) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusForbidden)
+			return
+		}
 		if errors.Is(err, service.ErrNotFound) {
 			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
 			return
