@@ -237,6 +237,21 @@ func (mr *MockRegistryServiceMockRecorder) ListRegistries(ctx any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRegistries", reflect.TypeOf((*MockRegistryService)(nil).ListRegistries), ctx)
 }
 
+// ListRegistryEntries mocks base method.
+func (m *MockRegistryService) ListRegistryEntries(ctx context.Context, registryName string) ([]service.RegistryEntryInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRegistryEntries", ctx, registryName)
+	ret0, _ := ret[0].([]service.RegistryEntryInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRegistryEntries indicates an expected call of ListRegistryEntries.
+func (mr *MockRegistryServiceMockRecorder) ListRegistryEntries(ctx, registryName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRegistryEntries", reflect.TypeOf((*MockRegistryService)(nil).ListRegistryEntries), ctx, registryName)
+}
+
 // ListServerVersions mocks base method.
 func (m *MockRegistryService) ListServerVersions(ctx context.Context, opts ...service.Option) ([]*v0.ServerJSON, error) {
 	m.ctrl.T.Helper()
@@ -295,6 +310,21 @@ func (mr *MockRegistryServiceMockRecorder) ListSkills(ctx any, opts ...any) *gom
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx}, opts...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSkills", reflect.TypeOf((*MockRegistryService)(nil).ListSkills), varargs...)
+}
+
+// ListSourceEntries mocks base method.
+func (m *MockRegistryService) ListSourceEntries(ctx context.Context, sourceName string) ([]service.SourceEntryInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListSourceEntries", ctx, sourceName)
+	ret0, _ := ret[0].([]service.SourceEntryInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListSourceEntries indicates an expected call of ListSourceEntries.
+func (mr *MockRegistryServiceMockRecorder) ListSourceEntries(ctx, sourceName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSourceEntries", reflect.TypeOf((*MockRegistryService)(nil).ListSourceEntries), ctx, sourceName)
 }
 
 // ListSources mocks base method.

@@ -95,6 +95,8 @@ type Querier interface {
 	InsertSourceSync(ctx context.Context, arg InsertSourceSyncParams) (uuid.UUID, error)
 	LinkRegistrySource(ctx context.Context, arg LinkRegistrySourceParams) error
 	ListAllSourceNames(ctx context.Context) ([]string, error)
+	ListEntriesByRegistry(ctx context.Context, registryID uuid.UUID) ([]ListEntriesByRegistryRow, error)
+	ListEntriesBySource(ctx context.Context, sourceID uuid.UUID) ([]ListEntriesBySourceRow, error)
 	ListEntryVersions(ctx context.Context, entryID uuid.UUID) ([]ListEntryVersionsRow, error)
 	// Queries for the new lightweight registry table and registry_source junction.
 	ListRegistries(ctx context.Context) ([]Registry, error)

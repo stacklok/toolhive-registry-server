@@ -335,6 +335,72 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 	return nil
 }
 
+// ListRegistryEntries returns all entries across a registry's linked sources.
+func (s *dbService) ListRegistryEntries(ctx context.Context, registryName string) ([]service.RegistryEntryInfo, error) {
+	ctx, span := s.startSpan(ctx, "dbService.ListRegistryEntries")
+	defer span.End()
+	start := time.Now()
+
+	// Add tracing attributes
+	span.SetAttributes(otel.AttrRegistryName.String(registryName))
+
+	// Begin a read-only transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.ReadCommitted,
+		AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	// Look up the registry by name
+	registry, err := querier.GetRegistryByName(ctx, registryName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
+			otel.RecordError(span, err)
+			return nil, err
+		}
+		otel.RecordError(span, err)
+		return nil, fmt.Errorf("failed to get registry: %w", err)
+	}
+
+	// Query all entries across sources linked to this registry
+	rows, err := querier.ListEntriesByRegistry(ctx, registry.ID)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, fmt.Errorf("failed to list entries by registry: %w", err)
+	}
+
+	// Map each row directly to RegistryEntryInfo (flat, no grouping)
+	result := make([]service.RegistryEntryInfo, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, service.RegistryEntryInfo{
+			EntryType:  string(row.EntryType),
+			Name:       row.Name,
+			Version:    row.Version,
+			SourceName: row.SourceName,
+		})
+	}
+
+	span.SetAttributes(otel.AttrResultCount.Int(len(result)))
+	slog.DebugContext(ctx, "ListRegistryEntries completed",
+		"duration_ms", time.Since(start).Milliseconds(),
+		"registry", registryName,
+		"entry_count", len(result),
+		"request_id", middleware.GetReqID(ctx))
+	return result, nil
+}
+
 // =============================================================================
 // Helper functions for registry CRUD operations
 // =============================================================================

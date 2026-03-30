@@ -526,6 +526,98 @@ func (s *dbService) ProcessInlineSourceData(ctx context.Context, name string, da
 	return nil
 }
 
+// ListSourceEntries returns all entries for a source with their versions.
+func (s *dbService) ListSourceEntries(ctx context.Context, sourceName string) ([]service.SourceEntryInfo, error) {
+	ctx, span := s.startSpan(ctx, "dbService.ListSourceEntries")
+	defer span.End()
+	start := time.Now()
+
+	// Add tracing attributes
+	span.SetAttributes(otel.AttrRegistryName.String(sourceName))
+
+	// Begin a read-only transaction
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.ReadCommitted,
+		AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		err := tx.Rollback(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.WarnContext(ctx, "Failed to rollback transaction", "error", err)
+		}
+	}()
+
+	querier := sqlc.New(tx)
+
+	// Look up the source by name
+	source, err := querier.GetSourceByName(ctx, sourceName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = fmt.Errorf("%w: %s", service.ErrSourceNotFound, sourceName)
+			otel.RecordError(span, err)
+			return nil, err
+		}
+		otel.RecordError(span, err)
+		return nil, fmt.Errorf("failed to get source: %w", err)
+	}
+
+	// Query all entries with versions for this source
+	rows, err := querier.ListEntriesBySource(ctx, source.ID)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, fmt.Errorf("failed to list entries by source: %w", err)
+	}
+
+	// Group flat rows by (entry_type, name) into SourceEntryInfo with nested versions
+	type entryKey = string
+	entryMap := make(map[entryKey]int) // key -> index in result slice
+	result := make([]service.SourceEntryInfo, 0)
+
+	for _, row := range rows {
+		key := string(row.EntryType) + "/" + row.Name
+		idx, exists := entryMap[key]
+		if !exists {
+			idx = len(result)
+			entryMap[key] = idx
+			result = append(result, service.SourceEntryInfo{
+				EntryType: string(row.EntryType),
+				Name:      row.Name,
+				Claims:    db.DeserializeClaims(row.Claims),
+			})
+		}
+
+		versionInfo := service.EntryVersionInfo{
+			Version: row.Version,
+		}
+		if row.Title != nil {
+			versionInfo.Title = *row.Title
+		}
+		if row.Description != nil {
+			versionInfo.Description = *row.Description
+		}
+		if row.CreatedAt != nil {
+			versionInfo.CreatedAt = *row.CreatedAt
+		}
+		if row.UpdatedAt != nil {
+			versionInfo.UpdatedAt = *row.UpdatedAt
+		}
+
+		result[idx].Versions = append(result[idx].Versions, versionInfo)
+	}
+
+	span.SetAttributes(otel.AttrResultCount.Int(len(result)))
+	slog.DebugContext(ctx, "ListSourceEntries completed",
+		"duration_ms", time.Since(start).Milliseconds(),
+		"source", sourceName,
+		"entry_count", len(result),
+		"request_id", middleware.GetReqID(ctx))
+	return result, nil
+}
+
 // =============================================================================
 // Helper functions for source CRUD operations
 // =============================================================================

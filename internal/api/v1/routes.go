@@ -44,11 +44,11 @@ func Router(svc service.RegistryService, authzCfg *config.AuthzConfig) http.Hand
 	// because reads only need authentication while writes need manageRegistries.
 	r.Get("/registries", routes.listRegistries)
 	r.Get("/registries/{name}", routes.getRegistry)
-	r.Get("/registries/{name}/entries", routes.listRegistryEntries)
 
 	// Registry write endpoints — require manageRegistries role
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireRole(auth.RoleManageRegistries, authzCfg))
+		r.Get("/registries/{name}/entries", routes.listRegistryEntries)
 		r.Put("/registries/{name}", routes.upsertRegistry)
 		r.Delete("/registries/{name}", routes.deleteRegistry)
 	})

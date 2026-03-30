@@ -88,6 +88,55 @@ const docTemplate = `{
                     "CreationTypeCONFIG"
                 ]
             },
+            "github_com_stacklok_toolhive-registry-server_internal_service.EntryVersionInfo": {
+                "properties": {
+                    "createdAt": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "type": "string"
+                    },
+                    "version": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.RegistryEntriesResponse": {
+                "properties": {
+                    "entries": {
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryEntryInfo"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.RegistryEntryInfo": {
+                "properties": {
+                    "entryType": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "sourceName": {
+                        "type": "string"
+                    },
+                    "version": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo": {
                 "properties": {
                     "createdAt": {
@@ -238,6 +287,40 @@ const docTemplate = `{
                     },
                     "url": {
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.SourceEntriesResponse": {
+                "properties": {
+                    "entries": {
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceEntryInfo"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.SourceEntryInfo": {
+                "properties": {
+                    "claims": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    },
+                    "entryType": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "versions": {
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.EntryVersionInfo"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
                     }
                 },
                 "type": "object"
@@ -2367,6 +2450,16 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryEntriesResponse"
+                                }
+                            }
+                        },
+                        "description": "Registry entries"
+                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -2380,7 +2473,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "501": {
+                    "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2391,7 +2484,20 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Registry not found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "List registry entries",
@@ -2732,6 +2838,16 @@ const docTemplate = `{
                     }
                 },
                 "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceEntriesResponse"
+                                }
+                            }
+                        },
+                        "description": "Source entries"
+                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -2745,7 +2861,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "501": {
+                    "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2756,7 +2872,20 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Source not found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "List source entries",
