@@ -52,13 +52,19 @@ func (s *dbService) ListServers(
 		otel.AttrPageSize.Int(options.Limit),
 		otel.AttrHasCursor.Bool(options.Cursor != ""),
 	)
+	// Request one extra record to detect if there are more results
+	params := sqlc.ListServersParams{
+		Size: int64(options.Limit + 1),
+	}
 	if options.RegistryName != nil {
 		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
 
-		if err := checkRegistryExists(ctx, s.pool, *options.RegistryName); err != nil {
+		registryID, err := lookupRegistryID(ctx, s.pool, *options.RegistryName)
+		if err != nil {
 			otel.RecordError(span, err)
 			return nil, err
 		}
+		params.RegistryID = &registryID
 	}
 
 	slog.DebugContext(ctx, "ListServers query",
@@ -69,12 +75,6 @@ func (s *dbService) ListServers(
 		"updated_since", options.UpdatedSince,
 		"version", options.Version,
 		"request_id", middleware.GetReqID(ctx))
-
-	// Request one extra record to detect if there are more results
-	params := sqlc.ListServersParams{
-		Size:         int64(options.Limit + 1),
-		RegistryName: options.RegistryName,
-	}
 	if options.Search != "" {
 		params.Search = &options.Search
 	}
@@ -174,19 +174,19 @@ func (s *dbService) ListServerVersions(
 		otel.AttrServerName.String(options.Name),
 		otel.AttrPageSize.Int(options.Limit),
 	)
+	params := sqlc.ListServersParams{
+		Name: &options.Name,
+		Size: int64(options.Limit),
+	}
 	if options.RegistryName != nil {
 		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
 
-		if err := checkRegistryExists(ctx, s.pool, *options.RegistryName); err != nil {
+		registryID, err := lookupRegistryID(ctx, s.pool, *options.RegistryName)
+		if err != nil {
 			otel.RecordError(span, err)
 			return nil, err
 		}
-	}
-
-	params := sqlc.ListServersParams{
-		Name:         &options.Name,
-		Size:         int64(options.Limit),
-		RegistryName: options.RegistryName,
+		params.RegistryID = &registryID
 	}
 
 	// Note: this function fetches a list of server versions. In case no records are
@@ -393,6 +393,7 @@ func insertServerVersionData(
 	// Insert the entry version (one per name+version)
 	versionID, err := querier.InsertEntryVersion(ctx, sqlc.InsertEntryVersionParams{
 		EntryID:     entryID,
+		Name:        serverData.Name,
 		Version:     serverData.Version,
 		Title:       &serverData.Title,
 		Description: &serverData.Description,

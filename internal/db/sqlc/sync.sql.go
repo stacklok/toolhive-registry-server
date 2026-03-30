@@ -143,7 +143,7 @@ INSERT INTO registry_sync (
 `
 
 type InsertSourceSyncParams struct {
-	SourceID   uuid.UUID  `json:"source_id"`
+	SourceID   *uuid.UUID `json:"source_id"`
 	SyncStatus SyncStatus `json:"sync_status"`
 	ErrorMsg   *string    `json:"error_msg"`
 	StartedAt  *time.Time `json:"started_at"`
@@ -182,7 +182,7 @@ ORDER BY rs.started_at DESC, s.name ASC
 type ListSourceSyncsRow struct {
 	Name                  string           `json:"name"`
 	ID                    uuid.UUID        `json:"id"`
-	SourceID              uuid.UUID        `json:"source_id"`
+	SourceID              *uuid.UUID       `json:"source_id"`
 	SyncStatus            SyncStatus       `json:"sync_status"`
 	ErrorMsg              *string          `json:"error_msg"`
 	StartedAt             *time.Time       `json:"started_at"`
@@ -250,7 +250,7 @@ FOR UPDATE OF rs SKIP LOCKED
 type ListSourceSyncsByLastUpdateRow struct {
 	Name                  string           `json:"name"`
 	ID                    uuid.UUID        `json:"id"`
-	SourceID              uuid.UUID        `json:"source_id"`
+	SourceID              *uuid.UUID       `json:"source_id"`
 	SyncStatus            SyncStatus       `json:"sync_status"`
 	ErrorMsg              *string          `json:"error_msg"`
 	StartedAt             *time.Time       `json:"started_at"`

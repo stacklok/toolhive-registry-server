@@ -13,6 +13,8 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 )
 
+func ptrOf[T any](v T) *T { return &v }
+
 func TestNewDBStateService(t *testing.T) {
 	t.Parallel()
 
@@ -183,7 +185,7 @@ func TestDBSyncToStatus(t *testing.T) {
 			name: "converts full sync status with all fields",
 			dbSync: sqlc.RegistrySync{
 				ID:                    uuid.New(),
-				SourceID:              uuid.New(),
+				SourceID:              ptrOf(uuid.New()),
 				SyncStatus:            sqlc.SyncStatusCOMPLETED,
 				ErrorMsg:              &errorMsg,
 				StartedAt:             &attemptTime,
@@ -208,7 +210,7 @@ func TestDBSyncToStatus(t *testing.T) {
 			name: "converts sync status with nil optional fields",
 			dbSync: sqlc.RegistrySync{
 				ID:                    uuid.New(),
-				SourceID:              uuid.New(),
+				SourceID:              ptrOf(uuid.New()),
 				SyncStatus:            sqlc.SyncStatusFAILED,
 				ErrorMsg:              nil,
 				StartedAt:             nil,
@@ -229,7 +231,7 @@ func TestDBSyncToStatus(t *testing.T) {
 			name: "converts IN_PROGRESS status",
 			dbSync: sqlc.RegistrySync{
 				ID:           uuid.New(),
-				SourceID:     uuid.New(),
+				SourceID:     ptrOf(uuid.New()),
 				SyncStatus:   sqlc.SyncStatusINPROGRESS,
 				ErrorMsg:     nil,
 				StartedAt:    &syncTime,
@@ -249,7 +251,7 @@ func TestDBSyncToStatus(t *testing.T) {
 			name: "handles empty string hash values",
 			dbSync: sqlc.RegistrySync{
 				ID:                    uuid.New(),
-				SourceID:              uuid.New(),
+				SourceID:              ptrOf(uuid.New()),
 				SyncStatus:            sqlc.SyncStatusCOMPLETED,
 				LastSyncHash:          &[]string{""}[0],
 				LastAppliedFilterHash: &[]string{""}[0],
@@ -314,7 +316,7 @@ func TestDBSyncRowToStatus(t *testing.T) {
 			row: sqlc.ListSourceSyncsRow{
 				Name:                  "registry1",
 				ID:                    uuid.New(),
-				SourceID:              uuid.New(),
+				SourceID:              ptrOf(uuid.New()),
 				SyncStatus:            sqlc.SyncStatusINPROGRESS,
 				ErrorMsg:              &errorMsg,
 				StartedAt:             &attemptTime,
@@ -340,7 +342,7 @@ func TestDBSyncRowToStatus(t *testing.T) {
 			row: sqlc.ListSourceSyncsRow{
 				Name:                  "registry2",
 				ID:                    uuid.New(),
-				SourceID:              uuid.New(),
+				SourceID:              ptrOf(uuid.New()),
 				SyncStatus:            sqlc.SyncStatusCOMPLETED,
 				ErrorMsg:              nil,
 				StartedAt:             nil,
@@ -362,7 +364,7 @@ func TestDBSyncRowToStatus(t *testing.T) {
 			row: sqlc.ListSourceSyncsRow{
 				Name:         "registry3",
 				ID:           uuid.New(),
-				SourceID:     uuid.New(),
+				SourceID:     ptrOf(uuid.New()),
 				SyncStatus:   sqlc.SyncStatusFAILED,
 				ErrorMsg:     &errorMsg,
 				StartedAt:    &syncTime,
@@ -382,7 +384,7 @@ func TestDBSyncRowToStatus(t *testing.T) {
 			row: sqlc.ListSourceSyncsRow{
 				Name:                  "registry4",
 				ID:                    uuid.New(),
-				SourceID:              uuid.New(),
+				SourceID:              ptrOf(uuid.New()),
 				SyncStatus:            sqlc.SyncStatusCOMPLETED,
 				LastSyncHash:          &hash,
 				LastAppliedFilterHash: nil,
@@ -485,7 +487,7 @@ func TestDBSyncToStatus_PreservesAllFields(t *testing.T) {
 
 	dbSync := sqlc.RegistrySync{
 		ID:                    id,
-		SourceID:              regID,
+		SourceID:              &regID,
 		SyncStatus:            sqlc.SyncStatusCOMPLETED,
 		ErrorMsg:              &errorMsg,
 		StartedAt:             &attemptTime,
@@ -526,7 +528,7 @@ func TestDBSyncRowToStatus_PreservesAllFields(t *testing.T) {
 	row := sqlc.ListSourceSyncsRow{
 		Name:                  "test-registry",
 		ID:                    id,
-		SourceID:              regID,
+		SourceID:              &regID,
 		SyncStatus:            sqlc.SyncStatusFAILED,
 		ErrorMsg:              &errorMsg,
 		StartedAt:             &attemptTime,

@@ -462,9 +462,9 @@ SELECT src.source_type AS registry_type,
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
-  LEFT JOIN registry r ON r.name = $1::text
-  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
- WHERE ($1::text IS NULL OR rs.registry_id IS NOT NULL)
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id
+                               AND rs.registry_id = $1::uuid
+ WHERE ($1::uuid IS NULL OR rs.source_id IS NOT NULL)
    AND ($2::text IS NULL OR s.namespace = $2::text)
    AND ($3::text IS NULL OR e.name = $3::text)
    AND ($4::text IS NULL OR (
@@ -475,14 +475,14 @@ SELECT src.source_type AS registry_type,
    AND ($5::timestamp with time zone IS NULL OR v.updated_at > $5::timestamp with time zone)
    AND (
        $6::text IS NULL
-       OR (e.name, v.version) > ($6::text, $7::text)
+       OR (v.name, v.version) > ($6::text, $7::text)
    )
- ORDER BY e.name ASC, v.version ASC, rs.position ASC
+ ORDER BY v.name ASC, v.version ASC, rs.position ASC
  LIMIT $8::bigint
 `
 
 type ListSkillsParams struct {
-	RegistryName  *string    `json:"registry_name"`
+	RegistryID    *uuid.UUID `json:"registry_id"`
 	Namespace     *string    `json:"namespace"`
 	Name          *string    `json:"name"`
 	Search        *string    `json:"search"`
@@ -521,7 +521,7 @@ type ListSkillsRow struct {
 // Returns position from registry_source for source priority ordering.
 func (q *Queries) ListSkills(ctx context.Context, arg ListSkillsParams) ([]ListSkillsRow, error) {
 	rows, err := q.db.Query(ctx, listSkills,
-		arg.RegistryName,
+		arg.RegistryID,
 		arg.Namespace,
 		arg.Name,
 		arg.Search,
