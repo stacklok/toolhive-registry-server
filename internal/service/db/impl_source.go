@@ -605,6 +605,13 @@ func (s *dbService) ListSourceEntries(ctx context.Context, sourceName string) ([
 		return nil, fmt.Errorf("failed to get source: %w", err)
 	}
 
+	// Validate caller's JWT covers the source's claims (hide existence on failure)
+	if err := validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), source.Claims); err != nil {
+		err = fmt.Errorf("%w: %s", service.ErrSourceNotFound, sourceName)
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
 	// Query all entries with versions for this source
 	rows, err := querier.ListEntriesBySource(ctx, source.ID)
 	if err != nil {

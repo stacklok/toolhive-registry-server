@@ -417,6 +417,13 @@ func (s *dbService) ListRegistryEntries(ctx context.Context, registryName string
 		return nil, fmt.Errorf("failed to get registry: %w", err)
 	}
 
+	// Validate caller's JWT covers the registry's claims (hide existence on failure)
+	if err := validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), registry.Claims); err != nil {
+		err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
 	// Query all entries across sources linked to this registry
 	rows, err := querier.ListEntriesByRegistry(ctx, registry.ID)
 	if err != nil {
