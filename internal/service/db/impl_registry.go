@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/otel"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -46,8 +47,17 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 		return nil, fmt.Errorf("failed to list registries: %w", err)
 	}
 
+	callerClaims := claimsFromCtx(ctx)
 	result := make([]service.RegistryInfo, 0, len(registries))
 	for _, reg := range registries {
+		// In authenticated mode, only return registries whose claims the caller covers
+		regClaims := db.DeserializeClaims(reg.Claims)
+		if callerClaims != nil {
+			if err := validateClaimsSubset(ctx, callerClaims, regClaims); err != nil {
+				continue
+			}
+		}
+
 		sources, err := querier.ListRegistrySources(ctx, reg.ID)
 		if err != nil {
 			otel.RecordError(span, err)
@@ -100,6 +110,12 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 		}
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to get registry: %w", err)
+	}
+
+	// Validate caller's JWT covers the registry's claims (hide existence on failure)
+	if err := validateClaimsSubset(ctx, claimsFromCtx(ctx), db.DeserializeClaims(reg.Claims)); err != nil {
+		otel.RecordError(span, err)
+		return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
 	}
 
 	sources, err := querier.ListRegistrySources(ctx, reg.ID)
@@ -162,8 +178,15 @@ func (s *dbService) CreateRegistry(
 		return nil, fmt.Errorf("failed to check registry existence: %w", err)
 	}
 
-	// Resolve source names to IDs
-	sourceIDs, err := resolveSourceIDs(ctx, querier, req.Sources)
+	// Validate registry claims are a subset of the caller's JWT claims
+	callerClaims := claimsFromCtx(ctx)
+	if err := validateClaimsSubset(ctx, callerClaims, req.Claims); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
+	// Resolve source names to IDs, validating caller covers each source's claims
+	sourceIDs, err := resolveSourceIDsWithGate(ctx, querier, req.Sources, callerClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -173,6 +196,7 @@ func (s *dbService) CreateRegistry(
 	now := time.Now()
 	inserted, err := querier.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
 		Name:         name,
+		Claims:       db.SerializeClaims(req.Claims),
 		CreationType: sqlc.CreationTypeAPI,
 		CreatedAt:    &now,
 		UpdatedAt:    &now,
@@ -245,8 +269,19 @@ func (s *dbService) UpdateRegistry(
 		return nil, err
 	}
 
-	// Replace source links: resolve, unlink old, link new
-	if err := replaceRegistrySources(ctx, querier, existing.ID, req.Sources); err != nil {
+	// Validate caller's JWT covers both the existing and new registry claims
+	callerClaims := claimsFromCtx(ctx)
+	if err := validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+	if err := validateClaimsSubset(ctx, callerClaims, req.Claims); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
+	// Replace source links: resolve with claim gate, unlink old, link new
+	if err := replaceRegistrySourcesWithGate(ctx, querier, existing.ID, req.Sources, callerClaims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -257,6 +292,7 @@ func (s *dbService) UpdateRegistry(
 	now := time.Now()
 	upserted, err := querier.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
 		Name:         name,
+		Claims:       db.SerializeClaims(req.Claims),
 		CreationType: sqlc.CreationTypeAPI,
 		CreatedAt:    existing.CreatedAt,
 		UpdatedAt:    &now,
@@ -309,7 +345,14 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 	querier := sqlc.New(tx)
 
 	// Look up existing API-created registry (returns error for not-found or CONFIG type)
-	if _, err := getExistingAPIRegistry(ctx, querier, name); err != nil {
+	existing, err := getExistingAPIRegistry(ctx, querier, name)
+	if err != nil {
+		otel.RecordError(span, err)
+		return err
+	}
+
+	// Validate caller's JWT covers the registry's claims
+	if err := validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), existing.Claims); err != nil {
 		otel.RecordError(span, err)
 		return err
 	}
@@ -423,11 +466,13 @@ func getExistingAPIRegistry(
 	return existing, nil
 }
 
-// replaceRegistrySources resolves source names, unlinks all current sources, and links the new set.
-func replaceRegistrySources(
-	ctx context.Context, querier *sqlc.Queries, registryID uuid.UUID, sourceNames []string,
+// replaceRegistrySourcesWithGate is like replaceRegistrySources but validates
+// the caller's claims cover each source's claims.
+func replaceRegistrySourcesWithGate(
+	ctx context.Context, querier *sqlc.Queries, registryID uuid.UUID,
+	sourceNames []string, callerClaims map[string]any,
 ) error {
-	sourceIDs, err := resolveSourceIDs(ctx, querier, sourceNames)
+	sourceIDs, err := resolveSourceIDsWithGate(ctx, querier, sourceNames, callerClaims)
 	if err != nil {
 		return err
 	}
@@ -448,6 +493,7 @@ func replaceRegistrySources(
 func newRegistryInfo(reg sqlc.Registry, sourceNames []string) *service.RegistryInfo {
 	info := &service.RegistryInfo{
 		Name:         reg.Name,
+		Claims:       db.DeserializeClaims(reg.Claims),
 		CreationType: service.CreationType(reg.CreationType),
 		Sources:      sourceNames,
 	}
@@ -469,8 +515,11 @@ func registryToInfo(reg sqlc.Registry, sources []sqlc.ListRegistrySourcesRow) *s
 	return newRegistryInfo(reg, sourceNames)
 }
 
-// resolveSourceIDs resolves an ordered list of source names into their corresponding UUIDs.
-func resolveSourceIDs(ctx context.Context, querier *sqlc.Queries, names []string) ([]uuid.UUID, error) {
+// resolveSourceIDsWithGate resolves source names to UUIDs and validates that
+// the caller's claims cover each source's claims.
+func resolveSourceIDsWithGate(
+	ctx context.Context, querier *sqlc.Queries, names []string, callerClaims map[string]any,
+) ([]uuid.UUID, error) {
 	ids := make([]uuid.UUID, 0, len(names))
 	for _, name := range names {
 		src, err := querier.GetSourceByName(ctx, name)
@@ -479,6 +528,9 @@ func resolveSourceIDs(ctx context.Context, querier *sqlc.Queries, names []string
 				return nil, fmt.Errorf("%w: %s", service.ErrSourceNotFound, name)
 			}
 			return nil, fmt.Errorf("failed to resolve source %s: %w", name, err)
+		}
+		if err := validateClaimsSubsetBytes(ctx, callerClaims, src.Claims); err != nil {
+			return nil, fmt.Errorf("%w: cannot reference source %s", err, name)
 		}
 		ids = append(ids, src.ID)
 	}

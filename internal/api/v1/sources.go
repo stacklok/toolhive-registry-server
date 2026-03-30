@@ -170,6 +170,8 @@ func (routes *Routes) listSourceEntries(w http.ResponseWriter, r *http.Request) 
 // writeSourceError maps service-layer source errors to HTTP responses.
 func writeSourceError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, service.ErrClaimsInsufficient):
+		common.WriteErrorResponse(w, err.Error(), http.StatusForbidden)
 	case errors.Is(err, service.ErrSourceNotFound):
 		common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
 	case errors.Is(err, service.ErrConfigSource):
