@@ -14,7 +14,7 @@ import (
 const createTempEntryVersionTable = `-- name: CreateTempEntryVersionTable :exec
 
 CREATE TEMP TABLE temp_entry_version ON COMMIT DROP AS
-SELECT id, entry_id, version, title, description, created_at, updated_at FROM entry_version
+SELECT id, entry_id, version, title, description, created_at, updated_at, name FROM entry_version
   WITH NO DATA
 `
 
@@ -134,10 +134,11 @@ func (q *Queries) DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UU
 
 const upsertEntryVersionsFromTemp = `-- name: UpsertEntryVersionsFromTemp :many
 INSERT INTO entry_version (
-    id, entry_id, version, title, description, created_at, updated_at
+    id, entry_id, name, version, title, description, created_at, updated_at
 )
 SELECT id,
        entry_id,
+       name,
        version,
        title,
        description,
@@ -146,6 +147,7 @@ SELECT id,
   FROM temp_entry_version
     ON CONFLICT (entry_id, version)
     DO UPDATE SET
+      name = EXCLUDED.name,
       title = EXCLUDED.title,
       description = EXCLUDED.description,
       updated_at = EXCLUDED.updated_at

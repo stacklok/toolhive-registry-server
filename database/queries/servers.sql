@@ -29,9 +29,9 @@ SELECT src.source_type as registry_type,
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
-  LEFT JOIN registry r ON r.name = sqlc.narg(registry_name)::text
-  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
- WHERE (sqlc.narg(registry_name)::text IS NULL OR rs.registry_id IS NOT NULL)
+  LEFT JOIN registry_source rs ON rs.source_id = e.source_id
+                               AND rs.registry_id = sqlc.narg(registry_id)::uuid
+ WHERE (sqlc.narg(registry_id)::uuid IS NULL OR rs.source_id IS NOT NULL)
    AND (sqlc.narg(name)::text IS NULL OR e.name = sqlc.narg(name)::text)
    AND (sqlc.narg(search)::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
@@ -44,14 +44,14 @@ SELECT src.source_type as registry_type,
    -- This ensures deterministic pagination even when timestamps are identical
    AND (
        sqlc.narg(cursor_name)::text IS NULL
-       OR (e.name, v.version) > (sqlc.narg(cursor_name)::text, sqlc.narg(cursor_version)::text)
+       OR (v.name, v.version) > (sqlc.narg(cursor_name)::text, sqlc.narg(cursor_version)::text)
    )
    AND (
        sqlc.narg(version)::text IS NULL OR
        v.version = sqlc.narg(version)::text OR
        (sqlc.narg(version)::text = 'latest' AND l.latest_version_id = v.id)
    )
- ORDER BY e.name ASC, v.version ASC, rs.position ASC
+ ORDER BY v.name ASC, v.version ASC, rs.position ASC
  LIMIT sqlc.arg(size)::bigint;
 
 -- name: GetServerVersion :many

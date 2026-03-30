@@ -36,10 +36,11 @@ SELECT * FROM entry_version
 
 -- name: UpsertEntryVersionsFromTemp :many
 INSERT INTO entry_version (
-    id, entry_id, version, title, description, created_at, updated_at
+    id, entry_id, name, version, title, description, created_at, updated_at
 )
 SELECT id,
        entry_id,
+       name,
        version,
        title,
        description,
@@ -48,6 +49,7 @@ SELECT id,
   FROM temp_entry_version
     ON CONFLICT (entry_id, version)
     DO UPDATE SET
+      name = EXCLUDED.name,
       title = EXCLUDED.title,
       description = EXCLUDED.description,
       updated_at = EXCLUDED.updated_at

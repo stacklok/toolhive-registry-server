@@ -125,6 +125,7 @@ func (q *Queries) GetRegistryEntryByName(ctx context.Context, arg GetRegistryEnt
 const insertEntryVersion = `-- name: InsertEntryVersion :one
 INSERT INTO entry_version (
     entry_id,
+    name,
     version,
     title,
     description,
@@ -136,12 +137,14 @@ INSERT INTO entry_version (
     $3,
     $4,
     $5,
-    $6
+    $6,
+    $7
 ) RETURNING id
 `
 
 type InsertEntryVersionParams struct {
 	EntryID     uuid.UUID  `json:"entry_id"`
+	Name        string     `json:"name"`
 	Version     string     `json:"version"`
 	Title       *string    `json:"title"`
 	Description *string    `json:"description"`
@@ -152,6 +155,7 @@ type InsertEntryVersionParams struct {
 func (q *Queries) InsertEntryVersion(ctx context.Context, arg InsertEntryVersionParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertEntryVersion,
 		arg.EntryID,
+		arg.Name,
 		arg.Version,
 		arg.Title,
 		arg.Description,

@@ -31,6 +31,7 @@ WHERE source_id = sqlc.arg(source_id)
 -- name: InsertEntryVersion :one
 INSERT INTO entry_version (
     entry_id,
+    name,
     version,
     title,
     description,
@@ -38,6 +39,7 @@ INSERT INTO entry_version (
     updated_at
 ) VALUES (
     sqlc.arg(entry_id),
+    sqlc.arg(name),
     sqlc.arg(version),
     sqlc.arg(title),
     sqlc.arg(description),

@@ -707,6 +707,7 @@ func sqlCopyEntryVersions(
 		versionRows = append(versionRows, []any{
 			versionID,
 			entryID,
+			server.Name,
 			server.Version,
 			nilIfEmpty(server.Title),
 			nilIfEmpty(server.Description),
@@ -718,7 +719,7 @@ func sqlCopyEntryVersions(
 	copyCount, err := tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"temp_entry_version"},
-		[]string{"id", "entry_id", "version", "title", "description", "created_at", "updated_at"},
+		[]string{"id", "entry_id", "name", "version", "title", "description", "created_at", "updated_at"},
 		pgx.CopyFromRows(versionRows),
 	)
 	if err != nil {

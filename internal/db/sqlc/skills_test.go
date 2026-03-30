@@ -41,6 +41,7 @@ func createSkillEntry(
 		context.Background(),
 		InsertEntryVersionParams{
 			EntryID:     entryID,
+			Name:        name,
 			Version:     version,
 			Title:       title,
 			Description: description,
@@ -73,6 +74,13 @@ func insertSkill(
 	)
 	require.NoError(t, err)
 	return skillEntryID
+}
+
+//nolint:thelper // We want to see these lines in the test output
+func getRegistryID(t *testing.T, queries *Queries, name string) uuid.UUID {
+	reg, err := queries.GetRegistryByName(context.Background(), name)
+	require.NoError(t, err)
+	return reg.ID
 }
 
 func TestInsertSkillVersion(t *testing.T) {
@@ -1040,24 +1048,24 @@ func TestListSkills(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
-				regName := "test-registry"
+				regID := getRegistryID(t, queries, "test-registry")
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						RegistryName: &regName,
-						Size:         10,
+						RegistryID: &regID,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
 				require.Len(t, skills, 1)
 
-				// Wrong registry name returns empty
-				wrongName := "nonexistent-registry"
+				// Wrong registry ID returns empty
+				wrongID := uuid.New()
 				skills, err = queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						RegistryName: &wrongName,
-						Size:         10,
+						RegistryID: &wrongID,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)

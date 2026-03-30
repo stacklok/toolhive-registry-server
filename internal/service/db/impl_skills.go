@@ -49,7 +49,8 @@ func (s *dbService) ListSkills(
 		options.Limit = service.MaxPageSize
 	}
 
-	if err := checkRegistryExists(ctx, s.pool, options.RegistryName); err != nil {
+	registryID, err := lookupRegistryID(ctx, s.pool, options.RegistryName)
+	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -57,8 +58,8 @@ func (s *dbService) ListSkills(
 	querier := sqlc.New(s.pool)
 
 	params := sqlc.ListSkillsParams{
-		RegistryName: &options.RegistryName,
-		Size:         int64(options.Limit + 1),
+		RegistryID: &registryID,
+		Size:       int64(options.Limit + 1),
 	}
 	if options.Namespace != "" {
 		params.Namespace = &options.Namespace
@@ -396,6 +397,7 @@ func (s *dbService) executePublishSkillTransaction(
 	// Insert the entry version (one per name+version)
 	versionParams := sqlc.InsertEntryVersionParams{
 		EntryID:   entryID,
+		Name:      skill.Name,
 		Version:   skill.Version,
 		CreatedAt: &now,
 		UpdatedAt: &now,

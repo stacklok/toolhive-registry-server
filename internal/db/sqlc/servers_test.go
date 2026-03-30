@@ -75,6 +75,7 @@ func createVersion(
 	t *testing.T,
 	queries *Queries,
 	entryID uuid.UUID,
+	name string,
 	version string,
 	description, title *string,
 	createdAt *time.Time,
@@ -83,6 +84,7 @@ func createVersion(
 		context.Background(),
 		InsertEntryVersionParams{
 			EntryID:     entryID,
+			Name:        name,
 			Version:     version,
 			Title:       title,
 			Description: description,
@@ -128,7 +130,7 @@ func TestInsertServerVersion(t *testing.T) {
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID, _ uuid.UUID) {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 			},
 		},
@@ -147,6 +149,7 @@ func TestInsertServerVersion(t *testing.T) {
 					t,
 					queries,
 					entryID,
+					"test-server",
 					"1.0.0",
 					ptr.String("Test description"),
 					ptr.String("Test Title"),
@@ -174,7 +177,7 @@ func TestInsertServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				return entryID
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -185,6 +188,7 @@ func TestInsertServerVersion(t *testing.T) {
 					context.Background(),
 					InsertEntryVersionParams{
 						EntryID:   entryID,
+						Name:      "test-server",
 						Version:   "1.0.0",
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
@@ -304,7 +308,7 @@ func TestListServersByName(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) string {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 				//nolint:goconst
 				return "test-server"
@@ -332,7 +336,7 @@ func TestListServersByName(t *testing.T) {
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					versionID := createVersion(t, queries, entryID, version, nil, nil, &createdAt)
+					versionID := createVersion(t, queries, entryID, "test-server", version, nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 				}
 				return "test-server"
@@ -359,7 +363,7 @@ func TestListServersByName(t *testing.T) {
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					versionID := createVersion(t, queries, entryID, version, nil, nil, &createdAt)
+					versionID := createVersion(t, queries, entryID, "test-server", version, nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 				}
 				return "test-server"
@@ -406,7 +410,7 @@ func TestListServersByName(t *testing.T) {
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					versionID := createVersion(t, queries, entryID, version, nil, nil, &createdAt)
+					versionID := createVersion(t, queries, entryID, "test-server", version, nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 				}
 				return "test-server"
@@ -475,7 +479,7 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -501,7 +505,7 @@ func TestListServers(t *testing.T) {
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					versionID := createVersion(t, queries, entryID, version, nil, nil, &createdAt)
+					versionID := createVersion(t, queries, entryID, "test-server", version, nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 				}
 			},
@@ -525,7 +529,7 @@ func TestListServers(t *testing.T) {
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					versionID := createVersion(t, queries, entryID, version, nil, nil, &createdAt)
+					versionID := createVersion(t, queries, entryID, "test-server", version, nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 				}
 			},
@@ -570,7 +574,7 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 
 				_, err := queries.UpsertLatestServerVersion(
@@ -604,7 +608,7 @@ func TestListServers(t *testing.T) {
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					versionID := createVersion(t, queries, entryID, version, nil, nil, &createdAt)
+					versionID := createVersion(t, queries, entryID, "test-server", version, nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 				}
 			},
@@ -628,7 +632,7 @@ func TestListServers(t *testing.T) {
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					versionID := createVersion(t, queries, entryID, version, nil, nil, &createdAt)
+					versionID := createVersion(t, queries, entryID, "test-server", version, nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 				}
 			},
@@ -658,7 +662,7 @@ func TestListServers(t *testing.T) {
 				var versionIDs []uuid.UUID
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					versionID := createVersion(t, queries, entryID, version, nil, nil, &createdAt)
+					versionID := createVersion(t, queries, entryID, "test-server", version, nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 					versionIDs = append(versionIDs, versionID)
 				}
@@ -698,7 +702,7 @@ func TestListServers(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -723,7 +727,7 @@ func TestListServers(t *testing.T) {
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					versionID := createVersion(t, queries, entryID, version, nil, nil, &createdAt)
+					versionID := createVersion(t, queries, entryID, "test-server", version, nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 				}
 			},
@@ -749,7 +753,7 @@ func TestListServers(t *testing.T) {
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
 				for _, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					versionID := createVersion(t, queries, entryID, version, nil, nil, &createdAt)
+					versionID := createVersion(t, queries, entryID, "test-server", version, nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 				}
 			},
@@ -804,7 +808,7 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				serverID := createServer(t, queries, versionID)
 				return []uuid.UUID{serverID}
 			},
@@ -833,7 +837,7 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
 				for _, version := range []string{"1.0.0", "2.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
-					versionID := createVersion(t, queries, entryID, version, nil, nil, &createdAt)
+					versionID := createVersion(t, queries, entryID, "test-server", version, nil, nil, &createdAt)
 					serverID := createServer(t, queries, versionID)
 					serverIDs = append(serverIDs, serverID)
 				}
@@ -946,7 +950,7 @@ func TestInsertServerIcon(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				serverID := createServer(t, queries, versionID)
 				return serverID
 			},
@@ -970,7 +974,7 @@ func TestInsertServerIcon(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				serverID := createServer(t, queries, versionID)
 				return serverID
 			},
@@ -994,7 +998,7 @@ func TestInsertServerIcon(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 
 				// Insert initial icon
@@ -1080,7 +1084,7 @@ func TestInsertServerPackage(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 				return versionID
 			},
@@ -1106,7 +1110,7 @@ func TestInsertServerPackage(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 				return versionID
 			},
@@ -1190,7 +1194,7 @@ func TestInsertServerRemote(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 				return versionID
 			},
@@ -1213,7 +1217,7 @@ func TestInsertServerRemote(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 				return versionID
 			},
@@ -1237,7 +1241,7 @@ func TestInsertServerRemote(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 
 				// Insert initial remote
@@ -1323,7 +1327,7 @@ func TestListServerPackages(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 				return []uuid.UUID{versionID}
 			},
@@ -1343,7 +1347,7 @@ func TestListServerPackages(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 
 				err := queries.InsertServerPackage(
@@ -1384,7 +1388,7 @@ func TestListServerPackages(t *testing.T) {
 				for i, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
 					createdAt = createdAt.Add(1 * time.Second)
 					eID := createEntry(t, queries, regID, fmt.Sprintf("test-server-%d", i+1), &createdAt)
-					versionID := createVersion(t, queries, eID, version, nil, nil, &createdAt)
+					versionID := createVersion(t, queries, eID, fmt.Sprintf("test-server-%d", i+1), version, nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 					entryIDs = append(entryIDs, versionID)
 
@@ -1427,7 +1431,7 @@ func TestListServerPackages(t *testing.T) {
 				for i, name := range []string{"server-1", "server-2"} {
 					createdAt = createdAt.Add(1 * time.Second)
 					eID := createEntry(t, queries, regID, name, &createdAt)
-					versionID := createVersion(t, queries, eID, "1.0.0", nil, nil, &createdAt)
+					versionID := createVersion(t, queries, eID, name, "1.0.0", nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 					entryIDs = append(entryIDs, versionID)
 
@@ -1518,7 +1522,7 @@ func TestListServerRemotes(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 				return []uuid.UUID{versionID}
 			},
@@ -1538,7 +1542,7 @@ func TestListServerRemotes(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 
 				err := queries.InsertServerRemote(
@@ -1572,7 +1576,7 @@ func TestListServerRemotes(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) []uuid.UUID {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 
 				remotes := []struct {
@@ -1625,7 +1629,7 @@ func TestListServerRemotes(t *testing.T) {
 				for i, name := range []string{"server-1", "server-2"} {
 					createdAt = createdAt.Add(1 * time.Second)
 					eID := createEntry(t, queries, regID, name, &createdAt)
-					versionID := createVersion(t, queries, eID, "1.0.0", nil, nil, &createdAt)
+					versionID := createVersion(t, queries, eID, name, "1.0.0", nil, nil, &createdAt)
 					createServer(t, queries, versionID)
 					entryIDs = append(entryIDs, versionID)
 
@@ -1713,7 +1717,7 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 
 				//nolint:goconst
@@ -1745,7 +1749,7 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", ptr.String("Test description"), ptr.String("Test Title"), &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", ptr.String("Test description"), ptr.String("Test Title"), &createdAt)
 				serverID, err := queries.InsertServerVersion(
 					context.Background(),
 					InsertServerVersionParams{
@@ -1802,7 +1806,7 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 
 				_, err := queries.UpsertLatestServerVersion(
@@ -1842,7 +1846,7 @@ func TestGetServerVersion(t *testing.T) {
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
 
 				// Create first version and mark it as latest
-				versionID1 := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID1 := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID1)
 
 				_, err := queries.UpsertLatestServerVersion(
@@ -1858,7 +1862,7 @@ func TestGetServerVersion(t *testing.T) {
 
 				// Create second version (not marked as latest)
 				createdAt2 := createdAt.Add(1 * time.Second)
-				versionID2 := createVersion(t, queries, entryID, "2.0.0", nil, nil, &createdAt2)
+				versionID2 := createVersion(t, queries, entryID, "test-server", "2.0.0", nil, nil, &createdAt2)
 				createServer(t, queries, versionID2)
 				return "test-server", "2.0.0"
 			},
@@ -1904,7 +1908,7 @@ func TestGetServerVersion(t *testing.T) {
 			setupFunc: func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string) {
 				createdAt := time.Now().UTC()
 				entryID := createEntry(t, queries, regID, "test-server", &createdAt)
-				versionID := createVersion(t, queries, entryID, "1.0.0", nil, nil, &createdAt)
+				versionID := createVersion(t, queries, entryID, "test-server", "1.0.0", nil, nil, &createdAt)
 				createServer(t, queries, versionID)
 				return "test-server", "2.0.0"
 			},
