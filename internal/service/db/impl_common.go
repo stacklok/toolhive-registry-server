@@ -36,13 +36,6 @@ func lookupRegistryID(ctx context.Context, pool sqlc.DBTX, registryName string) 
 	return row.ID, nil
 }
 
-// checkRegistryExists validates that a registry with the given name exists.
-// Returns ErrRegistryNotFound if the registry does not exist.
-func checkRegistryExists(ctx context.Context, pool sqlc.DBTX, registryName string) error {
-	_, err := lookupRegistryID(ctx, pool, registryName)
-	return err
-}
-
 // upsertLatestFunc is a callback used by rePointLatestVersionIfNeeded to update
 // the latest-version pointer for a specific entry type (MCP server or skill).
 type upsertLatestFunc func(

@@ -58,7 +58,7 @@ func (s *dbService) ListSkills(
 	querier := sqlc.New(s.pool)
 
 	params := sqlc.ListSkillsParams{
-		RegistryID: &registryID,
+		RegistryID: registryID,
 		Size:       int64(options.Limit + 1),
 	}
 	if options.Namespace != "" {
@@ -162,8 +162,8 @@ func (s *dbService) GetSkillVersion(
 		}
 	}
 
-	if options.RegistryName == "" && options.SourceName == "" {
-		return nil, fmt.Errorf("registry name or source name is required")
+	if options.RegistryName == "" {
+		return nil, fmt.Errorf("registry name is required")
 	}
 	if options.Name == "" || options.Version == "" {
 		return nil, fmt.Errorf("name and version are required")
@@ -174,22 +174,20 @@ func (s *dbService) GetSkillVersion(
 
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	if options.RegistryName != "" {
-		if err := checkRegistryExists(ctx, s.pool, options.RegistryName); err != nil {
-			otel.RecordError(span, err)
-			return nil, err
-		}
+	registryID, err := lookupRegistryID(ctx, s.pool, options.RegistryName)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
 	}
 
 	querier := sqlc.New(s.pool)
 
 	params := sqlc.GetSkillVersionParams{
-		Name:      options.Name,
-		Version:   options.Version,
-		Namespace: &options.Namespace,
-	}
-	if options.RegistryName != "" {
-		params.RegistryName = &options.RegistryName
+		Name:       options.Name,
+		Version:    options.Version,
+		Namespace:  &options.Namespace,
+		RegistryID: registryID,
+		Size:       int64(service.MaxPageSize) + 1,
 	}
 	if options.SourceName != "" {
 		params.SourceName = &options.SourceName
@@ -320,12 +318,75 @@ func (s *dbService) PublishSkill(
 		return nil, err
 	}
 
-	return s.GetSkillVersion(ctx,
-		service.WithSourceName(sourceName),
-		service.WithName(skill.Name),
-		service.WithVersion(skill.Version),
-		service.WithNamespace(skill.Namespace),
-	)
+	result, err := s.fetchSkillVersionBySource(ctx, skill.Name, skill.Version, sourceName)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, fmt.Errorf("failed to fetch published skill: %w", err)
+	}
+	return result, nil
+}
+
+// fetchSkillVersionBySource retrieves a skill version using the source name directly,
+// bypassing registry filtering. Used by the publish fetch-back path.
+func (s *dbService) fetchSkillVersionBySource(
+	ctx context.Context,
+	name, version, sourceName string,
+) (*service.Skill, error) {
+	querier := sqlc.New(s.pool)
+	row, err := querier.GetSkillVersionBySourceName(ctx, sqlc.GetSkillVersionBySourceNameParams{
+		Name:       name,
+		Version:    version,
+		SourceName: sourceName,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, name, version)
+		}
+		return nil, err
+	}
+
+	ociPackages, err := querier.ListSkillOciPackages(ctx, []uuid.UUID{row.SkillVersionID})
+	if err != nil {
+		return nil, err
+	}
+	gitPackages, err := querier.ListSkillGitPackages(ctx, []uuid.UUID{row.SkillVersionID})
+	if err != nil {
+		return nil, err
+	}
+
+	packages := make([]service.SkillPackage, 0, len(ociPackages)+len(gitPackages))
+	for _, pkg := range ociPackages {
+		packages = append(packages, toServiceSkillOciPackage(pkg))
+	}
+	for _, pkg := range gitPackages {
+		packages = append(packages, toServiceSkillGitPackage(pkg))
+	}
+
+	result := service.GetSkillVersionRowToSkill(sqlc.GetSkillVersionRow{
+		RegistryType:   row.RegistryType,
+		ID:             row.ID,
+		Name:           row.Name,
+		Version:        row.Version,
+		IsLatest:       row.IsLatest,
+		CreatedAt:      row.CreatedAt,
+		UpdatedAt:      row.UpdatedAt,
+		Description:    row.Description,
+		Title:          row.Title,
+		SkillVersionID: row.SkillVersionID,
+		Namespace:      row.Namespace,
+		Status:         row.Status,
+		License:        row.License,
+		Compatibility:  row.Compatibility,
+		AllowedTools:   row.AllowedTools,
+		Repository:     row.Repository,
+		Icons:          row.Icons,
+		Metadata:       row.Metadata,
+		ExtensionMeta:  row.ExtensionMeta,
+		Claims:         row.Claims,
+		Position:       row.Position,
+	})
+	result.Packages = packages
+	return result, nil
 }
 
 // executePublishSkillTransaction executes the skill publish operation within a transaction.

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const deleteOrphanedSkills = `-- name: DeleteOrphanedSkills :exec
@@ -72,32 +73,42 @@ SELECT src.source_type AS registry_type,
        s.metadata,
        s.extension_meta,
        e.claims,
+       rs.source_id,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
        COALESCE(rs.position, 32767)::integer AS position
-  FROM skill s
-  JOIN entry_version v ON s.version_id = v.id
-  JOIN registry_entry e ON v.entry_id = e.id
+  FROM entry_version v
+  JOIN registry_entry e ON e.id = v.entry_id
+  JOIN registry_source rs ON rs.source_id = e.source_id
+                          AND rs.registry_id = $1::uuid
   JOIN source src ON e.source_id = src.id
+  JOIN skill s ON s.version_id = v.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
-  LEFT JOIN registry r ON r.name = $1::text
-  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
- WHERE e.name = $2
+ WHERE v.name = $2
    AND (v.version = $3::text
        OR ($3::text = 'latest' AND l.latest_version_id = v.id)
    )
-   AND ($1::text IS NULL OR rs.registry_id IS NOT NULL)
    AND ($4::text IS NULL OR src.name = $4::text)
    AND ($5::text IS NULL OR s.namespace = $5::text)
- ORDER BY rs.position ASC
+   AND (
+       $6::integer IS NULL
+       OR (rs.position > $6::integer
+           AND rs.source_id > $7::uuid
+       )
+   )
+ ORDER BY rs.position ASC, rs.source_id ASC
+ LIMIT $8::bigint
 `
 
 type GetSkillVersionParams struct {
-	RegistryName *string `json:"registry_name"`
-	Name         string  `json:"name"`
-	Version      string  `json:"version"`
-	SourceName   *string `json:"source_name"`
-	Namespace    *string `json:"namespace"`
+	RegistryID     uuid.UUID   `json:"registry_id"`
+	Name           string      `json:"name"`
+	Version        string      `json:"version"`
+	SourceName     *string     `json:"source_name"`
+	Namespace      *string     `json:"namespace"`
+	CursorPosition pgtype.Int4 `json:"cursor_position"`
+	CursorSourceID *uuid.UUID  `json:"cursor_source_id"`
+	Size           int64       `json:"size"`
 }
 
 type GetSkillVersionRow struct {
@@ -121,20 +132,25 @@ type GetSkillVersionRow struct {
 	Metadata       []byte      `json:"metadata"`
 	ExtensionMeta  []byte      `json:"extension_meta"`
 	Claims         []byte      `json:"claims"`
+	SourceID       uuid.UUID   `json:"source_id"`
 	Position       int32       `json:"position"`
 }
 
-// Despite the name, this query returns multiple rows. The careful reader will
-// note that there is no limit clause, which might seem a bug, but the actual
-// number of records is bounded by the number of sources that provide the same
-// name and version, which we currently don't expect to be more than a few.
+// Despite the name, this query returns multiple rows. The actual number of
+// records is bounded by the number of sources that provide the same name and
+// version, which we currently don't expect to be more than a few.
+// Cursor-based pagination using (position, source_id) compound cursor.
+// position is the sort key but may not be unique; source_id is the tiebreaker.
 func (q *Queries) GetSkillVersion(ctx context.Context, arg GetSkillVersionParams) ([]GetSkillVersionRow, error) {
 	rows, err := q.db.Query(ctx, getSkillVersion,
-		arg.RegistryName,
+		arg.RegistryID,
 		arg.Name,
 		arg.Version,
 		arg.SourceName,
 		arg.Namespace,
+		arg.CursorPosition,
+		arg.CursorSourceID,
+		arg.Size,
 	)
 	if err != nil {
 		return nil, err
@@ -164,6 +180,7 @@ func (q *Queries) GetSkillVersion(ctx context.Context, arg GetSkillVersionParams
 			&i.Metadata,
 			&i.ExtensionMeta,
 			&i.Claims,
+			&i.SourceID,
 			&i.Position,
 		); err != nil {
 			return nil, err
@@ -174,6 +191,99 @@ func (q *Queries) GetSkillVersion(ctx context.Context, arg GetSkillVersionParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const getSkillVersionBySourceName = `-- name: GetSkillVersionBySourceName :one
+SELECT src.source_type AS registry_type,
+       v.id,
+       e.name,
+       v.version,
+       (l.latest_version_id IS NOT NULL)::boolean AS is_latest,
+       v.created_at,
+       v.updated_at,
+       v.description,
+       v.title,
+       s.version_id AS skill_version_id,
+       s.namespace,
+       s.status,
+       s.license,
+       s.compatibility,
+       s.allowed_tools,
+       s.repository,
+       s.icons,
+       s.metadata,
+       s.extension_meta,
+       e.claims,
+       0::integer AS position
+  FROM skill s
+  JOIN entry_version v ON s.version_id = v.id
+  JOIN registry_entry e ON v.entry_id = e.id
+  JOIN source src ON e.source_id = src.id
+  LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
+ WHERE v.name = $1
+   AND v.version = $2
+   AND src.name = $3
+`
+
+type GetSkillVersionBySourceNameParams struct {
+	Name       string `json:"name"`
+	Version    string `json:"version"`
+	SourceName string `json:"source_name"`
+}
+
+type GetSkillVersionBySourceNameRow struct {
+	RegistryType   string      `json:"registry_type"`
+	ID             uuid.UUID   `json:"id"`
+	Name           string      `json:"name"`
+	Version        string      `json:"version"`
+	IsLatest       bool        `json:"is_latest"`
+	CreatedAt      *time.Time  `json:"created_at"`
+	UpdatedAt      *time.Time  `json:"updated_at"`
+	Description    *string     `json:"description"`
+	Title          *string     `json:"title"`
+	SkillVersionID uuid.UUID   `json:"skill_version_id"`
+	Namespace      string      `json:"namespace"`
+	Status         SkillStatus `json:"status"`
+	License        *string     `json:"license"`
+	Compatibility  *string     `json:"compatibility"`
+	AllowedTools   []string    `json:"allowed_tools"`
+	Repository     []byte      `json:"repository"`
+	Icons          []byte      `json:"icons"`
+	Metadata       []byte      `json:"metadata"`
+	ExtensionMeta  []byte      `json:"extension_meta"`
+	Claims         []byte      `json:"claims"`
+	Position       int32       `json:"position"`
+}
+
+// Source-scoped variant of GetSkillVersion used by the publish fetch-back path.
+// source_name and version are required; registry filtering is not applied.
+func (q *Queries) GetSkillVersionBySourceName(ctx context.Context, arg GetSkillVersionBySourceNameParams) (GetSkillVersionBySourceNameRow, error) {
+	row := q.db.QueryRow(ctx, getSkillVersionBySourceName, arg.Name, arg.Version, arg.SourceName)
+	var i GetSkillVersionBySourceNameRow
+	err := row.Scan(
+		&i.RegistryType,
+		&i.ID,
+		&i.Name,
+		&i.Version,
+		&i.IsLatest,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Description,
+		&i.Title,
+		&i.SkillVersionID,
+		&i.Namespace,
+		&i.Status,
+		&i.License,
+		&i.Compatibility,
+		&i.AllowedTools,
+		&i.Repository,
+		&i.Icons,
+		&i.Metadata,
+		&i.ExtensionMeta,
+		&i.Claims,
+		&i.Position,
+	)
+	return i, err
 }
 
 const insertSkillGitPackage = `-- name: InsertSkillGitPackage :exec
@@ -462,10 +572,9 @@ SELECT src.source_type AS registry_type,
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
-  LEFT JOIN registry_source rs ON rs.source_id = e.source_id
-                               AND rs.registry_id = $1::uuid
- WHERE ($1::uuid IS NULL OR rs.source_id IS NOT NULL)
-   AND ($2::text IS NULL OR s.namespace = $2::text)
+  JOIN registry_source rs ON rs.source_id = e.source_id
+                          AND rs.registry_id = $1::uuid
+ WHERE ($2::text IS NULL OR s.namespace = $2::text)
    AND ($3::text IS NULL OR e.name = $3::text)
    AND ($4::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || $4::text || '%')
@@ -482,7 +591,7 @@ SELECT src.source_type AS registry_type,
 `
 
 type ListSkillsParams struct {
-	RegistryID    *uuid.UUID `json:"registry_id"`
+	RegistryID    uuid.UUID  `json:"registry_id"`
 	Namespace     *string    `json:"namespace"`
 	Name          *string    `json:"name"`
 	Search        *string    `json:"search"`

@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS latest_entry_version_latest_version_id_idx;
+DROP INDEX IF EXISTS registry_source_registry_id_position_source_id_idx;

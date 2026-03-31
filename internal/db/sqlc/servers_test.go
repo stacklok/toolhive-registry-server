@@ -49,6 +49,13 @@ func setupRegistry(t *testing.T, queries *Queries) uuid.UUID {
 }
 
 //nolint:thelper // We want to see these lines in the test output
+func getServerRegistryID(t *testing.T, queries *Queries, name string) uuid.UUID {
+	reg, err := queries.GetRegistryByName(context.Background(), name)
+	require.NoError(t, err)
+	return reg.ID
+}
+
+//nolint:thelper // We want to see these lines in the test output
 func createEntry(
 	t *testing.T,
 	queries *Queries,
@@ -246,6 +253,7 @@ func TestInsertServerVersion(t *testing.T) {
 					context.Background(),
 					InsertEntryVersionParams{
 						EntryID:   invalidEntryID,
+						Name:      "test-server",
 						Version:   "1.0.0",
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
@@ -281,7 +289,7 @@ func TestListServersByName(t *testing.T) {
 	testCases := []struct {
 		name         string
 		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID) string
-		scenarioFunc func(t *testing.T, queries *Queries, serverName string)
+		scenarioFunc func(t *testing.T, queries *Queries, serverName string, registryID uuid.UUID)
 	}{
 		{
 			name: "no server versions",
@@ -290,12 +298,13 @@ func TestListServersByName(t *testing.T) {
 				return "non-existent-server"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverName string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName string, registryID uuid.UUID) {
 				versions, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Name: &serverName,
-						Size: 10,
+						RegistryID: registryID,
+						Name:       &serverName,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -314,12 +323,13 @@ func TestListServersByName(t *testing.T) {
 				return "test-server"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverName string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName string, registryID uuid.UUID) {
 				versions, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Name: &serverName,
-						Size: 10,
+						RegistryID: registryID,
+						Name:       &serverName,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -342,12 +352,13 @@ func TestListServersByName(t *testing.T) {
 				return "test-server"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverName string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName string, registryID uuid.UUID) {
 				versions, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Name: &serverName,
-						Size: 10,
+						RegistryID: registryID,
+						Name:       &serverName,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -369,13 +380,14 @@ func TestListServersByName(t *testing.T) {
 				return "test-server"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverName string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName string, registryID uuid.UUID) {
 				// Get all versions
 				allVersions, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Name: &serverName,
-						Size: 10,
+						RegistryID: registryID,
+						Name:       &serverName,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -390,6 +402,7 @@ func TestListServersByName(t *testing.T) {
 				nextVersions, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
+						RegistryID:    registryID,
 						Name:          &serverName,
 						CursorName:    &cursorName,
 						CursorVersion: &cursorVersion,
@@ -416,12 +429,13 @@ func TestListServersByName(t *testing.T) {
 				return "test-server"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverName string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName string, registryID uuid.UUID) {
 				versions, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Name: &serverName,
-						Size: 2,
+						RegistryID: registryID,
+						Name:       &serverName,
+						Size:       2,
 					},
 				)
 				require.NoError(t, err)
@@ -443,8 +457,9 @@ func TestListServersByName(t *testing.T) {
 			regID := setupRegistry(t, queries)
 			require.NotNil(t, regID)
 
+			registryID := getServerRegistryID(t, queries, "test-registry")
 			serverName := tc.setupFunc(t, queries, regID)
-			tc.scenarioFunc(t, queries, serverName)
+			tc.scenarioFunc(t, queries, serverName, registryID)
 		})
 	}
 }
@@ -455,18 +470,19 @@ func TestListServers(t *testing.T) {
 	testCases := []struct {
 		name         string
 		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID)
-		scenarioFunc func(t *testing.T, queries *Queries)
+		scenarioFunc func(t *testing.T, queries *Queries, registryID uuid.UUID)
 	}{
 		{
 			name: "no servers",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(_ *testing.T, _ *Queries, _ uuid.UUID) {},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, registryID uuid.UUID) {
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Size: 10,
+						RegistryID: registryID,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -483,11 +499,12 @@ func TestListServers(t *testing.T) {
 				createServer(t, queries, versionID)
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, registryID uuid.UUID) {
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Size: 10,
+						RegistryID: registryID,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -510,11 +527,12 @@ func TestListServers(t *testing.T) {
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, registryID uuid.UUID) {
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Size: 10,
+						RegistryID: registryID,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -534,12 +552,13 @@ func TestListServers(t *testing.T) {
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, registryID uuid.UUID) {
 				// First get all servers without cursor
 				allServers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Size: 10,
+						RegistryID: registryID,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -556,6 +575,7 @@ func TestListServers(t *testing.T) {
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
+						RegistryID:    registryID,
 						CursorName:    &cursorName,
 						CursorVersion: &cursorVersion,
 						Size:          10,
@@ -589,11 +609,12 @@ func TestListServers(t *testing.T) {
 				require.NoError(t, err)
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, registryID uuid.UUID) {
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Size: 10,
+						RegistryID: registryID,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -613,11 +634,12 @@ func TestListServers(t *testing.T) {
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, registryID uuid.UUID) {
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Size: 1,
+						RegistryID: registryID,
+						Size:       1,
 					},
 				)
 				require.NoError(t, err)
@@ -637,14 +659,15 @@ func TestListServers(t *testing.T) {
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, registryID uuid.UUID) {
 				//nolint:goconst
 				version := "2.0.0"
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Version: &version,
-						Size:    10,
+						RegistryID: registryID,
+						Version:    &version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -680,13 +703,14 @@ func TestListServers(t *testing.T) {
 				require.NoError(t, err)
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, registryID uuid.UUID) {
 				version := latestVersion
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Version: &version,
-						Size:    10,
+						RegistryID: registryID,
+						Version:    &version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -706,13 +730,14 @@ func TestListServers(t *testing.T) {
 				createServer(t, queries, versionID)
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, registryID uuid.UUID) {
 				version := "9.9.9"
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Version: &version,
-						Size:    10,
+						RegistryID: registryID,
+						Version:    &version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -732,13 +757,14 @@ func TestListServers(t *testing.T) {
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, registryID uuid.UUID) {
 				version := latestVersion
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Version: &version,
-						Size:    10,
+						RegistryID: registryID,
+						Version:    &version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -758,12 +784,13 @@ func TestListServers(t *testing.T) {
 				}
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
+			scenarioFunc: func(t *testing.T, queries *Queries, registryID uuid.UUID) {
 				servers, err := queries.ListServers(
 					context.Background(),
 					ListServersParams{
-						Version: nil,
-						Size:    10,
+						RegistryID: registryID,
+						Version:    nil,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -788,8 +815,9 @@ func TestListServers(t *testing.T) {
 			regID := setupRegistry(t, queries)
 			require.NotNil(t, regID)
 
+			registryID := getServerRegistryID(t, queries, "test-registry")
 			tc.setupFunc(t, queries, regID)
-			tc.scenarioFunc(t, queries)
+			tc.scenarioFunc(t, queries, registryID)
 		})
 	}
 }
@@ -1709,7 +1737,7 @@ func TestGetServerVersion(t *testing.T) {
 	testCases := []struct {
 		name         string
 		setupFunc    func(t *testing.T, queries *Queries, regID uuid.UUID) (string, string)
-		scenarioFunc func(t *testing.T, queries *Queries, serverName, version string)
+		scenarioFunc func(t *testing.T, queries *Queries, serverName, version string, registryID uuid.UUID)
 	}{
 		{
 			name: "get server version with minimal fields",
@@ -1724,12 +1752,14 @@ func TestGetServerVersion(t *testing.T) {
 				return "test-server", "1.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string, registryID uuid.UUID) {
 				serverRows, err := queries.GetServerVersion(
 					context.Background(),
 					GetServerVersionParams{
-						Name:    serverName,
-						Version: version,
+						RegistryID: registryID,
+						Name:       serverName,
+						Version:    version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -1768,12 +1798,14 @@ func TestGetServerVersion(t *testing.T) {
 				return "test-server", "1.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string, registryID uuid.UUID) {
 				serverRows, err := queries.GetServerVersion(
 					context.Background(),
 					GetServerVersionParams{
-						Name:    serverName,
-						Version: version,
+						RegistryID: registryID,
+						Name:       serverName,
+						Version:    version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -1822,12 +1854,14 @@ func TestGetServerVersion(t *testing.T) {
 				return "test-server", "1.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string, registryID uuid.UUID) {
 				serverRows, err := queries.GetServerVersion(
 					context.Background(),
 					GetServerVersionParams{
-						Name:    serverName,
-						Version: version,
+						RegistryID: registryID,
+						Name:       serverName,
+						Version:    version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -1867,12 +1901,14 @@ func TestGetServerVersion(t *testing.T) {
 				return "test-server", "2.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string, registryID uuid.UUID) {
 				serverRows, err := queries.GetServerVersion(
 					context.Background(),
 					GetServerVersionParams{
-						Name:    serverName,
-						Version: version,
+						RegistryID: registryID,
+						Name:       serverName,
+						Version:    version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -1890,12 +1926,14 @@ func TestGetServerVersion(t *testing.T) {
 				return "non-existent-server", "1.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string, registryID uuid.UUID) {
 				serverRows, err := queries.GetServerVersion(
 					context.Background(),
 					GetServerVersionParams{
-						Name:    serverName,
-						Version: version,
+						RegistryID: registryID,
+						Name:       serverName,
+						Version:    version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -1913,12 +1951,14 @@ func TestGetServerVersion(t *testing.T) {
 				return "test-server", "2.0.0"
 			},
 			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string) {
+			scenarioFunc: func(t *testing.T, queries *Queries, serverName, version string, registryID uuid.UUID) {
 				serverRows, err := queries.GetServerVersion(
 					context.Background(),
 					GetServerVersionParams{
-						Name:    serverName,
-						Version: version,
+						RegistryID: registryID,
+						Name:       serverName,
+						Version:    version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -1940,8 +1980,9 @@ func TestGetServerVersion(t *testing.T) {
 			regID := setupRegistry(t, queries)
 			require.NotNil(t, regID)
 
+			registryID := getServerRegistryID(t, queries, "test-registry")
 			serverName, version := tc.setupFunc(t, queries, regID)
-			tc.scenarioFunc(t, queries, serverName, version)
+			tc.scenarioFunc(t, queries, serverName, version, registryID)
 		})
 	}
 }

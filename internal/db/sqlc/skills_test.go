@@ -76,7 +76,7 @@ func insertSkill(
 	return skillEntryID
 }
 
-//nolint:thelper // We want to see these lines in the test output
+//nolint:thelper,unparam // We want to see these lines in the test output; name is intentionally flexible
 func getRegistryID(t *testing.T, queries *Queries, name string) uuid.UUID {
 	reg, err := queries.GetRegistryByName(context.Background(), name)
 	require.NoError(t, err)
@@ -169,6 +169,7 @@ func TestInsertSkillVersion(t *testing.T) {
 					context.Background(),
 					InsertEntryVersionParams{
 						EntryID:   entryID,
+						Name:      "test-skill-dup",
 						Version:   testSkillVersion,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
@@ -181,6 +182,7 @@ func TestInsertSkillVersion(t *testing.T) {
 					context.Background(),
 					InsertEntryVersionParams{
 						EntryID:   entryID,
+						Name:      "test-skill-dup",
 						Version:   testSkillVersion,
 						CreatedAt: &createdAt,
 						UpdatedAt: &createdAt,
@@ -235,8 +237,10 @@ func TestInsertSkillVersion(t *testing.T) {
 				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
-						Name:    "test-skill",
-						Version: testSkillVersion,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Name:       "test-skill",
+						Version:    testSkillVersion,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -412,8 +416,10 @@ func TestUpsertSkillVersionForSync(t *testing.T) {
 				existingRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
-						Name:    "test-skill",
-						Version: testSkillVersion,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Name:       "test-skill",
+						Version:    testSkillVersion,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -443,8 +449,10 @@ func TestUpsertSkillVersionForSync(t *testing.T) {
 				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
-						Name:    "test-skill",
-						Version: testSkillVersion,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Name:       "test-skill",
+						Version:    testSkillVersion,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -517,8 +525,10 @@ func TestGetSkillVersion(t *testing.T) {
 				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
-						Name:    skillName,
-						Version: version,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Name:       skillName,
+						Version:    version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -564,8 +574,10 @@ func TestGetSkillVersion(t *testing.T) {
 				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
-						Name:    skillName,
-						Version: version,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Name:       skillName,
+						Version:    version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -614,8 +626,10 @@ func TestGetSkillVersion(t *testing.T) {
 				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
-						Name:    skillName,
-						Version: version,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Name:       skillName,
+						Version:    version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -651,8 +665,10 @@ func TestGetSkillVersion(t *testing.T) {
 				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
-						Name:    skillName,
-						Version: version,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Name:       skillName,
+						Version:    version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -673,13 +689,14 @@ func TestGetSkillVersion(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID, skillName, version string) {
-				regName := "test-registry"
+				regID := getRegistryID(t, queries, "test-registry")
 				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
-						Name:         skillName,
-						Version:      version,
-						RegistryName: &regName,
+						Name:       skillName,
+						Version:    version,
+						RegistryID: regID,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -687,14 +704,15 @@ func TestGetSkillVersion(t *testing.T) {
 				require.Equal(t, skillName, skillRows[0].Name)
 				require.Equal(t, version, skillRows[0].Version)
 
-				// Wrong registry name returns empty results
-				wrongName := "nonexistent-registry"
+				// Wrong registry ID returns empty results
+				wrongID := uuid.New()
 				wrongRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
-						Name:         skillName,
-						Version:      version,
-						RegistryName: &wrongName,
+						Name:       skillName,
+						Version:    version,
+						RegistryID: wrongID,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -712,8 +730,10 @@ func TestGetSkillVersion(t *testing.T) {
 				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
-						Name:    skillName,
-						Version: version,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Name:       skillName,
+						Version:    version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -733,8 +753,10 @@ func TestGetSkillVersion(t *testing.T) {
 				skillRows, err := queries.GetSkillVersion(
 					context.Background(),
 					GetSkillVersionParams{
-						Name:    skillName,
-						Version: version,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Name:       skillName,
+						Version:    version,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -779,7 +801,8 @@ func TestListSkills(t *testing.T) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						Size: 10,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -798,7 +821,8 @@ func TestListSkills(t *testing.T) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						Size: 10,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -823,7 +847,8 @@ func TestListSkills(t *testing.T) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						Size: 10,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -845,11 +870,13 @@ func TestListSkills(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, _ uuid.UUID) {
+				regID := getRegistryID(t, queries, "test-registry")
 				// Get first page
 				allSkills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						Size: 10,
+						RegistryID: regID,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -861,6 +888,7 @@ func TestListSkills(t *testing.T) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
+						RegistryID:    regID,
 						CursorName:    &cursorName,
 						CursorVersion: &cursorVersion,
 						Size:          10,
@@ -886,7 +914,8 @@ func TestListSkills(t *testing.T) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						Size: 2,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Size:       2,
 					},
 				)
 				require.NoError(t, err)
@@ -910,8 +939,9 @@ func TestListSkills(t *testing.T) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						Namespace: &ns,
-						Size:      10,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Namespace:  &ns,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -935,8 +965,9 @@ func TestListSkills(t *testing.T) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						Name: &name,
-						Size: 10,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Name:       &name,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -962,8 +993,9 @@ func TestListSkills(t *testing.T) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						Search: &search,
-						Size:   10,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Search:     &search,
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -993,6 +1025,7 @@ func TestListSkills(t *testing.T) {
 					context.Background(),
 					InsertEntryVersionParams{
 						EntryID:   oldEntryID,
+						Name:      "old-skill",
 						Version:   testSkillVersion,
 						CreatedAt: &oldTime,
 						UpdatedAt: &oldTime,
@@ -1016,6 +1049,7 @@ func TestListSkills(t *testing.T) {
 					context.Background(),
 					InsertEntryVersionParams{
 						EntryID:   recentEntryID,
+						Name:      "recent-skill",
 						Version:   testSkillVersion,
 						CreatedAt: &recentTime,
 						UpdatedAt: &recentTime,
@@ -1030,6 +1064,7 @@ func TestListSkills(t *testing.T) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
+						RegistryID:   getRegistryID(t, queries, "test-registry"),
 						UpdatedSince: &since,
 						Size:         10,
 					},
@@ -1052,7 +1087,7 @@ func TestListSkills(t *testing.T) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						RegistryID: &regID,
+						RegistryID: regID,
 						Size:       10,
 					},
 				)
@@ -1064,7 +1099,7 @@ func TestListSkills(t *testing.T) {
 				skills, err = queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						RegistryID: &wrongID,
+						RegistryID: wrongID,
 						Size:       10,
 					},
 				)
@@ -1093,6 +1128,7 @@ func TestListSkills(t *testing.T) {
 						context.Background(),
 						InsertEntryVersionParams{
 							EntryID:   entryID,
+							Name:      "test-skill",
 							Version:   version,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
@@ -1107,7 +1143,8 @@ func TestListSkills(t *testing.T) {
 				skills, err := queries.ListSkills(
 					context.Background(),
 					ListSkillsParams{
-						Size: 10,
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Size:       10,
 					},
 				)
 				require.NoError(t, err)
@@ -1193,6 +1230,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 						context.Background(),
 						InsertEntryVersionParams{
 							EntryID:   entryID,
+							Name:      "test-skill",
 							Version:   version,
 							CreatedAt: &createdAt,
 							UpdatedAt: &createdAt,
@@ -1330,7 +1368,10 @@ func TestDeleteOrphanedSkills(t *testing.T) {
 				// Verify only the kept skill remains
 				skills, err := queries.ListSkills(
 					context.Background(),
-					ListSkillsParams{Size: 10},
+					ListSkillsParams{
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Size:       10,
+					},
 				)
 				require.NoError(t, err)
 				require.Len(t, skills, 1)
@@ -1362,7 +1403,10 @@ func TestDeleteOrphanedSkills(t *testing.T) {
 
 				skills, err := queries.ListSkills(
 					context.Background(),
-					ListSkillsParams{Size: 10},
+					ListSkillsParams{
+						RegistryID: getRegistryID(t, queries, "test-registry"),
+						Size:       10,
+					},
 				)
 				require.NoError(t, err)
 				require.Empty(t, skills)

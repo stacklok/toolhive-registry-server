@@ -103,6 +103,7 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 			ctx,
 			sqlc.InsertEntryVersionParams{
 				EntryID:     entryID1,
+				Name:        "com.example/test-server-1",
 				Version:     version,
 				Title:       ptr.String("Test Server 1"),
 				Description: ptr.String("Test server 1 description"),
@@ -160,6 +161,7 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 		ctx,
 		sqlc.InsertEntryVersionParams{
 			EntryID:     entryID2,
+			Name:        "com.example/test-server-2",
 			Version:     "1.0.0",
 			Title:       ptr.String("Test Server 2"),
 			Description: ptr.String("Test server 2 description"),
@@ -203,6 +205,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -222,6 +225,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithLimit(2),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -255,10 +259,21 @@ func TestListServers(t *testing.T) {
 		{
 			name: "empty database",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) {
-				// Don't set up any data
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				// Don't set up server data, but create the registry so the lookup succeeds.
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				now := time.Now().UTC()
+				_, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         "test-registry",
+					CreationType: sqlc.CreationTypeCONFIG,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -304,6 +319,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithSearch("server-1"),
 				service.WithLimit(10),
 			},
@@ -322,6 +338,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithSearch("Test Server 2"),
 				service.WithLimit(10),
 			},
@@ -338,6 +355,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithSearch("server 2 description"),
 				service.WithLimit(10),
 			},
@@ -354,6 +372,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithSearch("SERVER-1"), // Uppercase
 				service.WithLimit(10),
 			},
@@ -372,6 +391,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithSearch("server"), // Partial match
 				service.WithLimit(10),
 			},
@@ -387,6 +407,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithSearch("nonexistent"),
 				service.WithLimit(10),
 			},
@@ -421,6 +442,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithVersion("latest"),
 				service.WithLimit(10),
 			},
@@ -474,6 +496,7 @@ func TestListServerVersions(t *testing.T) {
 			},
 			options: []service.Option{
 				service.WithName("com.example/test-server-1"),
+				service.WithRegistryName("test-registry"),
 				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -501,6 +524,7 @@ func TestListServerVersions(t *testing.T) {
 			},
 			options: []service.Option{
 				service.WithName("com.example/test-server-1"),
+				service.WithRegistryName("test-registry"),
 				service.WithLimit(2),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -516,6 +540,7 @@ func TestListServerVersions(t *testing.T) {
 			},
 			options: []service.Option{
 				service.WithName("com.example/non-existent-server"),
+				service.WithRegistryName("test-registry"),
 				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -615,6 +640,7 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithName("com.example/test-server-1"),
 				service.WithVersion("1.0.0"),
 			},
@@ -636,6 +662,7 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithName("com.example/test-server-1"),
 				service.WithVersion("2.0.0"),
 			},
@@ -697,6 +724,7 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithName("com.example/test-server-2"),
 				service.WithVersion("1.0.0"),
 			},
@@ -727,8 +755,24 @@ func TestGetServerVersion(t *testing.T) {
 				)
 				require.NoError(t, err)
 
-				// Create a server version
+				// Create a registry and link the source to it
 				now := time.Now().UTC()
+				registry, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         "test-registry-with-packages",
+					CreationType: sqlc.CreationTypeCONFIG,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: registry.ID,
+					SourceID:   regID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+
+				// Create a server version
 				entryID, err := queries.InsertRegistryEntry(
 					ctx,
 					sqlc.InsertRegistryEntryParams{
@@ -745,6 +789,7 @@ func TestGetServerVersion(t *testing.T) {
 					ctx,
 					sqlc.InsertEntryVersionParams{
 						EntryID:     entryID,
+						Name:        "com.test/server-with-packages",
 						Version:     "1.0.0",
 						Title:       ptr.String("Test Server With Packages"),
 						Description: ptr.String("Test server with packages and remotes"),
@@ -804,6 +849,7 @@ func TestGetServerVersion(t *testing.T) {
 				require.NoError(t, err)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry-with-packages"),
 				service.WithName("com.test/server-with-packages"),
 				service.WithVersion("1.0.0"),
 			},
@@ -1288,6 +1334,7 @@ func TestPublishServerVersion(t *testing.T) {
 
 				versionID, err := queries.InsertEntryVersion(ctx, sqlc.InsertEntryVersionParams{
 					EntryID:     entryID,
+					Name:        "com.example/existing-server",
 					Version:     "1.0.0",
 					Description: ptr.String("Existing"),
 					CreatedAt:   &now,
@@ -2622,11 +2669,27 @@ func TestDeleteServerVersion(t *testing.T) {
 				})
 				require.NoError(t, err)
 			} else {
-				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+				src, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         tt.registryName,
 					SourceType:   "managed",
 					CreationType: sqlc.CreationTypeCONFIG,
 					Syncable:     false,
+				})
+				require.NoError(t, err)
+
+				now := time.Now()
+				reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         tt.registryName,
+					CreationType: sqlc.CreationTypeCONFIG,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   src.ID,
+					Position:   0,
 				})
 				require.NoError(t, err)
 			}
@@ -2662,6 +2725,7 @@ func TestDeleteServerVersion(t *testing.T) {
 			// Verify the latest pointer.
 			result, err := svc.GetServerVersion(
 				ctx,
+				service.WithRegistryName(tt.registryName),
 				service.WithName(tt.serverName),
 				service.WithVersion("latest"),
 			)

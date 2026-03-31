@@ -38,6 +38,7 @@ type helper struct {
 	RepositorySubfolder *string
 	RepositoryType      *string
 	Claims              []byte
+	SourceID            uuid.UUID
 	Position            int32
 }
 
@@ -67,6 +68,31 @@ func listServersRowToHelper(
 
 func getServerVersionRowToHelper(
 	dbServer sqlc.GetServerVersionRow,
+) helper {
+	return helper{
+		ID:                  dbServer.ID,
+		Name:                dbServer.Name,
+		Version:             dbServer.Version,
+		IsLatest:            dbServer.IsLatest,
+		CreatedAt:           dbServer.CreatedAt,
+		UpdatedAt:           dbServer.UpdatedAt,
+		Description:         dbServer.Description,
+		Title:               dbServer.Title,
+		Website:             dbServer.Website,
+		UpstreamMeta:        dbServer.UpstreamMeta,
+		ServerMeta:          dbServer.ServerMeta,
+		RepositoryUrl:       dbServer.RepositoryUrl,
+		RepositoryID:        dbServer.RepositoryID,
+		RepositorySubfolder: dbServer.RepositorySubfolder,
+		RepositoryType:      dbServer.RepositoryType,
+		Claims:              dbServer.Claims,
+		SourceID:            dbServer.SourceID,
+		Position:            dbServer.Position,
+	}
+}
+
+func getServerVersionBySourceNameRowToHelper(
+	dbServer sqlc.GetServerVersionBySourceNameRow,
 ) helper {
 	return helper{
 		ID:                  dbServer.ID,

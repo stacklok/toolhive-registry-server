@@ -8,7 +8,7 @@ import (
 
 // ListServersOptions is the options for the ListServers operation
 type ListServersOptions struct {
-	RegistryName *string
+	RegistryName string
 	Cursor       string
 	Limit        int
 	Search       string
@@ -19,7 +19,7 @@ type ListServersOptions struct {
 
 //nolint:unparam
 func (o *ListServersOptions) setRegistryName(registryName string) error {
-	o.RegistryName = &registryName
+	o.RegistryName = registryName
 	return nil
 }
 
@@ -61,7 +61,7 @@ func (o *ListServersOptions) setClaims(claims map[string]any) error {
 
 // ListServerVersionsOptions is the options for the ListServerVersions operation
 type ListServerVersionsOptions struct {
-	RegistryName *string
+	RegistryName string
 	Name         string
 	Limit        int
 	Claims       map[string]any
@@ -69,7 +69,7 @@ type ListServerVersionsOptions struct {
 
 //nolint:unparam
 func (o *ListServerVersionsOptions) setRegistryName(registryName string) error {
-	o.RegistryName = &registryName
+	o.RegistryName = registryName
 	return nil
 }
 
@@ -103,12 +103,6 @@ type GetServerVersionOptions struct {
 //nolint:unparam
 func (o *GetServerVersionOptions) setRegistryName(registryName string) error {
 	o.RegistryName = registryName
-	return nil
-}
-
-//nolint:unparam
-func (o *GetServerVersionOptions) setSourceName(sourceName string) error {
-	o.SourceName = sourceName
 	return nil
 }
 
