@@ -118,7 +118,7 @@ func (s *dbService) ListServers(
 	}
 
 	claimsFilter := newClaimsFilterWith(
-		options.Claims,
+		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			h, ok := record.(helper)
 			return h.Claims, ok
@@ -212,7 +212,7 @@ func (s *dbService) ListServerVersions(
 	}
 
 	claimsFilter := newClaimsFilterWith(
-		options.Claims,
+		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			h, ok := record.(helper)
 			return h.Claims, ok
@@ -306,7 +306,7 @@ func (s *dbService) GetServerVersion(
 	}
 
 	claimsFilter := newClaimsFilterWith(
-		options.Claims,
+		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			h, ok := record.(helper)
 			return h.Claims, ok

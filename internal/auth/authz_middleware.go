@@ -9,11 +9,41 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
+// ResolveRolesMiddleware resolves the caller's roles from JWT claims and stores
+// them in the request context. This must run after the auth middleware (which
+// populates claims) and before any RequireRole or claim-checking code.
+//
+// If authzCfg is nil or claims are nil (anonymous mode), roles are not resolved.
+func ResolveRolesMiddleware(authzCfg *config.AuthzConfig) func(http.Handler) http.Handler {
+	var warnOnce sync.Once
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if authzCfg == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			claims := ClaimsFromContext(r.Context())
+			if claims == nil {
+				warnOnce.Do(func() {
+					slog.Warn("Authorization roles configured but auth is disabled (anonymous mode); role checks are skipped")
+				})
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			roles := ResolveRoles(claims, authzCfg)
+			r = r.WithContext(ContextWithRoles(r.Context(), roles))
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // RequireRole returns middleware that enforces the specified role.
+// It expects roles to already be resolved in the context by ResolveRolesMiddleware.
 // If authzCfg is nil (no authorization configured) or claims are nil
 // (anonymous mode), role checks are skipped.
 func RequireRole(role Role, authzCfg *config.AuthzConfig) func(http.Handler) http.Handler {
-	var warnOnce sync.Once
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Skip role checks if no authz config
@@ -24,20 +54,12 @@ func RequireRole(role Role, authzCfg *config.AuthzConfig) func(http.Handler) htt
 
 			claims := ClaimsFromContext(r.Context())
 			// Skip role checks in anonymous mode (no claims).
-			// Log a warning once since authz is configured but unenforced.
 			if claims == nil {
-				warnOnce.Do(func() {
-					slog.Warn("Authorization roles configured but auth is disabled (anonymous mode); role checks are skipped")
-				})
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			roles := ResolveRoles(claims, authzCfg)
-			// Store resolved roles in context for downstream authorization checks
-			// (e.g., super-admin bypass in claim validation).
-			r = r.WithContext(ContextWithRoles(r.Context(), roles))
-
+			roles := RolesFromContext(r.Context())
 			if !HasRole(roles, role) {
 				common.WriteErrorResponse(w, "forbidden: insufficient permissions", http.StatusForbidden)
 				return

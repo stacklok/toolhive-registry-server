@@ -64,13 +64,18 @@ func claimsFromCtx(ctx context.Context) map[string]any {
 // extract retrieves the raw claims JSON from a record; returning ok=false
 // causes the filter to reject the record with a type error.
 // Returns nil when callerClaims is nil or empty so the caller can skip
-// filtering entirely.
+// filtering entirely. Also returns nil for super-admin users (they see all
+// entries regardless of claims).
 func newClaimsFilterWith(
+	ctx context.Context,
 	callerClaims map[string]any,
 	extract func(record any) (claims []byte, ok bool),
 ) service.RecordFilter {
 	callerJSON := marshalClaims(callerClaims)
 	if callerJSON == nil {
+		return nil
+	}
+	if auth.IsSuperAdmin(ctx) {
 		return nil
 	}
 	return func(_ context.Context, record any) (bool, error) {
