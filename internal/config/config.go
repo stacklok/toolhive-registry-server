@@ -356,6 +356,11 @@ type AuthConfig struct {
 
 	// Authz contains authorization configuration for role-based access control
 	Authz *AuthzConfig `yaml:"authz,omitempty"`
+
+	// InsecureAllowHTTP allows HTTP issuer URLs for development/testing.
+	// Populated from the THV_REGISTRY_INSECURE_URL environment variable.
+	// Not loaded from YAML.
+	InsecureAllowHTTP bool `yaml:"-"`
 }
 
 // OAuthConfig defines OAuth/OIDC specific authentication settings
@@ -708,6 +713,12 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	// Set insecureAllowHTTP from environment variable (THV_REGISTRY_INSECURE_URL)
 	// This is not loaded from YAML - environment variable only for security
 	config.insecureAllowHTTP = v.GetBool("insecure_url")
+
+	// Propagate insecureAllowHTTP to AuthConfig so the auth factory can pass it
+	// to the token validator (which enforces HTTPS on OIDC discovery endpoints).
+	if config.Auth != nil {
+		config.Auth.InsecureAllowHTTP = config.insecureAllowHTTP
+	}
 
 	// Set watchNamespace from environment variable (THV_REGISTRY_WATCH_NAMESPACE)
 	// This is not loaded from YAML - environment variable only
