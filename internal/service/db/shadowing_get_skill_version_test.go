@@ -140,6 +140,7 @@ func TestGetSkillVersionClaimsVisibility(t *testing.T) {
 
 				versionID, err := queries.InsertEntryVersion(ctx, sqlc.InsertEntryVersionParams{
 					EntryID:     entryID,
+					Name:        entryName,
 					Version:     "1.0.0",
 					Title:       ptr.String(entryName),
 					Description: ptr.String(desc),

@@ -89,12 +89,6 @@ func (o *GetSkillVersionOptions) setRegistryName(registryName string) error {
 }
 
 //nolint:unparam
-func (o *GetSkillVersionOptions) setSourceName(sourceName string) error {
-	o.SourceName = sourceName
-	return nil
-}
-
-//nolint:unparam
 func (o *GetSkillVersionOptions) setNamespace(namespace string) error {
 	o.Namespace = namespace
 	return nil

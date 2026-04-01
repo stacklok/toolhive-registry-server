@@ -4,6 +4,7 @@ package writer
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/aws/smithy-go/ptr"
 	"github.com/google/uuid"
@@ -57,15 +58,21 @@ func setupTestDB(t *testing.T) (*pgxpool.Pool, func()) {
 	return pool, poolCleanup
 }
 
-// createTestRegistry creates a test source in the database and returns its ID
-// Uses "git" source type by default, which is the typical type for synced registries
-func createTestRegistry(t *testing.T, pool *pgxpool.Pool, name string) uuid.UUID {
+// testRegistryIDs holds IDs returned by createTestRegistry
+type testRegistryIDs struct {
+	sourceID   uuid.UUID
+	registryID uuid.UUID
+}
+
+// createTestRegistry creates a test source, registry entry, and links them.
+// Returns both the source ID and registry ID.
+func createTestRegistry(t *testing.T, pool *pgxpool.Pool, name string) testRegistryIDs {
 	t.Helper()
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
 
-	regID, err := queries.UpsertSource(ctx, sqlc.UpsertSourceParams{
+	sourceID, err := queries.UpsertSource(ctx, sqlc.UpsertSourceParams{
 		Name:         name,
 		CreationType: sqlc.CreationTypeCONFIG,
 		SourceType:   "git",
@@ -73,7 +80,36 @@ func createTestRegistry(t *testing.T, pool *pgxpool.Pool, name string) uuid.UUID
 	})
 	require.NoError(t, err)
 
-	return regID
+	now := time.Now().UTC()
+	reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+		Name:         name,
+		CreationType: sqlc.CreationTypeCONFIG,
+		CreatedAt:    &now,
+		UpdatedAt:    &now,
+	})
+	require.NoError(t, err)
+
+	err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+		RegistryID: reg.ID,
+		SourceID:   sourceID,
+		Position:   0,
+	})
+	require.NoError(t, err)
+
+	return testRegistryIDs{
+		sourceID:   sourceID,
+		registryID: reg.ID,
+	}
+}
+
+// getTestRegistryID looks up the registry UUID by name
+func getTestRegistryID(t *testing.T, pool *pgxpool.Pool, name string) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	queries := sqlc.New(pool)
+	reg, err := queries.GetRegistryByName(ctx, name)
+	require.NoError(t, err)
+	return reg.ID
 }
 
 // createTestUpstreamRegistry creates a test UpstreamRegistry with the given servers
@@ -317,11 +353,12 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
-				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 				require.NoError(t, err)
 				require.Len(t, servers, 1)
 				assert.Equal(t, "test.org/server", servers[0].Name)
@@ -342,11 +379,12 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
-				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 				require.NoError(t, err)
 				require.Len(t, servers, 3)
 			},
@@ -363,11 +401,12 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
-				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 				require.NoError(t, err)
 				require.Len(t, servers, 1)
 
@@ -390,11 +429,12 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
-				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 				require.NoError(t, err)
 				require.Len(t, servers, 1)
 
@@ -417,11 +457,12 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
-				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 				require.NoError(t, err)
 				require.Len(t, servers, 1)
 				// Icons are stored but not retrieved by ListServers
@@ -439,13 +480,16 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
 				serverRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-					Name:    "test.org/server",
-					Version: "1.0.0",
+					RegistryID: regID,
+					Name:       "test.org/server",
+					Version:    "1.0.0",
+					Size:       100,
 				})
 				require.NoError(t, err)
 				require.NotEmpty(t, serverRows)
@@ -466,13 +510,16 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
 				serverRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-					Name:    "test.org/server",
-					Version: "1.0.0",
+					RegistryID: regID,
+					Name:       "test.org/server",
+					Version:    "1.0.0",
+					Size:       100,
 				})
 				require.NoError(t, err)
 				require.NotEmpty(t, serverRows)
@@ -492,11 +539,12 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
-				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 				require.NoError(t, err)
 				require.Len(t, servers, 1)
 
@@ -519,11 +567,12 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			registry:    createTestUpstreamRegistry([]upstreamv0.ServerJSON{}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
-				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 				require.NoError(t, err)
 				require.Len(t, servers, 0)
 			},
@@ -534,12 +583,12 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				ctx := context.Background()
-				regID := createTestRegistry(t, pool, "test-registry")
+				ids := createTestRegistry(t, pool, "test-registry")
 				queries := sqlc.New(pool)
 
 				// Insert registry entry
 				entryID, err := queries.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
-					SourceID:  regID,
+					SourceID:  ids.sourceID,
 					EntryType: sqlc.EntryTypeMCP,
 					Name:      "test.org/old-server",
 				})
@@ -563,11 +612,12 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
-				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 				require.NoError(t, err)
 				require.Len(t, servers, 1)
 				assert.Equal(t, "test.org/new-server", servers[0].Name)
@@ -585,13 +635,16 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
 				serverRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-					Name:    "test.org/server",
-					Version: "1.0.0",
+					RegistryID: regID,
+					Name:       "test.org/server",
+					Version:    "1.0.0",
+					Size:       100,
 				})
 				require.NoError(t, err)
 				require.NotEmpty(t, serverRows)
@@ -614,14 +667,17 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
 				// Version 2.0.0 should be latest
 				serverRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-					Name:    "test.org/server",
-					Version: "2.0.0",
+					RegistryID: regID,
+					Name:       "test.org/server",
+					Version:    "2.0.0",
+					Size:       100,
 				})
 				require.NoError(t, err)
 				require.NotEmpty(t, serverRows)
@@ -630,8 +686,10 @@ func TestDbSyncWriter_Store(t *testing.T) {
 
 				// Version 1.0.0 should not be latest
 				serverRows, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-					Name:    "test.org/server",
-					Version: "1.0.0",
+					RegistryID: regID,
+					Name:       "test.org/server",
+					Version:    "1.0.0",
+					Size:       100,
 				})
 				require.NoError(t, err)
 				require.NotEmpty(t, serverRows)
@@ -640,8 +698,10 @@ func TestDbSyncWriter_Store(t *testing.T) {
 
 				// Version 1.5.0 should not be latest
 				serverRows, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-					Name:    "test.org/server",
-					Version: "1.5.0",
+					RegistryID: regID,
+					Name:       "test.org/server",
+					Version:    "1.5.0",
+					Size:       100,
 				})
 				require.NoError(t, err)
 				require.NotEmpty(t, serverRows)
@@ -679,13 +739,15 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
 				versions, err := queries.ListServers(ctx, sqlc.ListServersParams{
-					Name: ptr.String("test.org/server"),
-					Size: 100,
+					RegistryID: regID,
+					Name:       ptr.String("test.org/server"),
+					Size:       100,
 				})
 				require.NoError(t, err)
 				require.Len(t, versions, 3)
@@ -709,13 +771,16 @@ func TestDbSyncWriter_Store(t *testing.T) {
 			}),
 			expectError: false,
 			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, pool *pgxpool.Pool, _ string) {
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
+				regID := getTestRegistryID(t, pool, registryName)
 
 				serverRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-					Name:    "test.org/minimal",
-					Version: "1.0.0",
+					RegistryID: regID,
+					Name:       "test.org/minimal",
+					Version:    "1.0.0",
+					Size:       100,
 				})
 				require.NoError(t, err)
 				require.NotEmpty(t, serverRows)
@@ -1143,7 +1208,8 @@ func TestDbSyncWriter_Store_IconThemes(t *testing.T) {
 	// Verify servers were created
 	ctx := context.Background()
 	queries := sqlc.New(pool)
-	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	regID := getTestRegistryID(t, pool, "test-registry")
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 	require.NoError(t, err)
 	require.Len(t, servers, 1)
 }
@@ -1212,8 +1278,9 @@ func TestDbSyncWriter_Store_PackageAcrossServers(t *testing.T) {
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
 
-	serverRows, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	serverRows, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 	require.NoError(t, err)
 	require.Len(t, serverRows, 3)
 
@@ -1263,8 +1330,9 @@ func TestDbSyncWriter_Store_MultipleRemotes(t *testing.T) {
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
 
-	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 	require.NoError(t, err)
 	require.Len(t, servers, 1)
 
@@ -1344,11 +1412,14 @@ func TestDbSyncWriter_Store_LatestVersionDetermination(t *testing.T) {
 
 			ctx := context.Background()
 			queries := sqlc.New(pool)
+			regID := getTestRegistryID(t, pool, tt.registryName)
 
 			for _, version := range tt.versions {
 				serverRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-					Name:    tt.serverName,
-					Version: version,
+					RegistryID: regID,
+					Name:       tt.serverName,
+					Version:    version,
+					Size:       100,
 				})
 				require.NoError(t, err)
 				require.NotEmpty(t, serverRows)
@@ -1379,6 +1450,7 @@ func TestDbSyncWriter_Store_UUIDStability(t *testing.T) {
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
 
 	// Create UpstreamRegistry with 2 servers
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{
@@ -1392,16 +1464,20 @@ func TestDbSyncWriter_Store_UUIDStability(t *testing.T) {
 
 	// Query DB and record server UUIDs and created_at timestamps
 	serverA1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-a",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-a",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverA1Rows)
 	serverA1 := serverA1Rows[0]
 
 	serverB1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-b",
-		Version: "2.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-b",
+		Version:    "2.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverB1Rows)
@@ -1419,16 +1495,20 @@ func TestDbSyncWriter_Store_UUIDStability(t *testing.T) {
 
 	// Query DB again and verify UUIDs are identical
 	serverA2Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-a",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-a",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverA2Rows)
 	serverA2 := serverA2Rows[0]
 
 	serverB2Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-b",
-		Version: "2.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-b",
+		Version:    "2.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverB2Rows)
@@ -1462,6 +1542,7 @@ func TestDbSyncWriter_Store_UpdatePreservesUUID(t *testing.T) {
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
 
 	// First sync with original description
 	server := createTestServer("test.org/server", "1.0.0")
@@ -1474,8 +1555,10 @@ func TestDbSyncWriter_Store_UpdatePreservesUUID(t *testing.T) {
 
 	// Query and record original UUID and description
 	serverV1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverV1Rows)
@@ -1499,8 +1582,10 @@ func TestDbSyncWriter_Store_UpdatePreservesUUID(t *testing.T) {
 
 	// Query and verify UUID is the same but description is updated
 	serverV2Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverV2Rows)
@@ -1537,6 +1622,7 @@ func TestDbSyncWriter_Store_OrphanedServerCleanup(t *testing.T) {
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
 
 	// First sync with 3 servers
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{
@@ -1549,14 +1635,16 @@ func TestDbSyncWriter_Store_OrphanedServerCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify all 3 servers exist
-	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 	require.NoError(t, err)
 	require.Len(t, servers, 3, "Should have 3 servers after first sync")
 
 	// Record UUID for server-a to verify it persists
 	serverARows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-a",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-a",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverARows)
@@ -1573,14 +1661,16 @@ func TestDbSyncWriter_Store_OrphanedServerCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify only server-a and server-c exist
-	servers, err = queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	servers, err = queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 	require.NoError(t, err)
 	require.Len(t, servers, 2, "Should have 2 servers after second sync")
 
 	// Verify server-a still exists with same UUID
 	serverAUpdatedRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-a",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-a",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverAUpdatedRows)
@@ -1589,16 +1679,20 @@ func TestDbSyncWriter_Store_OrphanedServerCleanup(t *testing.T) {
 
 	// Verify server-c exists
 	discardRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-c",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-c",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, discardRows)
 
 	// Verify server-b was deleted (should return error)
 	discardRows, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-b",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-b",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.Empty(t, discardRows, "Server B should have been deleted")
@@ -1620,6 +1714,7 @@ func TestDbSyncWriter_Store_PackageCleanup(t *testing.T) {
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
 
 	// Create server with a package
 	server := createTestServer("test.org/server", "1.0.0")
@@ -1639,7 +1734,7 @@ func TestDbSyncWriter_Store_PackageCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify package exists
-	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 	require.NoError(t, err)
 	require.Len(t, servers, 1)
 
@@ -1668,8 +1763,10 @@ func TestDbSyncWriter_Store_PackageCleanup(t *testing.T) {
 
 	// Verify server UUID is preserved
 	serverAfterUpdateRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverAfterUpdateRows)
@@ -1693,8 +1790,10 @@ func TestDbSyncWriter_Store_PackageCleanup(t *testing.T) {
 
 	// Verify server UUID is still preserved
 	serverAfterRemovalRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverAfterRemovalRows)
@@ -1722,6 +1821,7 @@ func TestDbSyncWriter_Store_RemoteCleanup(t *testing.T) {
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
 
 	// Create server with 2 remotes
 	server := createTestServer("test.org/server", "1.0.0")
@@ -1742,7 +1842,7 @@ func TestDbSyncWriter_Store_RemoteCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify 2 remotes exist
-	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 	require.NoError(t, err)
 	require.Len(t, servers, 1)
 
@@ -1767,8 +1867,10 @@ func TestDbSyncWriter_Store_RemoteCleanup(t *testing.T) {
 
 	// Verify server UUID is preserved
 	serverAfterUpdateRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverAfterUpdateRows)
@@ -1797,6 +1899,7 @@ func TestDbSyncWriter_Store_IconCleanup(t *testing.T) {
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
 
 	// Create server with 2 icons
 	lightTheme := testThemeLight
@@ -1823,7 +1926,7 @@ func TestDbSyncWriter_Store_IconCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify server created
-	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 	require.NoError(t, err)
 	require.Len(t, servers, 1)
 
@@ -1851,8 +1954,10 @@ func TestDbSyncWriter_Store_IconCleanup(t *testing.T) {
 
 	// Verify server UUID is preserved
 	serverAfterUpdateRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverAfterUpdateRows)
@@ -1874,8 +1979,12 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	defer cleanup()
 
 	// Step 1: Create two test registries
-	registryAID := createTestRegistry(t, pool, "registry-A")
-	registryBID := createTestRegistry(t, pool, "registry-B")
+	idsA := createTestRegistry(t, pool, "registry-A")
+	idsB := createTestRegistry(t, pool, "registry-B")
+	registryAID := idsA.sourceID
+	registryBID := idsB.sourceID
+	regIDA := idsA.registryID
+	regIDB := idsB.registryID
 
 	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
 	require.NoError(t, err)
@@ -1903,9 +2012,11 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Step 6: Query DB and verify all 4 servers exist (2 per registry)
-	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	serversA, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regIDA, Size: 100})
 	require.NoError(t, err)
-	require.Len(t, servers, 4, "Should have 4 servers total after initial sync")
+	serversB, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regIDB, Size: 100})
+	require.NoError(t, err)
+	require.Equal(t, 4, len(serversA)+len(serversB), "Should have 4 servers total after initial sync")
 
 	// Count servers per registry
 	var countA, countB int
@@ -1919,8 +2030,10 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 
 	// Step 7: Record server UUIDs for all 4 servers
 	server1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-1",
-		Version: "1.0.0",
+		RegistryID: regIDA,
+		Name:       "test.org/server-1",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, server1Rows)
@@ -1928,8 +2041,10 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	uuidServer1 := server1.ID
 
 	server2Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-2",
-		Version: "1.0.0",
+		RegistryID: regIDA,
+		Name:       "test.org/server-2",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, server2Rows)
@@ -1937,8 +2052,10 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	uuidServer2 := server2.ID
 
 	server3Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-3",
-		Version: "1.0.0",
+		RegistryID: regIDB,
+		Name:       "test.org/server-3",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, server3Rows)
@@ -1946,8 +2063,10 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	uuidServer3 := server3.ID
 
 	server4Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-4",
-		Version: "1.0.0",
+		RegistryID: regIDB,
+		Name:       "test.org/server-4",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, server4Rows)
@@ -1971,8 +2090,10 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 
 	// Verify server-1 still exists with same UUID
 	server1AfterRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-1",
-		Version: "1.0.0",
+		RegistryID: regIDA,
+		Name:       "test.org/server-1",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, server1AfterRows)
@@ -1981,8 +2102,10 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 
 	// Verify server-2 was deleted
 	discardRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-2",
-		Version: "1.0.0",
+		RegistryID: regIDA,
+		Name:       "test.org/server-2",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.Empty(t, discardRows, "Server 2 should have been deleted from registry A")
@@ -1995,8 +2118,10 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 
 	// Verify server-3 still exists with same UUID
 	server3AfterRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-3",
-		Version: "1.0.0",
+		RegistryID: regIDB,
+		Name:       "test.org/server-3",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, server3AfterRows)
@@ -2005,8 +2130,10 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 
 	// Verify server-4 still exists with same UUID
 	server4AfterRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-4",
-		Version: "1.0.0",
+		RegistryID: regIDB,
+		Name:       "test.org/server-4",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, server4AfterRows)
@@ -2014,9 +2141,11 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	assert.Equal(t, uuidServer4, server4After.ID, "Server 4 UUID should be preserved (registry B unaffected)")
 
 	// 10c: Verify total server count is 3
-	servers, err = queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	serversA, err = queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regIDA, Size: 100})
 	require.NoError(t, err)
-	require.Len(t, servers, 3, "Should have 3 servers total (1 in registry A, 2 in registry B)")
+	serversB, err = queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regIDB, Size: 100})
+	require.NoError(t, err)
+	require.Equal(t, 3, len(serversA)+len(serversB), "Should have 3 servers total (1 in registry A, 2 in registry B)")
 
 	// Step 11: Do the reverse - remove a server from registry-B and verify registry-A is unaffected
 	registryBUpdated := createTestUpstreamRegistry([]upstreamv0.ServerJSON{
@@ -2034,8 +2163,10 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 
 	// Verify server-1 in registry-A still has same UUID
 	server1FinalRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-1",
-		Version: "1.0.0",
+		RegistryID: regIDA,
+		Name:       "test.org/server-1",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, server1FinalRows)
@@ -2049,8 +2180,10 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 
 	// Verify server-3 still exists with same UUID
 	server3FinalRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-3",
-		Version: "1.0.0",
+		RegistryID: regIDB,
+		Name:       "test.org/server-3",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, server3FinalRows)
@@ -2059,16 +2192,20 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 
 	// Verify server-4 was deleted
 	discardRows, err = queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-4",
-		Version: "1.0.0",
+		RegistryID: regIDB,
+		Name:       "test.org/server-4",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.Empty(t, discardRows, "Server 4 should have been deleted from registry B")
 
 	// Final verification: total server count is 2
-	servers, err = queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	serversA, err = queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regIDA, Size: 100})
 	require.NoError(t, err)
-	require.Len(t, servers, 2, "Should have 2 servers total (1 in each registry)")
+	serversB, err = queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regIDB, Size: 100})
+	require.NoError(t, err)
+	require.Equal(t, 2, len(serversA)+len(serversB), "Should have 2 servers total (1 in each registry)")
 }
 
 // TestDbSyncWriter_Store_ServerWithMultiplePackages tests that a server can have multiple packages.
@@ -2085,6 +2222,7 @@ func TestDbSyncWriter_Store_ServerWithMultiplePackages(t *testing.T) {
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
 
 	// Create a server with 3 different packages (different registry types and identifiers)
 	server := createTestServer("test.org/server", "1.0.0")
@@ -2133,7 +2271,7 @@ func TestDbSyncWriter_Store_ServerWithMultiplePackages(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify all 3 packages exist
-	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 	require.NoError(t, err)
 	require.Len(t, servers, 1)
 
@@ -2166,6 +2304,7 @@ func TestDbSyncWriter_Store_MultiplePackagesOrphanedCleanup(t *testing.T) {
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
 
 	// First sync: server with 3 packages
 	server := createTestServer("test.org/server", "1.0.0")
@@ -2198,7 +2337,7 @@ func TestDbSyncWriter_Store_MultiplePackagesOrphanedCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify all 3 packages exist
-	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 	require.NoError(t, err)
 	require.Len(t, servers, 1)
 	serverID := servers[0].ID
@@ -2239,8 +2378,10 @@ func TestDbSyncWriter_Store_MultiplePackagesOrphanedCleanup(t *testing.T) {
 
 	// Verify server UUID is preserved
 	serverAfterUpdateRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverAfterUpdateRows)
@@ -2291,6 +2432,7 @@ func TestDbSyncWriter_Store_PackageUpdate(t *testing.T) {
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
 
 	// First sync: server with 1 package
 	server := createTestServer("test.org/server", "1.0.0")
@@ -2310,7 +2452,7 @@ func TestDbSyncWriter_Store_PackageUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify package exists with version 1.0.0
-	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 	require.NoError(t, err)
 	require.Len(t, servers, 1)
 	serverID := servers[0].ID
@@ -2362,6 +2504,7 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 
 	ctx := context.Background()
 	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
 
 	// First sync: 3 servers (A v1.0, B v1.0, C v1.0) each with packages/remotes
 	serverA := createTestServer("test.org/server-a", "1.0.0")
@@ -2404,8 +2547,10 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 
 	// Record all UUIDs
 	serverAV1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-a",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-a",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverAV1Rows)
@@ -2413,8 +2558,10 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 	uuidA := serverAV1.ID
 
 	serverBV1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-b",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-b",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverBV1Rows)
@@ -2422,8 +2569,10 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 	_ = serverBV1.ID // Server B will be deleted
 
 	serverCV1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-c",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-c",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverCV1Rows)
@@ -2467,8 +2616,10 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 	// Verify results
 	// Server A: same UUID, updated description
 	serverAV2Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-a",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-a",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverAV2Rows)
@@ -2488,16 +2639,20 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 
 	// Server B: deleted
 	discardRows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-b",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-b",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.Empty(t, discardRows, "Server B should have been deleted")
 
 	// Server C: same UUID, no changes
 	serverCV2Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-c",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-c",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverCV2Rows)
@@ -2508,8 +2663,10 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 
 	// Server D: new UUID, inserted
 	serverDV1Rows, err := queries.GetServerVersion(ctx, sqlc.GetServerVersionParams{
-		Name:    "test.org/server-d",
-		Version: "1.0.0",
+		RegistryID: regID,
+		Name:       "test.org/server-d",
+		Version:    "1.0.0",
+		Size:       100,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, serverDV1Rows)
@@ -2519,7 +2676,7 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 	assert.Equal(t, "Server D new", *serverDV1.Description)
 
 	// Verify total server count
-	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{Size: 100})
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
 	require.NoError(t, err)
 	require.Len(t, servers, 3, "Should have 3 servers (A, C, D)")
 }

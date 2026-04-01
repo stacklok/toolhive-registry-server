@@ -30,10 +30,9 @@ SELECT src.source_type AS registry_type,
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
-  LEFT JOIN registry_source rs ON rs.source_id = e.source_id
-                               AND rs.registry_id = sqlc.narg(registry_id)::uuid
- WHERE (sqlc.narg(registry_id)::uuid IS NULL OR rs.source_id IS NOT NULL)
-   AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text)
+  JOIN registry_source rs ON rs.source_id = e.source_id
+                          AND rs.registry_id = sqlc.arg(registry_id)::uuid
+ WHERE (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text)
    AND (sqlc.narg(name)::text IS NULL OR e.name = sqlc.narg(name)::text)
    AND (sqlc.narg(search)::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || sqlc.narg(search)::text || '%')
@@ -49,10 +48,11 @@ SELECT src.source_type AS registry_type,
  LIMIT sqlc.arg(size)::bigint;
 
 -- name: GetSkillVersion :many
--- Despite the name, this query returns multiple rows. The careful reader will
--- note that there is no limit clause, which might seem a bug, but the actual
--- number of records is bounded by the number of sources that provide the same
--- name and version, which we currently don't expect to be more than a few.
+-- Despite the name, this query returns multiple rows. The actual number of
+-- records is bounded by the number of sources that provide the same name and
+-- version, which we currently don't expect to be more than a few.
+-- Cursor-based pagination using (position, source_id) compound cursor.
+-- position is the sort key but may not be unique; source_id is the tiebreaker.
 SELECT src.source_type AS registry_type,
        v.id,
        e.name,
@@ -73,24 +73,64 @@ SELECT src.source_type AS registry_type,
        s.metadata,
        s.extension_meta,
        e.claims,
+       rs.source_id,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
        COALESCE(rs.position, 32767)::integer AS position
+  FROM entry_version v
+  JOIN registry_entry e ON e.id = v.entry_id
+  JOIN registry_source rs ON rs.source_id = e.source_id
+                          AND rs.registry_id = sqlc.arg(registry_id)::uuid
+  JOIN source src ON e.source_id = src.id
+  JOIN skill s ON s.version_id = v.id
+  LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
+ WHERE v.name = sqlc.arg(name)
+   AND (v.version = sqlc.arg(version)::text
+       OR (sqlc.arg(version)::text = 'latest' AND l.latest_version_id = v.id)
+   )
+   AND (sqlc.narg(source_name)::text IS NULL OR src.name = sqlc.narg(source_name)::text)
+   AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text)
+   AND (
+       sqlc.narg(cursor_position)::integer IS NULL
+       OR (rs.position > sqlc.narg(cursor_position)::integer
+           AND rs.source_id > sqlc.narg(cursor_source_id)::uuid
+       )
+   )
+ ORDER BY rs.position ASC, rs.source_id ASC
+ LIMIT sqlc.arg(size)::bigint;
+
+-- name: GetSkillVersionBySourceName :one
+-- Source-scoped variant of GetSkillVersion used by the publish fetch-back path.
+-- source_name and version are required; registry filtering is not applied.
+SELECT src.source_type AS registry_type,
+       v.id,
+       e.name,
+       v.version,
+       (l.latest_version_id IS NOT NULL)::boolean AS is_latest,
+       v.created_at,
+       v.updated_at,
+       v.description,
+       v.title,
+       s.version_id AS skill_version_id,
+       s.namespace,
+       s.status,
+       s.license,
+       s.compatibility,
+       s.allowed_tools,
+       s.repository,
+       s.icons,
+       s.metadata,
+       s.extension_meta,
+       e.claims,
+       0::integer AS position
   FROM skill s
   JOIN entry_version v ON s.version_id = v.id
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
-  LEFT JOIN registry r ON r.name = sqlc.narg(registry_name)::text
-  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
- WHERE e.name = sqlc.arg(name)
-   AND (v.version = sqlc.arg(version)::text
-       OR (sqlc.arg(version)::text = 'latest' AND l.latest_version_id = v.id)
-   )
-   AND (sqlc.narg(registry_name)::text IS NULL OR rs.registry_id IS NOT NULL)
-   AND (sqlc.narg(source_name)::text IS NULL OR src.name = sqlc.narg(source_name)::text)
-   AND (sqlc.narg(namespace)::text IS NULL OR s.namespace = sqlc.narg(namespace)::text)
- ORDER BY rs.position ASC;
+ WHERE v.name = sqlc.arg(name)
+   AND v.version = sqlc.arg(version)
+   AND src.name = sqlc.arg(source_name);
 
 -- name: ListSkillOciPackages :many
 SELECT p.id,

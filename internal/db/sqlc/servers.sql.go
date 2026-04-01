@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const deleteOrphanedServers = `-- name: DeleteOrphanedServers :exec
@@ -133,31 +134,41 @@ SELECT src.source_type as registry_type,
        s.repository_subfolder,
        s.repository_type,
        e.claims,
+       rs.source_id,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
        COALESCE(rs.position, 32767)::integer AS position
-  FROM mcp_server s
-  JOIN entry_version v ON s.version_id = v.id
-  JOIN registry_entry e ON v.entry_id = e.id
+  FROM entry_version v
+  JOIN registry_entry e ON e.id = v.entry_id
+  JOIN registry_source rs ON rs.source_id = e.source_id
+                          AND rs.registry_id = $1::uuid
   JOIN source src ON e.source_id = src.id
+  JOIN mcp_server s ON s.version_id = v.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
-  LEFT JOIN registry r ON r.name = $1::text
-  LEFT JOIN registry_source rs ON rs.source_id = e.source_id AND rs.registry_id = r.id
- WHERE e.name = $2
-   AND (
+ WHERE v.name = $2
+  AND (
        v.version = $3
        OR ($3 = 'latest' AND l.latest_version_id = v.id)
    )
-   AND ($1::text IS NULL OR rs.registry_id IS NOT NULL)
    AND ($4::text IS NULL OR src.name = $4::text)
- ORDER BY rs.position ASC
+   AND (
+       $5::integer IS NULL
+       OR (rs.position > $5::integer
+           AND rs.source_id > $6::uuid
+       )
+   )
+ ORDER BY rs.position ASC, rs.source_id ASC
+ LIMIT $7::bigint
 `
 
 type GetServerVersionParams struct {
-	RegistryName *string `json:"registry_name"`
-	Name         string  `json:"name"`
-	Version      string  `json:"version"`
-	SourceName   *string `json:"source_name"`
+	RegistryID     uuid.UUID   `json:"registry_id"`
+	Name           string      `json:"name"`
+	Version        string      `json:"version"`
+	SourceName     *string     `json:"source_name"`
+	CursorPosition pgtype.Int4 `json:"cursor_position"`
+	CursorSourceID *uuid.UUID  `json:"cursor_source_id"`
+	Size           int64       `json:"size"`
 }
 
 type GetServerVersionRow struct {
@@ -178,19 +189,24 @@ type GetServerVersionRow struct {
 	RepositorySubfolder *string    `json:"repository_subfolder"`
 	RepositoryType      *string    `json:"repository_type"`
 	Claims              []byte     `json:"claims"`
+	SourceID            uuid.UUID  `json:"source_id"`
 	Position            int32      `json:"position"`
 }
 
-// Despite the name, this query returns multiple rows. The careful reader will
-// note that there is no limit clause, which might seem a bug, but the actual
-// number of records is bounded by the number of sources that provide the same
-// name and version, which we currently don't expect to be more than a few.
+// Despite the name, this query returns multiple rows. The actual number of
+// records is bounded by the number of sources that provide the same name and
+// version, which we currently don't expect to be more than a few.
+// Cursor-based pagination using (position, source_id) compound cursor.
+// position is the sort key but may not be unique; source_id is the tiebreaker.
 func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionParams) ([]GetServerVersionRow, error) {
 	rows, err := q.db.Query(ctx, getServerVersion,
-		arg.RegistryName,
+		arg.RegistryID,
 		arg.Name,
 		arg.Version,
 		arg.SourceName,
+		arg.CursorPosition,
+		arg.CursorSourceID,
+		arg.Size,
 	)
 	if err != nil {
 		return nil, err
@@ -217,6 +233,7 @@ func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionPara
 			&i.RepositorySubfolder,
 			&i.RepositoryType,
 			&i.Claims,
+			&i.SourceID,
 			&i.Position,
 		); err != nil {
 			return nil, err
@@ -227,6 +244,90 @@ func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const getServerVersionBySourceName = `-- name: GetServerVersionBySourceName :one
+SELECT src.source_type as registry_type,
+       v.id,
+       e.name,
+       v.version,
+       (l.latest_version_id IS NOT NULL)::boolean AS is_latest,
+       v.created_at,
+       v.updated_at,
+       v.description,
+       v.title,
+       s.website,
+       s.upstream_meta,
+       s.server_meta,
+       s.repository_url,
+       s.repository_id,
+       s.repository_subfolder,
+       s.repository_type,
+       e.claims,
+       0::integer AS position
+  FROM mcp_server s
+  JOIN entry_version v ON s.version_id = v.id
+  JOIN registry_entry e ON v.entry_id = e.id
+  JOIN source src ON e.source_id = src.id
+  LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
+ WHERE v.name = $1
+   AND v.version = $2
+   AND src.name = $3
+`
+
+type GetServerVersionBySourceNameParams struct {
+	Name       string `json:"name"`
+	Version    string `json:"version"`
+	SourceName string `json:"source_name"`
+}
+
+type GetServerVersionBySourceNameRow struct {
+	RegistryType        string     `json:"registry_type"`
+	ID                  uuid.UUID  `json:"id"`
+	Name                string     `json:"name"`
+	Version             string     `json:"version"`
+	IsLatest            bool       `json:"is_latest"`
+	CreatedAt           *time.Time `json:"created_at"`
+	UpdatedAt           *time.Time `json:"updated_at"`
+	Description         *string    `json:"description"`
+	Title               *string    `json:"title"`
+	Website             *string    `json:"website"`
+	UpstreamMeta        []byte     `json:"upstream_meta"`
+	ServerMeta          []byte     `json:"server_meta"`
+	RepositoryUrl       *string    `json:"repository_url"`
+	RepositoryID        *string    `json:"repository_id"`
+	RepositorySubfolder *string    `json:"repository_subfolder"`
+	RepositoryType      *string    `json:"repository_type"`
+	Claims              []byte     `json:"claims"`
+	Position            int32      `json:"position"`
+}
+
+// Source-scoped variant of GetServerVersion used by the publish fetch-back path.
+// source_name and version are required; registry filtering is not applied.
+func (q *Queries) GetServerVersionBySourceName(ctx context.Context, arg GetServerVersionBySourceNameParams) (GetServerVersionBySourceNameRow, error) {
+	row := q.db.QueryRow(ctx, getServerVersionBySourceName, arg.Name, arg.Version, arg.SourceName)
+	var i GetServerVersionBySourceNameRow
+	err := row.Scan(
+		&i.RegistryType,
+		&i.ID,
+		&i.Name,
+		&i.Version,
+		&i.IsLatest,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Description,
+		&i.Title,
+		&i.Website,
+		&i.UpstreamMeta,
+		&i.ServerMeta,
+		&i.RepositoryUrl,
+		&i.RepositoryID,
+		&i.RepositorySubfolder,
+		&i.RepositoryType,
+		&i.Claims,
+		&i.Position,
+	)
+	return i, err
 }
 
 const insertServerIcon = `-- name: InsertServerIcon :exec
@@ -591,10 +692,9 @@ SELECT src.source_type as registry_type,
   JOIN registry_entry e ON v.entry_id = e.id
   JOIN source src ON e.source_id = src.id
   LEFT JOIN latest_entry_version l ON v.id = l.latest_version_id
-  LEFT JOIN registry_source rs ON rs.source_id = e.source_id
-                               AND rs.registry_id = $1::uuid
- WHERE ($1::uuid IS NULL OR rs.source_id IS NOT NULL)
-   AND ($2::text IS NULL OR e.name = $2::text)
+  JOIN registry_source rs ON rs.source_id = e.source_id
+                          AND rs.registry_id = $1::uuid
+ WHERE ($2::text IS NULL OR e.name = $2::text)
    AND ($3::text IS NULL OR (
        LOWER(e.name) LIKE LOWER('%' || $3::text || '%')
        OR LOWER(v.title) LIKE LOWER('%' || $3::text || '%')
@@ -618,7 +718,7 @@ SELECT src.source_type as registry_type,
 `
 
 type ListServersParams struct {
-	RegistryID    *uuid.UUID `json:"registry_id"`
+	RegistryID    uuid.UUID  `json:"registry_id"`
 	Name          *string    `json:"name"`
 	Search        *string    `json:"search"`
 	UpdatedSince  *time.Time `json:"updated_since"`

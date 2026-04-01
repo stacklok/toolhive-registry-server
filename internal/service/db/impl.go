@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/trace"
 
@@ -26,8 +27,10 @@ var (
 // serverCursor represents a cursor for pagination based on server name and version.
 // This provides deterministic ordering regardless of timestamp values.
 type serverCursor struct {
-	Name    string
-	Version string
+	Name     string
+	Version  string
+	Position int32
+	SourceID uuid.UUID
 }
 
 // options holds configuration options for the database service

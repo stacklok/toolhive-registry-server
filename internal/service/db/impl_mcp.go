@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 
@@ -52,19 +53,21 @@ func (s *dbService) ListServers(
 		otel.AttrPageSize.Int(options.Limit),
 		otel.AttrHasCursor.Bool(options.Cursor != ""),
 	)
+	if options.RegistryName == "" {
+		return nil, fmt.Errorf("registry name is required")
+	}
+	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
+
+	registryID, err := lookupRegistryID(ctx, s.pool, options.RegistryName)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
 	// Request one extra record to detect if there are more results
 	params := sqlc.ListServersParams{
-		Size: int64(options.Limit + 1),
-	}
-	if options.RegistryName != nil {
-		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
-
-		registryID, err := lookupRegistryID(ctx, s.pool, *options.RegistryName)
-		if err != nil {
-			otel.RecordError(span, err)
-			return nil, err
-		}
-		params.RegistryID = &registryID
+		Size:       int64(options.Limit + 1),
+		RegistryID: registryID,
 	}
 
 	slog.DebugContext(ctx, "ListServers query",
@@ -174,19 +177,21 @@ func (s *dbService) ListServerVersions(
 		otel.AttrServerName.String(options.Name),
 		otel.AttrPageSize.Int(options.Limit),
 	)
-	params := sqlc.ListServersParams{
-		Name: &options.Name,
-		Size: int64(options.Limit),
+	if options.RegistryName == "" {
+		return nil, fmt.Errorf("registry name is required")
 	}
-	if options.RegistryName != nil {
-		span.SetAttributes(otel.AttrRegistryName.String(*options.RegistryName))
+	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-		registryID, err := lookupRegistryID(ctx, s.pool, *options.RegistryName)
-		if err != nil {
-			otel.RecordError(span, err)
-			return nil, err
-		}
-		params.RegistryID = &registryID
+	registryIDForVersions, err := lookupRegistryID(ctx, s.pool, options.RegistryName)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
+	params := sqlc.ListServersParams{
+		Name:       &options.Name,
+		Size:       int64(options.Limit),
+		RegistryID: registryIDForVersions,
 	}
 
 	// Note: this function fetches a list of server versions. In case no records are
@@ -245,39 +250,42 @@ func (s *dbService) GetServerVersion(
 		}
 	}
 
+	if options.RegistryName == "" {
+		return nil, fmt.Errorf("registry name is required")
+	}
+
 	// Add tracing attributes
 	span.SetAttributes(
 		otel.AttrServerName.String(options.Name),
 		otel.AttrServerVersion.String(options.Version),
+		otel.AttrRegistryName.String(options.RegistryName),
 	)
-	if options.RegistryName != "" {
-		span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
-	}
 
-	if options.RegistryName != "" {
-		if err := checkRegistryExists(ctx, s.pool, options.RegistryName); err != nil {
-			otel.RecordError(span, err)
-			return nil, err
-		}
-	}
-
-	params := sqlc.GetServerVersionParams{
-		Name:    options.Name,
-		Version: options.Version,
-	}
-	if options.RegistryName != "" {
-		params.RegistryName = &options.RegistryName
-	}
-	if options.SourceName != "" {
-		params.SourceName = &options.SourceName
+	registryID, err := lookupRegistryID(ctx, s.pool, options.RegistryName)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
 	}
 
 	// Note: this function fetches a single record given name and version.
 	// In case no record is found, the called function maps the underlying
 	// `pgx.ErrNoRows` to `service.ErrNotFound`, and callers should expect
 	// to receive `service.ErrNotFound` for a missing record.
-	querierFunc := func(ctx context.Context, querier sqlc.Querier, _ *serverCursor) ([]helper, error) {
-		servers, err := querier.GetServerVersion(ctx, params)
+	querierFunc := func(ctx context.Context, querier sqlc.Querier, cursor *serverCursor) ([]helper, error) {
+		p := sqlc.GetServerVersionParams{
+			Name:       options.Name,
+			Version:    options.Version,
+			RegistryID: registryID,
+			Size:       int64(service.MaxPageSize) + 1,
+		}
+		if options.SourceName != "" {
+			p.SourceName = &options.SourceName
+		}
+		if cursor != nil {
+			p.CursorPosition = pgtype.Int4{Int32: cursor.Position, Valid: true}
+			p.CursorSourceID = &cursor.SourceID
+		}
+		servers, err := querier.GetServerVersion(ctx, p)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
@@ -626,17 +634,51 @@ func (s *dbService) PublishServerVersion(
 		"request_id", middleware.GetReqID(ctx))
 
 	// Fetch the inserted server to return it
-	result, err := s.GetServerVersion(ctx,
-		service.WithSourceName(sourceName),
-		service.WithName(serverData.Name),
-		service.WithVersion(serverData.Version),
-	)
+	result, err := s.fetchServerVersionBySource(ctx, serverData.Name, serverData.Version, sourceName)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to fetch published server: %w", err)
 	}
 
 	return result, nil
+}
+
+// fetchServerVersionBySource retrieves a server version using the source name directly,
+// bypassing registry filtering. Used by the publish fetch-back path.
+func (s *dbService) fetchServerVersionBySource(
+	ctx context.Context,
+	name, version, sourceName string,
+) (*upstreamv0.ServerJSON, error) {
+	querier := sqlc.New(s.pool)
+	row, err := querier.GetServerVersionBySourceName(ctx, sqlc.GetServerVersionBySourceNameParams{
+		Name:       name,
+		Version:    version,
+		SourceName: sourceName,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, name, version)
+		}
+		return nil, err
+	}
+
+	h := getServerVersionBySourceNameRowToHelper(row)
+
+	versionIDs := []uuid.UUID{row.ID}
+	packages, err := querier.ListServerPackages(ctx, versionIDs)
+	if err != nil {
+		return nil, err
+	}
+	remotes, err := querier.ListServerRemotes(ctx, versionIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	server, err := helperToServer(h, packages, remotes)
+	if err != nil {
+		return nil, err
+	}
+	return &server, nil
 }
 
 // executePublishTransaction executes the publish operation within a transaction
@@ -1003,7 +1045,12 @@ func streamHelpers(
 		// Advance cursor to continue fetching
 		if len(batch) > 0 {
 			lastRow := batch[len(batch)-1]
-			cursor = &serverCursor{Name: lastRow.Name, Version: lastRow.Version}
+			cursor = &serverCursor{
+				Name:     lastRow.Name,
+				Version:  lastRow.Version,
+				Position: lastRow.Position,
+				SourceID: lastRow.SourceID,
+			}
 		}
 	}
 
@@ -1011,7 +1058,12 @@ func streamHelpers(
 	var lastCursor *serverCursor
 	if len(accumulated) > limit {
 		last := accumulated[limit-1]
-		lastCursor = &serverCursor{Name: last.Name, Version: last.Version}
+		lastCursor = &serverCursor{
+			Name:     last.Name,
+			Version:  last.Version,
+			Position: last.Position,
+			SourceID: last.SourceID,
+		}
 		accumulated = accumulated[:limit]
 	}
 
