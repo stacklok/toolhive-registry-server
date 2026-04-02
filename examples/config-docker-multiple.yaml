@@ -58,7 +58,7 @@ sources:
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/catalog/toolhive/data/official-registry.json
+      path: pkg/catalog/toolhive/data/registry-upstream.json
     syncPolicy:
       interval: "5m"  # Longer interval for Git operations
     # Optional: Per-registry filter for ToolHive servers

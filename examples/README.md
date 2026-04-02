@@ -55,7 +55,7 @@ registries:
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/catalog/toolhive/data/registry.json
+      path: pkg/catalog/toolhive/data/registry-legacy.json
     syncPolicy:
       interval: "30m"
 ```
@@ -63,7 +63,7 @@ registries:
 **What happens when you start:**
 1. Background sync coordinator starts immediately
 2. Clones `https://github.com/stacklok/toolhive-catalog.git` (shallow, depth=1)
-3. Extracts `pkg/catalog/toolhive/data/registry.json` from the `main` branch
+3. Extracts `pkg/catalog/toolhive/data/registry-legacy.json` from the `main` branch
 4. Stores synced data in the PostgreSQL database
 5. Repeats every 30 minutes
 
@@ -280,7 +280,7 @@ registries:
       # Option 3: Pin to exact commit
       commit: abc123def456
 
-      path: pkg/catalog/toolhive/data/registry.json
+      path: pkg/catalog/toolhive/data/registry-legacy.json
     syncPolicy:
       interval: "30m"
 ```
@@ -373,7 +373,7 @@ registries:
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: develop  # Use dev branch
-      path: pkg/catalog/toolhive/data/registry.json
+      path: pkg/catalog/toolhive/data/registry-legacy.json
     syncPolicy:
       interval: "1m"  # Very frequent for testing
 ```

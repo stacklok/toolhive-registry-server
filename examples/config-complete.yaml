@@ -41,7 +41,7 @@ sources:
       # commit: abc123def456789
 
       # Path to registry file within repository (Required)
-      path: pkg/catalog/toolhive/data/registry.json
+      path: pkg/catalog/toolhive/data/registry-legacy.json
 
     # Per-registry synchronization policy
     syncPolicy:
