@@ -194,6 +194,23 @@ func WithClaims(claims map[string]any) Option {
 	}
 }
 
+type jwtClaimsOption interface {
+	setJWTClaims(claims map[string]any) error
+}
+
+// WithJWTClaims sets the caller's JWT claims for authorization checks
+// (e.g., verifying published claims are a subset of the publisher's JWT).
+func WithJWTClaims(claims map[string]any) Option {
+	return func(o any) error {
+		switch o := o.(type) {
+		case jwtClaimsOption:
+			return o.setJWTClaims(claims)
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+	}
+}
+
 // WithServerData sets the server data for the PublishServerVersion operation
 func WithServerData(serverData *upstreamv0.ServerJSON) Option {
 	return func(o any) error {

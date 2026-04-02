@@ -5,8 +5,59 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
+
+// ---------------------------------------------------------------------------
+// Write-path validation (gate checks, publish/delete authorization)
+// ---------------------------------------------------------------------------
+
+// validateClaimsSubset checks that callerClaims covers resourceClaims.
+// Returns nil if:
+//   - callerClaims is nil (anonymous mode — no auth enforcement)
+//   - resourceClaims is nil/empty (open resource — no restriction)
+//   - the caller is a super-admin (bypasses all claim checks)
+//   - callerClaims is a superset of resourceClaims
+//
+// Returns ErrClaimsInsufficient otherwise.
+func validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[string]any) error {
+	if callerClaims == nil || len(resourceClaims) == 0 {
+		return nil
+	}
+	if auth.IsSuperAdmin(ctx) {
+		return nil
+	}
+	if !claimsContain(callerClaims, resourceClaims) {
+		return fmt.Errorf("%w: caller claims do not cover resource claims", service.ErrClaimsInsufficient)
+	}
+	return nil
+}
+
+// validateClaimsSubsetBytes is like validateClaimsSubset but accepts raw JSON
+// for resourceClaims. Nil or empty JSON is treated as an open resource.
+func validateClaimsSubsetBytes(ctx context.Context, callerClaims map[string]any, resourceClaimsJSON []byte) error {
+	if callerClaims == nil || len(resourceClaimsJSON) == 0 {
+		return nil
+	}
+	resourceClaims := db.DeserializeClaims(resourceClaimsJSON)
+	return validateClaimsSubset(ctx, callerClaims, resourceClaims)
+}
+
+// claimsFromCtx extracts JWT claims from the context as map[string]any.
+// Returns nil in anonymous mode (no claims present).
+func claimsFromCtx(ctx context.Context) map[string]any {
+	jwtClaims := auth.ClaimsFromContext(ctx)
+	if jwtClaims == nil {
+		return nil
+	}
+	return map[string]any(jwtClaims)
+}
+
+// ---------------------------------------------------------------------------
+// Read-path filtering (per-user entry visibility)
+// ---------------------------------------------------------------------------
 
 // newClaimsFilterWith builds a RecordFilter that keeps a record only when the
 // caller's claims are non-empty, the record has stored claims, and they match.
@@ -30,6 +81,10 @@ func newClaimsFilterWith(
 		return checkClaims(callerJSON, recordJSON), nil
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
 
 // marshalClaims serializes callerClaims to JSON. Returns nil if the map is nil
 // or empty, or if serialization fails (treated as "no claims").

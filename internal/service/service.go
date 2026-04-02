@@ -57,6 +57,8 @@ var (
 	ErrSourceInUse = errors.New("source is referenced by one or more registries")
 	// ErrClaimsMismatch is returned when publish claims do not match the existing entry's claims
 	ErrClaimsMismatch = errors.New("claims mismatch")
+	// ErrClaimsInsufficient is returned when the caller's JWT claims do not cover a resource's claims
+	ErrClaimsInsufficient = errors.New("insufficient claims")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service

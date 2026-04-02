@@ -49,7 +49,7 @@ func (s *dbService) ListSkills(
 		options.Limit = service.MaxPageSize
 	}
 
-	registryID, err := lookupRegistryID(ctx, s.pool, options.RegistryName)
+	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -174,7 +174,7 @@ func (s *dbService) GetSkillVersion(
 
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	registryID, err := lookupRegistryID(ctx, s.pool, options.RegistryName)
+	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -299,6 +299,12 @@ func (s *dbService) PublishSkill(
 	}
 	if skill.Namespace == "" || skill.Name == "" || skill.Version == "" {
 		return nil, fmt.Errorf("namespace, name, and version are required")
+	}
+
+	// Validate published claims are a subset of the publisher's JWT claims
+	if err := validateClaimsSubset(ctx, options.JWTClaims, options.Claims); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
 	}
 
 	// Serialize claims to JSON for storage
@@ -642,6 +648,24 @@ func (s *dbService) executeDeleteSkillTransaction(
 	registry, err := getManagedSource(ctx, querier)
 	if err != nil {
 		return err
+	}
+
+	// Verify the caller's JWT claims cover the entry's claims before deleting
+	if options.JWTClaims != nil {
+		existing, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
+			SourceID:  registry.ID,
+			EntryType: sqlc.EntryTypeSKILL,
+			Name:      options.Name,
+		})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("%w: %s@%s", service.ErrNotFound, options.Name, options.Version)
+			}
+			return fmt.Errorf("failed to look up registry entry: %w", err)
+		}
+		if err := validateClaimsSubsetBytes(ctx, options.JWTClaims, existing.Claims); err != nil {
+			return err
+		}
 	}
 
 	entryID, err := lookupAndDeleteEntryVersion(
