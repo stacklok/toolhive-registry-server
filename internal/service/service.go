@@ -165,11 +165,12 @@ type SourceInfo struct {
 
 // RegistryInfo represents detailed information about a registry
 type RegistryInfo struct {
-	Name         string       `json:"name"`
-	CreationType CreationType `json:"creationType,omitempty"`
-	Sources      []string     `json:"sources"`
-	CreatedAt    time.Time    `json:"createdAt"`
-	UpdatedAt    time.Time    `json:"updatedAt"`
+	Name         string         `json:"name"`
+	Claims       map[string]any `json:"claims,omitempty"`
+	CreationType CreationType   `json:"creationType,omitempty"`
+	Sources      []string       `json:"sources"`
+	CreatedAt    time.Time      `json:"createdAt"`
+	UpdatedAt    time.Time      `json:"updatedAt"`
 }
 
 // SourceSyncStatus represents the sync status of a registry

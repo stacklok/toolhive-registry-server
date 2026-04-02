@@ -25,6 +25,8 @@ import (
 )
 
 // CreateSource creates a new API-managed source
+//
+//nolint:gocyclo // complexity driven by validation, claim checks, and config serialization
 func (s *dbService) CreateSource(
 	ctx context.Context,
 	name string,
@@ -41,6 +43,12 @@ func (s *dbService) CreateSource(
 	if err := service.ValidateSourceConfig(req); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidSourceConfig, err)
+	}
+
+	// Validate source claims are a subset of the caller's JWT claims
+	if err := validateClaimsSubset(ctx, claimsFromCtx(ctx), req.Claims); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
 	}
 
 	// Add source type attribute after validation
@@ -209,6 +217,17 @@ func (s *dbService) UpdateSource(
 		return nil, err
 	}
 
+	// Validate caller's JWT covers both the existing and new claims
+	callerClaims := claimsFromCtx(ctx)
+	if err := validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+	if err := validateClaimsSubset(ctx, callerClaims, req.Claims); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
 	// Check if source type is changing (not allowed)
 	if err := validateSourceTypeChange(&existing, req.GetSourceType()); err != nil {
 		otel.RecordError(span, err)
@@ -327,6 +346,12 @@ func (s *dbService) DeleteSource(ctx context.Context, name string) error {
 		return err
 	}
 
+	// Validate caller's JWT covers the source's claims
+	if err := validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), existing.Claims); err != nil {
+		otel.RecordError(span, err)
+		return err
+	}
+
 	// Check if the source is linked to any registries.
 	// The RESTRICT FK on registry_source.source_id would block deletion anyway, but we
 	// want to return a clear error message.
@@ -396,13 +421,21 @@ func (s *dbService) ListSources(ctx context.Context) ([]service.SourceInfo, erro
 		return nil, fmt.Errorf("failed to list sources: %w", err)
 	}
 
-	// Convert to API response format
+	// Convert to API response format, filtering by caller claims
+	callerClaims := claimsFromCtx(ctx)
 	result := make([]service.SourceInfo, 0, len(dbSources))
 	for _, src := range dbSources {
 		// Build SourceInfo with all config fields
 		info := buildSourceInfoFromListRow(&src)
-		info.SyncStatus = fetchSyncStatus(ctx, querier, src.Name)
 
+		// In authenticated mode, only return sources whose claims the caller covers
+		if callerClaims != nil {
+			if err := validateClaimsSubset(ctx, callerClaims, info.Claims); err != nil {
+				continue
+			}
+		}
+
+		info.SyncStatus = fetchSyncStatus(ctx, querier, src.Name)
 		result = append(result, *info)
 	}
 
@@ -455,6 +488,13 @@ func (s *dbService) GetSourceByName(ctx context.Context, name string) (*service.
 
 	// Build SourceInfo with all config fields
 	info := buildSourceInfoFromGetByNameRow(&source)
+
+	// Validate caller's JWT covers the source's claims (hide existence on failure)
+	if err := validateClaimsSubset(ctx, claimsFromCtx(ctx), info.Claims); err != nil {
+		otel.RecordError(span, err)
+		return nil, fmt.Errorf("%w: %s", service.ErrSourceNotFound, name)
+	}
+
 	info.SyncStatus = fetchSyncStatus(ctx, querier, source.Name)
 
 	slog.DebugContext(ctx, "GetSourceByName completed",
@@ -563,6 +603,13 @@ func (s *dbService) ListSourceEntries(ctx context.Context, sourceName string) ([
 		}
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to get source: %w", err)
+	}
+
+	// Validate caller's JWT covers the source's claims (hide existence on failure)
+	if err := validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), source.Claims); err != nil {
+		err = fmt.Errorf("%w: %s", service.ErrSourceNotFound, sourceName)
+		otel.RecordError(span, err)
+		return nil, err
 	}
 
 	// Query all entries with versions for this source

@@ -174,6 +174,8 @@ func (routes *Routes) listRegistryEntries(w http.ResponseWriter, r *http.Request
 // writeRegistryError maps service-layer registry errors to HTTP responses.
 func writeRegistryError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, service.ErrClaimsInsufficient):
+		common.WriteErrorResponse(w, err.Error(), http.StatusForbidden)
 	case errors.Is(err, service.ErrRegistryNotFound):
 		common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
 	case errors.Is(err, service.ErrConfigRegistry):

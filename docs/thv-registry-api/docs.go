@@ -139,6 +139,10 @@ const docTemplate = `{
             },
             "github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo": {
                 "properties": {
+                    "claims": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    },
                     "createdAt": {
                         "type": "string"
                     },
