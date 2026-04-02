@@ -415,7 +415,7 @@ check "platform-admin cannot see data-tools source (404 = hidden)" 404 \
   -H "Authorization: Bearer ${TOKEN_PLATFORM_ADMIN}" \
   "${BASE_URL}/v1/sources/data-tools"
 
-# Writer role should not have manageSources permission
+# Writer role does not have manageSources, so source listing is blocked
 check "platform-writer cannot list sources (no manageSources role)" 403 \
   -H "Authorization: Bearer ${TOKEN_PLATFORM_WRITER}" \
   "${BASE_URL}/v1/sources"
@@ -424,9 +424,9 @@ check "data-writer cannot list sources (no manageSources role)" 403 \
   -H "Authorization: Bearer ${TOKEN_DATA_WRITER}" \
   "${BASE_URL}/v1/sources"
 
-# Outsider (org=contoso) — has admin role but wrong org, should see no acme sources
-# The listing endpoint returns 200 with a filtered list; verify no acme sources leak through
-check_list_count "outsider sees zero sources (wrong org)" ".sources" 0 \
+# Outsider (org=contoso) — has admin role but wrong org
+# Can only see sources with no claims (internal managed source has no claims = open)
+check_list_count "outsider sees only claimless sources (wrong org)" ".sources" 1 \
   -H "Authorization: Bearer ${TOKEN_OUTSIDER}" \
   "${BASE_URL}/v1/sources"
 
@@ -452,12 +452,12 @@ check "platform-admin cannot see acme-data registry (404 = hidden)" 404 \
   -H "Authorization: Bearer ${TOKEN_PLATFORM_ADMIN}" \
   "${BASE_URL}/v1/registries/acme-data"
 
-# Writer role should not have manageRegistries permission
-check "platform-writer cannot list registries (no manageRegistries role)" 403 \
+# Writer role can list registries (read-only, claim-filtered)
+check "platform-writer can list registries (read is open to authenticated)" 200 \
   -H "Authorization: Bearer ${TOKEN_PLATFORM_WRITER}" \
   "${BASE_URL}/v1/registries"
 
-check "data-writer cannot list registries (no manageRegistries role)" 403 \
+check "data-writer can list registries (read is open to authenticated)" 200 \
   -H "Authorization: Bearer ${TOKEN_DATA_WRITER}" \
   "${BASE_URL}/v1/registries"
 

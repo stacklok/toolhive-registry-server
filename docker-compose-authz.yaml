@@ -95,11 +95,6 @@ services:
             }
           ]
         }
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8888/default/.well-known/openid-configuration || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
     networks:
       - registry-network
 
@@ -133,7 +128,7 @@ services:
       postgres:
         condition: service_healthy
       mock-oauth2-server:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "8080:8080"
     volumes:
