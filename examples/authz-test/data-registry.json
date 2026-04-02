@@ -1,0 +1,51 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/upstream-registry.schema.json",
+  "version": "1.0.0",
+  "meta": {
+    "last_updated": "2025-01-15T00:00:00Z"
+  },
+  "data": {
+    "servers": [
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "com.acme/data-pipeline",
+        "description": "ETL pipeline orchestration tool for data team",
+        "title": "data-pipeline",
+        "repository": {
+          "url": "https://github.com/acme/data-pipeline",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "ghcr.io/acme/data-pipeline:1.0.0",
+            "transport": {
+              "type": "stdio"
+            }
+          }
+        ]
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "com.acme/ml-trainer",
+        "description": "ML model training assistant for data science",
+        "title": "ml-trainer",
+        "repository": {
+          "url": "https://github.com/acme/ml-trainer",
+          "source": "github"
+        },
+        "version": "3.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "ghcr.io/acme/ml-trainer:3.0.0",
+            "transport": {
+              "type": "stdio"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

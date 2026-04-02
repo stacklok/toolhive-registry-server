@@ -1,0 +1,51 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/upstream-registry.schema.json",
+  "version": "1.0.0",
+  "meta": {
+    "last_updated": "2025-01-15T00:00:00Z"
+  },
+  "data": {
+    "servers": [
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "com.acme/deploy-helper",
+        "description": "Deployment automation tool for the platform team",
+        "title": "deploy-helper",
+        "repository": {
+          "url": "https://github.com/acme/deploy-helper",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "ghcr.io/acme/deploy-helper:1.0.0",
+            "transport": {
+              "type": "stdio"
+            }
+          }
+        ]
+      },
+      {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "com.acme/infra-scanner",
+        "description": "Infrastructure security scanner for platform ops",
+        "title": "infra-scanner",
+        "repository": {
+          "url": "https://github.com/acme/infra-scanner",
+          "source": "github"
+        },
+        "version": "2.0.0",
+        "packages": [
+          {
+            "registryType": "oci",
+            "identifier": "ghcr.io/acme/infra-scanner:2.0.0",
+            "transport": {
+              "type": "stdio"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

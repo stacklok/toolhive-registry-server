@@ -1,0 +1,159 @@
+# Authorization testing stack
+#
+# Services:
+#   1. mock-oauth2-server — Lightweight OIDC provider (NAV) issuing JWTs with custom claims
+#   2. postgres           — PostgreSQL 18 database
+#   3. registry-api       — Registry server with OAuth + authz enabled
+#
+# User personas (get tokens via the test script):
+#   - super-admin:      org=acme, role=super-admin        → full access, bypasses claim checks
+#   - platform-admin:   org=acme, team=platform, role=admin → manage sources/registries (platform scope)
+#   - platform-writer:  org=acme, team=platform, role=writer → publish entries (platform scope)
+#   - data-writer:      org=acme, team=data, role=writer    → publish entries (data scope)
+#   - outsider:         org=contoso, role=admin             → no access to acme resources
+#
+# Usage:
+#   docker compose -f docker-compose-authz.yaml up --build -d
+#   ./examples/authz-test/test-authz.sh
+#   docker compose -f docker-compose-authz.yaml down -v
+
+services:
+  mock-oauth2-server:
+    image: ghcr.io/navikt/mock-oauth2-server:2.1.10
+    container_name: mock-oauth2-server
+    ports:
+      - "8888:8888"
+    environment:
+      SERVER_PORT: 8888
+      # Force the issuer URL to use the docker service name so tokens carry
+      # iss=http://mock-oauth2-server:8888/default — matching the registry config.
+      SERVER_HOSTNAME: mock-oauth2-server
+      # Pre-configure user personas with custom claims.
+      # Each requestMapping matches on the "code" parameter in the authorization_code grant.
+      JSON_CONFIG: |
+        {
+          "interactiveLogin": false,
+          "tokenCallbacks": [
+            {
+              "issuerId": "default",
+              "tokenExpiry": 3600,
+              "requestMappings": [
+                {
+                  "requestParam": "code",
+                  "match": "super-admin",
+                  "claims": {
+                    "sub": "god@acme.com",
+                    "aud": ["mcp-registry"],
+                    "org": "acme",
+                    "role": "super-admin"
+                  }
+                },
+                {
+                  "requestParam": "code",
+                  "match": "platform-admin",
+                  "claims": {
+                    "sub": "alice@acme.com",
+                    "aud": ["mcp-registry"],
+                    "org": "acme",
+                    "team": "platform",
+                    "role": "admin"
+                  }
+                },
+                {
+                  "requestParam": "code",
+                  "match": "platform-writer",
+                  "claims": {
+                    "sub": "bob@acme.com",
+                    "aud": ["mcp-registry"],
+                    "org": "acme",
+                    "team": "platform",
+                    "role": "writer"
+                  }
+                },
+                {
+                  "requestParam": "code",
+                  "match": "data-writer",
+                  "claims": {
+                    "sub": "carol@acme.com",
+                    "aud": ["mcp-registry"],
+                    "org": "acme",
+                    "team": "data",
+                    "role": "writer"
+                  }
+                },
+                {
+                  "requestParam": "code",
+                  "match": "outsider",
+                  "claims": {
+                    "sub": "eve@contoso.com",
+                    "aud": ["mcp-registry"],
+                    "org": "contoso",
+                    "role": "admin"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8888/default/.well-known/openid-configuration || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - registry-network
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: toolhive-registry-postgres-authz
+    environment:
+      POSTGRES_USER: registry
+      POSTGRES_PASSWORD: registry_password
+      POSTGRES_DB: registry
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_authz_data:/var/lib/postgresql/data
+      - ./docker/postgres-init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U registry"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - registry-network
+
+  registry-api:
+    build:
+      context: .
+      dockerfile: ./docker/dockerfile-compose
+    container_name: toolhive-registry-api-authz
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-oauth2-server:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./examples:/examples:ro
+      - registry_authz_data:/app/data
+    command: ["serve", "--config", "/examples/authz-test/config-authz-test.yaml", "--address", ":8080"]
+    environment:
+      - LOG_LEVEL=debug
+      - PGPASSFILE=/home/appuser/.pgpass
+      - THV_REGISTRY_INSECURE_URL=true
+    networks:
+      - registry-network
+    restart: unless-stopped
+
+volumes:
+  postgres_authz_data:
+    driver: local
+  registry_authz_data:
+    driver: local
+
+networks:
+  registry-network:
+    driver: bridge

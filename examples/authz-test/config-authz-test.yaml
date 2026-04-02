@@ -1,0 +1,120 @@
+# Authorization test configuration
+#
+# This config exercises the full v2 claims/authz model:
+# - OAuth auth via mock-oauth2-server
+# - Role-based access control (superAdmin, manageSources, manageRegistries, manageEntries)
+# - Sources with different claims (org-level, team-level)
+# - Multiple registries with access gates
+# - Per-user entry filtering
+#
+# Usage:
+#   CONFIG_FILE=authz-test/config-authz-test.yaml docker compose -f docker-compose-authz.yaml up
+
+# --- Sources ---
+# Three sources with different claim scopes + internal source for publishing
+
+sources:
+  # Shared catalog: org-wide visibility (no team restriction)
+  - name: shared-catalog
+    format: upstream
+    file:
+      path: /examples/upstream-registry.json
+    syncPolicy:
+      interval: "30s"
+    claims:
+      "org": "acme"
+
+  # Platform team tools: only visible to platform team members
+  - name: platform-tools
+    format: upstream
+    file:
+      path: /examples/authz-test/platform-registry.json
+    syncPolicy:
+      interval: "30s"
+    claims:
+      "org": "acme"
+      "team": "platform"
+
+  # Data team tools: only visible to data team members
+  - name: data-tools
+    format: upstream
+    file:
+      path: /examples/authz-test/data-registry.json
+    syncPolicy:
+      interval: "30s"
+    claims:
+      "org": "acme"
+      "team": "data"
+
+  # Internal source for published entries
+  - name: internal
+    managed: {}
+
+# --- Registries ---
+# Three registries with different access gates and source compositions
+
+registries:
+  # Open to all acme users - includes everything
+  - name: acme-all
+    claims:
+      "org": "acme"
+    sources: ["shared-catalog", "platform-tools", "data-tools", "internal"]
+
+  # Platform team only - gate requires team=platform
+  - name: acme-platform
+    claims:
+      "org": "acme"
+      "team": "platform"
+    sources: ["shared-catalog", "platform-tools", "internal"]
+
+  # Data team only - gate requires team=data
+  - name: acme-data
+    claims:
+      "org": "acme"
+      "team": "data"
+    sources: ["shared-catalog", "data-tools", "internal"]
+
+# --- Auth ---
+auth:
+  mode: oauth
+
+  oauth:
+    resourceUrl: http://localhost:8080
+    realm: mcp-registry
+    providers:
+      - name: mock-idp
+        # mock-oauth2-server runs on the docker bridge. The registry-api container
+        # reaches it via the docker service name; tokens carry iss matching this URL.
+        issuerUrl: http://mock-oauth2-server:8888/default
+        allowPrivateIP: true
+        audience: mcp-registry
+
+  authz:
+    roles:
+      # Full access, bypasses all claim checks
+      superAdmin:
+        - "role": "super-admin"
+
+      # Source management - scoped by caller's claims
+      manageSources:
+        - "role": "admin"
+
+      # Registry management - scoped by caller's claims
+      manageRegistries:
+        - "role": "admin"
+
+      # Entry publishing and deletion
+      manageEntries:
+        - "role": "writer"
+
+# --- Database ---
+database:
+  host: postgres
+  port: 5432
+  user: db_app
+  migrationUser: db_migrator
+  database: registry
+  sslMode: disable
+  maxOpenConns: 10
+  maxIdleConns: 2
+  connMaxLifetime: "30m"

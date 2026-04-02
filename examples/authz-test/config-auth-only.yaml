@@ -1,0 +1,50 @@
+# Auth-only test configuration (no authz)
+#
+# This config exercises the "auth=yes, authz=no" row of the auth matrix:
+# - OAuth auth enabled (tokens are validated)
+# - No authz block (no claim-based access control)
+# - All authenticated users have equal access
+#
+# Usage:
+#   docker compose -f docker-compose-authz.yaml \
+#     -e REGISTRY_CONFIG=/examples/authz-test/config-auth-only.yaml up --build
+
+sources:
+  - name: shared-catalog
+    format: upstream
+    file:
+      path: /examples/upstream-registry.json
+    syncPolicy:
+      interval: "30s"
+
+  - name: internal
+    managed: {}
+
+registries:
+  - name: default
+    sources: ["shared-catalog", "internal"]
+
+auth:
+  mode: oauth
+
+  oauth:
+    resourceUrl: http://localhost:8080
+    realm: mcp-registry
+    providers:
+      - name: mock-idp
+        issuerUrl: http://mock-oauth2-server:8888/default
+        allowPrivateIP: true
+        audience: mcp-registry
+
+  # NOTE: No authz block — any valid token grants full access
+
+database:
+  host: postgres
+  port: 5432
+  user: db_app
+  migrationUser: db_migrator
+  database: registry
+  sslMode: disable
+  maxOpenConns: 10
+  maxIdleConns: 2
+  connMaxLifetime: "30m"
