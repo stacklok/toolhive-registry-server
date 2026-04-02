@@ -86,7 +86,8 @@ func TestRequireRole(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler := RequireRole(tt.requiredRole, tt.authzCfg)(okHandler)
+			// Chain ResolveRolesMiddleware -> RequireRole, matching production setup.
+			handler := ResolveRolesMiddleware(tt.authzCfg)(RequireRole(tt.requiredRole, tt.authzCfg)(okHandler))
 
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			if tt.setClaims {

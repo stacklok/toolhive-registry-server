@@ -81,7 +81,7 @@ func (s *dbService) ListSkills(
 	}
 
 	claimsFilter := newClaimsFilterWith(
-		options.Claims,
+		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			r, ok := record.(sqlc.ListSkillsRow)
 			return r.Claims, ok

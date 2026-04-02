@@ -77,7 +77,7 @@ func TestNewClaimsFilterWith(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			filter := newClaimsFilterWith(tt.callerClaims, extract)
+			filter := newClaimsFilterWith(t.Context(), tt.callerClaims, extract)
 
 			if tt.wantNilFn {
 				assert.Nil(t, filter)

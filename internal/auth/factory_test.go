@@ -54,13 +54,13 @@ func TestNewAuthMiddleware(t *testing.T) {
 			name:             "unsupported mode returns error",
 			config:           &config.AuthConfig{Mode: "custom"},
 			validatorFactory: DefaultValidatorFactory,
-			wantErr:          "invalid auth.mode",
+			wantErr:          "unsupported auth mode",
 		},
 		{
 			name:             "empty mode returns error (should be resolved before calling)",
 			config:           &config.AuthConfig{Mode: ""},
 			validatorFactory: DefaultValidatorFactory,
-			wantErr:          "invalid auth.mode",
+			wantErr:          "unsupported auth mode",
 		},
 		{
 			name: "oauth mode with no providers returns error",
@@ -71,7 +71,7 @@ func TestNewAuthMiddleware(t *testing.T) {
 				},
 			},
 			validatorFactory: mockValidatorFactory,
-			wantErr:          "auth.oauth.providers is required",
+			wantErr:          "at least one provider must be configured",
 		},
 		{
 			name: "oauth mode with valid provider succeeds",

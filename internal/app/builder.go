@@ -408,6 +408,10 @@ func buildHTTPServer(
 		authzCfg = b.config.Auth.Authz
 	}
 
+	// Resolve roles for all authenticated requests so that downstream code
+	// (e.g., super-admin bypass in claim validation) can use IsSuperAdmin(ctx).
+	b.middlewares = append(b.middlewares, auth.ResolveRolesMiddleware(authzCfg))
+
 	serverOpts := []api.ServerOption{
 		api.WithMiddlewares(b.middlewares...),
 		api.WithAuthInfoHandler(b.authInfoHandler),
