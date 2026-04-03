@@ -252,7 +252,7 @@ func setupEnv(t *testing.T, authCfg *config.AuthConfig) *testEnv {
 	app, err := registryapp.NewRegistryApp(ctx,
 		registryapp.WithConfig(cfg),
 		registryapp.WithAddress(":0"),
-		registryapp.WithCoordinatorOptions(coordinator.WithPollingInterval(500*time.Millisecond)),
+		registryapp.WithCoordinatorOptions(coordinator.TestingWithPollingInterval(500*time.Millisecond)),
 	)
 	require.NoError(t, err)
 

@@ -86,9 +86,11 @@ func WithTracer(tracer trace.Tracer) Option {
 	}
 }
 
-// WithPollingInterval overrides the default polling interval.
-// Intended for integration tests that need faster sync cycles.
-func WithPollingInterval(d time.Duration) Option {
+// withPollingInterval overrides the default polling interval.
+// This is intentionally unexported — it exists for integration tests
+// that need faster sync cycles. If a user-facing need arises, promote
+// to exported.
+func withPollingInterval(d time.Duration) Option {
 	return func(c *defaultCoordinator) {
 		c.pollingIntervalOverride = d
 	}
