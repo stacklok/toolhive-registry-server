@@ -56,6 +56,9 @@ type defaultCoordinator struct {
 
 	// Tracing
 	tracer trace.Tracer
+
+	// pollingIntervalOverride overrides the default polling interval (for testing)
+	pollingIntervalOverride time.Duration
 }
 
 // Option is a function that configures the coordinator
@@ -80,6 +83,14 @@ func WithRegistryMetrics(metrics *telemetry.RegistryMetrics) Option {
 func WithTracer(tracer trace.Tracer) Option {
 	return func(c *defaultCoordinator) {
 		c.tracer = tracer
+	}
+}
+
+// WithPollingInterval overrides the default polling interval.
+// Intended for integration tests that need faster sync cycles.
+func WithPollingInterval(d time.Duration) Option {
+	return func(c *defaultCoordinator) {
+		c.pollingIntervalOverride = d
 	}
 }
 
@@ -131,7 +142,12 @@ func (c *defaultCoordinator) Start(ctx context.Context) error {
 	}
 
 	// Calculate polling interval with jitter to prevent thundering herd
-	pollingInterval := calculatePollingInterval()
+	var pollingInterval time.Duration
+	if c.pollingIntervalOverride > 0 {
+		pollingInterval = c.pollingIntervalOverride
+	} else {
+		pollingInterval = calculatePollingInterval()
+	}
 	slog.Info("Configured coordinator sync interval",
 		"base_interval", basePollingInterval,
 		"actual_interval", pollingInterval)

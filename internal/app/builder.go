@@ -65,6 +65,9 @@ type registryAppConfig struct {
 	// Telemetry components
 	meterProvider  metric.MeterProvider
 	tracerProvider trace.TracerProvider
+
+	// Coordinator options (primarily for testing)
+	coordinatorOpts []coordinator.Option
 }
 
 func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
@@ -239,6 +242,14 @@ func WithSyncManager(sm pkgsync.Manager) RegistryAppOptions {
 	}
 }
 
+// WithCoordinatorOptions sets additional coordinator options (e.g., for testing).
+func WithCoordinatorOptions(opts ...coordinator.Option) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.coordinatorOpts = append(cfg.coordinatorOpts, opts...)
+		return nil
+	}
+}
+
 // WithMeterProvider sets the OpenTelemetry meter provider for HTTP metrics
 func WithMeterProvider(mp metric.MeterProvider) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
@@ -321,6 +332,9 @@ func buildSyncComponents(
 		coordOpts = append(coordOpts, coordinator.WithTracer(tracer))
 		slog.Info("Sync coordinator tracing enabled")
 	}
+
+	// Append any externally provided coordinator options (e.g., polling interval for tests)
+	coordOpts = append(coordOpts, b.coordinatorOpts...)
 
 	// Create coordinator (storage-agnostic)
 	syncCoordinator := coordinator.New(b.syncManager, stateService, b.config, coordOpts...)
