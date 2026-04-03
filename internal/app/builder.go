@@ -459,7 +459,15 @@ func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWrit
 			kubernetes.WithRegistryName(reg.Name),
 		}
 
-		if cfg.WatchNamespace != "" {
+		// Pass source-level base claims for merging with per-entry annotation claims
+		if len(reg.Claims) > 0 {
+			opts = append(opts, kubernetes.WithBaseClaims(reg.Claims))
+		}
+
+		// Use namespaces from source config if set, otherwise fall back to global WatchNamespace
+		if reg.Kubernetes != nil && len(reg.Kubernetes.Namespaces) > 0 {
+			opts = append(opts, kubernetes.WithNamespaces(reg.Kubernetes.Namespaces...))
+		} else if cfg.WatchNamespace != "" {
 			namespaces := strings.Split(cfg.WatchNamespace, ",")
 			opts = append(opts, kubernetes.WithNamespaces(namespaces...))
 		}

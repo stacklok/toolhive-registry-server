@@ -275,16 +275,14 @@ type ManagedConfig struct {
 	// Future fields can be added here as needed
 }
 
-// KubernetesConfig defines configuration for Kubernetes-based registries
-// Kubernetes registries discover MCP servers from running Kubernetes resources
+// KubernetesConfig defines configuration for Kubernetes-based registries.
+// Kubernetes registries discover MCP servers from running Kubernetes resources.
+// Per-entry claims are set directly on CRDs via the toolhive.stacklok.dev/authz-claims
+// JSON annotation, which is merged with the source's base claims.
 type KubernetesConfig struct {
 	// Namespaces is a list of Kubernetes namespaces to watch for MCP servers
 	// If empty, watches the namespace configured via WatchNamespace environment variable
 	Namespaces []string `yaml:"namespaces,omitempty"`
-
-	// ClaimMapping maps Kubernetes labels/annotations to claims for authorization
-	// Keys are claim names, values are label/annotation paths
-	ClaimMapping map[string]string `yaml:"claimMapping,omitempty"`
 }
 
 // SyncPolicyConfig defines synchronization settings

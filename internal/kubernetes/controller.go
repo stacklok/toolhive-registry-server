@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -22,6 +23,13 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 )
 
+// reconcileResult holds the output of getMCPServerList: the upstream registry
+// data plus optional per-entry claims derived from CRD annotations.
+type reconcileResult struct {
+	Registry       *toolhivetypes.UpstreamRegistry
+	PerEntryClaims map[string][]byte // server name → claims JSON (nil if no per-entry claims)
+}
+
 // MCPServerReconciler reconciles MCPServer objects
 type MCPServerReconciler struct {
 	client       client.Client
@@ -29,13 +37,14 @@ type MCPServerReconciler struct {
 	requeueAfter time.Duration
 	syncWriter   writer.SyncWriter
 	registryName string
+	baseClaims   map[string]any // source-level claims merged into per-entry claims
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// Fetch the MCPServer instance
-	registry, err := getMCPServerList(ctx, r.client, req.Namespace)
+	result, err := getMCPServerList(ctx, r.client, req.Namespace, r.baseClaims)
 	if err != nil {
 		slog.Error("Failed to get MCPServer list", "error", err)
 		return ctrl.Result{}, err
@@ -43,10 +52,15 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	slog.Info("MCP servers list fetched successfully",
 		"registry", r.registryName,
-		"count", len(registry.Data.Servers),
+		"count", len(result.Registry.Data.Servers),
 	)
 
-	if err := r.syncWriter.Store(ctx, r.registryName, registry); err != nil {
+	var opts []writer.StoreOption
+	if len(result.PerEntryClaims) > 0 {
+		opts = append(opts, writer.WithPerEntryClaims(result.PerEntryClaims))
+	}
+
+	if err := r.syncWriter.Store(ctx, r.registryName, result.Registry, opts...); err != nil {
 		slog.Error("Failed to store MCPServer list", "error", err)
 		return ctrl.Result{
 			Requeue:      true,
@@ -56,7 +70,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	slog.Info("MCP servers stored successfully",
 		"registry", r.registryName,
-		"count", len(registry.Data.Servers),
+		"count", len(result.Registry.Data.Servers),
 	)
 
 	return ctrl.Result{}, nil
@@ -155,8 +169,13 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// getMCPServerList retrieves all MCPServer objects and extracts ServerJSON objects
-func getMCPServerList(ctx context.Context, c client.Client, namespace string) (*toolhivetypes.UpstreamRegistry, error) {
+// getMCPServerList retrieves all MCPServer objects, extracts ServerJSON objects,
+// and builds per-entry claims from the authz-claims annotation merged with base claims.
+//
+//nolint:gocyclo // complexity driven by iterating three CRD types with extraction + claims
+func getMCPServerList(
+	ctx context.Context, c client.Client, namespace string, baseClaims map[string]any,
+) (*reconcileResult, error) {
 	listOptions := []client.ListOption{
 		client.InNamespace(namespace),
 	}
@@ -175,6 +194,8 @@ func getMCPServerList(ctx context.Context, c client.Client, namespace string) (*
 	}
 
 	var serverJSONs []upstreamv0.ServerJSON
+	perEntryClaims := make(map[string][]byte)
+
 	for _, mcpServer := range mcpServerList.Items {
 		if !hasRequiredRegistryAnnotations(mcpServer.GetAnnotations()) {
 			continue
@@ -187,6 +208,16 @@ func getMCPServerList(ctx context.Context, c client.Client, namespace string) (*
 				"name", mcpServer.Name,
 				"error", err)
 			continue
+		}
+		if claims, err := buildEntryClaims(baseClaims, mcpServer.GetAnnotations()); err != nil {
+			slog.Warn("Invalid authz-claims annotation, skipping resource",
+				"type", "MCPServer",
+				"namespace", mcpServer.Namespace,
+				"name", mcpServer.Name,
+				"error", err)
+			continue
+		} else if claims != nil {
+			perEntryClaims[serverJSON.Name] = claims
 		}
 		serverJSONs = append(serverJSONs, *serverJSON)
 	}
@@ -204,6 +235,16 @@ func getMCPServerList(ctx context.Context, c client.Client, namespace string) (*
 				"error", err)
 			continue
 		}
+		if claims, err := buildEntryClaims(baseClaims, vmcpServer.GetAnnotations()); err != nil {
+			slog.Warn("Invalid authz-claims annotation, skipping resource",
+				"type", "VirtualMCPServer",
+				"namespace", vmcpServer.Namespace,
+				"name", vmcpServer.Name,
+				"error", err)
+			continue
+		} else if claims != nil {
+			perEntryClaims[serverJSON.Name] = claims
+		}
 		serverJSONs = append(serverJSONs, *serverJSON)
 	}
 
@@ -220,12 +261,52 @@ func getMCPServerList(ctx context.Context, c client.Client, namespace string) (*
 				"error", err)
 			continue
 		}
+		if claims, err := buildEntryClaims(baseClaims, mcpRemoteProxy.GetAnnotations()); err != nil {
+			slog.Warn("Invalid authz-claims annotation, skipping resource",
+				"type", "MCPRemoteProxy",
+				"namespace", mcpRemoteProxy.Namespace,
+				"name", mcpRemoteProxy.Name,
+				"error", err)
+			continue
+		} else if claims != nil {
+			perEntryClaims[serverJSON.Name] = claims
+		}
 		serverJSONs = append(serverJSONs, *serverJSON)
 	}
 
-	return &toolhivetypes.UpstreamRegistry{
-		Data: toolhivetypes.UpstreamData{
-			Servers: serverJSONs,
+	return &reconcileResult{
+		Registry: &toolhivetypes.UpstreamRegistry{
+			Data: toolhivetypes.UpstreamData{
+				Servers: serverJSONs,
+			},
 		},
+		PerEntryClaims: perEntryClaims,
 	}, nil
+}
+
+// buildEntryClaims reads the authz-claims annotation, parses it as JSON,
+// merges with baseClaims, and returns the serialized result.
+// Returns (nil, nil) if no annotation is present (entry will use source-level claims).
+// Returns (nil, error) if the annotation contains invalid JSON.
+func buildEntryClaims(baseClaims map[string]any, annotations map[string]string) ([]byte, error) {
+	raw, ok := annotations[defaultAuthzClaimsAnnotation]
+	if !ok || raw == "" {
+		return nil, nil
+	}
+
+	var annotationClaims map[string]any
+	if err := json.Unmarshal([]byte(raw), &annotationClaims); err != nil {
+		return nil, fmt.Errorf("failed to parse %s annotation: %w", defaultAuthzClaimsAnnotation, err)
+	}
+
+	// Merge: start with base claims, overlay annotation claims
+	merged := make(map[string]any, len(baseClaims)+len(annotationClaims))
+	for k, v := range baseClaims {
+		merged[k] = v
+	}
+	for k, v := range annotationClaims {
+		merged[k] = v
+	}
+
+	return json.Marshal(merged)
 }

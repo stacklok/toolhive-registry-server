@@ -28,6 +28,7 @@ const (
 	defaultRegistryTitleAnnotation           = "toolhive.stacklok.dev/registry-title"
 	defaultRegistryToolDefinitionsAnnotation = "toolhive.stacklok.dev/tool-definitions"
 	defaultRegistryToolsAnnotation           = "toolhive.stacklok.dev/tools"
+	defaultAuthzClaimsAnnotation             = "toolhive.stacklok.dev/authz-claims"
 
 	defaultRequeueAfter = 10 * time.Second
 
@@ -65,6 +66,7 @@ type mcpServerReconcilerOptions struct {
 	syncWriter       writer.SyncWriter
 	registryName     string
 	leaderElectionID string
+	baseClaims       map[string]any
 }
 
 // Option is a function that sets an option for the MCPServerReconciler.
@@ -181,6 +183,15 @@ func WithLeaderElectionID(id string) Option {
 	}
 }
 
+// WithBaseClaims sets the source-level base claims that are merged with
+// per-entry claims from CRD annotations.
+func WithBaseClaims(claims map[string]any) Option {
+	return func(o *mcpServerReconcilerOptions) error {
+		o.baseClaims = claims
+		return nil
+	}
+}
+
 // NewMCPServerReconciler creates a new MCPServerReconciler.
 func NewMCPServerReconciler(
 	ctx context.Context,
@@ -246,6 +257,7 @@ func NewMCPServerReconciler(
 		requeueAfter: o.requeueAfter,
 		syncWriter:   o.syncWriter,
 		registryName: o.registryName,
+		baseClaims:   o.baseClaims,
 	}
 
 	if err := controller.SetupWithManager(mgr); err != nil {
