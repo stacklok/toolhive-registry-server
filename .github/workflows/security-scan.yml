@@ -51,7 +51,55 @@ jobs:
           repo-checkout: false
           go-version-input: ''
           go-version-file: go.mod
-          # Scan only the production binary, not test-only dependencies
-          # (e.g., testcontainers) which may carry vulnerabilities that
-          # don't affect the shipped artifact.
-          go-package: ./cmd/thv-registry-api/...
+          go-package: ./...
+          output-format: json
+          output-file: govulncheck-output.json
+
+      - name: Check for vulnerabilities (with exclusions)
+        run: |
+          # Ignored vulnerabilities with justification:
+          # GO-2026-4883: Off-by-one error in Moby plugin privilege validation (CVE-2026-33997)
+          #   Affects the Docker daemon's plugin privilege handling code. This project only
+          #   uses the Docker client SDK (via testcontainers) for integration tests, not the
+          #   daemon plugin subsystem. No fixed version exists for github.com/docker/docker;
+          #   fix is only in github.com/moby/moby/v2 v2.0.0-beta.8+ which is not yet
+          #   available as a docker/docker release.
+          # GO-2026-4887: AuthZ plugin bypass with oversized request bodies (CVE-2026-34040)
+          #   Affects the Docker daemon's AuthZ plugin mechanism. This project only uses the
+          #   Docker client SDK (via testcontainers) and does not run or configure AuthZ
+          #   plugins. No fixed version exists for github.com/docker/docker; fix is only in
+          #   github.com/moby/moby/v2 v2.0.0-beta.8+ which is not yet available as a
+          #   docker/docker release.
+          IGNORED_VULNS="GO-2026-4883 GO-2026-4887"
+
+          # Show the raw output for debugging
+          echo "::group::govulncheck raw output"
+          cat govulncheck-output.json
+          echo "::endgroup::"
+
+          # Extract vulnerability IDs that have actual findings (called symbols)
+          FOUND_VULNS=$(jq -r 'select(.finding != null) | .finding.osv' govulncheck-output.json | sort -u | grep -E '^GO-' || true)
+
+          if [ -z "$FOUND_VULNS" ]; then
+            echo "✅ No vulnerabilities found"
+            exit 0
+          fi
+
+          echo "Found vulnerabilities: $FOUND_VULNS"
+
+          # Check if all found vulnerabilities are in the ignore list
+          UNIGNORED=""
+          for vuln in $FOUND_VULNS; do
+            if ! echo "$IGNORED_VULNS" | grep -qw "$vuln"; then
+              UNIGNORED="$UNIGNORED $vuln"
+            fi
+          done
+          UNIGNORED=$(echo "$UNIGNORED" | xargs)
+
+          if [ -z "$UNIGNORED" ]; then
+            echo "⚠️  All vulnerabilities are ignored: $FOUND_VULNS"
+            exit 0
+          fi
+
+          echo "❌ Vulnerabilities need attention: $UNIGNORED"
+          exit 1
