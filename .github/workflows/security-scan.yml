@@ -51,4 +51,7 @@ jobs:
           repo-checkout: false
           go-version-input: ''
           go-version-file: go.mod
-          go-package: ./...
+          # Scan only the production binary, not test-only dependencies
+          # (e.g., testcontainers) which may carry vulnerabilities that
+          # don't affect the shipped artifact.
+          go-package: ./cmd/thv-registry-api/...
