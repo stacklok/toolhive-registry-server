@@ -15,20 +15,20 @@ type SyncWriter interface {
 	Store(ctx context.Context, registryName string, reg *toolhivetypes.UpstreamRegistry, opts ...StoreOption) error
 }
 
-// StoreOptions holds optional parameters for a Store call.
-type StoreOptions struct {
+// storeOptions holds optional parameters for a Store call.
+type storeOptions struct {
 	// PerEntryClaims maps server names to their individual claims JSON.
 	// When set, entries use these claims instead of the source-level claims.
 	// Entries not present in the map fall back to source-level claims.
 	PerEntryClaims map[string][]byte
 }
 
-// StoreOption is a function that configures StoreOptions.
-type StoreOption func(*StoreOptions)
+// StoreOption is a function that configures storeOptions.
+type StoreOption func(*storeOptions)
 
 // WithPerEntryClaims provides per-entry claims that override source-level claims.
 func WithPerEntryClaims(claims map[string][]byte) StoreOption {
-	return func(o *StoreOptions) {
+	return func(o *storeOptions) {
 		o.PerEntryClaims = claims
 	}
 }

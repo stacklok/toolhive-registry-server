@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"time"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
@@ -169,10 +170,47 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
+// extractorFunc converts a K8s resource into a ServerJSON.
+type extractorFunc func(client.Object) (*upstreamv0.ServerJSON, error)
+
+// processResources filters, extracts, and builds per-entry claims for a list of K8s resources.
+func processResources(
+	items []client.Object,
+	typeName string,
+	extractor extractorFunc,
+	baseClaims map[string]any,
+	serverJSONs *[]upstreamv0.ServerJSON,
+	perEntryClaims map[string][]byte,
+) {
+	for _, obj := range items {
+		if !hasRequiredRegistryAnnotations(obj.GetAnnotations()) {
+			continue
+		}
+		serverJSON, err := extractor(obj)
+		if err != nil {
+			slog.Warn("Failed to extract ServerJSON from K8s resource, skipping",
+				"type", typeName,
+				"namespace", obj.GetNamespace(),
+				"name", obj.GetName(),
+				"error", err)
+			continue
+		}
+		claims, err := buildEntryClaims(baseClaims, obj.GetAnnotations())
+		if err != nil {
+			slog.Warn("Invalid authz-claims annotation, falling back to source-level claims",
+				"type", typeName,
+				"namespace", obj.GetNamespace(),
+				"name", obj.GetName(),
+				"error", err)
+		} else if claims != nil {
+			perEntryClaims[serverJSON.Name] = claims
+		}
+		*serverJSONs = append(*serverJSONs, *serverJSON)
+	}
+}
+
 // getMCPServerList retrieves all MCPServer objects, extracts ServerJSON objects,
 // and builds per-entry claims from the authz-claims annotation merged with base claims.
-//
-//nolint:gocyclo // complexity driven by iterating three CRD types with extraction + claims
 func getMCPServerList(
 	ctx context.Context, c client.Client, namespace string, baseClaims map[string]any,
 ) (*reconcileResult, error) {
@@ -196,82 +234,35 @@ func getMCPServerList(
 	var serverJSONs []upstreamv0.ServerJSON
 	perEntryClaims := make(map[string][]byte)
 
-	for _, mcpServer := range mcpServerList.Items {
-		if !hasRequiredRegistryAnnotations(mcpServer.GetAnnotations()) {
-			continue
-		}
-		serverJSON, err := extractServer(&mcpServer)
-		if err != nil {
-			slog.Warn("Failed to extract ServerJSON from K8s resource, skipping",
-				"type", "MCPServer",
-				"namespace", mcpServer.Namespace,
-				"name", mcpServer.Name,
-				"error", err)
-			continue
-		}
-		if claims, err := buildEntryClaims(baseClaims, mcpServer.GetAnnotations()); err != nil {
-			slog.Warn("Invalid authz-claims annotation, skipping resource",
-				"type", "MCPServer",
-				"namespace", mcpServer.Namespace,
-				"name", mcpServer.Name,
-				"error", err)
-			continue
-		} else if claims != nil {
-			perEntryClaims[serverJSON.Name] = claims
-		}
-		serverJSONs = append(serverJSONs, *serverJSON)
+	// Convert typed slices to []client.Object for the shared helper
+	mcpObjects := make([]client.Object, len(mcpServerList.Items))
+	for i := range mcpServerList.Items {
+		mcpObjects[i] = &mcpServerList.Items[i]
 	}
+	processResources(mcpObjects, "MCPServer", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
+		return extractServer(obj.(*mcpv1alpha1.MCPServer))
+	}, baseClaims, &serverJSONs, perEntryClaims)
 
-	for _, vmcpServer := range vmcpServerList.Items {
-		if !hasRequiredRegistryAnnotations(vmcpServer.GetAnnotations()) {
-			continue
-		}
-		serverJSON, err := extractVirtualMCPServer(&vmcpServer)
-		if err != nil {
-			slog.Warn("Failed to extract ServerJSON from K8s resource, skipping",
-				"type", "VirtualMCPServer",
-				"namespace", vmcpServer.Namespace,
-				"name", vmcpServer.Name,
-				"error", err)
-			continue
-		}
-		if claims, err := buildEntryClaims(baseClaims, vmcpServer.GetAnnotations()); err != nil {
-			slog.Warn("Invalid authz-claims annotation, skipping resource",
-				"type", "VirtualMCPServer",
-				"namespace", vmcpServer.Namespace,
-				"name", vmcpServer.Name,
-				"error", err)
-			continue
-		} else if claims != nil {
-			perEntryClaims[serverJSON.Name] = claims
-		}
-		serverJSONs = append(serverJSONs, *serverJSON)
+	vmcpObjects := make([]client.Object, len(vmcpServerList.Items))
+	for i := range vmcpServerList.Items {
+		vmcpObjects[i] = &vmcpServerList.Items[i]
 	}
+	processResources(vmcpObjects, "VirtualMCPServer", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
+		return extractVirtualMCPServer(obj.(*mcpv1alpha1.VirtualMCPServer))
+	}, baseClaims, &serverJSONs, perEntryClaims)
 
-	for _, mcpRemoteProxy := range mcpRemoteProxyList.Items {
-		if !hasRequiredRegistryAnnotations(mcpRemoteProxy.GetAnnotations()) {
-			continue
-		}
-		serverJSON, err := extractMCPRemoteProxy(&mcpRemoteProxy)
-		if err != nil {
-			slog.Warn("Failed to extract ServerJSON from K8s resource, skipping",
-				"type", "MCPRemoteProxy",
-				"namespace", mcpRemoteProxy.Namespace,
-				"name", mcpRemoteProxy.Name,
-				"error", err)
-			continue
-		}
-		if claims, err := buildEntryClaims(baseClaims, mcpRemoteProxy.GetAnnotations()); err != nil {
-			slog.Warn("Invalid authz-claims annotation, skipping resource",
-				"type", "MCPRemoteProxy",
-				"namespace", mcpRemoteProxy.Namespace,
-				"name", mcpRemoteProxy.Name,
-				"error", err)
-			continue
-		} else if claims != nil {
-			perEntryClaims[serverJSON.Name] = claims
-		}
-		serverJSONs = append(serverJSONs, *serverJSON)
+	mcpProxyObjects := make([]client.Object, len(mcpRemoteProxyList.Items))
+	for i := range mcpRemoteProxyList.Items {
+		mcpProxyObjects[i] = &mcpRemoteProxyList.Items[i]
+	}
+	processResources(mcpProxyObjects, "MCPRemoteProxy", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
+		return extractMCPRemoteProxy(obj.(*mcpv1alpha1.MCPRemoteProxy))
+	}, baseClaims, &serverJSONs, perEntryClaims)
+
+	// Return nil instead of empty map when no per-entry claims exist
+	var resultClaims map[string][]byte
+	if len(perEntryClaims) > 0 {
+		resultClaims = perEntryClaims
 	}
 
 	return &reconcileResult{
@@ -280,14 +271,14 @@ func getMCPServerList(
 				Servers: serverJSONs,
 			},
 		},
-		PerEntryClaims: perEntryClaims,
+		PerEntryClaims: resultClaims,
 	}, nil
 }
 
 // buildEntryClaims reads the authz-claims annotation, parses it as JSON,
 // merges with baseClaims, and returns the serialized result.
 // Returns (nil, nil) if no annotation is present (entry will use source-level claims).
-// Returns (nil, error) if the annotation contains invalid JSON.
+// Returns (nil, error) if the annotation contains invalid JSON or unsupported claim value types.
 func buildEntryClaims(baseClaims map[string]any, annotations map[string]string) ([]byte, error) {
 	raw, ok := annotations[defaultAuthzClaimsAnnotation]
 	if !ok || raw == "" {
@@ -299,14 +290,37 @@ func buildEntryClaims(baseClaims map[string]any, annotations map[string]string) 
 		return nil, fmt.Errorf("failed to parse %s annotation: %w", defaultAuthzClaimsAnnotation, err)
 	}
 
-	// Merge: start with base claims, overlay annotation claims
-	merged := make(map[string]any, len(baseClaims)+len(annotationClaims))
-	for k, v := range baseClaims {
-		merged[k] = v
-	}
-	for k, v := range annotationClaims {
-		merged[k] = v
+	if err := validateClaimValues(annotationClaims); err != nil {
+		return nil, fmt.Errorf("invalid claim value in %s annotation: %w", defaultAuthzClaimsAnnotation, err)
 	}
 
+	// Merge: clone base claims, then overlay annotation claims (annotation wins on key collision).
+	// maps.Clone produces a new map so baseClaims is never mutated.
+	merged := maps.Clone(baseClaims)
+	if merged == nil {
+		merged = make(map[string]any, len(annotationClaims))
+	}
+	maps.Copy(merged, annotationClaims)
+
 	return json.Marshal(merged)
+}
+
+// validateClaimValues ensures all claim values are strings or arrays of strings,
+// which is the format the authorization system's JSONB containment queries expect.
+func validateClaimValues(claims map[string]any) error {
+	for k, v := range claims {
+		switch val := v.(type) {
+		case string:
+			// ok
+		case []any:
+			for i, elem := range val {
+				if _, ok := elem.(string); !ok {
+					return fmt.Errorf("claim %q: array element [%d] must be a string, got %T", k, i, elem)
+				}
+			}
+		default:
+			return fmt.Errorf("claim %q: value must be a string or array of strings, got %T", k, v)
+		}
+	}
+	return nil
 }

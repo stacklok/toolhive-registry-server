@@ -95,7 +95,7 @@ func (d *dbSyncWriter) Store(
 	}
 
 	// Parse store options
-	storeOpts := &StoreOptions{}
+	storeOpts := &storeOptions{}
 	for _, opt := range opts {
 		opt(storeOpts)
 	}
