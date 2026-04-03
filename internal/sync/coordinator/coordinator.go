@@ -166,7 +166,11 @@ func (c *defaultCoordinator) Start(ctx context.Context) error {
 			c.processNextSyncJob(coordCtx)
 
 			// Recalculate interval with new jitter for next iteration
-			ticker.Reset(calculatePollingInterval())
+			if c.pollingIntervalOverride > 0 {
+				ticker.Reset(c.pollingIntervalOverride)
+			} else {
+				ticker.Reset(calculatePollingInterval())
+			}
 		case <-coordCtx.Done():
 			slog.Info("Sync coordinator stopping")
 			return nil

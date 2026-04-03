@@ -252,7 +252,7 @@ func setupEnv(t *testing.T, authCfg *config.AuthConfig) *testEnv {
 	app, err := registryapp.NewRegistryApp(ctx,
 		registryapp.WithConfig(cfg),
 		registryapp.WithAddress(":0"),
-		registryapp.WithCoordinatorOptions(coordinator.WithPollingInterval(2*time.Second)),
+		registryapp.WithCoordinatorOptions(coordinator.WithPollingInterval(500*time.Millisecond)),
 	)
 	require.NoError(t, err)
 
@@ -413,7 +413,7 @@ func waitForSync(t *testing.T, env *testEnv, token string) {
 	}{
 		{"acme-platform", "deploy-helper"}, // from platform-tools
 		{"acme-data", "data-pipeline"},     // from data-tools
-		// Note: shared-catalog may take an extra tick to sync; don't block on it here
+		{"acme-all", "shared-tool-1"},      // from shared-catalog
 	}
 	deadline := time.Now().Add(60 * time.Second)
 	for _, check := range checks {
@@ -649,8 +649,9 @@ func TestAuthzIntegration_FullAuthzMode(t *testing.T) {
 			{"data-writer sees ml-trainer", "acme-all", "ml-trainer", dataWriter, 200, true},
 			{"data-writer no deploy-helper", "acme-all", "deploy-helper", dataWriter, 200, false},
 			{"data-writer no infra-scanner", "acme-all", "infra-scanner", dataWriter, 200, false},
-			// shared-catalog entries are visible to all acme users (no team claim = open)
-			// These entries have claims org=acme only, so both team writers should see them
+			// shared-catalog entries (claims: org=acme, no team) are visible to all acme users
+			{"platform-writer sees shared", "acme-all", "shared-tool-1", platformWriter, 200, true},
+			{"data-writer sees shared", "acme-all", "shared-tool-1", dataWriter, 200, true},
 			{"super-admin sees deploy-helper", "acme-all", "deploy-helper", superAdmin, 200, true},
 			{"super-admin sees data-pipeline", "acme-all", "data-pipeline", superAdmin, 200, true},
 		}
