@@ -64,7 +64,7 @@ The command removes all the Kubernetes components associated with the chart and 
 | config.registries[0].sources[0] | string | `"toolhive"` |  |
 | config.sources[0].format | string | `"toolhive"` |  |
 | config.sources[0].git.branch | string | `"main"` |  |
-| config.sources[0].git.path | string | `"pkg/catalog/toolhive/data/registry.json"` |  |
+| config.sources[0].git.path | string | `"pkg/catalog/toolhive/data/registry-legacy.json"` |  |
 | config.sources[0].git.repository | string | `"https://github.com/stacklok/toolhive-catalog.git"` |  |
 | config.sources[0].name | string | `"toolhive"` |  |
 | config.sources[0].syncPolicy.interval | string | `"30m"` |  |

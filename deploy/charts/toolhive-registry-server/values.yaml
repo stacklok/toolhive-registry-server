@@ -136,7 +136,7 @@ config:
       git:
         repository: https://github.com/stacklok/toolhive-catalog.git
         branch: main
-        path: pkg/catalog/toolhive/data/registry.json
+        path: pkg/catalog/toolhive/data/registry-legacy.json
       syncPolicy:
         interval: "30m"
 
@@ -167,7 +167,7 @@ config:
 #       git:
 #         repository: https://github.com/stacklok/toolhive-catalog.git
 #         tag: v1.0.0
-#         path: pkg/catalog/toolhive/data/registry.json
+#         path: pkg/catalog/toolhive/data/registry-legacy.json
 #         # auth:
 #         #   username: git-user
 #         #   passwordFile: /secrets/git-token

@@ -51,7 +51,7 @@ sources:
       repository: https://github.com/stacklok/toolhive-catalog.git
       # Use a specific tag for production stability
       tag: v1.0.0
-      path: pkg/catalog/toolhive/data/registry.json
+      path: pkg/catalog/toolhive/data/registry-legacy.json
 
     # Per-registry automatic synchronization policy
     syncPolicy:

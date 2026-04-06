@@ -27,7 +27,7 @@ sources:
       # commit: abc123def456
 
       # Path to registry file within the repository
-      path: pkg/catalog/toolhive/data/registry.json
+      path: pkg/catalog/toolhive/data/registry-legacy.json
 
     # Per-registry automatic synchronization policy
     syncPolicy:

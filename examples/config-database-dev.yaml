@@ -35,7 +35,7 @@ sources:
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/catalog/toolhive/data/registry.json
+      path: pkg/catalog/toolhive/data/registry-legacy.json
 
     # Per-registry automatic synchronization policy
     syncPolicy:

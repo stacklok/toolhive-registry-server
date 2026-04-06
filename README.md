@@ -152,7 +152,7 @@ sources:
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/catalog/toolhive/data/registry.json
+      path: pkg/catalog/toolhive/data/registry-legacy.json
     syncPolicy:
       interval: '30m'
 
@@ -288,7 +288,7 @@ auth:
 #     git:
 #       repository: https://github.com/stacklok/toolhive-catalog.git
 #       branch: main
-#       path: pkg/catalog/toolhive/data/registry.json
+#       path: pkg/catalog/toolhive/data/registry-legacy.json
 #     syncPolicy:
 #       interval: "30m"
 # registries:
