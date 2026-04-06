@@ -452,7 +452,7 @@ func (s *dbService) executePublishSkillTransaction(
 			var existingClaims, incoming map[string]any
 			_ = json.Unmarshal(existing.Claims, &existingClaims)
 			_ = json.Unmarshal(claimsJSON, &incoming)
-			if !claimsContain(incoming, existingClaims) {
+			if !claimsEqual(incoming, existingClaims) {
 				return "", fmt.Errorf("%w: claims do not match existing entry", service.ErrClaimsMismatch)
 			}
 		}
