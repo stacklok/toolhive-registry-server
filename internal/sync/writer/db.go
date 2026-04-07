@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -993,6 +994,10 @@ func replaceSkillPackages(
 			}); err != nil {
 				return fmt.Errorf("failed to insert Git package for skill %s: %w", key, err)
 			}
+		default:
+			slog.Warn("Skipping unknown skill package type",
+				"skill", key,
+				"registryType", pkg.RegistryType)
 		}
 	}
 
