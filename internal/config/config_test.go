@@ -720,6 +720,40 @@ func TestConfigValidate(t *testing.T) {
 			errMsg:  "duplicate source name",
 		},
 		{
+			name: "source_name_with_uppercase_rejected",
+			config: &Config{
+				Sources: []SourceConfig{
+					{
+						Name:    "My_Source",
+						Managed: &ManagedConfig{},
+					},
+				},
+				Registries: []RegistryConfig{
+					{Name: "default", Sources: []string{"My_Source"}},
+				},
+				Auth: &AuthConfig{Mode: AuthModeAnonymous},
+			},
+			wantErr: true,
+			errMsg:  "must be a valid DNS subdomain",
+		},
+		{
+			name: "source_name_with_underscore_rejected",
+			config: &Config{
+				Sources: []SourceConfig{
+					{
+						Name:    "my_source",
+						Managed: &ManagedConfig{},
+					},
+				},
+				Registries: []RegistryConfig{
+					{Name: "default", Sources: []string{"my_source"}},
+				},
+				Auth: &AuthConfig{Mode: AuthModeAnonymous},
+			},
+			wantErr: true,
+			errMsg:  "must be a valid DNS subdomain",
+		},
+		{
 			name: "multiple_managed_sources_rejected",
 			config: &Config{
 				Sources: []SourceConfig{
