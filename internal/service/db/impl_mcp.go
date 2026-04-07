@@ -389,7 +389,7 @@ func insertServerVersionData(
 			var existingClaims, incoming map[string]any
 			_ = json.Unmarshal(existing.Claims, &existingClaims)
 			_ = json.Unmarshal(claimsJSON, &incoming)
-			if !claimsContain(incoming, existingClaims) {
+			if !claimsEqual(incoming, existingClaims) {
 				return uuid.Nil, fmt.Errorf("%w: claims do not match existing entry", service.ErrClaimsMismatch)
 			}
 		}
@@ -955,6 +955,17 @@ func cleanupOrphanedEntry(
 // by the record must appear in the caller's value(s) for K.
 // Both plain strings and []string values are supported.
 func claimsContain(caller, record map[string]any) bool {
+	return claimsContainOneWay(caller, record)
+}
+
+// claimsEqual returns true when a and b have exactly the same keys and values.
+// Used to enforce strict claim consistency on subsequent publishes of the same entry name.
+func claimsEqual(a, b map[string]any) bool {
+	return claimsContainOneWay(a, b) && claimsContainOneWay(b, a)
+}
+
+// claimsContainOneWay reports whether caller satisfies every claim in record.
+func claimsContainOneWay(caller, record map[string]any) bool {
 	for k, rv := range record {
 		cv, ok := caller[k]
 		if !ok {
