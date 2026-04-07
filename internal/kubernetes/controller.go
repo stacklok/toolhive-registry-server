@@ -21,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 )
 
@@ -175,14 +176,16 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 type extractorFunc func(client.Object) (*upstreamv0.ServerJSON, error)
 
 // processResources filters, extracts, and builds per-entry claims for a list of K8s resources.
+// Returns the extracted servers appended to serverJSONs and populates perEntryClaims for
+// entries that have valid authz-claims annotations.
 func processResources(
 	items []client.Object,
 	typeName string,
 	extractor extractorFunc,
 	baseClaims map[string]any,
-	serverJSONs *[]upstreamv0.ServerJSON,
+	serverJSONs []upstreamv0.ServerJSON,
 	perEntryClaims map[string][]byte,
-) {
+) []upstreamv0.ServerJSON {
 	for _, obj := range items {
 		if !hasRequiredRegistryAnnotations(obj.GetAnnotations()) {
 			continue
@@ -206,8 +209,9 @@ func processResources(
 		} else if claims != nil {
 			perEntryClaims[serverJSON.Name] = claims
 		}
-		*serverJSONs = append(*serverJSONs, *serverJSON)
+		serverJSONs = append(serverJSONs, *serverJSON)
 	}
+	return serverJSONs
 }
 
 // getMCPServerList retrieves all MCPServer objects, extracts ServerJSON objects,
@@ -240,25 +244,25 @@ func getMCPServerList(
 	for i := range mcpServerList.Items {
 		mcpObjects[i] = &mcpServerList.Items[i]
 	}
-	processResources(mcpObjects, "MCPServer", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
+	serverJSONs = processResources(mcpObjects, "MCPServer", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
 		return extractServer(obj.(*mcpv1alpha1.MCPServer))
-	}, baseClaims, &serverJSONs, perEntryClaims)
+	}, baseClaims, serverJSONs, perEntryClaims)
 
 	vmcpObjects := make([]client.Object, len(vmcpServerList.Items))
 	for i := range vmcpServerList.Items {
 		vmcpObjects[i] = &vmcpServerList.Items[i]
 	}
-	processResources(vmcpObjects, "VirtualMCPServer", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
+	serverJSONs = processResources(vmcpObjects, "VirtualMCPServer", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
 		return extractVirtualMCPServer(obj.(*mcpv1alpha1.VirtualMCPServer))
-	}, baseClaims, &serverJSONs, perEntryClaims)
+	}, baseClaims, serverJSONs, perEntryClaims)
 
 	mcpProxyObjects := make([]client.Object, len(mcpRemoteProxyList.Items))
 	for i := range mcpRemoteProxyList.Items {
 		mcpProxyObjects[i] = &mcpRemoteProxyList.Items[i]
 	}
-	processResources(mcpProxyObjects, "MCPRemoteProxy", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
+	serverJSONs = processResources(mcpProxyObjects, "MCPRemoteProxy", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
 		return extractMCPRemoteProxy(obj.(*mcpv1alpha1.MCPRemoteProxy))
-	}, baseClaims, &serverJSONs, perEntryClaims)
+	}, baseClaims, serverJSONs, perEntryClaims)
 
 	// Return nil instead of empty map when no per-entry claims exist
 	var resultClaims map[string][]byte
@@ -291,7 +295,7 @@ func buildEntryClaims(baseClaims map[string]any, annotations map[string]string) 
 		return nil, fmt.Errorf("failed to parse %s annotation: %w", defaultAuthzClaimsAnnotation, err)
 	}
 
-	if err := validateClaimValues(annotationClaims); err != nil {
+	if err := db.ValidateClaimValues(annotationClaims); err != nil {
 		return nil, fmt.Errorf("invalid claim value in %s annotation: %w", defaultAuthzClaimsAnnotation, err)
 	}
 
@@ -304,24 +308,4 @@ func buildEntryClaims(baseClaims map[string]any, annotations map[string]string) 
 	maps.Copy(merged, annotationClaims)
 
 	return json.Marshal(merged)
-}
-
-// validateClaimValues ensures all claim values are strings or arrays of strings,
-// which is the format the authorization system's JSONB containment queries expect.
-func validateClaimValues(claims map[string]any) error {
-	for k, v := range claims {
-		switch val := v.(type) {
-		case string:
-			// ok
-		case []any:
-			for i, elem := range val {
-				if _, ok := elem.(string); !ok {
-					return fmt.Errorf("claim %q: array element [%d] must be a string, got %T", k, i, elem)
-				}
-			}
-		default:
-			return fmt.Errorf("claim %q: value must be a string or array of strings, got %T", k, v)
-		}
-	}
-	return nil
 }

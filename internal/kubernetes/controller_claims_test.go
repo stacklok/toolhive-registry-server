@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 )
 
 func TestBuildEntryClaims(t *testing.T) {
@@ -252,7 +254,7 @@ func TestValidateClaimValues(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateClaimValues(tt.claims)
+			err := db.ValidateClaimValues(tt.claims)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
@@ -428,7 +430,7 @@ func TestProcessResources(t *testing.T) {
 			var serverJSONs []upstreamv0.ServerJSON
 			perEntryClaims := make(map[string][]byte)
 
-			processResources(tt.items, "MCPServer", goodExtractor, tt.baseClaims, &serverJSONs, perEntryClaims)
+			serverJSONs = processResources(tt.items, "MCPServer", goodExtractor, tt.baseClaims, serverJSONs, perEntryClaims)
 
 			// Verify serverJSONs count and names
 			if tt.wantServerNames == nil {

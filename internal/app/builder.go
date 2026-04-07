@@ -472,12 +472,18 @@ func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWrit
 			opts = append(opts, kubernetes.WithNamespaces(namespaces...))
 		}
 
-		// Each K8s source needs a unique leader election ID to avoid lease conflicts
+		// Each K8s source needs a unique leader election ID to avoid lease conflicts.
+		// Include source name and watched namespaces to prevent collisions between
+		// sources watching different namespaces or between co-located deployments.
 		leaderID := cfg.LeaderElectionID
 		if leaderID == "" {
 			leaderID = "toolhive-registry-server-leader-election"
 		}
-		opts = append(opts, kubernetes.WithLeaderElectionID(fmt.Sprintf("%s-%s", leaderID, reg.Name)))
+		leaseID := fmt.Sprintf("%s-%s", leaderID, reg.Name)
+		if reg.Kubernetes != nil && len(reg.Kubernetes.Namespaces) > 0 {
+			leaseID = fmt.Sprintf("%s-%s", leaseID, strings.Join(reg.Kubernetes.Namespaces, "-"))
+		}
+		opts = append(opts, kubernetes.WithLeaderElectionID(leaseID))
 
 		_, err := kubernetes.NewMCPServerReconciler(ctx, opts...)
 		if err != nil {

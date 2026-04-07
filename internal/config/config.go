@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/viper"
 
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
@@ -748,6 +749,7 @@ func (c *Config) validate() error {
 
 	// Validate each source configuration
 	sourceNames := make(map[string]bool)
+	managedCount := 0
 	for i, src := range c.Sources {
 		// Validate source name
 		if src.Name == "" {
@@ -764,6 +766,11 @@ func (c *Config) validate() error {
 		}
 		sourceNames[src.Name] = true
 
+		// Track managed source count
+		if src.Managed != nil {
+			managedCount++
+		}
+
 		// Validate source-specific configuration
 		if err := c.validateSourceConfig(&src, i); err != nil {
 			return err
@@ -776,12 +783,6 @@ func (c *Config) validate() error {
 	}
 
 	// Validate at most one managed source is configured
-	managedCount := 0
-	for _, src := range c.Sources {
-		if src.Managed != nil {
-			managedCount++
-		}
-	}
 	if managedCount > 1 {
 		return fmt.Errorf("at most one managed source is allowed, found %d", managedCount)
 	}
@@ -862,14 +863,14 @@ func (c *Config) validateRegistries(sourceNames map[string]bool) error {
 	return nil
 }
 
-// dnsSubdomainRegex matches valid DNS subdomain names per RFC 1123:
+// DNSSubdomainRegex matches valid DNS subdomain labels per RFC 1123:
 // lowercase alphanumeric, hyphens allowed (not leading/trailing), max 63 chars.
-// Source names must conform because they are used as K8s lease name suffixes.
-var dnsSubdomainRegex = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+// Used for source names (K8s lease name suffixes) and K8s namespace validation.
+var DNSSubdomainRegex = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
 
 // isValidDNSSubdomain checks whether s is a valid DNS subdomain label.
 func isValidDNSSubdomain(s string) bool {
-	return dnsSubdomainRegex.MatchString(s)
+	return DNSSubdomainRegex.MatchString(s)
 }
 
 // validateSyncPolicy validates the sync policy configuration
@@ -934,21 +935,8 @@ func validateSourceSpecificConfig(src *SourceConfig, prefix string) error {
 
 // validateClaims validates that all claim values are string or []string
 func validateClaims(claims map[string]any, prefix string) error {
-	for key, val := range claims {
-		switch v := val.(type) {
-		case string:
-			// OK
-		case []any:
-			for i, elem := range v {
-				if _, ok := elem.(string); !ok {
-					return fmt.Errorf("%s: claims[%s][%d] must be a string, got %T", prefix, key, i, elem)
-				}
-			}
-		case []string:
-			// OK
-		default:
-			return fmt.Errorf("%s: claims[%s] must be a string or []string, got %T", prefix, key, val)
-		}
+	if err := db.ValidateClaimValues(claims); err != nil {
+		return fmt.Errorf("%s: %w", prefix, err)
 	}
 	return nil
 }
