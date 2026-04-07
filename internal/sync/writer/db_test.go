@@ -2680,3 +2680,406 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, servers, 3, "Should have 3 servers (A, C, D)")
 }
+
+// --- Skill sync test helpers ---
+
+// createTestSkill creates a test Skill
+func createTestSkill(namespace, name, version string) toolhivetypes.Skill {
+	return toolhivetypes.Skill{
+		Namespace:   namespace,
+		Name:        name,
+		Version:     version,
+		Description: "Test skill description",
+		Title:       "Test Skill",
+		Status:      "active",
+		License:     "MIT",
+	}
+}
+
+// createTestSkillWithPackages creates a test Skill with OCI and Git packages
+func createTestSkillWithPackages(namespace, name, version string) toolhivetypes.Skill {
+	skill := createTestSkill(namespace, name, version)
+	skill.Packages = []toolhivetypes.SkillPackage{
+		{
+			RegistryType: "oci",
+			Identifier:   "ghcr.io/test/skills/" + name + ":" + version,
+			Digest:       "sha256:abc123",
+			MediaType:    "application/vnd.test.skill.v1",
+		},
+		{
+			RegistryType: "git",
+			URL:          "https://github.com/test/skills.git",
+			Ref:          "v" + version,
+			Commit:       "abc123def456",
+			Subfolder:    "skills/" + name,
+		},
+	}
+	return skill
+}
+
+// createTestUpstreamRegistryWithSkills creates a test UpstreamRegistry with both servers and skills
+func createTestUpstreamRegistryWithSkills(servers []upstreamv0.ServerJSON, skills []toolhivetypes.Skill) *toolhivetypes.UpstreamRegistry {
+	return &toolhivetypes.UpstreamRegistry{
+		Schema:  "https://example.com/schema.json",
+		Version: "1.0.0",
+		Data: toolhivetypes.UpstreamData{
+			Servers: servers,
+			Skills:  skills,
+		},
+	}
+}
+
+// Skill count query constants for test validation
+const (
+	testSkillCountQuery = `
+	SELECT COUNT(s.*) FROM skill s
+	  JOIN entry_version v ON s.version_id = v.id
+	  JOIN registry_entry e ON v.entry_id = e.id
+	 WHERE e.source_id = $1
+	   AND e.entry_type = 'SKILL'
+	`
+	testSkillDetailQuery = `
+	SELECT s.namespace, s.status, s.license, v.version, v.title, v.description
+	  FROM skill s
+	  JOIN entry_version v ON s.version_id = v.id
+	  JOIN registry_entry e ON v.entry_id = e.id
+	 WHERE e.source_id = $1
+	   AND e.entry_type = 'SKILL'
+	   AND e.name = $2
+	`
+	testSkillOCIPkgCountQuery = `
+	SELECT COUNT(*) FROM skill_oci_package p
+	  JOIN skill s ON p.skill_id = s.version_id
+	  JOIN entry_version v ON s.version_id = v.id
+	  JOIN registry_entry e ON v.entry_id = e.id
+	 WHERE e.source_id = $1
+	   AND e.name = $2
+	`
+	testSkillGitPkgCountQuery = `
+	SELECT COUNT(*) FROM skill_git_package p
+	  JOIN skill s ON p.skill_id = s.version_id
+	  JOIN entry_version v ON s.version_id = v.id
+	  JOIN registry_entry e ON v.entry_id = e.id
+	 WHERE e.source_id = $1
+	   AND e.name = $2
+	`
+)
+
+// TestDbSyncWriter_Store_Skills tests skill storage through the Store method
+func TestDbSyncWriter_Store_Skills(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		registryName string
+		setupFunc    func(t *testing.T, pool *pgxpool.Pool)
+		registry     *toolhivetypes.UpstreamRegistry
+		expectError  bool
+		validateFunc func(t *testing.T, pool *pgxpool.Pool, registryName string)
+	}{
+		{
+			name:         "successful sync with single skill",
+			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				createTestRegistry(t, pool, "test-registry")
+			},
+			registry: createTestUpstreamRegistryWithSkills(
+				nil,
+				[]toolhivetypes.Skill{
+					createTestSkill("io.github.test", "my-skill", "1.0.0"),
+				},
+			),
+			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				source, err := queries.GetSourceByName(ctx, registryName)
+				require.NoError(t, err)
+
+				var count int
+				err = pool.QueryRow(ctx, testSkillCountQuery, source.ID).Scan(&count)
+				require.NoError(t, err)
+				assert.Equal(t, 1, count, "Should have 1 skill")
+
+				var namespace, status string
+				var license, version, title, description *string
+				err = pool.QueryRow(ctx, testSkillDetailQuery, source.ID, "my-skill").
+					Scan(&namespace, &status, &license, &version, &title, &description)
+				require.NoError(t, err)
+				assert.Equal(t, "io.github.test", namespace)
+				assert.Equal(t, "ACTIVE", status)
+				require.NotNil(t, license)
+				assert.Equal(t, "MIT", *license)
+				require.NotNil(t, version)
+				assert.Equal(t, "1.0.0", *version)
+				require.NotNil(t, title)
+				assert.Equal(t, "Test Skill", *title)
+				require.NotNil(t, description)
+				assert.Equal(t, "Test skill description", *description)
+			},
+		},
+		{
+			name:         "successful sync with skill packages",
+			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				createTestRegistry(t, pool, "test-registry")
+			},
+			registry: createTestUpstreamRegistryWithSkills(
+				nil,
+				[]toolhivetypes.Skill{
+					createTestSkillWithPackages("io.github.test", "pkg-skill", "1.0.0"),
+				},
+			),
+			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				source, err := queries.GetSourceByName(ctx, registryName)
+				require.NoError(t, err)
+
+				// Verify the skill itself exists
+				var count int
+				err = pool.QueryRow(ctx, testSkillCountQuery, source.ID).Scan(&count)
+				require.NoError(t, err)
+				assert.Equal(t, 1, count, "Should have 1 skill")
+
+				// Verify OCI package
+				var ociCount int
+				err = pool.QueryRow(ctx, testSkillOCIPkgCountQuery, source.ID, "pkg-skill").Scan(&ociCount)
+				require.NoError(t, err)
+				assert.Equal(t, 1, ociCount, "Should have 1 OCI package")
+
+				// Verify Git package
+				var gitCount int
+				err = pool.QueryRow(ctx, testSkillGitPkgCountQuery, source.ID, "pkg-skill").Scan(&gitCount)
+				require.NoError(t, err)
+				assert.Equal(t, 1, gitCount, "Should have 1 Git package")
+			},
+		},
+		{
+			name:         "skill orphan cleanup",
+			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				ids := createTestRegistry(t, pool, "test-registry")
+
+				// Pre-populate with 2 skills via an initial Store call
+				w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+				require.NoError(t, err)
+				initialRegistry := createTestUpstreamRegistryWithSkills(
+					nil,
+					[]toolhivetypes.Skill{
+						createTestSkill("io.github.test", "skill-keep", "1.0.0"),
+						createTestSkill("io.github.test", "skill-remove", "1.0.0"),
+					},
+				)
+				err = w.Store(context.Background(), "test-registry", initialRegistry)
+				require.NoError(t, err)
+
+				// Verify both skills exist before the test's Store call
+				var count int
+				err = pool.QueryRow(context.Background(), testSkillCountQuery, ids.sourceID).Scan(&count)
+				require.NoError(t, err)
+				require.Equal(t, 2, count, "Setup should have created 2 skills")
+			},
+			// Now store with only 1 skill -- the other should be orphaned and cleaned up
+			registry: createTestUpstreamRegistryWithSkills(
+				nil,
+				[]toolhivetypes.Skill{
+					createTestSkill("io.github.test", "skill-keep", "1.0.0"),
+				},
+			),
+			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				source, err := queries.GetSourceByName(ctx, registryName)
+				require.NoError(t, err)
+
+				var count int
+				err = pool.QueryRow(ctx, testSkillCountQuery, source.ID).Scan(&count)
+				require.NoError(t, err)
+				assert.Equal(t, 1, count, "Should have 1 skill after orphan cleanup")
+
+				// Verify the kept skill is the correct one
+				var namespace string
+				var version *string
+				err = pool.QueryRow(ctx, testSkillDetailQuery, source.ID, "skill-keep").
+					Scan(&namespace, new(string), new(*string), &version, new(*string), new(*string))
+				require.NoError(t, err)
+				assert.Equal(t, "io.github.test", namespace)
+				require.NotNil(t, version)
+				assert.Equal(t, "1.0.0", *version)
+			},
+		},
+		{
+			name:         "skill update preserves and updates data",
+			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				createTestRegistry(t, pool, "test-registry")
+
+				// Pre-populate with original skill
+				w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+				require.NoError(t, err)
+
+				originalSkill := createTestSkill("io.github.test", "update-skill", "1.0.0")
+				originalSkill.Title = "Old Title"
+				originalSkill.Description = "Old description"
+				originalSkill.License = "Apache-2.0"
+
+				initialRegistry := createTestUpstreamRegistryWithSkills(
+					nil,
+					[]toolhivetypes.Skill{originalSkill},
+				)
+				err = w.Store(context.Background(), "test-registry", initialRegistry)
+				require.NoError(t, err)
+			},
+			// Store again with updated fields
+			registry: func() *toolhivetypes.UpstreamRegistry {
+				updatedSkill := createTestSkill("io.github.test", "update-skill", "1.0.0")
+				updatedSkill.Title = "New Title"
+				updatedSkill.Description = "New description"
+				updatedSkill.License = "MIT"
+				return createTestUpstreamRegistryWithSkills(nil, []toolhivetypes.Skill{updatedSkill})
+			}(),
+			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				source, err := queries.GetSourceByName(ctx, registryName)
+				require.NoError(t, err)
+
+				var namespace, status string
+				var license, version, title, description *string
+				err = pool.QueryRow(ctx, testSkillDetailQuery, source.ID, "update-skill").
+					Scan(&namespace, &status, &license, &version, &title, &description)
+				require.NoError(t, err)
+
+				assert.Equal(t, "io.github.test", namespace)
+				require.NotNil(t, title)
+				assert.Equal(t, "New Title", *title, "Title should be updated")
+				require.NotNil(t, description)
+				assert.Equal(t, "New description", *description, "Description should be updated")
+				require.NotNil(t, license)
+				assert.Equal(t, "MIT", *license, "License should be updated")
+			},
+		},
+		{
+			name:         "mixed servers and skills",
+			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				createTestRegistry(t, pool, "test-registry")
+			},
+			registry: createTestUpstreamRegistryWithSkills(
+				[]upstreamv0.ServerJSON{
+					createTestServer("test.org/server", "1.0.0"),
+					createTestServer("test.org/server2", "2.0.0"),
+				},
+				[]toolhivetypes.Skill{
+					createTestSkill("io.github.test", "mixed-skill-a", "1.0.0"),
+					createTestSkillWithPackages("io.github.test", "mixed-skill-b", "2.0.0"),
+				},
+			),
+			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				source, err := queries.GetSourceByName(ctx, registryName)
+				require.NoError(t, err)
+				regID := getTestRegistryID(t, pool, registryName)
+
+				// Verify servers
+				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
+				require.NoError(t, err)
+				assert.Len(t, servers, 2, "Should have 2 servers")
+
+				// Verify skills
+				var skillCount int
+				err = pool.QueryRow(ctx, testSkillCountQuery, source.ID).Scan(&skillCount)
+				require.NoError(t, err)
+				assert.Equal(t, 2, skillCount, "Should have 2 skills")
+
+				// Verify skill-b has OCI and Git packages
+				var ociCount, gitCount int
+				err = pool.QueryRow(ctx, testSkillOCIPkgCountQuery, source.ID, "mixed-skill-b").Scan(&ociCount)
+				require.NoError(t, err)
+				assert.Equal(t, 1, ociCount, "Skill B should have 1 OCI package")
+
+				err = pool.QueryRow(ctx, testSkillGitPkgCountQuery, source.ID, "mixed-skill-b").Scan(&gitCount)
+				require.NoError(t, err)
+				assert.Equal(t, 1, gitCount, "Skill B should have 1 Git package")
+			},
+		},
+		{
+			name:         "empty skills does not affect servers",
+			registryName: "test-registry",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				createTestRegistry(t, pool, "test-registry")
+			},
+			registry: createTestUpstreamRegistryWithSkills(
+				[]upstreamv0.ServerJSON{
+					createTestServer("test.org/server-x", "1.0.0"),
+					createTestServer("test.org/server-y", "2.0.0"),
+				},
+				nil, // no skills
+			),
+			expectError: false,
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				source, err := queries.GetSourceByName(ctx, registryName)
+				require.NoError(t, err)
+				regID := getTestRegistryID(t, pool, registryName)
+
+				// Verify servers are stored correctly
+				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
+				require.NoError(t, err)
+				assert.Len(t, servers, 2, "Should have 2 servers")
+
+				// Verify no skills exist
+				var skillCount int
+				err = pool.QueryRow(ctx, testSkillCountQuery, source.ID).Scan(&skillCount)
+				require.NoError(t, err)
+				assert.Equal(t, 0, skillCount, "Should have 0 skills")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			pool, cleanup := setupTestDB(t)
+			defer cleanup()
+
+			if tt.setupFunc != nil {
+				tt.setupFunc(t, pool)
+			}
+
+			w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+			require.NoError(t, err)
+
+			err = w.Store(context.Background(), tt.registryName, tt.registry)
+
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				if tt.validateFunc != nil {
+					tt.validateFunc(t, pool, tt.registryName)
+				}
+			}
+		})
+	}
+}

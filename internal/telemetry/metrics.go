@@ -20,6 +20,7 @@ const (
 // RegistryMetrics holds the OpenTelemetry instruments for registry metrics
 type RegistryMetrics struct {
 	serversTotal metric.Int64Gauge
+	skillsTotal  metric.Int64Gauge
 }
 
 // NewRegistryMetrics creates a new RegistryMetrics instance with the given meter provider.
@@ -40,8 +41,18 @@ func NewRegistryMetrics(provider metric.MeterProvider) (*RegistryMetrics, error)
 		return nil, err
 	}
 
+	skillsTotal, err := meter.Int64Gauge(
+		"thv_reg_srv_skills_total",
+		metric.WithDescription("Number of skills in each registry"),
+		metric.WithUnit("{skill}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &RegistryMetrics{
 		serversTotal: serversTotal,
+		skillsTotal:  skillsTotal,
 	}, nil
 }
 
@@ -56,6 +67,19 @@ func (m *RegistryMetrics) RecordServersTotal(ctx context.Context, registryName s
 	}
 
 	m.serversTotal.Record(ctx, count, metric.WithAttributes(attrs...))
+}
+
+// RecordSkillsTotal records the current number of skills in a registry
+func (m *RegistryMetrics) RecordSkillsTotal(ctx context.Context, registryName string, count int64) {
+	if m == nil || m.skillsTotal == nil {
+		return
+	}
+
+	attrs := []attribute.KeyValue{
+		attribute.String("registry", registryName),
+	}
+
+	m.skillsTotal.Record(ctx, count, metric.WithAttributes(attrs...))
 }
 
 // SyncMetrics holds the OpenTelemetry instruments for sync operation metrics

@@ -35,6 +35,24 @@ func (q *Queries) DeleteOrphanedSkills(ctx context.Context, arg DeleteOrphanedSk
 	return err
 }
 
+const deleteSkillGitPackagesBySkillId = `-- name: DeleteSkillGitPackagesBySkillId :exec
+DELETE FROM skill_git_package WHERE skill_id = $1
+`
+
+func (q *Queries) DeleteSkillGitPackagesBySkillId(ctx context.Context, skillID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteSkillGitPackagesBySkillId, skillID)
+	return err
+}
+
+const deleteSkillOciPackagesBySkillId = `-- name: DeleteSkillOciPackagesBySkillId :exec
+DELETE FROM skill_oci_package WHERE skill_id = $1
+`
+
+func (q *Queries) DeleteSkillOciPackagesBySkillId(ctx context.Context, skillID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteSkillOciPackagesBySkillId, skillID)
+	return err
+}
+
 const deleteSkillsByRegistry = `-- name: DeleteSkillsByRegistry :exec
 WITH skill_entries AS (
     SELECT DISTINCT v.entry_id

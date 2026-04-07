@@ -307,3 +307,9 @@ WITH subset AS (
 )
 DELETE FROM skill s
  WHERE s.version_id IN (SELECT id FROM subset);
+
+-- name: DeleteSkillOciPackagesBySkillId :exec
+DELETE FROM skill_oci_package WHERE skill_id = sqlc.arg(skill_id);
+
+-- name: DeleteSkillGitPackagesBySkillId :exec
+DELETE FROM skill_git_package WHERE skill_id = sqlc.arg(skill_id);

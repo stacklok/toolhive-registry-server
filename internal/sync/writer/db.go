@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -109,6 +110,11 @@ func (d *dbSyncWriter) Store(
 	// Step 5: Update latest_server_version table
 	if err := d.updateLatestVersions(ctx, querier, registry.ID, serverIDMap, reg.Data.Servers); err != nil {
 		return fmt.Errorf("failed to update latest versions: %w", err)
+	}
+
+	// Step 6: Store skills
+	if err := d.storeSkills(ctx, tx, registry.ID, reg.Data.Skills, registry.Claims); err != nil {
+		return fmt.Errorf("failed to store skills: %w", err)
 	}
 
 	// Commit transaction
@@ -811,4 +817,388 @@ func sqlCopyServers(
 	}
 
 	return nil
+}
+
+// skillKey creates a unique key for a skill based on namespace, name and version
+func skillKey(namespace, name, version string) string {
+	return namespace + "/" + name + "@" + version
+}
+
+// storeSkills persists skills from an upstream registry into the database.
+// It follows the same bulk-sync pattern as server storage: temp tables with COPY,
+// followed by upserts and orphan cleanup.
+func (*dbSyncWriter) storeSkills(
+	ctx context.Context,
+	tx pgx.Tx,
+	registryID uuid.UUID,
+	skills []toolhivetypes.Skill,
+	claims []byte,
+) error {
+	querier := sqlc.New(tx)
+
+	// If no skills, clean up any previously synced skills and return
+	if len(skills) == 0 {
+		return querier.DeleteSkillsByRegistry(ctx, registryID)
+	}
+
+	// 1. Upsert registry entries for skills (one per unique name)
+	entryMap, err := sqlCopySkillEntries(ctx, tx, registryID, skills, claims)
+	if err != nil {
+		return fmt.Errorf("failed to copy skill entries: %w", err)
+	}
+
+	// 2. Upsert entry versions for skills (one per name+version)
+	versionMap, err := sqlCopySkillEntryVersions(ctx, tx, entryMap, skills)
+	if err != nil {
+		return fmt.Errorf("failed to copy skill entry versions: %w", err)
+	}
+
+	// 3. Upsert skill-specific data and packages for each skill
+	keepIDs, err := upsertSkillVersionsAndPackages(ctx, querier, skills, versionMap)
+	if err != nil {
+		return err
+	}
+
+	// 4. Delete orphaned skills that no longer exist in upstream
+	if err := querier.DeleteOrphanedSkills(ctx, sqlc.DeleteOrphanedSkillsParams{
+		SourceID: registryID,
+		KeepIds:  keepIDs,
+	}); err != nil {
+		return fmt.Errorf("failed to delete orphaned skills: %w", err)
+	}
+
+	// 5. Update latest skill versions
+	return updateLatestSkillVersions(ctx, querier, registryID, skills, versionMap)
+}
+
+// upsertSkillVersionsAndPackages upserts each skill's version data and replaces its packages.
+// Returns the list of version IDs to keep (for orphan cleanup).
+func upsertSkillVersionsAndPackages(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	skills []toolhivetypes.Skill,
+	versionMap map[string]uuid.UUID,
+) ([]uuid.UUID, error) {
+	keepIDs := make([]uuid.UUID, 0, len(skills))
+
+	for _, skill := range skills {
+		key := skillKey(skill.Namespace, skill.Name, skill.Version)
+		versionID, ok := versionMap[key]
+		if !ok {
+			return nil, fmt.Errorf("version ID not found for skill %s", key)
+		}
+
+		skillVersionID, err := upsertSingleSkillVersion(ctx, querier, skill, versionID)
+		if err != nil {
+			return nil, err
+		}
+
+		keepIDs = append(keepIDs, skillVersionID)
+
+		if err := replaceSkillPackages(ctx, querier, skill, skillVersionID); err != nil {
+			return nil, err
+		}
+	}
+
+	return keepIDs, nil
+}
+
+// upsertSingleSkillVersion upserts the skill row for a single skill version.
+func upsertSingleSkillVersion(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	skill toolhivetypes.Skill,
+	versionID uuid.UUID,
+) (uuid.UUID, error) {
+	key := skillKey(skill.Namespace, skill.Name, skill.Version)
+
+	repoJSON, err := marshalJSONOrNil(skill.Repository)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal repository for skill %s: %w", key, err)
+	}
+	iconsJSON, err := marshalJSONOrNil(skill.Icons)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal icons for skill %s: %w", key, err)
+	}
+	metadataJSON, err := marshalJSONOrNil(skill.Metadata)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal metadata for skill %s: %w", key, err)
+	}
+	extMetaJSON, err := marshalJSONOrNil(skill.Meta)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal extension meta for skill %s: %w", key, err)
+	}
+
+	status := sqlc.NullSkillStatus{}
+	if skill.Status != "" {
+		status = sqlc.NullSkillStatus{
+			SkillStatus: sqlc.SkillStatus(strings.ToUpper(skill.Status)),
+			Valid:       true,
+		}
+	}
+
+	skillVersionID, err := querier.UpsertSkillVersionForSync(ctx, sqlc.UpsertSkillVersionForSyncParams{
+		VersionID:     versionID,
+		Namespace:     skill.Namespace,
+		Status:        status,
+		License:       nilIfEmpty(skill.License),
+		Compatibility: nilIfEmpty(skill.Compatibility),
+		AllowedTools:  skill.AllowedTools,
+		Repository:    repoJSON,
+		Icons:         iconsJSON,
+		Metadata:      metadataJSON,
+		ExtensionMeta: extMetaJSON,
+	})
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to upsert skill version for %s: %w", key, err)
+	}
+
+	return skillVersionID, nil
+}
+
+// replaceSkillPackages deletes existing packages for a skill and inserts new ones.
+func replaceSkillPackages(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	skill toolhivetypes.Skill,
+	skillVersionID uuid.UUID,
+) error {
+	key := skillKey(skill.Namespace, skill.Name, skill.Version)
+
+	if err := querier.DeleteSkillOciPackagesBySkillId(ctx, skillVersionID); err != nil {
+		return fmt.Errorf("failed to delete OCI packages for skill %s: %w", key, err)
+	}
+	if err := querier.DeleteSkillGitPackagesBySkillId(ctx, skillVersionID); err != nil {
+		return fmt.Errorf("failed to delete Git packages for skill %s: %w", key, err)
+	}
+
+	for _, pkg := range skill.Packages {
+		switch pkg.RegistryType {
+		case "oci":
+			if err := querier.InsertSkillOciPackage(ctx, sqlc.InsertSkillOciPackageParams{
+				SkillID:    skillVersionID,
+				Identifier: pkg.Identifier,
+				Digest:     nilIfEmpty(pkg.Digest),
+				MediaType:  nilIfEmpty(pkg.MediaType),
+			}); err != nil {
+				return fmt.Errorf("failed to insert OCI package for skill %s: %w", key, err)
+			}
+		case "git":
+			if err := querier.InsertSkillGitPackage(ctx, sqlc.InsertSkillGitPackageParams{
+				SkillID:   skillVersionID,
+				Url:       pkg.URL,
+				Ref:       nilIfEmpty(pkg.Ref),
+				CommitSha: nilIfEmpty(pkg.Commit),
+				Subfolder: nilIfEmpty(pkg.Subfolder),
+			}); err != nil {
+				return fmt.Errorf("failed to insert Git package for skill %s: %w", key, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// updateLatestSkillVersions determines and upserts the latest version for each unique skill name.
+func updateLatestSkillVersions(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	registryID uuid.UUID,
+	skills []toolhivetypes.Skill,
+	versionMap map[string]uuid.UUID,
+) error {
+	latestVersions := make(map[string]struct {
+		version   string
+		versionID uuid.UUID
+	})
+
+	for _, skill := range skills {
+		key := skillKey(skill.Namespace, skill.Name, skill.Version)
+		versionID := versionMap[key]
+
+		existing, exists := latestVersions[skill.Name]
+		if !exists || versions.IsNewerVersion(skill.Version, existing.version) {
+			latestVersions[skill.Name] = struct {
+				version   string
+				versionID uuid.UUID
+			}{
+				version:   skill.Version,
+				versionID: versionID,
+			}
+		}
+	}
+
+	for name, latest := range latestVersions {
+		_, err := querier.UpsertLatestSkillVersion(ctx, sqlc.UpsertLatestSkillVersionParams{
+			SourceID:  registryID,
+			Name:      name,
+			Version:   latest.version,
+			VersionID: latest.versionID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to upsert latest version for skill %s: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+// sqlCopySkillEntries upserts registry entries for skills (one per unique name) using temp table and COPY.
+// Returns a map of skill name to registry_entry UUID.
+func sqlCopySkillEntries(
+	ctx context.Context,
+	tx pgx.Tx,
+	registryID uuid.UUID,
+	skills []toolhivetypes.Skill,
+	claims []byte,
+) (map[string]uuid.UUID, error) {
+	querier := sqlc.New(tx)
+
+	if err := querier.CreateTempSkillRegistryEntryTable(ctx); err != nil {
+		return nil, fmt.Errorf("failed to create temp skill registry entry table: %w", err)
+	}
+
+	// Deduplicate by name — one registry_entry per unique skill name
+	seen := make(map[string]bool, len(skills))
+	var entryRows [][]any
+	for _, skill := range skills {
+		if seen[skill.Name] {
+			continue
+		}
+		seen[skill.Name] = true
+
+		now := time.Now()
+		entryID, err := uuid.NewV7()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate entry ID: %w", err)
+		}
+
+		entryRows = append(entryRows, []any{
+			entryID,
+			registryID,
+			sqlc.EntryTypeSKILL,
+			skill.Name,
+			claims,
+			&now,
+			&now,
+		})
+	}
+
+	entryCopyCount, err := tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"temp_skill_registry_entry"},
+		[]string{"id", "source_id", "entry_type", "name", "claims", "created_at", "updated_at"},
+		pgx.CopyFromRows(entryRows),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy skill entries to temp table: %w", err)
+	}
+	if int(entryCopyCount) != len(entryRows) {
+		return nil, fmt.Errorf("copy count mismatch: expected %d, got %d", len(entryRows), entryCopyCount)
+	}
+
+	copiedRows, err := querier.UpsertSkillRegistryEntriesFromTemp(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert skill registry entries from temp table: %w", err)
+	}
+
+	entryMap := make(map[string]uuid.UUID, len(copiedRows))
+	for _, row := range copiedRows {
+		entryMap[row.Name] = row.ID
+	}
+
+	return entryMap, nil
+}
+
+// sqlCopySkillEntryVersions upserts entry versions for skills (one per name+version) using temp table and COPY.
+// Returns a map of skillKey (namespace/name@version) to entry_version UUID.
+func sqlCopySkillEntryVersions(
+	ctx context.Context,
+	tx pgx.Tx,
+	entryMap map[string]uuid.UUID,
+	skills []toolhivetypes.Skill,
+) (map[string]uuid.UUID, error) {
+	querier := sqlc.New(tx)
+
+	if err := querier.CreateTempSkillEntryVersionTable(ctx); err != nil {
+		return nil, fmt.Errorf("failed to create temp skill entry version table: %w", err)
+	}
+
+	versionRows := make([][]any, 0, len(skills))
+	for _, skill := range skills {
+		entryID, ok := entryMap[skill.Name]
+		if !ok {
+			return nil, fmt.Errorf("entry ID not found for skill %s", skill.Name)
+		}
+
+		now := time.Now()
+		versionID, err := uuid.NewV7()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate version ID: %w", err)
+		}
+
+		versionRows = append(versionRows, []any{
+			versionID,
+			entryID,
+			skill.Name,
+			skill.Version,
+			nilIfEmpty(skill.Title),
+			nilIfEmpty(skill.Description),
+			&now,
+			&now,
+		})
+	}
+
+	copyCount, err := tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"temp_skill_entry_version"},
+		[]string{"id", "entry_id", "name", "version", "title", "description", "created_at", "updated_at"},
+		pgx.CopyFromRows(versionRows),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy skill entry versions to temp table: %w", err)
+	}
+	if int(copyCount) != len(skills) {
+		return nil, fmt.Errorf("copy count mismatch: expected %d, got %d", len(skills), copyCount)
+	}
+
+	copiedRows, err := querier.UpsertSkillEntryVersionsFromTemp(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert skill entry versions from temp table: %w", err)
+	}
+
+	// Build reverse lookup: entry_id → name
+	entryIDToName := make(map[uuid.UUID]string, len(entryMap))
+	for name, id := range entryMap {
+		entryIDToName[id] = name
+	}
+
+	// Build version map keyed by namespace/name@version.
+	// We need to find the namespace for each skill to build the correct key.
+	// Build a lookup from name+version to namespace.
+	type nameVersion struct {
+		name    string
+		version string
+	}
+	nvToNamespace := make(map[nameVersion]string, len(skills))
+	for _, skill := range skills {
+		nvToNamespace[nameVersion{name: skill.Name, version: skill.Version}] = skill.Namespace
+	}
+
+	versionMap := make(map[string]uuid.UUID, len(copiedRows))
+	for _, row := range copiedRows {
+		name := entryIDToName[row.EntryID]
+		ns := nvToNamespace[nameVersion{name: name, version: row.Version}]
+		versionMap[skillKey(ns, name, row.Version)] = row.ID
+	}
+
+	return versionMap, nil
+}
+
+// marshalJSONOrNil marshals the value to JSON, returning nil if the value is nil.
+func marshalJSONOrNil(v any) ([]byte, error) {
+	if v == nil {
+		return nil, nil
+	}
+	return json.Marshal(v)
 }

@@ -76,6 +76,7 @@ func (s *defaultFilterService) ApplyFilters(
 		Data: toolhivetypes.UpstreamData{
 			Servers: make([]upstreamv0.ServerJSON, 0),
 			Groups:  reg.Data.Groups, // Preserve groups if any
+			Skills:  reg.Data.Skills, // Preserve skills (not filtered)
 		},
 	}
 

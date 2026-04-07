@@ -32,6 +32,11 @@ type Querier interface {
 	CreateTempRemoteTable(ctx context.Context) error
 	// Temp Server Table Operations
 	CreateTempServerTable(ctx context.Context) error
+	// Temp Skill Entry Version Table Operations
+	CreateTempSkillEntryVersionTable(ctx context.Context) error
+	// Temp Skill Entry Table Operations
+	// Skills use separate temp tables from servers because both coexist in the same transaction.
+	CreateTempSkillRegistryEntryTable(ctx context.Context) error
 	// Delete CONFIG registry rows whose names are not in the provided list.
 	// Used during config sync to clean up registry/junction rows before deleting orphaned sources.
 	DeleteConfigRegistriesNotInList(ctx context.Context, keepNames []string) error
@@ -51,6 +56,8 @@ type Querier interface {
 	DeleteServerPackagesByServerId(ctx context.Context, serverID uuid.UUID) error
 	DeleteServerRemotesByServerId(ctx context.Context, serverID uuid.UUID) error
 	DeleteServersByRegistry(ctx context.Context, sourceID uuid.UUID) error
+	DeleteSkillGitPackagesBySkillId(ctx context.Context, skillID uuid.UUID) error
+	DeleteSkillOciPackagesBySkillId(ctx context.Context, skillID uuid.UUID) error
 	DeleteSkillsByRegistry(ctx context.Context, sourceID uuid.UUID) error
 	// Delete a source by name. Go callers guard against deleting wrong creation_type.
 	DeleteSource(ctx context.Context, name string) (int64, error)
@@ -148,6 +155,8 @@ type Querier interface {
 	UpsertRemotesFromTemp(ctx context.Context) error
 	UpsertServerVersionForSync(ctx context.Context, arg UpsertServerVersionForSyncParams) (uuid.UUID, error)
 	UpsertServersFromTemp(ctx context.Context) error
+	UpsertSkillEntryVersionsFromTemp(ctx context.Context) ([]UpsertSkillEntryVersionsFromTempRow, error)
+	UpsertSkillRegistryEntriesFromTemp(ctx context.Context) ([]UpsertSkillRegistryEntriesFromTempRow, error)
 	UpsertSkillVersionForSync(ctx context.Context, arg UpsertSkillVersionForSyncParams) (uuid.UUID, error)
 	// ============================================================================
 	// CONFIG Source Queries (only operate on creation_type='CONFIG')

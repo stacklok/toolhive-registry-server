@@ -64,3 +64,26 @@ CREATE TABLE temp_mcp_server_icon (
     mime_type TEXT NOT NULL,
     theme TEXT NOT NULL
 );
+
+-- Skill temp table schemas (separate from server temp tables to coexist in the same transaction)
+
+CREATE TABLE temp_skill_registry_entry (
+    id UUID PRIMARY KEY,
+    source_id UUID NOT NULL,
+    entry_type entry_type NOT NULL,
+    name TEXT NOT NULL,
+    claims JSONB,
+    created_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE temp_skill_entry_version (
+    id UUID PRIMARY KEY,
+    entry_id UUID NOT NULL,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    title TEXT,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE
+);
