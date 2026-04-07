@@ -720,6 +720,29 @@ func TestConfigValidate(t *testing.T) {
 			errMsg:  "duplicate source name",
 		},
 		{
+			name: "multiple_managed_sources_rejected",
+			config: &Config{
+				Sources: []SourceConfig{
+					{
+						Name:    "managed-1",
+						Managed: &ManagedConfig{},
+					},
+					{
+						Name:    "managed-2",
+						Managed: &ManagedConfig{},
+					},
+				},
+				Registries: []RegistryConfig{
+					{Name: "default", Sources: []string{"managed-1", "managed-2"}},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: true,
+			errMsg:  "at most one managed source is allowed",
+		},
+		{
 			name: "invalid_format_when_using_api",
 			config: &Config{
 				Sources: []SourceConfig{

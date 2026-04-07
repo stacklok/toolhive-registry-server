@@ -770,6 +770,17 @@ func (c *Config) validate() error {
 		}
 	}
 
+	// Validate at most one managed source is configured
+	managedCount := 0
+	for _, src := range c.Sources {
+		if src.Managed != nil {
+			managedCount++
+		}
+	}
+	if managedCount > 1 {
+		return fmt.Errorf("at most one managed source is allowed, found %d", managedCount)
+	}
+
 	// Validate at least one registry is configured
 	if len(c.Registries) == 0 {
 		return fmt.Errorf("at least one registry must be configured")
