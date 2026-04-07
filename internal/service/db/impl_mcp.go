@@ -950,56 +950,6 @@ func cleanupOrphanedEntry(
 	return nil
 }
 
-// claimsContain reports whether callerClaims satisfies every claim in recordClaims.
-// For each key K in recordClaims the caller must have K, and every value required
-// by the record must appear in the caller's value(s) for K.
-// Both plain strings and []string values are supported.
-func claimsContain(caller, record map[string]any) bool {
-	return claimsContainOneWay(caller, record)
-}
-
-// claimsEqual returns true when a and b have exactly the same keys and values.
-// Used to enforce strict claim consistency on subsequent publishes of the same entry name.
-func claimsEqual(a, b map[string]any) bool {
-	return claimsContainOneWay(a, b) && claimsContainOneWay(b, a)
-}
-
-// claimsContainOneWay reports whether caller satisfies every claim in record.
-func claimsContainOneWay(caller, record map[string]any) bool {
-	for k, rv := range record {
-		cv, ok := caller[k]
-		if !ok {
-			return false
-		}
-		required := toStringSet(rv)
-		have := toStringSet(cv)
-		for v := range required {
-			if _, found := have[v]; !found {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// toStringSet normalises a claim value (string or []any of strings) to a set.
-func toStringSet(v any) map[string]struct{} {
-	switch val := v.(type) {
-	case string:
-		return map[string]struct{}{val: {}}
-	case []any:
-		s := make(map[string]struct{}, len(val))
-		for _, elem := range val {
-			if str, ok := elem.(string); ok {
-				s[str] = struct{}{}
-			}
-		}
-		return s
-	default:
-		return map[string]struct{}{}
-	}
-}
-
 // querierFunction is a function that uses the given querier object to run the
 // main extraction. As of the time of this writing, its main use is accessing
 // the `mcp_server` table in a type-agnostic way. This is to overcome a
