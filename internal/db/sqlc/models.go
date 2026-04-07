@@ -321,6 +321,7 @@ type RegistrySync struct {
 	LastSyncHash          *string    `json:"last_sync_hash"`
 	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
 	ServerCount           int64      `json:"server_count"`
+	SkillCount            int64      `json:"skill_count"`
 }
 
 type Skill struct {
