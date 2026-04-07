@@ -164,6 +164,7 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.scheme = mgr.GetScheme()
 
 	return ctrl.NewControllerManagedBy(mgr).
+		Named(r.registryName).
 		For(&mcpv1alpha1.MCPServer{}, builder.WithPredicates(annotationPredicate)).
 		Watches(&mcpv1alpha1.VirtualMCPServer{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
 		Watches(&mcpv1alpha1.MCPRemoteProxy{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).

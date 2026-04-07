@@ -472,15 +472,17 @@ func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWrit
 			opts = append(opts, kubernetes.WithNamespaces(namespaces...))
 		}
 
-		if cfg.LeaderElectionID != "" {
-			opts = append(opts, kubernetes.WithLeaderElectionID(cfg.LeaderElectionID))
+		// Each K8s source needs a unique leader election ID to avoid lease conflicts
+		leaderID := cfg.LeaderElectionID
+		if leaderID == "" {
+			leaderID = "toolhive-registry-server-leader-election"
 		}
+		opts = append(opts, kubernetes.WithLeaderElectionID(fmt.Sprintf("%s-%s", leaderID, reg.Name)))
 
 		_, err := kubernetes.NewMCPServerReconciler(ctx, opts...)
 		if err != nil {
-			return fmt.Errorf("failed to create kubernetes reconciler: %w", err)
+			return fmt.Errorf("failed to create kubernetes reconciler for source %s: %w", reg.Name, err)
 		}
-		return nil
 	}
 	return nil
 }
