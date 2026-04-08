@@ -423,7 +423,8 @@ func (s *defaultSyncManager) applyFilteringIfConfigured(
 		slog.Info("Registry filtering completed",
 			"originalServerCount", originalServerCount,
 			"filteredServerCount", fetchResult.ServerCount,
-			"serversFiltered", originalServerCount-fetchResult.ServerCount)
+			"serversFiltered", originalServerCount-fetchResult.ServerCount,
+			"skillCount", fetchResult.SkillCount)
 	} else {
 		slog.Info("No filtering configured, using original registry data")
 	}

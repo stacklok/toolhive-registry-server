@@ -328,6 +328,7 @@ WITH subset AS (
       FROM entry_version v
       JOIN registry_entry e ON v.entry_id = e.id
      WHERE e.source_id = sqlc.arg(source_id)
+       AND e.entry_type = 'MCP'
        AND v.id != ALL(sqlc.slice(keep_ids)::UUID[])
 )
 DELETE FROM entry_version v

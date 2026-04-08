@@ -19,6 +19,7 @@ WITH subset AS (
       FROM entry_version v
       JOIN registry_entry e ON v.entry_id = e.id
      WHERE e.source_id = $1
+       AND e.entry_type = 'MCP'
        AND v.id != ALL($2::UUID[])
 )
 DELETE FROM entry_version v

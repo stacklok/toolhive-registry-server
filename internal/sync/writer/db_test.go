@@ -3083,3 +3083,170 @@ func TestDbSyncWriter_Store_Skills(t *testing.T) {
 		})
 	}
 }
+
+// TestDbSyncWriter_Store_RepeatedMixedSync verifies that a second Store call
+// with both servers and skills does not corrupt data. This is a regression test
+// for a bug where DeleteOrphanedServers would incorrectly delete skill
+// entry_versions because it lacked an entry_type = 'MCP' filter.
+func TestDbSyncWriter_Store_RepeatedMixedSync(t *testing.T) {
+	t.Parallel()
+
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestRegistry(t, pool, "test-registry")
+
+	w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	require.NoError(t, err)
+
+	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
+	source, err := queries.GetSourceByName(ctx, "test-registry")
+	require.NoError(t, err)
+
+	// ── First sync: 2 servers + 2 skills ──────────────────────────────────
+	firstRegistry := createTestUpstreamRegistryWithSkills(
+		[]upstreamv0.ServerJSON{
+			createTestServer("test.org/server-a", "1.0.0"),
+			createTestServer("test.org/server-b", "1.0.0"),
+		},
+		[]toolhivetypes.Skill{
+			createTestSkill("io.github.test", "skill-x", "1.0.0"),
+			createTestSkillWithPackages("io.github.test", "skill-y", "1.0.0"),
+		},
+	)
+
+	err = w.Store(ctx, "test-registry", firstRegistry)
+	require.NoError(t, err)
+
+	// Validate first sync: 2 servers
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
+	require.NoError(t, err)
+	require.Len(t, servers, 2, "Should have 2 servers after first sync")
+
+	// Validate first sync: 2 skills
+	var skillCount int
+	err = pool.QueryRow(ctx, testSkillCountQuery, source.ID).Scan(&skillCount)
+	require.NoError(t, err)
+	assert.Equal(t, 2, skillCount, "Should have 2 skills after first sync")
+
+	// Validate first sync: skill-y has OCI and Git packages
+	var ociCount, gitCount int
+	err = pool.QueryRow(ctx, testSkillOCIPkgCountQuery, source.ID, "skill-y").Scan(&ociCount)
+	require.NoError(t, err)
+	assert.Equal(t, 1, ociCount, "skill-y should have 1 OCI package after first sync")
+
+	err = pool.QueryRow(ctx, testSkillGitPkgCountQuery, source.ID, "skill-y").Scan(&gitCount)
+	require.NoError(t, err)
+	assert.Equal(t, 1, gitCount, "skill-y should have 1 Git package after first sync")
+
+	// ── Second sync: changed content ──────────────────────────────────────
+	// Servers: server-a kept, server-b removed, server-c added
+	// Skills: skill-x updated to v2.0.0, skill-y removed, skill-z added
+	secondRegistry := createTestUpstreamRegistryWithSkills(
+		[]upstreamv0.ServerJSON{
+			createTestServer("test.org/server-a", "1.0.0"),
+			createTestServer("test.org/server-c", "1.0.0"),
+		},
+		[]toolhivetypes.Skill{
+			createTestSkill("io.github.test", "skill-x", "2.0.0"),
+			createTestSkill("io.github.test", "skill-z", "1.0.0"),
+		},
+	)
+
+	err = w.Store(ctx, "test-registry", secondRegistry)
+	require.NoError(t, err)
+
+	// Validate second sync: 2 servers (server-a, server-c; server-b orphaned)
+	servers, err = queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
+	require.NoError(t, err)
+	require.Len(t, servers, 2, "Should have 2 servers after second sync")
+
+	serverNames := make(map[string]bool, len(servers))
+	for _, s := range servers {
+		serverNames[s.Name] = true
+	}
+	assert.True(t, serverNames["test.org/server-a"], "server-a should still exist")
+	assert.True(t, serverNames["test.org/server-c"], "server-c should exist")
+	assert.False(t, serverNames["test.org/server-b"], "server-b should be orphaned")
+
+	// Validate second sync: 2 skills (skill-x updated, skill-z new; skill-y orphaned)
+	err = pool.QueryRow(ctx, testSkillCountQuery, source.ID).Scan(&skillCount)
+	require.NoError(t, err)
+	assert.Equal(t, 2, skillCount, "Should have 2 skills after second sync")
+
+	// skill-x should show version "2.0.0"
+	var namespace, status string
+	var license, version, title, description *string
+	err = pool.QueryRow(ctx, testSkillDetailQuery, source.ID, "skill-x").
+		Scan(&namespace, &status, &license, &version, &title, &description)
+	require.NoError(t, err)
+	assert.Equal(t, "io.github.test", namespace)
+	require.NotNil(t, version)
+	assert.Equal(t, "2.0.0", *version, "skill-x should be updated to v2.0.0")
+
+	// skill-z should exist
+	err = pool.QueryRow(ctx, testSkillDetailQuery, source.ID, "skill-z").
+		Scan(&namespace, &status, &license, &version, &title, &description)
+	require.NoError(t, err)
+	assert.Equal(t, "io.github.test", namespace)
+	require.NotNil(t, version)
+	assert.Equal(t, "1.0.0", *version, "skill-z should be at v1.0.0")
+
+	// skill-y should be gone (orphan cleanup); querying it should return no rows
+	err = pool.QueryRow(ctx, testSkillDetailQuery, source.ID, "skill-y").
+		Scan(new(string), new(string), new(*string), new(*string), new(*string), new(*string))
+	assert.Error(t, err, "skill-y should have been removed by orphan cleanup")
+}
+
+// TestDbSyncWriter_Store_SkillMultiVersionLatest verifies that when multiple
+// versions of the same skill are synced, the latest_entry_version table
+// correctly points to the highest semantic version.
+func TestDbSyncWriter_Store_SkillMultiVersionLatest(t *testing.T) {
+	t.Parallel()
+
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestRegistry(t, pool, "test-registry")
+
+	w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	require.NoError(t, err)
+
+	queries := sqlc.New(pool)
+	source, err := queries.GetSourceByName(ctx, "test-registry")
+	require.NoError(t, err)
+
+	// Store 3 versions of the same skill
+	registry := createTestUpstreamRegistryWithSkills(
+		nil,
+		[]toolhivetypes.Skill{
+			createTestSkill("io.github.test", "my-skill", "1.0.0"),
+			createTestSkill("io.github.test", "my-skill", "2.0.0"),
+			createTestSkill("io.github.test", "my-skill", "3.0.0"),
+		},
+	)
+
+	err = w.Store(ctx, "test-registry", registry)
+	require.NoError(t, err)
+
+	// Validate: 3 skill rows exist (one per version)
+	var skillCount int
+	err = pool.QueryRow(ctx, testSkillCountQuery, source.ID).Scan(&skillCount)
+	require.NoError(t, err)
+	assert.Equal(t, 3, skillCount, "Should have 3 skill rows (one per version)")
+
+	// Query latest_entry_version to verify it points to v3.0.0
+	const latestVersionQuery = `
+	SELECT lev.version FROM latest_entry_version lev
+	  JOIN source s ON lev.source_id = s.id
+	 WHERE s.name = $1
+	   AND lev.name = $2
+	`
+	var latestVersion string
+	err = pool.QueryRow(ctx, latestVersionQuery, "test-registry", "my-skill").Scan(&latestVersion)
+	require.NoError(t, err)
+	assert.Equal(t, "3.0.0", latestVersion, "latest_entry_version should point to v3.0.0")
+}

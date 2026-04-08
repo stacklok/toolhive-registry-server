@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"time"
 
@@ -1201,8 +1202,13 @@ func sqlCopySkillEntryVersions(
 }
 
 // marshalJSONOrNil marshals the value to JSON, returning nil if the value is nil.
+// It handles both untyped nil and typed nil (e.g. (*SomeStruct)(nil) stored in any).
 func marshalJSONOrNil(v any) ([]byte, error) {
 	if v == nil {
+		return nil, nil
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr && rv.IsNil() {
 		return nil, nil
 	}
 	return json.Marshal(v)
