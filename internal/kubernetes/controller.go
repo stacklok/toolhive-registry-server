@@ -251,7 +251,11 @@ func getMCPServerList(
 		mcpObjects[i] = &mcpServerList.Items[i]
 	}
 	serverJSONs = processResources(mcpObjects, "MCPServer", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
-		return extractServer(obj.(*mcpv1alpha1.MCPServer))
+		inner, ok := obj.(*mcpv1alpha1.MCPServer)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %T", obj)
+		}
+		return extractServer(inner)
 	}, baseClaims, serverJSONs, perEntryClaims)
 
 	vmcpObjects := make([]client.Object, len(vmcpServerList.Items))
@@ -259,7 +263,11 @@ func getMCPServerList(
 		vmcpObjects[i] = &vmcpServerList.Items[i]
 	}
 	serverJSONs = processResources(vmcpObjects, "VirtualMCPServer", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
-		return extractVirtualMCPServer(obj.(*mcpv1alpha1.VirtualMCPServer))
+		inner, ok := obj.(*mcpv1alpha1.VirtualMCPServer)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %T", obj)
+		}
+		return extractVirtualMCPServer(inner)
 	}, baseClaims, serverJSONs, perEntryClaims)
 
 	mcpProxyObjects := make([]client.Object, len(mcpRemoteProxyList.Items))
@@ -267,7 +275,11 @@ func getMCPServerList(
 		mcpProxyObjects[i] = &mcpRemoteProxyList.Items[i]
 	}
 	serverJSONs = processResources(mcpProxyObjects, "MCPRemoteProxy", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
-		return extractMCPRemoteProxy(obj.(*mcpv1alpha1.MCPRemoteProxy))
+		inner, ok := obj.(*mcpv1alpha1.MCPRemoteProxy)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %T", obj)
+		}
+		return extractMCPRemoteProxy(inner)
 	}, baseClaims, serverJSONs, perEntryClaims)
 
 	// Return nil instead of empty map when no per-entry claims exist

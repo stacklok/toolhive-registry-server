@@ -97,7 +97,9 @@ func (d *dbSyncWriter) Store(
 	// Parse store options
 	storeOpts := &storeOptions{}
 	for _, opt := range opts {
-		opt(storeOpts)
+		if err := opt(storeOpts); err != nil {
+			return fmt.Errorf("invalid store option: %w", err)
+		}
 	}
 
 	// Step 2: Upsert all servers using temp table and COPY, collect their IDs

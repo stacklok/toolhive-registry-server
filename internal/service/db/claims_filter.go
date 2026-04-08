@@ -124,21 +124,11 @@ func checkClaims(callerJSON, recordJSON []byte) bool {
 // For each key K in recordClaims the caller must have K, and every value required
 // by the record must appear in the caller's value(s) for K.
 // Both plain strings and []string values are supported.
-func claimsContain(caller, record map[string]any) bool {
-	return claimsContainOneWay(caller, record)
-}
-
-// claimsEqual returns true when a and b have exactly the same keys and values.
-// Used to enforce strict claim consistency on subsequent publishes of the same entry name.
-func claimsEqual(a, b map[string]any) bool {
-	return claimsContainOneWay(a, b) && claimsContainOneWay(b, a)
-}
-
-// claimsContainOneWay reports whether caller satisfies every claim in record.
+//
 // An empty-array value (e.g. "teams": []) is vacuously satisfied by any caller
 // value for that key — this is intentional since ValidateClaimValues accepts
 // empty arrays, and presence of the key is the meaningful signal.
-func claimsContainOneWay(caller, record map[string]any) bool {
+func claimsContain(caller, record map[string]any) bool {
 	for k, rv := range record {
 		cv, ok := caller[k]
 		if !ok {
@@ -153,6 +143,12 @@ func claimsContainOneWay(caller, record map[string]any) bool {
 		}
 	}
 	return true
+}
+
+// claimsEqual returns true when a and b have exactly the same keys and values.
+// Used to enforce strict claim consistency on subsequent publishes of the same entry name.
+func claimsEqual(a, b map[string]any) bool {
+	return claimsContain(a, b) && claimsContain(b, a)
 }
 
 // toStringSet normalises a claim value (string, []any of strings, or []string) to a set.

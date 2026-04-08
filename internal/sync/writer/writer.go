@@ -24,11 +24,12 @@ type storeOptions struct {
 }
 
 // StoreOption is a function that configures storeOptions.
-type StoreOption func(*storeOptions)
+type StoreOption func(*storeOptions) error
 
 // WithPerEntryClaims provides per-entry claims that override source-level claims.
 func WithPerEntryClaims(claims map[string][]byte) StoreOption {
-	return func(o *storeOptions) {
+	return func(o *storeOptions) error {
 		o.PerEntryClaims = claims
+		return nil
 	}
 }
