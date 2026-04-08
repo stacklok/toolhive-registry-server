@@ -422,7 +422,7 @@ func TestDefaultFilterService_ApplyFilters_UpstreamFormatWithStringMetadata(t *t
 	assert.Len(t, result.Data.Servers, 0, "Server should be excluded by name filter")
 }
 
-func TestDefaultFilterService_ApplyFilters_PreservesSkills(t *testing.T) {
+func TestDefaultFilterService_ApplyFilters_FiltersSkillsByName(t *testing.T) {
 	t.Parallel()
 
 	service := NewDefaultFilterService()
@@ -451,22 +451,51 @@ func TestDefaultFilterService_ApplyFilters_PreservesSkills(t *testing.T) {
 			Version:     "2.0.0",
 			Description: "Another skill",
 		},
+		{
+			Namespace:   "io.github.other",
+			Name:        "data-export",
+			Version:     "1.0.0",
+			Description: "Other namespace skill",
+		},
 	}
 
-	// Apply a name filter that excludes the server
+	// Exclude server namespace and one skill namespace — keep only io.github.other
 	filter := &config.FilterConfig{
 		Names: &config.NameFilterConfig{
-			Exclude: []string{"io.test/*"},
+			Exclude: []string{"io.test/*", "io.github.test/*"},
 		},
 	}
 
 	result, err := service.ApplyFilters(ctx, originalRegistry, filter)
 
 	require.NoError(t, err)
-	// Server should be excluded by name filter
+	// Server should be excluded
 	assert.Empty(t, result.Data.Servers)
-	// Skills should be preserved through filtering (not filtered)
-	require.Len(t, result.Data.Skills, 2)
+	// Only the io.github.other skill should remain
+	require.Len(t, result.Data.Skills, 1)
+	assert.Equal(t, "data-export", result.Data.Skills[0].Name)
+	assert.Equal(t, "io.github.other", result.Data.Skills[0].Namespace)
+}
+
+func TestDefaultFilterService_ApplyFilters_SkillsPassWithNoFilter(t *testing.T) {
+	t.Parallel()
+
+	service := NewDefaultFilterService()
+	ctx := context.Background()
+
+	originalRegistry := registry.NewTestUpstreamRegistry()
+	originalRegistry.Data.Skills = []toolhivetypes.Skill{
+		{
+			Namespace:   "io.github.test",
+			Name:        "pdf-processor",
+			Version:     "1.0.0",
+			Description: "Test skill",
+		},
+	}
+
+	result, err := service.ApplyFilters(ctx, originalRegistry, nil)
+
+	require.NoError(t, err)
+	require.Len(t, result.Data.Skills, 1)
 	assert.Equal(t, "pdf-processor", result.Data.Skills[0].Name)
-	assert.Equal(t, "code-review", result.Data.Skills[1].Name)
 }

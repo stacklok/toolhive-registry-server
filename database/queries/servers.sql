@@ -322,13 +322,13 @@ DO UPDATE SET
     repository_type = sqlc.narg(repository_type)
 RETURNING version_id;
 
--- name: DeleteOrphanedServers :exec
+-- name: DeleteOrphanedEntryVersions :exec
 WITH subset AS (
     SELECT v.id
       FROM entry_version v
       JOIN registry_entry e ON v.entry_id = e.id
      WHERE e.source_id = sqlc.arg(source_id)
-       AND e.entry_type = 'MCP'
+       AND e.entry_type = sqlc.arg(entry_type)
        AND v.id != ALL(sqlc.slice(keep_ids)::UUID[])
 )
 DELETE FROM entry_version v

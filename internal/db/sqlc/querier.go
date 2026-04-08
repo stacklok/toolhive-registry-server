@@ -32,22 +32,16 @@ type Querier interface {
 	CreateTempRemoteTable(ctx context.Context) error
 	// Temp Server Table Operations
 	CreateTempServerTable(ctx context.Context) error
-	// Temp Skill Entry Version Table Operations
-	CreateTempSkillEntryVersionTable(ctx context.Context) error
-	// Temp Skill Entry Table Operations
-	// Skills use separate temp tables from servers because both coexist in the same transaction.
-	CreateTempSkillRegistryEntryTable(ctx context.Context) error
 	// Delete CONFIG registry rows whose names are not in the provided list.
 	// Used during config sync to clean up registry/junction rows before deleting orphaned sources.
 	DeleteConfigRegistriesNotInList(ctx context.Context, keepNames []string) error
 	// Delete CONFIG sources not in the provided list (for config file sync)
 	DeleteConfigSourcesNotInList(ctx context.Context, ids []uuid.UUID) error
 	DeleteEntryVersion(ctx context.Context, arg DeleteEntryVersionParams) (int64, error)
+	DeleteOrphanedEntryVersions(ctx context.Context, arg DeleteOrphanedEntryVersionsParams) error
 	DeleteOrphanedIcons(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedPackages(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UUID) error
-	DeleteOrphanedServers(ctx context.Context, arg DeleteOrphanedServersParams) error
-	DeleteOrphanedSkills(ctx context.Context, arg DeleteOrphanedSkillsParams) error
 	// Delete a registry by name. Go callers guard against deleting wrong creation_type.
 	DeleteRegistry(ctx context.Context, name string) (int64, error)
 	DeleteRegistryEntry(ctx context.Context, arg DeleteRegistryEntryParams) (int64, error)
@@ -61,6 +55,8 @@ type Querier interface {
 	DeleteSkillsByRegistry(ctx context.Context, sourceID uuid.UUID) error
 	// Delete a source by name. Go callers guard against deleting wrong creation_type.
 	DeleteSource(ctx context.Context, name string) (int64, error)
+	DropTempEntryVersionTable(ctx context.Context) error
+	DropTempRegistryEntryTable(ctx context.Context) error
 	GetAPISourcesByNames(ctx context.Context, names []string) ([]GetAPISourcesByNamesRow, error)
 	GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error)
 	GetManagedSources(ctx context.Context) ([]GetManagedSourcesRow, error)
@@ -155,8 +151,6 @@ type Querier interface {
 	UpsertRemotesFromTemp(ctx context.Context) error
 	UpsertServerVersionForSync(ctx context.Context, arg UpsertServerVersionForSyncParams) (uuid.UUID, error)
 	UpsertServersFromTemp(ctx context.Context) error
-	UpsertSkillEntryVersionsFromTemp(ctx context.Context) ([]UpsertSkillEntryVersionsFromTempRow, error)
-	UpsertSkillRegistryEntriesFromTemp(ctx context.Context) ([]UpsertSkillRegistryEntriesFromTempRow, error)
 	UpsertSkillVersionForSync(ctx context.Context, arg UpsertSkillVersionForSyncParams) (uuid.UUID, error)
 	// ============================================================================
 	// CONFIG Source Queries (only operate on creation_type='CONFIG')

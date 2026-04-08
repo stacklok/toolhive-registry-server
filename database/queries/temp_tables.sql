@@ -27,6 +27,9 @@ SELECT id,
       updated_at = EXCLUDED.updated_at
 RETURNING id, source_id, entry_type, name;
 
+-- name: DropTempRegistryEntryTable :exec
+DROP TABLE IF EXISTS temp_registry_entry;
+
 -- Temp Entry Version Table Operations
 
 -- name: CreateTempEntryVersionTable :exec
@@ -54,6 +57,9 @@ SELECT id,
       description = EXCLUDED.description,
       updated_at = EXCLUDED.updated_at
 RETURNING id, entry_id, version;
+
+-- name: DropTempEntryVersionTable :exec
+DROP TABLE IF EXISTS temp_entry_version;
 
 -- Temp Server Table Operations
 
@@ -165,56 +171,3 @@ WHERE server_id = ANY(sqlc.slice(server_ids)::UUID[])
     SELECT server_id, source_uri, mime_type, theme FROM temp_mcp_server_icon
   );
 
--- Temp Skill Entry Table Operations
--- Skills use separate temp tables from servers because both coexist in the same transaction.
-
--- name: CreateTempSkillRegistryEntryTable :exec
-CREATE TEMP TABLE temp_skill_registry_entry ON COMMIT DROP AS
-SELECT * FROM registry_entry
-  WITH NO DATA;
-
--- name: UpsertSkillRegistryEntriesFromTemp :many
-INSERT INTO registry_entry (
-    id, source_id, entry_type, name, claims, created_at, updated_at
-)
-SELECT id,
-       source_id,
-       entry_type,
-       name,
-       claims,
-       created_at,
-       updated_at
-  FROM temp_skill_registry_entry
-    ON CONFLICT (source_id, entry_type, name)
-    DO UPDATE SET
-      claims = EXCLUDED.claims,
-      updated_at = EXCLUDED.updated_at
-RETURNING id, source_id, entry_type, name;
-
--- Temp Skill Entry Version Table Operations
-
--- name: CreateTempSkillEntryVersionTable :exec
-CREATE TEMP TABLE temp_skill_entry_version ON COMMIT DROP AS
-SELECT * FROM entry_version
-  WITH NO DATA;
-
--- name: UpsertSkillEntryVersionsFromTemp :many
-INSERT INTO entry_version (
-    id, entry_id, name, version, title, description, created_at, updated_at
-)
-SELECT id,
-       entry_id,
-       name,
-       version,
-       title,
-       description,
-       created_at,
-       updated_at
-  FROM temp_skill_entry_version
-    ON CONFLICT (entry_id, version)
-    DO UPDATE SET
-      name = EXCLUDED.name,
-      title = EXCLUDED.title,
-      description = EXCLUDED.description,
-      updated_at = EXCLUDED.updated_at
-RETURNING id, entry_id, version;

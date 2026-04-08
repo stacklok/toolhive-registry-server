@@ -13,29 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const deleteOrphanedSkills = `-- name: DeleteOrphanedSkills :exec
-WITH subset AS (
-    SELECT v.id
-      FROM entry_version v
-      JOIN registry_entry e ON v.entry_id = e.id
-     WHERE e.source_id = $1
-       AND e.entry_type = 'SKILL'
-       AND v.id != ALL($2::UUID[])
-)
-DELETE FROM skill s
- WHERE s.version_id IN (SELECT id FROM subset)
-`
-
-type DeleteOrphanedSkillsParams struct {
-	SourceID uuid.UUID   `json:"source_id"`
-	KeepIds  []uuid.UUID `json:"keep_ids"`
-}
-
-func (q *Queries) DeleteOrphanedSkills(ctx context.Context, arg DeleteOrphanedSkillsParams) error {
-	_, err := q.db.Exec(ctx, deleteOrphanedSkills, arg.SourceID, arg.KeepIds)
-	return err
-}
-
 const deleteSkillGitPackagesBySkillId = `-- name: DeleteSkillGitPackagesBySkillId :exec
 DELETE FROM skill_git_package WHERE skill_id = $1
 `

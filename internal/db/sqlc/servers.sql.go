@@ -13,26 +13,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const deleteOrphanedServers = `-- name: DeleteOrphanedServers :exec
+const deleteOrphanedEntryVersions = `-- name: DeleteOrphanedEntryVersions :exec
 WITH subset AS (
     SELECT v.id
       FROM entry_version v
       JOIN registry_entry e ON v.entry_id = e.id
      WHERE e.source_id = $1
-       AND e.entry_type = 'MCP'
-       AND v.id != ALL($2::UUID[])
+       AND e.entry_type = $2
+       AND v.id != ALL($3::UUID[])
 )
 DELETE FROM entry_version v
 WHERE v.id IN (SELECT id FROM subset)
 `
 
-type DeleteOrphanedServersParams struct {
-	SourceID uuid.UUID   `json:"source_id"`
-	KeepIds  []uuid.UUID `json:"keep_ids"`
+type DeleteOrphanedEntryVersionsParams struct {
+	SourceID  uuid.UUID   `json:"source_id"`
+	EntryType EntryType   `json:"entry_type"`
+	KeepIds   []uuid.UUID `json:"keep_ids"`
 }
 
-func (q *Queries) DeleteOrphanedServers(ctx context.Context, arg DeleteOrphanedServersParams) error {
-	_, err := q.db.Exec(ctx, deleteOrphanedServers, arg.SourceID, arg.KeepIds)
+func (q *Queries) DeleteOrphanedEntryVersions(ctx context.Context, arg DeleteOrphanedEntryVersionsParams) error {
+	_, err := q.db.Exec(ctx, deleteOrphanedEntryVersions, arg.SourceID, arg.EntryType, arg.KeepIds)
 	return err
 }
 

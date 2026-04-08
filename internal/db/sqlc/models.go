@@ -372,6 +372,7 @@ type Source struct {
 type TempEntryVersion struct {
 	ID          uuid.UUID  `json:"id"`
 	EntryID     uuid.UUID  `json:"entry_id"`
+	Name        string     `json:"name"`
 	Version     string     `json:"version"`
 	Title       *string    `json:"title"`
 	Description *string    `json:"description"`
@@ -421,27 +422,6 @@ type TempMcpServerRemote struct {
 }
 
 type TempRegistryEntry struct {
-	ID        uuid.UUID  `json:"id"`
-	SourceID  uuid.UUID  `json:"source_id"`
-	EntryType EntryType  `json:"entry_type"`
-	Name      string     `json:"name"`
-	Claims    []byte     `json:"claims"`
-	CreatedAt *time.Time `json:"created_at"`
-	UpdatedAt *time.Time `json:"updated_at"`
-}
-
-type TempSkillEntryVersion struct {
-	ID          uuid.UUID  `json:"id"`
-	EntryID     uuid.UUID  `json:"entry_id"`
-	Name        string     `json:"name"`
-	Version     string     `json:"version"`
-	Title       *string    `json:"title"`
-	Description *string    `json:"description"`
-	CreatedAt   *time.Time `json:"created_at"`
-	UpdatedAt   *time.Time `json:"updated_at"`
-}
-
-type TempSkillRegistryEntry struct {
 	ID        uuid.UUID  `json:"id"`
 	SourceID  uuid.UUID  `json:"source_id"`
 	EntryType EntryType  `json:"entry_type"`

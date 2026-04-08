@@ -93,33 +93,6 @@ func (q *Queries) CreateTempServerTable(ctx context.Context) error {
 	return err
 }
 
-const createTempSkillEntryVersionTable = `-- name: CreateTempSkillEntryVersionTable :exec
-
-CREATE TEMP TABLE temp_skill_entry_version ON COMMIT DROP AS
-SELECT id, entry_id, version, title, description, created_at, updated_at, name FROM entry_version
-  WITH NO DATA
-`
-
-// Temp Skill Entry Version Table Operations
-func (q *Queries) CreateTempSkillEntryVersionTable(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, createTempSkillEntryVersionTable)
-	return err
-}
-
-const createTempSkillRegistryEntryTable = `-- name: CreateTempSkillRegistryEntryTable :exec
-
-CREATE TEMP TABLE temp_skill_registry_entry ON COMMIT DROP AS
-SELECT id, source_id, entry_type, name, created_at, updated_at, claims FROM registry_entry
-  WITH NO DATA
-`
-
-// Temp Skill Entry Table Operations
-// Skills use separate temp tables from servers because both coexist in the same transaction.
-func (q *Queries) CreateTempSkillRegistryEntryTable(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, createTempSkillRegistryEntryTable)
-	return err
-}
-
 const deleteOrphanedIcons = `-- name: DeleteOrphanedIcons :exec
 DELETE FROM mcp_server_icon
 WHERE server_id = ANY($1::UUID[])
@@ -156,6 +129,24 @@ WHERE server_id = ANY($1::UUID[])
 
 func (q *Queries) DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteOrphanedRemotes, serverIds)
+	return err
+}
+
+const dropTempEntryVersionTable = `-- name: DropTempEntryVersionTable :exec
+DROP TABLE IF EXISTS temp_entry_version
+`
+
+func (q *Queries) DropTempEntryVersionTable(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, dropTempEntryVersionTable)
+	return err
+}
+
+const dropTempRegistryEntryTable = `-- name: DropTempRegistryEntryTable :exec
+DROP TABLE IF EXISTS temp_registry_entry
+`
+
+func (q *Queries) DropTempRegistryEntryTable(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, dropTempRegistryEntryTable)
 	return err
 }
 
@@ -341,103 +332,4 @@ FROM temp_mcp_server
 func (q *Queries) UpsertServersFromTemp(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, upsertServersFromTemp)
 	return err
-}
-
-const upsertSkillEntryVersionsFromTemp = `-- name: UpsertSkillEntryVersionsFromTemp :many
-INSERT INTO entry_version (
-    id, entry_id, name, version, title, description, created_at, updated_at
-)
-SELECT id,
-       entry_id,
-       name,
-       version,
-       title,
-       description,
-       created_at,
-       updated_at
-  FROM temp_skill_entry_version
-    ON CONFLICT (entry_id, version)
-    DO UPDATE SET
-      name = EXCLUDED.name,
-      title = EXCLUDED.title,
-      description = EXCLUDED.description,
-      updated_at = EXCLUDED.updated_at
-RETURNING id, entry_id, version
-`
-
-type UpsertSkillEntryVersionsFromTempRow struct {
-	ID      uuid.UUID `json:"id"`
-	EntryID uuid.UUID `json:"entry_id"`
-	Version string    `json:"version"`
-}
-
-func (q *Queries) UpsertSkillEntryVersionsFromTemp(ctx context.Context) ([]UpsertSkillEntryVersionsFromTempRow, error) {
-	rows, err := q.db.Query(ctx, upsertSkillEntryVersionsFromTemp)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []UpsertSkillEntryVersionsFromTempRow{}
-	for rows.Next() {
-		var i UpsertSkillEntryVersionsFromTempRow
-		if err := rows.Scan(&i.ID, &i.EntryID, &i.Version); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const upsertSkillRegistryEntriesFromTemp = `-- name: UpsertSkillRegistryEntriesFromTemp :many
-INSERT INTO registry_entry (
-    id, source_id, entry_type, name, claims, created_at, updated_at
-)
-SELECT id,
-       source_id,
-       entry_type,
-       name,
-       claims,
-       created_at,
-       updated_at
-  FROM temp_skill_registry_entry
-    ON CONFLICT (source_id, entry_type, name)
-    DO UPDATE SET
-      claims = EXCLUDED.claims,
-      updated_at = EXCLUDED.updated_at
-RETURNING id, source_id, entry_type, name
-`
-
-type UpsertSkillRegistryEntriesFromTempRow struct {
-	ID        uuid.UUID `json:"id"`
-	SourceID  uuid.UUID `json:"source_id"`
-	EntryType EntryType `json:"entry_type"`
-	Name      string    `json:"name"`
-}
-
-func (q *Queries) UpsertSkillRegistryEntriesFromTemp(ctx context.Context) ([]UpsertSkillRegistryEntriesFromTempRow, error) {
-	rows, err := q.db.Query(ctx, upsertSkillRegistryEntriesFromTemp)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []UpsertSkillRegistryEntriesFromTempRow{}
-	for rows.Next() {
-		var i UpsertSkillRegistryEntriesFromTempRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.SourceID,
-			&i.EntryType,
-			&i.Name,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
