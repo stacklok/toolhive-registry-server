@@ -268,7 +268,7 @@ func NewMCPServerReconciler(
 
 func validateNamespaces(namespaces []string) error {
 	for _, namespace := range namespaces {
-		if !config.DNSSubdomainRegex.MatchString(namespace) {
+		if !config.IsValidDNSSubdomain(namespace) {
 			return fmt.Errorf("invalid namespace name: %s", namespace)
 		}
 	}

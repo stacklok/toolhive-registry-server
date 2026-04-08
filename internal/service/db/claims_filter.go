@@ -135,6 +135,9 @@ func claimsEqual(a, b map[string]any) bool {
 }
 
 // claimsContainOneWay reports whether caller satisfies every claim in record.
+// An empty-array value (e.g. "teams": []) is vacuously satisfied by any caller
+// value for that key — this is intentional since ValidateClaimValues accepts
+// empty arrays, and presence of the key is the meaningful signal.
 func claimsContainOneWay(caller, record map[string]any) bool {
 	for k, rv := range record {
 		cv, ok := caller[k]
@@ -152,7 +155,7 @@ func claimsContainOneWay(caller, record map[string]any) bool {
 	return true
 }
 
-// toStringSet normalises a claim value (string or []any of strings) to a set.
+// toStringSet normalises a claim value (string, []any of strings, or []string) to a set.
 func toStringSet(v any) map[string]struct{} {
 	switch val := v.(type) {
 	case string:
@@ -163,6 +166,12 @@ func toStringSet(v any) map[string]struct{} {
 			if str, ok := elem.(string); ok {
 				s[str] = struct{}{}
 			}
+		}
+		return s
+	case []string:
+		s := make(map[string]struct{}, len(val))
+		for _, str := range val {
+			s[str] = struct{}{}
 		}
 		return s
 	default:

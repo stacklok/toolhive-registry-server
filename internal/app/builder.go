@@ -473,16 +473,17 @@ func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWrit
 		}
 
 		// Each K8s source needs a unique leader election ID to avoid lease conflicts.
-		// Include source name and watched namespaces to prevent collisions between
-		// sources watching different namespaces or between co-located deployments.
+		// Source names are validated as unique (config validation rejects duplicates),
+		// so appending the source name is sufficient for uniqueness. We intentionally
+		// do NOT include namespace names: since both source names and namespaces use
+		// the DNS label charset (lowercase alphanumeric + hyphens), joining them with
+		// a hyphen would create ambiguous boundaries (e.g. source "foo-bar" + ns "baz"
+		// would collide with source "foo" + ns "bar-baz").
 		leaderID := cfg.LeaderElectionID
 		if leaderID == "" {
 			leaderID = "toolhive-registry-server-leader-election"
 		}
 		leaseID := fmt.Sprintf("%s-%s", leaderID, reg.Name)
-		if reg.Kubernetes != nil && len(reg.Kubernetes.Namespaces) > 0 {
-			leaseID = fmt.Sprintf("%s-%s", leaseID, strings.Join(reg.Kubernetes.Namespaces, "-"))
-		}
 		opts = append(opts, kubernetes.WithLeaderElectionID(leaseID))
 
 		_, err := kubernetes.NewMCPServerReconciler(ctx, opts...)

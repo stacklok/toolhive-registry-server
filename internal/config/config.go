@@ -755,7 +755,7 @@ func (c *Config) validate() error {
 		if src.Name == "" {
 			return fmt.Errorf("source[%d]: name is required", i)
 		}
-		if !isValidDNSSubdomain(src.Name) {
+		if !IsValidDNSSubdomain(src.Name) {
 			return fmt.Errorf("source[%d]: name '%s' must be a valid DNS subdomain "+
 				"(lowercase alphanumeric and hyphens, max 63 chars)", i, src.Name)
 		}
@@ -863,14 +863,14 @@ func (c *Config) validateRegistries(sourceNames map[string]bool) error {
 	return nil
 }
 
-// DNSSubdomainRegex matches valid DNS subdomain labels per RFC 1123:
+// dnsSubdomainRegex matches valid DNS subdomain labels per RFC 1123:
 // lowercase alphanumeric, hyphens allowed (not leading/trailing), max 63 chars.
-// Used for source names (K8s lease name suffixes) and K8s namespace validation.
-var DNSSubdomainRegex = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
+var dnsSubdomainRegex = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
 
-// isValidDNSSubdomain checks whether s is a valid DNS subdomain label.
-func isValidDNSSubdomain(s string) bool {
-	return DNSSubdomainRegex.MatchString(s)
+// IsValidDNSSubdomain checks whether s is a valid DNS subdomain label per RFC 1123.
+// Used for source names (K8s lease name suffixes) and K8s namespace validation.
+func IsValidDNSSubdomain(s string) bool {
+	return dnsSubdomainRegex.MatchString(s)
 }
 
 // validateSyncPolicy validates the sync policy configuration

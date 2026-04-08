@@ -201,6 +201,9 @@ func processResources(
 		}
 		claims, err := buildEntryClaims(baseClaims, obj.GetAnnotations())
 		if err != nil {
+			// Intentional fallback: an invalid annotation falls back to source-level
+			// claims rather than skipping the server. This favors availability over
+			// strictness — operators should monitor for these warnings and fix annotations.
 			slog.Warn("Invalid authz-claims annotation, falling back to source-level claims",
 				"type", typeName,
 				"namespace", obj.GetNamespace(),
