@@ -19,7 +19,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
-          go-version-file: 'go.mod'
+          go-version: 'stable'
           cache: true
 
       - name: Set up gotestfmt
@@ -38,7 +38,7 @@ jobs:
         run: task test-coverage
 
       - name: Upload coverage reports to Codecov with GitHub Action
-        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: stacklok/toolhive-registry-server
@@ -52,7 +52,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
-          go-version-file: 'go.mod'
+          go-version: 'stable'
           cache: true
 
       - name: Run integration tests
