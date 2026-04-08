@@ -15,19 +15,17 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/db"
 )
 
-func TestBuildEntryClaims(t *testing.T) {
+func TestParseEntryClaims(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name        string
-		baseClaims  map[string]any
 		annotations map[string]string
 		want        map[string]any // nil means we expect (nil, nil)
 		wantErr     bool
 	}{
 		{
-			name:       "no annotation present",
-			baseClaims: map[string]any{"org": "acme"},
+			name: "no annotation present",
 			annotations: map[string]string{
 				"toolhive.stacklok.dev/registry-export": "true",
 			},
@@ -35,8 +33,7 @@ func TestBuildEntryClaims(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:       "empty annotation value",
-			baseClaims: map[string]any{"org": "acme"},
+			name: "empty annotation value",
 			annotations: map[string]string{
 				defaultAuthzClaimsAnnotation: "",
 			},
@@ -44,8 +41,7 @@ func TestBuildEntryClaims(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:       "annotation with valid JSON and no base claims",
-			baseClaims: nil,
+			name: "valid JSON annotation",
 			annotations: map[string]string{
 				defaultAuthzClaimsAnnotation: `{"role": "admin"}`,
 			},
@@ -53,26 +49,15 @@ func TestBuildEntryClaims(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:       "base claims only with no annotation",
-			baseClaims: map[string]any{"org": "acme"},
+			name: "multiple claim keys",
 			annotations: map[string]string{
-				"some-other-annotation": "value",
+				defaultAuthzClaimsAnnotation: `{"org": "acme", "team": "platform"}`,
 			},
-			want:    nil,
+			want:    map[string]any{"org": "acme", "team": "platform"},
 			wantErr: false,
 		},
 		{
-			name:       "both base claims and annotation merged",
-			baseClaims: map[string]any{"org": "acme", "env": "prod"},
-			annotations: map[string]string{
-				defaultAuthzClaimsAnnotation: `{"role": "admin", "team": "platform"}`,
-			},
-			want:    map[string]any{"org": "acme", "env": "prod", "role": "admin", "team": "platform"},
-			wantErr: false,
-		},
-		{
-			name:       "annotation with string array values preserved",
-			baseClaims: nil,
+			name: "string array values preserved",
 			annotations: map[string]string{
 				defaultAuthzClaimsAnnotation: `{"team": ["eng", "data"]}`,
 			},
@@ -80,8 +65,7 @@ func TestBuildEntryClaims(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:       "invalid JSON in annotation returns error",
-			baseClaims: map[string]any{"org": "acme"},
+			name: "invalid JSON returns error",
 			annotations: map[string]string{
 				defaultAuthzClaimsAnnotation: `{not valid json}`,
 			},
@@ -89,26 +73,7 @@ func TestBuildEntryClaims(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:       "annotation overrides base claim key",
-			baseClaims: map[string]any{"role": "viewer", "org": "acme"},
-			annotations: map[string]string{
-				defaultAuthzClaimsAnnotation: `{"role": "admin"}`,
-			},
-			want:    map[string]any{"role": "admin", "org": "acme"},
-			wantErr: false,
-		},
-		{
-			name:       "base claims with multiple keys and annotation adds one key",
-			baseClaims: map[string]any{"org": "acme", "env": "prod", "region": "us-east-1"},
-			annotations: map[string]string{
-				defaultAuthzClaimsAnnotation: `{"team": "platform"}`,
-			},
-			want:    map[string]any{"org": "acme", "env": "prod", "region": "us-east-1", "team": "platform"},
-			wantErr: false,
-		},
-		{
-			name:       "numeric claim value rejected",
-			baseClaims: nil,
+			name: "numeric claim value rejected",
 			annotations: map[string]string{
 				defaultAuthzClaimsAnnotation: `{"team": 42}`,
 			},
@@ -116,8 +81,7 @@ func TestBuildEntryClaims(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:       "nested object claim value rejected",
-			baseClaims: nil,
+			name: "nested object claim value rejected",
 			annotations: map[string]string{
 				defaultAuthzClaimsAnnotation: `{"team": {"nested": "obj"}}`,
 			},
@@ -125,8 +89,7 @@ func TestBuildEntryClaims(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:       "boolean claim value rejected",
-			baseClaims: nil,
+			name: "boolean claim value rejected",
 			annotations: map[string]string{
 				defaultAuthzClaimsAnnotation: `{"active": true}`,
 			},
@@ -134,8 +97,7 @@ func TestBuildEntryClaims(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:       "array with non-string element rejected",
-			baseClaims: nil,
+			name: "array with non-string element rejected",
 			annotations: map[string]string{
 				defaultAuthzClaimsAnnotation: `{"team": ["eng", 123]}`,
 			},
@@ -148,7 +110,7 @@ func TestBuildEntryClaims(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := buildEntryClaims(tt.baseClaims, tt.annotations)
+			got, err := parseEntryClaims(tt.annotations)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -172,28 +134,6 @@ func TestBuildEntryClaims(t *testing.T) {
 			assert.Equal(t, tt.want, parsed)
 		})
 	}
-}
-
-func TestBuildEntryClaims_BaseClaimsNotMutated(t *testing.T) {
-	t.Parallel()
-
-	baseClaims := map[string]any{
-		"org":   "acme",
-		"teams": []any{"eng", "data"},
-	}
-	annotations := map[string]string{
-		defaultAuthzClaimsAnnotation: `{"role": "admin"}`,
-	}
-
-	got, err := buildEntryClaims(baseClaims, annotations)
-	require.NoError(t, err)
-	require.NotNil(t, got)
-
-	// Verify base claims are not mutated
-	assert.Equal(t, map[string]any{
-		"org":   "acme",
-		"teams": []any{"eng", "data"},
-	}, baseClaims)
 }
 
 func TestValidateClaimValues(t *testing.T) {
@@ -318,7 +258,6 @@ func TestProcessResources(t *testing.T) {
 	tests := []struct {
 		name               string
 		items              []client.Object
-		baseClaims         map[string]any
 		wantServerNames    []string                  // expected server names in serverJSONs slice
 		wantClaimsKeys     []string                  // keys expected in perEntryClaims
 		wantNoClaimsKeys   []string                  // keys that must NOT be in perEntryClaims
@@ -327,29 +266,26 @@ func TestProcessResources(t *testing.T) {
 		{
 			name:            "empty items list",
 			items:           []client.Object{},
-			baseClaims:      map[string]any{"org": "acme"},
 			wantServerNames: nil,
 		},
 		{
-			name: "single item with valid authz-claims and base claims",
+			name: "single item with valid authz-claims annotation",
 			items: []client.Object{
 				createMCPServerObject("server-a", withExtra(requiredAnnotations(), map[string]string{
 					defaultAuthzClaimsAnnotation: `{"role": "admin"}`,
 				})),
 			},
-			baseClaims:      map[string]any{"org": "acme"},
 			wantServerNames: []string{"server-a"},
 			wantClaimsKeys:  []string{"server-a"},
 			wantClaimsContents: map[string]map[string]any{
-				"server-a": {"org": "acme", "role": "admin"},
+				"server-a": {"role": "admin"},
 			},
 		},
 		{
-			name: "single item without authz-claims annotation",
+			name: "single item without authz-claims annotation has no claims",
 			items: []client.Object{
 				createMCPServerObject("server-b", requiredAnnotations()),
 			},
-			baseClaims:       map[string]any{"org": "acme"},
 			wantServerNames:  []string{"server-b"},
 			wantNoClaimsKeys: []string{"server-b"},
 		},
@@ -360,7 +296,6 @@ func TestProcessResources(t *testing.T) {
 					"some-unrelated": "annotation",
 				}),
 			},
-			baseClaims:       map[string]any{"org": "acme"},
 			wantServerNames:  nil,
 			wantNoClaimsKeys: []string{"server-no-export"},
 		},
@@ -371,7 +306,6 @@ func TestProcessResources(t *testing.T) {
 					defaultAuthzClaimsAnnotation: `{not valid json}`,
 				})),
 			},
-			baseClaims:       map[string]any{"org": "acme"},
 			wantServerNames:  nil,
 			wantNoClaimsKeys: []string{"server-bad-json"},
 		},
@@ -382,18 +316,17 @@ func TestProcessResources(t *testing.T) {
 					defaultAuthzClaimsAnnotation: `{"count": 42}`,
 				})),
 			},
-			baseClaims:       map[string]any{"org": "acme"},
 			wantServerNames:  nil,
 			wantNoClaimsKeys: []string{"server-bad-types"},
 		},
 		{
 			name: "multiple items with mixed annotations",
 			items: []client.Object{
-				// Valid with claims
+				// Valid with claims — gets annotation claims only
 				createMCPServerObject("server-with-claims", withExtra(requiredAnnotations(), map[string]string{
 					defaultAuthzClaimsAnnotation: `{"team": "platform"}`,
 				})),
-				// Valid without claims annotation
+				// Valid without claims annotation — no claims (private when authz is on)
 				createMCPServerObject("server-no-claims", requiredAnnotations()),
 				// Invalid JSON in claims (skipped entirely)
 				createMCPServerObject("server-invalid", withExtra(requiredAnnotations(), map[string]string{
@@ -404,12 +337,11 @@ func TestProcessResources(t *testing.T) {
 					"irrelevant": "true",
 				}),
 			},
-			baseClaims:       map[string]any{"org": "acme"},
 			wantServerNames:  []string{"server-with-claims", "server-no-claims"},
 			wantClaimsKeys:   []string{"server-with-claims"},
 			wantNoClaimsKeys: []string{"server-no-claims", "server-invalid", "server-skipped"},
 			wantClaimsContents: map[string]map[string]any{
-				"server-with-claims": {"org": "acme", "team": "platform"},
+				"server-with-claims": {"team": "platform"},
 			},
 		},
 		{
@@ -417,7 +349,6 @@ func TestProcessResources(t *testing.T) {
 			items: []client.Object{
 				createMCPServerObject("error-server", requiredAnnotations()),
 			},
-			baseClaims:       map[string]any{"org": "acme"},
 			wantServerNames:  nil,
 			wantNoClaimsKeys: []string{"error-server"},
 		},
@@ -430,7 +361,7 @@ func TestProcessResources(t *testing.T) {
 			var serverJSONs []upstreamv0.ServerJSON
 			perEntryClaims := make(map[string][]byte)
 
-			serverJSONs = processResources(tt.items, "MCPServer", goodExtractor, tt.baseClaims, serverJSONs, perEntryClaims)
+			serverJSONs = processResources(tt.items, "MCPServer", goodExtractor, serverJSONs, perEntryClaims)
 
 			// Verify serverJSONs count and names
 			if tt.wantServerNames == nil {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"maps"
 	"time"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
@@ -39,14 +38,13 @@ type MCPServerReconciler struct {
 	requeueAfter time.Duration
 	syncWriter   writer.SyncWriter
 	registryName string
-	baseClaims   map[string]any // source-level claims merged into per-entry claims
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// Fetch the MCPServer instance
-	result, err := getMCPServerList(ctx, r.client, req.Namespace, r.baseClaims)
+	result, err := getMCPServerList(ctx, r.client, req.Namespace)
 	if err != nil {
 		slog.Error("Failed to get MCPServer list", "error", err)
 		return ctrl.Result{}, err
@@ -177,12 +175,12 @@ type extractorFunc func(client.Object) (*upstreamv0.ServerJSON, error)
 
 // processResources filters, extracts, and builds per-entry claims for a list of K8s resources.
 // Returns the extracted servers appended to serverJSONs and populates perEntryClaims for
-// entries that have valid authz-claims annotations.
+// entries that have valid authz-claims annotations. Entries without the annotation get no
+// claims — they are visible in anonymous mode but invisible when authz is configured.
 func processResources(
 	items []client.Object,
 	typeName string,
 	extractor extractorFunc,
-	baseClaims map[string]any,
 	serverJSONs []upstreamv0.ServerJSON,
 	perEntryClaims map[string][]byte,
 ) []upstreamv0.ServerJSON {
@@ -199,12 +197,12 @@ func processResources(
 				"error", err)
 			continue
 		}
-		claims, err := buildEntryClaims(baseClaims, obj.GetAnnotations())
+		claims, err := parseEntryClaims(obj.GetAnnotations())
 		if err != nil {
 			// Invalid authz-claims annotation: skip the entry entirely rather than
-			// falling back to source-level claims. A typo in the annotation could
-			// silently broaden access. The entry will not sync until the annotation
-			// is fixed — operators should monitor for these warnings.
+			// syncing without claims. A typo in the annotation could silently make
+			// an entry invisible (or visible). The entry will not sync until the
+			// annotation is fixed — operators should monitor for these warnings.
 			slog.Warn("Invalid authz-claims annotation, skipping entry",
 				"type", typeName,
 				"namespace", obj.GetNamespace(),
@@ -221,9 +219,9 @@ func processResources(
 }
 
 // getMCPServerList retrieves all MCPServer objects, extracts ServerJSON objects,
-// and builds per-entry claims from the authz-claims annotation merged with base claims.
+// and builds per-entry claims from the authz-claims annotation.
 func getMCPServerList(
-	ctx context.Context, c client.Client, namespace string, baseClaims map[string]any,
+	ctx context.Context, c client.Client, namespace string,
 ) (*reconcileResult, error) {
 	listOptions := []client.ListOption{
 		client.InNamespace(namespace),
@@ -256,7 +254,7 @@ func getMCPServerList(
 			return nil, fmt.Errorf("unexpected type %T", obj)
 		}
 		return extractServer(inner)
-	}, baseClaims, serverJSONs, perEntryClaims)
+	}, serverJSONs, perEntryClaims)
 
 	vmcpObjects := make([]client.Object, len(vmcpServerList.Items))
 	for i := range vmcpServerList.Items {
@@ -268,7 +266,7 @@ func getMCPServerList(
 			return nil, fmt.Errorf("unexpected type %T", obj)
 		}
 		return extractVirtualMCPServer(inner)
-	}, baseClaims, serverJSONs, perEntryClaims)
+	}, serverJSONs, perEntryClaims)
 
 	mcpProxyObjects := make([]client.Object, len(mcpRemoteProxyList.Items))
 	for i := range mcpRemoteProxyList.Items {
@@ -280,7 +278,7 @@ func getMCPServerList(
 			return nil, fmt.Errorf("unexpected type %T", obj)
 		}
 		return extractMCPRemoteProxy(inner)
-	}, baseClaims, serverJSONs, perEntryClaims)
+	}, serverJSONs, perEntryClaims)
 
 	// Return nil instead of empty map when no per-entry claims exist
 	var resultClaims map[string][]byte
@@ -298,32 +296,25 @@ func getMCPServerList(
 	}, nil
 }
 
-// buildEntryClaims reads the authz-claims annotation, parses it as JSON,
-// merges with baseClaims, and returns the serialized result.
-// Returns (nil, nil) if no annotation is present (entry will use source-level claims).
+// parseEntryClaims reads the authz-claims annotation, parses it as JSON,
+// validates claim value types, and returns the serialized result.
+// Returns (nil, nil) if no annotation is present (entry will have no claims —
+// visible in anonymous mode, invisible when authz is configured).
 // Returns (nil, error) if the annotation contains invalid JSON or unsupported claim value types.
-func buildEntryClaims(baseClaims map[string]any, annotations map[string]string) ([]byte, error) {
+func parseEntryClaims(annotations map[string]string) ([]byte, error) {
 	raw, ok := annotations[defaultAuthzClaimsAnnotation]
 	if !ok || raw == "" {
 		return nil, nil
 	}
 
-	var annotationClaims map[string]any
-	if err := json.Unmarshal([]byte(raw), &annotationClaims); err != nil {
+	var claims map[string]any
+	if err := json.Unmarshal([]byte(raw), &claims); err != nil {
 		return nil, fmt.Errorf("failed to parse %s annotation: %w", defaultAuthzClaimsAnnotation, err)
 	}
 
-	if err := db.ValidateClaimValues(annotationClaims); err != nil {
+	if err := db.ValidateClaimValues(claims); err != nil {
 		return nil, fmt.Errorf("invalid claim value in %s annotation: %w", defaultAuthzClaimsAnnotation, err)
 	}
 
-	// Merge: clone base claims, then overlay annotation claims (annotation wins on key collision).
-	// maps.Clone produces a new map so baseClaims is never mutated.
-	merged := maps.Clone(baseClaims)
-	if merged == nil {
-		merged = make(map[string]any, len(annotationClaims))
-	}
-	maps.Copy(merged, annotationClaims)
-
-	return json.Marshal(merged)
+	return json.Marshal(claims)
 }
