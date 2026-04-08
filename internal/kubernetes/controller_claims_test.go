@@ -365,25 +365,25 @@ func TestProcessResources(t *testing.T) {
 			wantNoClaimsKeys: []string{"server-no-export"},
 		},
 		{
-			name: "item with invalid JSON in authz-claims still appends serverJSON with no claims entry",
+			name: "item with invalid JSON in authz-claims is skipped entirely",
 			items: []client.Object{
 				createMCPServerObject("server-bad-json", withExtra(requiredAnnotations(), map[string]string{
 					defaultAuthzClaimsAnnotation: `{not valid json}`,
 				})),
 			},
 			baseClaims:       map[string]any{"org": "acme"},
-			wantServerNames:  []string{"server-bad-json"},
+			wantServerNames:  nil,
 			wantNoClaimsKeys: []string{"server-bad-json"},
 		},
 		{
-			name: "item with invalid claim value types still appends serverJSON with no claims entry",
+			name: "item with invalid claim value types is skipped entirely",
 			items: []client.Object{
 				createMCPServerObject("server-bad-types", withExtra(requiredAnnotations(), map[string]string{
 					defaultAuthzClaimsAnnotation: `{"count": 42}`,
 				})),
 			},
 			baseClaims:       map[string]any{"org": "acme"},
-			wantServerNames:  []string{"server-bad-types"},
+			wantServerNames:  nil,
 			wantNoClaimsKeys: []string{"server-bad-types"},
 		},
 		{
@@ -395,7 +395,7 @@ func TestProcessResources(t *testing.T) {
 				})),
 				// Valid without claims annotation
 				createMCPServerObject("server-no-claims", requiredAnnotations()),
-				// Invalid JSON in claims (still appended, no claims entry)
+				// Invalid JSON in claims (skipped entirely)
 				createMCPServerObject("server-invalid", withExtra(requiredAnnotations(), map[string]string{
 					defaultAuthzClaimsAnnotation: `{bad}`,
 				})),
@@ -405,7 +405,7 @@ func TestProcessResources(t *testing.T) {
 				}),
 			},
 			baseClaims:       map[string]any{"org": "acme"},
-			wantServerNames:  []string{"server-with-claims", "server-no-claims", "server-invalid"},
+			wantServerNames:  []string{"server-with-claims", "server-no-claims"},
 			wantClaimsKeys:   []string{"server-with-claims"},
 			wantNoClaimsKeys: []string{"server-no-claims", "server-invalid", "server-skipped"},
 			wantClaimsContents: map[string]map[string]any{

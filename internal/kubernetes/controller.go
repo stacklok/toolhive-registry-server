@@ -201,15 +201,18 @@ func processResources(
 		}
 		claims, err := buildEntryClaims(baseClaims, obj.GetAnnotations())
 		if err != nil {
-			// Intentional fallback: an invalid annotation falls back to source-level
-			// claims rather than skipping the server. This favors availability over
-			// strictness — operators should monitor for these warnings and fix annotations.
-			slog.Warn("Invalid authz-claims annotation, falling back to source-level claims",
+			// Invalid authz-claims annotation: skip the entry entirely rather than
+			// falling back to source-level claims. A typo in the annotation could
+			// silently broaden access. The entry will not sync until the annotation
+			// is fixed — operators should monitor for these warnings.
+			slog.Warn("Invalid authz-claims annotation, skipping entry",
 				"type", typeName,
 				"namespace", obj.GetNamespace(),
 				"name", obj.GetName(),
 				"error", err)
-		} else if claims != nil {
+			continue
+		}
+		if claims != nil {
 			perEntryClaims[serverJSON.Name] = claims
 		}
 		serverJSONs = append(serverJSONs, *serverJSON)
