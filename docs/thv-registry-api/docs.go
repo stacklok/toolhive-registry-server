@@ -459,6 +459,21 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "internal_api_v1.meResponse": {
+                "properties": {
+                    "roles": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "subject": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "internal_api_v1.publishEntryRequest": {
                 "properties": {
                     "claims": {
@@ -2130,6 +2145,40 @@ const docTemplate = `{
                     }
                 },
                 "summary": "Delete published entry",
+                "tags": [
+                    "v1"
+                ]
+            }
+        },
+        "/v1/me": {
+            "get": {
+                "description": "Returns the authenticated caller's identity and roles",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/internal_api_v1.meResponse"
+                                }
+                            }
+                        },
+                        "description": "Caller identity and roles"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    }
+                },
+                "summary": "Get current user info",
                 "tags": [
                     "v1"
                 ]
