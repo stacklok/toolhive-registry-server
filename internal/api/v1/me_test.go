@@ -23,7 +23,6 @@ func TestGetMe(t *testing.T) {
 		expectedStatus  int
 		expectedSubject string
 		expectedRoles   []string
-		expectedPerms   permissionsMap
 	}{
 		{
 			name:           "anonymous returns 401",
@@ -36,7 +35,6 @@ func TestGetMe(t *testing.T) {
 			expectedStatus:  http.StatusOK,
 			expectedSubject: "user-1",
 			expectedRoles:   []string{},
-			expectedPerms:   permissionsMap{},
 		},
 		{
 			name:            "single role",
@@ -45,7 +43,6 @@ func TestGetMe(t *testing.T) {
 			expectedStatus:  http.StatusOK,
 			expectedSubject: "user-1",
 			expectedRoles:   []string{"manageSources"},
-			expectedPerms:   permissionsMap{ManageSources: true},
 		},
 		{
 			name:            "multiple roles",
@@ -54,21 +51,14 @@ func TestGetMe(t *testing.T) {
 			expectedStatus:  http.StatusOK,
 			expectedSubject: "user-1",
 			expectedRoles:   []string{"manageSources", "manageEntries"},
-			expectedPerms:   permissionsMap{ManageSources: true, ManageEntries: true},
 		},
 		{
-			name:            "super admin gets all permissions",
+			name:            "super admin",
 			claims:          jwt.MapClaims{"sub": "admin"},
 			roles:           []auth.Role{auth.RoleSuperAdmin},
 			expectedStatus:  http.StatusOK,
 			expectedSubject: "admin",
 			expectedRoles:   []string{"superAdmin"},
-			expectedPerms: permissionsMap{
-				SuperAdmin:       true,
-				ManageSources:    true,
-				ManageRegistries: true,
-				ManageEntries:    true,
-			},
 		},
 		{
 			name:            "missing sub claim",
@@ -77,7 +67,6 @@ func TestGetMe(t *testing.T) {
 			expectedStatus:  http.StatusOK,
 			expectedSubject: "",
 			expectedRoles:   []string{"manageSources"},
-			expectedPerms:   permissionsMap{ManageSources: true},
 		},
 	}
 
@@ -111,7 +100,6 @@ func TestGetMe(t *testing.T) {
 			require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
 			assert.Equal(t, tt.expectedSubject, resp.Subject)
 			assert.Equal(t, tt.expectedRoles, resp.Roles)
-			assert.Equal(t, tt.expectedPerms, resp.Permissions)
 		})
 	}
 }

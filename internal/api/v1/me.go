@@ -9,26 +9,17 @@ import (
 
 // meResponse is the JSON response for the GET /v1/me endpoint.
 type meResponse struct {
-	Subject     string         `json:"subject"`
-	Roles       []string       `json:"roles"`
-	Permissions permissionsMap `json:"permissions"`
-}
-
-// permissionsMap represents the effective permissions for the authenticated caller.
-type permissionsMap struct {
-	SuperAdmin       bool `json:"super_admin"`
-	ManageSources    bool `json:"manage_sources"`
-	ManageRegistries bool `json:"manage_registries"`
-	ManageEntries    bool `json:"manage_entries"`
+	Subject string   `json:"subject"`
+	Roles   []string `json:"roles"`
 }
 
 // getMe handles GET /v1/me
 //
 // @Summary		Get current user info
-// @Description	Returns the authenticated caller's identity and effective permissions
+// @Description	Returns the authenticated caller's identity and roles
 // @Tags		v1
 // @Produce		json
-// @Success		200	{object}	meResponse		"Caller identity and permissions"
+// @Success		200	{object}	meResponse		"Caller identity and roles"
 // @Failure		401	{object}	map[string]string	"Unauthorized"
 // @Router		/v1/me [get]
 func (*Routes) getMe(w http.ResponseWriter, r *http.Request) {
@@ -46,16 +37,8 @@ func (*Routes) getMe(w http.ResponseWriter, r *http.Request) {
 		roleStrings = append(roleStrings, string(role))
 	}
 
-	permissions := permissionsMap{
-		SuperAdmin:       auth.HasRole(roles, auth.RoleSuperAdmin),
-		ManageSources:    auth.HasRole(roles, auth.RoleManageSources),
-		ManageRegistries: auth.HasRole(roles, auth.RoleManageRegistries),
-		ManageEntries:    auth.HasRole(roles, auth.RoleManageEntries),
-	}
-
 	common.WriteJSONResponse(w, meResponse{
-		Subject:     subject,
-		Roles:       roleStrings,
-		Permissions: permissions,
+		Subject: subject,
+		Roles:   roleStrings,
 	}, http.StatusOK)
 }
