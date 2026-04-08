@@ -1,6 +1,6 @@
 module github.com/stacklok/toolhive-registry-server
 
-go 1.26.1
+go 1.26.2
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
@@ -17,12 +17,12 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.1
-	github.com/mark3labs/mcp-go v0.47.0
+	github.com/mark3labs/mcp-go v0.47.1
 	github.com/modelcontextprotocol/registry v1.5.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	github.com/stacklok/toolhive v0.15.0
-	github.com/stacklok/toolhive-core v0.0.13
+	github.com/stacklok/toolhive v0.16.0
+	github.com/stacklok/toolhive-core v0.0.14
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc5
 	github.com/testcontainers/testcontainers-go v0.41.0
