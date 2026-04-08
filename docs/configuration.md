@@ -250,9 +250,9 @@ kubernetes:
 
 **Per-entry claims:** CRDs can carry per-entry authorization claims via the
 `toolhive.stacklok.dev/authz-claims` JSON annotation. The annotation value uses the same
-`map[string]any` format as source claims (strings or arrays of strings). These are merged
-with the source's base claims — annotation values override base claims on key collision.
-Entries without the annotation inherit the source's base claims only.
+`map[string]any` format as source claims (strings or arrays of strings). Source claims are
+**not** merged — entries get exactly the claims from the annotation. Entries without the
+annotation have no claims and are invisible when authz is configured (default-deny).
 
 ```yaml
 # Example CRD annotation for per-entry claims:
