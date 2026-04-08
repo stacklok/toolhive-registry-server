@@ -29,6 +29,9 @@ func Router(svc service.RegistryService, authzCfg *config.AuthzConfig) http.Hand
 
 	r := chi.NewRouter()
 
+	// Caller identity — authenticated only (no role requirement).
+	r.Get("/me", routes.getMe)
+
 	// Source endpoints — require manageSources role
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireRole(auth.RoleManageSources, authzCfg))
