@@ -23,14 +23,13 @@ jobs:
             packages: ./internal/db/sqlc
           - name: service-db
             packages: ./internal/service/db
-          - name: sync
-            packages: ./internal/sync/writer ./internal/sync/state
+          - name: sync-writer
+            packages: ./internal/sync/writer
           - name: misc
             packages: >-
               ./database
               ./cmd/thv-registry-api/app
               ./internal/app/storage
-              ./internal/authz
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -53,11 +52,12 @@ jobs:
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           name: coverage-${{ matrix.name }}
           path: coverage-${{ matrix.name }}.out
           retention-days: 1
+          if-no-files-found: ignore
 
   # All remaining packages — pure unit tests that don't need Docker.
   unit-tests:
@@ -69,10 +69,8 @@ jobs:
         ./database
         ./cmd/thv-registry-api/app
         ./internal/app/storage
-        ./internal/authz
         ./internal/db/sqlc
         ./internal/service/db
-        ./internal/sync/state
         ./internal/sync/writer
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -105,18 +103,19 @@ jobs:
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           name: coverage-unit
           path: coverage-unit.out
           retention-days: 1
+          if-no-files-found: ignore
 
   # Merge coverage reports and upload to Codecov.
   upload-coverage:
     name: Upload Coverage
     runs-on: ubuntu-latest
     needs: [db-tests, unit-tests]
-    if: always()
+    if: ${{ !cancelled() }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -135,7 +134,7 @@ jobs:
         run: |
           # Merge available coverage files into one.
           # Each file starts with a "mode:" header line that should appear only once.
-          echo "mode: set" > coverage.out
+          echo "mode: atomic" > coverage.out
           for f in coverage-*/coverage-*.out; do
             if [ -f "$f" ]; then
               tail -n +2 "$f" >> coverage.out
