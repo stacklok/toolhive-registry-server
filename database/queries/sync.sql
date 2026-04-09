@@ -8,7 +8,8 @@ SELECT id,
        attempt_count,
        last_sync_hash,
        last_applied_filter_hash,
-       server_count
+       server_count,
+       skill_count
 FROM registry_sync
 WHERE id = sqlc.arg(id);
 
@@ -42,7 +43,8 @@ SELECT rs.id,
        rs.attempt_count,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
-       rs.server_count
+       rs.server_count,
+       rs.skill_count
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id
 WHERE s.name = sqlc.arg(name);
@@ -59,6 +61,7 @@ SELECT s.name,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
        rs.server_count,
+       rs.skill_count,
        s.sync_schedule::interval AS sync_schedule
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id
@@ -74,7 +77,8 @@ INSERT INTO registry_sync (
     attempt_count,
     last_sync_hash,
     last_applied_filter_hash,
-    server_count
+    server_count,
+    skill_count
 ) VALUES (
     (SELECT id FROM source WHERE name = sqlc.arg(name)),
     sqlc.arg(sync_status),
@@ -84,7 +88,8 @@ INSERT INTO registry_sync (
     sqlc.arg(attempt_count),
     sqlc.narg(last_sync_hash),
     sqlc.narg(last_applied_filter_hash),
-    sqlc.arg(server_count)
+    sqlc.arg(server_count),
+    sqlc.arg(skill_count)
 )
 ON CONFLICT (source_id) DO UPDATE SET
     sync_status = EXCLUDED.sync_status,
@@ -94,7 +99,8 @@ ON CONFLICT (source_id) DO UPDATE SET
     attempt_count = EXCLUDED.attempt_count,
     last_sync_hash = EXCLUDED.last_sync_hash,
     last_applied_filter_hash = EXCLUDED.last_applied_filter_hash,
-    server_count = EXCLUDED.server_count;
+    server_count = EXCLUDED.server_count,
+    skill_count = EXCLUDED.skill_count;
 
 -- name: InitializeSourceSync :exec
 INSERT INTO registry_sync (
@@ -132,6 +138,7 @@ SELECT s.name,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
        rs.server_count,
+       rs.skill_count,
        s.sync_schedule::interval AS sync_schedule
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id

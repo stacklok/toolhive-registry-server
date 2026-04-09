@@ -297,13 +297,8 @@ DO UPDATE SET
     extension_meta = sqlc.narg(extension_meta)
 RETURNING version_id;
 
--- name: DeleteOrphanedSkills :exec
-WITH subset AS (
-    SELECT v.id
-      FROM entry_version v
-      JOIN registry_entry e ON v.entry_id = e.id
-     WHERE e.source_id = sqlc.arg(source_id)
-       AND v.id != ALL(sqlc.slice(keep_ids)::UUID[])
-)
-DELETE FROM skill s
- WHERE s.version_id IN (SELECT id FROM subset);
+-- name: DeleteSkillOciPackagesBySkillId :exec
+DELETE FROM skill_oci_package WHERE skill_id = sqlc.arg(skill_id);
+
+-- name: DeleteSkillGitPackagesBySkillId :exec
+DELETE FROM skill_git_package WHERE skill_id = sqlc.arg(skill_id);

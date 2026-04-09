@@ -39,6 +39,9 @@ type FetchResult struct {
 	// ServerCount is the number of servers found in the registry data
 	ServerCount int
 
+	// SkillCount is the number of skills found in the registry data
+	SkillCount int
+
 	// Format indicates the original format of the source data
 	Format string
 }
@@ -47,14 +50,17 @@ type FetchResult struct {
 // The hash should be calculated by the registry handler from the raw source data
 func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string, format string) *FetchResult {
 	serverCount := 0
+	skillCount := 0
 	if reg != nil {
 		serverCount = len(reg.Data.Servers)
+		skillCount = len(reg.Data.Skills)
 	}
 
 	return &FetchResult{
 		Registry:    reg,
 		Hash:        hash,
 		ServerCount: serverCount,
+		SkillCount:  skillCount,
 		Format:      format,
 	}
 }

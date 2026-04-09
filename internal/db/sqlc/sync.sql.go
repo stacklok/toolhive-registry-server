@@ -47,7 +47,8 @@ SELECT id,
        attempt_count,
        last_sync_hash,
        last_applied_filter_hash,
-       server_count
+       server_count,
+       skill_count
 FROM registry_sync
 WHERE id = $1
 `
@@ -66,6 +67,7 @@ func (q *Queries) GetSourceSync(ctx context.Context, id uuid.UUID) (RegistrySync
 		&i.LastSyncHash,
 		&i.LastAppliedFilterHash,
 		&i.ServerCount,
+		&i.SkillCount,
 	)
 	return i, err
 }
@@ -80,7 +82,8 @@ SELECT rs.id,
        rs.attempt_count,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
-       rs.server_count
+       rs.server_count,
+       rs.skill_count
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id
 WHERE s.name = $1
@@ -100,6 +103,7 @@ func (q *Queries) GetSourceSyncByName(ctx context.Context, name string) (Registr
 		&i.LastSyncHash,
 		&i.LastAppliedFilterHash,
 		&i.ServerCount,
+		&i.SkillCount,
 	)
 	return i, err
 }
@@ -173,6 +177,7 @@ SELECT s.name,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
        rs.server_count,
+       rs.skill_count,
        s.sync_schedule::interval AS sync_schedule
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id
@@ -191,6 +196,7 @@ type ListSourceSyncsRow struct {
 	LastSyncHash          *string          `json:"last_sync_hash"`
 	LastAppliedFilterHash *string          `json:"last_applied_filter_hash"`
 	ServerCount           int64            `json:"server_count"`
+	SkillCount            int64            `json:"skill_count"`
 	SyncSchedule          pgtypes.Interval `json:"sync_schedule"`
 }
 
@@ -215,6 +221,7 @@ func (q *Queries) ListSourceSyncs(ctx context.Context) ([]ListSourceSyncsRow, er
 			&i.LastSyncHash,
 			&i.LastAppliedFilterHash,
 			&i.ServerCount,
+			&i.SkillCount,
 			&i.SyncSchedule,
 		); err != nil {
 			return nil, err
@@ -239,6 +246,7 @@ SELECT s.name,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
        rs.server_count,
+       rs.skill_count,
        s.sync_schedule::interval AS sync_schedule
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id
@@ -259,6 +267,7 @@ type ListSourceSyncsByLastUpdateRow struct {
 	LastSyncHash          *string          `json:"last_sync_hash"`
 	LastAppliedFilterHash *string          `json:"last_applied_filter_hash"`
 	ServerCount           int64            `json:"server_count"`
+	SkillCount            int64            `json:"skill_count"`
 	SyncSchedule          pgtypes.Interval `json:"sync_schedule"`
 }
 
@@ -283,6 +292,7 @@ func (q *Queries) ListSourceSyncsByLastUpdate(ctx context.Context) ([]ListSource
 			&i.LastSyncHash,
 			&i.LastAppliedFilterHash,
 			&i.ServerCount,
+			&i.SkillCount,
 			&i.SyncSchedule,
 		); err != nil {
 			return nil, err
@@ -348,7 +358,8 @@ INSERT INTO registry_sync (
     attempt_count,
     last_sync_hash,
     last_applied_filter_hash,
-    server_count
+    server_count,
+    skill_count
 ) VALUES (
     (SELECT id FROM source WHERE name = $1),
     $2,
@@ -358,7 +369,8 @@ INSERT INTO registry_sync (
     $6,
     $7,
     $8,
-    $9
+    $9,
+    $10
 )
 ON CONFLICT (source_id) DO UPDATE SET
     sync_status = EXCLUDED.sync_status,
@@ -368,7 +380,8 @@ ON CONFLICT (source_id) DO UPDATE SET
     attempt_count = EXCLUDED.attempt_count,
     last_sync_hash = EXCLUDED.last_sync_hash,
     last_applied_filter_hash = EXCLUDED.last_applied_filter_hash,
-    server_count = EXCLUDED.server_count
+    server_count = EXCLUDED.server_count,
+    skill_count = EXCLUDED.skill_count
 `
 
 type UpsertSourceSyncByNameParams struct {
@@ -381,6 +394,7 @@ type UpsertSourceSyncByNameParams struct {
 	LastSyncHash          *string    `json:"last_sync_hash"`
 	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
 	ServerCount           int64      `json:"server_count"`
+	SkillCount            int64      `json:"skill_count"`
 }
 
 func (q *Queries) UpsertSourceSyncByName(ctx context.Context, arg UpsertSourceSyncByNameParams) error {
@@ -394,6 +408,7 @@ func (q *Queries) UpsertSourceSyncByName(ctx context.Context, arg UpsertSourceSy
 		arg.LastSyncHash,
 		arg.LastAppliedFilterHash,
 		arg.ServerCount,
+		arg.SkillCount,
 	)
 	return err
 }

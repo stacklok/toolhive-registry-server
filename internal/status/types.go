@@ -55,6 +55,9 @@ type SyncStatus struct {
 	// ServerCount is the total number of servers in the registry
 	ServerCount int `yaml:"serverCount,omitempty"`
 
+	// SkillCount is the total number of skills in the registry
+	SkillCount int `yaml:"skillCount,omitempty"`
+
 	// CreationType indicates how this registry was created (API or CONFIG)
 	// This prevents config-based sync from overwriting API-created registries
 	CreationType CreationType `yaml:"creationType,omitempty"`
