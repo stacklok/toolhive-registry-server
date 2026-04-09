@@ -170,6 +170,24 @@ Feature: Registry Server smoke tests
   Scenario: Publish with neither server nor skill in body returns 400
     When I POST /v1/entries with an empty payload
     Then the response status is 400
+
+  # ── List completeness ─────────────────────────────────────────────────────
+
+  Scenario: All created sources appear in list
+    Given three managed sources are created: smoke-src-a, smoke-src-b, smoke-src-c
+    When I GET /v1/sources
+    Then the response status is 200
+    And the body contains "smoke-src-a"
+    And the body contains "smoke-src-b"
+    And the body contains "smoke-src-c"
+
+  Scenario: All created registries appear in list
+    Given three registries are created referencing the managed sources
+    When I GET /v1/registries
+    Then the response status is 200
+    And the body contains "smoke-reg-a"
+    And the body contains "smoke-reg-b"
+    And the body contains "smoke-reg-c"
 ```
 
 ---
@@ -376,9 +394,38 @@ check "POST /v1/entries with both server+skill returns 400" 400 "$SC" "$(body)"
 SC=$(curl_post /v1/entries '{}')
 check "POST /v1/entries with neither server nor skill returns 400" 400 "$SC" "$(body)"
 
-# ─── Clean up managed source ──────────────────────────────────────────────────
+# ─── List completeness ───────────────────────────────────────────────────────
+echo ""
+echo "── List completeness ──"
+
+SC=$(curl_put /v1/sources/smoke-src-a '{"managed":{}}'); check "PUT /v1/sources/smoke-src-a returns 201" 201 "$SC" "$(body)" "smoke-src-a"
+SC=$(curl_put /v1/sources/smoke-src-b '{"managed":{}}'); check "PUT /v1/sources/smoke-src-b returns 201" 201 "$SC" "$(body)" "smoke-src-b"
+SC=$(curl_put /v1/sources/smoke-src-c '{"managed":{}}'); check "PUT /v1/sources/smoke-src-c returns 201" 201 "$SC" "$(body)" "smoke-src-c"
+
+SC=$(curl_get /v1/sources); BODY="$(body)"
+check "GET /v1/sources contains smoke-src-a" 200 "$SC" "$BODY" "smoke-src-a"
+check "GET /v1/sources contains smoke-src-b" 200 "$SC" "$BODY" "smoke-src-b"
+check "GET /v1/sources contains smoke-src-c" 200 "$SC" "$BODY" "smoke-src-c"
+
+SC=$(curl_put /v1/registries/smoke-reg-a '{"sources":["smoke-src-a"]}'); check "PUT /v1/registries/smoke-reg-a returns 201" 201 "$SC" "$(body)" "smoke-reg-a"
+SC=$(curl_put /v1/registries/smoke-reg-b '{"sources":["smoke-src-b"]}'); check "PUT /v1/registries/smoke-reg-b returns 201" 201 "$SC" "$(body)" "smoke-reg-b"
+SC=$(curl_put /v1/registries/smoke-reg-c '{"sources":["smoke-src-c"]}'); check "PUT /v1/registries/smoke-reg-c returns 201" 201 "$SC" "$(body)" "smoke-reg-c"
+
+SC=$(curl_get /v1/registries); BODY="$(body)"
+check "GET /v1/registries contains smoke-reg-a" 200 "$SC" "$BODY" "smoke-reg-a"
+check "GET /v1/registries contains smoke-reg-b" 200 "$SC" "$BODY" "smoke-reg-b"
+check "GET /v1/registries contains smoke-reg-c" 200 "$SC" "$BODY" "smoke-reg-c"
+
+# ─── Clean up ─────────────────────────────────────────────────────────────────
 SC=$(curl_del /v1/sources/managed-test)
 check "DELETE /v1/sources/managed-test returns 204" 204 "$SC" "$(body)"
+
+SC=$(curl_del /v1/registries/smoke-reg-a); check "DELETE /v1/registries/smoke-reg-a returns 204" 204 "$SC" "$(body)"
+SC=$(curl_del /v1/registries/smoke-reg-b); check "DELETE /v1/registries/smoke-reg-b returns 204" 204 "$SC" "$(body)"
+SC=$(curl_del /v1/registries/smoke-reg-c); check "DELETE /v1/registries/smoke-reg-c returns 204" 204 "$SC" "$(body)"
+SC=$(curl_del /v1/sources/smoke-src-a); check "DELETE /v1/sources/smoke-src-a returns 204" 204 "$SC" "$(body)"
+SC=$(curl_del /v1/sources/smoke-src-b); check "DELETE /v1/sources/smoke-src-b returns 204" 204 "$SC" "$(body)"
+SC=$(curl_del /v1/sources/smoke-src-c); check "DELETE /v1/sources/smoke-src-c returns 204" 204 "$SC" "$(body)"
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
 echo ""

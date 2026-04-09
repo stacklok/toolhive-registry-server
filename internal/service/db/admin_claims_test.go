@@ -485,6 +485,158 @@ func TestGetRegistryByName_HiddenWhenClaimsDontMatch(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Mixed-claims listing tests — verify streaming batch loops return all
+// qualifying rows even when different claim values are interleaved.
+// ---------------------------------------------------------------------------
+
+func TestListSources_ReturnsAllMatchingWithMixedClaims(t *testing.T) {
+	t.Parallel()
+	svc, cleanup := setupTestServiceWithCodecs(t)
+	t.Cleanup(cleanup)
+
+	createCtx := t.Context()
+
+	// Create 4 sources: 2 with org=acme, 1 with org=contoso, 1 with no claims
+	_, err := svc.CreateSource(createCtx, "lsm-acme-1", managedSourceReq(map[string]any{"org": "acme"}))
+	require.NoError(t, err)
+
+	_, err = svc.CreateSource(createCtx, "lsm-acme-2", managedSourceReq(map[string]any{"org": "acme"}))
+	require.NoError(t, err)
+
+	_, err = svc.CreateSource(createCtx, "lsm-contoso", managedSourceReq(map[string]any{"org": "contoso"}))
+	require.NoError(t, err)
+
+	_, err = svc.CreateSource(createCtx, "lsm-open", managedSourceReq(nil))
+	require.NoError(t, err)
+
+	// List with acme JWT — should see both acme sources and the open (no-claims) source
+	listCtx := auth.ContextWithClaims(t.Context(), jwt.MapClaims{"org": "acme"})
+	sources, err := svc.ListSources(listCtx)
+	require.NoError(t, err)
+
+	names := sourceNames(sources)
+	assert.Contains(t, names, "lsm-acme-1")
+	assert.Contains(t, names, "lsm-acme-2")
+	assert.NotContains(t, names, "lsm-contoso")
+	assert.Contains(t, names, "lsm-open")
+}
+
+func TestListRegistries_ReturnsAllMatchingWithMixedClaims(t *testing.T) {
+	t.Parallel()
+	svc, cleanup := setupTestServiceWithCodecs(t)
+	t.Cleanup(cleanup)
+
+	createCtx := t.Context()
+
+	// Create 4 sources (one per registry) with different claims
+	createSourceForRegistry(t, svc, "lrm-acme-src-1", map[string]any{"org": "acme"})
+	createSourceForRegistry(t, svc, "lrm-acme-src-2", map[string]any{"org": "acme"})
+	createSourceForRegistry(t, svc, "lrm-contoso-src", map[string]any{"org": "contoso"})
+	createSourceForRegistry(t, svc, "lrm-open-src", nil)
+
+	// Create 4 registries with matching claims
+	_, err := svc.CreateRegistry(createCtx, "lrm-acme-reg-1", &service.RegistryCreateRequest{
+		Sources: []string{"lrm-acme-src-1"},
+		Claims:  map[string]any{"org": "acme"},
+	})
+	require.NoError(t, err)
+
+	_, err = svc.CreateRegistry(createCtx, "lrm-acme-reg-2", &service.RegistryCreateRequest{
+		Sources: []string{"lrm-acme-src-2"},
+		Claims:  map[string]any{"org": "acme"},
+	})
+	require.NoError(t, err)
+
+	_, err = svc.CreateRegistry(createCtx, "lrm-contoso-reg", &service.RegistryCreateRequest{
+		Sources: []string{"lrm-contoso-src"},
+		Claims:  map[string]any{"org": "contoso"},
+	})
+	require.NoError(t, err)
+
+	_, err = svc.CreateRegistry(createCtx, "lrm-open-reg", &service.RegistryCreateRequest{
+		Sources: []string{"lrm-open-src"},
+	})
+	require.NoError(t, err)
+
+	// List with acme JWT — should see both acme registries and the open one
+	listCtx := auth.ContextWithClaims(t.Context(), jwt.MapClaims{"org": "acme"})
+	registries, err := svc.ListRegistries(listCtx)
+	require.NoError(t, err)
+
+	names := registryNames(registries)
+	assert.Contains(t, names, "lrm-acme-reg-1")
+	assert.Contains(t, names, "lrm-acme-reg-2")
+	assert.NotContains(t, names, "lrm-contoso-reg")
+	assert.Contains(t, names, "lrm-open-reg")
+}
+
+func TestListSources_AnonymousReturnsAll(t *testing.T) {
+	t.Parallel()
+	svc, cleanup := setupTestServiceWithCodecs(t)
+	t.Cleanup(cleanup)
+
+	createCtx := t.Context()
+
+	// Create 3 sources with different claims
+	_, err := svc.CreateSource(createCtx, "lsa-acme", managedSourceReq(map[string]any{"org": "acme"}))
+	require.NoError(t, err)
+
+	_, err = svc.CreateSource(createCtx, "lsa-contoso", managedSourceReq(map[string]any{"org": "contoso"}))
+	require.NoError(t, err)
+
+	_, err = svc.CreateSource(createCtx, "lsa-open", managedSourceReq(nil))
+	require.NoError(t, err)
+
+	// List without JWT (anonymous) — should see all sources
+	sources, err := svc.ListSources(t.Context())
+	require.NoError(t, err)
+
+	names := sourceNames(sources)
+	assert.Contains(t, names, "lsa-acme")
+	assert.Contains(t, names, "lsa-contoso")
+	assert.Contains(t, names, "lsa-open")
+}
+
+func TestListRegistries_AnonymousReturnsAll(t *testing.T) {
+	t.Parallel()
+	svc, cleanup := setupTestServiceWithCodecs(t)
+	t.Cleanup(cleanup)
+
+	createCtx := t.Context()
+
+	// Create 3 sources + 3 registries with different claims
+	createSourceForRegistry(t, svc, "lra-acme-src", map[string]any{"org": "acme"})
+	createSourceForRegistry(t, svc, "lra-contoso-src", map[string]any{"org": "contoso"})
+	createSourceForRegistry(t, svc, "lra-open-src", nil)
+
+	_, err := svc.CreateRegistry(createCtx, "lra-acme-reg", &service.RegistryCreateRequest{
+		Sources: []string{"lra-acme-src"},
+		Claims:  map[string]any{"org": "acme"},
+	})
+	require.NoError(t, err)
+
+	_, err = svc.CreateRegistry(createCtx, "lra-contoso-reg", &service.RegistryCreateRequest{
+		Sources: []string{"lra-contoso-src"},
+		Claims:  map[string]any{"org": "contoso"},
+	})
+	require.NoError(t, err)
+
+	_, err = svc.CreateRegistry(createCtx, "lra-open-reg", &service.RegistryCreateRequest{
+		Sources: []string{"lra-open-src"},
+	})
+	require.NoError(t, err)
+
+	// List without JWT (anonymous) — should see all registries
+	registries, err := svc.ListRegistries(t.Context())
+	require.NoError(t, err)
+
+	names := registryNames(registries)
+	assert.Contains(t, names, "lra-acme-reg")
+	assert.Contains(t, names, "lra-contoso-reg")
+	assert.Contains(t, names, "lra-open-reg")
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

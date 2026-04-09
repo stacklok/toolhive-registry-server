@@ -89,12 +89,20 @@ func (q *Queries) LinkRegistrySource(ctx context.Context, arg LinkRegistrySource
 const listRegistries = `-- name: ListRegistries :many
 
 SELECT id, name, claims, creation_type, created_at, updated_at
-FROM registry ORDER BY name
+FROM registry
+WHERE ($1::text IS NULL OR name > $1)
+ORDER BY name
+LIMIT $2::bigint
 `
 
+type ListRegistriesParams struct {
+	Cursor *string `json:"cursor"`
+	Size   int64   `json:"size"`
+}
+
 // Queries for the new lightweight registry table and registry_source junction.
-func (q *Queries) ListRegistries(ctx context.Context) ([]Registry, error) {
-	rows, err := q.db.Query(ctx, listRegistries)
+func (q *Queries) ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error) {
+	rows, err := q.db.Query(ctx, listRegistries, arg.Cursor, arg.Size)
 	if err != nil {
 		return nil, err
 	}

@@ -40,24 +40,16 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 	}()
 
 	querier := sqlc.New(tx)
+	callerClaims := claimsFromCtx(ctx)
 
-	registries, err := querier.ListRegistries(ctx)
+	registries, err := streamRegistryRows(ctx, querier, callerClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to list registries: %w", err)
 	}
 
-	callerClaims := claimsFromCtx(ctx)
 	result := make([]service.RegistryInfo, 0, len(registries))
 	for _, reg := range registries {
-		// In authenticated mode, only return registries whose claims the caller covers
-		regClaims := db.DeserializeClaims(reg.Claims)
-		if callerClaims != nil {
-			if err := validateClaimsSubset(ctx, callerClaims, regClaims); err != nil {
-				continue
-			}
-		}
-
 		sources, err := querier.ListRegistrySources(ctx, reg.ID)
 		if err != nil {
 			otel.RecordError(span, err)
@@ -564,4 +556,41 @@ func unlinkAllSources(
 	ctx context.Context, querier *sqlc.Queries, registryID uuid.UUID,
 ) error {
 	return querier.UnlinkAllRegistrySources(ctx, registryID)
+}
+
+// streamRegistryRows fetches registry rows in batches, filtering by caller claims,
+// until the DB is exhausted. This avoids underfilled responses when post-filtering
+// drops rows that fail claims checks.
+func streamRegistryRows(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	callerClaims map[string]any,
+) ([]sqlc.Registry, error) {
+	var accumulated []sqlc.Registry
+	params := sqlc.ListRegistriesParams{
+		Size: int64(service.MaxPageSize),
+	}
+
+	for {
+		batch, err := querier.ListRegistries(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, reg := range batch {
+			if err := validateClaimsSubsetBytes(ctx, callerClaims, reg.Claims); err != nil {
+				continue
+			}
+			accumulated = append(accumulated, reg)
+		}
+
+		if int64(len(batch)) < params.Size {
+			break
+		}
+
+		last := batch[len(batch)-1]
+		params.Cursor = &last.Name
+	}
+
+	return accumulated, nil
 }

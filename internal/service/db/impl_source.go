@@ -409,32 +409,17 @@ func (s *dbService) ListSources(ctx context.Context) ([]service.SourceInfo, erro
 	}()
 
 	querier := sqlc.New(tx)
+	callerClaims := claimsFromCtx(ctx)
 
-	// List all sources (no pagination for now)
-	params := sqlc.ListSourcesParams{
-		Size: service.MaxPageSize, // Maximum number of sources to return
-	}
-
-	dbSources, err := querier.ListSources(ctx, params)
+	dbSources, err := streamSourceRows(ctx, querier, callerClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to list sources: %w", err)
 	}
 
-	// Convert to API response format, filtering by caller claims
-	callerClaims := claimsFromCtx(ctx)
 	result := make([]service.SourceInfo, 0, len(dbSources))
 	for _, src := range dbSources {
-		// Build SourceInfo with all config fields
 		info := buildSourceInfoFromListRow(&src)
-
-		// In authenticated mode, only return sources whose claims the caller covers
-		if callerClaims != nil {
-			if err := validateClaimsSubset(ctx, callerClaims, info.Claims); err != nil {
-				continue
-			}
-		}
-
 		info.SyncStatus = fetchSyncStatus(ctx, querier, src.Name)
 		result = append(result, *info)
 	}
@@ -978,4 +963,41 @@ func getStatusMessage(errorMsg *string) string {
 		return ""
 	}
 	return *errorMsg
+}
+
+// streamSourceRows fetches source rows in batches, filtering by caller claims,
+// until the DB is exhausted. This avoids underfilled responses when post-filtering
+// drops rows that fail claims checks.
+func streamSourceRows(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	callerClaims map[string]any,
+) ([]sqlc.ListSourcesRow, error) {
+	var accumulated []sqlc.ListSourcesRow
+	params := sqlc.ListSourcesParams{
+		Size: int64(service.MaxPageSize),
+	}
+
+	for {
+		batch, err := querier.ListSources(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, src := range batch {
+			if err := validateClaimsSubsetBytes(ctx, callerClaims, src.Claims); err != nil {
+				continue
+			}
+			accumulated = append(accumulated, src)
+		}
+
+		if int64(len(batch)) < params.Size {
+			break
+		}
+
+		last := batch[len(batch)-1]
+		params.Next = last.CreatedAt
+	}
+
+	return accumulated, nil
 }

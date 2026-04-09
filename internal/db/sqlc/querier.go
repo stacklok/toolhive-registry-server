@@ -110,7 +110,7 @@ type Querier interface {
 	ListEntriesBySource(ctx context.Context, sourceID uuid.UUID) ([]ListEntriesBySourceRow, error)
 	ListEntryVersions(ctx context.Context, entryID uuid.UUID) ([]ListEntryVersionsRow, error)
 	// Queries for the new lightweight registry table and registry_source junction.
-	ListRegistries(ctx context.Context) ([]Registry, error)
+	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error)
 	ListRegistrySources(ctx context.Context, registryID uuid.UUID) ([]ListRegistrySourcesRow, error)
 	ListServerPackages(ctx context.Context, versionIds []uuid.UUID) ([]ListServerPackagesRow, error)
 	ListServerRemotes(ctx context.Context, versionIds []uuid.UUID) ([]McpServerRemote, error)

@@ -1921,6 +1921,95 @@ func TestUpdateSource(t *testing.T) {
 	}
 }
 
+func TestListSources(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(t *testing.T, pool *pgxpool.Pool)
+		validateFunc func(t *testing.T, result []service.SourceInfo, err error)
+	}{
+		{
+			name: "empty database",
+			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) {
+				// No setup needed - database is empty
+			},
+			validateFunc: func(t *testing.T, result []service.SourceInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.Empty(t, result)
+			},
+		},
+		{
+			name: "with sources",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "list-src-alpha",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				_, err = queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "list-src-beta",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+			},
+			validateFunc: func(t *testing.T, result []service.SourceInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.Len(t, result, 2)
+
+				// Build a map by name for order-independent assertions
+				byName := make(map[string]service.SourceInfo)
+				for _, s := range result {
+					byName[s.Name] = s
+				}
+
+				_, ok := byName["list-src-alpha"]
+				require.True(t, ok, "list-src-alpha should be present")
+
+				_, ok = byName["list-src-beta"]
+				require.True(t, ok, "list-src-beta should be present")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc.pool)
+
+			result, err := svc.ListSources(context.Background())
+
+			tt.validateFunc(t, result, err)
+		})
+	}
+}
+
 func TestListRegistries(t *testing.T) {
 	t.Parallel()
 
