@@ -57,6 +57,8 @@ tasks:
 
   install-gotestfmt:
     desc: Install the gotestfmt tool for test output formatting
+    status:
+      - which gotestfmt
     cmds:
       - go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
 
@@ -103,7 +105,7 @@ tasks:
         silent: true
     cmds:
       - cmd: |
-          output=$(deadcode -test ./...)
+          output=$(deadcode -test -tags integration ./...)
           if test -z "$output"; then
             echo "✅ No unused code found"
           else
@@ -178,24 +180,29 @@ tasks:
 
   test:
     desc: Run registry API tests
-    deps: 
-      - task: install-gotestfmt
-        silent: true
-    cmds:
-      # We have to use ldflags to avoid the LC_DYSYMTAB linker warning.
-      - go test -count 1 -ldflags=-extldflags=-Wl,-w -race -json ./... | gotestfmt -hide "all"
-
-  test-coverage:
-    desc: Run registry API tests with coverage
+    vars:
+      PACKAGES: '{{.PACKAGES | default "./..."}}'
     deps:
       - task: install-gotestfmt
         silent: true
     cmds:
       # We have to use ldflags to avoid the LC_DYSYMTAB linker warning.
-      - go test -count 1 -ldflags=-extldflags=-Wl,-w -race -json -coverprofile=coverage.out ./... | gotestfmt -hide "all"
-      - go tool cover -func=coverage.out
-      - echo "Generating HTML coverage report in coverage.html"
-      - go tool cover -html=coverage.out -o coverage.html
+      - go test -count 1 -ldflags=-extldflags=-Wl,-w -race -json {{.PACKAGES}} | gotestfmt -hide "all"
+
+  test-coverage:
+    desc: Run registry API tests with coverage
+    vars:
+      PACKAGES: '{{.PACKAGES | default "./..."}}'
+      COVERPROFILE: '{{.COVERPROFILE | default "coverage.out"}}'
+    deps:
+      - task: install-gotestfmt
+        silent: true
+    cmds:
+      # We have to use ldflags to avoid the LC_DYSYMTAB linker warning.
+      - go test -count 1 -ldflags=-extldflags=-Wl,-w -race -json -coverprofile={{.COVERPROFILE}} {{.PACKAGES}} | gotestfmt -hide "all"
+      - go tool cover -func={{.COVERPROFILE}}
+      - echo "Generating HTML coverage report in {{.COVERPROFILE | replace ".out" ".html"}}"
+      - go tool cover -html={{.COVERPROFILE}} -o {{.COVERPROFILE | replace ".out" ".html"}}
 
   all:
     desc: Run linting, tests, and build
