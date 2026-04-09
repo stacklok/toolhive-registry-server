@@ -720,6 +720,63 @@ func TestConfigValidate(t *testing.T) {
 			errMsg:  "duplicate source name",
 		},
 		{
+			name: "source_name_with_uppercase_rejected",
+			config: &Config{
+				Sources: []SourceConfig{
+					{
+						Name:    "My_Source",
+						Managed: &ManagedConfig{},
+					},
+				},
+				Registries: []RegistryConfig{
+					{Name: "default", Sources: []string{"My_Source"}},
+				},
+				Auth: &AuthConfig{Mode: AuthModeAnonymous},
+			},
+			wantErr: true,
+			errMsg:  "must be a valid DNS subdomain",
+		},
+		{
+			name: "source_name_with_underscore_rejected",
+			config: &Config{
+				Sources: []SourceConfig{
+					{
+						Name:    "my_source",
+						Managed: &ManagedConfig{},
+					},
+				},
+				Registries: []RegistryConfig{
+					{Name: "default", Sources: []string{"my_source"}},
+				},
+				Auth: &AuthConfig{Mode: AuthModeAnonymous},
+			},
+			wantErr: true,
+			errMsg:  "must be a valid DNS subdomain",
+		},
+		{
+			name: "multiple_managed_sources_rejected",
+			config: &Config{
+				Sources: []SourceConfig{
+					{
+						Name:    "managed-1",
+						Managed: &ManagedConfig{},
+					},
+					{
+						Name:    "managed-2",
+						Managed: &ManagedConfig{},
+					},
+				},
+				Registries: []RegistryConfig{
+					{Name: "default", Sources: []string{"managed-1", "managed-2"}},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: true,
+			errMsg:  "at most one managed source is allowed",
+		},
+		{
 			name: "invalid_format_when_using_api",
 			config: &Config{
 				Sources: []SourceConfig{

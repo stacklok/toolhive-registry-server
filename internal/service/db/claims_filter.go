@@ -119,3 +119,58 @@ func checkClaims(callerJSON, recordJSON []byte) bool {
 	}
 	return claimsContain(caller, record)
 }
+
+// claimsContain reports whether callerClaims satisfies every claim in recordClaims.
+// For each key K in recordClaims the caller must have K, and every value required
+// by the record must appear in the caller's value(s) for K.
+// Both plain strings and []string values are supported.
+//
+// An empty-array value (e.g. "teams": []) is vacuously satisfied by any caller
+// value for that key — this is intentional since ValidateClaimValues accepts
+// empty arrays, and presence of the key is the meaningful signal.
+func claimsContain(caller, record map[string]any) bool {
+	for k, rv := range record {
+		cv, ok := caller[k]
+		if !ok {
+			return false
+		}
+		required := toStringSet(rv)
+		have := toStringSet(cv)
+		for v := range required {
+			if _, found := have[v]; !found {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// claimsEqual returns true when a and b have exactly the same keys and values.
+// Used to enforce strict claim consistency on subsequent publishes of the same entry name.
+func claimsEqual(a, b map[string]any) bool {
+	return claimsContain(a, b) && claimsContain(b, a)
+}
+
+// toStringSet normalises a claim value (string, []any of strings, or []string) to a set.
+func toStringSet(v any) map[string]struct{} {
+	switch val := v.(type) {
+	case string:
+		return map[string]struct{}{val: {}}
+	case []any:
+		s := make(map[string]struct{}, len(val))
+		for _, elem := range val {
+			if str, ok := elem.(string); ok {
+				s[str] = struct{}{}
+			}
+		}
+		return s
+	case []string:
+		s := make(map[string]struct{}, len(val))
+		for _, str := range val {
+			s[str] = struct{}{}
+		}
+		return s
+	default:
+		return map[string]struct{}{}
+	}
+}

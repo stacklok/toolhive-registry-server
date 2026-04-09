@@ -18,7 +18,7 @@ import (
 // mockSyncWriter is a simple mock implementation of writer.SyncWriter for testing
 type mockSyncWriter struct{}
 
-func (*mockSyncWriter) Store(_ context.Context, _ string, _ *toolhivetypes.UpstreamRegistry) error {
+func (*mockSyncWriter) Store(_ context.Context, _ string, _ *toolhivetypes.UpstreamRegistry, _ ...writer.StoreOption) error {
 	return nil
 }
 

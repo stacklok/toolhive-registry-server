@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	registry "github.com/stacklok/toolhive-core/registry/types"
+	writer "github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,15 +43,20 @@ func (m *MockSyncWriter) EXPECT() *MockSyncWriterMockRecorder {
 }
 
 // Store mocks base method.
-func (m *MockSyncWriter) Store(ctx context.Context, registryName string, reg *registry.UpstreamRegistry) error {
+func (m *MockSyncWriter) Store(ctx context.Context, registryName string, reg *registry.UpstreamRegistry, opts ...writer.StoreOption) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Store", ctx, registryName, reg)
+	varargs := []any{ctx, registryName, reg}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Store", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Store indicates an expected call of Store.
-func (mr *MockSyncWriterMockRecorder) Store(ctx, registryName, reg any) *gomock.Call {
+func (mr *MockSyncWriterMockRecorder) Store(ctx, registryName, reg any, opts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Store", reflect.TypeOf((*MockSyncWriter)(nil).Store), ctx, registryName, reg)
+	varargs := append([]any{ctx, registryName, reg}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Store", reflect.TypeOf((*MockSyncWriter)(nil).Store), varargs...)
 }

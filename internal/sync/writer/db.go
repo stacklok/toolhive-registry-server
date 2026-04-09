@@ -62,6 +62,7 @@ func (d *dbSyncWriter) Store(
 	ctx context.Context,
 	registryName string,
 	reg *toolhivetypes.UpstreamRegistry,
+	opts ...StoreOption,
 ) error {
 	if reg == nil {
 		return fmt.Errorf("registry data is required")
@@ -93,8 +94,13 @@ func (d *dbSyncWriter) Store(
 		return fmt.Errorf("failed to get registry: %w", err)
 	}
 
+	storeOpts, err := parseStoreOptions(opts)
+	if err != nil {
+		return err
+	}
+
 	// Step 2: Upsert all servers using temp table and COPY, collect their IDs
-	serverIDMap, err := d.storeSyncInTempTables(ctx, tx, registry.ID, reg.Data.Servers, registry.Claims)
+	serverIDMap, err := d.storeSyncInTempTables(ctx, tx, registry.ID, reg.Data.Servers, registry.Claims, storeOpts.PerEntryClaims)
 	if err != nil {
 		return fmt.Errorf("failed to upsert servers: %w", err)
 	}
@@ -146,6 +152,7 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 	registryID uuid.UUID,
 	servers []upstreamv0.ServerJSON,
 	claims []byte,
+	perEntryClaims map[string][]byte,
 ) (map[string]uuid.UUID, error) {
 	if len(servers) == 0 {
 		return make(map[string]uuid.UUID), nil
@@ -154,7 +161,7 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 	querier := sqlc.New(tx)
 
 	// 1. Upsert registry entries (one per unique name)
-	entryMap, err := sqlCopyEntries(ctx, tx, registryID, servers, claims)
+	entryMap, err := sqlCopyEntries(ctx, tx, registryID, servers, claims, perEntryClaims)
 	if err != nil {
 		return nil, fmt.Errorf("failed to copy entries: %w", err)
 	}
@@ -689,6 +696,7 @@ func sqlCopyEntries(
 	registryID uuid.UUID,
 	servers []upstreamv0.ServerJSON,
 	claims []byte,
+	perEntryClaims map[string][]byte,
 ) (map[string]uuid.UUID, error) {
 	// Deduplicate by name — one registry_entry per unique server name
 	seen := make(map[string]bool, len(servers))
@@ -705,12 +713,18 @@ func sqlCopyEntries(
 			return nil, fmt.Errorf("failed to generate entry ID: %w", err)
 		}
 
+		// Use per-entry claims if available, otherwise fall back to source-level claims
+		entryClaims := claims
+		if ec, ok := perEntryClaims[server.Name]; ok {
+			entryClaims = ec
+		}
+
 		entryRows = append(entryRows, []any{
 			entryID,
 			registryID,
 			sqlc.EntryTypeMCP,
 			server.Name,
-			claims,
+			entryClaims,
 			&now,
 			&now,
 		})
