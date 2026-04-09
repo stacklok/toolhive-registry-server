@@ -2,7 +2,10 @@
 
 -- name: ListRegistries :many
 SELECT id, name, claims, creation_type, created_at, updated_at
-FROM registry ORDER BY name;
+FROM registry
+WHERE (sqlc.narg(cursor)::text IS NULL OR name > sqlc.narg(cursor))
+ORDER BY name
+LIMIT sqlc.arg(size)::bigint;
 
 -- name: GetRegistryByName :one
 SELECT id, name, claims, creation_type, created_at, updated_at
