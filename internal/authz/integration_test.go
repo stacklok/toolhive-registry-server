@@ -1206,31 +1206,31 @@ func TestAuthzIntegration_RegistryListFiltering(t *testing.T) {
 	tests := []struct {
 		name       string
 		token      string
-		wantIn     []string
+		wantVisible     []string
 		wantNotIn  []string
 	}{
 		{
 			name:      "platformWriter sees acme-all and acme-platform",
 			token:     platformWriter,
-			wantIn:    []string{"acme-all", "acme-platform"},
+			wantVisible:    []string{"acme-all", "acme-platform"},
 			wantNotIn: []string{"acme-data"},
 		},
 		{
 			name:      "dataWriter sees acme-all and acme-data",
 			token:     dataWriter,
-			wantIn:    []string{"acme-all", "acme-data"},
+			wantVisible:    []string{"acme-all", "acme-data"},
 			wantNotIn: []string{"acme-platform"},
 		},
 		{
 			name:      "outsider sees empty list",
 			token:     outsider,
-			wantIn:    nil,
+			wantVisible:    nil,
 			wantNotIn: []string{"acme-all", "acme-platform", "acme-data"},
 		},
 		{
 			name:      "superAdmin sees all three",
 			token:     superAdmin,
-			wantIn:    []string{"acme-all", "acme-platform", "acme-data"},
+			wantVisible:    []string{"acme-all", "acme-platform", "acme-data"},
 			wantNotIn: nil,
 		},
 	}
@@ -1240,7 +1240,7 @@ func TestAuthzIntegration_RegistryListFiltering(t *testing.T) {
 			resp := doRequest(t, "GET", env.baseURL+"/v1/registries", tt.token, nil)
 			body := assertStatus(t, resp, 200)
 			names := parseRegistryNames(t, body)
-			for _, want := range tt.wantIn {
+			for _, want := range tt.wantVisible {
 				assert.Contains(t, names, want, "expected registry %q in list", want)
 			}
 			for _, notWant := range tt.wantNotIn {
