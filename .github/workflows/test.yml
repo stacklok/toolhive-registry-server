@@ -39,16 +39,14 @@ jobs:
           go-version: 'stable'
           cache: true
 
-      - name: Set up gotestfmt
-        uses: gotesttools/gotestfmt-action@8b4478c7019be847373babde9300210e7de34bfb # v2.2.0
+      - name: Install Task
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          version: 3.44.1
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run database tests with coverage
-        run: |
-          go test -count 1 -ldflags=-extldflags=-Wl,-w -race -json \
-            -coverprofile=coverage-${{ matrix.name }}.out \
-            ${{ matrix.packages }} | gotestfmt -hide "all"
+        run: task test-coverage PACKAGES="${{ matrix.packages }}" COVERPROFILE="coverage-${{ matrix.name }}.out"
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -81,10 +79,11 @@ jobs:
           go-version: 'stable'
           cache: true
 
-      - name: Set up gotestfmt
-        uses: gotesttools/gotestfmt-action@8b4478c7019be847373babde9300210e7de34bfb # v2.2.0
+      - name: Install Task
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          version: 3.44.1
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build package list excluding DB tests
         id: packages
@@ -96,10 +95,7 @@ jobs:
           echo "packages=$PACKAGES" >> "$GITHUB_OUTPUT"
 
       - name: Run unit tests with coverage
-        run: |
-          go test -count 1 -ldflags=-extldflags=-Wl,-w -race -json \
-            -coverprofile=coverage-unit.out \
-            ${{ steps.packages.outputs.packages }} | gotestfmt -hide "all"
+        run: task test-coverage PACKAGES="${{ steps.packages.outputs.packages }}" COVERPROFILE="coverage-unit.out"
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
