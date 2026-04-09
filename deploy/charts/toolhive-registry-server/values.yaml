@@ -271,6 +271,14 @@ config:
 #   #     sampling: 0.05
 #   #   metrics:
 #   #     enabled: true
+#
+#   # Audit logging configuration (optional)
+#   # audit:
+#   #   enabled: true
+#   #   logFile: /var/log/toolhive/audit.log
+#   #   excludeEventTypes:
+#   #     - source.list
+#   #     - registry.list
 
 # ==============================================================================
 # Additional Environment Variables

@@ -15,6 +15,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/app/storage"
+	auditmw "github.com/stacklok/toolhive-registry-server/internal/audit"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
@@ -100,16 +101,8 @@ func NewRegistryApp(
 	}
 
 	// Create storage factory for all storage-dependent components
-	if cfg.storageFactory == nil {
-		// Build storage factory options
-		var storageOpts []storage.FactoryOption
-		if cfg.tracerProvider != nil {
-			storageOpts = append(storageOpts, storage.WithTracerProvider(cfg.tracerProvider))
-		}
-		cfg.storageFactory, err = storage.NewStorageFactory(ctx, cfg.config, storageOpts...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create storage factory: %w", err)
-		}
+	if err := ensureStorageFactory(ctx, cfg); err != nil {
+		return nil, err
 	}
 
 	// Ensure cleanup happens on error
@@ -141,9 +134,18 @@ func NewRegistryApp(
 		}
 	}
 
-	// Build HTTP server
-	httpServer, err := buildHTTPServer(ctx, cfg, registryService)
+	// Build audit logger (if audit is enabled)
+	auditLogger, err := buildAuditLogger(cfg.config)
 	if err != nil {
+		return nil, fmt.Errorf("failed to create audit logger: %w", err)
+	}
+
+	// Build HTTP server
+	httpServer, err := buildHTTPServer(ctx, cfg, registryService, auditLogger)
+	if err != nil {
+		if auditLogger != nil {
+			_ = auditLogger.Close()
+		}
 		return nil, fmt.Errorf("failed to build HTTP server: %w", err)
 	}
 
@@ -154,6 +156,9 @@ func NewRegistryApp(
 	cleanupNeeded = false
 
 	cancelFunc := func() {
+		if auditLogger != nil {
+			_ = auditLogger.Close()
+		}
 		if cfg.storageFactory != nil {
 			cfg.storageFactory.Cleanup()
 		}
@@ -371,6 +376,7 @@ func buildHTTPServer(
 	_ context.Context,
 	b *registryAppConfig,
 	svc service.RegistryService,
+	auditLogger *auditmw.Logger,
 ) (*http.Server, error) {
 	slog.Info("Initializing HTTP server")
 
@@ -413,6 +419,17 @@ func buildHTTPServer(
 	if b.config != nil && b.config.Auth != nil && len(b.config.Auth.PublicPaths) > 0 {
 		publicPaths = append(publicPaths, b.config.Auth.PublicPaths...)
 	}
+
+	var auditCfg *config.AuditConfig
+	if b.config != nil {
+		auditCfg = b.config.Audit
+	}
+
+	// Auth failure audit middleware runs BEFORE auth so it can observe 401
+	// rejections that never reach the post-auth audit middleware. This is
+	// critical for SIEM visibility into failed authentication attempts.
+	b.middlewares = append(b.middlewares, auditmw.AuthFailureMiddleware(auditCfg, auditLogger, publicPaths))
+
 	authMw := auth.WrapWithPublicPaths(b.authMiddleware, publicPaths)
 	b.middlewares = append(b.middlewares, authMw)
 
@@ -425,6 +442,13 @@ func buildHTTPServer(
 	// Resolve roles for all authenticated requests so that downstream code
 	// (e.g., super-admin bypass in claim validation) can use IsSuperAdmin(ctx).
 	b.middlewares = append(b.middlewares, auth.ResolveRolesMiddleware(authzCfg))
+
+	// Add audit middleware after auth and roles are resolved so that JWT
+	// claims and roles are available for the audit event subjects.
+	b.middlewares = append(b.middlewares, auditmw.Middleware(auditCfg, auditLogger))
+	if auditCfg != nil && auditCfg.Enabled {
+		slog.Info("Audit logging middleware enabled")
+	}
 
 	serverOpts := []api.ServerOption{
 		api.WithMiddlewares(b.middlewares...),
@@ -445,6 +469,36 @@ func buildHTTPServer(
 
 	slog.Info("HTTP server configured", "address", b.address)
 	return server, nil
+}
+
+// ensureStorageFactory creates the storage factory if not already injected.
+func ensureStorageFactory(ctx context.Context, cfg *registryAppConfig) error {
+	if cfg.storageFactory != nil {
+		return nil
+	}
+	var storageOpts []storage.FactoryOption
+	if cfg.tracerProvider != nil {
+		storageOpts = append(storageOpts, storage.WithTracerProvider(cfg.tracerProvider))
+	}
+	var err error
+	cfg.storageFactory, err = storage.NewStorageFactory(ctx, cfg.config, storageOpts...)
+	if err != nil {
+		return fmt.Errorf("failed to create storage factory: %w", err)
+	}
+	return nil
+}
+
+// buildAuditLogger creates a dedicated audit logger when audit logging is enabled.
+// Returns nil when audit is not enabled.
+func buildAuditLogger(cfg *config.Config) (*auditmw.Logger, error) {
+	if cfg == nil || !cfg.IsAuditEnabled() {
+		return nil, nil
+	}
+	var logFile string
+	if cfg.Audit != nil {
+		logFile = cfg.Audit.LogFile
+	}
+	return auditmw.NewLogger(logFile)
 }
 
 // setupKubernetesReconciler creates a Kubernetes reconciler if any registry uses the Kubernetes source type.
