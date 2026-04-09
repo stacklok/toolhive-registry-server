@@ -3,6 +3,7 @@ package writer
 
 import (
 	"context"
+	"fmt"
 
 	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 )
@@ -32,4 +33,15 @@ func WithPerEntryClaims(claims map[string][]byte) StoreOption {
 		o.PerEntryClaims = claims
 		return nil
 	}
+}
+
+// parseStoreOptions applies all options and returns the resulting config.
+func parseStoreOptions(opts []StoreOption) (*storeOptions, error) {
+	o := &storeOptions{}
+	for _, opt := range opts {
+		if err := opt(o); err != nil {
+			return nil, fmt.Errorf("invalid store option: %w", err)
+		}
+	}
+	return o, nil
 }

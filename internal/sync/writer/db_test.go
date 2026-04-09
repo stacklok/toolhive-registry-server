@@ -3,6 +3,7 @@ package writer
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 

@@ -94,12 +94,9 @@ func (d *dbSyncWriter) Store(
 		return fmt.Errorf("failed to get registry: %w", err)
 	}
 
-	// Parse store options
-	storeOpts := &storeOptions{}
-	for _, opt := range opts {
-		if err := opt(storeOpts); err != nil {
-			return fmt.Errorf("invalid store option: %w", err)
-		}
+	storeOpts, err := parseStoreOptions(opts)
+	if err != nil {
+		return err
 	}
 
 	// Step 2: Upsert all servers using temp table and COPY, collect their IDs
