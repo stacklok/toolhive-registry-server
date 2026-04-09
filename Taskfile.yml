@@ -57,6 +57,8 @@ tasks:
 
   install-gotestfmt:
     desc: Install the gotestfmt tool for test output formatting
+    status:
+      - which gotestfmt
     cmds:
       - go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
 
