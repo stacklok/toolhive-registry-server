@@ -412,6 +412,10 @@ const docTemplate = `{
                     "serverCount": {
                         "description": "Number of servers in registry",
                         "type": "integer"
+                    },
+                    "skillCount": {
+                        "description": "Number of skills in registry",
+                        "type": "integer"
                     }
                 },
                 "type": "object"

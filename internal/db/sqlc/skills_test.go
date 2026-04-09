@@ -1356,11 +1356,12 @@ func TestDeleteOrphanedSkills(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID, entryIDs []uuid.UUID) {
 				// Keep only the first skill
-				err := queries.DeleteOrphanedSkills(
+				err := queries.DeleteOrphanedEntryVersions(
 					context.Background(),
-					DeleteOrphanedSkillsParams{
-						SourceID: regID,
-						KeepIds:  []uuid.UUID{entryIDs[0]},
+					DeleteOrphanedEntryVersionsParams{
+						SourceID:  regID,
+						EntryType: EntryTypeSKILL,
+						KeepIds:   []uuid.UUID{entryIDs[0]},
 					},
 				)
 				require.NoError(t, err)
@@ -1392,11 +1393,12 @@ func TestDeleteOrphanedSkills(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID, _ []uuid.UUID) {
-				err := queries.DeleteOrphanedSkills(
+				err := queries.DeleteOrphanedEntryVersions(
 					context.Background(),
-					DeleteOrphanedSkillsParams{
-						SourceID: regID,
-						KeepIds:  []uuid.UUID{},
+					DeleteOrphanedEntryVersionsParams{
+						SourceID:  regID,
+						EntryType: EntryTypeSKILL,
+						KeepIds:   []uuid.UUID{},
 					},
 				)
 				require.NoError(t, err)
@@ -1420,11 +1422,12 @@ func TestDeleteOrphanedSkills(t *testing.T) {
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			scenarioFunc: func(t *testing.T, queries *Queries, regID uuid.UUID, _ []uuid.UUID) {
-				err := queries.DeleteOrphanedSkills(
+				err := queries.DeleteOrphanedEntryVersions(
 					context.Background(),
-					DeleteOrphanedSkillsParams{
-						SourceID: regID,
-						KeepIds:  []uuid.UUID{},
+					DeleteOrphanedEntryVersionsParams{
+						SourceID:  regID,
+						EntryType: EntryTypeSKILL,
+						KeepIds:   []uuid.UUID{},
 					},
 				)
 				require.NoError(t, err)

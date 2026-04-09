@@ -27,6 +27,9 @@ SELECT id,
       updated_at = EXCLUDED.updated_at
 RETURNING id, source_id, entry_type, name;
 
+-- name: DropTempRegistryEntryTable :exec
+DROP TABLE IF EXISTS temp_registry_entry;
+
 -- Temp Entry Version Table Operations
 
 -- name: CreateTempEntryVersionTable :exec
@@ -54,6 +57,9 @@ SELECT id,
       description = EXCLUDED.description,
       updated_at = EXCLUDED.updated_at
 RETURNING id, entry_id, version;
+
+-- name: DropTempEntryVersionTable :exec
+DROP TABLE IF EXISTS temp_entry_version;
 
 -- Temp Server Table Operations
 
@@ -164,3 +170,4 @@ WHERE server_id = ANY(sqlc.slice(server_ids)::UUID[])
   AND (server_id, source_uri, mime_type, theme) NOT IN (
     SELECT server_id, source_uri, mime_type, theme FROM temp_mcp_server_icon
   );
+

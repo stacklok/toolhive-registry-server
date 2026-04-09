@@ -240,8 +240,6 @@ Discover MCP servers from Kubernetes deployments.
 kubernetes:
   namespaces:                    # Optional: specific namespaces to watch
     - default
-  claimMapping:                  # Optional: map labels/annotations to claims
-    org: ["engineering"]
 ```
 
 **Fields:**
@@ -249,7 +247,19 @@ kubernetes:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `namespaces` | array | No | Kubernetes namespaces to watch (empty = uses `THV_REGISTRY_WATCH_NAMESPACE` env var) |
-| `claimMapping` | map | No | Maps Kubernetes labels/annotations to claims for authorization |
+
+**Per-entry claims:** CRDs can carry per-entry authorization claims via the
+`toolhive.stacklok.dev/authz-claims` JSON annotation. The annotation value uses the same
+`map[string]any` format as source claims (strings or arrays of strings). Source claims are
+**not** merged — entries get exactly the claims from the annotation. Entries without the
+annotation have no claims and are invisible when authz is configured (default-deny).
+
+```yaml
+# Example CRD annotation for per-entry claims:
+metadata:
+  annotations:
+    toolhive.stacklok.dev/authz-claims: '{"team": "platform"}'
+```
 
 **Features:**
 - Queries running Kubernetes resources

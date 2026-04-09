@@ -6,7 +6,7 @@ replicaCount: 1
 
 image:
   # -- URL of the registry server image
-  registryServerUrl: "ghcr.io/stacklok/thv-registry-api:v0.6.6"
+  registryServerUrl: "ghcr.io/stacklok/thv-registry-api:v1.0.0"
 
   # -- Image pull policy
   pullPolicy: IfNotPresent
@@ -203,8 +203,7 @@ config:
 #     # - name: k8s-mcp
 #     #   kubernetes:
 #     #     namespaces: ["mcp-prod"]
-#     #     claimMapping:
-#     #       "toolhive.stacklok.dev/team": "team"
+#     #   # Per-entry claims set via toolhive.stacklok.dev/authz-claims JSON annotation on CRDs
 #
 #   registries:
 #     - name: default

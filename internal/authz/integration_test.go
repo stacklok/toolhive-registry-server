@@ -1,3 +1,5 @@
+//go:build integration
+
 package authz_test
 
 import (

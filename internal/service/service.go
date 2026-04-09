@@ -180,6 +180,7 @@ type SourceSyncStatus struct {
 	LastAttempt  *time.Time `json:"lastAttempt,omitempty"`  // Last sync attempt
 	AttemptCount int        `json:"attemptCount"`           // Number of sync attempts
 	ServerCount  int        `json:"serverCount"`            // Number of servers in registry
+	SkillCount   int        `json:"skillCount"`             // Number of skills in registry
 	Message      string     `json:"message,omitempty"`      // Status or error message
 }
 
