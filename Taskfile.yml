@@ -103,7 +103,7 @@ tasks:
         silent: true
     cmds:
       - cmd: |
-          output=$(deadcode -test ./...)
+          output=$(deadcode -test -tags integration ./...)
           if test -z "$output"; then
             echo "✅ No unused code found"
           else
