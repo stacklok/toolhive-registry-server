@@ -17,6 +17,7 @@ CREATE TABLE temp_registry_entry (
 CREATE TABLE temp_entry_version (
     id UUID PRIMARY KEY,
     entry_id UUID NOT NULL,
+    name TEXT NOT NULL,
     version TEXT NOT NULL,
     title TEXT,
     description TEXT,

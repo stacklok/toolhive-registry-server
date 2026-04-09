@@ -38,11 +38,10 @@ type Querier interface {
 	// Delete CONFIG sources not in the provided list (for config file sync)
 	DeleteConfigSourcesNotInList(ctx context.Context, ids []uuid.UUID) error
 	DeleteEntryVersion(ctx context.Context, arg DeleteEntryVersionParams) (int64, error)
+	DeleteOrphanedEntryVersions(ctx context.Context, arg DeleteOrphanedEntryVersionsParams) error
 	DeleteOrphanedIcons(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedPackages(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UUID) error
-	DeleteOrphanedServers(ctx context.Context, arg DeleteOrphanedServersParams) error
-	DeleteOrphanedSkills(ctx context.Context, arg DeleteOrphanedSkillsParams) error
 	// Delete a registry by name. Go callers guard against deleting wrong creation_type.
 	DeleteRegistry(ctx context.Context, name string) (int64, error)
 	DeleteRegistryEntry(ctx context.Context, arg DeleteRegistryEntryParams) (int64, error)
@@ -51,9 +50,13 @@ type Querier interface {
 	DeleteServerPackagesByServerId(ctx context.Context, serverID uuid.UUID) error
 	DeleteServerRemotesByServerId(ctx context.Context, serverID uuid.UUID) error
 	DeleteServersByRegistry(ctx context.Context, sourceID uuid.UUID) error
+	DeleteSkillGitPackagesBySkillId(ctx context.Context, skillID uuid.UUID) error
+	DeleteSkillOciPackagesBySkillId(ctx context.Context, skillID uuid.UUID) error
 	DeleteSkillsByRegistry(ctx context.Context, sourceID uuid.UUID) error
 	// Delete a source by name. Go callers guard against deleting wrong creation_type.
 	DeleteSource(ctx context.Context, name string) (int64, error)
+	DropTempEntryVersionTable(ctx context.Context) error
+	DropTempRegistryEntryTable(ctx context.Context) error
 	GetAPISourcesByNames(ctx context.Context, names []string) ([]GetAPISourcesByNamesRow, error)
 	GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error)
 	GetManagedSources(ctx context.Context) ([]GetManagedSourcesRow, error)

@@ -290,6 +290,7 @@ func (c *defaultCoordinator) performRegistrySync(
 		syncStatus.LastSyncTime = &now
 		syncStatus.LastSyncHash = result.Hash
 		syncStatus.ServerCount = result.ServerCount
+		syncStatus.SkillCount = result.SkillCount
 		syncStatus.AttemptCount = 0
 		hashPreview := result.Hash
 		if len(hashPreview) > 8 {
@@ -298,19 +299,24 @@ func (c *defaultCoordinator) performRegistrySync(
 		slog.Info("Sync completed successfully",
 			"registry", registryName,
 			"server_count", result.ServerCount,
+			"skill_count", result.SkillCount,
 			"hash", hashPreview)
 
-		// Add server count to span on success
-		span.SetAttributes(attribute.Int("sync.server_count", result.ServerCount))
+		// Add counts to span on success
+		span.SetAttributes(
+			attribute.Int("sync.server_count", result.ServerCount),
+			attribute.Int("sync.skill_count", result.SkillCount),
+		)
 
 		// Record sync success metric
 		if c.syncMetrics != nil {
 			c.syncMetrics.RecordSyncDuration(ctx, registryName, syncDuration, true)
 		}
 
-		// Record registry server count metric
+		// Record registry metrics
 		if c.registryMetrics != nil {
 			c.registryMetrics.RecordServersTotal(ctx, registryName, int64(result.ServerCount))
+			c.registryMetrics.RecordSkillsTotal(ctx, registryName, int64(result.SkillCount))
 		}
 	}
 }

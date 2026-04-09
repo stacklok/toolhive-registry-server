@@ -7,11 +7,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/spf13/viper"
 
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
@@ -275,16 +277,14 @@ type ManagedConfig struct {
 	// Future fields can be added here as needed
 }
 
-// KubernetesConfig defines configuration for Kubernetes-based registries
-// Kubernetes registries discover MCP servers from running Kubernetes resources
+// KubernetesConfig defines configuration for Kubernetes-based registries.
+// Kubernetes registries discover MCP servers from running Kubernetes resources.
+// Per-entry claims are set directly on CRDs via the toolhive.stacklok.dev/authz-claims
+// JSON annotation, which is merged with the source's base claims.
 type KubernetesConfig struct {
 	// Namespaces is a list of Kubernetes namespaces to watch for MCP servers
 	// If empty, watches the namespace configured via WatchNamespace environment variable
 	Namespaces []string `yaml:"namespaces,omitempty"`
-
-	// ClaimMapping maps Kubernetes labels/annotations to claims for authorization
-	// Keys are claim names, values are label/annotation paths
-	ClaimMapping map[string]string `yaml:"claimMapping,omitempty"`
 }
 
 // SyncPolicyConfig defines synchronization settings
@@ -749,10 +749,15 @@ func (c *Config) validate() error {
 
 	// Validate each source configuration
 	sourceNames := make(map[string]bool)
+	managedCount := 0
 	for i, src := range c.Sources {
 		// Validate source name
 		if src.Name == "" {
 			return fmt.Errorf("source[%d]: name is required", i)
+		}
+		if !IsValidDNSSubdomain(src.Name) {
+			return fmt.Errorf("source[%d]: name '%s' must be a valid DNS subdomain "+
+				"(lowercase alphanumeric and hyphens, max 63 chars)", i, src.Name)
 		}
 
 		// Check for duplicate source names
@@ -760,6 +765,11 @@ func (c *Config) validate() error {
 			return fmt.Errorf("source[%d]: duplicate source name '%s'", i, src.Name)
 		}
 		sourceNames[src.Name] = true
+
+		// Track managed source count
+		if src.Managed != nil {
+			managedCount++
+		}
 
 		// Validate source-specific configuration
 		if err := c.validateSourceConfig(&src, i); err != nil {
@@ -770,6 +780,11 @@ func (c *Config) validate() error {
 		if err := validateClaims(src.Claims, fmt.Sprintf("source[%d] (%s)", i, src.Name)); err != nil {
 			return err
 		}
+	}
+
+	// Validate at most one managed source is configured
+	if managedCount > 1 {
+		return fmt.Errorf("at most one managed source is allowed, found %d", managedCount)
 	}
 
 	// Validate at least one registry is configured
@@ -848,6 +863,16 @@ func (c *Config) validateRegistries(sourceNames map[string]bool) error {
 	return nil
 }
 
+// dnsSubdomainRegex matches valid DNS subdomain labels per RFC 1123:
+// lowercase alphanumeric, hyphens allowed (not leading/trailing), max 63 chars.
+var dnsSubdomainRegex = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
+
+// IsValidDNSSubdomain checks whether s is a valid DNS subdomain label per RFC 1123.
+// Used for source names (K8s lease name suffixes) and K8s namespace validation.
+func IsValidDNSSubdomain(s string) bool {
+	return dnsSubdomainRegex.MatchString(s)
+}
+
 // validateSyncPolicy validates the sync policy configuration
 func validateSyncPolicy(policy *SyncPolicyConfig, prefix string) error {
 	if policy == nil || policy.Interval == "" {
@@ -910,21 +935,8 @@ func validateSourceSpecificConfig(src *SourceConfig, prefix string) error {
 
 // validateClaims validates that all claim values are string or []string
 func validateClaims(claims map[string]any, prefix string) error {
-	for key, val := range claims {
-		switch v := val.(type) {
-		case string:
-			// OK
-		case []any:
-			for i, elem := range v {
-				if _, ok := elem.(string); !ok {
-					return fmt.Errorf("%s: claims[%s][%d] must be a string, got %T", prefix, key, i, elem)
-				}
-			}
-		case []string:
-			// OK
-		default:
-			return fmt.Errorf("%s: claims[%s] must be a string or []string, got %T", prefix, key, val)
-		}
+	if err := db.ValidateClaimValues(claims); err != nil {
+		return fmt.Errorf("%s: %w", prefix, err)
 	}
 	return nil
 }

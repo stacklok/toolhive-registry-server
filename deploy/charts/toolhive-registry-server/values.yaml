@@ -203,8 +203,7 @@ config:
 #     # - name: k8s-mcp
 #     #   kubernetes:
 #     #     namespaces: ["mcp-prod"]
-#     #     claimMapping:
-#     #       "toolhive.stacklok.dev/team": "team"
+#     #   # Per-entry claims set via toolhive.stacklok.dev/authz-claims JSON annotation on CRDs
 #
 #   registries:
 #     - name: default

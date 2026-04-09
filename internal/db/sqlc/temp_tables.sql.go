@@ -132,6 +132,24 @@ func (q *Queries) DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UU
 	return err
 }
 
+const dropTempEntryVersionTable = `-- name: DropTempEntryVersionTable :exec
+DROP TABLE IF EXISTS temp_entry_version
+`
+
+func (q *Queries) DropTempEntryVersionTable(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, dropTempEntryVersionTable)
+	return err
+}
+
+const dropTempRegistryEntryTable = `-- name: DropTempRegistryEntryTable :exec
+DROP TABLE IF EXISTS temp_registry_entry
+`
+
+func (q *Queries) DropTempRegistryEntryTable(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, dropTempRegistryEntryTable)
+	return err
+}
+
 const upsertEntryVersionsFromTemp = `-- name: UpsertEntryVersionsFromTemp :many
 INSERT INTO entry_version (
     id, entry_id, name, version, title, description, created_at, updated_at

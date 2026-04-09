@@ -459,20 +459,32 @@ func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWrit
 			kubernetes.WithRegistryName(reg.Name),
 		}
 
-		if cfg.WatchNamespace != "" {
+		// Use namespaces from source config if set, otherwise fall back to global WatchNamespace
+		if reg.Kubernetes != nil && len(reg.Kubernetes.Namespaces) > 0 {
+			opts = append(opts, kubernetes.WithNamespaces(reg.Kubernetes.Namespaces...))
+		} else if cfg.WatchNamespace != "" {
 			namespaces := strings.Split(cfg.WatchNamespace, ",")
 			opts = append(opts, kubernetes.WithNamespaces(namespaces...))
 		}
 
-		if cfg.LeaderElectionID != "" {
-			opts = append(opts, kubernetes.WithLeaderElectionID(cfg.LeaderElectionID))
+		// Each K8s source needs a unique leader election ID to avoid lease conflicts.
+		// Source names are validated as unique (config validation rejects duplicates),
+		// so appending the source name is sufficient for uniqueness. We intentionally
+		// do NOT include namespace names: since both source names and namespaces use
+		// the DNS label charset (lowercase alphanumeric + hyphens), joining them with
+		// a hyphen would create ambiguous boundaries (e.g. source "foo-bar" + ns "baz"
+		// would collide with source "foo" + ns "bar-baz").
+		leaderID := cfg.LeaderElectionID
+		if leaderID == "" {
+			leaderID = "toolhive-registry-server-leader-election"
 		}
+		leaseID := fmt.Sprintf("%s-%s", leaderID, reg.Name)
+		opts = append(opts, kubernetes.WithLeaderElectionID(leaseID))
 
 		_, err := kubernetes.NewMCPServerReconciler(ctx, opts...)
 		if err != nil {
-			return fmt.Errorf("failed to create kubernetes reconciler: %w", err)
+			return fmt.Errorf("failed to create kubernetes reconciler for source %s: %w", reg.Name, err)
 		}
-		return nil
 	}
 	return nil
 }
