@@ -12,9 +12,11 @@
 
 # ToolHive Registry Server
 
-**The central metadata hub for enterprise MCP governance and discovery**
+**A registry for MCP servers and skills -- so your organization knows what's available, who can use it, and where it came from**
 
-The ToolHive Registry Server (`thv-registry-api`) implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). It serves as the centralized metadata engine for the ToolHive platform, enabling enterprises to curate, discover, and govern MCP servers with security and auditability built-in.
+The ToolHive Registry Server aggregates MCP servers and skills from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs that your teams and AI clients can query. Each catalog has its own access control, so you decide which entries are visible to which users.
+
+It implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). If you're not familiar with MCP: it's an open protocol that lets AI assistants connect to external tools and data sources. This server is the discovery and governance layer on top.
 
 ---
 
@@ -23,7 +25,7 @@ The ToolHive Registry Server (`thv-registry-api`) implements the official [Model
 - [Features](#features)
 - [Quickstart](#quickstart)
 - [Core Concepts](#core-concepts)
-  - [Data Sources](#data-sources)
+  - [Sources and Registries](#sources-and-registries)
   - [Architecture](#architecture)
 - [API Endpoints](#api-endpoints)
 - [Configuration](#configuration)
@@ -34,35 +36,29 @@ The ToolHive Registry Server (`thv-registry-api`) implements the official [Model
 
 ## Features
 
-### Enterprise governance & security
+### Access control and audit
 
-- **OAuth 2.0/OIDC authentication**: Integrate with enterprise identity providers (Okta, Auth0, Azure AD)
-- **Multi-provider support**: Combine corporate SSO with Kubernetes service accounts
-- **Secure by default**: OAuth mode enabled by default, with granular access control
-- **Audit trail**: Track MCP discovery and access through centralized metadata
+- **JWT claim-based visibility**: Control which MCP servers and skills each user or team can see, per registry. A "production" registry can expose only vetted entries while a "dev-team" registry shows everything.
+- **OAuth 2.0/OIDC authentication**: Plug in your existing identity provider (Okta, Auth0, Azure AD). OAuth is the default; anonymous mode is available for development.
+- **SIEM-compliant audit logging**: Structured log covering all API operations with NIST SP 800-53 AU-3 compliant fields, dedicated file output, and configurable event filtering.
 
-### Flexible registry sources
+### Aggregate from anywhere
 
-- **Curated registries**: Aggregate multiple sources into a unified catalog
-- **Upstream verified**: Sync from public MCP registries implementing the standard API
-- **File-based registries**: Support both ToolHive and upstream `server.json` formats
-- **Internal custom MCPs**: Manage organization-specific MCP servers
-- **Kubernetes discovery**: Automatically discover MCPs deployed in your clusters
-- **Automatic synchronization**: Background sync with configurable intervals and retry logic
+- **Five source types**: Pull entries from Git repos, upstream MCP registries, local files, Kubernetes clusters, or publish them via the Admin API.
+- **Compose catalogs from multiple sources**: Each registry aggregates one or more sources with priority ordering. One source can feed multiple registries, so the same internal catalog can serve different teams with different visibility rules.
+- **Background sync**: Sources are polled on configurable intervals with retry logic. Registries stay current without manual intervention.
 
-### Enterprise integration
+### Production infrastructure
 
-- **Central metadata hub**: Powers the ToolHive Enterprise UI with MCP metadata
-- **ToolHive Operator integration**: Provides metadata for Kubernetes-native MCP deployment
-- **PostgreSQL backend**: Scalable database storage with automatic migrations
-- **Standards-compliant**: Implements the official MCP Registry API specification
-- **Production-ready**: Built-in health checks, graceful shutdown, and observability
+- **Standards-compliant**: Implements the official MCP Registry API specification. Clients that speak the spec work out of the box.
+- **PostgreSQL backend**: Database storage with automatic migrations.
+- **OpenTelemetry**: Distributed tracing and metrics for observability.
 
 ## Quickstart
 
 ### Prerequisites
 
-- Go 1.23 or later (for building from source)
+- Go 1.26 or later (for building from source)
 - [Task](https://taskfile.dev) for build automation
 - PostgreSQL 16+ (optional, for database backend)
 
@@ -109,57 +105,63 @@ task docker-down
 
 ## Core concepts
 
-### Data sources
+### Sources and registries
 
-The Registry Server enables enterprises to curate MCP catalogs from multiple sources, creating a unified view for developers and knowledge workers:
+Most organizations have MCP servers and skills in more than one place -- a public catalog, an internal Git repo, a Kubernetes cluster running live instances. The Registry Server models this with two primitives: **sources** (where entries come from) and **registries** (what consumers query).
 
-| Type           | Description                   | Enterprise Use Case                                                                                              | Sync         |
-| -------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------ |
-| **API**        | Upstream MCP Registry APIs    | Official MCP Registry (registry.modelcontextprotocol.io) or any registry implementing the upstream specification | ✅ Auto      |
-| **Git**        | Clone from Git repositories   | Version-controlled internal registries                                                                           | ✅ Auto      |
-| **File**       | Read from local filesystem    | Simple curated lists in ToolHive or upstream format                                                              | ✅ Auto      |
-| **Managed**    | API-managed registry          | Internal custom MCPs (dynamically managed)                                                                       | ❌ On-demand |
-| **Kubernetes** | Discover from K8s deployments | Organization-deployed MCPs (live discovery)                                                                      | ❌ On-demand |
+A **source** is a connection to where MCP server and skill entries live. It tells the server "go look here for entries." Sources come in five types:
 
-**Key capability**: Configure multiple registries simultaneously to create a federated catalog that combines:
+| Type           | What it does                        | Example                                                      | Sync         |
+| -------------- | ----------------------------------- | ------------------------------------------------------------ | ------------ |
+| **API**        | Pulls from an upstream registry API | The official MCP Registry at registry.modelcontextprotocol.io | Auto         |
+| **Git**        | Clones entries from a Git repo      | A version-controlled internal catalog                        | Auto         |
+| **File**       | Reads from the local filesystem     | A curated `registry.json` on disk                            | Auto         |
+| **Managed**    | Entries published via the Admin API | Dynamically registered internal servers                      | On-demand    |
+| **Kubernetes** | Discovers deployed MCP servers      | Servers running in your K8s clusters                         | On-demand    |
 
-- Official MCP Registry (registry.modelcontextprotocol.io) or any registry implementing the upstream specification
-- Internal organization-specific MCPs
-- Kubernetes-deployed MCPs
-- Custom curated collections
+A **registry** is a named catalog that aggregates one or more sources into a single consumer-facing endpoint. Each registry can pull from different sources, apply its own filtering, set priority ordering, and enforce its own access control via JWT claims.
+
+**Why they are separate**: Sources and registries have a many-to-many relationship. One source can feed multiple registries, and one registry can pull from multiple sources. This lets you compose different catalogs for different audiences from the same underlying data:
+
+```text
+Source: "official-catalog"  ──┐
+Source: "internal-tools"    ──┼──> Registry: "production"  (curated, vetted)
+                              │
+Source: "internal-tools"    ──┼──> Registry: "dev-team"    (everything)
+Source: "k8s-deployed"      ──┘
+```
+
+In this example, the "production" registry only exposes vetted entries from the official catalog and internal tools, while the "dev-team" registry includes everything plus live Kubernetes-discovered servers.
 
 **Configuration example:**
 
 ```yaml
 sources:
-  - name: local
-    format: toolhive
-    file:
-      path: /data/registry.json
+  - name: official-catalog
+    format: upstream
+    api:
+      endpoint: https://registry.modelcontextprotocol.io
+    syncPolicy:
+      interval: "1h"
 
-registries:
-  - name: my-registry
-    sources:
-      - local
-```
-
-For Git-based sources:
-
-```yaml
-sources:
-  - name: toolhive
+  - name: internal-tools
     format: toolhive
     git:
-      repository: https://github.com/stacklok/toolhive-catalog.git
+      repository: https://github.com/myorg/mcp-catalog.git
       branch: main
-      path: pkg/catalog/toolhive/data/registry-legacy.json
+      path: registry.json
     syncPolicy:
-      interval: '30m'
+      interval: "30m"
 
 registries:
-  - name: my-registry
+  - name: production
     sources:
-      - toolhive
+      - official-catalog
+      - internal-tools
+
+  - name: dev-team
+    sources:
+      - internal-tools
 ```
 
 See [Configuration Guide](docs/configuration.md) for complete details.
@@ -236,7 +238,7 @@ ToolHive-specific endpoints for managing sources, registries, and entries:
 
 - `GET /v1/registries` - List all configured registries with status
 - `GET /v1/registries/{name}` - Get registry details and sync status
-- `GET /v1/registries/{name}/entries` - List entries for a registry
+- `GET /v1/registries/{name}/entries` - List entries for a registry (requires `manageRegistries` role)
 - `PUT /v1/registries/{name}` - Create or update a registry
 - `DELETE /v1/registries/{name}` - Delete a registry
 
@@ -246,11 +248,21 @@ ToolHive-specific endpoints for managing sources, registries, and entries:
 - `DELETE /v1/entries/{type}/{name}/versions/{version}` - Delete a published entry
 - `PUT /v1/entries/{type}/{name}/claims` - Update entry claims
 
+### Skills extension API (ToolHive-specific)
+
+Read-only endpoints for discovering skills within a registry:
+
+- `GET /registry/{registryName}/v0.1/x/dev.toolhive/skills` - List skills (paginated)
+- `GET /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}` - Get latest version of a skill
+- `GET /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions` - List all versions of a skill
+- `GET /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions/{version}` - Get a specific skill version
+
 ### Operational endpoints
 
 - `GET /health` - Health check
 - `GET /readiness` - Readiness check
 - `GET /version` - Version information
+- `GET /v1/me` - Returns the caller's identity and roles
 - `GET /.well-known/oauth-protected-resource` - OAuth discovery (RFC 9728)
 
 ### Use cases
@@ -304,7 +316,7 @@ auth:
 #   database: registry
 ```
 
-### 📖 Complete guides
+### Complete guides
 
 - **[Configuration reference](docs/configuration.md)** - Complete configuration options
 - **[Environment variables](docs/environment-variables.md)** - Using environment variables for configuration
@@ -369,7 +381,7 @@ export THV_REGISTRY_AUTH_MODE=anonymous
 ./bin/thv-registry-api serve --config config.yaml
 ```
 
-### 📖 Deployment guides
+### Deployment guides
 
 - **[Docker & Docker Compose](docs/deployment-docker.md)** - Container deployment
 - **[Kubernetes](docs/deployment-kubernetes.md)** - K8s deployment, HA, and production best practices
@@ -428,17 +440,20 @@ cmd/thv-registry-api/    # Main application
 
 internal/                # Internal packages
 ├── api/                 # HTTP API handlers
+├── app/                 # Application builder and startup
+├── audit/               # SIEM-compliant audit logging
 ├── auth/                # OAuth/OIDC authentication
+├── authz/               # JWT claim-based authorization
 ├── config/              # Configuration loading
 ├── db/                  # Database access (sqlc generated)
-├── service/             # Business logic
-├── sources/             # Data source handlers (Git, API, File, Managed, Kubernetes)
-├── sync/                # Background sync coordination
-├── app/                 # Application builder and startup
 ├── filtering/           # Registry entry filtering
+├── kubernetes/          # Kubernetes reconciler for K8s sources
+├── registry/            # Registry data models
+├── service/             # Business logic
+├── sources/             # Data source handlers (Git, API, File, Managed)
+├── sync/                # Background sync coordination
 ├── telemetry/           # OpenTelemetry integration
-├── validators/          # Input validation
-└── registry/            # Registry data models
+└── validators/          # Input validation
 
 database/                # Database schema and queries
 ├── migrations/          # SQL migrations
@@ -450,12 +465,14 @@ docs/                    # Documentation
 
 ## Documentation
 
-### 📚 Complete documentation
+### Complete documentation
 
 - **[Configuration reference](docs/configuration.md)** - All configuration options
 - **[Environment variables](docs/environment-variables.md)** - Using environment variables for configuration
 - **[Database setup](docs/database.md)** - PostgreSQL setup and migrations
 - **[Authentication](docs/authentication.md)** - OAuth/OIDC security
+- **[Observability](docs/observability.md)** - OpenTelemetry tracing and metrics
+- **[Registry sync](docs/registry-sync.md)** - How background sync works, status tracking, retry logic
 - **[Kubernetes deployment](docs/deployment-kubernetes.md)** - K8s deployment guide
 - **[Docker deployment](docs/deployment-docker.md)** - Docker & Docker Compose
 - **[API documentation](docs/thv-registry-api/)** - Auto-generated OpenAPI docs
@@ -471,6 +488,8 @@ docs/                    # Documentation
 | Configure the server  | [Configuration reference](docs/configuration.md)  |
 | Set up PostgreSQL     | [Database setup](docs/database.md)                |
 | Enable authentication | [Authentication guide](docs/authentication.md)    |
+| Set up observability  | [Observability guide](docs/observability.md)      |
+| Understand sync       | [Registry sync](docs/registry-sync.md)            |
 | Deploy to Kubernetes  | [Kubernetes guide](docs/deployment-kubernetes.md) |
 | Use Docker Compose    | [Docker guide](docs/deployment-docker.md)         |
 | Contribute code       | [Contributing](#contributing)                     |
@@ -493,12 +512,12 @@ The Registry API server is the central metadata engine of the ToolHive platform:
 - **Custom Resource binding**: MCPRegistry CRDs are backed by Registry Server data
 - **Lifecycle management**: Tracks deployed MCP versions and configurations
 
-### Security & governance
+### Security and governance
 
-- **Centralized control**: Single source of truth for approved MCPs
+- **Centralized control**: Single source of truth for approved MCP servers and skills
 - **Identity integration**: Seamless integration with Okta, Auth0, Azure AD, and other providers
 - **Kubernetes-native**: All MCP execution stays within your Kubernetes boundary
-- **Audit trail**: Track MCP discovery and consumption patterns
+- **Audit logging**: SIEM-compliant structured audit log for all API operations
 
 See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for the complete platform architecture.
 
