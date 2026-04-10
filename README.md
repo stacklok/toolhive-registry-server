@@ -12,11 +12,11 @@
 
 # ToolHive Registry Server
 
-**A registry for MCP servers and skills -- so your organization knows what's available, who can use it, and where it came from**
+**Discover, govern, and control access to MCP servers and skills across your organization**
 
-The ToolHive Registry Server aggregates MCP servers and skills from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs that your teams and AI clients can query. Each catalog has its own access control, so you decide which entries are visible to which users.
+The ToolHive Registry Server aggregates MCP servers and skills from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs that your teams and AI clients can query. Each catalog has its own access control and audit trail, so you decide which entries are visible to which users -- and have a record of who accessed what.
 
-It implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). If you're not familiar with MCP: it's an open protocol that lets AI assistants connect to external tools and data sources. This server is the discovery and governance layer on top.
+It implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). If you're not familiar with MCP: it's an open protocol that lets AI assistants connect to external tools and data sources. This server is the governance layer that sits between your MCP infrastructure and the teams consuming it.
 
 ---
 
@@ -36,10 +36,11 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 
 ## Features
 
-### Access control and audit
+### Governance and access control
 
 - **JWT claim-based visibility**: Control which MCP servers and skills each user or team can see, per registry. A "production" registry can expose only vetted entries while a "dev-team" registry shows everything.
 - **OAuth 2.0/OIDC authentication**: Plug in your existing identity provider (Okta, Auth0, Azure AD). OAuth is the default; anonymous mode is available for development.
+- **Role-based administration**: Separate roles for managing sources, registries, and entries. Scope each role to specific JWT claims so teams manage their own resources.
 - **SIEM-compliant audit logging**: Structured log covering all API operations with NIST SP 800-53 AU-3 compliant fields, dedicated file output, and configurable event filtering.
 
 ### Aggregate from anywhere
@@ -48,11 +49,12 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 - **Compose catalogs from multiple sources**: Each registry aggregates one or more sources with priority ordering. One source can feed multiple registries, so the same internal catalog can serve different teams with different visibility rules.
 - **Background sync**: Sources are polled on configurable intervals with retry logic. Registries stay current without manual intervention.
 
-### Production infrastructure
+### Kubernetes and observability
 
+- **Kubernetes-native discovery**: A built-in reconciler watches for MCP server CRDs across namespaces and syncs them into the registry automatically. Per-entry access control via CRD annotations, multi-namespace support, and leader election for HA.
+- **OpenTelemetry**: Distributed tracing and metrics out of the box.
 - **Standards-compliant**: Implements the official MCP Registry API specification. Clients that speak the spec work out of the box.
 - **PostgreSQL backend**: Database storage with automatic migrations.
-- **OpenTelemetry**: Distributed tracing and metrics for observability.
 
 ## Quickstart
 
