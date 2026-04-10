@@ -88,7 +88,7 @@ func createTestApp(t *testing.T, ctrl *gomock.Controller, addr string) *Registry
 		authMiddleware: func(next http.Handler) http.Handler { return next },
 	}
 
-	server, err := buildHTTPServer(ctx, appCfg, mockSvc)
+	server, err := buildHTTPServer(ctx, appCfg, mockSvc, nil)
 	require.NoError(t, err)
 
 	return &RegistryApp{

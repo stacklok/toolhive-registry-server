@@ -216,6 +216,47 @@ database:
   connMaxLifetime: "1h"
 
 # ==============================================================================
+# AUDIT LOGGING CONFIGURATION (Optional)
+# ==============================================================================
+
+# Audit logging emits structured events for API operations, designed for
+# SIEM ingestion and NIST SP 800-53 AU-3 compliance.
+
+# audit:
+#   # Enable audit logging (default: false)
+#   enabled: true
+#
+#   # Path to a dedicated audit log file (default: stdout)
+#   # When set, audit events are written to this file instead of stdout,
+#   # keeping them separate from application logs.
+#   logFile: /var/log/toolhive/audit.log
+#
+#   # Whitelist of event types to audit (default: all)
+#   # When non-empty, only these event types are logged.
+#   # eventTypes:
+#   #   - source.create
+#   #   - source.delete
+#   #   - registry.create
+#   #   - registry.delete
+#   #   - entry.publish
+#   #   - entry.delete
+#   #   - auth.unauthenticated
+#
+#   # Blacklist of event types to skip (takes precedence over eventTypes)
+#   # excludeEventTypes:
+#   #   - source.list
+#   #   - registry.list
+#   #   - user.info
+#
+#   # Capture request bodies in audit events (default: false)
+#   # Only captured for mutating operations (POST, PUT, DELETE).
+#   # Disabled by default for privacy.
+#   # includeRequestData: true
+#
+#   # Maximum size (bytes) for captured request bodies (default: 1024)
+#   # maxDataSize: 2048
+
+# ==============================================================================
 # NOTES
 # ==============================================================================
 

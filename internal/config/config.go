@@ -94,6 +94,52 @@ func WithConfigPath(path string) Option {
 	}
 }
 
+// Default audit configuration values.
+const (
+	// DefaultAuditMaxDataSize is the default maximum size (in bytes) for
+	// captured request bodies in audit events.
+	DefaultAuditMaxDataSize = 1024
+
+	// MaxAuditDataSize is the hard upper bound (1 MB) for captured request
+	// bodies to prevent memory exhaustion from misconfiguration.
+	MaxAuditDataSize = 1 << 20
+)
+
+// AuditConfig defines audit logging configuration.
+type AuditConfig struct {
+	// Enabled controls whether audit logging is active.
+	// When false (the default), API operations are not audit-logged.
+	Enabled bool `yaml:"enabled"`
+
+	// LogFile is the path to a dedicated audit log file.
+	// When empty (default), audit events are written to stdout.
+	LogFile string `yaml:"logFile,omitempty"`
+
+	// EventTypes is a whitelist of event types to audit.
+	// When empty (default), all event types are audited.
+	EventTypes []string `yaml:"eventTypes,omitempty"`
+
+	// ExcludeEventTypes is a blacklist of event types to skip.
+	// Takes precedence over EventTypes if both are set.
+	ExcludeEventTypes []string `yaml:"excludeEventTypes,omitempty"`
+
+	// IncludeRequestData controls whether request bodies are captured
+	// in audit events. Disabled by default for privacy.
+	IncludeRequestData bool `yaml:"includeRequestData,omitempty"`
+
+	// MaxDataSize is the maximum size (in bytes) for captured
+	// request/response bodies. Defaults to 1024.
+	MaxDataSize int `yaml:"maxDataSize,omitempty"`
+}
+
+// GetMaxDataSize returns the configured max data size or the default.
+func (a *AuditConfig) GetMaxDataSize() int {
+	if a == nil || a.MaxDataSize <= 0 {
+		return DefaultAuditMaxDataSize
+	}
+	return a.MaxDataSize
+}
+
 // Config represents the root configuration structure
 type Config struct {
 	Sources    []SourceConfig    `yaml:"sources"`
@@ -101,6 +147,7 @@ type Config struct {
 	Database   *DatabaseConfig   `yaml:"database,omitempty"`
 	Auth       *AuthConfig       `yaml:"auth,omitempty"`
 	Telemetry  *telemetry.Config `yaml:"telemetry,omitempty"`
+	Audit      *AuditConfig      `yaml:"audit,omitempty"`
 
 	// insecureAllowHTTP allows HTTP URLs for OAuth issuer URLs (development only)
 	// Can be set via THV_REGISTRY_INSECURE_URL environment variable
@@ -736,6 +783,11 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	return &config, nil
 }
 
+// IsAuditEnabled returns true when audit logging is enabled in the config.
+func (c *Config) IsAuditEnabled() bool {
+	return c != nil && c.Audit != nil && c.Audit.Enabled
+}
+
 // Validate performs validation on the configuration
 func (c *Config) validate() error {
 	if c == nil {
@@ -799,6 +851,11 @@ func (c *Config) validate() error {
 
 	// Validate storage configuration
 	if err := c.validateStorageConfig(); err != nil {
+		return err
+	}
+
+	// Validate audit configuration if present
+	if err := c.validateAudit(); err != nil {
 		return err
 	}
 
@@ -1095,7 +1152,35 @@ func (s *SourceConfig) IsNonSyncedSource() bool {
 	return srcType == SourceTypeManaged || srcType == SourceTypeKubernetes
 }
 
-// validateAuth validates the auth configuration if present
+// validateAudit validates the audit logging configuration if present.
+func (c *Config) validateAudit() error {
+	if c.Audit == nil {
+		return nil // audit is optional
+	}
+	if c.Audit.MaxDataSize < 0 {
+		return fmt.Errorf("audit.maxDataSize must be non-negative, got %d", c.Audit.MaxDataSize)
+	}
+	if c.Audit.MaxDataSize > MaxAuditDataSize {
+		return fmt.Errorf("audit.maxDataSize must not exceed %d bytes, got %d", MaxAuditDataSize, c.Audit.MaxDataSize)
+	}
+	if c.Audit.LogFile != "" {
+		// Resolve symlinks to prevent writing to unexpected locations,
+		// consistent with how the config file path itself is validated.
+		realDir, err := filepath.EvalSymlinks(filepath.Dir(c.Audit.LogFile))
+		if err != nil {
+			return fmt.Errorf("audit.logFile directory does not exist: %w", err)
+		}
+		info, err := os.Stat(realDir)
+		if err != nil {
+			return fmt.Errorf("audit.logFile directory is not accessible: %w", err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("audit.logFile parent path is not a directory: %s", realDir)
+		}
+	}
+	return nil
+}
+
 func (c *Config) validateAuth() error {
 	if c.Auth == nil {
 		return errors.New("auth configuration is required")
