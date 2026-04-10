@@ -16,9 +16,6 @@
       "groupName": "go modules",
       "matchManagers": [
         "gomod"
-      ],
-      "matchPackageNames": [
-        "!golang"
       ]
     },
     {
@@ -82,18 +79,6 @@
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/(^|/)go\\.mod$/"
-      ],
-      "matchStrings": [
-        "go (?<currentValue>\\d+\\.\\d+(\\.\\d+)?)"
-      ],
-      "depNameTemplate": "golang",
-      "datasourceTemplate": "golang-version",
-      "versioningTemplate": "loose"
     },
     {
       "customType": "regex",
