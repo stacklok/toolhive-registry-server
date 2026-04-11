@@ -32,6 +32,16 @@ func enabledConfig() *config.AuditConfig {
 	return &config.AuditConfig{Enabled: true}
 }
 
+// withRouteInfo is a test helper that simulates an audited* wrapper by writing
+// the given RouteInfo into the middleware-injected carrier. It must be used as
+// a layer between Middleware and the actual inner handler.
+func withRouteInfo(info *RouteInfo, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		setRouteInfo(r.Context(), info)
+		h.ServeHTTP(w, r)
+	})
+}
+
 // --- Middleware tests ---
 
 func TestMiddleware_Disabled(t *testing.T) {
@@ -65,22 +75,37 @@ func TestMiddleware_Disabled(t *testing.T) {
 	}
 }
 
-func TestMiddleware_SkipsNonV1Paths(t *testing.T) {
+func TestMiddleware_SkipsUnannotatedPaths(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	logger := newTestLogger(&buf)
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "health endpoint", path: "/health"},
+		{name: "non-v1 registry path", path: "/registry/something"},
+		{name: "unknown v1 path", path: "/v1/unknown-endpoint"},
+	}
 
-	handler := Middleware(enabledConfig(), logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	req := httptest.NewRequest(http.MethodDelete, "/health", nil)
-	rec := httptest.NewRecorder()
+			var buf bytes.Buffer
+			logger := newTestLogger(&buf)
 
-	handler.ServeHTTP(rec, req)
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Empty(t, buf.String(), "non-v1 path should not produce audit events")
+			handler := Middleware(enabledConfig(), logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequest(http.MethodDelete, tt.path, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Empty(t, buf.String(), "unannotated path should not produce audit events")
+		})
+	}
 }
 
 func TestMiddleware_EmitsAuditEvent(t *testing.T) {
@@ -91,6 +116,7 @@ func TestMiddleware_EmitsAuditEvent(t *testing.T) {
 		method           string
 		path             string
 		innerStatus      int
+		routeInfo        *RouteInfo
 		claims           jwt.MapClaims
 		expectEventType  string
 		expectOutcome    string
@@ -98,95 +124,139 @@ func TestMiddleware_EmitsAuditEvent(t *testing.T) {
 		expectAnonymous  bool
 	}{
 		{
-			name:             "PUT source with 200 emits source.update",
-			method:           http.MethodPut,
-			path:             "/v1/sources/my-source",
-			innerStatus:      http.StatusOK,
+			name:        "PUT source with 200 emits source.update",
+			method:      http.MethodPut,
+			path:        "/v1/sources/my-source",
+			innerStatus: http.StatusOK,
+			routeInfo: &RouteInfo{
+				OnCreate: EventSourceCreate,
+				OnUpdate: EventSourceUpdate,
+				Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+			},
 			claims:           jwt.MapClaims{"sub": "user-123"},
 			expectEventType:  EventSourceUpdate,
 			expectOutcome:    "success",
 			expectSubjectSub: "user-123",
 		},
 		{
-			name:             "PUT source with 201 emits source.create",
-			method:           http.MethodPut,
-			path:             "/v1/sources/my-source",
-			innerStatus:      http.StatusCreated,
+			name:        "PUT source with 201 emits source.create",
+			method:      http.MethodPut,
+			path:        "/v1/sources/my-source",
+			innerStatus: http.StatusCreated,
+			routeInfo: &RouteInfo{
+				OnCreate: EventSourceCreate,
+				OnUpdate: EventSourceUpdate,
+				Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+			},
 			claims:           jwt.MapClaims{"sub": "user-123"},
 			expectEventType:  EventSourceCreate,
 			expectOutcome:    "success",
 			expectSubjectSub: "user-123",
 		},
 		{
-			name:             "PUT registry with 201 emits registry.create",
-			method:           http.MethodPut,
-			path:             "/v1/registries/my-reg",
-			innerStatus:      http.StatusCreated,
+			name:        "PUT registry with 201 emits registry.create",
+			method:      http.MethodPut,
+			path:        "/v1/registries/my-reg",
+			innerStatus: http.StatusCreated,
+			routeInfo: &RouteInfo{
+				OnCreate: EventRegistryCreate,
+				OnUpdate: EventRegistryUpdate,
+				Target:   map[string]string{"method": http.MethodPut, "path": "/v1/registries/my-reg", "resource_type": ResourceTypeRegistry, "resource_name": "my-reg"},
+			},
 			claims:           jwt.MapClaims{"sub": "user-456"},
 			expectEventType:  EventRegistryCreate,
 			expectOutcome:    "success",
 			expectSubjectSub: "user-456",
 		},
 		{
-			name:            "DELETE source returns 403",
-			method:          http.MethodDelete,
-			path:            "/v1/sources/my-source",
-			innerStatus:     http.StatusForbidden,
+			name:        "DELETE source returns 403",
+			method:      http.MethodDelete,
+			path:        "/v1/sources/my-source",
+			innerStatus: http.StatusForbidden,
+			routeInfo: &RouteInfo{
+				EventType: EventSourceDelete,
+				Target:    map[string]string{"method": http.MethodDelete, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+			},
 			claims:          jwt.MapClaims{"sub": "blocked-user"},
 			expectEventType: EventSourceDelete,
 			expectOutcome:   "denied",
 		},
 		{
-			name:            "POST entry with server error",
-			method:          http.MethodPost,
-			path:            "/v1/entries",
-			innerStatus:     http.StatusInternalServerError,
+			name:        "POST entry with server error",
+			method:      http.MethodPost,
+			path:        "/v1/entries",
+			innerStatus: http.StatusInternalServerError,
+			routeInfo: &RouteInfo{
+				EventType: EventEntryPublish,
+				Target:    map[string]string{"method": http.MethodPost, "path": "/v1/entries", "resource_type": ResourceTypeEntry},
+			},
 			claims:          jwt.MapClaims{"sub": "user-456"},
 			expectEventType: EventEntryPublish,
 			expectOutcome:   "error",
 		},
 		{
-			name:            "DELETE registry with 404 failure",
-			method:          http.MethodDelete,
-			path:            "/v1/registries/my-reg",
-			innerStatus:     http.StatusNotFound,
+			name:        "DELETE registry with 404 failure",
+			method:      http.MethodDelete,
+			path:        "/v1/registries/my-reg",
+			innerStatus: http.StatusNotFound,
+			routeInfo: &RouteInfo{
+				EventType: EventRegistryDelete,
+				Target:    map[string]string{"method": http.MethodDelete, "path": "/v1/registries/my-reg", "resource_type": ResourceTypeRegistry, "resource_name": "my-reg"},
+			},
 			claims:          jwt.MapClaims{"sub": "user-789"},
 			expectEventType: EventRegistryDelete,
 			expectOutcome:   "failure",
 		},
 		{
-			name:            "anonymous user",
-			method:          http.MethodPut,
-			path:            "/v1/sources/anon-source",
-			innerStatus:     http.StatusOK,
+			name:        "anonymous user",
+			method:      http.MethodPut,
+			path:        "/v1/sources/anon-source",
+			innerStatus: http.StatusOK,
+			routeInfo: &RouteInfo{
+				OnCreate: EventSourceCreate,
+				OnUpdate: EventSourceUpdate,
+				Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/anon-source", "resource_type": ResourceTypeSource, "resource_name": "anon-source"},
+			},
 			claims:          nil,
 			expectEventType: EventSourceUpdate,
 			expectOutcome:   "success",
 			expectAnonymous: true,
 		},
 		{
-			name:            "DELETE entry version",
-			method:          http.MethodDelete,
-			path:            "/v1/entries/tool/my-tool/versions/1.0.0",
-			innerStatus:     http.StatusNoContent,
+			name:        "DELETE entry version",
+			method:      http.MethodDelete,
+			path:        "/v1/entries/tool/my-tool/versions/1.0.0",
+			innerStatus: http.StatusNoContent,
+			routeInfo: &RouteInfo{
+				EventType: EventEntryDelete,
+				Target:    map[string]string{"method": http.MethodDelete, "path": "/v1/entries/tool/my-tool/versions/1.0.0", "resource_type": ResourceTypeEntry, "entry_type": "tool", "resource_name": "my-tool", "version": "1.0.0"},
+			},
 			claims:          jwt.MapClaims{"sub": "user-del"},
 			expectEventType: EventEntryDelete,
 			expectOutcome:   "success",
 		},
 		{
-			name:            "PUT entry claims",
-			method:          http.MethodPut,
-			path:            "/v1/entries/tool/my-tool/claims",
-			innerStatus:     http.StatusOK,
+			name:        "PUT entry claims",
+			method:      http.MethodPut,
+			path:        "/v1/entries/tool/my-tool/claims",
+			innerStatus: http.StatusOK,
+			routeInfo: &RouteInfo{
+				EventType: EventEntryClaims,
+				Target:    map[string]string{"method": http.MethodPut, "path": "/v1/entries/tool/my-tool/claims", "resource_type": ResourceTypeEntry, "entry_type": "tool", "resource_name": "my-tool"},
+			},
 			claims:          jwt.MapClaims{"sub": "admin-1"},
 			expectEventType: EventEntryClaims,
 			expectOutcome:   "success",
 		},
 		{
-			name:            "GET source emits source.read",
-			method:          http.MethodGet,
-			path:            "/v1/sources/my-source",
-			innerStatus:     http.StatusOK,
+			name:        "GET source emits source.read",
+			method:      http.MethodGet,
+			path:        "/v1/sources/my-source",
+			innerStatus: http.StatusOK,
+			routeInfo: &RouteInfo{
+				EventType: EventSourceRead,
+				Target:    map[string]string{"method": http.MethodGet, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+			},
 			claims:          jwt.MapClaims{"sub": "reader-1"},
 			expectEventType: EventSourceRead,
 			expectOutcome:   "success",
@@ -200,9 +270,10 @@ func TestMiddleware_EmitsAuditEvent(t *testing.T) {
 			var buf bytes.Buffer
 			logger := newTestLogger(&buf)
 
-			handler := Middleware(enabledConfig(), logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			inner := withRouteInfo(tt.routeInfo, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.innerStatus)
 			}))
+			handler := Middleware(enabledConfig(), logger)(inner)
 
 			req := httptest.NewRequest(tt.method, tt.path, nil)
 			if tt.claims != nil {
@@ -239,6 +310,7 @@ func TestMiddleware_EmitsResourceDetail(t *testing.T) {
 		method       string
 		path         string
 		innerStatus  int
+		routeInfo    *RouteInfo
 		expectFields []string
 	}{
 		{
@@ -246,6 +318,11 @@ func TestMiddleware_EmitsResourceDetail(t *testing.T) {
 			method:      http.MethodPut,
 			path:        "/v1/sources/my-source",
 			innerStatus: http.StatusOK,
+			routeInfo: &RouteInfo{
+				OnCreate: EventSourceCreate,
+				OnUpdate: EventSourceUpdate,
+				Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+			},
 			expectFields: []string{
 				"resource_type", "source",
 				"resource_name", "my-source",
@@ -256,6 +333,10 @@ func TestMiddleware_EmitsResourceDetail(t *testing.T) {
 			method:      http.MethodDelete,
 			path:        "/v1/registries/my-reg",
 			innerStatus: http.StatusNoContent,
+			routeInfo: &RouteInfo{
+				EventType: EventRegistryDelete,
+				Target:    map[string]string{"method": http.MethodDelete, "path": "/v1/registries/my-reg", "resource_type": ResourceTypeRegistry, "resource_name": "my-reg"},
+			},
 			expectFields: []string{
 				"resource_type", "registry",
 				"resource_name", "my-reg",
@@ -266,6 +347,17 @@ func TestMiddleware_EmitsResourceDetail(t *testing.T) {
 			method:      http.MethodDelete,
 			path:        "/v1/entries/server/my-server/versions/1.2.3",
 			innerStatus: http.StatusNoContent,
+			routeInfo: &RouteInfo{
+				EventType: EventEntryDelete,
+				Target: map[string]string{
+					"method":        http.MethodDelete,
+					"path":          "/v1/entries/server/my-server/versions/1.2.3",
+					"resource_type": ResourceTypeEntry,
+					"entry_type":    "server",
+					"resource_name": "my-server",
+					"version":       "1.2.3",
+				},
+			},
 			expectFields: []string{
 				"resource_type", "entry",
 				"entry_type", "server",
@@ -278,6 +370,10 @@ func TestMiddleware_EmitsResourceDetail(t *testing.T) {
 			method:      http.MethodPost,
 			path:        "/v1/entries",
 			innerStatus: http.StatusCreated,
+			routeInfo: &RouteInfo{
+				EventType: EventEntryPublish,
+				Target:    map[string]string{"method": http.MethodPost, "path": "/v1/entries", "resource_type": ResourceTypeEntry},
+			},
 			expectFields: []string{
 				"resource_type", "entry",
 			},
@@ -291,9 +387,10 @@ func TestMiddleware_EmitsResourceDetail(t *testing.T) {
 			var buf bytes.Buffer
 			logger := newTestLogger(&buf)
 
-			handler := Middleware(enabledConfig(), logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			inner := withRouteInfo(tt.routeInfo, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.innerStatus)
 			}))
+			handler := Middleware(enabledConfig(), logger)(inner)
 
 			req := httptest.NewRequest(tt.method, tt.path, nil)
 			ctx := auth.ContextWithClaims(req.Context(), jwt.MapClaims{"sub": "user"})
@@ -316,10 +413,16 @@ func TestMiddleware_EmitsMetadata(t *testing.T) {
 	var buf bytes.Buffer
 	logger := newTestLogger(&buf)
 
-	handler := Middleware(enabledConfig(), logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	routeInfo := &RouteInfo{
+		OnCreate: EventSourceCreate,
+		OnUpdate: EventSourceUpdate,
+		Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/test-src", "resource_type": ResourceTypeSource, "resource_name": "test-src"},
+	}
+	inner := withRouteInfo(routeInfo, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
+	handler := Middleware(enabledConfig(), logger)(inner)
 
 	req := httptest.NewRequest(http.MethodPut, "/v1/sources/test-src", nil)
 	ctx := auth.ContextWithClaims(req.Context(), jwt.MapClaims{"sub": "user"})
@@ -339,9 +442,14 @@ func TestMiddleware_IncludesRequestID(t *testing.T) {
 	var buf bytes.Buffer
 	logger := newTestLogger(&buf)
 
-	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	routeInfo := &RouteInfo{
+		OnCreate: EventSourceCreate,
+		OnUpdate: EventSourceUpdate,
+		Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/test-src", "resource_type": ResourceTypeSource, "resource_name": "test-src"},
+	}
+	inner := withRouteInfo(routeInfo, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	})
+	}))
 	handler := middleware.RequestID(Middleware(enabledConfig(), logger)(inner))
 
 	req := httptest.NewRequest(http.MethodPut, "/v1/sources/test-src", nil)
@@ -393,9 +501,15 @@ func TestMiddleware_RicherSubjects(t *testing.T) {
 			var buf bytes.Buffer
 			logger := newTestLogger(&buf)
 
-			handler := Middleware(enabledConfig(), logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			routeInfo := &RouteInfo{
+				OnCreate: EventSourceCreate,
+				OnUpdate: EventSourceUpdate,
+				Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+			}
+			inner := withRouteInfo(routeInfo, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			}))
+			handler := Middleware(enabledConfig(), logger)(inner)
 
 			req := httptest.NewRequest(http.MethodPut, "/v1/sources/my-source", nil)
 			ctx := auth.ContextWithClaims(req.Context(), tt.claims)
@@ -424,12 +538,19 @@ func TestMiddleware_RequestBodyCapture(t *testing.T) {
 			IncludeRequestData: true,
 		}
 
+		routeInfo := &RouteInfo{
+			OnCreate: EventSourceCreate,
+			OnUpdate: EventSourceUpdate,
+			Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+		}
+
 		// The inner handler reads the body to verify it was restored.
 		var innerBody []byte
-		handler := Middleware(cfg, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		inner := withRouteInfo(routeInfo, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			innerBody, _ = io.ReadAll(r.Body)
 			w.WriteHeader(http.StatusCreated)
 		}))
+		handler := Middleware(cfg, logger)(inner)
 
 		body := `{"name":"my-source","type":"git"}`
 		req := httptest.NewRequest(http.MethodPut, "/v1/sources/my-source", strings.NewReader(body))
@@ -457,9 +578,14 @@ func TestMiddleware_RequestBodyCapture(t *testing.T) {
 			IncludeRequestData: true,
 		}
 
-		handler := Middleware(cfg, logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		routeInfo := &RouteInfo{
+			EventType: EventSourceRead,
+			Target:    map[string]string{"method": http.MethodGet, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+		}
+		inner := withRouteInfo(routeInfo, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
+		handler := Middleware(cfg, logger)(inner)
 
 		req := httptest.NewRequest(http.MethodGet, "/v1/sources/my-source", strings.NewReader(`{"ignored":true}`))
 		ctx := auth.ContextWithClaims(req.Context(), jwt.MapClaims{"sub": "user"})
@@ -485,9 +611,15 @@ func TestMiddleware_RequestBodyCapture(t *testing.T) {
 			IncludeRequestData: false,
 		}
 
-		handler := Middleware(cfg, logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		routeInfo := &RouteInfo{
+			OnCreate: EventSourceCreate,
+			OnUpdate: EventSourceUpdate,
+			Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+		}
+		inner := withRouteInfo(routeInfo, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusCreated)
 		}))
+		handler := Middleware(cfg, logger)(inner)
 
 		body := `{"name":"secret","type":"git"}`
 		req := httptest.NewRequest(http.MethodPut, "/v1/sources/my-source", strings.NewReader(body))
@@ -517,11 +649,17 @@ func TestMiddleware_EventTypeFiltering(t *testing.T) {
 			EventTypes: []string{EventSourceCreate},
 		}
 
-		handler := Middleware(cfg, logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		routeInfo := &RouteInfo{
+			OnCreate: EventSourceCreate,
+			OnUpdate: EventSourceUpdate,
+			Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+		}
+		inner := withRouteInfo(routeInfo, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			// Returns 200, so event type resolves to source.update (not in whitelist).
 			w.WriteHeader(http.StatusOK)
 		}))
+		handler := Middleware(cfg, logger)(inner)
 
-		// This should be filtered (source.update is not in the whitelist).
 		req := httptest.NewRequest(http.MethodPut, "/v1/sources/my-source", nil)
 		ctx := auth.ContextWithClaims(req.Context(), jwt.MapClaims{"sub": "user"})
 		req = req.WithContext(ctx)
@@ -542,11 +680,17 @@ func TestMiddleware_EventTypeFiltering(t *testing.T) {
 			EventTypes: []string{EventSourceCreate},
 		}
 
-		handler := Middleware(cfg, logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		routeInfo := &RouteInfo{
+			OnCreate: EventSourceCreate,
+			OnUpdate: EventSourceUpdate,
+			Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+		}
+		inner := withRouteInfo(routeInfo, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			// Returns 201, so event type resolves to source.create (in whitelist).
 			w.WriteHeader(http.StatusCreated)
 		}))
+		handler := Middleware(cfg, logger)(inner)
 
-		// This should pass (source.create is in the whitelist).
 		req := httptest.NewRequest(http.MethodPut, "/v1/sources/my-source", nil)
 		ctx := auth.ContextWithClaims(req.Context(), jwt.MapClaims{"sub": "user"})
 		req = req.WithContext(ctx)
@@ -567,9 +711,15 @@ func TestMiddleware_EventTypeFiltering(t *testing.T) {
 			ExcludeEventTypes: []string{EventSourceUpdate},
 		}
 
-		handler := Middleware(cfg, logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		routeInfo := &RouteInfo{
+			OnCreate: EventSourceCreate,
+			OnUpdate: EventSourceUpdate,
+			Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+		}
+		inner := withRouteInfo(routeInfo, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
+		handler := Middleware(cfg, logger)(inner)
 
 		req := httptest.NewRequest(http.MethodPut, "/v1/sources/my-source", nil)
 		ctx := auth.ContextWithClaims(req.Context(), jwt.MapClaims{"sub": "user"})
@@ -592,9 +742,15 @@ func TestMiddleware_EventTypeFiltering(t *testing.T) {
 			ExcludeEventTypes: []string{EventSourceUpdate},
 		}
 
-		handler := Middleware(cfg, logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		routeInfo := &RouteInfo{
+			OnCreate: EventSourceCreate,
+			OnUpdate: EventSourceUpdate,
+			Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+		}
+		inner := withRouteInfo(routeInfo, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
+		handler := Middleware(cfg, logger)(inner)
 
 		req := httptest.NewRequest(http.MethodPut, "/v1/sources/my-source", nil)
 		ctx := auth.ContextWithClaims(req.Context(), jwt.MapClaims{"sub": "user"})
@@ -604,24 +760,6 @@ func TestMiddleware_EventTypeFiltering(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 		assert.NotContains(t, buf.String(), "audit_event")
 	})
-}
-
-func TestMiddleware_UnknownV1PathSkipsAudit(t *testing.T) {
-	t.Parallel()
-
-	var buf bytes.Buffer
-	logger := newTestLogger(&buf)
-
-	handler := Middleware(enabledConfig(), logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/unknown-endpoint", nil)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Empty(t, buf.String(), "unknown v1 path should not produce audit events")
 }
 
 // --- AuthFailureMiddleware tests ---
@@ -776,36 +914,6 @@ func TestAuthFailureMiddleware_EventFiltering(t *testing.T) {
 }
 
 // --- Helper function tests ---
-
-func TestShouldAudit(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		method   string
-		path     string
-		expected bool
-	}{
-		{name: "POST /v1/entries", method: http.MethodPost, path: "/v1/entries", expected: true},
-		{name: "PUT /v1/sources/x", method: http.MethodPut, path: "/v1/sources/x", expected: true},
-		{name: "DELETE /v1/registries/x", method: http.MethodDelete, path: "/v1/registries/x", expected: true},
-		{name: "GET /v1/sources", method: http.MethodGet, path: "/v1/sources", expected: true},
-		{name: "GET /v1/registries/my-reg", method: http.MethodGet, path: "/v1/registries/my-reg", expected: true},
-		{name: "POST /health", method: http.MethodPost, path: "/health", expected: false},
-		{name: "PUT /registry/something", method: http.MethodPut, path: "/registry/something", expected: false},
-		{name: "PATCH /v1/sources/x", method: http.MethodPatch, path: "/v1/sources/x", expected: true},
-		{name: "HEAD /v1/sources/x", method: http.MethodHead, path: "/v1/sources/x", expected: true},
-		{name: "GET /v1/me", method: http.MethodGet, path: "/v1/me", expected: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			req := httptest.NewRequest(tt.method, tt.path, nil)
-			assert.Equal(t, tt.expected, shouldAudit(req))
-		})
-	}
-}
 
 func TestIsMutating(t *testing.T) {
 	t.Parallel()
@@ -1078,27 +1186,22 @@ func TestClaimString(t *testing.T) {
 	}
 }
 
-func TestEmitAuditEvent_UnknownPathSkips(t *testing.T) {
+func TestMiddleware_UnannotatedRouteSkips(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
 	logger := newTestLogger(&buf)
 
-	req := httptest.NewRequest(http.MethodPut, "/v1/unknown", nil)
-
-	// Call emitEvent with an empty event type to verify no log output.
-	// EventTypeFromRequest for an unknown PUT path returns "".
-	eventType := EventTypeFromRequest(req.Method, req.URL.Path, http.StatusOK)
-	assert.Empty(t, eventType)
-
-	// If eventType is empty, emitEvent should not be called in the middleware.
-	// Verify by running through the middleware.
+	// Running through the middleware without any audited* wrapper means
+	// no RouteInfo is injected, so no audit event should be emitted.
 	handler := Middleware(enabledConfig(), logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
+	req := httptest.NewRequest(http.MethodPut, "/v1/unknown", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
+
 	assert.Empty(t, buf.String())
 }
 
@@ -1166,9 +1269,15 @@ func TestMiddleware_LogOutputIsValidJSON(t *testing.T) {
 	var buf bytes.Buffer
 	logger := newTestLogger(&buf)
 
-	handler := Middleware(enabledConfig(), logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	routeInfo := &RouteInfo{
+		OnCreate: EventSourceCreate,
+		OnUpdate: EventSourceUpdate,
+		Target:   map[string]string{"method": http.MethodPut, "path": "/v1/sources/my-source", "resource_type": ResourceTypeSource, "resource_name": "my-source"},
+	}
+	inner := withRouteInfo(routeInfo, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
+	handler := Middleware(enabledConfig(), logger)(inner)
 
 	req := httptest.NewRequest(http.MethodPut, "/v1/sources/my-source", nil)
 	ctx := auth.ContextWithClaims(req.Context(), jwt.MapClaims{"sub": "user-1"})

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -26,12 +25,11 @@ func Middleware(cfg *config.AuditConfig, logger *Logger) func(http.Handler) http
 			return next
 		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !shouldAudit(r) {
-				next.ServeHTTP(w, r)
-				return
-			}
-
 			start := time.Now()
+
+			// Inject a mutable carrier so Audited* wrappers can record RouteInfo.
+			ctx := newRouteInfoCarrier(r.Context())
+			r = r.WithContext(ctx)
 
 			// Capture request body if configured.
 			var reqBody []byte
@@ -46,7 +44,25 @@ func Middleware(cfg *config.AuditConfig, logger *Logger) func(http.Handler) http
 			next.ServeHTTP(ww, r)
 
 			duration := time.Since(start)
-			eventType := EventTypeFromRequest(r.Method, r.URL.Path, ww.Status())
+
+			// Read RouteInfo injected by the Audited* wrapper for this route.
+			// If nil, the route is not annotated — skip auditing.
+			info := RouteInfoFromContext(r.Context())
+			if info == nil {
+				return
+			}
+
+			// Resolve event type: upsert handlers choose based on HTTP status.
+			var eventType string
+			if info.OnCreate != "" {
+				if ww.Status() == http.StatusCreated {
+					eventType = info.OnCreate
+				} else {
+					eventType = info.OnUpdate
+				}
+			} else {
+				eventType = info.EventType
+			}
 			if eventType == "" {
 				return
 			}
@@ -56,7 +72,7 @@ func Middleware(cfg *config.AuditConfig, logger *Logger) func(http.Handler) http
 				return
 			}
 
-			emitEvent(r, ww.Status(), ww.BytesWritten(), duration, eventType, reqBody, logger)
+			emitEvent(r, ww.Status(), ww.BytesWritten(), duration, eventType, info.Target, reqBody, logger)
 		})
 	}
 }
@@ -87,12 +103,6 @@ func AuthFailureMiddleware(cfg *config.AuditConfig, logger *Logger, publicPaths 
 			}
 		})
 	}
-}
-
-// shouldAudit returns true when the request should produce an audit event.
-// All HTTP methods on /v1/ paths are auditable.
-func shouldAudit(r *http.Request) bool {
-	return strings.HasPrefix(r.URL.Path, "/v1/")
 }
 
 // isMutating returns true for methods that modify state.
@@ -149,13 +159,13 @@ func emitEvent(
 	bytesWritten int,
 	duration time.Duration,
 	eventType string,
+	target map[string]string,
 	reqBody []byte,
 	logger *Logger,
 ) {
 	source := SourceFromRequest(r)
 	outcome := OutcomeFromStatus(status)
 	subjects := subjectsFromRequest(r)
-	target := TargetFromRequest(r.Method, r.URL.Path)
 
 	event := audit.NewAuditEvent(
 		eventType,
