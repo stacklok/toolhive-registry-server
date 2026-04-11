@@ -25,12 +25,9 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 - [Features](#features)
 - [Quickstart](#quickstart)
 - [Core Concepts](#core-concepts)
-  - [Sources and Registries](#sources-and-registries)
-  - [Architecture](#architecture)
 - [API Endpoints](#api-endpoints)
 - [Configuration](#configuration)
-- [Deployment](#deployment)
-- [Development](#development)
+- [The ToolHive Platform](#the-toolhive-platform)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 
@@ -97,14 +94,6 @@ task docker-down
 
 > **Note:** The `task docker-up` command ensures a fresh start by rebuilding the image and clearing all volumes (database + registry data). This prevents stale state issues.
 
-### What happens on startup
-
-1. Loads configuration from YAML file
-2. Runs database migrations automatically (if configured)
-3. Immediately fetches registry data from configured sources
-4. Starts background sync coordinator for automatic updates
-5. Serves MCP Registry API endpoints
-
 ## Core concepts
 
 ### Sources and registries
@@ -167,50 +156,6 @@ registries:
 ```
 
 See [Configuration Guide](docs/configuration.md) for complete details.
-
-### Architecture
-
-The server follows clean architecture with clear separation of concerns:
-
-```text
-┌─────────────────────────────────────────────┐
-│  API Layer (Chi Router)                     │
-│  ├─ Registry API v0.1                       │
-│  ├─ Admin API v1                            │
-│  └─ OAuth/OIDC Middleware                   │
-└─────────────────────────────────────────────┘
-                    │
-┌─────────────────────────────────────────────┐
-│  Service Layer (RegistryService)            │
-│  └─ PostgreSQL backend                      │
-└─────────────────────────────────────────────┘
-                    │
-┌─────────────────────────────────────────────┐
-│  Data Source Layer                          │
-│  ├─ Git Handler                             │
-│  ├─ API Handler                             │
-│  ├─ File Handler                            │
-│  ├─ Managed Handler                         │
-│  └─ Kubernetes Handler                      │
-└─────────────────────────────────────────────┘
-                    │
-┌─────────────────────────────────────────────┐
-│  Sync Layer (Background Coordinator)        │
-└─────────────────────────────────────────────┘
-```
-
-**Key directories:**
-
-- `internal/api/` - HTTP API handlers
-- `internal/service/` - Business logic
-- `internal/sources/` - Data source handlers
-- `internal/sync/` - Background synchronization
-- `internal/auth/` - OAuth/OIDC authentication
-- `internal/db/` - Database access (sqlc generated)
-- `internal/config/` - Configuration loading
-- `internal/app/` - Application builder and startup
-- `internal/telemetry/` - OpenTelemetry integration
-- `database/` - SQL migrations and queries
 
 ## API endpoints
 
@@ -325,243 +270,36 @@ auth:
 - **[Database setup](docs/database.md)** - PostgreSQL configuration, migrations, and security
 - **[Authentication](docs/authentication.md)** - OAuth/OIDC setup and security
 
-### Configuration examples
+## The ToolHive platform
 
-See [examples/](examples/) directory for complete working examples:
+The Registry Server is one component of the [ToolHive](https://github.com/stacklok/toolhive) platform. Together, they cover the full MCP lifecycle:
 
-- `config-git.yaml` - Git repository source
-- `config-api.yaml` - API endpoint source
-- `config-file.yaml` - Local file source
-- `config-database-dev.yaml` - With database (development)
-- `config-database-prod.yaml` - With database (production)
-- `config-docker.yaml` - For Docker Compose
-
-## Deployment
-
-### Docker Compose
-
-Quick start with PostgreSQL (ensures fresh state):
-
-```bash
-# Start with fresh state (recommended)
-task docker-up
-
-# Or detached mode
-task docker-up-detached
-
-# View logs
-task docker-logs           # All logs
-FOLLOW=true task docker-logs  # Tail logs
-
-# Stop and clean up
-task docker-down
-```
-
-> **Note:** Always use `task docker-up` instead of `docker-compose up` directly. The task command ensures fresh state by rebuilding the image and clearing volumes.
-
-See [Docker deployment guide](docs/deployment-docker.md) for details.
-
-### Kubernetes
-
-Basic deployment:
-
-```bash
-kubectl apply -f examples/kubernetes/
-```
-
-See [Kubernetes deployment guide](docs/deployment-kubernetes.md) for production setup.
-
-### Standalone binary
-
-```bash
-# Linux/macOS
-./bin/thv-registry-api serve --config config.yaml
-
-# With environment variables
-export THV_REGISTRY_DATABASE_HOST=postgres.example.com
-export THV_REGISTRY_AUTH_MODE=anonymous
-./bin/thv-registry-api serve --config config.yaml
-```
-
-### Deployment guides
-
-- **[Docker & Docker Compose](docs/deployment-docker.md)** - Container deployment
-- **[Kubernetes](docs/deployment-kubernetes.md)** - K8s deployment, HA, and production best practices
-
-## Development
-
-### Build commands
-
-```bash
-# Build the binary
-task build
-
-# Run linting (auto-fix)
-task lint-fix
-
-# Run tests
-task test
-
-# Generate mocks
-task gen
-
-# Build container image
-task build-image
-
-# Run database migrations
-task migrate-up CONFIG=examples/config-database-dev.yaml
-
-# Regenerate documentation
-task docs
-
-# All checks (lint + test + build)
-task all
-```
-
-### Testing
-
-```bash
-# Generate mocks before testing
-task gen
-
-# Run all tests
-task test
-
-# Run specific test
-go test ./internal/service/... -v
-```
-
-The project uses table-driven tests with mocks generated via `go.uber.org/mock`.
-
-### Project structure
-
-```text
-cmd/thv-registry-api/    # Main application
-├── app/                 # CLI commands (serve, migrate, prime-db, version)
-└── main.go
-
-internal/                # Internal packages
-├── api/                 # HTTP API handlers
-├── app/                 # Application builder and startup
-├── audit/               # SIEM-compliant audit logging
-├── auth/                # OAuth/OIDC authentication
-├── authz/               # JWT claim-based authorization
-├── config/              # Configuration loading
-├── db/                  # Database access (sqlc generated)
-├── filtering/           # Registry entry filtering
-├── kubernetes/          # Kubernetes reconciler for K8s sources
-├── registry/            # Registry data models
-├── service/             # Business logic
-├── sources/             # Data source handlers (Git, API, File, Managed)
-├── sync/                # Background sync coordination
-├── telemetry/           # OpenTelemetry integration
-└── validators/          # Input validation
-
-database/                # Database schema and queries
-├── migrations/          # SQL migrations
-└── queries/             # SQL queries for sqlc
-
-examples/                # Example configurations
-docs/                    # Documentation
-```
-
-## Documentation
-
-### Complete documentation
-
-- **[Configuration reference](docs/configuration.md)** - All configuration options
-- **[Environment variables](docs/environment-variables.md)** - Using environment variables for configuration
-- **[Database setup](docs/database.md)** - PostgreSQL setup and migrations
-- **[Authentication](docs/authentication.md)** - OAuth/OIDC security
-- **[Observability](docs/observability.md)** - OpenTelemetry tracing and metrics
-- **[Registry sync](docs/registry-sync.md)** - How background sync works, status tracking, retry logic
-- **[Kubernetes deployment](docs/deployment-kubernetes.md)** - K8s deployment guide
-- **[Docker deployment](docs/deployment-docker.md)** - Docker & Docker Compose
-- **[API documentation](docs/thv-registry-api/)** - Auto-generated OpenAPI docs
-- **[CLI reference](docs/cli/)** - Command-line interface docs
-- **[Examples](examples/)** - Working configuration examples
-- **[CLAUDE.md](CLAUDE.md)** - AI assistant guidance for contributors
-
-### Common Tasks
-
-| I want to...          | See...                                            |
-| --------------------- | ------------------------------------------------- |
-| Get started quickly   | [Quickstart](#quickstart)                         |
-| Configure the server  | [Configuration reference](docs/configuration.md)  |
-| Set up PostgreSQL     | [Database setup](docs/database.md)                |
-| Enable authentication | [Authentication guide](docs/authentication.md)    |
-| Set up observability  | [Observability guide](docs/observability.md)      |
-| Understand sync       | [Registry sync](docs/registry-sync.md)            |
-| Deploy to Kubernetes  | [Kubernetes guide](docs/deployment-kubernetes.md) |
-| Use Docker Compose    | [Docker guide](docs/deployment-docker.md)         |
-| Contribute code       | [Contributing](#contributing)                     |
-
-## Integration with ToolHive
-
-The Registry API server is the central metadata engine of the ToolHive platform:
-
-### Enterprise UI integration
-
-- **Metadata source**: Provides MCP details (name, description, URL, version, branding)
-- **Server status**: Reports sync status and availability for each registry
-- **Discovery experience**: Powers the catalog browsing and search in the Enterprise UI
-- **Authentication**: Enforces OAuth/OIDC access control from your identity provider
-
-### ToolHive Operator integration
-
-- **Deployment metadata**: Operator references registry data when deploying MCPs to Kubernetes
-- **Automated discovery**: Kubernetes-deployed MCPs automatically appear in the registry
-- **Custom Resource binding**: MCPRegistry CRDs are backed by Registry Server data
-- **Lifecycle management**: Tracks deployed MCP versions and configurations
-
-### Security and governance
-
-- **Centralized control**: Single source of truth for approved MCP servers and skills
-- **Identity integration**: Seamless integration with Okta, Auth0, Azure AD, and other providers
-- **Kubernetes-native**: All MCP execution stays within your Kubernetes boundary
-- **Audit logging**: SIEM-compliant structured audit log for all API operations
+- **Registry Server** (this project) handles discovery and governance -- it knows what MCP servers and skills exist, who can access them, and tracks all operations.
+- **[ToolHive Operator](https://github.com/stacklok/toolhive)** handles deployment -- it deploys and manages MCP servers on Kubernetes, using registry metadata to drive lifecycle decisions. MCP servers deployed by the Operator automatically appear in the registry.
+- **ToolHive Enterprise UI** ties it all together -- catalog browsing, search, and admin management backed by the registry API.
 
 See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for the complete platform architecture.
 
+## Documentation
+
+- **[Configuration reference](docs/configuration.md)** - All configuration options
+- **[Environment variables](docs/environment-variables.md)** - Environment variable overrides
+- **[Database setup](docs/database.md)** - PostgreSQL setup and migrations
+- **[Authentication](docs/authentication.md)** - OAuth/OIDC security
+- **[Observability](docs/observability.md)** - OpenTelemetry tracing and metrics
+- **[Registry sync](docs/registry-sync.md)** - How background sync works
+- **[Kubernetes deployment](docs/deployment-kubernetes.md)** - K8s deployment and HA
+- **[Docker deployment](docs/deployment-docker.md)** - Docker Compose setup
+- **[API documentation](docs/thv-registry-api/)** - Auto-generated OpenAPI docs
+- **[CLI reference](docs/cli/)** - Command-line interface docs
+- **[Examples](examples/)** - Working configuration examples
+
 ## Contributing
 
-We welcome contributions! Please see:
+We welcome contributions! See the **[Contributing guide](CONTRIBUTING.md)** to get started, including development setup, build commands, architecture overview, and project structure.
 
-- **[Contributing guide](CONTRIBUTING.md)** - How to contribute
 - **[Code of conduct](CODE_OF_CONDUCT.md)** - Community guidelines
 - **[Security policy](SECURITY.md)** - Report security vulnerabilities
-- **[CLAUDE.md](CLAUDE.md)** - AI assistant guidance for development
-
-### Development guidelines
-
-- Run `task lint-fix` before committing
-- Ensure tests pass with `task test`
-- Follow Go standard project layout
-- Use mockgen for test mocks (never hand-written)
-- Write table-driven tests
-- Keep documentation up to date
-
-### Quick start for contributors
-
-```bash
-# Clone the repository
-git clone https://github.com/stacklok/toolhive-registry-server.git
-cd toolhive-registry-server
-
-# Install dependencies
-go mod download
-
-# Run all checks
-task all
-
-# Make your changes...
-
-# Run tests
-task gen
-task test
-
-# Submit PR
-```
 
 ## License
 
