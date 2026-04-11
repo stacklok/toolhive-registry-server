@@ -105,6 +105,7 @@ func (d *DatabaseFactory) CreateRegistryService(_ context.Context) (service.Regi
 	// When authz is not configured, skip per-entry claims filtering and
 	// registry-level claims gating (auth-only mode).
 	if d.config.Auth == nil || d.config.Auth.Authz == nil {
+		slog.Warn("Authorization not configured, per-entry claims filtering disabled (auth-only mode)")
 		opts = append(opts, database.WithSkipAuthz())
 	}
 
