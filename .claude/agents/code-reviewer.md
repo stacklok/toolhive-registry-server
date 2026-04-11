@@ -43,6 +43,7 @@ Do NOT invoke for:
 - [ ] Appropriate use of context.Context
 - [ ] No unnecessary goroutines or concurrency issues
 - [ ] Proper resource cleanup (defer, Close())
+- [ ] Functional options are declared as `func(*T) error`, not `func(*T)` — flag any void option type as a required change
 
 ### Security Considerations
 - [ ] Container isolation properly implemented
@@ -68,7 +69,7 @@ Do NOT invoke for:
 - [ ] Public APIs have godoc comments
 - [ ] Complex logic has explanatory comments
 - [ ] README/docs updated if behavior changes
-- [ ] Commit messages follow CONTRIBUTING.md guidelines
+- [ ] Commit messages follow CONTRIBUTING.md guidelines: no conventional prefixes (`feat:`, `fix:`, etc.), subject ≤ 50 chars in imperative mood with backtick-quoted identifiers, body in plain technical prose, GitHub issue ref at the end when applicable
 
 ### Performance
 - [ ] No unnecessary allocations in hot paths
