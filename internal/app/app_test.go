@@ -79,17 +79,20 @@ func createTestApp(t *testing.T, ctrl *gomock.Controller, addr string) *Registry
 
 	// Build the HTTP server with test configuration
 	appCfg := &registryAppConfig{
-		config:         cfg,
-		address:        addr,
-		requestTimeout: 10 * time.Second,
-		readTimeout:    10 * time.Second,
-		writeTimeout:   15 * time.Second,
-		idleTimeout:    60 * time.Second,
-		authMiddleware: func(next http.Handler) http.Handler { return next },
+		config:          cfg,
+		address:         addr,
+		internalAddress: ":0",
+		requestTimeout:  10 * time.Second,
+		readTimeout:     10 * time.Second,
+		writeTimeout:    15 * time.Second,
+		idleTimeout:     60 * time.Second,
+		authMiddleware:  func(next http.Handler) http.Handler { return next },
 	}
 
 	server, err := buildHTTPServer(ctx, appCfg, mockSvc, nil)
 	require.NoError(t, err)
+
+	internalServer := buildInternalHTTPServer(appCfg, mockSvc)
 
 	return &RegistryApp{
 		config: cfg,
@@ -97,9 +100,10 @@ func createTestApp(t *testing.T, ctrl *gomock.Controller, addr string) *Registry
 			SyncCoordinator: mockCoord,
 			RegistryService: mockSvc,
 		},
-		httpServer: server,
-		ctx:        appCtx,
-		cancelFunc: cancel,
+		httpServer:         server,
+		internalHTTPServer: internalServer,
+		ctx:                appCtx,
+		cancelFunc:         cancel,
 	}
 }
 
@@ -207,14 +211,20 @@ func TestRegistryApp_StartWithListener(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	app := createTestApp(t, ctrl, ":0")
 
-	// Create a listener to get an actual port
-	listener, err := net.Listen("tcp", ":0")
+	// Create listeners to get actual ports for both servers
+	mainListener, err := net.Listen("tcp", ":0")
 	require.NoError(t, err)
-	actualAddr := listener.Addr().String()
-	listener.Close()
+	mainAddr := mainListener.Addr().String()
+	mainListener.Close()
 
-	// Update the server address to use the now-free port
-	app.httpServer.Addr = actualAddr
+	internalListener, err := net.Listen("tcp", ":0")
+	require.NoError(t, err)
+	internalAddr := internalListener.Addr().String()
+	internalListener.Close()
+
+	// Update the server addresses to use the now-free ports
+	app.httpServer.Addr = mainAddr
+	app.internalHTTPServer.Addr = internalAddr
 
 	// Start server in goroutine
 	errChan := make(chan error, 1)
@@ -225,8 +235,8 @@ func TestRegistryApp_StartWithListener(t *testing.T) {
 	// Wait for server to start
 	time.Sleep(100 * time.Millisecond)
 
-	// Make a health check request
-	resp, err := http.Get("http://" + actualAddr + "/health")
+	// Make a health check request against the internal server
+	resp, err := http.Get("http://" + internalAddr + "/health")
 	if err == nil {
 		resp.Body.Close()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)

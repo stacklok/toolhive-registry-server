@@ -72,11 +72,6 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 		r.Use(mw)
 	}
 
-	// Mount operational endpoints at root
-	r.Get("/health", healthHandler)
-	r.Get("/readiness", readinessHandler(svc))
-	r.Get("/version", versionHandler)
-
 	// Mount OpenAPI endpoint
 	r.Get("/openapi.json", openAPIHandler)
 
@@ -92,15 +87,21 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 	return r
 }
 
+// NewInternalServer creates a minimal HTTP router for internal operational
+// endpoints (health, readiness, version). These endpoints are intended to
+// run on a separate port so that Kubernetes probes hit a dedicated server
+// that carries no authentication or application middleware.
+func NewInternalServer(svc service.RegistryService) *chi.Mux {
+	r := chi.NewRouter()
+	r.Get("/health", healthHandler)
+	r.Get("/readiness", readinessHandler(svc))
+	r.Get("/version", versionHandler)
+	return r
+}
+
 // LoggingMiddleware logs HTTP requests
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip logging for health and readiness endpoints
-		if r.URL.Path == "/health" || r.URL.Path == "/readiness" {
-			next.ServeHTTP(w, r)
-			return
-		}
-
 		start := time.Now()
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 

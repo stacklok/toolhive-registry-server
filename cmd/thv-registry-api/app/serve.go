@@ -44,12 +44,18 @@ const (
 
 func init() {
 	serveCmd.Flags().String("address", ":8080", "Address to listen on")
+	serveCmd.Flags().String("internal-address", ":8081", "Address to listen on for internal endpoints (health, readiness, version)")
 	serveCmd.Flags().String("config", "", "Path to configuration file (YAML format, required)")
 	serveCmd.Flags().String("auth-mode", "", "Override auth mode from config (anonymous or oauth)")
 
 	err := viper.BindPFlag("address", serveCmd.Flags().Lookup("address"))
 	if err != nil {
 		slog.Error("Failed to bind address flag", "error", err)
+		os.Exit(1)
+	}
+	err = viper.BindPFlag("internal-address", serveCmd.Flags().Lookup("internal-address"))
+	if err != nil {
+		slog.Error("Failed to bind internal-address flag", "error", err)
 		os.Exit(1)
 	}
 	err = viper.BindPFlag("config", serveCmd.Flags().Lookup("config"))
@@ -136,10 +142,12 @@ func runServe(cmd *cobra.Command, _ []string) error {
 
 	// Build application using the builder pattern
 	address := viper.GetString("address")
+	internalAddress := viper.GetString("internal-address")
 	app, err := registryapp.NewRegistryApp(
 		ctx,
 		registryapp.WithConfig(cfg),
 		registryapp.WithAddress(address),
+		registryapp.WithInternalAddress(internalAddress),
 		registryapp.WithMeterProvider(tel.MeterProvider()),
 		registryapp.WithTracerProvider(tel.TracerProvider()),
 	)

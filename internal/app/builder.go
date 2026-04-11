@@ -28,15 +28,16 @@ import (
 )
 
 const (
-	defaultHTTPAddress    = ":8080"
-	defaultRequestTimeout = 10 * time.Second
-	defaultReadTimeout    = 10 * time.Second
-	defaultWriteTimeout   = 15 * time.Second
-	defaultIdleTimeout    = 60 * time.Second
+	defaultHTTPAddress         = ":8080"
+	defaultInternalHTTPAddress = ":8081"
+	defaultRequestTimeout      = 10 * time.Second
+	defaultReadTimeout         = 10 * time.Second
+	defaultWriteTimeout        = 15 * time.Second
+	defaultIdleTimeout         = 60 * time.Second
 )
 
 // defaultPublicPaths are paths that never require authentication
-var defaultPublicPaths = []string{"/health", "/readiness", "/version", "/openapi.json", "/.well-known"}
+var defaultPublicPaths = []string{"/openapi.json", "/.well-known"}
 
 // RegistryAppOptions is a function that configures the registry app builder
 type RegistryAppOptions func(*registryAppConfig) error
@@ -52,12 +53,13 @@ type registryAppConfig struct {
 	storageFactory         storage.Factory // Replaces: storageManager, statusPersistence, registryProvider
 
 	// HTTP server options
-	address        string
-	middlewares    []func(http.Handler) http.Handler
-	requestTimeout time.Duration
-	readTimeout    time.Duration
-	writeTimeout   time.Duration
-	idleTimeout    time.Duration
+	address         string
+	internalAddress string
+	middlewares     []func(http.Handler) http.Handler
+	requestTimeout  time.Duration
+	readTimeout     time.Duration
+	writeTimeout    time.Duration
+	idleTimeout     time.Duration
 
 	// Auth components
 	authMiddleware  func(http.Handler) http.Handler
@@ -73,11 +75,12 @@ type registryAppConfig struct {
 
 func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
 	cfg := &registryAppConfig{
-		address:        defaultHTTPAddress,
-		requestTimeout: defaultRequestTimeout,
-		readTimeout:    defaultReadTimeout,
-		writeTimeout:   defaultWriteTimeout,
-		idleTimeout:    defaultIdleTimeout,
+		address:         defaultHTTPAddress,
+		internalAddress: defaultInternalHTTPAddress,
+		requestTimeout:  defaultRequestTimeout,
+		readTimeout:     defaultReadTimeout,
+		writeTimeout:    defaultWriteTimeout,
+		idleTimeout:     defaultIdleTimeout,
 	}
 
 	// Apply options
@@ -149,6 +152,9 @@ func NewRegistryApp(
 		return nil, fmt.Errorf("failed to build HTTP server: %w", err)
 	}
 
+	// Build internal HTTP server for health/readiness/version
+	internalHTTPServer := buildInternalHTTPServer(cfg, registryService)
+
 	// Create application context
 	appCtx, cancel := context.WithCancel(ctx) //nolint:gosec // G118 false positive: cancel is called in cancelFunc below
 
@@ -171,9 +177,10 @@ func NewRegistryApp(
 			SyncCoordinator: syncCoordinator,
 			RegistryService: registryService,
 		},
-		httpServer: httpServer,
-		ctx:        appCtx,
-		cancelFunc: cancelFunc,
+		httpServer:         httpServer,
+		internalHTTPServer: internalHTTPServer,
+		ctx:                appCtx,
+		cancelFunc:         cancelFunc,
 	}, nil
 }
 
@@ -211,6 +218,36 @@ func WithAddress(addr string) RegistryAppOptions {
 		}
 
 		cfg.address = addr
+		return nil
+	}
+}
+
+// WithInternalAddress sets the internal HTTP server address for health, readiness, and version endpoints
+func WithInternalAddress(addr string) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		if addr == "" {
+			return fmt.Errorf("internal address cannot be empty")
+		}
+
+		parts := strings.SplitN(addr, ":", 2)
+		host := parts[0]
+		port := parts[1]
+
+		if port == "" {
+			return fmt.Errorf("internal address is not a valid port: %s", addr)
+		}
+		if host == "localhost" {
+			host = "127.0.0.1"
+		}
+		if host == "" {
+			host = "0.0.0.0"
+		}
+
+		if _, err := netip.ParseAddrPort(host + ":" + port); err != nil {
+			return fmt.Errorf("internal address is not a valid port: %w", err)
+		}
+
+		cfg.internalAddress = addr
 		return nil
 	}
 }
@@ -469,6 +506,18 @@ func buildHTTPServer(
 
 	slog.Info("HTTP server configured", "address", b.address)
 	return server, nil
+}
+
+// buildInternalHTTPServer builds the internal HTTP server for health, readiness, and version endpoints
+func buildInternalHTTPServer(b *registryAppConfig, svc service.RegistryService) *http.Server {
+	router := api.NewInternalServer(svc)
+	return &http.Server{
+		Addr:         b.internalAddress,
+		Handler:      router,
+		ReadTimeout:  b.readTimeout,
+		WriteTimeout: b.writeTimeout,
+		IdleTimeout:  b.idleTimeout,
+	}
 }
 
 // ensureStorageFactory creates the storage factory if not already injected.
