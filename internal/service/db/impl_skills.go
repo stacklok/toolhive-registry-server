@@ -49,7 +49,11 @@ func (s *dbService) ListSkills(
 		options.Limit = service.MaxPageSize
 	}
 
-	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
+	gateClaims := options.Claims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -87,6 +91,9 @@ func (s *dbService) ListSkills(
 			return r.Claims, ok
 		},
 	)
+	if s.skipAuthz {
+		claimsFilter = nil
+	}
 	listRows, nextCursor, err := streamSkillRows(ctx, querier, params, claimsFilter, options.Limit)
 	if err != nil {
 		otel.RecordError(span, err)
@@ -174,7 +181,11 @@ func (s *dbService) GetSkillVersion(
 
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
+	gateClaims := options.Claims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -209,7 +220,7 @@ func (s *dbService) GetSkillVersion(
 	var row sqlc.GetSkillVersionRow
 	found := false
 	for _, r := range rows {
-		if callerJSON == nil || checkClaims(callerJSON, r.Claims) {
+		if s.skipAuthz || callerJSON == nil || checkClaims(callerJSON, r.Claims) {
 			row = r
 			found = true
 			break
