@@ -58,7 +58,11 @@ func (s *dbService) ListServers(
 	}
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
+	gateClaims := options.Claims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -124,6 +128,9 @@ func (s *dbService) ListServers(
 			return h.Claims, ok
 		},
 	)
+	if s.skipAuthz {
+		claimsFilter = nil
+	}
 	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit, claimsFilter)
 	if err != nil {
 		otel.RecordError(span, err)
@@ -182,7 +189,11 @@ func (s *dbService) ListServerVersions(
 	}
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	registryIDForVersions, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
+	gateClaims := options.Claims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	registryIDForVersions, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -218,6 +229,9 @@ func (s *dbService) ListServerVersions(
 			return h.Claims, ok
 		},
 	)
+	if s.skipAuthz {
+		claimsFilter = nil
+	}
 	results, err := s.sharedListServers(ctx, querierFunc, claimsFilter)
 	if err != nil {
 		otel.RecordError(span, err)
@@ -234,6 +248,8 @@ func (s *dbService) ListServerVersions(
 }
 
 // GetServer returns a specific server by name
+//
+//nolint:gocyclo
 func (s *dbService) GetServerVersion(
 	ctx context.Context,
 	opts ...service.Option,
@@ -261,7 +277,11 @@ func (s *dbService) GetServerVersion(
 		otel.AttrRegistryName.String(options.RegistryName),
 	)
 
-	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
+	gateClaims := options.Claims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -312,6 +332,9 @@ func (s *dbService) GetServerVersion(
 			return h.Claims, ok
 		},
 	)
+	if s.skipAuthz {
+		claimsFilter = nil
+	}
 	res, err := s.sharedListServers(ctx, querierFunc, claimsFilter)
 	if err != nil {
 		otel.RecordError(span, err)
