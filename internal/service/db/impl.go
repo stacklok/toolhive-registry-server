@@ -38,6 +38,7 @@ type options struct {
 	pool        *pgxpool.Pool
 	tracer      trace.Tracer
 	maxMetaSize int
+	skipAuthz   bool
 }
 
 // Option is a functional option for configuring the database service
@@ -77,11 +78,21 @@ func WithMaxMetaSize(maxMetaSize int) Option {
 	}
 }
 
+// WithSkipAuthz disables per-entry claims filtering and registry-level
+// claims gating. Use when authz is not configured (auth-only mode).
+func WithSkipAuthz() Option {
+	return func(o *options) error {
+		o.skipAuthz = true
+		return nil
+	}
+}
+
 // dbService implements the RegistryService interface using a database backend
 type dbService struct {
 	pool        *pgxpool.Pool
 	tracer      trace.Tracer
 	maxMetaSize int
+	skipAuthz   bool
 }
 
 var _ service.RegistryService = (*dbService)(nil)
@@ -100,6 +111,7 @@ func New(opts ...Option) (service.RegistryService, error) {
 		pool:        o.pool,
 		tracer:      o.tracer,
 		maxMetaSize: o.maxMetaSize,
+		skipAuthz:   o.skipAuthz,
 	}, nil
 }
 

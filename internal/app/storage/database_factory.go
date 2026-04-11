@@ -102,6 +102,12 @@ func (d *DatabaseFactory) CreateRegistryService(_ context.Context) (service.Regi
 		slog.Debug("Database service tracing enabled")
 	}
 
+	// When authz is not configured, skip per-entry claims filtering and
+	// registry-level claims gating (auth-only mode).
+	if d.config.Auth == nil || d.config.Auth.Authz == nil {
+		opts = append(opts, database.WithSkipAuthz())
+	}
+
 	return database.New(opts...)
 }
 
