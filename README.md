@@ -43,7 +43,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 ### Aggregate from anywhere
 
 - **Five source types**: Pull entries from Git repos, upstream MCP registries, local files, Kubernetes clusters, or publish them via the Admin API.
-- **Compose catalogs from multiple sources**: Each registry aggregates one or more sources with priority ordering. One source can feed multiple registries, so the same internal catalog can serve different teams with different visibility rules.
+- **Compose catalogs from multiple sources**: Each registry aggregates one or more sources, listed in order of precedence. One source can feed multiple registries, so the same internal catalog can serve different teams with different visibility rules.
 - **Background sync**: Sources are polled on configurable intervals with retry logic. Registries stay current without manual intervention.
 
 ### Kubernetes and observability
@@ -59,7 +59,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 
 - Go 1.26 or later (for building from source)
 - [Task](https://taskfile.dev) for build automation
-- PostgreSQL 16+ (optional, for database backend)
+- PostgreSQL 16+
 
 ### Build and run
 
@@ -86,7 +86,7 @@ task docker-up
 task docker-up-detached
 
 # Access the API
-curl http://localhost:8080/registry/v0.1/servers
+curl http://localhost:8080/registry/default/v0.1/servers
 
 # Stop and clean up
 task docker-down
@@ -110,7 +110,7 @@ A **source** is a connection to where MCP server and skill entries live. It tell
 | **Managed**    | Entries published via the Admin API | Dynamically registered internal servers                      | On-demand    |
 | **Kubernetes** | Discovers deployed MCP servers      | Servers running in your K8s clusters                         | On-demand    |
 
-A **registry** is a named catalog that aggregates one or more sources into a single consumer-facing endpoint. Each registry can pull from different sources, apply its own filtering, set priority ordering, and enforce its own access control via JWT claims.
+A **registry** is a named catalog that aggregates one or more sources into a single consumer-facing endpoint. Each registry can pull from different sources and enforce its own access control via JWT claims. Sources are listed in order -- when the same entry appears in multiple sources, the first source in the list wins.
 
 **Why they are separate**: Sources and registries have a many-to-many relationship. One source can feed multiple registries, and one registry can pull from multiple sources. This lets you compose different catalogs for different audiences from the same underlying data:
 
@@ -240,27 +240,11 @@ registries:
 auth:
   mode: anonymous # Use "oauth" for production
 
-# Optional: Add a Git-based source
-# sources:
-#   - name: toolhive
-#     format: toolhive
-#     git:
-#       repository: https://github.com/stacklok/toolhive-catalog.git
-#       branch: main
-#       path: pkg/catalog/toolhive/data/registry-legacy.json
-#     syncPolicy:
-#       interval: "30m"
-# registries:
-#   - name: my-registry
-#     sources:
-#       - toolhive
-
-# Optional: Database backend
-# database:
-#   host: localhost
-#   port: 5432
-#   user: registry
-#   database: registry
+database:
+  host: localhost
+  port: 5432
+  user: registry
+  database: registry
 ```
 
 ### Complete guides
