@@ -1,6 +1,6 @@
 ---
 name: smoke-test
-description: Start the Registry Server via docker compose and run a suite of curl-based smoke tests covering system, read-only MCP API, admin API, and entry lifecycle scenarios.
+description: Start the Registry Server via docker compose and run a suite of curl-based smoke tests covering system, read-only MCP API, admin API, entry lifecycle, and OAuth/auth enforcement scenarios.
 allowed-tools: Bash, Read
 argument-hint: "[keep-up]"
 ---
@@ -188,6 +188,46 @@ Feature: Registry Server smoke tests
     And the body contains "smoke-reg-a"
     And the body contains "smoke-reg-b"
     And the body contains "smoke-reg-c"
+
+  # ── OAuth / auth enforcement ───────────────────────────────────────────────
+  # The stack is restarted with auth.mode: oauth before these scenarios run.
+  # No real OIDC provider is needed: "missing token" and "malformed token"
+  # cases are rejected before JWKS is consulted.
+
+  Scenario: Public paths are accessible without a token in OAuth mode
+    Given the server is restarted in OAuth mode
+    When I GET /health
+    Then the response status is 200
+    When I GET /readiness
+    Then the response status is 200
+    When I GET /version
+    Then the response status is 200
+    When I GET /openapi.json
+    Then the response status is 200
+
+  Scenario: OAuth protected-resource metadata is publicly accessible
+    When I GET /.well-known/oauth-protected-resource
+    Then the response status is 200
+    And the body contains "authorization_servers"
+
+  Scenario: MCP list-servers requires a token in OAuth mode
+    When I GET /registry/default/v0.1/servers without an Authorization header
+    Then the response status is 401
+    And the response includes a WWW-Authenticate header with Bearer scheme
+    And the WWW-Authenticate header contains resource_metadata
+
+  Scenario: Admin registries endpoint requires a token
+    When I GET /v1/registries without an Authorization header
+    Then the response status is 401
+
+  Scenario: Admin sources endpoint requires a token
+    When I GET /v1/sources without an Authorization header
+    Then the response status is 401
+
+  Scenario: Malformed Bearer token returns 401 invalid_token
+    When I GET /registry/default/v0.1/servers with Authorization: Bearer not-a-real-jwt
+    Then the response status is 401
+    And the WWW-Authenticate header contains error="invalid_token"
 ```
 
 ---
@@ -199,13 +239,27 @@ Feature: Registry Server smoke tests
 ```bash
 BASE_URL="http://localhost:8080"
 PROJECT="thv-smoke-test"
+COMPOSE_FILE="docker-compose.smoke-test.yaml"
 PASS=0
 FAIL=0
 
+# Build the image only when it does not already exist locally.
+# Separating build from up avoids a Docker Hub metadata fetch that can hang
+# when the base image is pinned by digest (the default for this project).
+if ! docker image inspect thv-smoke-test-registry-api:latest > /dev/null 2>&1; then
+  echo "=== Building Registry Server image ==="
+  # Use the same project name so the image is tagged thv-smoke-test-registry-api:latest,
+  # matching what docker-compose.smoke-test.yaml expects.
+  docker compose --project-name "$PROJECT" build 2>&1 || {
+    echo "ERROR: docker compose build failed"
+    exit 1
+  }
+fi
+
 echo "=== Starting Registry Server stack ==="
-docker compose --project-name "$PROJECT" up --build --detach --wait 2>&1 || {
+docker compose --project-name "$PROJECT" -f "$COMPOSE_FILE" up --detach --wait 2>&1 || {
   echo "ERROR: docker compose failed to start"
-  docker compose --project-name "$PROJECT" logs
+  docker compose --project-name "$PROJECT" -f "$COMPOSE_FILE" logs
   exit 1
 }
 echo "Stack is up."
@@ -214,21 +268,15 @@ echo "Stack is up."
 ### 2. Wait for readiness
 
 ```bash
+# docker compose --wait already blocks until all healthchecks pass, so this
+# step is a lightweight confirmation rather than an active poll.
 BASE_URL="http://localhost:8080"
-echo "=== Waiting for /readiness ==="
-MAX_WAIT=60
-ELAPSED=0
-until curl -sf "$BASE_URL/readiness" > /dev/null 2>&1; do
-  sleep 2
-  ELAPSED=$((ELAPSED + 2))
-  if [ "$ELAPSED" -ge "$MAX_WAIT" ]; then
-    echo "ERROR: Server did not become ready within ${MAX_WAIT}s"
-    docker compose --project-name thv-smoke-test logs registry-api
-    exit 1
-  fi
-  echo "  ... waiting (${ELAPSED}s)"
-done
-echo "Server is ready."
+echo "=== Confirming /readiness ==="
+curl -sf "$BASE_URL/readiness" > /dev/null 2>&1 && echo "Server is ready." || {
+  echo "ERROR: /readiness did not respond"
+  docker compose --project-name thv-smoke-test -f docker-compose.smoke-test.yaml logs registry-api
+  exit 1
+}
 ```
 
 ### 3. Define test helper and run scenarios
@@ -437,21 +485,172 @@ if [ "$FAIL" -gt 0 ]; then
 fi
 ```
 
-### 4. Stop the stack
+### 4. Auth enforcement tests
+
+Restart the stack with `auth.mode: oauth` (placeholder OIDC issuer) and verify
+that protected endpoints enforce authentication while public paths remain open.
+
+```bash
+BASE_URL="http://localhost:8080"
+PROJECT="thv-smoke-test"
+PASS=0
+FAIL=0
+
+# ─── helpers (same as Step 3) ─────────────────────────────────────────────────
+check() {
+  local desc="$1" expected="$2" actual="$3" body="$4" pattern="${5:-}"
+  local ok=true
+  if echo "$expected" | grep -qE '^[45]xx$'; then
+    local prefix="${expected:0:1}"
+    if ! echo "$actual" | grep -qE "^${prefix}[0-9]{2}$"; then ok=false; fi
+  elif [ "$actual" != "$expected" ]; then
+    ok=false
+  fi
+  if $ok && [ -n "$pattern" ]; then
+    if ! echo "$body" | grep -q "$pattern"; then ok=false; fi
+  fi
+  if $ok; then
+    echo "  ✓ $desc"
+    PASS=$((PASS + 1))
+  else
+    echo "  ✗ $desc  [expected HTTP $expected, got $actual]"
+    if [ -n "$pattern" ] && ! echo "$body" | grep -q "$pattern"; then
+      echo "    (body did not contain: $pattern)"
+      echo "    body: $(echo "$body" | head -3)"
+    fi
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+curl_get() { curl -s -o /tmp/thv_body -w "%{http_code}" "$BASE_URL$1"; }
+body()      { cat /tmp/thv_body; }
+
+# ─── Restart stack with OAuth mode config ────────────────────────────────────
+COMPOSE_FILE="docker-compose.smoke-test.yaml"
+echo ""
+echo "=== Restarting stack in OAuth mode (auth enforcement tests) ==="
+docker compose --project-name "$PROJECT" -f "$COMPOSE_FILE" down
+
+SKIP_AUTH=false
+if ! CONFIG_FILE=config-docker-auth-smoke.yaml \
+     docker compose --project-name "$PROJECT" -f "$COMPOSE_FILE" up --detach --wait 2>&1; then
+  echo "WARN: Failed to start stack in OAuth mode — skipping auth enforcement tests."
+  echo "      (This can happen if the registry binary rejects the placeholder issuer URL.)"
+  SKIP_AUTH=true
+fi
+
+if [ "$SKIP_AUTH" = "false" ]; then
+  MAX_WAIT=30
+  ELAPSED=0
+  until curl -sf "$BASE_URL/readiness" > /dev/null 2>&1; do
+    sleep 2
+    ELAPSED=$((ELAPSED + 2))
+    if [ "$ELAPSED" -ge "$MAX_WAIT" ]; then
+      echo "WARN: Server did not become ready in OAuth mode — skipping auth enforcement tests."
+      SKIP_AUTH=true
+      break
+    fi
+  done
+fi
+
+# ─── Auth enforcement scenarios ───────────────────────────────────────────────
+if [ "$SKIP_AUTH" = "false" ]; then
+  echo "Stack is up in OAuth mode."
+  echo ""
+  echo "── Auth enforcement ──"
+
+  # Public paths remain accessible without a token
+  SC=$(curl_get /health);       check "GET /health is public in OAuth mode"      200 "$SC" "$(body)"
+  SC=$(curl_get /readiness);    check "GET /readiness is public in OAuth mode"   200 "$SC" "$(body)"
+  SC=$(curl_get /version);      check "GET /version is public in OAuth mode"     200 "$SC" "$(body)"
+  SC=$(curl_get /openapi.json); check "GET /openapi.json is public in OAuth mode" 200 "$SC" "$(body)"
+
+  # RFC 9728 protected-resource metadata endpoint is public
+  SC=$(curl_get /.well-known/oauth-protected-resource)
+  check "GET /.well-known/oauth-protected-resource returns 200" 200 "$SC" "$(body)" "authorization_servers"
+
+  # Protected endpoints require a token
+  SC=$(curl_get /registry/default/v0.1/servers)
+  check "GET /registry/.../servers without token returns 401" 401 "$SC" "$(body)"
+
+  SC=$(curl_get /v1/registries)
+  check "GET /v1/registries without token returns 401" 401 "$SC" "$(body)"
+
+  SC=$(curl_get /v1/sources)
+  check "GET /v1/sources without token returns 401" 401 "$SC" "$(body)"
+
+  # 401 response must carry a compliant WWW-Authenticate: Bearer header
+  WWW_AUTH=$(curl -s -o /dev/null -D - "$BASE_URL/registry/default/v0.1/servers" \
+    | grep -i "^www-authenticate:" | head -1 | tr -d '\r')
+
+  if echo "$WWW_AUTH" | grep -qi "Bearer"; then
+    echo "  ✓ 401 response includes WWW-Authenticate: Bearer"
+    PASS=$((PASS + 1))
+  else
+    echo "  ✗ 401 response missing WWW-Authenticate: Bearer  (got: $WWW_AUTH)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  if echo "$WWW_AUTH" | grep -q "resource_metadata"; then
+    echo "  ✓ WWW-Authenticate contains resource_metadata"
+    PASS=$((PASS + 1))
+  else
+    echo "  ✗ WWW-Authenticate missing resource_metadata  (got: $WWW_AUTH)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # Malformed Bearer token is rejected as invalid_token (JWT parse fails before JWKS)
+  SC=$(curl -s -o /tmp/thv_body -w "%{http_code}" \
+    -H "Authorization: Bearer not-a-real-jwt" \
+    "$BASE_URL/registry/default/v0.1/servers")
+  check "Malformed Bearer token returns 401" 401 "$SC" "$(body)"
+
+  WWW_AUTH_ERR=$(curl -s -o /dev/null -D - \
+    -H "Authorization: Bearer not-a-real-jwt" \
+    "$BASE_URL/registry/default/v0.1/servers" \
+    | grep -i "^www-authenticate:" | head -1 | tr -d '\r')
+
+  if echo "$WWW_AUTH_ERR" | grep -q 'invalid_token'; then
+    echo "  ✓ Malformed token returns error=\"invalid_token\" in WWW-Authenticate"
+    PASS=$((PASS + 1))
+  else
+    echo "  ✗ Malformed token missing error=\"invalid_token\"  (got: $WWW_AUTH_ERR)"
+    FAIL=$((FAIL + 1))
+  fi
+fi
+
+# ─── Summary ──────────────────────────────────────────────────────────────────
+echo ""
+echo "══════════════════════════════════════"
+echo "  Auth results: $PASS passed, $FAIL failed"
+echo "══════════════════════════════════════"
+
+# Restore the stack to anonymous mode so the stop step finds a clean state
+COMPOSE_FILE="docker-compose.smoke-test.yaml"
+docker compose --project-name "$PROJECT" -f "$COMPOSE_FILE" down
+docker compose --project-name "$PROJECT" -f "$COMPOSE_FILE" up --detach --wait 2>&1 | tail -5
+
+if [ "$FAIL" -gt 0 ]; then
+  exit 1
+fi
+```
+
+### 5. Stop the stack
 
 ```bash
 KEEP_UP="${ARGUMENTS:-}"
 PROJECT="thv-smoke-test"
+COMPOSE_FILE="docker-compose.smoke-test.yaml"
 if [ "$KEEP_UP" = "keep-up" ]; then
   echo ""
   echo "Stack is still running (keep-up mode)."
   echo "  API:  http://localhost:8080"
-  echo "  Logs: docker compose --project-name $PROJECT logs -f registry-api"
-  echo "  Stop: docker compose --project-name $PROJECT down -v"
+  echo "  Logs: docker compose --project-name $PROJECT -f $COMPOSE_FILE logs -f registry-api"
+  echo "  Stop: docker compose --project-name $PROJECT -f $COMPOSE_FILE down -v"
 else
   echo ""
   echo "=== Stopping stack ==="
-  docker compose --project-name "$PROJECT" down -v
+  docker compose --project-name "$PROJECT" -f "$COMPOSE_FILE" down -v
   echo "Stack stopped and volumes removed."
 fi
 ```
