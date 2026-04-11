@@ -18,14 +18,14 @@ resources:
 livenessProbe:
   httpGet:
     path: /health
-    port: http
+    port: internal-http
   initialDelaySeconds: 15
   periodSeconds: 5
 
 readinessProbe:
   httpGet:
     path: /readiness
-    port: http
+    port: internal-http
   initialDelaySeconds: 10
   periodSeconds: 3
 

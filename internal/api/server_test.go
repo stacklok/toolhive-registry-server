@@ -22,7 +22,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	// No expectations needed - health check doesn't call service
-	server := api.NewServer(mockSvc)
+	server := api.NewInternalServer(mockSvc)
 
 	req, err := http.NewRequest("GET", "/health", nil)
 	require.NoError(t, err)
@@ -75,7 +75,7 @@ func TestReadinessEndpoint(t *testing.T) {
 			mockSvc := mocks.NewMockRegistryService(ctrl)
 			tt.setupMock(mockSvc)
 
-			server := api.NewServer(mockSvc)
+			server := api.NewInternalServer(mockSvc)
 
 			req, err := http.NewRequest("GET", "/readiness", nil)
 			require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestVersionEndpoint(t *testing.T) {
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	// No expectations needed - version check doesn't call service
-	server := api.NewServer(mockSvc)
+	server := api.NewInternalServer(mockSvc)
 
 	req, err := http.NewRequest("GET", "/version", nil)
 	require.NoError(t, err)
