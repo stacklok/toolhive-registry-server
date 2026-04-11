@@ -465,7 +465,7 @@ func buildHTTPServer(
 	// Auth failure audit middleware runs BEFORE auth so it can observe 401
 	// rejections that never reach the post-auth audit middleware. This is
 	// critical for SIEM visibility into failed authentication attempts.
-	b.middlewares = append(b.middlewares, auditmw.AuthFailureMiddleware(auditCfg, auditLogger, publicPaths))
+	b.middlewares = append(b.middlewares, auditmw.AuthFailureMiddleware(auditCfg, auditLogger))
 
 	authMw := auth.WrapWithPublicPaths(b.authMiddleware, publicPaths)
 	b.middlewares = append(b.middlewares, authMw)
