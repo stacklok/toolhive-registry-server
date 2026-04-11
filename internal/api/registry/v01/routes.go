@@ -14,6 +14,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/api/common"
 	"github.com/stacklok/toolhive-registry-server/internal/api/x/skills"
+	auditmw "github.com/stacklok/toolhive-registry-server/internal/audit"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
@@ -44,10 +45,10 @@ func Router(svc service.RegistryService) http.Handler {
 func registryRouter(routes *Routes) http.Handler {
 	r := chi.NewRouter()
 
-	r.Get("/servers", routes.listServersWithRegistryName)
+	r.Get("/servers", auditmw.AuditedServer(auditmw.EventServerList, routes.listServersWithRegistryName))
 	r.Route("/servers/{serverName}", func(r chi.Router) {
-		r.Get("/versions", routes.listVersionsWithRegistryName)
-		r.Get("/versions/{version}", routes.getVersionWithRegistryName)
+		r.Get("/versions", auditmw.AuditedServer(auditmw.EventServerVersionsList, routes.listVersionsWithRegistryName))
+		r.Get("/versions/{version}", auditmw.AuditedServer(auditmw.EventServerVersionRead, routes.getVersionWithRegistryName))
 	})
 
 	return r

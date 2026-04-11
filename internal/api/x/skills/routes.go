@@ -13,6 +13,7 @@ import (
 	thvregistry "github.com/stacklok/toolhive-core/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api/common"
+	auditmw "github.com/stacklok/toolhive-registry-server/internal/audit"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
@@ -27,10 +28,10 @@ func Router(svc service.RegistryService) http.Handler {
 	r := chi.NewRouter()
 	routes := &Routes{service: svc}
 
-	r.Get("/", routes.listSkills)
-	r.Get("/{namespace}/{name}", routes.getLatestVersion)
-	r.Get("/{namespace}/{name}/versions", routes.listVersions)
-	r.Get("/{namespace}/{name}/versions/{version}", routes.getVersion)
+	r.Get("/", auditmw.AuditedSkill(auditmw.EventSkillList, routes.listSkills))
+	r.Get("/{namespace}/{name}", auditmw.AuditedSkill(auditmw.EventSkillRead, routes.getLatestVersion))
+	r.Get("/{namespace}/{name}/versions", auditmw.AuditedSkill(auditmw.EventSkillVersionsList, routes.listVersions))
+	r.Get("/{namespace}/{name}/versions/{version}", auditmw.AuditedSkill(auditmw.EventSkillVersionRead, routes.getVersion))
 
 	return r
 }
