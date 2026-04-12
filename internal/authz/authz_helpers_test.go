@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -214,8 +215,9 @@ func dbConfigFromConnStr(t *testing.T, connStr string) *config.DatabaseConfig {
 // ---------------------------------------------------------------------------
 
 type testEnv struct {
-	baseURL string
-	oidc    *mockOIDCServer
+	baseURL     string
+	internalURL string
+	oidc        *mockOIDCServer
 }
 
 func setupEnv(t *testing.T, authCfg *config.AuthConfig) *testEnv {
@@ -225,6 +227,13 @@ func setupEnv(t *testing.T, authCfg *config.AuthConfig) *testEnv {
 
 func setupEnvCustom(t *testing.T, authCfg *config.AuthConfig, sources []config.SourceConfig, registries []config.RegistryConfig) *testEnv {
 	t.Helper()
+
+	// Silence application slog output — the server emits many INFO messages
+	// (startup, sync, HTTP requests) that clutter test output without adding
+	// diagnostic value.
+	orig := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(func() { slog.SetDefault(orig) })
 
 	db, cleanup := database.SetupTestDB(t)
 	t.Cleanup(cleanup)
@@ -259,17 +268,24 @@ func setupEnvCustom(t *testing.T, authCfg *config.AuthConfig, sources []config.S
 	app, err := registryapp.NewRegistryApp(ctx,
 		registryapp.WithConfig(cfg),
 		registryapp.WithAddress(":0"),
+		registryapp.WithInternalAddress(":0"),
 		registryapp.WithCoordinatorOptions(coordinator.TestingWithPollingInterval(500*time.Millisecond)),
 	)
 	require.NoError(t, err)
 
-	// Get a random free port, assign it, and start the server
+	// Get random free ports for both the main and internal servers.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := listener.Addr().String()
 	listener.Close()
 
+	internalListener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	internalAddr := internalListener.Addr().String()
+	internalListener.Close()
+
 	app.GetHTTPServer().Addr = addr
+	app.GetInternalHTTPServer().Addr = internalAddr
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- app.Start() }()
@@ -279,11 +295,13 @@ func setupEnvCustom(t *testing.T, authCfg *config.AuthConfig, sources []config.S
 	})
 
 	baseURL := "http://" + addr
-	waitForReady(t, baseURL)
+	internalURL := "http://" + internalAddr
+	waitForReady(t, internalURL)
 
 	return &testEnv{
-		baseURL: baseURL,
-		oidc:    oidcServer,
+		baseURL:     baseURL,
+		internalURL: internalURL,
+		oidc:        oidcServer,
 	}
 }
 
