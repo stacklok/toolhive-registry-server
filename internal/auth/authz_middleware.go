@@ -13,16 +13,15 @@ import (
 // them in the request context. This must run after the auth middleware (which
 // populates claims) and before any RequireRole or claim-checking code.
 //
-// If authzCfg is nil or claims are nil (anonymous mode), roles are not resolved.
+// If authzCfg is nil, a pass-through middleware is returned immediately.
+// If claims are nil (anonymous mode), roles are not resolved.
 func ResolveRolesMiddleware(authzCfg *config.AuthzConfig) func(http.Handler) http.Handler {
+	if authzCfg == nil {
+		return func(next http.Handler) http.Handler { return next }
+	}
 	var warnOnce sync.Once
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if authzCfg == nil {
-				next.ServeHTTP(w, r)
-				return
-			}
-
 			claims := ClaimsFromContext(r.Context())
 			if claims == nil {
 				warnOnce.Do(func() {
@@ -41,17 +40,14 @@ func ResolveRolesMiddleware(authzCfg *config.AuthzConfig) func(http.Handler) htt
 
 // RequireRole returns middleware that enforces the specified role.
 // It expects roles to already be resolved in the context by ResolveRolesMiddleware.
-// If authzCfg is nil (no authorization configured) or claims are nil
-// (anonymous mode), role checks are skipped.
+// If authzCfg is nil, a pass-through middleware is returned immediately.
+// If claims are nil (anonymous mode), role checks are skipped.
 func RequireRole(role Role, authzCfg *config.AuthzConfig) func(http.Handler) http.Handler {
+	if authzCfg == nil {
+		return func(next http.Handler) http.Handler { return next }
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip role checks if no authz config
-			if authzCfg == nil {
-				next.ServeHTTP(w, r)
-				return
-			}
-
 			claims := ClaimsFromContext(r.Context())
 			// Skip role checks in anonymous mode (no claims).
 			if claims == nil {

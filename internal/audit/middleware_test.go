@@ -785,7 +785,7 @@ func TestAuthFailureMiddleware_Disabled(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler := AuthFailureMiddleware(tt.cfg, tt.logger, nil)(inner)
+			handler := AuthFailureMiddleware(tt.cfg, tt.logger)(inner)
 			req := httptest.NewRequest(http.MethodGet, "/v1/sources", nil)
 			rec := httptest.NewRecorder()
 
@@ -795,33 +795,13 @@ func TestAuthFailureMiddleware_Disabled(t *testing.T) {
 	}
 }
 
-func TestAuthFailureMiddleware_SkipsPublicPaths(t *testing.T) {
-	t.Parallel()
-
-	var buf bytes.Buffer
-	logger := newTestLogger(&buf)
-
-	publicPaths := []string{"/health", "/readiness"}
-	handler := AuthFailureMiddleware(enabledConfig(), logger, publicPaths)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	assert.Empty(t, buf.String(), "public path should not produce audit events")
-}
-
 func TestAuthFailureMiddleware_Emits401Event(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
 	logger := newTestLogger(&buf)
 
-	publicPaths := []string{"/health"}
-	handler := AuthFailureMiddleware(enabledConfig(), logger, publicPaths)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := AuthFailureMiddleware(enabledConfig(), logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 
@@ -858,7 +838,7 @@ func TestAuthFailureMiddleware_SkipsNon401(t *testing.T) {
 			var buf bytes.Buffer
 			logger := newTestLogger(&buf)
 
-			handler := AuthFailureMiddleware(enabledConfig(), logger, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			handler := AuthFailureMiddleware(enabledConfig(), logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.status)
 			}))
 
@@ -880,7 +860,7 @@ func TestAuthFailureMiddleware_IncludesRequestID(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	})
-	handler := middleware.RequestID(AuthFailureMiddleware(enabledConfig(), logger, nil)(inner))
+	handler := middleware.RequestID(AuthFailureMiddleware(enabledConfig(), logger)(inner))
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/sources", nil)
 	rec := httptest.NewRecorder()
@@ -902,7 +882,7 @@ func TestAuthFailureMiddleware_EventFiltering(t *testing.T) {
 		ExcludeEventTypes: []string{EventAuthUnauthenticated},
 	}
 
-	handler := AuthFailureMiddleware(cfg, logger, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := AuthFailureMiddleware(cfg, logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 

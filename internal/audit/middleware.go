@@ -82,17 +82,14 @@ func Middleware(cfg *config.AuditConfig, logger *Logger) func(http.Handler) http
 // middleware so it can observe auth rejections.
 //
 // When cfg is nil or disabled, the middleware is a no-op pass-through.
-func AuthFailureMiddleware(cfg *config.AuditConfig, logger *Logger, publicPaths []string) func(http.Handler) http.Handler {
+// This middleware should only be applied to routes that require authentication;
+// public routes (health, readiness, etc.) should be excluded at the routing level.
+func AuthFailureMiddleware(cfg *config.AuditConfig, logger *Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		if cfg == nil || !cfg.Enabled || logger == nil {
 			return next
 		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if auth.IsPublicPath(r.URL.Path, publicPaths) {
-				next.ServeHTTP(w, r)
-				return
-			}
-
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			next.ServeHTTP(ww, r)
 
