@@ -50,14 +50,16 @@ When writing Go code, you will:
 
 Always ask for clarification if requirements are ambiguous, and provide code that is production-ready, well-structured, and follows Go best practices. When working within existing codebases, maintain consistency with established patterns and conventions.
 
-**Commit Messages:**
+## Commit Message Style
+
 - No conventional commit prefixes (`feat:`, `fix:`, `chore:`, etc.)
-- Subject line: max 50 characters, imperative mood, backtick-quote identifiers and code names (e.g., `` Improve `GetServerVersion` query performance ``)
+- Subject line: max 50 characters, imperative mood, backtick-quote identifiers and code names
 - Blank line between subject and body
 - Body: explain *what* changed and *why* in plain technical prose — paragraph form, not bullets
 - End with a GitHub issue reference when applicable (`Fixes #123`, `Improves on #444`)
 
 Example:
+
 ```
 Improve `GetServerVersion`/`GetSkillVersion` query performance
 

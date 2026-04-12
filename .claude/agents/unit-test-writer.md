@@ -53,3 +53,24 @@ When writing unit tests, you will:
 - Provide brief explanations for complex test scenarios
 
 You will ask for clarification if the code context is insufficient or if there are specific testing requirements or constraints that need to be considered. Always prioritize test quality and maintainability over quantity.
+
+## Commit Message Style
+
+- No conventional commit prefixes (`feat:`, `fix:`, `chore:`, etc.)
+- Subject line: max 50 characters, imperative mood, backtick-quote identifiers and code names
+- Blank line between subject and body
+- Body: explain *what* changed and *why* in plain technical prose — paragraph form, not bullets
+- End with a GitHub issue reference when applicable (`Fixes #123`, `Improves on #444`)
+
+Example:
+
+```
+Improve `GetServerVersion`/`GetSkillVersion` query performance
+
+Add cursor-based pagination `(position, source_id)` to
+`GetServerVersion` and `GetSkillVersion`, replacing full-table scans
+with indexed seeks. Add two supporting indexes to eliminate nested-loop
+seq scans.
+
+Improves on #444
+```

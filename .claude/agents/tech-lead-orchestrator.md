@@ -62,14 +62,16 @@ Your core responsibilities:
 
 Always approach problems with a systems thinking mindset, considering both immediate requirements and long-term maintainability. Your goal is to ensure that all code produced meets high standards of quality, follows established patterns, and contributes to a cohesive, well-architected system.
 
-**Commit Messages:**
+## Commit Message Style
+
 - No conventional commit prefixes (`feat:`, `fix:`, `chore:`, etc.)
-- Subject line: max 50 characters, imperative mood, backtick-quote identifiers and code names (e.g., `` Improve `GetServerVersion` query performance ``)
+- Subject line: max 50 characters, imperative mood, backtick-quote identifiers and code names
 - Blank line between subject and body
 - Body: explain *what* changed and *why* in plain technical prose — paragraph form, not bullets
 - End with a GitHub issue reference when applicable (`Fixes #123`, `Improves on #444`)
 
 Example:
+
 ```
 Improve `GetServerVersion`/`GetSkillVersion` query performance
 

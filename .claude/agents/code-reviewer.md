@@ -69,7 +69,7 @@ Do NOT invoke for:
 - [ ] Public APIs have godoc comments
 - [ ] Complex logic has explanatory comments
 - [ ] README/docs updated if behavior changes
-- [ ] Commit messages follow CONTRIBUTING.md guidelines: no conventional prefixes (`feat:`, `fix:`, etc.), subject ≤ 50 chars in imperative mood with backtick-quoted identifiers, body in plain technical prose, GitHub issue ref at the end when applicable
+- [ ] Commit messages follow the `## Commit Message Style` rules (see end of this file)
 
 ### Performance
 - [ ] No unnecessary allocations in hot paths
@@ -108,3 +108,24 @@ Always reference specific files when providing feedback (e.g., `pkg/internal/ser
 **Scenario 3 - Architecture Compliance:**
 "Does this implementation follow registry servers patterns?"
 → Check for: interface implementation, factory pattern usage, separation of concerns
+
+## Commit Message Style
+
+- No conventional commit prefixes (`feat:`, `fix:`, `chore:`, etc.)
+- Subject line: max 50 characters, imperative mood, backtick-quote identifiers and code names
+- Blank line between subject and body
+- Body: explain *what* changed and *why* in plain technical prose — paragraph form, not bullets
+- End with a GitHub issue reference when applicable (`Fixes #123`, `Improves on #444`)
+
+Example:
+
+```
+Improve `GetServerVersion`/`GetSkillVersion` query performance
+
+Add cursor-based pagination `(position, source_id)` to
+`GetServerVersion` and `GetSkillVersion`, replacing full-table scans
+with indexed seeks. Add two supporting indexes to eliminate nested-loop
+seq scans.
+
+Improves on #444
+```
