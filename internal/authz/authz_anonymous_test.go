@@ -30,18 +30,23 @@ func TestAuthzIntegration_AnonymousMode(t *testing.T) {
 		method     string
 		path       string
 		wantStatus int
+		internal   bool
 	}{
-		{"health", "GET", "/health", 200},
-		{"readiness", "GET", "/readiness", 200},
-		{"list servers without token", "GET", "/registry/acme-all/v0.1/servers", 200},
-		{"list sources without token", "GET", "/v1/sources", 200},
-		{"list registries without token", "GET", "/v1/registries", 200},
+		{"health", "GET", "/health", 200, true},
+		{"readiness", "GET", "/readiness", 200, true},
+		{"list servers without token", "GET", "/registry/acme-all/v0.1/servers", 200, false},
+		{"list sources without token", "GET", "/v1/sources", 200, false},
+		{"list registries without token", "GET", "/v1/registries", 200, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			resp := doRequest(t, tt.method, env.baseURL+tt.path, "", nil)
+			base := env.baseURL
+			if tt.internal {
+				base = env.internalURL
+			}
+			resp := doRequest(t, tt.method, base+tt.path, "", nil)
 			assertStatus(t, resp, tt.wantStatus)
 		})
 	}

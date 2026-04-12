@@ -47,14 +47,19 @@ func TestAuthzIntegration_FullAuthzMode(t *testing.T) {
 			name       string
 			path       string
 			wantStatus int
+			internal   bool
 		}{
-			{"health", "/health", 200},
-			{"readiness", "/readiness", 200},
-			{"oauth-protected-resource", "/.well-known/oauth-protected-resource", 200},
+			{"health", "/health", 200, true},
+			{"readiness", "/readiness", 200, true},
+			{"oauth-protected-resource", "/.well-known/oauth-protected-resource", 200, false},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				resp := doRequest(t, "GET", env.baseURL+tt.path, "", nil)
+				base := env.baseURL
+				if tt.internal {
+					base = env.internalURL
+				}
+				resp := doRequest(t, "GET", base+tt.path, "", nil)
 				assertStatus(t, resp, tt.wantStatus)
 			})
 		}
