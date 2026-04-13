@@ -3,6 +3,7 @@ package sqlc
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -755,6 +756,152 @@ func TestGetAPISourcesByNames(t *testing.T) {
 			db, cleanupFunc := database.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
+			queries := New(db)
+			require.NotNil(t, queries)
+
+			tc.setupFunc(t, queries)
+			tc.scenarioFunc(t, queries)
+		})
+	}
+}
+
+func TestGetRegistryByName(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		setupFunc    func(t *testing.T, queries *Queries)
+		scenarioFunc func(t *testing.T, queries *Queries)
+	}{
+		{
+			name: "registry not found",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(_ *testing.T, _ *Queries) {},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries) {
+				_, err := queries.GetRegistryByName(context.Background(), "nonexistent-registry")
+				require.Error(t, err)
+				require.ErrorIs(t, err, sql.ErrNoRows)
+			},
+		},
+		{
+			name: "get existing registry",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
+				_, err := queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
+					Name:         "test-registry",
+					Claims:       nil,
+					CreationType: CreationTypeCONFIG,
+					CreatedAt:    &createdAt,
+					UpdatedAt:    &createdAt,
+				})
+				require.NoError(t, err)
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries) {
+				registry, err := queries.GetRegistryByName(context.Background(), "test-registry")
+				require.NoError(t, err)
+				require.Equal(t, "test-registry", registry.Name)
+				require.Equal(t, CreationTypeCONFIG, registry.CreationType)
+				require.NotEqual(t, uuid.Nil, registry.ID)
+				require.NotNil(t, registry.CreatedAt)
+				require.NotNil(t, registry.UpdatedAt)
+			},
+		},
+		{
+			name: "get registry with claims",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
+				claims, err := json.Marshal(map[string]string{"sub": "user123"})
+				require.NoError(t, err)
+
+				_, err = queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
+					Name:         "registry-with-claims",
+					Claims:       claims,
+					CreationType: CreationTypeCONFIG,
+					CreatedAt:    &createdAt,
+					UpdatedAt:    &createdAt,
+				})
+				require.NoError(t, err)
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries) {
+				registry, err := queries.GetRegistryByName(context.Background(), "registry-with-claims")
+				require.NoError(t, err)
+				require.Equal(t, "registry-with-claims", registry.Name)
+
+				var claims map[string]string
+				err = json.Unmarshal(registry.Claims, &claims)
+				require.NoError(t, err)
+				require.Equal(t, "user123", claims["sub"])
+			},
+		},
+		{
+			name: "get registry with API creation type",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
+				_, err := queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
+					Name:         "api-registry",
+					Claims:       nil,
+					CreationType: CreationTypeAPI,
+					CreatedAt:    &createdAt,
+					UpdatedAt:    &createdAt,
+				})
+				require.NoError(t, err)
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries) {
+				registry, err := queries.GetRegistryByName(context.Background(), "api-registry")
+				require.NoError(t, err)
+				require.Equal(t, "api-registry", registry.Name)
+				require.Equal(t, CreationTypeAPI, registry.CreationType)
+			},
+		},
+		{
+			name: "get correct registry among multiple",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
+				_, err := queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
+					Name:         "registry-alpha",
+					Claims:       nil,
+					CreationType: CreationTypeCONFIG,
+					CreatedAt:    &createdAt,
+					UpdatedAt:    &createdAt,
+				})
+				require.NoError(t, err)
+
+				_, err = queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
+					Name:         "registry-beta",
+					Claims:       nil,
+					CreationType: CreationTypeAPI,
+					CreatedAt:    &createdAt,
+					UpdatedAt:    &createdAt,
+				})
+				require.NoError(t, err)
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries) {
+				registry, err := queries.GetRegistryByName(context.Background(), "registry-beta")
+				require.NoError(t, err)
+				require.Equal(t, "registry-beta", registry.Name)
+				require.Equal(t, CreationTypeAPI, registry.CreationType)
+
+				// Verify it did not return the other registry
+				require.NotEqual(t, "registry-alpha", registry.Name)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			db, cleanupFunc := database.SetupTestDB(t)
+			t.Cleanup(cleanupFunc)
 			queries := New(db)
 			require.NotNil(t, queries)
 
