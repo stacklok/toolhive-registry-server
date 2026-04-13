@@ -12,6 +12,80 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
+func TestResolveRolesMiddleware(t *testing.T) {
+	t.Parallel()
+
+	authzCfg := &config.AuthzConfig{
+		Roles: config.RolesConfig{
+			ManageSources: []map[string]any{{"role": "editor"}},
+		},
+	}
+
+	tests := []struct {
+		name         string
+		authzCfg     *config.AuthzConfig
+		claims       jwt.MapClaims
+		setClaims    bool
+		wantAllRoles bool
+		wantRoles    []Role
+		wantNilRoles bool
+	}{
+		{
+			name:         "nil authz + authenticated stores all roles",
+			authzCfg:     nil,
+			claims:       jwt.MapClaims{"sub": "user-1"},
+			setClaims:    true,
+			wantAllRoles: true,
+		},
+		{
+			name:         "nil authz + anonymous stores no roles",
+			authzCfg:     nil,
+			setClaims:    false,
+			wantNilRoles: true,
+		},
+		{
+			name:      "authz configured + matching claims resolves roles",
+			authzCfg:  authzCfg,
+			claims:    jwt.MapClaims{"role": "editor"},
+			setClaims: true,
+			wantRoles: []Role{RoleManageSources},
+		},
+		{
+			name:         "authz configured + anonymous stores no roles",
+			authzCfg:     authzCfg,
+			setClaims:    false,
+			wantNilRoles: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var capturedRoles []Role
+			capture := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				capturedRoles = RolesFromContext(r.Context())
+			})
+
+			handler := ResolveRolesMiddleware(tt.authzCfg)(capture)
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			if tt.setClaims {
+				req = req.WithContext(ContextWithClaims(context.Background(), tt.claims))
+			}
+			handler.ServeHTTP(httptest.NewRecorder(), req)
+
+			switch {
+			case tt.wantAllRoles:
+				assert.Equal(t, AllRoles(), capturedRoles)
+			case tt.wantNilRoles:
+				assert.Nil(t, capturedRoles)
+			default:
+				assert.Equal(t, tt.wantRoles, capturedRoles)
+			}
+		})
+	}
+}
+
 func TestRequireRole(t *testing.T) {
 	t.Parallel()
 
@@ -77,6 +151,22 @@ func TestRequireRole(t *testing.T) {
 			authzCfg:       authzCfg,
 			requiredRole:   RoleManageSources,
 			claims:         jwt.MapClaims{"role": "admin"},
+			setClaims:      true,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "nil authz config + authenticated user passes any role check",
+			authzCfg:       nil,
+			requiredRole:   RoleManageRegistries,
+			claims:         jwt.MapClaims{"sub": "user-1"},
+			setClaims:      true,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "nil authz config + authenticated user passes superAdmin role check",
+			authzCfg:       nil,
+			requiredRole:   RoleSuperAdmin,
+			claims:         jwt.MapClaims{"sub": "user-1"},
 			setClaims:      true,
 			expectedStatus: http.StatusOK,
 		},

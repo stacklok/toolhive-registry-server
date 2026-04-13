@@ -21,7 +21,8 @@ const (
 )
 
 // ResolveRoles returns all roles the user has based on JWT claims and authz config.
-// If authzCfg is nil, no roles are returned (only authenticated access is possible).
+// Returns nil when either argument is nil. The nil-authz semantic (authenticated
+// users receive all roles) is handled at the middleware layer by ResolveRolesMiddleware.
 func ResolveRoles(claims jwt.MapClaims, authzCfg *config.AuthzConfig) []Role {
 	if authzCfg == nil || claims == nil {
 		return nil
@@ -43,6 +44,12 @@ func ResolveRoles(claims jwt.MapClaims, authzCfg *config.AuthzConfig) []Role {
 	}
 
 	return roles
+}
+
+// AllRoles returns every role defined in the system.
+// Used when no authz config is provided — authenticated users implicitly hold all permissions.
+func AllRoles() []Role {
+	return []Role{RoleSuperAdmin, RoleManageSources, RoleManageRegistries, RoleManageEntries}
 }
 
 // HasRole checks if the resolved roles contain the specified role.

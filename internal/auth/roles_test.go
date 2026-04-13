@@ -243,6 +243,19 @@ func TestHasRole(t *testing.T) {
 	}
 }
 
+func TestAllRoles(t *testing.T) {
+	t.Parallel()
+
+	roles := AllRoles()
+
+	// Every named role constant must appear exactly once.
+	assert.Contains(t, roles, RoleSuperAdmin)
+	assert.Contains(t, roles, RoleManageSources)
+	assert.Contains(t, roles, RoleManageRegistries)
+	assert.Contains(t, roles, RoleManageEntries)
+	assert.Len(t, roles, 4, "AllRoles must stay in sync with the Role constants")
+}
+
 // TestMatchesClaimValue exercises the matchesClaimValue logic through
 // ResolveRoles, covering the various type combinations for JWT and required values.
 func TestMatchesClaimValue(t *testing.T) {
