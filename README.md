@@ -18,6 +18,10 @@ The ToolHive Registry Server aggregates MCP servers and skills from Git repos, K
 
 It implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). If you're not familiar with MCP: it's an open protocol that lets AI assistants connect to external tools and data sources. This server is the governance layer that sits between your MCP infrastructure and the teams consuming it.
 
+**Why ToolHive Registry Server?** Most MCP setups start with a flat list of servers and no access control. As adoption grows, you need to govern who sees what, aggregate servers from multiple sources, and audit access -- without locking into a proprietary registry. The ToolHive Registry Server is open source, implements the official MCP Registry API spec, and plugs into your existing identity provider, combining multi-tenant claim-based authorization, multi-source aggregation, and SIEM-compliant audit logging in a single service.
+
+[Learn more about the ToolHive platform →](https://stacklok.com/platform)
+
 ---
 
 ## Table of contents
@@ -256,11 +260,12 @@ database:
 
 ## The ToolHive platform
 
-The Registry Server is one component of the [ToolHive](https://github.com/stacklok/toolhive) platform. Together, they cover the full MCP lifecycle:
+The Registry Server can be deployed standalone or as part of the full [ToolHive](https://github.com/stacklok/toolhive) platform. Together, the platform components cover the full MCP lifecycle:
 
-- **Registry Server** (this project) handles discovery and governance -- it knows what MCP servers and skills exist, who can access them, and tracks all operations.
-- **[ToolHive Operator](https://github.com/stacklok/toolhive)** handles deployment -- it deploys and manages MCP servers on Kubernetes, using registry metadata to drive lifecycle decisions. MCP servers deployed by the Operator automatically appear in the registry.
-- **ToolHive Enterprise UI** ties it all together -- catalog browsing, search, and admin management backed by the registry API.
+- **Registry** (this project) -- Discovery and governance. Knows what MCP servers and skills exist, who can access them, and tracks all operations.
+- **[Runtime](https://github.com/stacklok/toolhive)** -- Deployment and management. Deploys MCP servers on Kubernetes using registry metadata to drive lifecycle decisions. Servers deployed by the Runtime automatically appear in the Registry.
+- **Gateway** -- Aggregation and access. Unifies multiple MCP servers into a single endpoint with centralized authentication, Cedar-based authorization, tool conflict resolution, and composite workflows.
+- **Portal** -- Management UI. Catalog browsing, search, and administration backed by the Registry API.
 
 See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for the complete platform architecture.
 
