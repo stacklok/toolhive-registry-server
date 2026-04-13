@@ -141,10 +141,11 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
 	doc, err := swag.ReadDoc("swagger")
 	if err != nil {
+		slog.Error("Failed to read OpenAPI specification", "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		errorResp := map[string]string{
-			"error": "Failed to read OpenAPI specification: " + err.Error(),
+			"error": "failed to read OpenAPI specification",
 		}
 		if encodeErr := json.NewEncoder(w).Encode(errorResp); encodeErr != nil {
 			slog.Error("Failed to encode OpenAPI error response", "error", encodeErr)
@@ -186,13 +187,13 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 func readinessHandler(svc service.RegistryService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := svc.CheckReadiness(r.Context()); err != nil {
-			slog.Warn("Readiness check failed",
+			slog.WarnContext(r.Context(), "Readiness check failed",
 				"error", err,
 				"remote_addr", r.RemoteAddr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			errorResp := map[string]string{
-				"error": "RegistryService not ready: " + err.Error(),
+				"error": "service not ready",
 			}
 			if encodeErr := json.NewEncoder(w).Encode(errorResp); encodeErr != nil {
 				slog.Error("Failed to encode readiness error response", "error", encodeErr)

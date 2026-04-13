@@ -121,15 +121,7 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 
 	listResult, err := routes.service.ListServers(r.Context(), opts...)
 	if err != nil {
-		if errors.Is(err, service.ErrClaimsInsufficient) {
-			common.WriteErrorResponse(w, "forbidden: insufficient claims for registry", http.StatusForbidden)
-			return
-		}
-		if errors.Is(err, service.ErrRegistryNotFound) {
-			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
+		writeServiceError(w, r, err)
 		return
 	}
 
@@ -212,15 +204,7 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 
 	versions, err := routes.service.ListServerVersions(r.Context(), opts...)
 	if err != nil {
-		if errors.Is(err, service.ErrClaimsInsufficient) {
-			common.WriteErrorResponse(w, "forbidden: insufficient claims for registry", http.StatusForbidden)
-			return
-		}
-		if errors.Is(err, service.ErrRegistryNotFound) {
-			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
+		writeServiceError(w, r, err)
 		return
 	}
 
@@ -304,19 +288,12 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 
 	server, err := routes.service.GetServerVersion(r.Context(), opts...)
 	if err != nil {
-		if errors.Is(err, service.ErrClaimsInsufficient) {
-			common.WriteErrorResponse(w, "forbidden: insufficient claims for registry", http.StatusForbidden)
-			return
-		}
-		if errors.Is(err, service.ErrRegistryNotFound) || errors.Is(err, service.ErrNotFound) {
-			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		common.WriteErrorResponse(w, err.Error(), http.StatusInternalServerError)
+		writeServiceError(w, r, err)
 		return
 	}
 	if server == nil {
-		common.WriteErrorResponse(w, "Server not found", http.StatusNotFound)
+		slog.ErrorContext(r.Context(), "GetServerVersion returned nil without error")
+		common.WriteErrorResponse(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -352,4 +329,19 @@ func (routes *Routes) getVersionWithRegistryName(w http.ResponseWriter, r *http.
 	}
 
 	routes.handleGetVersion(w, r, registryName)
+}
+
+// writeServiceError maps service-layer errors to HTTP responses for upstream API handlers.
+func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, service.ErrClaimsInsufficient):
+		common.WriteErrorResponse(w, "forbidden: insufficient claims for registry", http.StatusForbidden)
+	case errors.Is(err, service.ErrRegistryNotFound):
+		common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+	case errors.Is(err, service.ErrNotFound):
+		common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+	default:
+		slog.ErrorContext(r.Context(), "unexpected error", "error", err)
+		common.WriteErrorResponse(w, "internal server error", http.StatusInternalServerError)
+	}
 }
