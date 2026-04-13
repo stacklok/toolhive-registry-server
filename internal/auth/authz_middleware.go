@@ -13,10 +13,11 @@ import (
 // them in the request context. This must run after the auth middleware (which
 // populates claims) and before any RequireRole or claim-checking code.
 //
-// If authzCfg is nil, authenticated users receive all roles (matching the
-// pass-through behaviour of RequireRole in the same mode). Anonymous requests
-// receive no roles.
-// If claims are nil (anonymous mode), roles are not resolved.
+// If authzCfg is nil, authenticated requests receive all roles (so that
+// downstream role checks remain a no-op) and anonymous requests receive none.
+// If authzCfg is non-nil, roles are resolved from the JWT claims via ResolveRoles;
+// anonymous requests (nil claims) are passed through without roles and a
+// one-time warning is logged.
 func ResolveRolesMiddleware(authzCfg *config.AuthzConfig) func(http.Handler) http.Handler {
 	if authzCfg == nil {
 		// No authz config: any authenticated user implicitly holds all permissions

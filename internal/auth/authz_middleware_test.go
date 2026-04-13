@@ -13,13 +13,7 @@ import (
 )
 
 func TestResolveRolesMiddleware(t *testing.T) {
-	// NOTE: subtests run sequentially (not t.Parallel on subtests) because
-	// capturedRoles is shared and reset between runs.
-
-	var capturedRoles []Role
-	capture := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		capturedRoles = RolesFromContext(r.Context())
-	})
+	t.Parallel()
 
 	authzCfg := &config.AuthzConfig{
 		Roles: config.RolesConfig{
@@ -66,7 +60,12 @@ func TestResolveRolesMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			capturedRoles = nil
+			t.Parallel()
+
+			var capturedRoles []Role
+			capture := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				capturedRoles = RolesFromContext(r.Context())
+			})
 
 			handler := ResolveRolesMiddleware(tt.authzCfg)(capture)
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
