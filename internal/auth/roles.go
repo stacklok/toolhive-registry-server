@@ -45,6 +45,12 @@ func ResolveRoles(claims jwt.MapClaims, authzCfg *config.AuthzConfig) []Role {
 	return roles
 }
 
+// AllRoles returns every role defined in the system.
+// Used when no authz config is provided — authenticated users implicitly hold all permissions.
+func AllRoles() []Role {
+	return []Role{RoleSuperAdmin, RoleManageSources, RoleManageRegistries, RoleManageEntries}
+}
+
 // HasRole checks if the resolved roles contain the specified role.
 // superAdmin grants access to everything.
 func HasRole(roles []Role, required Role) bool {
