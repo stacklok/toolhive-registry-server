@@ -13,11 +13,23 @@ import (
 // them in the request context. This must run after the auth middleware (which
 // populates claims) and before any RequireRole or claim-checking code.
 //
-// If authzCfg is nil, a pass-through middleware is returned immediately.
+// If authzCfg is nil, authenticated users receive all roles (matching the
+// pass-through behaviour of RequireRole in the same mode). Anonymous requests
+// receive no roles.
 // If claims are nil (anonymous mode), roles are not resolved.
 func ResolveRolesMiddleware(authzCfg *config.AuthzConfig) func(http.Handler) http.Handler {
 	if authzCfg == nil {
-		return func(next http.Handler) http.Handler { return next }
+		// No authz config: any authenticated user implicitly holds all permissions
+		// (RequireRole is also a pass-through when authzCfg == nil). Store all roles
+		// in context so downstream code — including GET /v1/me — reflects reality.
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if claims := ClaimsFromContext(r.Context()); claims != nil {
+					r = r.WithContext(ContextWithRoles(r.Context(), AllRoles()))
+				}
+				next.ServeHTTP(w, r)
+			})
+		}
 	}
 	var warnOnce sync.Once
 	return func(next http.Handler) http.Handler {
