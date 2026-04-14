@@ -5,6 +5,7 @@ package skills
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -87,7 +88,7 @@ func (routes *Routes) listSkills(w http.ResponseWriter, r *http.Request) {
 
 	result, err := routes.service.ListSkills(r.Context(), opts...)
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(w, r, err)
 		return
 	}
 
@@ -147,7 +148,7 @@ func (routes *Routes) getLatestVersion(w http.ResponseWriter, r *http.Request) {
 
 	skill, err := routes.service.GetSkillVersion(r.Context(), skillOpts...)
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(w, r, err)
 		return
 	}
 
@@ -198,7 +199,7 @@ func (routes *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 
 	result, err := routes.service.ListSkills(r.Context(), listOpts...)
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(w, r, err)
 		return
 	}
 
@@ -264,7 +265,7 @@ func (routes *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 
 	skill, err := routes.service.GetSkillVersion(r.Context(), versionOpts...)
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(w, r, err)
 		return
 	}
 
@@ -296,16 +297,17 @@ func parseListSkillsQuery(r *http.Request) (*ListSkillsQuery, error) {
 }
 
 // writeServiceError maps service-layer errors to HTTP responses.
-func writeServiceError(w http.ResponseWriter, err error) {
+func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, service.ErrClaimsInsufficient):
 		common.WriteErrorResponse(w, "forbidden: insufficient claims for registry", http.StatusForbidden)
 	case errors.Is(err, service.ErrNotFound):
-		common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+		common.WriteErrorResponse(w, "not found", http.StatusNotFound)
 	case errors.Is(err, service.ErrRegistryNotFound):
-		common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+		common.WriteErrorResponse(w, "registry not found", http.StatusNotFound)
 	default:
-		common.WriteErrorResponse(w, "Internal server error", http.StatusInternalServerError)
+		slog.ErrorContext(r.Context(), "unexpected error", "error", err)
+		common.WriteErrorResponse(w, "internal server error", http.StatusInternalServerError)
 	}
 }
 
