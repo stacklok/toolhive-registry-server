@@ -1356,16 +1356,41 @@ func TestWithConfigPath(t *testing.T) {
 func TestDatabaseConfigGetPassword(t *testing.T) {
 	t.Parallel()
 
-	// GetPassword now always returns empty string to delegate to pgpass
-	dbConfig := &DatabaseConfig{
-		Host:     "localhost",
-		Port:     5432,
-		User:     "testuser",
-		Database: "testdb",
+	tests := []struct {
+		name         string
+		dbConfig     *DatabaseConfig
+		wantPassword string
+	}{
+		{
+			name: "no_password_set",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Database: "testdb",
+			},
+			wantPassword: "",
+		},
+		{
+			name: "password_set",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Database: "testdb",
+				Password: "s3cret",
+			},
+			wantPassword: "s3cret",
+		},
 	}
 
-	password := dbConfig.GetPassword()
-	assert.Equal(t, "", password, "GetPassword should return empty string to delegate to pgpass")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			password := tt.dbConfig.GetPassword()
+			assert.Equal(t, tt.wantPassword, password)
+		})
+	}
 }
 
 func TestDatabaseConfigGetMigrationUser(t *testing.T) {
@@ -1413,17 +1438,79 @@ func TestDatabaseConfigGetMigrationUser(t *testing.T) {
 func TestDatabaseConfigGetMigrationPassword(t *testing.T) {
 	t.Parallel()
 
-	// GetMigrationPassword always returns empty string to delegate to pgpass
-	dbConfig := &DatabaseConfig{
-		Host:          "localhost",
-		Port:          5432,
-		User:          "appuser",
-		MigrationUser: "migratoruser",
-		Database:      "testdb",
+	tests := []struct {
+		name         string
+		dbConfig     *DatabaseConfig
+		wantPassword string
+	}{
+		{
+			name: "migration_password_set",
+			dbConfig: &DatabaseConfig{
+				Host:              "localhost",
+				Port:              5432,
+				User:              "appuser",
+				MigrationUser:     "migratoruser",
+				Database:          "testdb",
+				MigrationPassword: "migpass",
+			},
+			wantPassword: "migpass",
+		},
+		{
+			name: "fallback_to_password_same_user",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "appuser",
+				Database: "testdb",
+				Password: "apppass",
+			},
+			// MigrationUser not set, so it defaults to User; same user means fallback to Password
+			wantPassword: "apppass",
+		},
+		{
+			name: "fallback_to_password_migration_user_equals_user",
+			dbConfig: &DatabaseConfig{
+				Host:          "localhost",
+				Port:          5432,
+				User:          "appuser",
+				MigrationUser: "appuser",
+				Database:      "testdb",
+				Password:      "apppass",
+			},
+			wantPassword: "apppass",
+		},
+		{
+			name: "no_fallback_different_user",
+			dbConfig: &DatabaseConfig{
+				Host:          "localhost",
+				Port:          5432,
+				User:          "appuser",
+				MigrationUser: "migratoruser",
+				Database:      "testdb",
+				Password:      "apppass",
+			},
+			// Different user, no MigrationPassword set - falls back to pgpass (empty)
+			wantPassword: "",
+		},
+		{
+			name: "no_passwords_set",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "appuser",
+				Database: "testdb",
+			},
+			wantPassword: "",
+		},
 	}
 
-	password := dbConfig.GetMigrationPassword()
-	assert.Equal(t, "", password, "GetMigrationPassword should return empty string to delegate to pgpass")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			password := tt.dbConfig.GetMigrationPassword()
+			assert.Equal(t, tt.wantPassword, password)
+		})
+	}
 }
 
 func TestDatabaseConfigGetConnectionString(t *testing.T) {
@@ -1466,6 +1553,17 @@ func TestDatabaseConfigGetConnectionString(t *testing.T) {
 				SSLMode:  "disable",
 			},
 			wantConnStr: "postgres://testuser@localhost:5432/testdb?sslmode=disable",
+		},
+		{
+			name: "connection_string_with_password",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Database: "testdb",
+				Password: "s3cret",
+			},
+			wantConnStr: "postgres://testuser:s3cret@localhost:5432/testdb?sslmode=require",
 		},
 	}
 
@@ -1520,6 +1618,30 @@ func TestDatabaseConfigGetMigrationConnectionString(t *testing.T) {
 				SSLMode:       "verify-full",
 			},
 			wantConnStr: "postgres://migratoruser@db.example.com:5433/production?sslmode=verify-full",
+		},
+		{
+			name: "migration_connection_string_with_migration_password",
+			dbConfig: &DatabaseConfig{
+				Host:              "localhost",
+				Port:              5432,
+				User:              "appuser",
+				MigrationUser:     "migratoruser",
+				Database:          "testdb",
+				MigrationPassword: "migpass",
+			},
+			wantConnStr: "postgres://migratoruser:migpass@localhost:5432/testdb?sslmode=require",
+		},
+		{
+			name: "migration_connection_string_password_fallback_same_user",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "appuser",
+				Database: "testdb",
+				Password: "apppass",
+			},
+			// No MigrationUser set, so it defaults to User; same user means Password is used
+			wantConnStr: "postgres://appuser:apppass@localhost:5432/testdb?sslmode=require",
 		},
 	}
 
@@ -2330,6 +2452,46 @@ database:
 	assert.Equal(t, 5433, cfg.Database.Port)
 }
 
+// TestViperEnvOverrideDatabasePassword tests that THV_REGISTRY_DATABASE_PASSWORD can override database.password
+// even when the password key is absent from the YAML config file entirely.
+func TestViperEnvOverrideDatabasePassword(t *testing.T) {
+	// Create a temporary config file WITHOUT a password field in the database section.
+	// This is the common case — users provide passwords via env vars, not YAML.
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	yamlContent := `sources:
+  - name: test-registry
+    type: file
+    file:
+      path: /data/registry.json
+    syncPolicy:
+      interval: "30m"
+registries:
+  - name: default
+    sources: ["test-registry"]
+auth:
+  mode: anonymous
+database:
+  host: localhost
+  port: 5432
+  user: testuser
+  database: testdb
+`
+	err := os.WriteFile(configPath, []byte(yamlContent), 0600)
+	require.NoError(t, err)
+
+	// Set environment variable override
+	t.Setenv("THV_REGISTRY_DATABASE_PASSWORD", "env-secret")
+
+	// Load config
+	cfg, err := LoadConfig(WithConfigPath(configPath))
+	require.NoError(t, err)
+
+	// Verify the environment variable override took effect
+	require.NotNil(t, cfg.Database)
+	assert.Equal(t, "env-secret", cfg.Database.Password)
+}
+
 // TestViperEnvOverrideAuthMode tests that THV_REGISTRY_AUTH_MODE can override auth.mode
 func TestViperEnvOverrideAuthMode(t *testing.T) {
 	// Create a temporary config file
@@ -3011,6 +3173,57 @@ func TestValidateStorageConfigRejectsInvalidMaxMetaSize(t *testing.T) {
 			err := cfg.validateStorageConfig()
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "database.maxMetaSize must be greater than zero")
+		})
+	}
+}
+
+func TestValidateStorageConfigRejectsPasswordWithDynamicAuth(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		dbConfig   *DatabaseConfig
+		wantErrMsg string
+	}{
+		{
+			name: "password_with_dynamic_auth",
+			dbConfig: &DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				User:     "testuser",
+				Database: "testdb",
+				Password: "s3cret",
+				DynamicAuth: &DynamicAuthConfig{
+					AWSRDSIAM: &DynamicAuthAWSRDSIAM{Region: "us-east-1"},
+				},
+			},
+			wantErrMsg: "database.password and database.dynamicAuth are mutually exclusive",
+		},
+		{
+			name: "migration_password_with_dynamic_auth",
+			dbConfig: &DatabaseConfig{
+				Host:              "localhost",
+				Port:              5432,
+				User:              "testuser",
+				Database:          "testdb",
+				MigrationPassword: "migpass",
+				DynamicAuth: &DynamicAuthConfig{
+					AWSRDSIAM: &DynamicAuthAWSRDSIAM{Region: "us-east-1"},
+				},
+			},
+			wantErrMsg: "database.migrationPassword and database.dynamicAuth are mutually exclusive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := &Config{
+				Database: tt.dbConfig,
+			}
+			err := cfg.validateStorageConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErrMsg)
 		})
 	}
 }

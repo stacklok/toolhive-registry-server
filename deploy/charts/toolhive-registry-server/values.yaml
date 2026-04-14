@@ -150,7 +150,14 @@ config:
     mode: anonymous
 
   # PostgreSQL database configuration (required)
-  # Passwords are managed via PostgreSQL's pgpass file (~/.pgpass or $PGPASSFILE)
+  # WARNING: Do NOT set password or migrationPassword here — this config block is
+  # rendered into a Kubernetes ConfigMap, which is not encrypted at rest.
+  # Instead, provide passwords via environment variables using extraEnv with
+  # secretKeyRef (see the extraEnv section below for examples).
+  # Supported password methods:
+  #   1. Environment variables: THV_REGISTRY_DATABASE_PASSWORD (see extraEnv below)
+  #   2. PostgreSQL's pgpass file (~/.pgpass or $PGPASSFILE)
+  #   3. Dynamic auth (e.g., AWS RDS IAM) via the dynamicAuth config block
   # See: https://www.postgresql.org/docs/current/libpq-pgpass.html
   database:
     host: localhost
@@ -287,6 +294,17 @@ config:
 # -- Additional environment variables to add to the container
 # Use this for secrets, feature flags, or runtime configuration
 extraEnv: []
+  # Example: Database password from a Kubernetes Secret
+  # - name: THV_REGISTRY_DATABASE_PASSWORD
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: db-credentials
+  #       key: password
+  # - name: THV_REGISTRY_DATABASE_MIGRATIONPASSWORD
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: db-credentials
+  #       key: migration-password
   # - name: THV_REGISTRY_DATABASE_HOST
   #   value: "postgres.example.com"
   # - name: PGPASSFILE
