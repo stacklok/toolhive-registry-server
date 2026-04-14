@@ -15,13 +15,6 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
 )
 
-// testToolhiveRegistryData is a test fixture for ToolHive format registry data
-const testToolhiveRegistryData = `{
-	"version": "1.0.0",
-	"last_updated": "2024-01-01T00:00:00Z",
-	"servers": {}
-}`
-
 // testUpstreamRegistryData is a test fixture for upstream MCP registry format
 const testUpstreamRegistryData = `{
 	"$schema": "https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/upstream-registry.schema.json",
@@ -156,19 +149,18 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 		checkResult    func(t *testing.T, result *FetchResult)
 	}{
 		{
-			name: "successful fetch toolhive format",
+			name: "successful fetch upstream format",
 			setupFile: func(t *testing.T) string {
 				t.Helper()
 				tmpDir := t.TempDir()
 				filePath := filepath.Join(tmpDir, "registry.json")
-				err := os.WriteFile(filePath, []byte(testToolhiveRegistryData), 0600)
+				err := os.WriteFile(filePath, []byte(testUpstreamRegistryData), 0600)
 				require.NoError(t, err)
 				return filePath
 			},
 			registryConfig: func(filePath string) *config.SourceConfig {
 				return &config.SourceConfig{
-					Name:   "test-file",
-					Format: config.SourceFormatToolHive,
+					Name: "test-file",
 					File: &config.FileConfig{
 						Path: filePath,
 					},
@@ -180,35 +172,6 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 				assert.NotNil(t, result)
 				assert.NotNil(t, result.Registry)
 				assert.NotEmpty(t, result.Hash)
-				assert.Equal(t, config.SourceFormatToolHive, result.Format)
-			},
-		},
-		{
-			name: "successful fetch with empty servers",
-			setupFile: func(t *testing.T) string {
-				t.Helper()
-				tmpDir := t.TempDir()
-				filePath := filepath.Join(tmpDir, "registry.json")
-				err := os.WriteFile(filePath, []byte(testToolhiveRegistryData), 0600)
-				require.NoError(t, err)
-				return filePath
-			},
-			registryConfig: func(filePath string) *config.SourceConfig {
-				return &config.SourceConfig{
-					Name:   "test-file",
-					Format: config.SourceFormatToolHive,
-					File: &config.FileConfig{
-						Path: filePath,
-					},
-				}
-			},
-			expectError: false,
-			checkResult: func(t *testing.T, result *FetchResult) {
-				t.Helper()
-				assert.NotNil(t, result)
-				assert.NotNil(t, result.Registry)
-				assert.NotEmpty(t, result.Hash)
-				assert.Equal(t, config.SourceFormatToolHive, result.Format)
 			},
 		},
 		{
@@ -218,8 +181,7 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 			},
 			registryConfig: func(filePath string) *config.SourceConfig {
 				return &config.SourceConfig{
-					Name:   "test-file",
-					Format: config.SourceFormatToolHive,
+					Name: "test-file",
 					File: &config.FileConfig{
 						Path: filePath,
 					},
@@ -240,8 +202,7 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 			},
 			registryConfig: func(filePath string) *config.SourceConfig {
 				return &config.SourceConfig{
-					Name:   "test-file",
-					Format: config.SourceFormatToolHive,
+					Name: "test-file",
 					File: &config.FileConfig{
 						Path: filePath,
 					},
@@ -370,31 +331,13 @@ func TestFileRegistryHandler_FetchRegistry_URL(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		format        string
 		serverHandler func(w http.ResponseWriter, r *http.Request)
 		expectError   bool
 		errorContains string
 		checkResult   func(t *testing.T, result *FetchResult)
 	}{
 		{
-			name:   "successful fetch from URL - toolhive format",
-			format: config.SourceFormatToolHive,
-			serverHandler: func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(testToolhiveRegistryData))
-			},
-			expectError: false,
-			checkResult: func(t *testing.T, result *FetchResult) {
-				t.Helper()
-				assert.NotNil(t, result)
-				assert.NotNil(t, result.Registry)
-				assert.NotEmpty(t, result.Hash)
-				assert.Equal(t, config.SourceFormatToolHive, result.Format)
-			},
-		},
-		{
-			name:   "successful fetch from URL - upstream format",
-			format: config.SourceFormatUpstream,
+			name: "successful fetch from URL - upstream format",
 			serverHandler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(testUpstreamRegistryData))
@@ -405,12 +348,10 @@ func TestFileRegistryHandler_FetchRegistry_URL(t *testing.T) {
 				assert.NotNil(t, result)
 				assert.NotNil(t, result.Registry)
 				assert.NotEmpty(t, result.Hash)
-				assert.Equal(t, config.SourceFormatUpstream, result.Format)
 			},
 		},
 		{
-			name:   "HTTP 404 error",
-			format: config.SourceFormatToolHive,
+			name: "HTTP 404 error",
 			serverHandler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 				_, _ = w.Write([]byte("Not Found"))
@@ -419,8 +360,7 @@ func TestFileRegistryHandler_FetchRegistry_URL(t *testing.T) {
 			errorContains: "failed to fetch URL",
 		},
 		{
-			name:   "HTTP 500 error",
-			format: config.SourceFormatToolHive,
+			name: "HTTP 500 error",
 			serverHandler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte("Internal Server Error"))
@@ -429,8 +369,7 @@ func TestFileRegistryHandler_FetchRegistry_URL(t *testing.T) {
 			errorContains: "failed to fetch URL",
 		},
 		{
-			name:   "invalid JSON response",
-			format: config.SourceFormatToolHive,
+			name: "invalid JSON response",
 			serverHandler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte("invalid json {"))
@@ -453,8 +392,7 @@ func TestFileRegistryHandler_FetchRegistry_URL(t *testing.T) {
 			handler := NewFileRegistryHandlerWithClient(client)
 
 			regCfg := &config.SourceConfig{
-				Name:   "test-url",
-				Format: tt.format,
+				Name: "test-url",
 				File: &config.FileConfig{
 					URL: server.URL,
 				},
@@ -484,7 +422,7 @@ func TestFileRegistryHandler_FetchRegistry_URL_WithTimeout(t *testing.T) {
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(testToolhiveRegistryData))
+		_, _ = w.Write([]byte(testUpstreamRegistryData))
 	}))
 	defer server.Close()
 
@@ -493,8 +431,7 @@ func TestFileRegistryHandler_FetchRegistry_URL_WithTimeout(t *testing.T) {
 	handler := NewFileRegistryHandlerWithClient(client)
 
 	regCfg := &config.SourceConfig{
-		Name:   "test-url",
-		Format: config.SourceFormatToolHive,
+		Name: "test-url",
 		File: &config.FileConfig{
 			URL:     server.URL,
 			Timeout: "10s", // Custom timeout

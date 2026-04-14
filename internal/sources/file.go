@@ -77,13 +77,13 @@ func (h *fileRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.
 	}
 
 	// Validate and parse data
-	reg, err := h.validator.ValidateData(data, regCfg.Format)
+	reg, err := h.validator.ValidateData(data)
 	if err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
 
 	// Return result
-	return NewFetchResult(reg, hash, regCfg.Format), nil
+	return NewFetchResult(reg, hash), nil
 }
 
 // fetchData routes to the appropriate fetch method based on configuration

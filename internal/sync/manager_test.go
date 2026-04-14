@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,10 +40,13 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 	// Create temp directory and test file
 	tempDir := t.TempDir()
 	testFilePath := filepath.Join(tempDir, "registry.json")
-	testReg := registry.NewTestToolHiveRegistry(
-		registry.WithImageServer("test-server", "test/image:latest"),
+	testReg := registry.NewTestUpstreamRegistry(
+		registry.WithServers(registry.NewTestServer("io.test/test-server",
+			registry.WithOCIPackage("test/image:latest"),
+		)),
 	)
-	testData := registry.ToolHiveRegistryToJSON(testReg)
+	testData, err := json.Marshal(testReg)
+	require.NoError(t, err)
 	testHash := fmt.Sprintf("%x", sha256.Sum256(testData))
 
 	require.NoError(t, os.WriteFile(testFilePath, testData, 0644))
@@ -58,8 +62,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			name:                "sync needed when registry is in failed state",
 			manualSyncRequested: false,
 			config: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry",
 				File: &config.FileConfig{
 					Path: testFilePath,
 				},
@@ -73,8 +76,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			name:                "sync not needed when already syncing",
 			manualSyncRequested: false,
 			config: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry",
 				File: &config.FileConfig{
 					Path: testFilePath,
 				},
@@ -88,8 +90,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			name:                "sync needed when registry is in failed state",
 			manualSyncRequested: false,
 			config: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry",
 				File: &config.FileConfig{
 					Path: testFilePath,
 				},
@@ -104,8 +105,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			name:                "manual sync not needed with new trigger value and same hash",
 			manualSyncRequested: true,
 			config: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry",
 				File: &config.FileConfig{
 					Path: testFilePath,
 				},
@@ -147,14 +147,23 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 	testFilePath := filepath.Join(tempDir, "registry.json")
 
 	// Create test file with valid registry data (1 server)
-	testReg := registry.NewTestToolHiveRegistry(
-		registry.WithImageServer("test-server", "test/image:latest"),
+	testReg := registry.NewTestUpstreamRegistry(
+		registry.WithServers(registry.NewTestServer("io.test/test-server",
+			registry.WithOCIPackage("test/image:latest"),
+			registry.WithTags("database"),
+		)),
 	)
-	testData := registry.ToolHiveRegistryToJSON(testReg)
+	testData, err := json.Marshal(testReg)
+	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(testFilePath, testData, 0644))
 
-	emptyReg := registry.NewTestToolHiveRegistry()
-	emptyTestData := registry.ToolHiveRegistryToJSON(emptyReg)
+	emptyReg := registry.NewTestUpstreamRegistry(
+		registry.WithServers(registry.NewTestServer("io.test/placeholder",
+			registry.WithOCIPackage("placeholder/image:latest"),
+		)),
+	)
+	emptyTestData, err := json.Marshal(emptyReg)
+	require.NoError(t, err)
 	emptyTestFilePath := filepath.Join(tempDir, "empty-registry.json")
 	require.NoError(t, os.WriteFile(emptyTestFilePath, emptyTestData, 0644))
 
@@ -170,8 +179,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		{
 			name: "successful sync with valid data",
 			config: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry",
 				File: &config.FileConfig{
 					Path: testFilePath,
 				},
@@ -182,8 +190,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		{
 			name: "sync fails when source file not found",
 			config: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry",
 				File: &config.FileConfig{
 					Path: "/data/missing-registry.json",
 				},
@@ -193,39 +200,36 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			errorContains:       "",
 		},
 		{
-			name: "successful sync with empty registry data",
+			name: "successful sync with minimal registry data",
 			config: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry",
 				File: &config.FileConfig{
 					Path: emptyTestFilePath,
 				},
 			},
 			expectedError:       false,
-			expectedServerCount: intPtr(0), // 0 servers in the registry data
+			expectedServerCount: intPtr(1), // 1 placeholder server in the registry data
 		},
 		{
 			name: "successful sync with name filtering",
 			config: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry",
 				File: &config.FileConfig{
 					Path: testFilePath,
 				},
 				Filter: &config.FilterConfig{
 					Names: &config.NameFilterConfig{
-						Include: []string{"test-*"},
+						Include: []string{"io.test/*"},
 					},
 				},
 			},
 			expectedError:       false,
-			expectedServerCount: intPtr(1), // 1 server after filtering (test-server matches include pattern)
+			expectedServerCount: intPtr(1), // 1 server after filtering (io.test/test-server matches include pattern)
 		},
 		{
 			name: "successful sync with tag filtering",
 			config: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry",
 				File: &config.FileConfig{
 					Path: testFilePath,
 				},
@@ -241,14 +245,13 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		{
 			name: "successful sync with combined name and tag filtering",
 			config: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry",
 				File: &config.FileConfig{
 					Path: testFilePath,
 				},
 				Filter: &config.FilterConfig{
 					Names: &config.NameFilterConfig{
-						Include: []string{"test-*"},
+						Include: []string{"io.test/*"},
 					},
 					Tags: &config.TagFilterConfig{
 						Include: []string{"database"},
@@ -309,15 +312,18 @@ func TestDefaultSyncManager_PerformSync_WithPrefetched(t *testing.T) {
 	defer ctrl.Finish()
 
 	// Build a FetchResult directly without a real file source
-	testReg := registry.NewTestToolHiveRegistry(
-		registry.WithImageServer("prefetched-server", "test/image:latest"),
+	testReg := registry.NewTestUpstreamRegistry(
+		registry.WithServers(registry.NewTestServer("io.test/prefetched-server",
+			registry.WithOCIPackage("test/image:latest"),
+		)),
 	)
-	testData := registry.ToolHiveRegistryToJSON(testReg)
+	testData, err := json.Marshal(testReg)
+	require.NoError(t, err)
 	validator := sources.NewRegistryDataValidator()
-	reg, err := validator.ValidateData(testData, config.SourceFormatToolHive)
+	reg, err := validator.ValidateData(testData)
 	require.NoError(t, err)
 	hash := fmt.Sprintf("%x", sha256.Sum256(testData))
-	prefetched := sources.NewFetchResult(reg, hash, config.SourceFormatToolHive)
+	prefetched := sources.NewFetchResult(reg, hash)
 
 	mockWriter := writermocks.NewMockSyncWriter(ctrl)
 	mockWriter.EXPECT().
@@ -328,8 +334,7 @@ func TestDefaultSyncManager_PerformSync_WithPrefetched(t *testing.T) {
 	// Config points to a non-existent path — if PerformSync attempts a fetch it will fail,
 	// proving the prefetched data was reused instead.
 	regCfg := &config.SourceConfig{
-		Name:   "test-registry",
-		Format: config.SourceFormatToolHive,
+		Name: "test-registry",
 		File: &config.FileConfig{
 			Path: "/nonexistent/path/registry.json",
 		},

@@ -34,11 +34,6 @@ func (*apiRegistryHandler) Validate(regCfg *config.SourceConfig) error {
 		return fmt.Errorf("registry configuration cannot be nil")
 	}
 
-	if regCfg.Format != "" && regCfg.Format != config.SourceFormatUpstream {
-		return fmt.Errorf("unsupported format: expected %s or empty, got %s",
-			config.SourceFormatUpstream, regCfg.Format)
-	}
-
 	if regCfg.API == nil {
 		return fmt.Errorf("api configuration is required")
 	}

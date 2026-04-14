@@ -65,8 +65,8 @@ type MockRegistryDataValidator struct {
 	mock.Mock
 }
 
-func (m *MockRegistryDataValidator) ValidateData(data []byte, format string) (*toolhivetypes.UpstreamRegistry, error) {
-	args := m.Called(data, format)
+func (m *MockRegistryDataValidator) ValidateData(data []byte) (*toolhivetypes.UpstreamRegistry, error) {
+	args := m.Called(data)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -264,8 +264,7 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 		{
 			name: "successful fetch with default path",
 			registryConfig: &config.SourceConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
+				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 					Branch:     testBranch,
@@ -289,15 +288,14 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 				gitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
 				gitClient.On("Cleanup", repoInfo).Return(nil)
 
-				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return(upstreamRegistry, nil)
+				validator.On("ValidateData", testData).Return(upstreamRegistry, nil)
 			},
 			expectError: false,
 		},
 		{
 			name: "successful fetch with custom path",
 			registryConfig: &config.SourceConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
+				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 					Tag:        testTag,
@@ -322,15 +320,14 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 				gitClient.On("GetFileContent", repoInfo, testFilePath).Return(testData, nil)
 				gitClient.On("Cleanup", repoInfo).Return(nil)
 
-				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return(upstreamRegistry, nil)
+				validator.On("ValidateData", testData).Return(upstreamRegistry, nil)
 			},
 			expectError: false,
 		},
 		{
 			name: "validation failure",
 			registryConfig: &config.SourceConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
+				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: "", // Invalid
 				},
@@ -344,8 +341,7 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 		{
 			name: "clone failure",
 			registryConfig: &config.SourceConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
+				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 					Commit:     testCommit,
@@ -362,8 +358,7 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 		{
 			name: "file not found",
 			registryConfig: &config.SourceConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
+				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 				},
@@ -383,8 +378,7 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 		{
 			name: "validation data failure",
 			registryConfig: &config.SourceConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
+				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
 				},
@@ -399,7 +393,7 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 				gitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
 				gitClient.On("Cleanup", repoInfo).Return(nil)
 
-				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return((*toolhivetypes.UpstreamRegistry)(nil), errors.New("invalid data"))
+				validator.On("ValidateData", testData).Return((*toolhivetypes.UpstreamRegistry)(nil), errors.New("invalid data"))
 			},
 			expectError:   true,
 			errorContains: "registry data validation failed",
@@ -435,7 +429,6 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotNil(t, result)
 				assert.NotEmpty(t, result.Hash)
-				assert.Equal(t, tt.registryConfig.Format, result.Format)
 			}
 
 			// Verify all mock expectations
@@ -469,8 +462,7 @@ func TestGitRegistryHandler_CleanupFailure(t *testing.T) {
 
 	// Test that cleanup failure doesn't prevent successful fetch
 	registryConfig := &config.SourceConfig{
-		Name:   "test-git",
-		Format: config.SourceFormatToolHive,
+		Name: "test-git",
 		Git: &config.GitConfig{
 			Repository: testGitRepoURL,
 			Branch:     testBranch,
@@ -492,7 +484,7 @@ func TestGitRegistryHandler_CleanupFailure(t *testing.T) {
 	mockGitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
 	mockGitClient.On("Cleanup", repoInfo).Return(errors.New("cleanup failed")) // Cleanup fails
 
-	mockValidator.On("ValidateData", testData, config.SourceFormatToolHive).Return(upstreamRegistry, nil)
+	mockValidator.On("ValidateData", testData).Return(upstreamRegistry, nil)
 
 	handler := &gitRegistryHandler{
 		gitClient: mockGitClient,
@@ -537,8 +529,7 @@ func TestGitRegistryHandler_FetchRegistryWithAuth(t *testing.T) {
 			},
 			registryConfig: func(auth *config.GitAuthConfig) *config.SourceConfig {
 				return &config.SourceConfig{
-					Name:   "test-git-auth",
-					Format: config.SourceFormatToolHive,
+					Name: "test-git-auth",
 					Git: &config.GitConfig{
 						Repository: testGitRepoURL,
 						Branch:     testBranch,
@@ -568,7 +559,7 @@ func TestGitRegistryHandler_FetchRegistryWithAuth(t *testing.T) {
 				gitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
 				gitClient.On("Cleanup", repoInfo).Return(nil)
 
-				validator.On("ValidateData", testData, config.SourceFormatToolHive).Return(upstreamRegistry, nil)
+				validator.On("ValidateData", testData).Return(upstreamRegistry, nil)
 			},
 			expectError: false,
 		},
@@ -587,8 +578,7 @@ func TestGitRegistryHandler_FetchRegistryWithAuth(t *testing.T) {
 			},
 			registryConfig: func(auth *config.GitAuthConfig) *config.SourceConfig {
 				return &config.SourceConfig{
-					Name:   "test-git-auth-fail",
-					Format: config.SourceFormatToolHive,
+					Name: "test-git-auth-fail",
 					Git: &config.GitConfig{
 						Repository: testGitRepoURL,
 						Branch:     testBranch,
@@ -639,7 +629,6 @@ func TestGitRegistryHandler_FetchRegistryWithAuth(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotNil(t, result)
 				assert.NotEmpty(t, result.Hash)
-				assert.Equal(t, registryConfig.Format, result.Format)
 			}
 
 			// Verify all mock expectations

@@ -12,8 +12,6 @@
 # Sources configuration (can have multiple sources)
 sources:
   - name: local-file
-    # Data format: toolhive (native) or upstream (MCP registry format)
-    format: toolhive
 
     # Local file configuration
     file:

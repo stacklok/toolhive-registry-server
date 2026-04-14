@@ -166,7 +166,7 @@ func (h *gitRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.S
 	}
 
 	// Validate and parse registry data
-	reg, err := h.validator.ValidateData(registryData, regCfg.Format)
+	reg, err := h.validator.ValidateData(registryData)
 	if err != nil {
 		return nil, fmt.Errorf("registry data validation failed: %w", err)
 	}
@@ -175,7 +175,7 @@ func (h *gitRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.S
 	hash := fmt.Sprintf("%x", sha256.Sum256(registryData))
 
 	// Create and return fetch result with pre-calculated hash
-	return NewFetchResult(reg, hash, regCfg.Format), nil
+	return NewFetchResult(reg, hash), nil
 }
 
 // logMemoryStatsAfterOperation logs the memory stats after an operation

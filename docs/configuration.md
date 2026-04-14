@@ -38,7 +38,6 @@ thv-registry-api serve --config config.yaml
 ```yaml
 sources:
   - name: default
-    format: toolhive
     file:
       path: /data/registry.json
 
@@ -59,7 +58,6 @@ database:
 # Sources define where registry data comes from
 sources:
   - name: toolhive
-    format: toolhive
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
@@ -117,7 +115,6 @@ Sources define where registry data comes from. Multiple sources can be configure
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Unique name for this source |
-| `format` | string | Yes | Data format: `toolhive` or `upstream` |
 | `git` | object | No* | Git repository configuration |
 | `api` | object | No* | API endpoint configuration |
 | `file` | object | No* | Local file configuration |
@@ -193,7 +190,6 @@ api:
 **Supports:**
 - Automatic background synchronization
 - Per-registry filtering
-- Format conversion (upstream → toolhive)
 
 ### Local File
 
@@ -412,7 +408,6 @@ See [Database Configuration](database.md#password-security) for password managem
 ```yaml
 sources:
   - name: local
-    format: toolhive
     file:
       path: ./examples/registry-sample.json
 
@@ -432,7 +427,6 @@ database:
 ```yaml
 sources:
   - name: toolhive
-    format: toolhive
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
@@ -476,7 +470,6 @@ database:
 sources:
   # Official ToolHive registry
   - name: toolhive
-    format: toolhive
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
@@ -486,7 +479,6 @@ sources:
 
   # Company internal registry
   - name: internal
-    format: upstream
     api:
       endpoint: https://internal-registry.company.com
     syncPolicy:
@@ -497,12 +489,10 @@ sources:
 
   # Managed registry for custom servers
   - name: custom
-    format: toolhive
     managed: {}
 
   # Kubernetes-deployed servers
   - name: k8s-deployed
-    format: toolhive
     kubernetes:
       namespaces:
         - mcp-servers

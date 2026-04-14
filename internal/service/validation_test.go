@@ -187,7 +187,7 @@ func TestValidateSourceConfig(t *testing.T) {
 			name: "valid_file_source_with_inline_data_no_sync_policy_required",
 			req: &SourceCreateRequest{
 				File: &config.FileConfig{
-					Data: `{"version":"1.0.0","last_updated":"2025-01-15T10:30:00Z","servers":{"test-server":{"name":"test-server","description":"A test server","image":"test/image:latest","tier":"Community","status":"Active","transport":"stdio","tools":["test_tool"]}}}`,
+					Data: `{"version":"1.0.0","meta":{"last_updated":"2025-01-15T10:30:00Z"},"data":{"servers":[{"name":"io.test/test-server","description":"A test server","version":"1.0.0","packages":[{"registryType":"oci","identifier":"test/image:latest","transport":{"type":"stdio"}}]}]}}`,
 				},
 			},
 			wantErr: false,
@@ -277,61 +277,6 @@ func TestValidateSourceConfig(t *testing.T) {
 			},
 			wantErr: true,
 			errMsg:  "syncPolicy.interval is required",
-		},
-
-		// Format validation
-		{
-			name: "valid_toolhive_format",
-			req: &SourceCreateRequest{
-				Format: "toolhive",
-				File: &config.FileConfig{
-					Path: "/data/registry.json",
-				},
-				SyncPolicy: &config.SyncPolicyConfig{
-					Interval: "30m",
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid_upstream_format",
-			req: &SourceCreateRequest{
-				Format: "upstream",
-				File: &config.FileConfig{
-					Path: "/data/registry.json",
-				},
-				SyncPolicy: &config.SyncPolicyConfig{
-					Interval: "30m",
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid_empty_format",
-			req: &SourceCreateRequest{
-				Format: "",
-				File: &config.FileConfig{
-					Path: "/data/registry.json",
-				},
-				SyncPolicy: &config.SyncPolicyConfig{
-					Interval: "30m",
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "invalid_format_returns_error",
-			req: &SourceCreateRequest{
-				Format: "invalid-format",
-				File: &config.FileConfig{
-					Path: "/data/registry.json",
-				},
-				SyncPolicy: &config.SyncPolicyConfig{
-					Interval: "30m",
-				},
-			},
-			wantErr: true,
-			errMsg:  "format must be 'toolhive' or 'upstream'",
 		},
 
 		// Managed and Kubernetes ignore sync policy if provided
@@ -604,8 +549,8 @@ func TestValidateAPIConfig(t *testing.T) {
 func TestValidateFileConfig(t *testing.T) {
 	t.Parallel()
 
-	// Valid JSON for inline data tests - using a real entry from /examples/toolhive-registry.json
-	validToolhiveJSON := `{"$schema":"https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/toolhive-legacy-registry.schema.json","version":"1.0.0","last_updated":"2025-11-26T00:27:46Z","servers":{"fetch":{"description":"Allows you to fetch content from the web","tier":"Community","status":"Active","transport":"streamable-http","tools":["fetch"],"metadata":{"stars":20,"pulls":12390,"last_updated":"2025-11-13T02:33:35Z"},"repository_url":"https://github.com/stackloklabs/gofetch","tags":["content","html","markdown","fetch","fetching","get","wget","json","curl","modelcontextprotocol"],"image":"ghcr.io/stackloklabs/gofetch/server:1.0.1","target_port":8080,"permissions":{"network":{"outbound":{"insecure_allow_all":true,"allow_port":[443]}}},"provenance":{"sigstore_url":"tuf-repo-cdn.sigstore.dev","repository_uri":"https://github.com/StacklokLabs/gofetch","signer_identity":"/.github/workflows/release.yml","runner_environment":"github-hosted","cert_issuer":"https://token.actions.githubusercontent.com"}}}}`
+	// Valid upstream JSON for inline data tests
+	validUpstreamJSON := `{"version":"1.0.0","meta":{"last_updated":"2025-01-15T10:30:00Z"},"data":{"servers":[{"name":"io.test/test-server","description":"A test server","version":"1.0.0","packages":[{"registryType":"oci","identifier":"test/image:latest","transport":{"type":"stdio"}}]}]}}`
 
 	tests := []struct {
 		name    string
@@ -656,7 +601,7 @@ func TestValidateFileConfig(t *testing.T) {
 		{
 			name: "valid_data",
 			cfg: &config.FileConfig{
-				Data: validToolhiveJSON,
+				Data: validUpstreamJSON,
 			},
 			wantErr: false,
 		},
@@ -673,7 +618,7 @@ func TestValidateFileConfig(t *testing.T) {
 			name: "path_and_data_mutually_exclusive_returns_error",
 			cfg: &config.FileConfig{
 				Path: "/data/registry.json",
-				Data: validToolhiveJSON,
+				Data: validUpstreamJSON,
 			},
 			wantErr: true,
 			errMsg:  "mutually exclusive",
@@ -682,7 +627,7 @@ func TestValidateFileConfig(t *testing.T) {
 			name: "url_and_data_mutually_exclusive_returns_error",
 			cfg: &config.FileConfig{
 				URL:  "https://example.com/registry.json",
-				Data: validToolhiveJSON,
+				Data: validUpstreamJSON,
 			},
 			wantErr: true,
 			errMsg:  "mutually exclusive",
@@ -692,7 +637,7 @@ func TestValidateFileConfig(t *testing.T) {
 			cfg: &config.FileConfig{
 				Path: "/data/registry.json",
 				URL:  "https://example.com/registry.json",
-				Data: validToolhiveJSON,
+				Data: validUpstreamJSON,
 			},
 			wantErr: true,
 			errMsg:  "mutually exclusive",
@@ -725,7 +670,7 @@ func TestValidateFileConfig(t *testing.T) {
 		{
 			name: "timeout_with_data_returns_error",
 			cfg: &config.FileConfig{
-				Data:    validToolhiveJSON,
+				Data:    validUpstreamJSON,
 				Timeout: "30s",
 			},
 			wantErr: true,
@@ -798,23 +743,6 @@ func TestValidateInlineDataBasic(t *testing.T) {
 		}
 	}`
 
-	// Valid toolhive format JSON that matches the schema
-	validToolhiveJSON := `{
-		"version": "1.0.0",
-		"last_updated": "2025-01-15T10:30:00Z",
-		"servers": {
-			"test-server": {
-				"name": "test-server",
-				"description": "A test server for validation",
-				"image": "test/image:latest",
-				"tier": "Community",
-				"status": "Active",
-				"transport": "stdio",
-				"tools": ["test_tool"]
-			}
-		}
-	}`
-
 	tests := []struct {
 		name    string
 		data    string
@@ -849,11 +777,6 @@ func TestValidateInlineDataBasic(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "valid_toolhive_format_json",
-			data:    validToolhiveJSON,
-			wantErr: false,
-		},
-		{
 			name:    "json_array_is_invalid_returns_error",
 			data:    `[{"name": "test"}]`,
 			wantErr: true,
@@ -874,202 +797,6 @@ func TestValidateInlineDataBasic(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			err := ValidateInlineDataBasic(tt.data)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestValidateInlineDataWithFormat(t *testing.T) {
-	t.Parallel()
-
-	// Valid upstream format JSON that matches the schema
-	validUpstreamJSON := `{
-		"$schema": "https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/upstream-registry.schema.json",
-		"version": "1.0.0",
-		"meta": {
-			"last_updated": "2025-01-15T10:30:00Z"
-		},
-		"data": {
-			"servers": [{
-				"$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-				"name": "io.github.test/test-server",
-				"description": "A test server for validation",
-				"title": "test-server",
-				"version": "1.0.0",
-				"packages": [{
-					"registryType": "oci",
-					"identifier": "test/image:latest",
-					"transport": {
-						"type": "stdio"
-					}
-				}],
-				"_meta": {
-					"io.modelcontextprotocol.registry/publisher-provided": {
-						"io.github.test": {
-							"test/image:latest": {
-								"tier": "Community",
-								"status": "Active",
-								"tools": ["test_tool"]
-							}
-						}
-					}
-				}
-			}]
-		}
-	}`
-
-	// Valid toolhive format JSON that matches the schema
-	validToolhiveJSON := `{
-		"version": "1.0.0",
-		"last_updated": "2025-01-15T10:30:00Z",
-		"servers": {
-			"test-server": {
-				"name": "test-server",
-				"description": "A test server for validation",
-				"image": "test/image:latest",
-				"tier": "Community",
-				"status": "Active",
-				"transport": "stdio",
-				"tools": ["test_tool"]
-			}
-		}
-	}`
-
-	tests := []struct {
-		name    string
-		data    string
-		format  string
-		wantErr bool
-		errMsg  string
-	}{
-		{
-			name:    "empty_data_returns_error",
-			data:    "",
-			format:  "upstream",
-			wantErr: true,
-			errMsg:  "data cannot be empty",
-		},
-		{
-			name:    "empty_data_with_empty_format_returns_error",
-			data:    "",
-			format:  "",
-			wantErr: true,
-			errMsg:  "data cannot be empty",
-		},
-		{
-			name:    "valid_upstream_format",
-			data:    validUpstreamJSON,
-			format:  "upstream",
-			wantErr: false,
-		},
-		{
-			name:    "valid_toolhive_format",
-			data:    validToolhiveJSON,
-			format:  "toolhive",
-			wantErr: false,
-		},
-		{
-			name:    "upstream_data_with_empty_format_auto_detects",
-			data:    validUpstreamJSON,
-			format:  "",
-			wantErr: false,
-		},
-		{
-			name:    "toolhive_data_with_empty_format_auto_detects",
-			data:    validToolhiveJSON,
-			format:  "",
-			wantErr: false,
-		},
-		{
-			name:    "toolhive_data_with_upstream_format_returns_error",
-			data:    validToolhiveJSON,
-			format:  "upstream",
-			wantErr: true,
-		},
-		{
-			name:    "upstream_data_with_toolhive_format_returns_error",
-			data:    validUpstreamJSON,
-			format:  "toolhive",
-			wantErr: true,
-		},
-		{
-			name:    "unsupported_format_returns_error",
-			data:    validUpstreamJSON,
-			format:  "unsupported",
-			wantErr: true,
-			errMsg:  "unsupported format",
-		},
-		{
-			name:    "invalid_json_with_upstream_format_returns_error",
-			data:    "not json",
-			format:  "upstream",
-			wantErr: true,
-		},
-		{
-			name:    "invalid_json_with_toolhive_format_returns_error",
-			data:    "not json",
-			format:  "toolhive",
-			wantErr: true,
-		},
-		{
-			name: "upstream_format_missing_servers_returns_error",
-			data: `{
-				"version": "1.0.0",
-				"meta": {"last_updated": "2025-01-01T00:00:00Z"},
-				"data": {
-					"servers": []
-				}
-			}`,
-			format:  "upstream",
-			wantErr: true,
-			errMsg:  "at least one server",
-		},
-		{
-			name: "upstream_format_server_missing_name_returns_error",
-			data: `{
-				"version": "1.0.0",
-				"meta": {"last_updated": "2025-01-01T00:00:00Z"},
-				"data": {
-					"servers": [{
-						"description": "A test server without name",
-						"version": "1.0.0"
-					}]
-				}
-			}`,
-			format:  "upstream",
-			wantErr: true,
-			errMsg:  "name is required",
-		},
-		{
-			name: "upstream_format_server_missing_description_returns_error",
-			data: `{
-				"version": "1.0.0",
-				"meta": {"last_updated": "2025-01-01T00:00:00Z"},
-				"data": {
-					"servers": [{
-						"name": "io.github.test/test-server",
-						"version": "1.0.0"
-					}]
-				}
-			}`,
-			format:  "upstream",
-			wantErr: true,
-			errMsg:  "description is required",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			err := ValidateInlineDataWithFormat(tt.data, tt.format)
 
 			if tt.wantErr {
 				require.Error(t, err)

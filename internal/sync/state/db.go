@@ -169,7 +169,6 @@ func buildBulkUpsertParams(
 	n := len(sourceConfigs)
 	names := make([]string, n)
 	sourceTypes := make([]string, n)
-	formats := make([]string, n)
 	sourceConfigsJSON := make([][]byte, n)
 	filterConfigs := make([][]byte, n)
 	syncSchedules := make([]pgtypes.Interval, n)
@@ -181,7 +180,6 @@ func buildBulkUpsertParams(
 	for i, src := range sourceConfigs {
 		names[i] = src.Name
 		sourceTypes[i] = string(src.GetType())
-		formats[i] = src.Format
 		sourceConfigsJSON[i] = serializeSourceConfig(&src)
 		filterConfigs[i] = serializeFilterConfig(src.Filter)
 		syncSchedules[i] = getSyncScheduleIntervalFromConfig(&src)
@@ -194,7 +192,6 @@ func buildBulkUpsertParams(
 	return names, sqlc.BulkUpsertConfigSourcesParams{
 		Names:         names,
 		SourceTypes:   sourceTypes,
-		Formats:       formats,
 		SourceConfigs: sourceConfigsJSON,
 		FilterConfigs: filterConfigs,
 		SyncSchedules: syncSchedules,
@@ -630,8 +627,7 @@ func loadSourceConfigFromDB(ctx context.Context, queries *sqlc.Queries, name str
 
 	// Build the source config from database fields
 	srcCfg := &config.SourceConfig{
-		Name:   src.Name,
-		Format: stringOrEmpty(src.Format),
+		Name: src.Name,
 	}
 
 	// Parse sync schedule from interval
@@ -658,14 +654,6 @@ func loadSourceConfigFromDB(ctx context.Context, queries *sqlc.Queries, name str
 	}
 
 	return srcCfg, nil
-}
-
-// stringOrEmpty returns the string value or empty string if nil
-func stringOrEmpty(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }
 
 // parseSourceConfig parses the source configuration from JSONB into the appropriate config field

@@ -26,7 +26,6 @@ func TestAPIRegistryHandler_FetchRegistry(t *testing.T) {
 		registryConfig     *config.SourceConfig
 		expectError        bool
 		errorContains      string
-		expectedFormat     string
 		expectedCount      int
 		expectedServerName string
 	}{
@@ -72,27 +71,11 @@ openapi: 3.1.0
 				}))
 			},
 			registryConfig: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatUpstream,
+				Name: "test-registry",
 			},
 			expectError:        false,
-			expectedFormat:     config.SourceFormatUpstream,
 			expectedCount:      1,
 			expectedServerName: "test-server",
-		},
-		{
-			name: "fail with unsupported format (toolhive format)",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.WriteHeader(http.StatusNotFound)
-				}))
-			},
-			registryConfig: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatToolHive,
-			},
-			expectError:   true,
-			errorContains: "unsupported format",
 		},
 		{
 			name: "fail when API endpoint returns 404",
@@ -102,8 +85,7 @@ openapi: 3.1.0
 				}))
 			},
 			registryConfig: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatUpstream,
+				Name: "test-registry",
 			},
 			expectError:   true,
 			errorContains: "validation failed",
@@ -116,8 +98,7 @@ openapi: 3.1.0
 				}))
 			},
 			registryConfig: &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatUpstream,
+				Name: "test-registry",
 			},
 			expectError:   true,
 			errorContains: "validation failed",
@@ -150,7 +131,6 @@ openapi: 3.1.0
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			assert.Equal(t, tt.expectedCount, result.ServerCount)
-			assert.Equal(t, tt.expectedFormat, result.Format)
 
 			if tt.expectedServerName != "" {
 				require.NotNil(t, result.Registry)
@@ -229,8 +209,7 @@ openapi: 3.1.0
 	ctx := context.Background()
 
 	registryConfig := &config.SourceConfig{
-		Name:   "test-registry",
-		Format: config.SourceFormatUpstream,
+		Name: "test-registry",
 		API: &config.APIConfig{
 			Endpoint: mockServer.URL,
 		},
@@ -265,9 +244,8 @@ func TestAPIRegistryHandler_NilAPIConfig(t *testing.T) {
 	ctx := context.Background()
 
 	registryConfig := &config.SourceConfig{
-		Name:   "test-registry",
-		Format: config.SourceFormatUpstream,
-		API:    nil,
+		Name: "test-registry",
+		API:  nil,
 	}
 
 	_, err := handler.FetchRegistry(ctx, registryConfig)

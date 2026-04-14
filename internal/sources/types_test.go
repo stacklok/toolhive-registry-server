@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
 )
 
@@ -20,14 +19,12 @@ func TestNewFetchResult(t *testing.T) {
 		name                string
 		registryData        *toolhivetypes.UpstreamRegistry
 		hash                string
-		format              string
 		expectedServerCount int
 	}{
 		{
 			name:                "empty registry",
 			registryData:        registry.NewTestUpstreamRegistry(),
 			hash:                "abcd1234",
-			format:              config.SourceFormatToolHive,
 			expectedServerCount: 0,
 		},
 		{
@@ -43,7 +40,6 @@ func TestNewFetchResult(t *testing.T) {
 				),
 			),
 			hash:                "efgh5678",
-			format:              config.SourceFormatToolHive,
 			expectedServerCount: 2,
 		},
 		{
@@ -56,7 +52,6 @@ func TestNewFetchResult(t *testing.T) {
 				),
 			),
 			hash:                "ijkl9012",
-			format:              config.SourceFormatUpstream,
 			expectedServerCount: 1,
 		},
 	}
@@ -65,11 +60,10 @@ func TestNewFetchResult(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result := NewFetchResult(tt.registryData, tt.hash, tt.format)
+			result := NewFetchResult(tt.registryData, tt.hash)
 
 			assert.Equal(t, tt.expectedServerCount, result.ServerCount)
 			assert.Equal(t, tt.hash, result.Hash)
-			assert.Equal(t, tt.format, result.Format)
 			assert.Equal(t, tt.registryData, result.Registry)
 		})
 	}
@@ -88,15 +82,13 @@ func TestFetchResultHashConsistency(t *testing.T) {
 		),
 	)
 	hash := "consistent-hash-value"
-	format := config.SourceFormatToolHive
 
-	result1 := NewFetchResult(registryData, hash, format)
-	result2 := NewFetchResult(registryData, hash, format)
+	result1 := NewFetchResult(registryData, hash)
+	result2 := NewFetchResult(registryData, hash)
 
 	// Same data should produce same results
 	assert.Equal(t, result1.Hash, result2.Hash)
 	assert.Equal(t, result1.ServerCount, result2.ServerCount)
-	assert.Equal(t, result1.Format, result2.Format)
 	assert.Equal(t, result1.Registry, result2.Registry)
 }
 
@@ -121,10 +113,9 @@ func TestFetchResultHashDifference(t *testing.T) {
 
 	hash1 := "hash-for-data1"
 	hash2 := "hash-for-data2"
-	format := config.SourceFormatToolHive
 
-	result1 := NewFetchResult(registryData1, hash1, format)
-	result2 := NewFetchResult(registryData2, hash2, format)
+	result1 := NewFetchResult(registryData1, hash1)
+	result2 := NewFetchResult(registryData2, hash2)
 
 	// Different data should produce different hashes
 	assert.NotEqual(t, result1.Hash, result2.Hash)
@@ -143,22 +134,6 @@ func TestDefaultRegistryDataValidator_ValidateData(t *testing.T) {
 	t.Parallel()
 
 	validator := NewRegistryDataValidator()
-
-	validToolhiveData := []byte(`{
-		"version": "1.0.0",
-		"last_updated": "2025-01-15T10:30:00Z",
-		"servers": {
-			"test-server": {
-				"name": "test-server",
-				"description": "A test server for validation",
-				"image": "test/image:latest",
-				"tier": "Community",
-				"status": "Active",
-				"transport": "stdio",
-				"tools": ["test_tool"]
-			}
-		}
-	}`)
 
 	validUpstreamData := []byte(`{
 		"$schema": "https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/upstream-registry.schema.json",
@@ -198,63 +173,38 @@ func TestDefaultRegistryDataValidator_ValidateData(t *testing.T) {
 	tests := []struct {
 		name          string
 		data          []byte
-		format        string
 		expectError   bool
 		errorContains string
 	}{
 		{
-			name:        "valid toolhive format",
-			data:        validToolhiveData,
-			format:      config.SourceFormatToolHive,
-			expectError: false,
-		},
-		{
 			name:        "valid upstream format",
 			data:        validUpstreamData,
-			format:      config.SourceFormatUpstream,
 			expectError: false,
 		},
 		{
 			name:          "empty data",
 			data:          []byte{},
-			format:        config.SourceFormatToolHive,
 			expectError:   true,
 			errorContains: "data cannot be empty",
 		},
 		{
-			name:          "unsupported format",
-			data:          validToolhiveData,
-			format:        "unsupported",
-			expectError:   true,
-			errorContains: "unsupported format",
-		},
-		{
-			name:          "invalid json for toolhive",
+			name:          "invalid json",
 			data:          []byte("invalid json"),
-			format:        config.SourceFormatToolHive,
-			expectError:   true,
-			errorContains: "invalid",
-		},
-		{
-			name:          "invalid json for upstream",
-			data:          []byte("invalid json"),
-			format:        config.SourceFormatUpstream,
 			expectError:   true,
 			errorContains: "validation failed",
 		},
 		{
-			name: "empty upstream servers array",
+			name: "empty servers array",
 			data: []byte(`{
 				"version": "1.0.0",
 				"meta": {"last_updated": "2025-01-15T10:30:00Z"},
 				"data": {"servers": []}
 			}`),
-			format:        config.SourceFormatUpstream,
 			expectError:   true,
 			errorContains: "must contain at least one server",
 		},
 		{
-			name: "upstream server missing name",
+			name: "server missing name",
 			data: []byte(`{
 				"version": "1.0.0",
 				"meta": {"last_updated": "2025-01-15T10:30:00Z"},
@@ -266,12 +216,11 @@ func TestDefaultRegistryDataValidator_ValidateData(t *testing.T) {
 					}]
 				}
 			}`),
-			format:        config.SourceFormatUpstream,
 			expectError:   true,
 			errorContains: "name is required",
 		},
 		{
-			name: "upstream server missing description",
+			name: "server missing description",
 			data: []byte(`{
 				"version": "1.0.0",
 				"meta": {"last_updated": "2025-01-15T10:30:00Z"},
@@ -283,7 +232,6 @@ func TestDefaultRegistryDataValidator_ValidateData(t *testing.T) {
 					}]
 				}
 			}`),
-			format:        config.SourceFormatUpstream,
 			expectError:   true,
 			errorContains: "description is required",
 		},
@@ -293,7 +241,7 @@ func TestDefaultRegistryDataValidator_ValidateData(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := validator.ValidateData(tt.data, tt.format)
+			_, err := validator.ValidateData(tt.data)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -321,38 +269,12 @@ func TestExampleFiles(t *testing.T) {
 	tests := []struct {
 		name               string
 		filename           string
-		format             string
 		expectedServers    int
 		validateServerName func(*testing.T, *toolhivetypes.UpstreamRegistry)
 	}{
 		{
-			name:            "toolhive-registry.json",
-			filename:        "toolhive-registry.json",
-			format:          config.SourceFormatToolHive,
-			expectedServers: 12,
-			validateServerName: func(t *testing.T, reg *toolhivetypes.UpstreamRegistry) {
-				t.Helper()
-				// Verify some expected servers are present
-				serverNames := make(map[string]bool)
-				for _, server := range reg.Data.Servers {
-					serverNames[server.Name] = true
-				}
-
-				// Check a few key servers (converted to upstream format with io.github.stacklok prefix)
-				expectedNames := []string{
-					"io.github.stacklok/adb-mysql-mcp-server",
-					"io.github.stacklok/github",
-					"io.github.stacklok/filesystem",
-				}
-				for _, name := range expectedNames {
-					assert.True(t, serverNames[name], "Expected server %s not found", name)
-				}
-			},
-		},
-		{
 			name:            "upstream-registry.json",
 			filename:        "upstream-registry.json",
-			format:          config.SourceFormatUpstream,
 			expectedServers: 12,
 			validateServerName: func(t *testing.T, reg *toolhivetypes.UpstreamRegistry) {
 				t.Helper()
@@ -386,7 +308,7 @@ func TestExampleFiles(t *testing.T) {
 			require.NotEmpty(t, data, "Example file %s is empty", tt.filename)
 
 			// Validate the data
-			reg, err := validator.ValidateData(data, tt.format)
+			reg, err := validator.ValidateData(data)
 			require.NoError(t, err, "Example file %s failed validation", tt.filename)
 			require.NotNil(t, reg, "Validator returned nil registry")
 
@@ -414,50 +336,4 @@ func TestExampleFiles(t *testing.T) {
 			assert.NotEmpty(t, reg.Meta.LastUpdated, "Example file %s has no last_updated", tt.filename)
 		})
 	}
-}
-
-// TestExampleFilesCorrespondence verifies that the toolhive and upstream example files
-// contain the same logical servers (matching by title/name)
-func TestExampleFilesCorrespondence(t *testing.T) {
-	t.Parallel()
-
-	validator := NewRegistryDataValidator()
-	repoRoot := filepath.Join("..", "..")
-	examplesDir := filepath.Join(repoRoot, "examples")
-
-	// Load toolhive format
-	toolhivePath := filepath.Join(examplesDir, "toolhive-registry.json")
-	toolhiveData, err := os.ReadFile(toolhivePath)
-	require.NoError(t, err)
-
-	toolhiveReg, err := validator.ValidateData(toolhiveData, config.SourceFormatToolHive)
-	require.NoError(t, err)
-
-	// Load upstream format
-	upstreamPath := filepath.Join(examplesDir, "upstream-registry.json")
-	upstreamData, err := os.ReadFile(upstreamPath)
-	require.NoError(t, err)
-
-	upstreamReg, err := validator.ValidateData(upstreamData, config.SourceFormatUpstream)
-	require.NoError(t, err)
-
-	// Both should have the same number of servers
-	require.Equal(t, len(toolhiveReg.Data.Servers), len(upstreamReg.Data.Servers),
-		"Toolhive and upstream example files have different server counts")
-
-	// Extract server names from both (for comparison)
-	// Toolhive format gets converted to upstream format with io.github.stacklok/ prefix
-	toolhiveNames := make(map[string]bool)
-	for _, server := range toolhiveReg.Data.Servers {
-		toolhiveNames[server.Name] = true
-	}
-
-	upstreamNames := make(map[string]bool)
-	for _, server := range upstreamReg.Data.Servers {
-		upstreamNames[server.Name] = true
-	}
-
-	// Verify the sets match
-	assert.Equal(t, toolhiveNames, upstreamNames,
-		"Toolhive and upstream example files should contain the same servers")
 }

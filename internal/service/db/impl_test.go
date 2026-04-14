@@ -1400,13 +1400,10 @@ func TestDeleteSource(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				now := time.Now()
-				format := config.SourceFormatUpstream
-
 				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "delete-src-happy",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -1468,14 +1465,13 @@ func TestDeleteSource(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				now := time.Now()
-				format := config.SourceFormatUpstream
 
 				// Create an API source
 				src, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "delete-src-in-use",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -1547,7 +1543,7 @@ func TestUpdateSource(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				sourceType := string(config.SourceTypeGit)
-				format := config.SourceFormatUpstream
+
 				now := time.Now()
 				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git","branch":"main"}`)
 
@@ -1555,7 +1551,7 @@ func TestUpdateSource(t *testing.T) {
 					Name:         "update-test-registry",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   sourceType,
-					Format:       &format,
+
 					SourceConfig: sourceConfig,
 					Syncable:     true,
 					CreatedAt:    &now,
@@ -1566,7 +1562,7 @@ func TestUpdateSource(t *testing.T) {
 				return "update-test-registry"
 			},
 			updateReq: &service.SourceCreateRequest{
-				Format: "toolhive",
+
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/updated-repo.git",
 					Branch:     "develop",
@@ -1580,7 +1576,7 @@ func TestUpdateSource(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, result)
 				require.Equal(t, "update-test-registry", result.Name)
-				require.Equal(t, "toolhive", result.Format)
+
 				require.Equal(t, config.SourceTypeGit, result.SourceType)
 				// Verify the source config was updated
 				gitConfig, ok := result.SourceConfig.(*config.GitConfig)
@@ -1597,7 +1593,7 @@ func TestUpdateSource(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				sourceType := string(config.SourceTypeAPI)
-				format := config.SourceFormatUpstream
+
 				now := time.Now()
 				sourceConfig := []byte(`{"endpoint":"https://api.example.com/v1"}`)
 
@@ -1605,7 +1601,7 @@ func TestUpdateSource(t *testing.T) {
 					Name:         "same-type-test-registry",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   sourceType,
-					Format:       &format,
+
 					SourceConfig: sourceConfig,
 					Syncable:     true,
 					CreatedAt:    &now,
@@ -1616,7 +1612,7 @@ func TestUpdateSource(t *testing.T) {
 				return "same-type-test-registry"
 			},
 			updateReq: &service.SourceCreateRequest{
-				Format: config.SourceFormatUpstream,
+
 				API: &config.APIConfig{
 					Endpoint: "https://api.example.com/v2",
 				},
@@ -1643,7 +1639,7 @@ func TestUpdateSource(t *testing.T) {
 				return "nonexistent-registry"
 			},
 			updateReq: &service.SourceCreateRequest{
-				Format: config.SourceFormatUpstream,
+
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -1677,7 +1673,7 @@ func TestUpdateSource(t *testing.T) {
 				return "config-registry-test"
 			},
 			updateReq: &service.SourceCreateRequest{
-				Format: config.SourceFormatUpstream,
+
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
 				},
@@ -1700,7 +1696,7 @@ func TestUpdateSource(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				sourceType := string(config.SourceTypeGit)
-				format := config.SourceFormatUpstream
+
 				now := time.Now()
 				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git","branch":"main"}`)
 
@@ -1708,7 +1704,7 @@ func TestUpdateSource(t *testing.T) {
 					Name:         "source-type-change-test",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   sourceType,
-					Format:       &format,
+
 					SourceConfig: sourceConfig,
 					Syncable:     true,
 					CreatedAt:    &now,
@@ -1719,7 +1715,7 @@ func TestUpdateSource(t *testing.T) {
 				return "source-type-change-test"
 			},
 			updateReq: &service.SourceCreateRequest{
-				Format: config.SourceFormatUpstream,
+
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
 				},
@@ -1742,7 +1738,7 @@ func TestUpdateSource(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				sourceType := string(config.SourceTypeGit)
-				format := config.SourceFormatUpstream
+
 				now := time.Now()
 				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git"}`)
 
@@ -1750,7 +1746,7 @@ func TestUpdateSource(t *testing.T) {
 					Name:         "invalid-config-test",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   sourceType,
-					Format:       &format,
+
 					SourceConfig: sourceConfig,
 					Syncable:     true,
 					CreatedAt:    &now,
@@ -1761,7 +1757,7 @@ func TestUpdateSource(t *testing.T) {
 				return "invalid-config-test"
 			},
 			updateReq: &service.SourceCreateRequest{
-				Format: config.SourceFormatUpstream,
+
 				Git: &config.GitConfig{
 					// Missing required Repository field
 					Branch: "main",
@@ -1785,7 +1781,7 @@ func TestUpdateSource(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				sourceType := string(config.SourceTypeGit)
-				format := config.SourceFormatUpstream
+
 				now := time.Now()
 				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git"}`)
 
@@ -1793,7 +1789,7 @@ func TestUpdateSource(t *testing.T) {
 					Name:         "no-source-type-test",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   sourceType,
-					Format:       &format,
+
 					SourceConfig: sourceConfig,
 					Syncable:     true,
 					CreatedAt:    &now,
@@ -1804,7 +1800,7 @@ func TestUpdateSource(t *testing.T) {
 				return "no-source-type-test"
 			},
 			updateReq: &service.SourceCreateRequest{
-				Format: config.SourceFormatUpstream,
+
 				// No source type specified (Git, API, File, Managed, or Kubernetes)
 				SyncPolicy: &config.SyncPolicyConfig{
 					Interval: "1h",
@@ -1825,7 +1821,7 @@ func TestUpdateSource(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				sourceType := string(config.SourceTypeAPI)
-				format := config.SourceFormatUpstream
+
 				now := time.Now()
 				sourceConfig := []byte(`{"endpoint":"https://api.example.com/v1"}`)
 
@@ -1833,7 +1829,7 @@ func TestUpdateSource(t *testing.T) {
 					Name:         "missing-sync-policy-test",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   sourceType,
-					Format:       &format,
+
 					SourceConfig: sourceConfig,
 					Syncable:     true,
 					CreatedAt:    &now,
@@ -1844,7 +1840,7 @@ func TestUpdateSource(t *testing.T) {
 				return "missing-sync-policy-test"
 			},
 			updateReq: &service.SourceCreateRequest{
-				Format: config.SourceFormatUpstream,
+
 				API: &config.APIConfig{
 					Endpoint: "https://api.example.com/v2",
 				},
@@ -1865,7 +1861,7 @@ func TestUpdateSource(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				sourceType := string(config.SourceTypeManaged)
-				format := config.SourceFormatUpstream
+
 				now := time.Now()
 				sourceConfig := []byte(`{}`)
 
@@ -1873,7 +1869,7 @@ func TestUpdateSource(t *testing.T) {
 					Name:         "managed-registry-update-test",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   sourceType,
-					Format:       &format,
+
 					SourceConfig: sourceConfig,
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -1884,7 +1880,7 @@ func TestUpdateSource(t *testing.T) {
 				return "managed-registry-update-test"
 			},
 			updateReq: &service.SourceCreateRequest{
-				Format:  "toolhive",
+
 				Managed: &config.ManagedConfig{},
 				// No SyncPolicy needed for managed type
 			},
@@ -1894,7 +1890,7 @@ func TestUpdateSource(t *testing.T) {
 				require.NotNil(t, result)
 				require.Equal(t, "managed-registry-update-test", result.Name)
 				require.Equal(t, config.SourceTypeManaged, result.SourceType)
-				require.Equal(t, "toolhive", result.Format)
+
 			},
 		},
 	}
@@ -1948,13 +1944,12 @@ func TestListSources(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				now := time.Now()
-				format := config.SourceFormatUpstream
 
 				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "list-src-alpha",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -1966,7 +1961,7 @@ func TestListSources(t *testing.T) {
 					Name:         "list-src-beta",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -2037,14 +2032,13 @@ func TestListRegistries(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				now := time.Now()
-				format := config.SourceFormatUpstream
 
 				// Create two API sources
 				srcA, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "list-reg-source-a",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -2056,7 +2050,7 @@ func TestListRegistries(t *testing.T) {
 					Name:         "list-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -2154,13 +2148,12 @@ func TestGetRegistryByName(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				now := time.Now()
-				format := config.SourceFormatUpstream
 
 				srcA, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "get-reg-source-a",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -2172,7 +2165,7 @@ func TestGetRegistryByName(t *testing.T) {
 					Name:         "get-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -2260,13 +2253,12 @@ func TestCreateRegistry(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				now := time.Now()
-				format := config.SourceFormatUpstream
 
 				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "create-reg-source-a",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -2278,7 +2270,7 @@ func TestCreateRegistry(t *testing.T) {
 					Name:         "create-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -2310,13 +2302,12 @@ func TestCreateRegistry(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				now := time.Now()
-				format := config.SourceFormatUpstream
 
 				src, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "create-dup-source",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -2402,13 +2393,12 @@ func TestCreateRegistry(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				now := time.Now()
-				format := config.SourceFormatUpstream
 
 				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "create-dup-src-source",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -2467,13 +2457,12 @@ func TestUpdateRegistry(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				now := time.Now()
-				format := config.SourceFormatUpstream
 
 				srcA, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "update-reg-source-a",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -2485,7 +2474,7 @@ func TestUpdateRegistry(t *testing.T) {
 					Name:         "update-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -2589,13 +2578,12 @@ func TestUpdateRegistry(t *testing.T) {
 				queries := sqlc.New(pool)
 
 				now := time.Now()
-				format := config.SourceFormatUpstream
 
 				srcA, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "reorder-reg-source-a",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,
@@ -2607,7 +2595,7 @@ func TestUpdateRegistry(t *testing.T) {
 					Name:         "reorder-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
 					SourceType:   "managed",
-					Format:       &format,
+
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
 					CreatedAt:    &now,

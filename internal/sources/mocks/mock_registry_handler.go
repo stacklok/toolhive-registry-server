@@ -44,18 +44,18 @@ func (m *MockRegistryDataValidator) EXPECT() *MockRegistryDataValidatorMockRecor
 }
 
 // ValidateData mocks base method.
-func (m *MockRegistryDataValidator) ValidateData(data []byte, format string) (*registry.UpstreamRegistry, error) {
+func (m *MockRegistryDataValidator) ValidateData(data []byte) (*registry.UpstreamRegistry, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateData", data, format)
+	ret := m.ctrl.Call(m, "ValidateData", data)
 	ret0, _ := ret[0].(*registry.UpstreamRegistry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ValidateData indicates an expected call of ValidateData.
-func (mr *MockRegistryDataValidatorMockRecorder) ValidateData(data, format any) *gomock.Call {
+func (mr *MockRegistryDataValidatorMockRecorder) ValidateData(data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateData", reflect.TypeOf((*MockRegistryDataValidator)(nil).ValidateData), data, format)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateData", reflect.TypeOf((*MockRegistryDataValidator)(nil).ValidateData), data)
 }
 
 // MockRegistryHandler is a mock of RegistryHandler interface.

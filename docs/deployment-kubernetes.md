@@ -45,7 +45,6 @@ data:
   config.yaml: |
     sources:
       - name: toolhive
-        format: toolhive
         git:
           repository: https://github.com/stacklok/toolhive-catalog.git
           branch: main
@@ -194,7 +193,6 @@ data:
   config.yaml: |
     sources:
       - name: toolhive
-        format: toolhive
         git:
           repository: https://github.com/stacklok/toolhive-catalog.git
           branch: main

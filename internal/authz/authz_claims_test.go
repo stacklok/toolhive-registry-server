@@ -40,8 +40,7 @@ func TestAuthzIntegration_ArrayClaimValues(t *testing.T) {
 
 	sources := []config.SourceConfig{
 		{
-			Name:       "multi-team-src",
-			Format:     "upstream",
+			Name: "multi-team-src",
 			File:       &config.FileConfig{Path: writeFixture("multi-team", multiTeamData)},
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme", "team": []any{"platform", "data"}},

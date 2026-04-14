@@ -777,28 +777,6 @@ func TestConfigValidate(t *testing.T) {
 			errMsg:  "at most one managed source is allowed",
 		},
 		{
-			name: "invalid_format_when_using_api",
-			config: &Config{
-				Sources: []SourceConfig{
-					{
-						Name:   "api-registry",
-						Format: "toolhive",
-						API: &APIConfig{
-							Endpoint: "http://example.com",
-						},
-						SyncPolicy: &SyncPolicyConfig{
-							Interval: "30m",
-						},
-					},
-				},
-				Auth: &AuthConfig{
-					Mode: AuthModeAnonymous,
-				},
-			},
-			wantErr: true,
-			errMsg:  "format must be either empty or upstream",
-		},
-		{
 			name: "multiple_source_types_specified",
 			config: &Config{
 				Sources: []SourceConfig{

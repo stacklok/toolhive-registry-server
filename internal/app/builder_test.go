@@ -27,8 +27,7 @@ func TestNewRegistryAppBuilder(t *testing.T) {
 	cfg := &config.Config{
 		Sources: []config.SourceConfig{
 			{
-				Name:   "test-registry-1",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry-1",
 				File: &config.FileConfig{
 					Path: "/tmp/test-registry.json",
 				},
@@ -84,8 +83,7 @@ func createValidTestConfig() *config.Config {
 	return &config.Config{
 		Sources: []config.SourceConfig{
 			{
-				Name:   "test-registry-1",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry-1",
 				File: &config.FileConfig{
 					Path: "/tmp/test-registry.json",
 				},
