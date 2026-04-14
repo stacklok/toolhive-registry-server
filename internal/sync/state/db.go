@@ -72,6 +72,11 @@ func (d *dbStatusService) Initialize(ctx context.Context, cfg *config.Config) er
 		return err
 	}
 
+	// Check that config-managed sources don't conflict with API-managed sources
+	if err := checkManagedSourceLimit(ctx, queries, sourceConfigs); err != nil {
+		return err
+	}
+
 	// Bulk upsert all CONFIG sources - returns IDs and names
 	upsertedSources, err := queries.BulkUpsertConfigSources(ctx, upsertParams)
 	if err != nil {
@@ -217,6 +222,33 @@ func checkForAPIRegistryConflicts(ctx context.Context, queries *sqlc.Queries, na
 			conflictNames[i] = src.Name
 		}
 		return fmt.Errorf("cannot overwrite API-created sources: %v", conflictNames)
+	}
+	return nil
+}
+
+// checkManagedSourceLimit verifies that config sources don't introduce a managed
+// source when an API-created managed source already exists in the database.
+func checkManagedSourceLimit(ctx context.Context, queries *sqlc.Queries, sourceConfigs []config.SourceConfig) error {
+	configHasManaged := false
+	for _, src := range sourceConfigs {
+		if src.GetType() == config.SourceTypeManaged {
+			configHasManaged = true
+			break
+		}
+	}
+	if !configHasManaged {
+		return nil
+	}
+
+	managedSources, err := queries.GetManagedSources(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check managed source limit: %w", err)
+	}
+	for _, src := range managedSources {
+		if src.CreationType == sqlc.CreationTypeAPI {
+			return fmt.Errorf("cannot load config with a managed source: "+
+				"an API-created managed source %q already exists", src.Name)
+		}
 	}
 	return nil
 }

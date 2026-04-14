@@ -1,0 +1,32 @@
+# Docker Compose configuration with a managed source.
+# Used for smoke-testing the managed source limit when
+# an API-created managed source already exists.
+
+sources:
+  - name: local-file
+    format: upstream
+    file:
+      path: /examples/upstream-registry.json
+    syncPolicy:
+      interval: "5m"
+
+  - name: config-managed
+    managed: {}
+
+registries:
+  - name: default
+    sources: ["local-file", "config-managed"]
+
+auth:
+  mode: anonymous
+
+database:
+  host: postgres
+  port: 5432
+  user: db_app
+  migrationUser: db_migrator
+  database: registry
+  sslMode: disable
+  maxOpenConns: 10
+  maxIdleConns: 2
+  connMaxLifetime: "30m"

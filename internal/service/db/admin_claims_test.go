@@ -17,6 +17,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
 )
 
 // setupTestServiceWithCodecs creates a test service whose connection pool
@@ -81,6 +82,18 @@ func managedSourceReq(claims map[string]any) *service.SourceCreateRequest {
 	}
 }
 
+// fileDataSourceReq returns a SourceCreateRequest for a file source with
+// inline data and the given claims. Use this instead of managedSourceReq when
+// a test needs multiple sources (since at most one managed source is allowed).
+func fileDataSourceReq(claims map[string]any) *service.SourceCreateRequest {
+	return &service.SourceCreateRequest{
+		File: &config.FileConfig{
+			Data: `{"version":"1.0.0","last_updated":"2025-01-15T10:30:00Z","servers":{}}`,
+		},
+		Claims: claims,
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Source CRUD — claim-scoped tests
 // ---------------------------------------------------------------------------
@@ -124,6 +137,64 @@ func TestCreateSource_NilJWT_SkipsCheck(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, src)
 	assert.Equal(t, "cs-nil-jwt", src.Name)
+}
+
+func TestCreateSource_ManagedLimitReached(t *testing.T) {
+	t.Parallel()
+	svc, cleanup := setupTestServiceWithCodecs(t)
+	t.Cleanup(cleanup)
+
+	ctx := t.Context()
+
+	// First managed source succeeds
+	_, err := svc.CreateSource(ctx, "first-managed", managedSourceReq(nil))
+	require.NoError(t, err)
+
+	// Second managed source is rejected
+	_, err = svc.CreateSource(ctx, "second-managed", managedSourceReq(nil))
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, service.ErrManagedSourceLimitReached), "expected ErrManagedSourceLimitReached, got %v", err)
+}
+
+func TestInitialize_RejectsConfigManagedWhenAPIManagedExists(t *testing.T) {
+	t.Parallel()
+	svc, cleanup := setupTestServiceWithCodecs(t)
+	t.Cleanup(cleanup)
+
+	ctx := t.Context()
+
+	// Create an API-managed source
+	_, err := svc.CreateSource(ctx, "api-managed", managedSourceReq(nil))
+	require.NoError(t, err)
+
+	// Attempt to initialize with a config that also has a managed source
+	stateSvc := state.NewDBStateService(svc.pool)
+	err = stateSvc.Initialize(ctx, &config.Config{
+		Sources: []config.SourceConfig{
+			{Name: "config-managed", Managed: &config.ManagedConfig{}},
+		},
+		Registries: []config.RegistryConfig{
+			{Name: "reg", Sources: []string{"config-managed"}},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "API-created managed source")
+}
+
+func TestCreateSource_NonManagedAllowedWhenManagedExists(t *testing.T) {
+	t.Parallel()
+	svc, cleanup := setupTestServiceWithCodecs(t)
+	t.Cleanup(cleanup)
+
+	ctx := t.Context()
+
+	// Create a managed source
+	_, err := svc.CreateSource(ctx, "the-managed", managedSourceReq(nil))
+	require.NoError(t, err)
+
+	// Creating a non-managed source should still succeed
+	_, err = svc.CreateSource(ctx, "a-file-source", fileDataSourceReq(nil))
+	require.NoError(t, err)
 }
 
 func TestUpdateSource_CallerCoversExistingClaims(t *testing.T) {
@@ -198,12 +269,13 @@ func TestListSources_FiltersByClaims(t *testing.T) {
 	svc, cleanup := setupTestServiceWithCodecs(t)
 	t.Cleanup(cleanup)
 
-	// Create two sources with different claims (anonymous)
+	// Create two sources with different claims (anonymous).
+	// Use file-data sources so multiple can coexist (only one managed allowed).
 	createCtx := t.Context()
-	_, err := svc.CreateSource(createCtx, "ls-acme", managedSourceReq(map[string]any{"org": "acme"}))
+	_, err := svc.CreateSource(createCtx, "ls-acme", fileDataSourceReq(map[string]any{"org": "acme"}))
 	require.NoError(t, err)
 
-	_, err = svc.CreateSource(createCtx, "ls-contoso", managedSourceReq(map[string]any{"org": "contoso"}))
+	_, err = svc.CreateSource(createCtx, "ls-contoso", fileDataSourceReq(map[string]any{"org": "contoso"}))
 	require.NoError(t, err)
 
 	// List with acme JWT - should only see the acme source
@@ -272,12 +344,13 @@ func TestSourceCRUD_SuperAdminBypassesClaims(t *testing.T) {
 // Registry CRUD — claim-scoped tests
 // ---------------------------------------------------------------------------
 
-// createSourceForRegistry is a helper that creates a managed source needed for registry tests.
+// createSourceForRegistry is a helper that creates a file-data source needed for registry tests.
+// Uses file-data (not managed) so multiple sources can coexist within a single test.
 func createSourceForRegistry(t *testing.T, svc *dbService, name string, claims map[string]any) {
 	t.Helper()
 	// Use anonymous context so claim check is skipped on creation
 	ctx := t.Context()
-	_, err := svc.CreateSource(ctx, name, managedSourceReq(claims))
+	_, err := svc.CreateSource(ctx, name, fileDataSourceReq(claims))
 	require.NoError(t, err)
 }
 
@@ -496,17 +569,18 @@ func TestListSources_ReturnsAllMatchingWithMixedClaims(t *testing.T) {
 
 	createCtx := t.Context()
 
-	// Create 4 sources: 2 with org=acme, 1 with org=contoso, 1 with no claims
-	_, err := svc.CreateSource(createCtx, "lsm-acme-1", managedSourceReq(map[string]any{"org": "acme"}))
+	// Create 4 sources: 2 with org=acme, 1 with org=contoso, 1 with no claims.
+	// Use file-data sources so multiple can coexist (only one managed allowed).
+	_, err := svc.CreateSource(createCtx, "lsm-acme-1", fileDataSourceReq(map[string]any{"org": "acme"}))
 	require.NoError(t, err)
 
-	_, err = svc.CreateSource(createCtx, "lsm-acme-2", managedSourceReq(map[string]any{"org": "acme"}))
+	_, err = svc.CreateSource(createCtx, "lsm-acme-2", fileDataSourceReq(map[string]any{"org": "acme"}))
 	require.NoError(t, err)
 
-	_, err = svc.CreateSource(createCtx, "lsm-contoso", managedSourceReq(map[string]any{"org": "contoso"}))
+	_, err = svc.CreateSource(createCtx, "lsm-contoso", fileDataSourceReq(map[string]any{"org": "contoso"}))
 	require.NoError(t, err)
 
-	_, err = svc.CreateSource(createCtx, "lsm-open", managedSourceReq(nil))
+	_, err = svc.CreateSource(createCtx, "lsm-open", fileDataSourceReq(nil))
 	require.NoError(t, err)
 
 	// List with acme JWT — should see both acme sources and the open (no-claims) source
@@ -577,14 +651,15 @@ func TestListSources_AnonymousReturnsAll(t *testing.T) {
 
 	createCtx := t.Context()
 
-	// Create 3 sources with different claims
-	_, err := svc.CreateSource(createCtx, "lsa-acme", managedSourceReq(map[string]any{"org": "acme"}))
+	// Create 3 sources with different claims.
+	// Use file-data sources so multiple can coexist (only one managed allowed).
+	_, err := svc.CreateSource(createCtx, "lsa-acme", fileDataSourceReq(map[string]any{"org": "acme"}))
 	require.NoError(t, err)
 
-	_, err = svc.CreateSource(createCtx, "lsa-contoso", managedSourceReq(map[string]any{"org": "contoso"}))
+	_, err = svc.CreateSource(createCtx, "lsa-contoso", fileDataSourceReq(map[string]any{"org": "contoso"}))
 	require.NoError(t, err)
 
-	_, err = svc.CreateSource(createCtx, "lsa-open", managedSourceReq(nil))
+	_, err = svc.CreateSource(createCtx, "lsa-open", fileDataSourceReq(nil))
 	require.NoError(t, err)
 
 	// List without JWT (anonymous) — should see all sources

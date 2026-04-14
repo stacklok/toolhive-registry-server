@@ -49,6 +49,7 @@ services:
         condition: service_healthy
     ports:
       - "8080:8080"
+      - "8081:8081"
     volumes:
       - ./examples:/examples:ro
       - smoke_registry_data:/app/data
@@ -65,7 +66,7 @@ services:
       - smoke-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/readiness || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/readiness || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 12

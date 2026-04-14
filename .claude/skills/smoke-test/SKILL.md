@@ -171,10 +171,18 @@ Feature: Registry Server smoke tests
     When I POST /v1/entries with an empty payload
     Then the response status is 400
 
+  # ── Managed source limit ──────────────────────────────────────────────────
+
+  Scenario: Second managed source is rejected with 409
+    Given the managed-test source still exists
+    When I PUT /v1/sources/second-managed with body {"managed":{}}
+    Then the response status is 409
+    And the body contains "at most one managed source is allowed"
+
   # ── List completeness ─────────────────────────────────────────────────────
 
   Scenario: All created sources appear in list
-    Given three managed sources are created: smoke-src-a, smoke-src-b, smoke-src-c
+    Given three file-data sources are created: smoke-src-a, smoke-src-b, smoke-src-c
     When I GET /v1/sources
     Then the response status is 200
     And the body contains "smoke-src-a"
@@ -182,7 +190,7 @@ Feature: Registry Server smoke tests
     And the body contains "smoke-src-c"
 
   Scenario: All created registries appear in list
-    Given three registries are created referencing the managed sources
+    Given three registries are created referencing the file-data sources
     When I GET /v1/registries
     Then the response status is 200
     And the body contains "smoke-reg-a"
@@ -442,13 +450,21 @@ check "POST /v1/entries with both server+skill returns 400" 400 "$SC" "$(body)"
 SC=$(curl_post /v1/entries '{}')
 check "POST /v1/entries with neither server nor skill returns 400" 400 "$SC" "$(body)"
 
+# ─── Managed source limit ─────────────────────────────────────────────────────
+echo ""
+echo "── Managed source limit ──"
+
+SC=$(curl_put /v1/sources/second-managed '{"managed":{}}')
+check "PUT /v1/sources/second-managed returns 409 (limit)" 409 "$SC" "$(body)" "at most one managed source is allowed"
+
 # ─── List completeness ───────────────────────────────────────────────────────
 echo ""
 echo "── List completeness ──"
 
-SC=$(curl_put /v1/sources/smoke-src-a '{"managed":{}}'); check "PUT /v1/sources/smoke-src-a returns 201" 201 "$SC" "$(body)" "smoke-src-a"
-SC=$(curl_put /v1/sources/smoke-src-b '{"managed":{}}'); check "PUT /v1/sources/smoke-src-b returns 201" 201 "$SC" "$(body)" "smoke-src-b"
-SC=$(curl_put /v1/sources/smoke-src-c '{"managed":{}}'); check "PUT /v1/sources/smoke-src-c returns 201" 201 "$SC" "$(body)" "smoke-src-c"
+FILE_DATA='{"file":{"data":"{\"version\":\"1.0.0\",\"last_updated\":\"2025-01-15T10:30:00Z\",\"servers\":{}}"}}'
+SC=$(curl_put /v1/sources/smoke-src-a "$FILE_DATA"); check "PUT /v1/sources/smoke-src-a returns 201" 201 "$SC" "$(body)" "smoke-src-a"
+SC=$(curl_put /v1/sources/smoke-src-b "$FILE_DATA"); check "PUT /v1/sources/smoke-src-b returns 201" 201 "$SC" "$(body)" "smoke-src-b"
+SC=$(curl_put /v1/sources/smoke-src-c "$FILE_DATA"); check "PUT /v1/sources/smoke-src-c returns 201" 201 "$SC" "$(body)" "smoke-src-c"
 
 SC=$(curl_get /v1/sources); BODY="$(body)"
 check "GET /v1/sources contains smoke-src-a" 200 "$SC" "$BODY" "smoke-src-a"
