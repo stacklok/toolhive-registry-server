@@ -2851,6 +2851,19 @@ const docTemplate = `{
                         },
                         "description": "Cannot modify config-created source"
                     },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Managed source limit reached"
+                    },
                     "500": {
                         "content": {
                             "application/json": {
