@@ -396,6 +396,25 @@ func (mr *MockRegistryServiceMockRecorder) PublishSkill(ctx, skill any, opts ...
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishSkill", reflect.TypeOf((*MockRegistryService)(nil).PublishSkill), varargs...)
 }
 
+// UpdateEntryClaims mocks base method.
+func (m *MockRegistryService) UpdateEntryClaims(ctx context.Context, opts ...service.Option) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UpdateEntryClaims", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateEntryClaims indicates an expected call of UpdateEntryClaims.
+func (mr *MockRegistryServiceMockRecorder) UpdateEntryClaims(ctx any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEntryClaims", reflect.TypeOf((*MockRegistryService)(nil).UpdateEntryClaims), varargs...)
+}
+
 // UpdateRegistry mocks base method.
 func (m *MockRegistryService) UpdateRegistry(ctx context.Context, name string, req *service.RegistryCreateRequest) (*service.RegistryInfo, error) {
 	m.ctrl.T.Helper()

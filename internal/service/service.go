@@ -147,6 +147,9 @@ type RegistryService interface {
 
 	// DeleteSkillVersion deletes a skill version
 	DeleteSkillVersion(ctx context.Context, opts ...Option) error
+
+	// UpdateEntryClaims updates the claims on a published entry within the managed source.
+	UpdateEntryClaims(ctx context.Context, opts ...Option) error
 }
 
 // SourceInfo represents detailed information about a source

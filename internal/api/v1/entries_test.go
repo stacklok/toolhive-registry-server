@@ -224,6 +224,136 @@ func TestDeletePublishedEntry(t *testing.T) {
 	}
 }
 
+func TestUpdateEntryClaims(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		path       string
+		body       []byte
+		setupMock  func(*mocks.MockRegistryService)
+		wantStatus int
+		wantError  string
+	}{
+		{
+			name: "success - server type",
+			path: "/entries/server/test%2Fserver/claims",
+			body: mustMarshal(map[string]any{"claims": map[string]any{"org": "acme"}}),
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().UpdateEntryClaims(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			},
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name: "success - skill type",
+			path: "/entries/skill/test%2Fskill/claims",
+			body: mustMarshal(map[string]any{"claims": map[string]any{"org": "acme"}}),
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().UpdateEntryClaims(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			},
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name: "success - clear claims",
+			path: "/entries/server/test%2Fserver/claims",
+			body: mustMarshal(map[string]any{"claims": map[string]any{}}),
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().UpdateEntryClaims(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			},
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name:       "unsupported entry type",
+			path:       "/entries/unknown/test%2Fentry/claims",
+			body:       mustMarshal(map[string]any{"claims": map[string]any{}}),
+			setupMock:  func(_ *mocks.MockRegistryService) {},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "unsupported entry type",
+		},
+		{
+			name:       "invalid JSON body",
+			path:       "/entries/server/test%2Fserver/claims",
+			body:       []byte("not-json"),
+			setupMock:  func(_ *mocks.MockRegistryService) {},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid request body",
+		},
+		{
+			name: "entry not found",
+			path: "/entries/server/test%2Fserver/claims",
+			body: mustMarshal(map[string]any{"claims": map[string]any{"org": "acme"}}),
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().UpdateEntryClaims(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(service.ErrNotFound)
+			},
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "claims insufficient",
+			path: "/entries/server/test%2Fserver/claims",
+			body: mustMarshal(map[string]any{"claims": map[string]any{"org": "acme"}}),
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().UpdateEntryClaims(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(service.ErrClaimsInsufficient)
+			},
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name: "no managed source",
+			path: "/entries/server/test%2Fserver/claims",
+			body: mustMarshal(map[string]any{"claims": map[string]any{"org": "acme"}}),
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().UpdateEntryClaims(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(service.ErrNoManagedSource)
+			},
+			wantStatus: http.StatusInternalServerError,
+			wantError:  "no managed source available",
+		},
+		{
+			name: "generic service error",
+			path: "/entries/server/test%2Fserver/claims",
+			body: mustMarshal(map[string]any{"claims": map[string]any{"org": "acme"}}),
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().UpdateEntryClaims(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(fmt.Errorf("unexpected error"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			wantError:  "failed to update entry claims",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+			tt.setupMock(mockSvc)
+
+			router := Router(mockSvc, nil)
+			req, err := http.NewRequest(http.MethodPut, tt.path, bytes.NewReader(tt.body))
+			require.NoError(t, err)
+
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.wantStatus, rr.Code)
+
+			if tt.wantError != "" {
+				var response map[string]string
+				err = json.Unmarshal(rr.Body.Bytes(), &response)
+				require.NoError(t, err)
+				assert.Contains(t, response["error"], tt.wantError)
+			}
+
+			if tt.wantStatus == http.StatusNoContent {
+				assert.Empty(t, rr.Body.Bytes())
+			}
+		})
+	}
+}
+
 // mustMarshal is a test helper that marshals v to JSON or panics.
 func mustMarshal(v any) []byte {
 	b, err := json.Marshal(v)

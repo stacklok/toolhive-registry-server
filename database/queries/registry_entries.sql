@@ -107,3 +107,11 @@ SELECT e.entry_type,
   JOIN entry_version v ON v.entry_id = e.id
  WHERE rs.registry_id = sqlc.arg(registry_id)
  ORDER BY v.name ASC, v.version ASC, rs.position ASC;
+
+-- name: UpdateRegistryEntryClaims :execrows
+UPDATE registry_entry
+   SET claims = sqlc.narg(claims),
+       updated_at = NOW()
+ WHERE source_id = sqlc.arg(source_id)
+   AND entry_type = sqlc.arg(entry_type)
+   AND name = sqlc.arg(name);

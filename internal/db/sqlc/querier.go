@@ -135,6 +135,7 @@ type Querier interface {
 	PropagateSourceClaimsToEntries(ctx context.Context, arg PropagateSourceClaimsToEntriesParams) error
 	UnlinkAllRegistrySources(ctx context.Context, registryID uuid.UUID) error
 	UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySourceParams) error
+	UpdateRegistryEntryClaims(ctx context.Context, arg UpdateRegistryEntryClaimsParams) (int64, error)
 	// Update an existing source. Go callers guard against modifying wrong creation_type.
 	UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error)
 	UpdateSourceSync(ctx context.Context, arg UpdateSourceSyncParams) error

@@ -17,48 +17,6 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
 
-func TestV1StubEndpoints(t *testing.T) {
-	t.Parallel()
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-
-	mockSvc := mocks.NewMockRegistryService(ctrl)
-	router := Router(mockSvc, nil)
-
-	tests := []struct {
-		name      string
-		method    string
-		path      string
-		wantError string
-	}{
-		// Endpoints still returning 501
-		{
-			name:      "update entry claims",
-			method:    "PUT",
-			path:      "/entries/server/my-entry/claims",
-			wantError: "Updating entry claims is not yet implemented",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			req, err := http.NewRequest(tt.method, tt.path, nil)
-			require.NoError(t, err)
-
-			rr := httptest.NewRecorder()
-			router.ServeHTTP(rr, req)
-
-			assert.Equal(t, http.StatusNotImplemented, rr.Code)
-
-			var response map[string]string
-			err = json.Unmarshal(rr.Body.Bytes(), &response)
-			require.NoError(t, err)
-			assert.Equal(t, tt.wantError, response["error"])
-		})
-	}
-}
-
 func TestListSources(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)

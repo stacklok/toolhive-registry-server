@@ -194,6 +194,10 @@ func WithClaims(claims map[string]any) Option {
 	}
 }
 
+type entryTypeOption interface {
+	setEntryType(entryType string) error
+}
+
 type jwtClaimsOption interface {
 	setJWTClaims(claims map[string]any) error
 }
@@ -205,6 +209,23 @@ func WithJWTClaims(claims map[string]any) Option {
 		switch o := o.(type) {
 		case jwtClaimsOption:
 			return o.setJWTClaims(claims)
+		default:
+			return fmt.Errorf("invalid option type: %T", o)
+		}
+	}
+}
+
+// WithEntryType sets the entry type for the UpdateEntryClaims operation.
+// Valid values are "server" and "skill".
+func WithEntryType(entryType string) Option {
+	return func(o any) error {
+		if entryType == "" {
+			return fmt.Errorf("invalid entry type: %s", entryType)
+		}
+
+		switch o := o.(type) {
+		case entryTypeOption:
+			return o.setEntryType(entryType)
 		default:
 			return fmt.Errorf("invalid option type: %T", o)
 		}
