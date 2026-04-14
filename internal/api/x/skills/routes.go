@@ -302,12 +302,12 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, service.ErrClaimsInsufficient):
 		common.WriteErrorResponse(w, "forbidden: insufficient claims for registry", http.StatusForbidden)
 	case errors.Is(err, service.ErrNotFound):
-		common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+		common.WriteErrorResponse(w, "not found", http.StatusNotFound)
 	case errors.Is(err, service.ErrRegistryNotFound):
-		common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+		common.WriteErrorResponse(w, "registry not found", http.StatusNotFound)
 	default:
 		slog.ErrorContext(r.Context(), "unexpected error", "error", err)
-		common.WriteErrorResponse(w, "Internal server error", http.StatusInternalServerError)
+		common.WriteErrorResponse(w, "internal server error", http.StatusInternalServerError)
 	}
 }
 
