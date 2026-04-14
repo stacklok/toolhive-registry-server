@@ -458,6 +458,15 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "internal_api_v1.updateEntryClaimsRequest": {
+                "properties": {
+                    "claims": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    }
+                },
+                "type": "object"
+            },
             "internal_api_x_skills.SkillListMetadata": {
                 "properties": {
                     "count": {
@@ -1922,12 +1931,26 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "type": "object"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/internal_api_v1.updateEntryClaimsRequest",
+                                        "summary": "request",
+                                        "description": "Claims to set"
+                                    }
+                                ]
                             }
                         }
-                    }
+                    },
+                    "description": "Claims to set",
+                    "required": true
                 },
                 "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
                     "400": {
                         "content": {
                             "application/json": {
@@ -1941,7 +1964,7 @@ const docTemplate = `{
                         },
                         "description": "Bad request"
                     },
-                    "501": {
+                    "403": {
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1952,7 +1975,33 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Not implemented"
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Not found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
                     }
                 },
                 "summary": "Update entry claims",
