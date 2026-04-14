@@ -34,27 +34,28 @@ func TestAuthzIntegration_SourceCRUD(t *testing.T) {
 
 	waitForSync(t, env, superAdmin)
 
+	// Use file-data sources (not managed) since the base config already has a
+	// managed source and at most one is allowed globally.
+	fileDataSource := map[string]any{
+		"file":   map[string]any{"data": `{"version":"1.0.0","last_updated":"2025-01-15T10:30:00Z","servers":{}}`},
+		"claims": map[string]any{"org": "acme", "team": "platform"},
+	}
+
 	t.Run("create API source with matching claims", func(t *testing.T) {
-		resp := doRequest(t, "PUT", env.baseURL+"/v1/sources/test-api-src", platformAdmin, map[string]any{
-			"managed": map[string]any{},
-			"claims":  map[string]any{"org": "acme", "team": "platform"},
-		})
+		resp := doRequest(t, "PUT", env.baseURL+"/v1/sources/test-api-src", platformAdmin, fileDataSource)
 		assertStatus(t, resp, 201)
 	})
 
 	t.Run("create source with non-subset claims", func(t *testing.T) {
 		resp := doRequest(t, "PUT", env.baseURL+"/v1/sources/bad-src", platformAdmin, map[string]any{
-			"managed": map[string]any{},
-			"claims":  map[string]any{"org": "acme", "team": "finance"},
+			"file":   map[string]any{"data": `{"version":"1.0.0","last_updated":"2025-01-15T10:30:00Z","servers":{}}`},
+			"claims": map[string]any{"org": "acme", "team": "finance"},
 		})
 		assertStatus(t, resp, 403)
 	})
 
 	t.Run("update API source", func(t *testing.T) {
-		resp := doRequest(t, "PUT", env.baseURL+"/v1/sources/test-api-src", platformAdmin, map[string]any{
-			"managed": map[string]any{},
-			"claims":  map[string]any{"org": "acme", "team": "platform"},
-		})
+		resp := doRequest(t, "PUT", env.baseURL+"/v1/sources/test-api-src", platformAdmin, fileDataSource)
 		assertStatus(t, resp, 200)
 	})
 
