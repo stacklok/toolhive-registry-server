@@ -59,6 +59,8 @@ services:
       - /examples/${CONFIG_FILE:-config-docker.yaml}
       - --address
       - :8080
+      - --internal-address
+      - :8081
     environment:
       - LOG_LEVEL=debug
       - PGPASSFILE=/home/appuser/.pgpass
