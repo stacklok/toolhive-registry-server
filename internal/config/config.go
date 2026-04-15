@@ -146,6 +146,11 @@ type Config struct {
 	// Not loaded from YAML file - environment variable only
 	insecureAllowHTTP bool
 
+	// compressResponse enables gzip compression of HTTP responses.
+	// Can be set via THV_REGISTRY_COMPRESS_RESPONSE environment variable
+	// Not loaded from YAML file - environment variable only
+	compressResponse bool
+
 	// WatchNamespace is the namespace to watch for MCP servers.
 	// Can be set via THV_REGISTRY_WATCH_NAMESPACE environment variable
 	// Not loaded from YAML file - environment variable only
@@ -756,6 +761,10 @@ func LoadConfig(opts ...Option) (*Config, error) {
 		config.Auth.InsecureAllowHTTP = config.insecureAllowHTTP
 	}
 
+	// Set compressResponse from environment variable (THV_REGISTRY_COMPRESS_RESPONSE)
+	// This is not loaded from YAML - environment variable only
+	config.compressResponse = v.GetBool("compress_response")
+
 	// Set watchNamespace from environment variable (THV_REGISTRY_WATCH_NAMESPACE)
 	// This is not loaded from YAML - environment variable only
 	config.WatchNamespace = v.GetString("watch_namespace")
@@ -775,6 +784,12 @@ func LoadConfig(opts ...Option) (*Config, error) {
 // IsAuditEnabled returns true when audit logging is enabled in the config.
 func (c *Config) IsAuditEnabled() bool {
 	return c != nil && c.Audit != nil && c.Audit.Enabled
+}
+
+// IsCompressionEnabled returns true when HTTP response compression is enabled
+// via the THV_REGISTRY_COMPRESS_RESPONSE environment variable.
+func (c *Config) IsCompressionEnabled() bool {
+	return c != nil && c.compressResponse
 }
 
 // Validate performs validation on the configuration
