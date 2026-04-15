@@ -11,10 +11,23 @@ import (
 	"github.com/google/uuid"
 )
 
+const createTempEntryVersionTable = `-- name: CreateTempEntryVersionTable :exec
+
+CREATE TEMP TABLE temp_entry_version ON COMMIT DROP AS
+SELECT id, entry_id, version, title, description, created_at, updated_at, name FROM entry_version
+  WITH NO DATA
+`
+
+// Temp Entry Version Table Operations
+func (q *Queries) CreateTempEntryVersionTable(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, createTempEntryVersionTable)
+	return err
+}
+
 const createTempIconTable = `-- name: CreateTempIconTable :exec
 
 CREATE TEMP TABLE temp_mcp_server_icon ON COMMIT DROP AS
-SELECT entry_id, source_uri, mime_type, theme FROM mcp_server_icon
+SELECT server_id, source_uri, mime_type, theme FROM mcp_server_icon
   WITH NO DATA
 `
 
@@ -27,7 +40,7 @@ func (q *Queries) CreateTempIconTable(ctx context.Context) error {
 const createTempPackageTable = `-- name: CreateTempPackageTable :exec
 
 CREATE TEMP TABLE temp_mcp_server_package ON COMMIT DROP AS
-SELECT entry_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version, runtime_hint, runtime_arguments, package_arguments, sha256_hash, transport, transport_url, env_vars, transport_headers FROM mcp_server_package
+SELECT server_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version, runtime_hint, runtime_arguments, package_arguments, sha256_hash, transport, transport_url, env_vars, transport_headers FROM mcp_server_package
   WITH NO DATA
 `
 
@@ -41,7 +54,7 @@ const createTempRegistryEntryTable = `-- name: CreateTempRegistryEntryTable :exe
 
 
 CREATE TEMP TABLE temp_registry_entry ON COMMIT DROP AS
-SELECT id, reg_id, entry_type, name, title, description, version, created_at, updated_at FROM registry_entry
+SELECT id, source_id, entry_type, name, created_at, updated_at, claims FROM registry_entry
   WITH NO DATA
 `
 
@@ -57,7 +70,7 @@ func (q *Queries) CreateTempRegistryEntryTable(ctx context.Context) error {
 const createTempRemoteTable = `-- name: CreateTempRemoteTable :exec
 
 CREATE TEMP TABLE temp_mcp_server_remote ON COMMIT DROP AS
-SELECT entry_id, transport, transport_url, transport_headers FROM mcp_server_remote
+SELECT server_id, transport, transport_url, transport_headers FROM mcp_server_remote
   WITH NO DATA
 `
 
@@ -68,11 +81,13 @@ func (q *Queries) CreateTempRemoteTable(ctx context.Context) error {
 }
 
 const createTempServerTable = `-- name: CreateTempServerTable :exec
+
 CREATE TEMP TABLE temp_mcp_server ON COMMIT DROP AS
-SELECT website, upstream_meta, server_meta, repository_url, repository_id, repository_subfolder, repository_type, entry_id FROM mcp_server
+SELECT website, upstream_meta, server_meta, repository_url, repository_id, repository_subfolder, repository_type, version_id FROM mcp_server
   WITH NO DATA
 `
 
+// Temp Server Table Operations
 func (q *Queries) CreateTempServerTable(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, createTempServerTable)
 	return err
@@ -80,48 +95,114 @@ func (q *Queries) CreateTempServerTable(ctx context.Context) error {
 
 const deleteOrphanedIcons = `-- name: DeleteOrphanedIcons :exec
 DELETE FROM mcp_server_icon
-WHERE entry_id = ANY($1::UUID[])
-  AND (entry_id, source_uri, mime_type, theme) NOT IN (
-    SELECT entry_id, source_uri, mime_type, theme FROM temp_mcp_server_icon
+WHERE server_id = ANY($1::UUID[])
+  AND (server_id, source_uri, mime_type, theme) NOT IN (
+    SELECT server_id, source_uri, mime_type, theme FROM temp_mcp_server_icon
   )
 `
 
-func (q *Queries) DeleteOrphanedIcons(ctx context.Context, entryIds []uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteOrphanedIcons, entryIds)
+func (q *Queries) DeleteOrphanedIcons(ctx context.Context, serverIds []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteOrphanedIcons, serverIds)
 	return err
 }
 
 const deleteOrphanedPackages = `-- name: DeleteOrphanedPackages :exec
 DELETE FROM mcp_server_package
-WHERE entry_id = ANY($1::UUID[])
-  AND (entry_id, pkg_identifier, transport) NOT IN (
-    SELECT entry_id, pkg_identifier, transport FROM temp_mcp_server_package
+WHERE server_id = ANY($1::UUID[])
+  AND (server_id, pkg_identifier, transport) NOT IN (
+    SELECT server_id, pkg_identifier, transport FROM temp_mcp_server_package
   )
 `
 
-func (q *Queries) DeleteOrphanedPackages(ctx context.Context, entryIds []uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteOrphanedPackages, entryIds)
+func (q *Queries) DeleteOrphanedPackages(ctx context.Context, serverIds []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteOrphanedPackages, serverIds)
 	return err
 }
 
 const deleteOrphanedRemotes = `-- name: DeleteOrphanedRemotes :exec
 DELETE FROM mcp_server_remote
-WHERE entry_id = ANY($1::UUID[])
-  AND (entry_id, transport, transport_url) NOT IN (
-    SELECT entry_id, transport, transport_url FROM temp_mcp_server_remote
+WHERE server_id = ANY($1::UUID[])
+  AND (server_id, transport, transport_url) NOT IN (
+    SELECT server_id, transport, transport_url FROM temp_mcp_server_remote
   )
 `
 
-func (q *Queries) DeleteOrphanedRemotes(ctx context.Context, entryIds []uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteOrphanedRemotes, entryIds)
+func (q *Queries) DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteOrphanedRemotes, serverIds)
 	return err
 }
 
+const dropTempEntryVersionTable = `-- name: DropTempEntryVersionTable :exec
+DROP TABLE IF EXISTS temp_entry_version
+`
+
+func (q *Queries) DropTempEntryVersionTable(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, dropTempEntryVersionTable)
+	return err
+}
+
+const dropTempRegistryEntryTable = `-- name: DropTempRegistryEntryTable :exec
+DROP TABLE IF EXISTS temp_registry_entry
+`
+
+func (q *Queries) DropTempRegistryEntryTable(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, dropTempRegistryEntryTable)
+	return err
+}
+
+const upsertEntryVersionsFromTemp = `-- name: UpsertEntryVersionsFromTemp :many
+INSERT INTO entry_version (
+    id, entry_id, name, version, title, description, created_at, updated_at
+)
+SELECT id,
+       entry_id,
+       name,
+       version,
+       title,
+       description,
+       created_at,
+       updated_at
+  FROM temp_entry_version
+    ON CONFLICT (entry_id, version)
+    DO UPDATE SET
+      name = EXCLUDED.name,
+      title = EXCLUDED.title,
+      description = EXCLUDED.description,
+      updated_at = EXCLUDED.updated_at
+RETURNING id, entry_id, version
+`
+
+type UpsertEntryVersionsFromTempRow struct {
+	ID      uuid.UUID `json:"id"`
+	EntryID uuid.UUID `json:"entry_id"`
+	Version string    `json:"version"`
+}
+
+func (q *Queries) UpsertEntryVersionsFromTemp(ctx context.Context) ([]UpsertEntryVersionsFromTempRow, error) {
+	rows, err := q.db.Query(ctx, upsertEntryVersionsFromTemp)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UpsertEntryVersionsFromTempRow{}
+	for rows.Next() {
+		var i UpsertEntryVersionsFromTempRow
+		if err := rows.Scan(&i.ID, &i.EntryID, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertIconsFromTemp = `-- name: UpsertIconsFromTemp :exec
-INSERT INTO mcp_server_icon (entry_id, source_uri, mime_type, theme)
-SELECT entry_id, source_uri, mime_type, theme::icon_theme
+INSERT INTO mcp_server_icon (server_id, source_uri, mime_type, theme)
+SELECT server_id, source_uri, mime_type, theme::icon_theme
 FROM temp_mcp_server_icon
-ON CONFLICT (entry_id, source_uri, mime_type, theme)
+ON CONFLICT (server_id, source_uri, mime_type, theme)
 DO NOTHING
 `
 
@@ -132,16 +213,16 @@ func (q *Queries) UpsertIconsFromTemp(ctx context.Context) error {
 
 const upsertPackagesFromTemp = `-- name: UpsertPackagesFromTemp :exec
 INSERT INTO mcp_server_package (
-    entry_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version,
+    server_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version,
     runtime_hint, runtime_arguments, package_arguments, env_vars, sha256_hash,
     transport, transport_url, transport_headers
 )
 SELECT
-    entry_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version,
+    server_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version,
     runtime_hint, runtime_arguments, package_arguments, env_vars, sha256_hash,
     transport, transport_url, transport_headers
 FROM temp_mcp_server_package
-ON CONFLICT (entry_id, registry_type, pkg_identifier, transport)
+ON CONFLICT (server_id, registry_type, pkg_identifier, transport)
 DO UPDATE SET
     pkg_registry_url = EXCLUDED.pkg_registry_url,
     pkg_version = EXCLUDED.pkg_version,
@@ -161,33 +242,28 @@ func (q *Queries) UpsertPackagesFromTemp(ctx context.Context) error {
 
 const upsertRegistryEntriesFromTemp = `-- name: UpsertRegistryEntriesFromTemp :many
 INSERT INTO registry_entry (
-    id, reg_id, entry_type, name, title, description, version, created_at, updated_at
+    id, source_id, entry_type, name, claims, created_at, updated_at
 )
 SELECT id,
-       reg_id,
+       source_id,
        entry_type,
        name,
-       title,
-       description,
-       version,
+       claims,
        created_at,
        updated_at
   FROM temp_registry_entry
-    ON CONFLICT (reg_id, name, version)
+    ON CONFLICT (source_id, entry_type, name)
     DO UPDATE SET
-      entry_type = EXCLUDED.entry_type,
-      title = EXCLUDED.title,
-      description = EXCLUDED.description,
+      claims = EXCLUDED.claims,
       updated_at = EXCLUDED.updated_at
-RETURNING id, reg_id, entry_type, name, version
+RETURNING id, source_id, entry_type, name
 `
 
 type UpsertRegistryEntriesFromTempRow struct {
 	ID        uuid.UUID `json:"id"`
-	RegID     uuid.UUID `json:"reg_id"`
+	SourceID  uuid.UUID `json:"source_id"`
 	EntryType EntryType `json:"entry_type"`
 	Name      string    `json:"name"`
-	Version   string    `json:"version"`
 }
 
 func (q *Queries) UpsertRegistryEntriesFromTemp(ctx context.Context) ([]UpsertRegistryEntriesFromTempRow, error) {
@@ -201,10 +277,9 @@ func (q *Queries) UpsertRegistryEntriesFromTemp(ctx context.Context) ([]UpsertRe
 		var i UpsertRegistryEntriesFromTempRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.RegID,
+			&i.SourceID,
 			&i.EntryType,
 			&i.Name,
-			&i.Version,
 		); err != nil {
 			return nil, err
 		}
@@ -217,10 +292,10 @@ func (q *Queries) UpsertRegistryEntriesFromTemp(ctx context.Context) ([]UpsertRe
 }
 
 const upsertRemotesFromTemp = `-- name: UpsertRemotesFromTemp :exec
-INSERT INTO mcp_server_remote (entry_id, transport, transport_url, transport_headers)
-SELECT entry_id, transport, transport_url, transport_headers
+INSERT INTO mcp_server_remote (server_id, transport, transport_url, transport_headers)
+SELECT server_id, transport, transport_url, transport_headers
 FROM temp_mcp_server_remote
-ON CONFLICT (entry_id, transport, transport_url)
+ON CONFLICT (server_id, transport, transport_url)
 DO UPDATE SET transport_headers = EXCLUDED.transport_headers
 `
 
@@ -231,10 +306,10 @@ func (q *Queries) UpsertRemotesFromTemp(ctx context.Context) error {
 
 const upsertServersFromTemp = `-- name: UpsertServersFromTemp :exec
 INSERT INTO mcp_server (
-    entry_id, website, upstream_meta, server_meta,
+    version_id, website, upstream_meta, server_meta,
     repository_url, repository_id, repository_subfolder, repository_type
 )
-SELECT entry_id,
+SELECT version_id,
        website,
        upstream_meta,
        server_meta,
@@ -243,7 +318,7 @@ SELECT entry_id,
        repository_subfolder,
        repository_type
 FROM temp_mcp_server
-  ON CONFLICT (entry_id)
+  ON CONFLICT (version_id)
   DO UPDATE SET
     website = EXCLUDED.website,
     upstream_meta = EXCLUDED.upstream_meta,

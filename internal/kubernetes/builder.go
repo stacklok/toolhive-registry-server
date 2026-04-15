@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 )
 
@@ -25,19 +25,14 @@ const (
 	defaultRegistryExportAnnotation          = "toolhive.stacklok.dev/registry-export"
 	defaultRegistryURLAnnotation             = "toolhive.stacklok.dev/registry-url"
 	defaultRegistryDescriptionAnnotation     = "toolhive.stacklok.dev/registry-description"
+	defaultRegistryTitleAnnotation           = "toolhive.stacklok.dev/registry-title"
 	defaultRegistryToolDefinitionsAnnotation = "toolhive.stacklok.dev/tool-definitions"
 	defaultRegistryToolsAnnotation           = "toolhive.stacklok.dev/tools"
+	defaultAuthzClaimsAnnotation             = "toolhive.stacklok.dev/authz-claims"
 
 	defaultRequeueAfter = 10 * time.Second
 
 	leaderElectionID = "toolhive-registry-server-leader-election"
-
-	// namespaceRegexPattern is the regex pattern for a valid Kubernetes namespace name
-	namespaceRegexPattern = `^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`
-)
-
-var (
-	namespaceRegex = regexp.MustCompile(namespaceRegexPattern)
 )
 
 var (
@@ -262,7 +257,7 @@ func NewMCPServerReconciler(
 
 func validateNamespaces(namespaces []string) error {
 	for _, namespace := range namespaces {
-		if !namespaceRegex.MatchString(namespace) {
+		if !config.IsValidDNSSubdomain(namespace) {
 			return fmt.Errorf("invalid namespace name: %s", namespace)
 		}
 	}

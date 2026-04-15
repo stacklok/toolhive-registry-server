@@ -7,6 +7,7 @@ import (
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
+	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -389,13 +390,13 @@ func TestDefaultFilterService_ApplyFilters_UpstreamFormatWithStringMetadata(t *t
 		Version:     "1.0.0",
 		Packages:    []model.Package{},
 		Meta: &upstreamv0.ServerMeta{
-			PublisherProvided: map[string]interface{}{
+			PublisherProvided: map[string]any{
 				// This is a string value, not a map - this causes the panic in ExtractTags
 				"someKey": "someStringValue",
 				// This is a map (expected structure)
-				"provider": map[string]interface{}{
-					"metadata": map[string]interface{}{
-						"tags": []interface{}{"tag1", "tag2"},
+				"provider": map[string]any{
+					"metadata": map[string]any{
+						"tags": []any{"tag1", "tag2"},
 					},
 				},
 			},
@@ -419,4 +420,82 @@ func TestDefaultFilterService_ApplyFilters_UpstreamFormatWithStringMetadata(t *t
 	require.NoError(t, err)
 	// Server should be excluded by name filter
 	assert.Len(t, result.Data.Servers, 0, "Server should be excluded by name filter")
+}
+
+func TestDefaultFilterService_ApplyFilters_FiltersSkillsByName(t *testing.T) {
+	t.Parallel()
+
+	service := NewDefaultFilterService()
+	ctx := context.Background()
+
+	originalRegistry := registry.NewTestUpstreamRegistry(
+		registry.WithServers(
+			registry.NewTestServer("test-server",
+				registry.WithNamespace("io.test/"),
+				registry.WithTags("test"),
+				registry.WithOCIPackage("test:latest"),
+			),
+		),
+	)
+	// Add skills directly since there's no builder option for them
+	originalRegistry.Data.Skills = []toolhivetypes.Skill{
+		{
+			Namespace:   "io.github.test",
+			Name:        "pdf-processor",
+			Version:     "1.0.0",
+			Description: "Test skill",
+		},
+		{
+			Namespace:   "io.github.test",
+			Name:        "code-review",
+			Version:     "2.0.0",
+			Description: "Another skill",
+		},
+		{
+			Namespace:   "io.github.other",
+			Name:        "data-export",
+			Version:     "1.0.0",
+			Description: "Other namespace skill",
+		},
+	}
+
+	// Exclude server namespace and one skill namespace — keep only io.github.other
+	filter := &config.FilterConfig{
+		Names: &config.NameFilterConfig{
+			Exclude: []string{"io.test/*", "io.github.test/*"},
+		},
+	}
+
+	result, err := service.ApplyFilters(ctx, originalRegistry, filter)
+
+	require.NoError(t, err)
+	// Server should be excluded
+	assert.Empty(t, result.Data.Servers)
+	// Only the io.github.other skill should remain
+	require.Len(t, result.Data.Skills, 1)
+	assert.Equal(t, "data-export", result.Data.Skills[0].Name)
+	assert.Equal(t, "io.github.other", result.Data.Skills[0].Namespace)
+}
+
+func TestDefaultFilterService_ApplyFilters_SkillsPassWithNoFilter(t *testing.T) {
+	t.Parallel()
+
+	service := NewDefaultFilterService()
+	ctx := context.Background()
+
+	originalRegistry := registry.NewTestUpstreamRegistry()
+	originalRegistry.Data.Skills = []toolhivetypes.Skill{
+		{
+			Namespace:   "io.github.test",
+			Name:        "pdf-processor",
+			Version:     "1.0.0",
+			Description: "Test skill",
+		},
+	}
+
+	result, err := service.ApplyFilters(ctx, originalRegistry, nil)
+
+	require.NoError(t, err)
+	require.Len(t, result.Data.Skills, 1)
+	assert.Equal(t, "pdf-processor", result.Data.Skills[0].Name)
 }

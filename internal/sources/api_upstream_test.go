@@ -305,7 +305,7 @@ func TestUpstreamAPIHandler_FetchRegistry(t *testing.T) {
 			handler := NewUpstreamAPIHandler(httpClient)
 			ctx := context.Background()
 
-			registryConfig := &config.RegistryConfig{
+			registryConfig := &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatUpstream,
 				API: &config.APIConfig{
@@ -397,7 +397,7 @@ func TestUpstreamAPIHandler_FetchRegistry_Pagination(t *testing.T) {
 	handler := NewUpstreamAPIHandler(httpClient)
 	ctx := context.Background()
 
-	registryConfig := &config.RegistryConfig{
+	registryConfig := &config.SourceConfig{
 		Name:   "test-registry",
 		Format: config.SourceFormatUpstream,
 		API: &config.APIConfig{
@@ -417,148 +417,6 @@ func TestUpstreamAPIHandler_FetchRegistry_Pagination(t *testing.T) {
 	// Verify pagination mechanics
 	assert.Equal(t, 2, requestCount, "should make exactly 2 requests")
 	assert.Equal(t, []string{"", "page2"}, receivedCursors, "should receive correct cursor sequence")
-}
-
-func TestUpstreamAPIHandler_CurrentHash(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name          string
-		setupServer   func() *httptest.Server
-		expectError   bool
-		errorContains string
-		verifyHash    bool
-	}{
-		{
-			name: "successful hash calculation",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == serversAPIPath {
-						w.Header().Set("Content-Type", "application/json")
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`{
-							"servers": [
-								{
-									"server": {
-										"name": "test-server",
-										"description": "A test server"
-									},
-									"_meta": {}
-								}
-							],
-							"metadata": {
-								"nextCursor": "",
-								"count": 1
-							}
-						}`))
-					} else {
-						w.WriteHeader(http.StatusNotFound)
-					}
-				}))
-			},
-			expectError: false,
-			verifyHash:  true,
-		},
-		{
-			name: "error propagation on HTTP failure",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.WriteHeader(http.StatusInternalServerError)
-				}))
-			},
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			mockServer := tt.setupServer()
-			defer mockServer.Close()
-
-			httpClient := httpclient.NewDefaultClient(0)
-			handler := NewUpstreamAPIHandler(httpClient)
-			ctx := context.Background()
-
-			registryConfig := &config.RegistryConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatUpstream,
-				API: &config.APIConfig{
-					Endpoint: mockServer.URL,
-				},
-			}
-
-			hash, err := handler.CurrentHash(ctx, registryConfig)
-
-			if tt.expectError {
-				require.Error(t, err)
-				if tt.errorContains != "" {
-					assert.Contains(t, err.Error(), tt.errorContains)
-				}
-				return
-			}
-
-			require.NoError(t, err)
-			if tt.verifyHash {
-				assert.NotEmpty(t, hash)
-				// Should be a valid SHA256 hex string (64 characters)
-				assert.Len(t, hash, 64)
-			}
-		})
-	}
-}
-
-func TestUpstreamAPIHandler_HashConsistency(t *testing.T) {
-	t.Parallel()
-
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == serversAPIPath {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{
-				"servers": [
-					{
-						"server": {
-							"name": "test-server",
-							"description": "A test server"
-						},
-						"_meta": {}
-					}
-				],
-				"metadata": {
-					"nextCursor": "",
-					"count": 1
-				}
-			}`))
-		} else {
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer mockServer.Close()
-
-	httpClient := httpclient.NewDefaultClient(0)
-	handler := NewUpstreamAPIHandler(httpClient)
-	ctx := context.Background()
-
-	registryConfig := &config.RegistryConfig{
-		Name:   "test-registry",
-		Format: config.SourceFormatUpstream,
-		API: &config.APIConfig{
-			Endpoint: mockServer.URL,
-		},
-	}
-
-	// Get hash via CurrentHash
-	hash1, err := handler.CurrentHash(ctx, registryConfig)
-	require.NoError(t, err)
-
-	// Get hash via FetchRegistry
-	result, err := handler.FetchRegistry(ctx, registryConfig)
-	require.NoError(t, err)
-
-	// Both should return the same hash for the same data
-	assert.Equal(t, hash1, result.Hash, "CurrentHash and FetchRegistry should return the same hash")
 }
 
 func TestUpstreamAPIHandler_EmptyServers(t *testing.T) {
@@ -585,7 +443,7 @@ func TestUpstreamAPIHandler_EmptyServers(t *testing.T) {
 	handler := NewUpstreamAPIHandler(httpClient)
 	ctx := context.Background()
 
-	registryConfig := &config.RegistryConfig{
+	registryConfig := &config.SourceConfig{
 		Name:   "test-registry",
 		Format: config.SourceFormatUpstream,
 		API: &config.APIConfig{
@@ -645,7 +503,7 @@ func TestUpstreamAPIHandler_MultiplePages(t *testing.T) {
 	handler := NewUpstreamAPIHandler(httpClient)
 	ctx := context.Background()
 
-	registryConfig := &config.RegistryConfig{
+	registryConfig := &config.SourceConfig{
 		Name:   "test-registry",
 		Format: config.SourceFormatUpstream,
 		API: &config.APIConfig{
@@ -704,7 +562,7 @@ func TestUpstreamAPIHandler_HTTPErrorCodes(t *testing.T) {
 			handler := NewUpstreamAPIHandler(httpClient)
 			ctx := context.Background()
 
-			registryConfig := &config.RegistryConfig{
+			registryConfig := &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatUpstream,
 				API: &config.APIConfig{

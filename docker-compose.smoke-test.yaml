@@ -1,0 +1,84 @@
+# docker-compose.smoke-test.yaml
+#
+# Standalone compose file for smoke testing.
+#
+# This file is intentionally self-contained rather than an override of
+# docker-compose.yaml.  Docker Compose v5 dropped support for the !reset YAML
+# tag that was required to replace (not append) the base port list, so a
+# merge-override approach no longer works reliably.
+#
+# Key differences from docker-compose.yaml:
+#   - Postgres is NOT exposed to the host (internal network only), so it
+#     coexists peacefully with a local PostgreSQL instance on port 5432.
+#   - The registry-api image is used directly (pull_policy: never) to avoid
+#     Docker Hub metadata fetches that can hang in CI or on slow networks.
+#   - A healthcheck is added to registry-api so that --wait works correctly.
+#
+# Usage:
+#   docker compose -f docker-compose.smoke-test.yaml --project-name thv-smoke-test up --detach --wait
+#   docker compose -f docker-compose.smoke-test.yaml --project-name thv-smoke-test down -v
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: toolhive-smoke-postgres
+    environment:
+      POSTGRES_USER: registry
+      POSTGRES_PASSWORD: registry_password
+      POSTGRES_DB: registry
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    # No host-port binding: postgres is reachable only within the smoke-network.
+    volumes:
+      - smoke_postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres-init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U registry"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smoke-network
+
+  registry-api:
+    image: thv-smoke-test-registry-api:latest
+    # Never pull: this image is built locally by `docker compose build`.
+    pull_policy: never
+    container_name: toolhive-smoke-registry-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    volumes:
+      - ./examples:/examples:ro
+      - smoke_registry_data:/app/data
+    command:
+      - serve
+      - --config
+      - /examples/${CONFIG_FILE:-config-docker.yaml}
+      - --address
+      - :8080
+      - --internal-address
+      - :8081
+    environment:
+      - LOG_LEVEL=debug
+      - PGPASSFILE=/home/appuser/.pgpass
+    networks:
+      - smoke-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/readiness || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  smoke_postgres_data:
+    driver: local
+  smoke_registry_data:
+    driver: local
+
+networks:
+  smoke-network:
+    driver: bridge

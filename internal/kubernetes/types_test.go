@@ -61,6 +61,7 @@ func TestExtractServer(t *testing.T) {
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Empty(t, sj.Title, "Title should be empty when title annotation is not set")
 				assert.Equal(t, "A test MCP server", sj.Description)
 				assert.NotNil(t, sj.Meta.PublisherProvided["io.github.stacklok"])
 				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
@@ -218,19 +219,19 @@ func TestExtractServer(t *testing.T) {
 
 				// Check tool_definitions is present and parsed as array
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				toolDefs, ok := mcpMetadata["tool_definitions"].([]interface{})
+				toolDefs, ok := mcpMetadata["tool_definitions"].([]any)
 				require.True(t, ok, "tool_definitions should be an array")
 				require.Len(t, toolDefs, 1)
 
 				// Check first tool definition
-				tool := toolDefs[0].(map[string]interface{})
+				tool := toolDefs[0].(map[string]any)
 				assert.Equal(t, "test_tool", tool["name"])
 				assert.Equal(t, "A test tool", tool["description"])
 				assert.NotNil(t, tool["inputSchema"])
 				assert.NotNil(t, tool["annotations"])
 
 				// Check annotations
-				annotations := tool["annotations"].(map[string]interface{})
+				annotations := tool["annotations"].(map[string]any)
 				assert.Equal(t, true, annotations["readOnlyHint"])
 			},
 		},
@@ -316,22 +317,22 @@ func TestExtractServer(t *testing.T) {
 
 				// Check tool_definitions has multiple tools
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				toolDefs, ok := mcpMetadata["tool_definitions"].([]interface{})
+				toolDefs, ok := mcpMetadata["tool_definitions"].([]any)
 				require.True(t, ok)
 				require.Len(t, toolDefs, 2)
 
 				// Check first tool
-				tool1 := toolDefs[0].(map[string]interface{})
+				tool1 := toolDefs[0].(map[string]any)
 				assert.Equal(t, "tool_one", tool1["name"])
 				assert.Equal(t, "First tool", tool1["description"])
 
 				// Check second tool
-				tool2 := toolDefs[1].(map[string]interface{})
+				tool2 := toolDefs[1].(map[string]any)
 				assert.Equal(t, "tool_two", tool2["name"])
 				assert.Equal(t, "Second tool", tool2["description"])
 				assert.NotNil(t, tool2["inputSchema"])
 				assert.NotNil(t, tool2["outputSchema"])
-				annotations := tool2["annotations"].(map[string]interface{})
+				annotations := tool2["annotations"].(map[string]any)
 				assert.Equal(t, true, annotations["destructiveHint"])
 			},
 		},
@@ -360,9 +361,9 @@ func TestExtractServer(t *testing.T) {
 				mcpMetadata := ioStacklok["https://example.com/tools-list"].(map[string]any)
 
 				// Check tools is present and is a string array
-				// After JSON marshaling/unmarshaling, []string becomes []interface{}
+				// After JSON marshaling/unmarshaling, []string becomes []any
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]interface{})
+				tools, ok := mcpMetadata["tools"].([]any)
 				require.True(t, ok, "tools should be an array")
 				require.Len(t, tools, 2)
 				assert.Equal(t, "get_weather", tools[0])
@@ -426,6 +427,33 @@ func TestExtractServer(t *testing.T) {
 			},
 		},
 		{
+			name: "MCPServer with title annotation",
+			mcpServer: createTestMCPServer(
+				"titled-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A titled MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/titled",
+					defaultRegistryTitleAnnotation:       "My Custom Server Title",
+				},
+				mcpv1alpha1.MCPServerSpec{
+					Image:     "test/titled:v1",
+					Transport: "sse",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/titled-server",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Equal(t, "My Custom Server Title", sj.Title)
+				assert.Equal(t, "A titled MCP server", sj.Description)
+				require.Len(t, sj.Remotes, 1)
+				assert.Equal(t, "https://example.com/titled", sj.Remotes[0].URL)
+			},
+		},
+		{
 			name: "MCPServer with both tool_definitions and tools",
 			mcpServer: createTestMCPServer(
 				"server-with-both",
@@ -452,13 +480,13 @@ func TestExtractServer(t *testing.T) {
 
 				// Both should be present
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				toolDefs, ok := mcpMetadata["tool_definitions"].([]interface{})
+				toolDefs, ok := mcpMetadata["tool_definitions"].([]any)
 				require.True(t, ok)
 				require.Len(t, toolDefs, 1)
 
-				// After JSON marshaling/unmarshaling, []string becomes []interface{}
+				// After JSON marshaling/unmarshaling, []string becomes []any
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]interface{})
+				tools, ok := mcpMetadata["tools"].([]any)
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 				assert.Equal(t, "get_weather", tools[0])
@@ -690,6 +718,7 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Empty(t, sj.Title, "Title should be empty when title annotation is not set")
 				assert.Equal(t, "A test Virtual MCP server", sj.Description)
 				assert.NotNil(t, sj.Meta.PublisherProvided["io.github.stacklok"])
 				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
@@ -815,11 +844,11 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 
 				// Check tool_definitions is parsed correctly
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				toolDefs, ok := mcpMetadata["tool_definitions"].([]interface{})
+				toolDefs, ok := mcpMetadata["tool_definitions"].([]any)
 				require.True(t, ok)
 				require.Len(t, toolDefs, 1)
 
-				tool := toolDefs[0].(map[string]interface{})
+				tool := toolDefs[0].(map[string]any)
 				assert.Equal(t, "search_files", tool["name"])
 				assert.Equal(t, "Search for files", tool["description"])
 			},
@@ -869,13 +898,36 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				mcpMetadata := ioStacklok["https://example.com/vmcp-tools-list"].(map[string]any)
 
 				// Check tools is present
-				// After JSON marshaling/unmarshaling, []string becomes []interface{}
+				// After JSON marshaling/unmarshaling, []string becomes []any
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]interface{})
+				tools, ok := mcpMetadata["tools"].([]any)
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 				assert.Equal(t, "search_files", tools[0])
 				assert.Equal(t, "execute_command", tools[1])
+			},
+		},
+		{
+			name: "VirtualMCPServer with title annotation",
+			vmcpServer: createTestVirtualMCPServer(
+				"titled-vmcp-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A titled Virtual MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/vmcp-titled",
+					defaultRegistryTitleAnnotation:       "My Virtual Server Title",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/titled-vmcp-server",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Equal(t, "My Virtual Server Title", sj.Title)
+				assert.Equal(t, "A titled Virtual MCP server", sj.Description)
+				require.Len(t, sj.Remotes, 1)
+				assert.Equal(t, "https://example.com/vmcp-titled", sj.Remotes[0].URL)
 			},
 		},
 		{
@@ -901,9 +953,9 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 
 				// Both should be present
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				// After JSON marshaling/unmarshaling, []string becomes []interface{}
+				// After JSON marshaling/unmarshaling, []string becomes []any
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]interface{})
+				tools, ok := mcpMetadata["tools"].([]any)
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 			},
@@ -980,6 +1032,7 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Empty(t, sj.Title, "Title should be empty when title annotation is not set")
 				assert.Equal(t, "A test MCP Remote Proxy", sj.Description)
 				assert.NotNil(t, sj.Meta.PublisherProvided["io.github.stacklok"])
 				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
@@ -1108,16 +1161,16 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 
 				// Check tool_definitions is parsed correctly
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				toolDefs, ok := mcpMetadata["tool_definitions"].([]interface{})
+				toolDefs, ok := mcpMetadata["tool_definitions"].([]any)
 				require.True(t, ok)
 				require.Len(t, toolDefs, 1)
 
-				tool := toolDefs[0].(map[string]interface{})
+				tool := toolDefs[0].(map[string]any)
 				assert.Equal(t, "query_database", tool["name"])
 				assert.Equal(t, "Execute SQL query", tool["description"])
 				assert.NotNil(t, tool["inputSchema"])
 				assert.NotNil(t, tool["outputSchema"])
-				annotations := tool["annotations"].(map[string]interface{})
+				annotations := tool["annotations"].(map[string]any)
 				assert.Equal(t, true, annotations["readOnlyHint"])
 			},
 		},
@@ -1166,13 +1219,36 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 				mcpMetadata := ioStacklok["https://example.com/proxy-tools-list"].(map[string]any)
 
 				// Check tools is present
-				// After JSON marshaling/unmarshaling, []string becomes []interface{}
+				// After JSON marshaling/unmarshaling, []string becomes []any
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]interface{})
+				tools, ok := mcpMetadata["tools"].([]any)
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 				assert.Equal(t, "query_database", tools[0])
 				assert.Equal(t, "update_table", tools[1])
+			},
+		},
+		{
+			name: "MCPRemoteProxy with title annotation",
+			mcpRemoteProxy: createTestMCPRemoteProxy(
+				"titled-proxy",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A titled MCP Remote Proxy",
+					defaultRegistryURLAnnotation:         "https://example.com/proxy-titled",
+					defaultRegistryTitleAnnotation:       "My Proxy Title",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/titled-proxy",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Equal(t, "My Proxy Title", sj.Title)
+				assert.Equal(t, "A titled MCP Remote Proxy", sj.Description)
+				require.Len(t, sj.Remotes, 1)
+				assert.Equal(t, "https://example.com/proxy-titled", sj.Remotes[0].URL)
 			},
 		},
 		{
@@ -1198,9 +1274,9 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 
 				// Both should be present
 				require.NotNil(t, mcpMetadata["tool_definitions"])
-				// After JSON marshaling/unmarshaling, []string becomes []interface{}
+				// After JSON marshaling/unmarshaling, []string becomes []any
 				require.NotNil(t, mcpMetadata["tools"])
-				tools, ok := mcpMetadata["tools"].([]interface{})
+				tools, ok := mcpMetadata["tools"].([]any)
 				require.True(t, ok)
 				require.Len(t, tools, 2)
 			},

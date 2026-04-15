@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"reflect"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,11 +49,12 @@ func NewDBSyncWriter(pool *pgxpool.Pool, maxMetaSize int) (SyncWriter, error) {
 // Store saves a UpstreamRegistry instance to database storage for a specific registry.
 //
 // This method performs an efficient bulk sync using temporary tables and COPY operations:
-// 1. Validates the registry exists
-// 2. Creates temp tables, copies server data, and bulk upserts to preserve existing UUIDs
-// 3. Deletes orphaned servers that no longer exist in upstream (CASCADE cleans related data)
-// 4. For packages/remotes/icons: creates temp tables, copies data, bulk upserts, deletes orphans
-// 5. Updates the latest_server_version table for each unique server name
+//  1. Validates the registry exists
+//  2. Upserts registry entries (one per name), entry versions (one per name+version),
+//     and mcp_server rows via temp tables and COPY to preserve existing UUIDs
+//  3. Deletes orphaned servers that no longer exist in upstream (CASCADE cleans related data)
+//  4. For packages/remotes/icons: creates temp tables, copies data, bulk upserts, deletes orphans
+//  5. Updates the latest_entry_version table for each unique server name
 //
 // The operation is performed within a serializable transaction to ensure consistency.
 // Temp tables are automatically dropped at transaction end (ON COMMIT DROP).
@@ -58,6 +62,7 @@ func (d *dbSyncWriter) Store(
 	ctx context.Context,
 	registryName string,
 	reg *toolhivetypes.UpstreamRegistry,
+	opts ...StoreOption,
 ) error {
 	if reg == nil {
 		return fmt.Errorf("registry data is required")
@@ -81,7 +86,7 @@ func (d *dbSyncWriter) Store(
 	querier := sqlc.New(tx)
 
 	// Step 1: Validate registry exists and get registry ID
-	registry, err := querier.GetRegistryByName(ctx, registryName)
+	registry, err := querier.GetSourceByName(ctx, registryName)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("registry not found: %s", registryName)
@@ -89,14 +94,24 @@ func (d *dbSyncWriter) Store(
 		return fmt.Errorf("failed to get registry: %w", err)
 	}
 
+	storeOpts, err := parseStoreOptions(opts)
+	if err != nil {
+		return err
+	}
+
 	// Step 2: Upsert all servers using temp table and COPY, collect their IDs
-	serverIDMap, err := d.storeSyncInTempTables(ctx, tx, registry.ID, reg.Data.Servers)
+	serverIDMap, err := d.storeSyncInTempTables(ctx, tx, registry.ID, reg.Data.Servers, registry.Claims, storeOpts.PerEntryClaims)
 	if err != nil {
 		return fmt.Errorf("failed to upsert servers: %w", err)
 	}
 
+	// Drop server temp tables so they can be reused for skills
+	if err := dropEntryTempTables(ctx, querier); err != nil {
+		return err
+	}
+
 	// Step 3: Delete orphaned servers (servers that no longer exist in upstream)
-	if err := d.deleteOrphanedServers(ctx, tx, registry.ID, serverIDMap); err != nil {
+	if err := d.deleteOrphanedEntries(ctx, tx, registry.ID, sqlc.EntryTypeMCP, collectValues(serverIDMap)); err != nil {
 		return fmt.Errorf("failed to delete orphaned servers: %w", err)
 	}
 
@@ -108,6 +123,11 @@ func (d *dbSyncWriter) Store(
 	// Step 5: Update latest_server_version table
 	if err := d.updateLatestVersions(ctx, querier, registry.ID, serverIDMap, reg.Data.Servers); err != nil {
 		return fmt.Errorf("failed to update latest versions: %w", err)
+	}
+
+	// Step 6: Store skills
+	if err := d.storeSkills(ctx, tx, registry.ID, reg.Data.Skills, registry.Claims); err != nil {
+		return fmt.Errorf("failed to store skills: %w", err)
 	}
 
 	// Commit transaction
@@ -124,42 +144,46 @@ func serverKey(name, version string) string {
 }
 
 // storeSyncInTempTables upserts all servers using temp table and COPY for maximum performance.
-// Uses ON CONFLICT UPDATE to preserve existing server UUIDs.
-// Returns a map of serverKey (name@version) to server UUID for subsequent operations.
+// Uses ON CONFLICT UPDATE to preserve existing UUIDs.
+// Returns a map of serverKey (name@version) to entry_version UUID for subsequent operations.
 func (d *dbSyncWriter) storeSyncInTempTables(
 	ctx context.Context,
 	tx pgx.Tx,
 	registryID uuid.UUID,
 	servers []upstreamv0.ServerJSON,
+	claims []byte,
+	perEntryClaims map[string][]byte,
 ) (map[string]uuid.UUID, error) {
 	if len(servers) == 0 {
 		return make(map[string]uuid.UUID), nil
 	}
 
-	// 1. Create temp table
 	querier := sqlc.New(tx)
-	copiedEntryRows, err := sqlCopyEntries(ctx, tx, registryID, servers)
+
+	// 1. Upsert registry entries (one per unique name)
+	entryMap, err := sqlCopyEntries(ctx, tx, registryID, servers, claims, perEntryClaims)
 	if err != nil {
 		return nil, fmt.Errorf("failed to copy entries: %w", err)
 	}
 
-	entryIDMap := make(map[string]uuid.UUID, len(copiedEntryRows))
-	for _, row := range copiedEntryRows {
-		key := serverKey(row.Name, row.Version)
-		entryIDMap[key] = row.ID
+	// 2. Upsert entry versions (one per name+version)
+	versionMap, err := sqlCopyEntryVersions(ctx, tx, entryMap, servers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy entry versions: %w", err)
 	}
 
-	if err := sqlCopyServers(ctx, tx, servers, entryIDMap, d.maxMetaSize); err != nil {
+	// 3. Copy mcp_server rows using entry_version IDs
+	if err := sqlCopyServers(ctx, tx, servers, versionMap, d.maxMetaSize); err != nil {
 		return nil, fmt.Errorf("failed to copy servers: %w", err)
 	}
 
-	// 5. Build a set of expected server keys from input
+	// 4. Build a set of expected server keys from input
 	expectedKeys := make(map[string]bool, len(servers))
 	for _, server := range servers {
 		expectedKeys[serverKey(server.Name, server.Version)] = true
 	}
 
-	// 6. Query back server IDs from permanent table
+	// 5. Query back server IDs from permanent table
 	dbServers, err := querier.GetServerIDsByRegistryNameVersion(ctx, registryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query server IDs: %w", err)
@@ -170,38 +194,41 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 	for _, dbServer := range dbServers {
 		key := serverKey(dbServer.Name, dbServer.Version)
 		if expectedKeys[key] {
-			serverIDMap[key] = dbServer.EntryID
+			serverIDMap[key] = dbServer.VersionID
 		}
 	}
 
 	return serverIDMap, nil
 }
 
-// deleteOrphanedServers removes servers for a registry that are not in the keepIDs set.
-// Due to CASCADE constraints, this also removes related packages, remotes, icons, and latest_server_version entries.
-func (*dbSyncWriter) deleteOrphanedServers(
+// deleteOrphanedEntries removes entry versions for a registry that are not in the keepIDs set.
+// Due to CASCADE constraints, this also removes related packages, remotes, icons, and latest_entry_version entries.
+func (*dbSyncWriter) deleteOrphanedEntries(
 	ctx context.Context,
 	tx pgx.Tx,
 	registryID uuid.UUID,
-	serverIDMap map[string]uuid.UUID,
+	entryType sqlc.EntryType,
+	keepIDs []uuid.UUID,
 ) error {
 	querier := sqlc.New(tx)
 
-	// Extract all server IDs from the map
-	keepIDs := make([]uuid.UUID, 0, len(serverIDMap))
-	for _, serverID := range serverIDMap {
-		keepIDs = append(keepIDs, serverID)
-	}
-
-	// If no servers to keep, delete all servers for this registry
+	// If no entries to keep, delete all entries for this registry by type
 	if len(keepIDs) == 0 {
-		return querier.DeleteServersByRegistry(ctx, registryID)
+		switch entryType {
+		case sqlc.EntryTypeMCP:
+			return querier.DeleteServersByRegistry(ctx, registryID)
+		case sqlc.EntryTypeSKILL:
+			return querier.DeleteSkillsByRegistry(ctx, registryID)
+		default:
+			return fmt.Errorf("unknown entry type: %s", entryType)
+		}
 	}
 
-	// Delete servers not in the keepIDs list
-	return querier.DeleteOrphanedServers(ctx, sqlc.DeleteOrphanedServersParams{
-		RegID:   registryID,
-		KeepIds: keepIDs,
+	// Delete entry versions not in the keepIDs list
+	return querier.DeleteOrphanedEntryVersions(ctx, sqlc.DeleteOrphanedEntryVersionsParams{
+		SourceID:  registryID,
+		EntryType: entryType,
+		KeepIds:   keepIDs,
 	})
 }
 
@@ -275,10 +302,10 @@ func (*dbSyncWriter) updateLatestVersions(
 	// Insert latest version pointers
 	for name, latest := range latestVersions {
 		_, err := querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
-			RegID:   registryID,
-			Name:    name,
-			Version: latest.version,
-			EntryID: latest.serverID,
+			SourceID:  registryID,
+			Name:      name,
+			Version:   latest.version,
+			VersionID: latest.serverID,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to upsert latest version for server %s: %w", name, err)
@@ -338,7 +365,7 @@ func bulkInsertPackages(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_package"},
-		[]string{"entry_id", "registry_type", "pkg_registry_url", "pkg_identifier", "pkg_version",
+		[]string{"server_id", "registry_type", "pkg_registry_url", "pkg_identifier", "pkg_version",
 			"runtime_hint", "runtime_arguments", "package_arguments", "env_vars", "sha256_hash",
 			"transport", "transport_url", "transport_headers"},
 		pgx.CopyFromRows(packageRows))
@@ -433,7 +460,7 @@ func bulkInsertRemotes(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_remote"},
-		[]string{"entry_id", "transport", "transport_url", "transport_headers"},
+		[]string{"server_id", "transport", "transport_url", "transport_headers"},
 		pgx.CopyFromRows(remoteRows))
 	if err != nil {
 		return fmt.Errorf("failed to copy remotes: %w", err)
@@ -517,7 +544,7 @@ func bulkInsertIcons(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_icon"},
-		[]string{"entry_id", "source_uri", "mime_type", "theme"},
+		[]string{"server_id", "source_uri", "mime_type", "theme"},
 		pgx.CopyFromRows(iconRows))
 	if err != nil {
 		return fmt.Errorf("failed to copy icons: %w", err)
@@ -606,26 +633,90 @@ func nilIfEmpty(s string) *string {
 	return &s
 }
 
-func sqlCopyEntries(
-	ctx context.Context,
-	tx pgx.Tx,
-	registryID uuid.UUID,
-	servers []upstreamv0.ServerJSON,
-) ([]sqlc.UpsertRegistryEntriesFromTempRow, error) {
+// dropEntryTempTables drops the shared temp tables so they can be recreated for a different entry type.
+func dropEntryTempTables(ctx context.Context, querier *sqlc.Queries) error {
+	if err := querier.DropTempRegistryEntryTable(ctx); err != nil {
+		return fmt.Errorf("failed to drop temp registry entry table: %w", err)
+	}
+	if err := querier.DropTempEntryVersionTable(ctx); err != nil {
+		return fmt.Errorf("failed to drop temp entry version table: %w", err)
+	}
+	return nil
+}
+
+// collectValues extracts the values from a map into a slice.
+func collectValues(m map[string]uuid.UUID) []uuid.UUID {
+	vals := make([]uuid.UUID, 0, len(m))
+	for _, v := range m {
+		vals = append(vals, v)
+	}
+	return vals
+}
+
+// copyAndUpsertEntries creates a temp registry entry table, copies the pre-built rows into it,
+// and upserts them into the permanent table. Returns a map of entry name to registry_entry UUID.
+func copyAndUpsertEntries(ctx context.Context, tx pgx.Tx, entryRows [][]any) (map[string]uuid.UUID, error) {
 	querier := sqlc.New(tx)
 
 	if err := querier.CreateTempRegistryEntryTable(ctx); err != nil {
 		return nil, fmt.Errorf("failed to create temp registry entry table: %w", err)
 	}
 
-	// 2. Prepare rows for COPY
-	entryRows := make([][]any, 0, len(servers))
-	for _, server := range servers {
-		now := time.Now()
+	entryCopyCount, err := tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"temp_registry_entry"},
+		[]string{"id", "source_id", "entry_type", "name", "claims", "created_at", "updated_at"},
+		pgx.CopyFromRows(entryRows),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy entries to temp table: %w", err)
+	}
+	if int(entryCopyCount) != len(entryRows) {
+		return nil, fmt.Errorf("copy count mismatch: expected %d, got %d", len(entryRows), entryCopyCount)
+	}
 
+	copiedRows, err := querier.UpsertRegistryEntriesFromTemp(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert registry entries from temp table: %w", err)
+	}
+
+	entryMap := make(map[string]uuid.UUID, len(copiedRows))
+	for _, row := range copiedRows {
+		entryMap[row.Name] = row.ID
+	}
+
+	return entryMap, nil
+}
+
+// sqlCopyEntries upserts registry entries for servers (one per unique name) using temp table and COPY.
+// Returns a map of server name to registry_entry UUID.
+func sqlCopyEntries(
+	ctx context.Context,
+	tx pgx.Tx,
+	registryID uuid.UUID,
+	servers []upstreamv0.ServerJSON,
+	claims []byte,
+	perEntryClaims map[string][]byte,
+) (map[string]uuid.UUID, error) {
+	// Deduplicate by name — one registry_entry per unique server name
+	seen := make(map[string]bool, len(servers))
+	var entryRows [][]any
+	for _, server := range servers {
+		if seen[server.Name] {
+			continue
+		}
+		seen[server.Name] = true
+
+		now := time.Now()
 		entryID, err := uuid.NewV7()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate entry ID: %w", err)
+		}
+
+		// Use per-entry claims if available, otherwise fall back to source-level claims
+		entryClaims := claims
+		if ec, ok := perEntryClaims[server.Name]; ok {
+			entryClaims = ec
 		}
 
 		entryRows = append(entryRows, []any{
@@ -633,34 +724,98 @@ func sqlCopyEntries(
 			registryID,
 			sqlc.EntryTypeMCP,
 			server.Name,
-			nilIfEmpty(server.Title),
-			nilIfEmpty(server.Description),
-			server.Version,
+			entryClaims,
 			&now,
 			&now,
 		})
 	}
 
-	// 3. COPY into temp table
-	entryCopyCount, err := tx.CopyFrom(
+	return copyAndUpsertEntries(ctx, tx, entryRows)
+}
+
+// copyAndUpsertEntryVersions creates a temp entry version table, copies the pre-built rows into it,
+// and upserts them into the permanent table. Returns the upserted rows for caller-specific key mapping.
+func copyAndUpsertEntryVersions(
+	ctx context.Context, tx pgx.Tx, versionRows [][]any,
+) ([]sqlc.UpsertEntryVersionsFromTempRow, error) {
+	querier := sqlc.New(tx)
+
+	if err := querier.CreateTempEntryVersionTable(ctx); err != nil {
+		return nil, fmt.Errorf("failed to create temp entry version table: %w", err)
+	}
+
+	copyCount, err := tx.CopyFrom(
 		ctx,
-		pgx.Identifier{"temp_registry_entry"},
-		[]string{"id", "reg_id", "entry_type", "name", "title", "description", "version", "created_at", "updated_at"},
-		pgx.CopyFromRows(entryRows),
+		pgx.Identifier{"temp_entry_version"},
+		[]string{"id", "entry_id", "name", "version", "title", "description", "created_at", "updated_at"},
+		pgx.CopyFromRows(versionRows),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to copy entries to temp table: %w", err)
+		return nil, fmt.Errorf("failed to copy entry versions to temp table: %w", err)
 	}
-	if int(entryCopyCount) != len(servers) {
-		return nil, fmt.Errorf("copy count mismatch: expected %d, got %d", len(servers), entryCopyCount)
+	if int(copyCount) != len(versionRows) {
+		return nil, fmt.Errorf("copy count mismatch: expected %d, got %d", len(versionRows), copyCount)
 	}
 
-	copiedEntryRows, err := querier.UpsertRegistryEntriesFromTemp(ctx)
+	copiedRows, err := querier.UpsertEntryVersionsFromTemp(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to upsert registry entries from temp table: %w", err)
+		return nil, fmt.Errorf("failed to upsert entry versions from temp table: %w", err)
 	}
 
-	return copiedEntryRows, nil
+	return copiedRows, nil
+}
+
+// sqlCopyEntryVersions upserts entry versions for servers (one per name+version) using temp table and COPY.
+// Returns a map of serverKey (name@version) to entry_version UUID.
+func sqlCopyEntryVersions(
+	ctx context.Context,
+	tx pgx.Tx,
+	entryMap map[string]uuid.UUID,
+	servers []upstreamv0.ServerJSON,
+) (map[string]uuid.UUID, error) {
+	versionRows := make([][]any, 0, len(servers))
+	for _, server := range servers {
+		entryID, ok := entryMap[server.Name]
+		if !ok {
+			return nil, fmt.Errorf("entry ID not found for %s", server.Name)
+		}
+
+		now := time.Now()
+		versionID, err := uuid.NewV7()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate version ID: %w", err)
+		}
+
+		versionRows = append(versionRows, []any{
+			versionID,
+			entryID,
+			server.Name,
+			server.Version,
+			nilIfEmpty(server.Title),
+			nilIfEmpty(server.Description),
+			&now,
+			&now,
+		})
+	}
+
+	copiedRows, err := copyAndUpsertEntryVersions(ctx, tx, versionRows)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build reverse lookup: entry_id → name
+	entryIDToName := make(map[uuid.UUID]string, len(entryMap))
+	for name, id := range entryMap {
+		entryIDToName[id] = name
+	}
+
+	versionMap := make(map[string]uuid.UUID, len(copiedRows))
+	for _, row := range copiedRows {
+		name := entryIDToName[row.EntryID]
+		versionMap[serverKey(name, row.Version)] = row.ID
+	}
+
+	return versionMap, nil
 }
 
 func sqlCopyServers(
@@ -708,7 +863,7 @@ func sqlCopyServers(
 	copyCount, err := tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"temp_mcp_server"},
-		[]string{"entry_id", "website", "upstream_meta", "server_meta",
+		[]string{"version_id", "website", "upstream_meta", "server_meta",
 			"repository_url", "repository_id", "repository_subfolder", "repository_type"},
 		pgx.CopyFromRows(mcpRows),
 	)
@@ -725,4 +880,319 @@ func sqlCopyServers(
 	}
 
 	return nil
+}
+
+// skillKey creates a unique key for a skill based on namespace, name and version
+func skillKey(namespace, name, version string) string {
+	return namespace + "/" + name + "@" + version
+}
+
+// storeSkills persists skills from an upstream registry into the database.
+// It follows the same bulk-sync pattern as server storage: temp tables with COPY,
+// followed by upserts and orphan cleanup. Reuses the shared copyAndUpsertEntries
+// and copyAndUpsertEntryVersions functions.
+func (d *dbSyncWriter) storeSkills(
+	ctx context.Context,
+	tx pgx.Tx,
+	registryID uuid.UUID,
+	skills []toolhivetypes.Skill,
+	claims []byte,
+) error {
+	querier := sqlc.New(tx)
+
+	// If no skills, clean up any previously synced skills and return
+	if len(skills) == 0 {
+		return querier.DeleteSkillsByRegistry(ctx, registryID)
+	}
+
+	// 1. Upsert registry entries for skills (one per unique name)
+	// Build entry rows from skills, then use the shared copyAndUpsertEntries
+	seen := make(map[string]bool, len(skills))
+	var entryRows [][]any
+	for _, skill := range skills {
+		if seen[skill.Name] {
+			continue
+		}
+		seen[skill.Name] = true
+
+		now := time.Now()
+		entryID, err := uuid.NewV7()
+		if err != nil {
+			return fmt.Errorf("failed to generate entry ID: %w", err)
+		}
+
+		entryRows = append(entryRows, []any{
+			entryID,
+			registryID,
+			sqlc.EntryTypeSKILL,
+			skill.Name,
+			claims,
+			&now,
+			&now,
+		})
+	}
+
+	entryMap, err := copyAndUpsertEntries(ctx, tx, entryRows)
+	if err != nil {
+		return fmt.Errorf("failed to copy skill entries: %w", err)
+	}
+
+	// 2. Upsert entry versions for skills (one per name+version)
+	// Build version rows from skills, then use the shared copyAndUpsertEntryVersions
+	versionRows := make([][]any, 0, len(skills))
+	for _, skill := range skills {
+		entryID, ok := entryMap[skill.Name]
+		if !ok {
+			return fmt.Errorf("entry ID not found for skill %s", skill.Name)
+		}
+
+		now := time.Now()
+		versionID, err := uuid.NewV7()
+		if err != nil {
+			return fmt.Errorf("failed to generate version ID: %w", err)
+		}
+
+		versionRows = append(versionRows, []any{
+			versionID,
+			entryID,
+			skill.Name,
+			skill.Version,
+			nilIfEmpty(skill.Title),
+			nilIfEmpty(skill.Description),
+			&now,
+			&now,
+		})
+	}
+
+	copiedRows, err := copyAndUpsertEntryVersions(ctx, tx, versionRows)
+	if err != nil {
+		return fmt.Errorf("failed to copy skill entry versions: %w", err)
+	}
+
+	// Build reverse lookup: entry_id → name
+	entryIDToName := make(map[uuid.UUID]string, len(entryMap))
+	for name, id := range entryMap {
+		entryIDToName[id] = name
+	}
+
+	// Build a lookup from name+version to namespace
+	type nameVersion struct {
+		name    string
+		version string
+	}
+	nvToNamespace := make(map[nameVersion]string, len(skills))
+	for _, skill := range skills {
+		nvToNamespace[nameVersion{name: skill.Name, version: skill.Version}] = skill.Namespace
+	}
+
+	// Build version map keyed by namespace/name@version
+	versionMap := make(map[string]uuid.UUID, len(copiedRows))
+	for _, row := range copiedRows {
+		name := entryIDToName[row.EntryID]
+		ns := nvToNamespace[nameVersion{name: name, version: row.Version}]
+		versionMap[skillKey(ns, name, row.Version)] = row.ID
+	}
+
+	// 3. Upsert skill-specific data and packages for each skill
+	keepIDs, err := upsertSkillVersionsAndPackages(ctx, querier, skills, versionMap)
+	if err != nil {
+		return err
+	}
+
+	// 4. Delete orphaned skills that no longer exist in upstream
+	if err := d.deleteOrphanedEntries(ctx, tx, registryID, sqlc.EntryTypeSKILL, keepIDs); err != nil {
+		return fmt.Errorf("failed to delete orphaned skills: %w", err)
+	}
+
+	// 5. Update latest skill versions
+	return updateLatestSkillVersions(ctx, querier, registryID, skills, versionMap)
+}
+
+// upsertSkillVersionsAndPackages upserts each skill's version data and replaces its packages.
+// Returns the list of version IDs to keep (for orphan cleanup).
+func upsertSkillVersionsAndPackages(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	skills []toolhivetypes.Skill,
+	versionMap map[string]uuid.UUID,
+) ([]uuid.UUID, error) {
+	keepIDs := make([]uuid.UUID, 0, len(skills))
+
+	for _, skill := range skills {
+		key := skillKey(skill.Namespace, skill.Name, skill.Version)
+		versionID, ok := versionMap[key]
+		if !ok {
+			return nil, fmt.Errorf("version ID not found for skill %s", key)
+		}
+
+		skillVersionID, err := upsertSingleSkillVersion(ctx, querier, skill, versionID)
+		if err != nil {
+			return nil, err
+		}
+
+		keepIDs = append(keepIDs, skillVersionID)
+
+		if err := replaceSkillPackages(ctx, querier, skill, skillVersionID); err != nil {
+			return nil, err
+		}
+	}
+
+	return keepIDs, nil
+}
+
+// upsertSingleSkillVersion upserts the skill row for a single skill version.
+func upsertSingleSkillVersion(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	skill toolhivetypes.Skill,
+	versionID uuid.UUID,
+) (uuid.UUID, error) {
+	key := skillKey(skill.Namespace, skill.Name, skill.Version)
+
+	repoJSON, err := marshalJSONOrNil(skill.Repository)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal repository for skill %s: %w", key, err)
+	}
+	iconsJSON, err := marshalJSONOrNil(skill.Icons)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal icons for skill %s: %w", key, err)
+	}
+	metadataJSON, err := marshalJSONOrNil(skill.Metadata)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal metadata for skill %s: %w", key, err)
+	}
+	extMetaJSON, err := marshalJSONOrNil(skill.Meta)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal extension meta for skill %s: %w", key, err)
+	}
+
+	status := sqlc.NullSkillStatus{}
+	if skill.Status != "" {
+		status = sqlc.NullSkillStatus{
+			SkillStatus: sqlc.SkillStatus(strings.ToUpper(skill.Status)),
+			Valid:       true,
+		}
+	}
+
+	skillVersionID, err := querier.UpsertSkillVersionForSync(ctx, sqlc.UpsertSkillVersionForSyncParams{
+		VersionID:     versionID,
+		Namespace:     skill.Namespace,
+		Status:        status,
+		License:       nilIfEmpty(skill.License),
+		Compatibility: nilIfEmpty(skill.Compatibility),
+		AllowedTools:  skill.AllowedTools,
+		Repository:    repoJSON,
+		Icons:         iconsJSON,
+		Metadata:      metadataJSON,
+		ExtensionMeta: extMetaJSON,
+	})
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to upsert skill version for %s: %w", key, err)
+	}
+
+	return skillVersionID, nil
+}
+
+// replaceSkillPackages deletes existing packages for a skill and inserts new ones.
+func replaceSkillPackages(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	skill toolhivetypes.Skill,
+	skillVersionID uuid.UUID,
+) error {
+	key := skillKey(skill.Namespace, skill.Name, skill.Version)
+
+	if err := querier.DeleteSkillOciPackagesBySkillId(ctx, skillVersionID); err != nil {
+		return fmt.Errorf("failed to delete OCI packages for skill %s: %w", key, err)
+	}
+	if err := querier.DeleteSkillGitPackagesBySkillId(ctx, skillVersionID); err != nil {
+		return fmt.Errorf("failed to delete Git packages for skill %s: %w", key, err)
+	}
+
+	for _, pkg := range skill.Packages {
+		switch pkg.RegistryType {
+		case "oci":
+			if err := querier.InsertSkillOciPackage(ctx, sqlc.InsertSkillOciPackageParams{
+				SkillID:    skillVersionID,
+				Identifier: pkg.Identifier,
+				Digest:     nilIfEmpty(pkg.Digest),
+				MediaType:  nilIfEmpty(pkg.MediaType),
+			}); err != nil {
+				return fmt.Errorf("failed to insert OCI package for skill %s: %w", key, err)
+			}
+		case "git":
+			if err := querier.InsertSkillGitPackage(ctx, sqlc.InsertSkillGitPackageParams{
+				SkillID:   skillVersionID,
+				Url:       pkg.URL,
+				Ref:       nilIfEmpty(pkg.Ref),
+				CommitSha: nilIfEmpty(pkg.Commit),
+				Subfolder: nilIfEmpty(pkg.Subfolder),
+			}); err != nil {
+				return fmt.Errorf("failed to insert Git package for skill %s: %w", key, err)
+			}
+		default:
+			slog.Warn("Skipping unknown skill package type",
+				"skill", key,
+				"registryType", pkg.RegistryType)
+		}
+	}
+
+	return nil
+}
+
+// updateLatestSkillVersions determines and upserts the latest version for each unique skill name.
+func updateLatestSkillVersions(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	registryID uuid.UUID,
+	skills []toolhivetypes.Skill,
+	versionMap map[string]uuid.UUID,
+) error {
+	latestVersions := make(map[string]struct {
+		version   string
+		versionID uuid.UUID
+	})
+
+	for _, skill := range skills {
+		key := skillKey(skill.Namespace, skill.Name, skill.Version)
+		versionID := versionMap[key]
+
+		existing, exists := latestVersions[skill.Name]
+		if !exists || versions.IsNewerVersion(skill.Version, existing.version) {
+			latestVersions[skill.Name] = struct {
+				version   string
+				versionID uuid.UUID
+			}{
+				version:   skill.Version,
+				versionID: versionID,
+			}
+		}
+	}
+
+	for name, latest := range latestVersions {
+		_, err := querier.UpsertLatestSkillVersion(ctx, sqlc.UpsertLatestSkillVersionParams{
+			SourceID:  registryID,
+			Name:      name,
+			Version:   latest.version,
+			VersionID: latest.versionID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to upsert latest version for skill %s: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+// marshalJSONOrNil marshals the value to JSON, returning nil if the value is nil.
+// It handles both untyped nil and typed nil (e.g. (*SomeStruct)(nil) stored in any).
+func marshalJSONOrNil(v any) ([]byte, error) {
+	if v == nil {
+		return nil, nil
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return nil, nil
+	}
+	return json.Marshal(v)
 }

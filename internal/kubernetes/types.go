@@ -47,6 +47,10 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 	}
 	serverJSON.Description = desc
 
+	if title, ok := annotations[defaultRegistryTitleAnnotation]; ok {
+		serverJSON.Title = title
+	}
+
 	transportURL, ok := annotations[defaultRegistryURLAnnotation]
 	if !ok {
 		return nil, fmt.Errorf("URL not found in annotations")
@@ -131,6 +135,10 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 	}
 	serverJSON.Description = desc
 
+	if title, ok := annotations[defaultRegistryTitleAnnotation]; ok {
+		serverJSON.Title = title
+	}
+
 	transportURL, ok := annotations[defaultRegistryURLAnnotation]
 	if !ok {
 		return nil, fmt.Errorf("URL not found in annotations")
@@ -212,6 +220,10 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 		return nil, fmt.Errorf("description not found in annotations")
 	}
 	serverJSON.Description = desc
+
+	if title, ok := annotations[defaultRegistryTitleAnnotation]; ok {
+		serverJSON.Title = title
+	}
 
 	transportURL, ok := annotations[defaultRegistryURLAnnotation]
 	if !ok {

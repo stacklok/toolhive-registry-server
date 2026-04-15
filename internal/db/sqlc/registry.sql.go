@@ -10,87 +10,146 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 )
 
-const bulkUpsertConfigRegistries = `-- name: BulkUpsertConfigRegistries :many
-INSERT INTO registry (
-    name,
-    reg_type,
-    creation_type,
-    source_type,
-    format,
-    source_config,
-    filter_config,
-    sync_schedule,
-    syncable,
-    created_at,
-    updated_at
-)
-SELECT
-    unnest($1::text[]),
-    unnest($2::registry_type[]),
-    'CONFIG',
-    unnest($3::text[]),
-    unnest($4::text[]),
-    unnest($5::jsonb[]),
-    unnest($6::jsonb[]),
-    unnest($7::interval[]),
-    unnest($8::boolean[]),
-    unnest($9::timestamp with time zone[]),
-    unnest($10::timestamp with time zone[])
-ON CONFLICT (name) DO UPDATE SET
-    reg_type = EXCLUDED.reg_type,
-    source_type = EXCLUDED.source_type,
-    format = EXCLUDED.format,
-    source_config = EXCLUDED.source_config,
-    filter_config = EXCLUDED.filter_config,
-    sync_schedule = EXCLUDED.sync_schedule,
-    syncable = EXCLUDED.syncable,
-    updated_at = EXCLUDED.updated_at
-WHERE registry.creation_type = 'CONFIG'
-RETURNING id, name
+const countRegistriesBySourceID = `-- name: CountRegistriesBySourceID :one
+SELECT COUNT(*) FROM registry_source WHERE source_id = $1
 `
 
-type BulkUpsertConfigRegistriesParams struct {
-	Names         []string           `json:"names"`
-	RegTypes      []RegistryType     `json:"reg_types"`
-	SourceTypes   []string           `json:"source_types"`
-	Formats       []string           `json:"formats"`
-	SourceConfigs [][]byte           `json:"source_configs"`
-	FilterConfigs [][]byte           `json:"filter_configs"`
-	SyncSchedules []pgtypes.Interval `json:"sync_schedules"`
-	Syncables     []bool             `json:"syncables"`
-	CreatedAts    []time.Time        `json:"created_ats"`
-	UpdatedAts    []time.Time        `json:"updated_ats"`
+// Count how many registries reference a given source (via registry_source junction).
+func (q *Queries) CountRegistriesBySourceID(ctx context.Context, sourceID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countRegistriesBySourceID, sourceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
-type BulkUpsertConfigRegistriesRow struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
+const deleteConfigRegistriesNotInList = `-- name: DeleteConfigRegistriesNotInList :exec
+DELETE FROM registry
+WHERE creation_type = 'CONFIG'
+  AND name NOT IN (SELECT unnest($1::text[]))
+`
+
+// Delete CONFIG registry rows whose names are not in the provided list.
+// Used during config sync to clean up registry/junction rows before deleting orphaned sources.
+func (q *Queries) DeleteConfigRegistriesNotInList(ctx context.Context, keepNames []string) error {
+	_, err := q.db.Exec(ctx, deleteConfigRegistriesNotInList, keepNames)
+	return err
 }
 
-// Bulk insert or update CONFIG registries (only updates existing CONFIG registries)
-func (q *Queries) BulkUpsertConfigRegistries(ctx context.Context, arg BulkUpsertConfigRegistriesParams) ([]BulkUpsertConfigRegistriesRow, error) {
-	rows, err := q.db.Query(ctx, bulkUpsertConfigRegistries,
-		arg.Names,
-		arg.RegTypes,
-		arg.SourceTypes,
-		arg.Formats,
-		arg.SourceConfigs,
-		arg.FilterConfigs,
-		arg.SyncSchedules,
-		arg.Syncables,
-		arg.CreatedAts,
-		arg.UpdatedAts,
+const deleteRegistry = `-- name: DeleteRegistry :execrows
+DELETE FROM registry WHERE name = $1
+`
+
+// Delete a registry by name. Go callers guard against deleting wrong creation_type.
+func (q *Queries) DeleteRegistry(ctx context.Context, name string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRegistry, name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getRegistryByName = `-- name: GetRegistryByName :one
+SELECT id, name, claims, creation_type, created_at, updated_at
+FROM registry WHERE name = $1
+`
+
+func (q *Queries) GetRegistryByName(ctx context.Context, name string) (Registry, error) {
+	row := q.db.QueryRow(ctx, getRegistryByName, name)
+	var i Registry
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Claims,
+		&i.CreationType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
+	return i, err
+}
+
+const linkRegistrySource = `-- name: LinkRegistrySource :exec
+INSERT INTO registry_source (registry_id, source_id, position)
+VALUES ($1, $2, $3)
+ON CONFLICT (registry_id, source_id) DO UPDATE SET position = EXCLUDED.position
+`
+
+type LinkRegistrySourceParams struct {
+	RegistryID uuid.UUID `json:"registry_id"`
+	SourceID   uuid.UUID `json:"source_id"`
+	Position   int32     `json:"position"`
+}
+
+func (q *Queries) LinkRegistrySource(ctx context.Context, arg LinkRegistrySourceParams) error {
+	_, err := q.db.Exec(ctx, linkRegistrySource, arg.RegistryID, arg.SourceID, arg.Position)
+	return err
+}
+
+const listRegistries = `-- name: ListRegistries :many
+
+SELECT id, name, claims, creation_type, created_at, updated_at
+FROM registry
+WHERE ($1::text IS NULL OR name > $1)
+ORDER BY name
+LIMIT $2::bigint
+`
+
+type ListRegistriesParams struct {
+	Cursor *string `json:"cursor"`
+	Size   int64   `json:"size"`
+}
+
+// Queries for the new lightweight registry table and registry_source junction.
+func (q *Queries) ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error) {
+	rows, err := q.db.Query(ctx, listRegistries, arg.Cursor, arg.Size)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []BulkUpsertConfigRegistriesRow{}
+	items := []Registry{}
 	for rows.Next() {
-		var i BulkUpsertConfigRegistriesRow
+		var i Registry
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Claims,
+			&i.CreationType,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRegistrySources = `-- name: ListRegistrySources :many
+SELECT s.id, s.name
+FROM registry_source rs
+JOIN source s ON rs.source_id = s.id
+WHERE rs.registry_id = $1
+ORDER BY rs.position
+`
+
+type ListRegistrySourcesRow struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+func (q *Queries) ListRegistrySources(ctx context.Context, registryID uuid.UUID) ([]ListRegistrySourcesRow, error) {
+	rows, err := q.db.Query(ctx, listRegistrySources, registryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRegistrySourcesRow{}
+	for rows.Next() {
+		var i ListRegistrySourcesRow
 		if err := rows.Scan(&i.ID, &i.Name); err != nil {
 			return nil, err
 		}
@@ -102,265 +161,52 @@ func (q *Queries) BulkUpsertConfigRegistries(ctx context.Context, arg BulkUpsert
 	return items, nil
 }
 
-const deleteAPIRegistry = `-- name: DeleteAPIRegistry :execrows
-DELETE FROM registry
-WHERE name = $1
-  AND creation_type = 'API'
+const unlinkAllRegistrySources = `-- name: UnlinkAllRegistrySources :exec
+DELETE FROM registry_source WHERE registry_id = $1
 `
 
-// Delete an API registry by name (returns 0 if not found or is CONFIG type)
-func (q *Queries) DeleteAPIRegistry(ctx context.Context, name string) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteAPIRegistry, name)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const deleteConfigRegistriesNotInList = `-- name: DeleteConfigRegistriesNotInList :exec
-DELETE FROM registry
-WHERE id NOT IN (SELECT unnest($1::uuid[]))
-  AND creation_type = 'CONFIG'
-`
-
-// Delete CONFIG registries not in the provided list (for config file sync)
-func (q *Queries) DeleteConfigRegistriesNotInList(ctx context.Context, ids []uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteConfigRegistriesNotInList, ids)
+func (q *Queries) UnlinkAllRegistrySources(ctx context.Context, registryID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, unlinkAllRegistrySources, registryID)
 	return err
 }
 
-const deleteConfigRegistry = `-- name: DeleteConfigRegistry :execrows
-DELETE FROM registry
-WHERE name = $1
-  AND creation_type = 'CONFIG'
+const unlinkRegistrySource = `-- name: UnlinkRegistrySource :exec
+DELETE FROM registry_source
+WHERE registry_id = $1 AND source_id = $2
 `
 
-// Delete a CONFIG registry by name (returns 0 if not found or is API type)
-func (q *Queries) DeleteConfigRegistry(ctx context.Context, name string) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteConfigRegistry, name)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+type UnlinkRegistrySourceParams struct {
+	RegistryID uuid.UUID `json:"registry_id"`
+	SourceID   uuid.UUID `json:"source_id"`
 }
 
-const getAPIRegistriesByNames = `-- name: GetAPIRegistriesByNames :many
-SELECT id,
-       name,
-       reg_type,
-       creation_type,
-       source_type,
-       format,
-       source_config,
-       filter_config,
-       sync_schedule,
-       created_at,
-       updated_at
-FROM registry
-WHERE name = ANY($1::text[])
-  AND creation_type = 'API'
+func (q *Queries) UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySourceParams) error {
+	_, err := q.db.Exec(ctx, unlinkRegistrySource, arg.RegistryID, arg.SourceID)
+	return err
+}
+
+const upsertRegistry = `-- name: UpsertRegistry :one
+INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
+RETURNING id, name, claims, creation_type, created_at, updated_at
 `
 
-type GetAPIRegistriesByNamesRow struct {
-	ID           uuid.UUID        `json:"id"`
-	Name         string           `json:"name"`
-	RegType      RegistryType     `json:"reg_type"`
-	CreationType CreationType     `json:"creation_type"`
-	SourceType   *string          `json:"source_type"`
-	Format       *string          `json:"format"`
-	SourceConfig []byte           `json:"source_config"`
-	FilterConfig []byte           `json:"filter_config"`
-	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
-	CreatedAt    *time.Time       `json:"created_at"`
-	UpdatedAt    *time.Time       `json:"updated_at"`
+type UpsertRegistryParams struct {
+	Name         string       `json:"name"`
+	Claims       []byte       `json:"claims"`
+	CreationType CreationType `json:"creation_type"`
+	CreatedAt    *time.Time   `json:"created_at"`
+	UpdatedAt    *time.Time   `json:"updated_at"`
 }
 
-func (q *Queries) GetAPIRegistriesByNames(ctx context.Context, names []string) ([]GetAPIRegistriesByNamesRow, error) {
-	rows, err := q.db.Query(ctx, getAPIRegistriesByNames, names)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetAPIRegistriesByNamesRow{}
-	for rows.Next() {
-		var i GetAPIRegistriesByNamesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.RegType,
-			&i.CreationType,
-			&i.SourceType,
-			&i.Format,
-			&i.SourceConfig,
-			&i.FilterConfig,
-			&i.SyncSchedule,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getRegistry = `-- name: GetRegistry :one
-SELECT id,
-       name,
-       reg_type,
-       creation_type,
-       source_type,
-       format,
-       source_config,
-       filter_config,
-       sync_schedule,
-       created_at,
-       updated_at
-  FROM registry
- WHERE id = $1
-`
-
-type GetRegistryRow struct {
-	ID           uuid.UUID        `json:"id"`
-	Name         string           `json:"name"`
-	RegType      RegistryType     `json:"reg_type"`
-	CreationType CreationType     `json:"creation_type"`
-	SourceType   *string          `json:"source_type"`
-	Format       *string          `json:"format"`
-	SourceConfig []byte           `json:"source_config"`
-	FilterConfig []byte           `json:"filter_config"`
-	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
-	CreatedAt    *time.Time       `json:"created_at"`
-	UpdatedAt    *time.Time       `json:"updated_at"`
-}
-
-func (q *Queries) GetRegistry(ctx context.Context, id uuid.UUID) (GetRegistryRow, error) {
-	row := q.db.QueryRow(ctx, getRegistry, id)
-	var i GetRegistryRow
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.RegType,
-		&i.CreationType,
-		&i.SourceType,
-		&i.Format,
-		&i.SourceConfig,
-		&i.FilterConfig,
-		&i.SyncSchedule,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const getRegistryByName = `-- name: GetRegistryByName :one
-SELECT id,
-       name,
-       reg_type,
-       creation_type,
-       source_type,
-       format,
-       source_config,
-       filter_config,
-       sync_schedule,
-       created_at,
-       updated_at
-  FROM registry
- WHERE name = $1
-`
-
-type GetRegistryByNameRow struct {
-	ID           uuid.UUID        `json:"id"`
-	Name         string           `json:"name"`
-	RegType      RegistryType     `json:"reg_type"`
-	CreationType CreationType     `json:"creation_type"`
-	SourceType   *string          `json:"source_type"`
-	Format       *string          `json:"format"`
-	SourceConfig []byte           `json:"source_config"`
-	FilterConfig []byte           `json:"filter_config"`
-	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
-	CreatedAt    *time.Time       `json:"created_at"`
-	UpdatedAt    *time.Time       `json:"updated_at"`
-}
-
-func (q *Queries) GetRegistryByName(ctx context.Context, name string) (GetRegistryByNameRow, error) {
-	row := q.db.QueryRow(ctx, getRegistryByName, name)
-	var i GetRegistryByNameRow
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.RegType,
-		&i.CreationType,
-		&i.SourceType,
-		&i.Format,
-		&i.SourceConfig,
-		&i.FilterConfig,
-		&i.SyncSchedule,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const insertAPIRegistry = `-- name: InsertAPIRegistry :one
-
-INSERT INTO registry (
-    name,
-    reg_type,
-    creation_type,
-    source_type,
-    format,
-    source_config,
-    filter_config,
-    sync_schedule,
-    syncable,
-    created_at,
-    updated_at
-) VALUES (
-    $1,
-    $2,
-    'API',
-    $3,
-    $4,
-    $5,
-    $6,
-    $7,
-    $8,
-    $9,
-    $10
-) RETURNING id, name, reg_type, created_at, updated_at, creation_type, sync_schedule, source_type, format, source_config, filter_config, syncable
-`
-
-type InsertAPIRegistryParams struct {
-	Name         string           `json:"name"`
-	RegType      RegistryType     `json:"reg_type"`
-	SourceType   *string          `json:"source_type"`
-	Format       *string          `json:"format"`
-	SourceConfig []byte           `json:"source_config"`
-	FilterConfig []byte           `json:"filter_config"`
-	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
-	Syncable     bool             `json:"syncable"`
-	CreatedAt    *time.Time       `json:"created_at"`
-	UpdatedAt    *time.Time       `json:"updated_at"`
-}
-
-// ============================================================================
-// API Registry Queries (only operate on creation_type='API')
-// ============================================================================
-// Insert a new API registry with full configuration
-func (q *Queries) InsertAPIRegistry(ctx context.Context, arg InsertAPIRegistryParams) (Registry, error) {
-	row := q.db.QueryRow(ctx, insertAPIRegistry,
+// Insert or update a registry. The creation_type is passed as a parameter.
+// Business logic in Go guards against cross-type overwrites.
+func (q *Queries) UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (Registry, error) {
+	row := q.db.QueryRow(ctx, upsertRegistry,
 		arg.Name,
-		arg.RegType,
-		arg.SourceType,
-		arg.Format,
-		arg.SourceConfig,
-		arg.FilterConfig,
-		arg.SyncSchedule,
-		arg.Syncable,
+		arg.Claims,
+		arg.CreationType,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -368,310 +214,10 @@ func (q *Queries) InsertAPIRegistry(ctx context.Context, arg InsertAPIRegistryPa
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
-		&i.RegType,
+		&i.Claims,
+		&i.CreationType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.CreationType,
-		&i.SyncSchedule,
-		&i.SourceType,
-		&i.Format,
-		&i.SourceConfig,
-		&i.FilterConfig,
-		&i.Syncable,
 	)
 	return i, err
-}
-
-const insertConfigRegistry = `-- name: InsertConfigRegistry :one
-
-INSERT INTO registry (
-    name,
-    reg_type,
-    creation_type,
-    source_type,
-    format,
-    source_config,
-    filter_config,
-    sync_schedule,
-    syncable,
-    created_at,
-    updated_at
-) VALUES (
-    $1,
-    $2,
-    'CONFIG',
-    $3,
-    $4,
-    $5,
-    $6,
-    $7,
-    $8,
-    $9,
-    $10
-) RETURNING id
-`
-
-type InsertConfigRegistryParams struct {
-	Name         string           `json:"name"`
-	RegType      RegistryType     `json:"reg_type"`
-	SourceType   *string          `json:"source_type"`
-	Format       *string          `json:"format"`
-	SourceConfig []byte           `json:"source_config"`
-	FilterConfig []byte           `json:"filter_config"`
-	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
-	Syncable     bool             `json:"syncable"`
-	CreatedAt    *time.Time       `json:"created_at"`
-	UpdatedAt    *time.Time       `json:"updated_at"`
-}
-
-// ============================================================================
-// CONFIG Registry Queries (only operate on creation_type='CONFIG')
-// ============================================================================
-// Insert a new CONFIG registry with full configuration
-func (q *Queries) InsertConfigRegistry(ctx context.Context, arg InsertConfigRegistryParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, insertConfigRegistry,
-		arg.Name,
-		arg.RegType,
-		arg.SourceType,
-		arg.Format,
-		arg.SourceConfig,
-		arg.FilterConfig,
-		arg.SyncSchedule,
-		arg.Syncable,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-	)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
-}
-
-const listAllRegistryNames = `-- name: ListAllRegistryNames :many
-SELECT name FROM registry ORDER BY name
-`
-
-func (q *Queries) ListAllRegistryNames(ctx context.Context) ([]string, error) {
-	rows, err := q.db.Query(ctx, listAllRegistryNames)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return nil, err
-		}
-		items = append(items, name)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listRegistries = `-- name: ListRegistries :many
-SELECT id,
-       name,
-       reg_type,
-       creation_type,
-       source_type,
-       format,
-       source_config,
-       filter_config,
-       sync_schedule,
-       created_at,
-       updated_at
-  FROM registry
- WHERE ($1::timestamp with time zone IS NULL OR created_at > $1)
-   AND ($2::timestamp with time zone IS NULL OR created_at < $2)
- ORDER BY
-  -- next page sorting
-  CASE WHEN $1::timestamp with time zone IS NULL THEN created_at END ASC,
-  CASE WHEN $1::timestamp with time zone IS NULL THEN name END ASC,
-  -- previous page sorting
-  CASE WHEN $2::timestamp with time zone IS NULL THEN created_at END DESC,
-  CASE WHEN $2::timestamp with time zone IS NULL THEN name END DESC
- LIMIT $3::bigint
-`
-
-type ListRegistriesParams struct {
-	Next *time.Time `json:"next"`
-	Prev *time.Time `json:"prev"`
-	Size int64      `json:"size"`
-}
-
-type ListRegistriesRow struct {
-	ID           uuid.UUID        `json:"id"`
-	Name         string           `json:"name"`
-	RegType      RegistryType     `json:"reg_type"`
-	CreationType CreationType     `json:"creation_type"`
-	SourceType   *string          `json:"source_type"`
-	Format       *string          `json:"format"`
-	SourceConfig []byte           `json:"source_config"`
-	FilterConfig []byte           `json:"filter_config"`
-	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
-	CreatedAt    *time.Time       `json:"created_at"`
-	UpdatedAt    *time.Time       `json:"updated_at"`
-}
-
-func (q *Queries) ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]ListRegistriesRow, error) {
-	rows, err := q.db.Query(ctx, listRegistries, arg.Next, arg.Prev, arg.Size)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListRegistriesRow{}
-	for rows.Next() {
-		var i ListRegistriesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.RegType,
-			&i.CreationType,
-			&i.SourceType,
-			&i.Format,
-			&i.SourceConfig,
-			&i.FilterConfig,
-			&i.SyncSchedule,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const updateAPIRegistry = `-- name: UpdateAPIRegistry :one
-UPDATE registry SET
-    reg_type = $1,
-    source_type = $2,
-    format = $3,
-    source_config = $4,
-    filter_config = $5,
-    sync_schedule = $6,
-    syncable = $7,
-    updated_at = $8
-WHERE name = $9
-  AND creation_type = 'API'
-RETURNING id, name, reg_type, created_at, updated_at, creation_type, sync_schedule, source_type, format, source_config, filter_config, syncable
-`
-
-type UpdateAPIRegistryParams struct {
-	RegType      RegistryType     `json:"reg_type"`
-	SourceType   *string          `json:"source_type"`
-	Format       *string          `json:"format"`
-	SourceConfig []byte           `json:"source_config"`
-	FilterConfig []byte           `json:"filter_config"`
-	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
-	Syncable     bool             `json:"syncable"`
-	UpdatedAt    *time.Time       `json:"updated_at"`
-	Name         string           `json:"name"`
-}
-
-// Update an existing API registry (returns NULL if not found or is CONFIG type)
-func (q *Queries) UpdateAPIRegistry(ctx context.Context, arg UpdateAPIRegistryParams) (Registry, error) {
-	row := q.db.QueryRow(ctx, updateAPIRegistry,
-		arg.RegType,
-		arg.SourceType,
-		arg.Format,
-		arg.SourceConfig,
-		arg.FilterConfig,
-		arg.SyncSchedule,
-		arg.Syncable,
-		arg.UpdatedAt,
-		arg.Name,
-	)
-	var i Registry
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.RegType,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.CreationType,
-		&i.SyncSchedule,
-		&i.SourceType,
-		&i.Format,
-		&i.SourceConfig,
-		&i.FilterConfig,
-		&i.Syncable,
-	)
-	return i, err
-}
-
-const upsertConfigRegistry = `-- name: UpsertConfigRegistry :one
-INSERT INTO registry (
-    name,
-    reg_type,
-    creation_type,
-    source_type,
-    format,
-    source_config,
-    filter_config,
-    sync_schedule,
-    syncable,
-    created_at,
-    updated_at
-) VALUES (
-    $1,
-    $2,
-    'CONFIG',
-    $3,
-    $4,
-    $5,
-    $6,
-    $7,
-    $8,
-    $9,
-    $10
-)
-ON CONFLICT (name) DO UPDATE SET
-    reg_type = EXCLUDED.reg_type,
-    source_type = EXCLUDED.source_type,
-    format = EXCLUDED.format,
-    source_config = EXCLUDED.source_config,
-    filter_config = EXCLUDED.filter_config,
-    sync_schedule = EXCLUDED.sync_schedule,
-    syncable = EXCLUDED.syncable,
-    updated_at = EXCLUDED.updated_at
-WHERE registry.creation_type = 'CONFIG'
-RETURNING id
-`
-
-type UpsertConfigRegistryParams struct {
-	Name         string           `json:"name"`
-	RegType      RegistryType     `json:"reg_type"`
-	SourceType   *string          `json:"source_type"`
-	Format       *string          `json:"format"`
-	SourceConfig []byte           `json:"source_config"`
-	FilterConfig []byte           `json:"filter_config"`
-	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
-	Syncable     bool             `json:"syncable"`
-	CreatedAt    *time.Time       `json:"created_at"`
-	UpdatedAt    *time.Time       `json:"updated_at"`
-}
-
-// Insert or update a CONFIG registry (only updates if existing is CONFIG type)
-func (q *Queries) UpsertConfigRegistry(ctx context.Context, arg UpsertConfigRegistryParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, upsertConfigRegistry,
-		arg.Name,
-		arg.RegType,
-		arg.SourceType,
-		arg.Format,
-		arg.SourceConfig,
-		arg.FilterConfig,
-		arg.SyncSchedule,
-		arg.Syncable,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-	)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
 }

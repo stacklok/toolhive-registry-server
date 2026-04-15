@@ -31,11 +31,9 @@ func NewAuthMiddleware(
 		return nil, nil, errors.New("auth configuration is required")
 	}
 
-	// Validate the auth configuration
-	// Pass false for insecureAllowHTTP since this is already validated during config load
-	if err := cfg.Validate(false); err != nil {
-		return nil, nil, fmt.Errorf("invalid auth configuration: %w", err)
-	}
+	// Skip re-validation — config is already validated during LoadConfig.
+	// Re-validating here with insecureAllowHTTP=false would reject HTTP
+	// issuer URLs even when THV_REGISTRY_INSECURE_URL=true was set.
 
 	switch cfg.Mode {
 	case config.AuthModeAnonymous:
@@ -76,15 +74,16 @@ func createOAuthMiddleware(
 			Name:      p.Name,
 			IssuerURL: p.IssuerURL,
 			ValidatorConfig: thvauth.TokenValidatorConfig{
-				Issuer:           p.IssuerURL,
-				JWKSURL:          p.JwksUrl,
-				Audience:         p.Audience,
-				ClientID:         p.ClientID,
-				ClientSecret:     clientSecret,
-				CACertPath:       p.CACertPath,
-				AuthTokenFile:    p.AuthTokenFile,
-				IntrospectionURL: p.IntrospectionURL,
-				AllowPrivateIP:   p.AllowPrivateIP,
+				Issuer:            p.IssuerURL,
+				JWKSURL:           p.JwksUrl,
+				Audience:          p.Audience,
+				ClientID:          p.ClientID,
+				ClientSecret:      clientSecret,
+				CACertPath:        p.CACertPath,
+				AuthTokenFile:     p.AuthTokenFile,
+				IntrospectionURL:  p.IntrospectionURL,
+				AllowPrivateIP:    p.AllowPrivateIP,
+				InsecureAllowHTTP: cfg.InsecureAllowHTTP,
 			},
 		}
 		issuerURLs[i] = p.IssuerURL

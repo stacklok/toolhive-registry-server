@@ -3,8 +3,9 @@
 package skills
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	thvregistry "github.com/stacklok/toolhive-core/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api/common"
+	auditmw "github.com/stacklok/toolhive-registry-server/internal/audit"
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
@@ -22,18 +25,14 @@ const (
 )
 
 // Router returns an HTTP handler for the dev.toolhive/skills extension routes.
-// All handlers return 501 Not Implemented; request parsing is performed and
-// 400 Bad Request is returned on parse failure.
 func Router(svc service.RegistryService) http.Handler {
 	r := chi.NewRouter()
 	routes := &Routes{service: svc}
 
-	r.Get("/", routes.listSkills)
-	r.Get("/{namespace}/{name}", routes.getLatestVersion)
-	r.Get("/{namespace}/{name}/versions", routes.listVersions)
-	r.Get("/{namespace}/{name}/versions/{version}", routes.getVersion)
-	r.Post("/", routes.publishSkill)
-	r.Delete("/{namespace}/{name}/versions/{version}", routes.deleteVersion)
+	r.Get("/", auditmw.AuditedSkill(auditmw.EventSkillList, routes.listSkills))
+	r.Get("/{namespace}/{name}", auditmw.AuditedSkill(auditmw.EventSkillRead, routes.getLatestVersion))
+	r.Get("/{namespace}/{name}/versions", auditmw.AuditedSkill(auditmw.EventSkillVersionsList, routes.listVersions))
+	r.Get("/{namespace}/{name}/versions/{version}", auditmw.AuditedSkill(auditmw.EventSkillVersionRead, routes.getVersion))
 
 	return r
 }
@@ -46,23 +45,23 @@ type Routes struct {
 // listSkills handles GET /registry/{registryName}/v0.1/x/dev.toolhive/skills
 //
 // @Summary		List skills in registry
-// @Description	List skills in a registry (paginated, latest versions). Not implemented.
+// @Description	List skills in a registry (paginated, latest versions).
 // @Tags		skills
 // @Accept		json
 // @Produce		json
 // @Param		registryName	path		string	true	"Registry name"
 // @Param		search		query		string	false	"Filter by name/description substring"
-// @Param		namespace	query		string	false	"Filter by namespace"
 // @Param		status		query		string	false	"Filter by status (comma-separated, e.g. active,deprecated)"
 // @Param		limit		query		int		false	"Max results (default 50, max 100)"
 // @Param		cursor		query		string	false	"Pagination cursor"
 // @Success		200			{object}	SkillListResponse	"List of skills"
 // @Failure		400			{object}	map[string]string	"Bad request"
-// @Failure		501			{object}	map[string]string	"Not implemented"
+// @Failure		500			{object}	map[string]string	"Internal server error"
 // @Security	BearerAuth
 // @Router		/registry/{registryName}/v0.1/x/dev.toolhive/skills [get]
-func (*Routes) listSkills(w http.ResponseWriter, r *http.Request) {
-	if _, err := common.GetAndValidateURLParam(r, "registryName"); err != nil {
+func (routes *Routes) listSkills(w http.ResponseWriter, r *http.Request) {
+	registryName, err := common.GetAndValidateURLParam(r, "registryName")
+	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -73,14 +72,41 @@ func (*Routes) listSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = query // unused until implemented
-	common.WriteErrorResponse(w, "Skills list is not implemented", http.StatusNotImplemented)
+	opts := []service.Option{
+		service.WithRegistryName(registryName),
+		service.WithLimit(query.Limit),
+	}
+	if query.Search != "" {
+		opts = append(opts, service.WithSearch(query.Search))
+	}
+	if query.Cursor != "" {
+		opts = append(opts, service.WithCursor(query.Cursor))
+	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		opts = append(opts, service.WithClaims(map[string]any(jwtClaims)))
+	}
+
+	result, err := routes.service.ListSkills(r.Context(), opts...)
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+
+	resp := SkillListResponse{
+		Skills: serviceSkillsToResponse(result.Skills),
+		Metadata: SkillListMetadata{
+			Count:      len(result.Skills),
+			NextCursor: result.NextCursor,
+		},
+	}
+
+	common.WriteJSONResponse(w, resp, http.StatusOK)
 }
 
 // getLatestVersion handles GET /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}
 //
 // @Summary		Get latest skill version
-// @Description	Get the latest version of a skill by namespace and name. Not implemented.
+// @Description	Get the latest version of a skill by namespace and name.
 // @Tags		skills
 // @Accept		json
 // @Produce		json
@@ -90,11 +116,12 @@ func (*Routes) listSkills(w http.ResponseWriter, r *http.Request) {
 // @Success		200				{object}	thvregistry.Skill	"Skill details"
 // @Failure		400				{object}	map[string]string	"Bad request"
 // @Failure		404				{object}	map[string]string	"Skill not found"
-// @Failure		501				{object}	map[string]string	"Not implemented"
+// @Failure		500				{object}	map[string]string	"Internal server error"
 // @Security	BearerAuth
 // @Router		/registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name} [get]
-func (*Routes) getLatestVersion(w http.ResponseWriter, r *http.Request) {
-	if _, err := common.GetAndValidateURLParam(r, "registryName"); err != nil {
+func (routes *Routes) getLatestVersion(w http.ResponseWriter, r *http.Request) {
+	registryName, err := common.GetAndValidateURLParam(r, "registryName")
+	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -108,14 +135,30 @@ func (*Routes) getLatestVersion(w http.ResponseWriter, r *http.Request) {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, _ = namespace, name
-	common.WriteErrorResponse(w, "Get latest skill version is not implemented", http.StatusNotImplemented)
+
+	skillOpts := []service.Option{
+		service.WithRegistryName(registryName),
+		service.WithNamespace(namespace),
+		service.WithName(name),
+		service.WithVersion("latest"),
+	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		skillOpts = append(skillOpts, service.WithClaims(map[string]any(jwtClaims)))
+	}
+
+	skill, err := routes.service.GetSkillVersion(r.Context(), skillOpts...)
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+
+	common.WriteJSONResponse(w, serviceSkillToResponse(skill), http.StatusOK)
 }
 
 // listVersions handles GET /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions
 //
 // @Summary		List skill versions
-// @Description	List all versions of a skill. Not implemented.
+// @Description	List all versions of a skill.
 // @Tags		skills
 // @Accept		json
 // @Produce		json
@@ -125,11 +168,12 @@ func (*Routes) getLatestVersion(w http.ResponseWriter, r *http.Request) {
 // @Success		200				{object}	SkillListResponse	"List of skill versions"
 // @Failure		400				{object}	map[string]string	"Bad request"
 // @Failure		404				{object}	map[string]string	"Skill not found"
-// @Failure		501				{object}	map[string]string	"Not implemented"
+// @Failure		500				{object}	map[string]string	"Internal server error"
 // @Security	BearerAuth
 // @Router		/registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions [get]
-func (*Routes) listVersions(w http.ResponseWriter, r *http.Request) {
-	if _, err := common.GetAndValidateURLParam(r, "registryName"); err != nil {
+func (routes *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
+	registryName, err := common.GetAndValidateURLParam(r, "registryName")
+	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -143,14 +187,37 @@ func (*Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, _ = namespace, name
-	common.WriteErrorResponse(w, "List skill versions is not implemented", http.StatusNotImplemented)
+
+	listOpts := []service.Option{
+		service.WithRegistryName(registryName),
+		service.WithNamespace(namespace),
+		service.WithName(name),
+	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		listOpts = append(listOpts, service.WithClaims(map[string]any(jwtClaims)))
+	}
+
+	result, err := routes.service.ListSkills(r.Context(), listOpts...)
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+
+	resp := SkillListResponse{
+		Skills: serviceSkillsToResponse(result.Skills),
+		Metadata: SkillListMetadata{
+			Count:      len(result.Skills),
+			NextCursor: result.NextCursor,
+		},
+	}
+
+	common.WriteJSONResponse(w, resp, http.StatusOK)
 }
 
 // getVersion handles GET /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions/{version}
 //
 // @Summary		Get specific skill version
-// @Description	Get a specific version of a skill. Not implemented.
+// @Description	Get a specific version of a skill.
 // @Tags		skills
 // @Accept		json
 // @Produce		json
@@ -161,11 +228,12 @@ func (*Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 // @Success		200				{object}	thvregistry.Skill	"Skill details"
 // @Failure		400				{object}	map[string]string	"Bad request"
 // @Failure		404				{object}	map[string]string	"Skill or version not found"
-// @Failure		501				{object}	map[string]string	"Not implemented"
+// @Failure		500				{object}	map[string]string	"Internal server error"
 // @Security	BearerAuth
 // @Router		/registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions/{version} [get]
-func (*Routes) getVersion(w http.ResponseWriter, r *http.Request) {
-	if _, err := common.GetAndValidateURLParam(r, "registryName"); err != nil {
+func (routes *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
+	registryName, err := common.GetAndValidateURLParam(r, "registryName")
+	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -184,99 +252,34 @@ func (*Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, _, _ = namespace, name, version
-	common.WriteErrorResponse(w, "Get skill version is not implemented", http.StatusNotImplemented)
-}
 
-// publishSkill handles POST /registry/{registryName}/v0.1/x/dev.toolhive/skills
-//
-// @Summary		Publish skill
-// @Description	Publish a skill version to the registry. Not implemented.
-// @Tags		skills
-// @Accept		json
-// @Produce		json
-// @Param		registryName	path		string				true	"Registry name"
-// @Param		body			body		thvregistry.Skill	true	"Skill data"
-// @Success		201				{object}	thvregistry.Skill	"Created"
-// @Failure		400				{object}	map[string]string	"Bad request"
-// @Failure		401				{object}	map[string]string	"Unauthorized"
-// @Failure		403				{object}	map[string]string	"Not a managed registry"
-// @Failure		501				{object}	map[string]string	"Not implemented"
-// @Security	BearerAuth
-// @Router		/registry/{registryName}/v0.1/x/dev.toolhive/skills [post]
-func (*Routes) publishSkill(w http.ResponseWriter, r *http.Request) {
-	if _, err := common.GetAndValidateURLParam(r, "registryName"); err != nil {
-		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+	versionOpts := []service.Option{
+		service.WithRegistryName(registryName),
+		service.WithNamespace(namespace),
+		service.WithName(name),
+		service.WithVersion(version),
+	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		versionOpts = append(versionOpts, service.WithClaims(map[string]any(jwtClaims)))
+	}
+
+	skill, err := routes.service.GetSkillVersion(r.Context(), versionOpts...)
+	if err != nil {
+		writeServiceError(w, r, err)
 		return
 	}
 
-	if r.Body == nil {
-		common.WriteErrorResponse(w, "Request body is required", http.StatusBadRequest)
-		return
-	}
-
-	var body thvregistry.Skill
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		common.WriteErrorResponse(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	if err := validatePublishSkillRequest(&body); err != nil {
-		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	common.WriteErrorResponse(w, "Publish skill is not implemented", http.StatusNotImplemented)
-}
-
-// deleteVersion handles DELETE /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions/{version}
-//
-// @Summary		Delete skill version
-// @Description	Delete a specific version of a skill from the registry. Not implemented.
-// @Tags		skills
-// @Accept		json
-// @Produce		json
-// @Param		registryName	path		string	true	"Registry name"
-// @Param		namespace	path		string	true	"Skill namespace (reverse-DNS)"
-// @Param		name			path		string	true	"Skill name"
-// @Param		version		path		string	true	"Skill version"
-// @Success		204			"No content"
-// @Failure		400			{object}	map[string]string	"Bad request"
-// @Failure		401			{object}	map[string]string	"Unauthorized"
-// @Failure		403			{object}	map[string]string	"Not a managed registry"
-// @Failure		404			{object}	map[string]string	"Skill version not found"
-// @Failure		501			{object}	map[string]string	"Not implemented"
-// @Security	BearerAuth
-// @Router		/registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions/{version} [delete]
-func (*Routes) deleteVersion(w http.ResponseWriter, r *http.Request) {
-	if _, err := common.GetAndValidateURLParam(r, "registryName"); err != nil {
-		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if _, err := common.GetAndValidateURLParam(r, "namespace"); err != nil {
-		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if _, err := common.GetAndValidateURLParam(r, "name"); err != nil {
-		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if _, err := common.GetAndValidateURLParam(r, "version"); err != nil {
-		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	common.WriteErrorResponse(w, "Delete skill version is not implemented", http.StatusNotImplemented)
+	common.WriteJSONResponse(w, serviceSkillToResponse(skill), http.StatusOK)
 }
 
 // parseListSkillsQuery parses and validates list skills query parameters.
 func parseListSkillsQuery(r *http.Request) (*ListSkillsQuery, error) {
 	q := r.URL.Query()
 	query := &ListSkillsQuery{
-		Search:    strings.TrimSpace(q.Get("search")),
-		Namespace: strings.TrimSpace(q.Get("namespace")),
-		Status:    strings.TrimSpace(q.Get("status")),
-		Cursor:    strings.TrimSpace(q.Get("cursor")),
-		Limit:     defaultListLimit,
+		Search: strings.TrimSpace(q.Get("search")),
+		Status: strings.TrimSpace(q.Get("status")),
+		Cursor: strings.TrimSpace(q.Get("cursor")),
+		Limit:  defaultListLimit,
 	}
 
 	if limitStr := q.Get("limit"); limitStr != "" {
@@ -293,19 +296,70 @@ func parseListSkillsQuery(r *http.Request) (*ListSkillsQuery, error) {
 	return query, nil
 }
 
-// validatePublishSkillRequest checks required fields for publish request.
-func validatePublishSkillRequest(req *thvregistry.Skill) error {
-	if strings.TrimSpace(req.Namespace) == "" {
-		return fmt.Errorf("namespace is required")
+// writeServiceError maps service-layer errors to HTTP responses.
+func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, service.ErrClaimsInsufficient):
+		common.WriteErrorResponse(w, "forbidden: insufficient claims for registry", http.StatusForbidden)
+	case errors.Is(err, service.ErrNotFound):
+		common.WriteErrorResponse(w, "not found", http.StatusNotFound)
+	case errors.Is(err, service.ErrRegistryNotFound):
+		common.WriteErrorResponse(w, "registry not found", http.StatusNotFound)
+	default:
+		slog.ErrorContext(r.Context(), "unexpected error", "error", err)
+		common.WriteErrorResponse(w, "internal server error", http.StatusInternalServerError)
 	}
-	if strings.TrimSpace(req.Name) == "" {
-		return fmt.Errorf("name is required")
+}
+
+// serviceSkillToResponse maps a service.Skill to a thvregistry.Skill response.
+func serviceSkillToResponse(s *service.Skill) thvregistry.Skill {
+	resp := thvregistry.Skill{
+		Namespace:     s.Namespace,
+		Name:          s.Name,
+		Description:   s.Description,
+		Version:       s.Version,
+		Status:        s.Status,
+		Title:         s.Title,
+		License:       s.License,
+		Compatibility: s.Compatibility,
+		AllowedTools:  s.AllowedTools,
+		Metadata:      s.Metadata,
+		Meta:          s.Meta,
 	}
-	if strings.TrimSpace(req.Description) == "" {
-		return fmt.Errorf("description is required")
+	if s.Repository != nil {
+		resp.Repository = &thvregistry.SkillRepository{
+			URL:  s.Repository.URL,
+			Type: s.Repository.Type,
+		}
 	}
-	if strings.TrimSpace(req.Version) == "" {
-		return fmt.Errorf("version is required")
+	for _, icon := range s.Icons {
+		resp.Icons = append(resp.Icons, thvregistry.SkillIcon{
+			Src:   icon.Src,
+			Size:  icon.Size,
+			Type:  icon.Type,
+			Label: icon.Label,
+		})
 	}
-	return nil
+	for _, pkg := range s.Packages {
+		resp.Packages = append(resp.Packages, thvregistry.SkillPackage{
+			RegistryType: pkg.RegistryType,
+			Identifier:   pkg.Identifier,
+			Digest:       pkg.Digest,
+			MediaType:    pkg.MediaType,
+			URL:          pkg.URL,
+			Ref:          pkg.Ref,
+			Commit:       pkg.Commit,
+			Subfolder:    pkg.Subfolder,
+		})
+	}
+	return resp
+}
+
+// serviceSkillsToResponse maps a slice of service.Skill to thvregistry.Skill responses.
+func serviceSkillsToResponse(skills []*service.Skill) []thvregistry.Skill {
+	result := make([]thvregistry.Skill, len(skills))
+	for i, s := range skills {
+		result[i] = serviceSkillToResponse(s)
+	}
+	return result
 }

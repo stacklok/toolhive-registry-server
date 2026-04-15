@@ -22,7 +22,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	// No expectations needed - health check doesn't call service
-	server := api.NewServer(mockSvc)
+	server := api.NewInternalServer(mockSvc)
 
 	req, err := http.NewRequest("GET", "/health", nil)
 	require.NoError(t, err)
@@ -75,7 +75,7 @@ func TestReadinessEndpoint(t *testing.T) {
 			mockSvc := mocks.NewMockRegistryService(ctrl)
 			tt.setupMock(mockSvc)
 
-			server := api.NewServer(mockSvc)
+			server := api.NewInternalServer(mockSvc)
 
 			req, err := http.NewRequest("GET", "/readiness", nil)
 			require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestVersionEndpoint(t *testing.T) {
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	// No expectations needed - version check doesn't call service
-	server := api.NewServer(mockSvc)
+	server := api.NewInternalServer(mockSvc)
 
 	req, err := http.NewRequest("GET", "/version", nil)
 	require.NoError(t, err)
@@ -148,7 +148,7 @@ func TestOpenAPIEndpoint(t *testing.T) {
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 
 	// Validate the response is valid JSON and contains OpenAPI spec fields
-	var spec map[string]interface{}
+	var spec map[string]any
 	err = json.Unmarshal(rr.Body.Bytes(), &spec)
 	require.NoError(t, err)
 
@@ -158,13 +158,13 @@ func TestOpenAPIEndpoint(t *testing.T) {
 	assert.Contains(t, spec, "paths")
 
 	// Verify info section
-	info, ok := spec["info"].(map[string]interface{})
+	info, ok := spec["info"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "ToolHive Registry API", info["title"])
 	assert.Equal(t, "0.1", info["version"])
 
 	// Verify paths section contains our endpoint
-	paths, ok := spec["paths"].(map[string]interface{})
+	paths, ok := spec["paths"].(map[string]any)
 	require.True(t, ok)
 	assert.Contains(t, paths, "/openapi.json")
 }

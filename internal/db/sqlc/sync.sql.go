@@ -13,9 +13,9 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 )
 
-const bulkInitializeRegistrySyncs = `-- name: BulkInitializeRegistrySyncs :exec
+const bulkInitializeSourceSyncs = `-- name: BulkInitializeSourceSyncs :exec
 INSERT INTO registry_sync (
-    reg_id,
+    source_id,
     sync_status,
     error_msg
 )
@@ -23,23 +23,23 @@ SELECT
     unnest($1::uuid[]),
     unnest($2::sync_status[]),
     unnest($3::text[])
-ON CONFLICT (reg_id) DO NOTHING
+ON CONFLICT (source_id) DO NOTHING
 `
 
-type BulkInitializeRegistrySyncsParams struct {
-	RegIds       []uuid.UUID  `json:"reg_ids"`
+type BulkInitializeSourceSyncsParams struct {
+	SourceIds    []uuid.UUID  `json:"source_ids"`
 	SyncStatuses []SyncStatus `json:"sync_statuses"`
 	ErrorMsgs    []string     `json:"error_msgs"`
 }
 
-func (q *Queries) BulkInitializeRegistrySyncs(ctx context.Context, arg BulkInitializeRegistrySyncsParams) error {
-	_, err := q.db.Exec(ctx, bulkInitializeRegistrySyncs, arg.RegIds, arg.SyncStatuses, arg.ErrorMsgs)
+func (q *Queries) BulkInitializeSourceSyncs(ctx context.Context, arg BulkInitializeSourceSyncsParams) error {
+	_, err := q.db.Exec(ctx, bulkInitializeSourceSyncs, arg.SourceIds, arg.SyncStatuses, arg.ErrorMsgs)
 	return err
 }
 
-const getRegistrySync = `-- name: GetRegistrySync :one
+const getSourceSync = `-- name: GetSourceSync :one
 SELECT id,
-       reg_id,
+       source_id,
        sync_status,
        error_msg,
        started_at,
@@ -47,17 +47,18 @@ SELECT id,
        attempt_count,
        last_sync_hash,
        last_applied_filter_hash,
-       server_count
+       server_count,
+       skill_count
 FROM registry_sync
 WHERE id = $1
 `
 
-func (q *Queries) GetRegistrySync(ctx context.Context, id uuid.UUID) (RegistrySync, error) {
-	row := q.db.QueryRow(ctx, getRegistrySync, id)
+func (q *Queries) GetSourceSync(ctx context.Context, id uuid.UUID) (RegistrySync, error) {
+	row := q.db.QueryRow(ctx, getSourceSync, id)
 	var i RegistrySync
 	err := row.Scan(
 		&i.ID,
-		&i.RegID,
+		&i.SourceID,
 		&i.SyncStatus,
 		&i.ErrorMsg,
 		&i.StartedAt,
@@ -66,13 +67,14 @@ func (q *Queries) GetRegistrySync(ctx context.Context, id uuid.UUID) (RegistrySy
 		&i.LastSyncHash,
 		&i.LastAppliedFilterHash,
 		&i.ServerCount,
+		&i.SkillCount,
 	)
 	return i, err
 }
 
-const getRegistrySyncByName = `-- name: GetRegistrySyncByName :one
+const getSourceSyncByName = `-- name: GetSourceSyncByName :one
 SELECT rs.id,
-       rs.reg_id,
+       rs.source_id,
        rs.sync_status,
        rs.error_msg,
        rs.started_at,
@@ -80,18 +82,19 @@ SELECT rs.id,
        rs.attempt_count,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
-       rs.server_count
+       rs.server_count,
+       rs.skill_count
 FROM registry_sync rs
-INNER JOIN registry r ON rs.reg_id = r.id
-WHERE r.name = $1
+INNER JOIN source s ON rs.source_id = s.id
+WHERE s.name = $1
 `
 
-func (q *Queries) GetRegistrySyncByName(ctx context.Context, name string) (RegistrySync, error) {
-	row := q.db.QueryRow(ctx, getRegistrySyncByName, name)
+func (q *Queries) GetSourceSyncByName(ctx context.Context, name string) (RegistrySync, error) {
+	row := q.db.QueryRow(ctx, getSourceSyncByName, name)
 	var i RegistrySync
 	err := row.Scan(
 		&i.ID,
-		&i.RegID,
+		&i.SourceID,
 		&i.SyncStatus,
 		&i.ErrorMsg,
 		&i.StartedAt,
@@ -100,37 +103,38 @@ func (q *Queries) GetRegistrySyncByName(ctx context.Context, name string) (Regis
 		&i.LastSyncHash,
 		&i.LastAppliedFilterHash,
 		&i.ServerCount,
+		&i.SkillCount,
 	)
 	return i, err
 }
 
-const initializeRegistrySync = `-- name: InitializeRegistrySync :exec
+const initializeSourceSync = `-- name: InitializeSourceSync :exec
 INSERT INTO registry_sync (
-    reg_id,
+    source_id,
     sync_status,
     error_msg
 ) VALUES (
-    (SELECT id FROM registry WHERE name = $1),
+    (SELECT id FROM source WHERE name = $1),
     $2,
     $3
 )
-ON CONFLICT (reg_id) DO NOTHING
+ON CONFLICT (source_id) DO NOTHING
 `
 
-type InitializeRegistrySyncParams struct {
+type InitializeSourceSyncParams struct {
 	Name       string     `json:"name"`
 	SyncStatus SyncStatus `json:"sync_status"`
 	ErrorMsg   *string    `json:"error_msg"`
 }
 
-func (q *Queries) InitializeRegistrySync(ctx context.Context, arg InitializeRegistrySyncParams) error {
-	_, err := q.db.Exec(ctx, initializeRegistrySync, arg.Name, arg.SyncStatus, arg.ErrorMsg)
+func (q *Queries) InitializeSourceSync(ctx context.Context, arg InitializeSourceSyncParams) error {
+	_, err := q.db.Exec(ctx, initializeSourceSync, arg.Name, arg.SyncStatus, arg.ErrorMsg)
 	return err
 }
 
-const insertRegistrySync = `-- name: InsertRegistrySync :one
+const insertSourceSync = `-- name: InsertSourceSync :one
 INSERT INTO registry_sync (
-    reg_id,
+    source_id,
     sync_status,
     error_msg,
     started_at
@@ -142,16 +146,16 @@ INSERT INTO registry_sync (
 ) RETURNING id
 `
 
-type InsertRegistrySyncParams struct {
-	RegID      uuid.UUID  `json:"reg_id"`
+type InsertSourceSyncParams struct {
+	SourceID   *uuid.UUID `json:"source_id"`
 	SyncStatus SyncStatus `json:"sync_status"`
 	ErrorMsg   *string    `json:"error_msg"`
 	StartedAt  *time.Time `json:"started_at"`
 }
 
-func (q *Queries) InsertRegistrySync(ctx context.Context, arg InsertRegistrySyncParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, insertRegistrySync,
-		arg.RegID,
+func (q *Queries) InsertSourceSync(ctx context.Context, arg InsertSourceSyncParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, insertSourceSync,
+		arg.SourceID,
 		arg.SyncStatus,
 		arg.ErrorMsg,
 		arg.StartedAt,
@@ -161,10 +165,10 @@ func (q *Queries) InsertRegistrySync(ctx context.Context, arg InsertRegistrySync
 	return id, err
 }
 
-const listRegistrySyncs = `-- name: ListRegistrySyncs :many
-SELECT r.name,
+const listSourceSyncs = `-- name: ListSourceSyncs :many
+SELECT s.name,
        rs.id,
-       rs.reg_id,
+       rs.source_id,
        rs.sync_status,
        rs.error_msg,
        rs.started_at,
@@ -173,16 +177,17 @@ SELECT r.name,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
        rs.server_count,
-       r.sync_schedule::interval AS sync_schedule
+       rs.skill_count,
+       s.sync_schedule::interval AS sync_schedule
 FROM registry_sync rs
-INNER JOIN registry r ON rs.reg_id = r.id
-ORDER BY rs.started_at DESC, r.name ASC
+INNER JOIN source s ON rs.source_id = s.id
+ORDER BY rs.started_at DESC, s.name ASC
 `
 
-type ListRegistrySyncsRow struct {
+type ListSourceSyncsRow struct {
 	Name                  string           `json:"name"`
 	ID                    uuid.UUID        `json:"id"`
-	RegID                 uuid.UUID        `json:"reg_id"`
+	SourceID              *uuid.UUID       `json:"source_id"`
 	SyncStatus            SyncStatus       `json:"sync_status"`
 	ErrorMsg              *string          `json:"error_msg"`
 	StartedAt             *time.Time       `json:"started_at"`
@@ -191,22 +196,23 @@ type ListRegistrySyncsRow struct {
 	LastSyncHash          *string          `json:"last_sync_hash"`
 	LastAppliedFilterHash *string          `json:"last_applied_filter_hash"`
 	ServerCount           int64            `json:"server_count"`
+	SkillCount            int64            `json:"skill_count"`
 	SyncSchedule          pgtypes.Interval `json:"sync_schedule"`
 }
 
-func (q *Queries) ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow, error) {
-	rows, err := q.db.Query(ctx, listRegistrySyncs)
+func (q *Queries) ListSourceSyncs(ctx context.Context) ([]ListSourceSyncsRow, error) {
+	rows, err := q.db.Query(ctx, listSourceSyncs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListRegistrySyncsRow{}
+	items := []ListSourceSyncsRow{}
 	for rows.Next() {
-		var i ListRegistrySyncsRow
+		var i ListSourceSyncsRow
 		if err := rows.Scan(
 			&i.Name,
 			&i.ID,
-			&i.RegID,
+			&i.SourceID,
 			&i.SyncStatus,
 			&i.ErrorMsg,
 			&i.StartedAt,
@@ -215,6 +221,7 @@ func (q *Queries) ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow
 			&i.LastSyncHash,
 			&i.LastAppliedFilterHash,
 			&i.ServerCount,
+			&i.SkillCount,
 			&i.SyncSchedule,
 		); err != nil {
 			return nil, err
@@ -227,10 +234,10 @@ func (q *Queries) ListRegistrySyncs(ctx context.Context) ([]ListRegistrySyncsRow
 	return items, nil
 }
 
-const listRegistrySyncsByLastUpdate = `-- name: ListRegistrySyncsByLastUpdate :many
-SELECT r.name,
+const listSourceSyncsByLastUpdate = `-- name: ListSourceSyncsByLastUpdate :many
+SELECT s.name,
        rs.id,
-       rs.reg_id,
+       rs.source_id,
        rs.sync_status,
        rs.error_msg,
        rs.started_at,
@@ -239,18 +246,19 @@ SELECT r.name,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
        rs.server_count,
-       r.sync_schedule::interval AS sync_schedule
+       rs.skill_count,
+       s.sync_schedule::interval AS sync_schedule
 FROM registry_sync rs
-INNER JOIN registry r ON rs.reg_id = r.id
-WHERE r.syncable = true
-ORDER BY rs.ended_at ASC NULLS FIRST, r.name ASC
+INNER JOIN source s ON rs.source_id = s.id
+WHERE s.syncable = true
+ORDER BY rs.ended_at ASC NULLS FIRST, s.name ASC
 FOR UPDATE OF rs SKIP LOCKED
 `
 
-type ListRegistrySyncsByLastUpdateRow struct {
+type ListSourceSyncsByLastUpdateRow struct {
 	Name                  string           `json:"name"`
 	ID                    uuid.UUID        `json:"id"`
-	RegID                 uuid.UUID        `json:"reg_id"`
+	SourceID              *uuid.UUID       `json:"source_id"`
 	SyncStatus            SyncStatus       `json:"sync_status"`
 	ErrorMsg              *string          `json:"error_msg"`
 	StartedAt             *time.Time       `json:"started_at"`
@@ -259,22 +267,23 @@ type ListRegistrySyncsByLastUpdateRow struct {
 	LastSyncHash          *string          `json:"last_sync_hash"`
 	LastAppliedFilterHash *string          `json:"last_applied_filter_hash"`
 	ServerCount           int64            `json:"server_count"`
+	SkillCount            int64            `json:"skill_count"`
 	SyncSchedule          pgtypes.Interval `json:"sync_schedule"`
 }
 
-func (q *Queries) ListRegistrySyncsByLastUpdate(ctx context.Context) ([]ListRegistrySyncsByLastUpdateRow, error) {
-	rows, err := q.db.Query(ctx, listRegistrySyncsByLastUpdate)
+func (q *Queries) ListSourceSyncsByLastUpdate(ctx context.Context) ([]ListSourceSyncsByLastUpdateRow, error) {
+	rows, err := q.db.Query(ctx, listSourceSyncsByLastUpdate)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListRegistrySyncsByLastUpdateRow{}
+	items := []ListSourceSyncsByLastUpdateRow{}
 	for rows.Next() {
-		var i ListRegistrySyncsByLastUpdateRow
+		var i ListSourceSyncsByLastUpdateRow
 		if err := rows.Scan(
 			&i.Name,
 			&i.ID,
-			&i.RegID,
+			&i.SourceID,
 			&i.SyncStatus,
 			&i.ErrorMsg,
 			&i.StartedAt,
@@ -283,6 +292,7 @@ func (q *Queries) ListRegistrySyncsByLastUpdate(ctx context.Context) ([]ListRegi
 			&i.LastSyncHash,
 			&i.LastAppliedFilterHash,
 			&i.ServerCount,
+			&i.SkillCount,
 			&i.SyncSchedule,
 		); err != nil {
 			return nil, err
@@ -295,7 +305,7 @@ func (q *Queries) ListRegistrySyncsByLastUpdate(ctx context.Context) ([]ListRegi
 	return items, nil
 }
 
-const updateRegistrySync = `-- name: UpdateRegistrySync :exec
+const updateSourceSync = `-- name: UpdateSourceSync :exec
 UPDATE registry_sync SET
     sync_status = $1,
     error_msg = $2,
@@ -303,15 +313,15 @@ UPDATE registry_sync SET
 WHERE id = $4
 `
 
-type UpdateRegistrySyncParams struct {
+type UpdateSourceSyncParams struct {
 	SyncStatus SyncStatus `json:"sync_status"`
 	ErrorMsg   *string    `json:"error_msg"`
 	EndedAt    *time.Time `json:"ended_at"`
 	ID         uuid.UUID  `json:"id"`
 }
 
-func (q *Queries) UpdateRegistrySync(ctx context.Context, arg UpdateRegistrySyncParams) error {
-	_, err := q.db.Exec(ctx, updateRegistrySync,
+func (q *Queries) UpdateSourceSync(ctx context.Context, arg UpdateSourceSyncParams) error {
+	_, err := q.db.Exec(ctx, updateSourceSync,
 		arg.SyncStatus,
 		arg.ErrorMsg,
 		arg.EndedAt,
@@ -320,27 +330,27 @@ func (q *Queries) UpdateRegistrySync(ctx context.Context, arg UpdateRegistrySync
 	return err
 }
 
-const updateRegistrySyncStatusByName = `-- name: UpdateRegistrySyncStatusByName :exec
+const updateSourceSyncStatusByName = `-- name: UpdateSourceSyncStatusByName :exec
 UPDATE registry_sync
 SET sync_status = $1,
     started_at = $2
-WHERE reg_id = (SELECT id FROM registry WHERE name = $3)
+WHERE source_id = (SELECT id FROM source WHERE name = $3)
 `
 
-type UpdateRegistrySyncStatusByNameParams struct {
+type UpdateSourceSyncStatusByNameParams struct {
 	SyncStatus SyncStatus `json:"sync_status"`
 	StartedAt  *time.Time `json:"started_at"`
 	Name       string     `json:"name"`
 }
 
-func (q *Queries) UpdateRegistrySyncStatusByName(ctx context.Context, arg UpdateRegistrySyncStatusByNameParams) error {
-	_, err := q.db.Exec(ctx, updateRegistrySyncStatusByName, arg.SyncStatus, arg.StartedAt, arg.Name)
+func (q *Queries) UpdateSourceSyncStatusByName(ctx context.Context, arg UpdateSourceSyncStatusByNameParams) error {
+	_, err := q.db.Exec(ctx, updateSourceSyncStatusByName, arg.SyncStatus, arg.StartedAt, arg.Name)
 	return err
 }
 
-const upsertRegistrySyncByName = `-- name: UpsertRegistrySyncByName :exec
+const upsertSourceSyncByName = `-- name: UpsertSourceSyncByName :exec
 INSERT INTO registry_sync (
-    reg_id,
+    source_id,
     sync_status,
     error_msg,
     started_at,
@@ -348,9 +358,10 @@ INSERT INTO registry_sync (
     attempt_count,
     last_sync_hash,
     last_applied_filter_hash,
-    server_count
+    server_count,
+    skill_count
 ) VALUES (
-    (SELECT id FROM registry WHERE name = $1),
+    (SELECT id FROM source WHERE name = $1),
     $2,
     $3,
     $4,
@@ -358,9 +369,10 @@ INSERT INTO registry_sync (
     $6,
     $7,
     $8,
-    $9
+    $9,
+    $10
 )
-ON CONFLICT (reg_id) DO UPDATE SET
+ON CONFLICT (source_id) DO UPDATE SET
     sync_status = EXCLUDED.sync_status,
     error_msg = EXCLUDED.error_msg,
     started_at = EXCLUDED.started_at,
@@ -368,10 +380,11 @@ ON CONFLICT (reg_id) DO UPDATE SET
     attempt_count = EXCLUDED.attempt_count,
     last_sync_hash = EXCLUDED.last_sync_hash,
     last_applied_filter_hash = EXCLUDED.last_applied_filter_hash,
-    server_count = EXCLUDED.server_count
+    server_count = EXCLUDED.server_count,
+    skill_count = EXCLUDED.skill_count
 `
 
-type UpsertRegistrySyncByNameParams struct {
+type UpsertSourceSyncByNameParams struct {
 	Name                  string     `json:"name"`
 	SyncStatus            SyncStatus `json:"sync_status"`
 	ErrorMsg              *string    `json:"error_msg"`
@@ -381,10 +394,11 @@ type UpsertRegistrySyncByNameParams struct {
 	LastSyncHash          *string    `json:"last_sync_hash"`
 	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
 	ServerCount           int64      `json:"server_count"`
+	SkillCount            int64      `json:"skill_count"`
 }
 
-func (q *Queries) UpsertRegistrySyncByName(ctx context.Context, arg UpsertRegistrySyncByNameParams) error {
-	_, err := q.db.Exec(ctx, upsertRegistrySyncByName,
+func (q *Queries) UpsertSourceSyncByName(ctx context.Context, arg UpsertSourceSyncByNameParams) error {
+	_, err := q.db.Exec(ctx, upsertSourceSyncByName,
 		arg.Name,
 		arg.SyncStatus,
 		arg.ErrorMsg,
@@ -394,6 +408,7 @@ func (q *Queries) UpsertRegistrySyncByName(ctx context.Context, arg UpsertRegist
 		arg.LastSyncHash,
 		arg.LastAppliedFilterHash,
 		arg.ServerCount,
+		arg.SkillCount,
 	)
 	return err
 }

@@ -81,6 +81,125 @@ Please review the README and
 in the docs-website repository for more information on how to contribute to the
 documentation.
 
+### Development setup
+
+```bash
+# Clone the repository
+git clone https://github.com/stacklok/toolhive-registry-server.git
+cd toolhive-registry-server
+
+# Install dependencies
+go mod download
+
+# Run all checks (lint + test + build)
+task all
+```
+
+#### Prerequisites
+
+- Go 1.26 or later
+- [Task](https://taskfile.dev) for build automation
+- PostgreSQL 16+ (for database-backed tests)
+
+#### Build commands
+
+```bash
+task build          # Build the binary
+task lint-fix       # Run linting (auto-fix)
+task test           # Run tests
+task gen            # Generate mocks (run before testing)
+task build-image    # Build container image
+task docs           # Regenerate documentation
+task all            # Lint + test + build
+task migrate-up CONFIG=examples/config-database-dev.yaml  # Run database migrations
+```
+
+#### Testing
+
+```bash
+# Generate mocks before testing
+task gen
+
+# Run all tests
+task test
+
+# Run specific test
+go test ./internal/service/... -v
+```
+
+The project uses table-driven tests with mocks generated via `go.uber.org/mock`.
+
+#### Architecture
+
+The server follows clean architecture with clear separation of concerns:
+
+```text
+┌─────────────────────────────────────────────┐
+│  API Layer (Chi Router)                     │
+│  ├─ Registry API v0.1                       │
+│  ├─ Admin API v1                            │
+│  └─ OAuth/OIDC Middleware                   │
+└─────────────────────────────────────────────┘
+                    │
+┌─────────────────────────────────────────────┐
+│  Service Layer (RegistryService)            │
+│  └─ PostgreSQL backend                      │
+└─────────────────────────────────────────────┘
+                    │
+┌─────────────────────────────────────────────┐
+│  Data Source Layer                          │
+│  ├─ Git Handler                             │
+│  ├─ API Handler                             │
+│  ├─ File Handler                            │
+│  ├─ Managed Handler                         │
+│  └─ Kubernetes Handler                      │
+└─────────────────────────────────────────────┘
+                    │
+┌─────────────────────────────────────────────┐
+│  Sync Layer (Background Coordinator)        │
+└─────────────────────────────────────────────┘
+```
+
+#### Project structure
+
+```text
+cmd/thv-registry-api/    # Main application
+├── app/                 # CLI commands (serve, migrate, prime-db, version)
+└── main.go
+
+internal/                # Internal packages
+├── api/                 # HTTP API handlers
+├── app/                 # Application builder and startup
+├── audit/               # SIEM-compliant audit logging
+├── auth/                # OAuth/OIDC authentication
+├── authz/               # JWT claim-based authorization
+├── config/              # Configuration loading
+├── db/                  # Database access (sqlc generated)
+├── filtering/           # Registry entry filtering
+├── kubernetes/          # Kubernetes reconciler for K8s sources
+├── registry/            # Registry data models
+├── service/             # Business logic
+├── sources/             # Data source handlers (Git, API, File, Managed)
+├── sync/                # Background sync coordination
+├── telemetry/           # OpenTelemetry integration
+└── validators/          # Input validation
+
+database/                # Database schema and queries
+├── migrations/          # SQL migrations
+└── queries/             # SQL queries for sqlc
+
+examples/                # Example configurations
+docs/                    # Documentation
+```
+
+#### Development guidelines
+
+- Run `task lint-fix` before committing
+- Ensure tests pass with `task test`
+- Follow Go standard project layout
+- Use mockgen for test mocks (never hand-written)
+- Write table-driven tests
+
 ### Commit message guidelines
 
 We follow the commit formatting recommendations found on

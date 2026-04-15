@@ -12,6 +12,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/otel"
+	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
@@ -55,6 +56,9 @@ type defaultCoordinator struct {
 
 	// Tracing
 	tracer trace.Tracer
+
+	// pollingIntervalOverride overrides the default polling interval (for testing)
+	pollingIntervalOverride time.Duration
 }
 
 // Option is a function that configures the coordinator
@@ -79,6 +83,16 @@ func WithRegistryMetrics(metrics *telemetry.RegistryMetrics) Option {
 func WithTracer(tracer trace.Tracer) Option {
 	return func(c *defaultCoordinator) {
 		c.tracer = tracer
+	}
+}
+
+// withPollingInterval overrides the default polling interval.
+// This is intentionally unexported — it exists for integration tests
+// that need faster sync cycles. If a user-facing need arises, promote
+// to exported.
+func withPollingInterval(d time.Duration) Option {
+	return func(c *defaultCoordinator) {
+		c.pollingIntervalOverride = d
 	}
 }
 
@@ -114,7 +128,7 @@ func calculatePollingInterval() time.Duration {
 
 // Start begins background sync coordination for all registries
 func (c *defaultCoordinator) Start(ctx context.Context) error {
-	slog.Info("Starting background sync coordinator", "registry_count", len(c.config.Registries))
+	slog.Info("Starting background sync coordinator", "source_count", len(c.config.Sources))
 
 	// Create cancellable context for this coordinator
 	coordCtx, cancel := context.WithCancel(ctx)
@@ -125,12 +139,17 @@ func (c *defaultCoordinator) Start(ctx context.Context) error {
 	}()
 
 	// Load or initialize sync status for all registries
-	if err := c.statusSvc.Initialize(ctx, c.config.Registries); err != nil {
+	if err := c.statusSvc.Initialize(ctx, c.config); err != nil {
 		return fmt.Errorf("failed to initialize registry sync status: %w", err)
 	}
 
 	// Calculate polling interval with jitter to prevent thundering herd
-	pollingInterval := calculatePollingInterval()
+	var pollingInterval time.Duration
+	if c.pollingIntervalOverride > 0 {
+		pollingInterval = c.pollingIntervalOverride
+	} else {
+		pollingInterval = calculatePollingInterval()
+	}
 	slog.Info("Configured coordinator sync interval",
 		"base_interval", basePollingInterval,
 		"actual_interval", pollingInterval)
@@ -149,7 +168,11 @@ func (c *defaultCoordinator) Start(ctx context.Context) error {
 			c.processNextSyncJob(coordCtx)
 
 			// Recalculate interval with new jitter for next iteration
-			ticker.Reset(calculatePollingInterval())
+			if c.pollingIntervalOverride > 0 {
+				ticker.Reset(c.pollingIntervalOverride)
+			} else {
+				ticker.Reset(calculatePollingInterval())
+			}
 		case <-coordCtx.Done():
 			slog.Info("Sync coordinator stopping")
 			return nil
@@ -170,17 +193,20 @@ func (c *defaultCoordinator) Stop() error {
 
 // processNextSyncJob gets the next job and processes it if available
 func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
+	var prefetched *sources.FetchResult
 	// Get the next sync job using the predicate to check if sync is needed
 	regCfg, err := c.statusSvc.GetNextSyncJob(
 		ctx,
-		func(regCfg *config.RegistryConfig, syncStatus *status.SyncStatus) bool {
-			reason := c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
+		func(regCfg *config.SourceConfig, syncStatus *status.SyncStatus) bool {
+			reason, fetchResult := c.manager.ShouldSync(ctx, regCfg, syncStatus, false)
 			if !reason.ShouldSync() {
 				slog.Debug("Registry does not need sync",
 					"registry", regCfg.Name,
 					"reason", reason.String())
+				return false
 			}
-			return reason.ShouldSync()
+			prefetched = fetchResult
+			return true
 		},
 	)
 	if err != nil {
@@ -193,21 +219,14 @@ func (c *defaultCoordinator) processNextSyncJob(ctx context.Context) {
 		return
 	}
 
-	// Skip non-synced registries - they don't sync from external sources
-	// TODO: REMOVE
-	/*if regCfg.IsNonSyncedRegistry() {
-		slog.Debug("Skipping sync for non-synced registry",
-			"registry", regCfg.Name,
-			"type", regCfg.GetType())
-		return
-	}*/
-
 	// Perform the sync
-	c.performRegistrySync(ctx, regCfg)
+	c.performRegistrySync(ctx, regCfg, prefetched)
 }
 
 // performRegistrySync executes the sync operation for a registry
-func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *config.RegistryConfig) {
+func (c *defaultCoordinator) performRegistrySync(
+	ctx context.Context, regCfg *config.SourceConfig, prefetched *sources.FetchResult,
+) {
 	registryName := regCfg.Name
 	startTime := time.Now()
 
@@ -238,7 +257,7 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 	slog.Info("Starting sync operation", "registry", registryName)
 
 	// Perform sync
-	result, syncErr := c.manager.PerformSync(ctx, regCfg)
+	result, syncErr := c.manager.PerformSync(ctx, regCfg, prefetched)
 
 	// Calculate sync duration for metrics and tracing
 	syncDuration := time.Since(startTime)
@@ -271,6 +290,7 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 		syncStatus.LastSyncTime = &now
 		syncStatus.LastSyncHash = result.Hash
 		syncStatus.ServerCount = result.ServerCount
+		syncStatus.SkillCount = result.SkillCount
 		syncStatus.AttemptCount = 0
 		hashPreview := result.Hash
 		if len(hashPreview) > 8 {
@@ -279,19 +299,24 @@ func (c *defaultCoordinator) performRegistrySync(ctx context.Context, regCfg *co
 		slog.Info("Sync completed successfully",
 			"registry", registryName,
 			"server_count", result.ServerCount,
+			"skill_count", result.SkillCount,
 			"hash", hashPreview)
 
-		// Add server count to span on success
-		span.SetAttributes(attribute.Int("sync.server_count", result.ServerCount))
+		// Add counts to span on success
+		span.SetAttributes(
+			attribute.Int("sync.server_count", result.ServerCount),
+			attribute.Int("sync.skill_count", result.SkillCount),
+		)
 
 		// Record sync success metric
 		if c.syncMetrics != nil {
 			c.syncMetrics.RecordSyncDuration(ctx, registryName, syncDuration, true)
 		}
 
-		// Record registry server count metric
+		// Record registry metrics
 		if c.registryMetrics != nil {
 			c.registryMetrics.RecordServersTotal(ctx, registryName, int64(result.ServerCount))
+			c.registryMetrics.RecordSkillsTotal(ctx, registryName, int64(result.SkillCount))
 		}
 	}
 }

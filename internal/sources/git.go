@@ -32,7 +32,7 @@ func NewGitRegistryHandler() RegistryHandler {
 }
 
 // Validate validates the Git registry configuration
-func (*gitRegistryHandler) Validate(regCfg *config.RegistryConfig) error {
+func (*gitRegistryHandler) Validate(regCfg *config.SourceConfig) error {
 	if regCfg == nil {
 		return fmt.Errorf("registry configuration cannot be nil")
 	}
@@ -72,7 +72,7 @@ func (*gitRegistryHandler) Validate(regCfg *config.RegistryConfig) error {
 }
 
 // fetchRegistryData retrieves registry data from the Git repository
-func (h *gitRegistryHandler) fetchRegistryData(ctx context.Context, regCfg *config.RegistryConfig) ([]byte, error) {
+func (h *gitRegistryHandler) fetchRegistryData(ctx context.Context, regCfg *config.SourceConfig) ([]byte, error) {
 
 	// Validate registry configuration
 	if err := h.Validate(regCfg); err != nil {
@@ -158,7 +158,7 @@ func (h *gitRegistryHandler) fetchRegistryData(ctx context.Context, regCfg *conf
 }
 
 // FetchRegistry retrieves registry data from the Git repository
-func (h *gitRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
+func (h *gitRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.SourceConfig) (*FetchResult, error) {
 
 	registryData, err := h.fetchRegistryData(ctx, regCfg)
 	if err != nil {
@@ -176,18 +176,6 @@ func (h *gitRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.R
 
 	// Create and return fetch result with pre-calculated hash
 	return NewFetchResult(reg, hash, regCfg.Format), nil
-}
-
-// CurrentHash returns the current hash of the source data after fetching the registry data
-func (h *gitRegistryHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
-	registryData, err := h.fetchRegistryData(ctx, regCfg)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch registry data: %w", err)
-	}
-
-	// Compute and return hash of the data
-	hash := fmt.Sprintf("%x", sha256.Sum256(registryData))
-	return hash, nil
 }
 
 // logMemoryStatsAfterOperation logs the memory stats after an operation

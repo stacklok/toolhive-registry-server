@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -52,32 +53,60 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	ctx := context.Background()
 	queries := sqlc.New(pool)
 
-	// Create a registry
-	regID, err := queries.InsertConfigRegistry(
+	// Create a source
+	regID, err := queries.UpsertSource(
 		ctx,
-		sqlc.InsertConfigRegistryParams{
-			Name:     "test-registry",
-			RegType:  sqlc.RegistryTypeREMOTE,
-			Syncable: true,
+		sqlc.UpsertSourceParams{
+			Name:         "test-registry",
+			CreationType: sqlc.CreationTypeCONFIG,
+			SourceType:   "git",
+			Syncable:     true,
 		},
 	)
 	require.NoError(t, err)
 
-	// Create server versions
+	// Create a registry and link the source to it
 	now := time.Now().UTC()
+	registry, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+		Name:         "test-registry",
+		CreationType: sqlc.CreationTypeCONFIG,
+		CreatedAt:    &now,
+		UpdatedAt:    &now,
+	})
+	require.NoError(t, err)
 
-	// Server 1 with multiple versions
+	err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+		RegistryID: registry.ID,
+		SourceID:   regID,
+		Position:   0,
+	})
+	require.NoError(t, err)
+
+	// Create server versions
+
+	// Server 1: one registry entry, multiple versions
+	entryID1, err := queries.InsertRegistryEntry(
+		ctx,
+		sqlc.InsertRegistryEntryParams{
+			SourceID:  regID,
+			EntryType: sqlc.EntryTypeMCP,
+			Name:      "com.example/test-server-1",
+			CreatedAt: &now,
+			UpdatedAt: &now,
+		},
+	)
+	require.NoError(t, err)
+
 	for i, version := range []string{"1.0.0", "1.1.0", "2.0.0"} {
 		createdAt := now.Add(time.Duration(i) * time.Hour)
-		entryID, err := queries.InsertRegistryEntry(
-			context.Background(),
-			sqlc.InsertRegistryEntryParams{
+		versionID, err := queries.InsertEntryVersion(
+			ctx,
+			sqlc.InsertEntryVersionParams{
+				EntryID:     entryID1,
 				Name:        "com.example/test-server-1",
 				Version:     version,
-				RegID:       regID,
-				Description: ptr.String("Test server 1 description"),
 				Title:       ptr.String("Test Server 1"),
-				EntryType:   sqlc.EntryTypeMCP,
+				Description: ptr.String("Test server 1 description"),
 				CreatedAt:   &createdAt,
 				UpdatedAt:   &createdAt,
 			},
@@ -87,7 +116,7 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 		serverID, err := queries.InsertServerVersion(
 			ctx,
 			sqlc.InsertServerVersionParams{
-				EntryID:             entryID,
+				VersionID:           versionID,
 				Website:             ptr.String("https://example.com/server1"),
 				UpstreamMeta:        []byte(`{"key": "value1"}`),
 				ServerMeta:          []byte(`{"meta": "data1"}`),
@@ -98,16 +127,16 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 			},
 		)
 		require.NoError(t, err)
-		require.Equal(t, entryID, serverID)
+		require.Equal(t, versionID, serverID)
 
 		if version == "2.0.0" {
 			_, err := queries.UpsertLatestServerVersion(
 				ctx,
 				sqlc.UpsertLatestServerVersionParams{
-					RegID:   regID,
-					Name:    "com.example/test-server-1",
-					Version: "2.0.0",
-					EntryID: entryID,
+					SourceID:  regID,
+					Name:      "com.example/test-server-1",
+					Version:   "2.0.0",
+					VersionID: versionID,
 				},
 			)
 			require.NoError(t, err)
@@ -117,14 +146,25 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	// Server 2 with single version
 	createdAt := now.Add(2 * time.Hour)
 	entryID2, err := queries.InsertRegistryEntry(
-		context.Background(),
+		ctx,
 		sqlc.InsertRegistryEntryParams{
+			SourceID:  regID,
+			EntryType: sqlc.EntryTypeMCP,
+			Name:      "com.example/test-server-2",
+			CreatedAt: &createdAt,
+			UpdatedAt: &createdAt,
+		},
+	)
+	require.NoError(t, err)
+
+	versionID2, err := queries.InsertEntryVersion(
+		ctx,
+		sqlc.InsertEntryVersionParams{
+			EntryID:     entryID2,
 			Name:        "com.example/test-server-2",
 			Version:     "1.0.0",
-			RegID:       regID,
-			Description: ptr.String("Test server 2 description"),
 			Title:       ptr.String("Test Server 2"),
-			EntryType:   sqlc.EntryTypeMCP,
+			Description: ptr.String("Test server 2 description"),
 			CreatedAt:   &createdAt,
 			UpdatedAt:   &createdAt,
 		},
@@ -134,7 +174,7 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 	serverID2, err := queries.InsertServerVersion(
 		ctx,
 		sqlc.InsertServerVersionParams{
-			EntryID:             entryID2,
+			VersionID:           versionID2,
 			Website:             ptr.String("https://example.com/server2"),
 			UpstreamMeta:        []byte(`{"key": "value2"}`),
 			ServerMeta:          []byte(`{"meta": "data2"}`),
@@ -145,7 +185,7 @@ func setupTestData(t *testing.T, pool *pgxpool.Pool) {
 		},
 	)
 	require.NoError(t, err)
-	require.Equal(t, entryID2, serverID2)
+	require.Equal(t, versionID2, serverID2)
 }
 
 func TestListServers(t *testing.T) {
@@ -165,6 +205,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -184,6 +225,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithLimit(2),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -217,10 +259,21 @@ func TestListServers(t *testing.T) {
 		{
 			name: "empty database",
 			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) {
-				// Don't set up any data
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				// Don't set up server data, but create the registry so the lookup succeeds.
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				now := time.Now().UTC()
+				_, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         "test-registry",
+					CreationType: sqlc.CreationTypeCONFIG,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -266,6 +319,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithSearch("server-1"),
 				service.WithLimit(10),
 			},
@@ -284,6 +338,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithSearch("Test Server 2"),
 				service.WithLimit(10),
 			},
@@ -300,6 +355,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithSearch("server 2 description"),
 				service.WithLimit(10),
 			},
@@ -316,6 +372,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithSearch("SERVER-1"), // Uppercase
 				service.WithLimit(10),
 			},
@@ -334,6 +391,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithSearch("server"), // Partial match
 				service.WithLimit(10),
 			},
@@ -349,6 +407,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithSearch("nonexistent"),
 				service.WithLimit(10),
 			},
@@ -383,6 +442,7 @@ func TestListServers(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithVersion("latest"),
 				service.WithLimit(10),
 			},
@@ -436,6 +496,7 @@ func TestListServerVersions(t *testing.T) {
 			},
 			options: []service.Option{
 				service.WithName("com.example/test-server-1"),
+				service.WithRegistryName("test-registry"),
 				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -463,6 +524,7 @@ func TestListServerVersions(t *testing.T) {
 			},
 			options: []service.Option{
 				service.WithName("com.example/test-server-1"),
+				service.WithRegistryName("test-registry"),
 				service.WithLimit(2),
 			},
 			//nolint:thelper // We want to see these lines in the test output
@@ -478,54 +540,12 @@ func TestListServerVersions(t *testing.T) {
 			},
 			options: []service.Option{
 				service.WithName("com.example/non-existent-server"),
+				service.WithRegistryName("test-registry"),
 				service.WithLimit(10),
 			},
 			//nolint:thelper // We want to see these lines in the test output
 			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
 				require.Len(t, servers, 0)
-			},
-		},
-		{
-			name: "list versions with next cursor",
-			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				setupTestData(t, pool)
-			},
-			options: []service.Option{
-				service.WithName("com.example/test-server-1"),
-				func(o any) error {
-					opts := o.(*service.ListServerVersionsOptions)
-					// Set nextTime to 30 minutes from now, so only versions created at +1h and +2h are returned
-					nextTime := time.Now().Add(30 * time.Minute).UTC()
-					opts.Next = &nextTime
-					opts.Limit = 10
-					return nil
-				},
-			},
-			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 2)
-			},
-		},
-		{
-			name: "list versions with prev cursor",
-			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
-				setupTestData(t, pool)
-			},
-			options: []service.Option{
-				service.WithName("com.example/test-server-1"),
-				func(o any) error {
-					opts := o.(*service.ListServerVersionsOptions)
-					prevTime := time.Now().Add(1 * time.Hour).UTC()
-					opts.Prev = &prevTime
-					opts.Limit = 10
-					return nil
-				},
-			},
-			//nolint:thelper // We want to see these lines in the test output
-			validateFunc: func(t *testing.T, servers []*upstreamv0.ServerJSON) {
-				require.Len(t, servers, 2)
 			},
 		},
 		{
@@ -620,6 +640,7 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithName("com.example/test-server-1"),
 				service.WithVersion("1.0.0"),
 			},
@@ -641,6 +662,7 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithName("com.example/test-server-1"),
 				service.WithVersion("2.0.0"),
 			},
@@ -702,6 +724,7 @@ func TestGetServerVersion(t *testing.T) {
 				setupTestData(t, pool)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry"),
 				service.WithName("com.example/test-server-2"),
 				service.WithVersion("1.0.0"),
 			},
@@ -720,28 +743,56 @@ func TestGetServerVersion(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a registry
-				regID, err := queries.InsertConfigRegistry(
+				// Create a source
+				regID, err := queries.UpsertSource(
 					ctx,
-					sqlc.InsertConfigRegistryParams{
-						Name:     "test-registry-with-packages",
-						RegType:  sqlc.RegistryTypeREMOTE,
-						Syncable: true,
+					sqlc.UpsertSourceParams{
+						Name:         "test-registry-with-packages",
+						CreationType: sqlc.CreationTypeCONFIG,
+						SourceType:   "git",
+						Syncable:     true,
 					},
 				)
 				require.NoError(t, err)
 
-				// Create a server version
+				// Create a registry and link the source to it
 				now := time.Now().UTC()
+				registry, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         "test-registry-with-packages",
+					CreationType: sqlc.CreationTypeCONFIG,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: registry.ID,
+					SourceID:   regID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+
+				// Create a server version
 				entryID, err := queries.InsertRegistryEntry(
-					context.Background(),
+					ctx,
 					sqlc.InsertRegistryEntryParams{
+						SourceID:  regID,
+						EntryType: sqlc.EntryTypeMCP,
+						Name:      "com.test/server-with-packages",
+						CreatedAt: &now,
+						UpdatedAt: &now,
+					},
+				)
+				require.NoError(t, err)
+
+				versionID, err := queries.InsertEntryVersion(
+					ctx,
+					sqlc.InsertEntryVersionParams{
+						EntryID:     entryID,
 						Name:        "com.test/server-with-packages",
 						Version:     "1.0.0",
-						RegID:       regID,
-						Description: ptr.String("Test server with packages and remotes"),
 						Title:       ptr.String("Test Server With Packages"),
-						EntryType:   sqlc.EntryTypeMCP,
+						Description: ptr.String("Test server with packages and remotes"),
 						CreatedAt:   &now,
 						UpdatedAt:   &now,
 					},
@@ -751,7 +802,7 @@ func TestGetServerVersion(t *testing.T) {
 				serverID, err := queries.InsertServerVersion(
 					ctx,
 					sqlc.InsertServerVersionParams{
-						EntryID:             entryID,
+						VersionID:           versionID,
 						Website:             ptr.String("https://example.com/server-with-packages"),
 						UpstreamMeta:        []byte(`{"key": "value"}`),
 						ServerMeta:          []byte(`{"meta": "data"}`),
@@ -762,13 +813,13 @@ func TestGetServerVersion(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
-				require.Equal(t, entryID, serverID)
+				require.Equal(t, versionID, serverID)
 
 				// Add a package
 				err = queries.InsertServerPackage(
 					ctx,
 					sqlc.InsertServerPackageParams{
-						EntryID:          entryID,
+						ServerID:         versionID,
 						RegistryType:     "npm",
 						PkgRegistryUrl:   "https://registry.npmjs.org",
 						PkgIdentifier:    "@test/package",
@@ -789,7 +840,7 @@ func TestGetServerVersion(t *testing.T) {
 				err = queries.InsertServerRemote(
 					ctx,
 					sqlc.InsertServerRemoteParams{
-						EntryID:          entryID,
+						ServerID:         versionID,
 						Transport:        "sse",
 						TransportUrl:     "https://example.com/sse",
 						TransportHeaders: []byte(`[{"name":"Authorization: Bearer token"}]`),
@@ -798,6 +849,7 @@ func TestGetServerVersion(t *testing.T) {
 				require.NoError(t, err)
 			},
 			options: []service.Option{
+				service.WithRegistryName("test-registry-with-packages"),
 				service.WithName("com.test/server-with-packages"),
 				service.WithVersion("1.0.0"),
 			},
@@ -1072,37 +1124,25 @@ func TestPublishServerVersion(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		setupFunc    func(*testing.T, *pgxpool.Pool) *sqlc.Registry
+		setupFunc    func(*testing.T, *pgxpool.Pool)
 		serverData   *upstreamv0.ServerJSON
-		registryName string
 		validateFunc func(*testing.T, *upstreamv0.ServerJSON, error)
 	}{
 		{
 			name: "success - publish new server version",
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a MANAGED registry
-				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     "test-registry",
-					RegType:  sqlc.RegistryTypeMANAGED,
-					Syncable: false,
+				// Create a MANAGED source
+				_, err := queries.UpsertSource(ctx, sqlc.UpsertSourceParams{
+					Name:         "test-registry",
+					CreationType: sqlc.CreationTypeCONFIG,
+					SourceType:   "managed",
+					Syncable:     false,
 				})
 				require.NoError(t, err)
-
-				regRow, err := queries.GetRegistry(ctx, regID)
-				require.NoError(t, err)
-				// Convert row to Registry struct
-				reg := &sqlc.Registry{
-					ID:        regRow.ID,
-					Name:      regRow.Name,
-					RegType:   regRow.RegType,
-					CreatedAt: regRow.CreatedAt,
-					UpdatedAt: regRow.UpdatedAt,
-				}
-				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.example/test-server",
@@ -1110,7 +1150,6 @@ func TestPublishServerVersion(t *testing.T) {
 				Description: "Test server description",
 				Title:       "Test Server",
 			},
-			registryName: "test-registry",
 			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
 				t.Helper()
 				require.NoError(t, err)
@@ -1123,29 +1162,18 @@ func TestPublishServerVersion(t *testing.T) {
 		},
 		{
 			name: "success - publish with metadata and repository",
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     "test-registry-meta",
-					RegType:  sqlc.RegistryTypeMANAGED,
-					Syncable: false,
+				_, err := queries.UpsertSource(ctx, sqlc.UpsertSourceParams{
+					Name:         "test-registry-meta",
+					CreationType: sqlc.CreationTypeCONFIG,
+					SourceType:   "managed",
+					Syncable:     false,
 				})
 				require.NoError(t, err)
-
-				regRow, err := queries.GetRegistry(ctx, regID)
-				require.NoError(t, err)
-				// Convert row to Registry struct
-				reg := &sqlc.Registry{
-					ID:        regRow.ID,
-					Name:      regRow.Name,
-					RegType:   regRow.RegType,
-					CreatedAt: regRow.CreatedAt,
-					UpdatedAt: regRow.UpdatedAt,
-				}
-				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.test/server-with-meta",
@@ -1159,12 +1187,11 @@ func TestPublishServerVersion(t *testing.T) {
 					Subfolder: "src",
 				},
 				Meta: &upstreamv0.ServerMeta{
-					PublisherProvided: map[string]interface{}{
+					PublisherProvided: map[string]any{
 						"custom_field": "custom_value",
 					},
 				},
 			},
-			registryName: "test-registry-meta",
 			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
 				t.Helper()
 				require.NoError(t, err)
@@ -1177,29 +1204,18 @@ func TestPublishServerVersion(t *testing.T) {
 		},
 		{
 			name: "success - publish with packages and remotes",
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     "test-registry-full",
-					RegType:  sqlc.RegistryTypeMANAGED,
-					Syncable: false,
+				_, err := queries.UpsertSource(ctx, sqlc.UpsertSourceParams{
+					Name:         "test-registry-full",
+					CreationType: sqlc.CreationTypeCONFIG,
+					SourceType:   "managed",
+					Syncable:     false,
 				})
 				require.NoError(t, err)
-
-				regRow, err := queries.GetRegistry(ctx, regID)
-				require.NoError(t, err)
-				// Convert row to Registry struct
-				reg := &sqlc.Registry{
-					ID:        regRow.ID,
-					Name:      regRow.Name,
-					RegType:   regRow.RegType,
-					CreatedAt: regRow.CreatedAt,
-					UpdatedAt: regRow.UpdatedAt,
-				}
-				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "org.example/server-with-packages-remotes",
@@ -1231,7 +1247,6 @@ func TestPublishServerVersion(t *testing.T) {
 					},
 				},
 			},
-			registryName: "test-registry-full",
 			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
 				t.Helper()
 				require.NoError(t, err)
@@ -1247,118 +1262,96 @@ func TestPublishServerVersion(t *testing.T) {
 			},
 		},
 		{
-			name: "failure - registry not found",
-			setupFunc: func(t *testing.T, _ *pgxpool.Pool) *sqlc.Registry {
+			name: "failure - no managed source",
+			setupFunc: func(t *testing.T, _ *pgxpool.Pool) {
 				t.Helper()
-				return nil
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.example/test-server",
 				Version:     "1.0.0",
 				Description: "Test",
 			},
-			registryName: "nonexistent-registry",
 			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrRegistryNotFound)
+				require.ErrorIs(t, err, service.ErrNoManagedSource)
 			},
 		},
 		{
-			name: "failure - not a managed registry",
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+			name: "failure - no managed source with only remote sources",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a REMOTE (non-managed) registry
-				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     "remote-registry",
-					RegType:  sqlc.RegistryTypeREMOTE,
-					Syncable: true,
+				// Create a REMOTE (non-managed) source — getManagedSource should still fail
+				_, err := queries.UpsertSource(ctx, sqlc.UpsertSourceParams{
+					Name:         "remote-registry",
+					CreationType: sqlc.CreationTypeCONFIG,
+					SourceType:   "git",
+					Syncable:     true,
 				})
 				require.NoError(t, err)
-
-				regRow, err := queries.GetRegistry(ctx, regID)
-				require.NoError(t, err)
-				// Convert row to Registry struct
-				reg := &sqlc.Registry{
-					ID:        regRow.ID,
-					Name:      regRow.Name,
-					RegType:   regRow.RegType,
-					CreatedAt: regRow.CreatedAt,
-					UpdatedAt: regRow.UpdatedAt,
-				}
-				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.example/test-server",
 				Version:     "1.0.0",
 				Description: "Test",
 			},
-			registryName: "remote-registry",
 			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrNotManagedRegistry)
+				require.ErrorIs(t, err, service.ErrNoManagedSource)
 			},
 		},
 		{
 			name: "failure - version already exists",
-			setupFunc: func(t *testing.T, pool *pgxpool.Pool) *sqlc.Registry {
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
 				t.Helper()
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a MANAGED registry
-				regID, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     "test-registry-dup",
-					RegType:  sqlc.RegistryTypeMANAGED,
-					Syncable: false,
+				// Create a MANAGED source
+				regID, err := queries.UpsertSource(ctx, sqlc.UpsertSourceParams{
+					Name:         "test-registry-dup",
+					CreationType: sqlc.CreationTypeCONFIG,
+					SourceType:   "managed",
+					Syncable:     false,
 				})
 				require.NoError(t, err)
 
-				// Insert a server version
 				now := time.Now()
-				entryID, err := queries.InsertRegistryEntry(
-					context.Background(),
-					sqlc.InsertRegistryEntryParams{
-						Name:        "com.example/existing-server",
-						Version:     "1.0.0",
-						RegID:       regID,
-						EntryType:   sqlc.EntryTypeMCP,
-						Description: ptr.String("Existing"),
-						CreatedAt:   &now,
-						UpdatedAt:   &now,
-					},
-				)
+				entryID, err := queries.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
+					SourceID:  regID,
+					EntryType: sqlc.EntryTypeMCP,
+					Name:      "com.example/existing-server",
+					CreatedAt: &now,
+					UpdatedAt: &now,
+				})
+				require.NoError(t, err)
+
+				versionID, err := queries.InsertEntryVersion(ctx, sqlc.InsertEntryVersionParams{
+					EntryID:     entryID,
+					Name:        "com.example/existing-server",
+					Version:     "1.0.0",
+					Description: ptr.String("Existing"),
+					CreatedAt:   &now,
+					UpdatedAt:   &now,
+				})
 				require.NoError(t, err)
 
 				_, err = queries.InsertServerVersion(ctx, sqlc.InsertServerVersionParams{
-					EntryID: entryID,
+					VersionID: versionID,
 				})
 				require.NoError(t, err)
-
-				regRow, err := queries.GetRegistry(ctx, regID)
-				require.NoError(t, err)
-				// Convert row to Registry struct
-				reg := &sqlc.Registry{
-					ID:        regRow.ID,
-					Name:      regRow.Name,
-					RegType:   regRow.RegType,
-					CreatedAt: regRow.CreatedAt,
-					UpdatedAt: regRow.UpdatedAt,
-				}
-				return reg
 			},
 			serverData: &upstreamv0.ServerJSON{
 				Name:        "com.example/existing-server",
 				Version:     "1.0.0",
 				Description: "Duplicate",
 			},
-			registryName: "test-registry-dup",
 			validateFunc: func(t *testing.T, result *upstreamv0.ServerJSON, err error) {
 				t.Helper()
 				require.Error(t, err)
@@ -1383,7 +1376,6 @@ func TestPublishServerVersion(t *testing.T) {
 			// Call PublishServerVersion
 			result, err := svc.PublishServerVersion(
 				context.Background(),
-				service.WithRegistryName(tt.registryName),
 				service.WithServerData(tt.serverData),
 			)
 
@@ -1392,14 +1384,160 @@ func TestPublishServerVersion(t *testing.T) {
 	}
 }
 
-func TestUpdateRegistry(t *testing.T) {
+func TestDeleteSource(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *pgxpool.Pool) string
+		validateFunc func(*testing.T, *dbService, string, error)
+	}{
+		{
+			name: "happy path - API source not linked to any registry",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "delete-src-happy",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				return "delete-src-happy"
+			},
+			validateFunc: func(t *testing.T, svc *dbService, name string, err error) {
+				t.Helper()
+				require.NoError(t, err)
+
+				// Verify the source is gone
+				_, getErr := svc.GetSourceByName(context.Background(), name)
+				require.Error(t, getErr)
+				require.ErrorIs(t, getErr, service.ErrSourceNotFound)
+			},
+		},
+		{
+			name: "failure - source not found",
+			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) string {
+				return "delete-src-nonexistent"
+			},
+			validateFunc: func(t *testing.T, _ *dbService, _ string, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.ErrorIs(t, err, service.ErrSourceNotFound)
+			},
+		},
+		{
+			name: "failure - cannot delete CONFIG source",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				_, err := queries.UpsertSource(ctx, sqlc.UpsertSourceParams{
+					Name:         "delete-src-config",
+					CreationType: sqlc.CreationTypeCONFIG,
+					SourceType:   "git",
+					Syncable:     true,
+				})
+				require.NoError(t, err)
+
+				return "delete-src-config"
+			},
+			validateFunc: func(t *testing.T, _ *dbService, _ string, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.ErrorIs(t, err, service.ErrConfigSource)
+			},
+		},
+		{
+			name: "failure - source in use by a registry",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				// Create an API source
+				src, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "delete-src-in-use",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				// Create a registry that references this source
+				reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         "delete-src-in-use-registry",
+					CreationType: sqlc.CreationTypeAPI,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   src.ID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+
+				return "delete-src-in-use"
+			},
+			validateFunc: func(t *testing.T, svc *dbService, name string, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.ErrorIs(t, err, service.ErrSourceInUse)
+
+				// Verify the source still exists
+				src, getErr := svc.GetSourceByName(context.Background(), name)
+				require.NoError(t, getErr)
+				require.Equal(t, name, src.Name)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			sourceName := tt.setupFunc(t, svc.pool)
+
+			err := svc.DeleteSource(context.Background(), sourceName)
+
+			tt.validateFunc(t, svc, sourceName, err)
+		})
+	}
+}
+
+func TestUpdateSource(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name         string
 		setupFunc    func(*testing.T, *pgxpool.Pool) string // returns registry name
-		updateReq    *service.RegistryCreateRequest
-		validateFunc func(*testing.T, *service.RegistryInfo, error)
+		updateReq    *service.SourceCreateRequest
+		validateFunc func(*testing.T, *service.SourceInfo, error)
 	}{
 		{
 			name: "success - update existing API registry",
@@ -1413,10 +1551,10 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git","branch":"main"}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "update-test-registry",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					SourceType:   &sourceType,
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     true,
@@ -1427,7 +1565,7 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "update-test-registry"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: "toolhive",
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/updated-repo.git",
@@ -1437,7 +1575,7 @@ func TestUpdateRegistry(t *testing.T) {
 					Interval: "30m",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.NoError(t, err)
 				require.NotNil(t, result)
@@ -1463,10 +1601,10 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{"endpoint":"https://api.example.com/v1"}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "same-type-test-registry",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					SourceType:   &sourceType,
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     true,
@@ -1477,7 +1615,7 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "same-type-test-registry"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				API: &config.APIConfig{
 					Endpoint: "https://api.example.com/v2",
@@ -1486,7 +1624,7 @@ func TestUpdateRegistry(t *testing.T) {
 					Interval: "1h",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.NoError(t, err)
 				require.NotNil(t, result)
@@ -1504,7 +1642,7 @@ func TestUpdateRegistry(t *testing.T) {
 				// No setup needed - registry doesn't exist
 				return "nonexistent-registry"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
@@ -1513,11 +1651,11 @@ func TestUpdateRegistry(t *testing.T) {
 					Interval: "1h",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrRegistryNotFound)
+				require.ErrorIs(t, err, service.ErrSourceNotFound)
 			},
 		},
 		{
@@ -1527,17 +1665,18 @@ func TestUpdateRegistry(t *testing.T) {
 				ctx := context.Background()
 				queries := sqlc.New(pool)
 
-				// Create a CONFIG registry (created via config file, not API)
-				_, err := queries.InsertConfigRegistry(ctx, sqlc.InsertConfigRegistryParams{
-					Name:     "config-registry-test",
-					RegType:  sqlc.RegistryTypeREMOTE,
-					Syncable: true,
+				// Create a CONFIG source (created via config file, not API)
+				_, err := queries.UpsertSource(ctx, sqlc.UpsertSourceParams{
+					Name:         "config-registry-test",
+					CreationType: sqlc.CreationTypeCONFIG,
+					SourceType:   "git",
+					Syncable:     true,
 				})
 				require.NoError(t, err)
 
 				return "config-registry-test"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				Git: &config.GitConfig{
 					Repository: "https://github.com/example/repo.git",
@@ -1546,11 +1685,11 @@ func TestUpdateRegistry(t *testing.T) {
 					Interval: "1h",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrConfigRegistry)
+				require.ErrorIs(t, err, service.ErrConfigSource)
 			},
 		},
 		{
@@ -1565,10 +1704,10 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git","branch":"main"}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "source-type-change-test",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					SourceType:   &sourceType,
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     true,
@@ -1579,7 +1718,7 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "source-type-change-test"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				File: &config.FileConfig{
 					Path: "/data/registry.json",
@@ -1588,7 +1727,7 @@ func TestUpdateRegistry(t *testing.T) {
 					Interval: "1h",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
@@ -1607,10 +1746,10 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git"}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "invalid-config-test",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					SourceType:   &sourceType,
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     true,
@@ -1621,7 +1760,7 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "invalid-config-test"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				Git: &config.GitConfig{
 					// Missing required Repository field
@@ -1631,11 +1770,11 @@ func TestUpdateRegistry(t *testing.T) {
 					Interval: "1h",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrInvalidRegistryConfig)
+				require.ErrorIs(t, err, service.ErrInvalidSourceConfig)
 			},
 		},
 		{
@@ -1650,10 +1789,10 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git"}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "no-source-type-test",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					SourceType:   &sourceType,
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     true,
@@ -1664,18 +1803,18 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "no-source-type-test"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				// No source type specified (Git, API, File, Managed, or Kubernetes)
 				SyncPolicy: &config.SyncPolicyConfig{
 					Interval: "1h",
 				},
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrInvalidRegistryConfig)
+				require.ErrorIs(t, err, service.ErrInvalidSourceConfig)
 			},
 		},
 		{
@@ -1690,10 +1829,10 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{"endpoint":"https://api.example.com/v1"}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "missing-sync-policy-test",
-					RegType:      sqlc.RegistryTypeREMOTE,
-					SourceType:   &sourceType,
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     true,
@@ -1704,18 +1843,18 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "missing-sync-policy-test"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format: config.SourceFormatUpstream,
 				API: &config.APIConfig{
 					Endpoint: "https://api.example.com/v2",
 				},
 				// Missing required SyncPolicy for API (synced) type
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.Error(t, err)
 				require.Nil(t, result)
-				require.ErrorIs(t, err, service.ErrInvalidRegistryConfig)
+				require.ErrorIs(t, err, service.ErrInvalidSourceConfig)
 			},
 		},
 		{
@@ -1730,10 +1869,10 @@ func TestUpdateRegistry(t *testing.T) {
 				now := time.Now()
 				sourceConfig := []byte(`{}`)
 
-				_, err := queries.InsertAPIRegistry(ctx, sqlc.InsertAPIRegistryParams{
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "managed-registry-update-test",
-					RegType:      sqlc.RegistryTypeMANAGED,
-					SourceType:   &sourceType,
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   sourceType,
 					Format:       &format,
 					SourceConfig: sourceConfig,
 					Syncable:     false,
@@ -1744,12 +1883,12 @@ func TestUpdateRegistry(t *testing.T) {
 
 				return "managed-registry-update-test"
 			},
-			updateReq: &service.RegistryCreateRequest{
+			updateReq: &service.SourceCreateRequest{
 				Format:  "toolhive",
 				Managed: &config.ManagedConfig{},
 				// No SyncPolicy needed for managed type
 			},
-			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
 				t.Helper()
 				require.NoError(t, err)
 				require.NotNil(t, result)
@@ -1770,7 +1909,757 @@ func TestUpdateRegistry(t *testing.T) {
 			// Setup registry if needed
 			registryName := tt.setupFunc(t, svc.pool)
 
-			// Call UpdateRegistry
+			// Call UpdateSource
+			result, err := svc.UpdateSource(
+				context.Background(),
+				registryName,
+				tt.updateReq,
+			)
+
+			tt.validateFunc(t, result, err)
+		})
+	}
+}
+
+func TestListSources(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(t *testing.T, pool *pgxpool.Pool)
+		validateFunc func(t *testing.T, result []service.SourceInfo, err error)
+	}{
+		{
+			name: "empty database",
+			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) {
+				// No setup needed - database is empty
+			},
+			validateFunc: func(t *testing.T, result []service.SourceInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.Empty(t, result)
+			},
+		},
+		{
+			name: "with sources",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "list-src-alpha",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				_, err = queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "list-src-beta",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+			},
+			validateFunc: func(t *testing.T, result []service.SourceInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.Len(t, result, 2)
+
+				// Build a map by name for order-independent assertions
+				byName := make(map[string]service.SourceInfo)
+				for _, s := range result {
+					byName[s.Name] = s
+				}
+
+				_, ok := byName["list-src-alpha"]
+				require.True(t, ok, "list-src-alpha should be present")
+
+				_, ok = byName["list-src-beta"]
+				require.True(t, ok, "list-src-beta should be present")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc.pool)
+
+			result, err := svc.ListSources(context.Background())
+
+			tt.validateFunc(t, result, err)
+		})
+	}
+}
+
+func TestListRegistries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(t *testing.T, pool *pgxpool.Pool)
+		validateFunc func(t *testing.T, result []service.RegistryInfo, err error)
+	}{
+		{
+			name: "empty database",
+			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) {
+				// No setup needed - database is empty
+			},
+			validateFunc: func(t *testing.T, result []service.RegistryInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.Empty(t, result)
+			},
+		},
+		{
+			name: "with registries",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				// Create two API sources
+				srcA, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "list-reg-source-a",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				srcB, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "list-reg-source-b",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				// Create first registry with source-a
+				reg1, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         "list-reg-1",
+					CreationType: sqlc.CreationTypeAPI,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg1.ID,
+					SourceID:   srcA.ID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+
+				// Create second registry with source-b then source-a
+				reg2, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         "list-reg-2",
+					CreationType: sqlc.CreationTypeAPI,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg2.ID,
+					SourceID:   srcB.ID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg2.ID,
+					SourceID:   srcA.ID,
+					Position:   1,
+				})
+				require.NoError(t, err)
+			},
+			validateFunc: func(t *testing.T, result []service.RegistryInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.Len(t, result, 2)
+
+				// Build a map by name for order-independent assertions
+				byName := make(map[string]service.RegistryInfo)
+				for _, r := range result {
+					byName[r.Name] = r
+				}
+
+				reg1, ok := byName["list-reg-1"]
+				require.True(t, ok, "list-reg-1 should be present")
+				require.Equal(t, []string{"list-reg-source-a"}, reg1.Sources)
+
+				reg2, ok := byName["list-reg-2"]
+				require.True(t, ok, "list-reg-2 should be present")
+				require.Equal(t, []string{"list-reg-source-b", "list-reg-source-a"}, reg2.Sources)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc.pool)
+
+			result, err := svc.ListRegistries(context.Background())
+
+			tt.validateFunc(t, result, err)
+		})
+	}
+}
+
+func TestGetRegistryByName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(t *testing.T, pool *pgxpool.Pool) string
+		validateFunc func(t *testing.T, result *service.RegistryInfo, err error)
+	}{
+		{
+			name: "found",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				srcA, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "get-reg-source-a",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				srcB, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "get-reg-source-b",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         "get-reg-test",
+					CreationType: sqlc.CreationTypeAPI,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   srcA.ID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   srcB.ID,
+					Position:   1,
+				})
+				require.NoError(t, err)
+
+				return "get-reg-test"
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "get-reg-test", result.Name)
+				require.Equal(t, []string{"get-reg-source-a", "get-reg-source-b"}, result.Sources)
+				require.False(t, result.CreatedAt.IsZero())
+				require.False(t, result.UpdatedAt.IsZero())
+			},
+		},
+		{
+			name: "not found",
+			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) string {
+				return "nonexistent-registry"
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrRegistryNotFound)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			registryName := tt.setupFunc(t, svc.pool)
+
+			result, err := svc.GetRegistryByName(context.Background(), registryName)
+
+			tt.validateFunc(t, result, err)
+		})
+	}
+}
+
+func TestCreateRegistry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(t *testing.T, pool *pgxpool.Pool) string
+		createReq    *service.RegistryCreateRequest
+		validateFunc func(t *testing.T, result *service.RegistryInfo, err error)
+	}{
+		{
+			name: "happy path",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "create-reg-source-a",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				_, err = queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "create-reg-source-b",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				return "create-reg-happy"
+			},
+			createReq: &service.RegistryCreateRequest{
+				Sources: []string{"create-reg-source-a", "create-reg-source-b"},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "create-reg-happy", result.Name)
+				require.Equal(t, service.CreationTypeAPI, result.CreationType)
+				require.Equal(t, []string{"create-reg-source-a", "create-reg-source-b"}, result.Sources)
+				require.False(t, result.CreatedAt.IsZero())
+				require.False(t, result.UpdatedAt.IsZero())
+			},
+		},
+		{
+			name: "already exists",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				src, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "create-dup-source",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         "create-reg-dup",
+					CreationType: sqlc.CreationTypeAPI,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   src.ID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+
+				return "create-reg-dup"
+			},
+			createReq: &service.RegistryCreateRequest{
+				Sources: []string{"create-dup-source"},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrRegistryAlreadyExists)
+			},
+		},
+		{
+			name: "invalid source name",
+			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) string {
+				return "create-reg-bad-source"
+			},
+			createReq: &service.RegistryCreateRequest{
+				Sources: []string{"nonexistent-source"},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrSourceNotFound)
+			},
+		},
+		{
+			name: "nil request",
+			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) string {
+				return "create-reg-nil"
+			},
+			createReq: nil,
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrInvalidRegistryConfig)
+			},
+		},
+		{
+			name: "empty sources",
+			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) string {
+				return "create-reg-empty"
+			},
+			createReq: &service.RegistryCreateRequest{
+				Sources: []string{},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrInvalidRegistryConfig)
+			},
+		},
+		{
+			name: "duplicate sources",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "create-dup-src-source",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				return "create-reg-dup-src"
+			},
+			createReq: &service.RegistryCreateRequest{
+				Sources: []string{"create-dup-src-source", "create-dup-src-source"},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrInvalidRegistryConfig)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			registryName := tt.setupFunc(t, svc.pool)
+
+			result, err := svc.CreateRegistry(
+				context.Background(),
+				registryName,
+				tt.createReq,
+			)
+
+			tt.validateFunc(t, result, err)
+		})
+	}
+}
+
+func TestUpdateRegistry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(t *testing.T, pool *pgxpool.Pool) string
+		updateReq    *service.RegistryCreateRequest
+		validateFunc func(t *testing.T, result *service.RegistryInfo, err error)
+	}{
+		{
+			name: "happy path",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				srcA, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "update-reg-source-a",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				_, err = queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "update-reg-source-b",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         "update-reg-happy",
+					CreationType: sqlc.CreationTypeAPI,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   srcA.ID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+
+				return "update-reg-happy"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Sources: []string{"update-reg-source-b"},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "update-reg-happy", result.Name)
+				require.Equal(t, service.CreationTypeAPI, result.CreationType)
+				require.Equal(t, []string{"update-reg-source-b"}, result.Sources)
+			},
+		},
+		{
+			name: "CONFIG protection",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+
+				sourceID, err := queries.UpsertSource(ctx, sqlc.UpsertSourceParams{
+					Name:         "update-reg-config-source",
+					CreationType: sqlc.CreationTypeCONFIG,
+					SourceType:   "git",
+					Syncable:     true,
+				})
+				require.NoError(t, err)
+
+				reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         "update-reg-config",
+					CreationType: sqlc.CreationTypeCONFIG,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   sourceID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+
+				return "update-reg-config"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Sources: []string{"update-reg-config-source"},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrConfigRegistry)
+			},
+		},
+		{
+			name: "not found",
+			setupFunc: func(_ *testing.T, _ *pgxpool.Pool) string {
+				return "update-reg-nonexistent"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Sources: []string{"some-source"},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.Error(t, err)
+				require.Nil(t, result)
+				require.ErrorIs(t, err, service.ErrRegistryNotFound)
+			},
+		},
+		{
+			name: "re-order sources",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				now := time.Now()
+				format := config.SourceFormatUpstream
+
+				srcA, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "reorder-reg-source-a",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				srcB, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "reorder-reg-source-b",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   "managed",
+					Format:       &format,
+					SourceConfig: []byte(`{}`),
+					Syncable:     false,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         "reorder-reg-test",
+					CreationType: sqlc.CreationTypeAPI,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   srcA.ID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   srcB.ID,
+					Position:   1,
+				})
+				require.NoError(t, err)
+
+				return "reorder-reg-test"
+			},
+			updateReq: &service.RegistryCreateRequest{
+				Sources: []string{"reorder-reg-source-b", "reorder-reg-source-a"},
+			},
+			validateFunc: func(t *testing.T, result *service.RegistryInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "reorder-reg-test", result.Name)
+				require.Equal(t, []string{"reorder-reg-source-b", "reorder-reg-source-a"}, result.Sources)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			registryName := tt.setupFunc(t, svc.pool)
+
 			result, err := svc.UpdateRegistry(
 				context.Background(),
 				registryName,
@@ -1778,6 +2667,487 @@ func TestUpdateRegistry(t *testing.T) {
 			)
 
 			tt.validateFunc(t, result, err)
+		})
+	}
+}
+
+func TestDeleteServerVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		registryName string
+		serverName   string
+		// versions to publish in order before the delete
+		publishVersions []string
+		// version to delete
+		deleteVersion string
+		// if non-empty, the version we expect "latest" to resolve to after deletion
+		expectLatestVersion string
+		// if true, GET latest should return ErrNotFound after deletion
+		expectLatestNotFound bool
+		// if true, the delete call itself should return an error
+		expectDeleteErr bool
+		// expected error from the delete call (wrapped with ErrorIs)
+		expectDeleteErrIs error
+		// if true, use a non-managed (REMOTE) registry
+		useRemoteRegistry bool
+	}{
+		{
+			name:                "delete latest version re-points to next highest",
+			registryName:        "del-srv-repoint",
+			serverName:          "com.example/test-server",
+			publishVersions:     []string{"1.0.0", "1.1.0", "2.0.0"},
+			deleteVersion:       "2.0.0",
+			expectLatestVersion: "1.1.0",
+		},
+		{
+			name:                "delete non-latest version does not change pointer",
+			registryName:        "del-srv-nonlatest",
+			serverName:          "com.example/test-server",
+			publishVersions:     []string{"1.0.0", "2.0.0"},
+			deleteVersion:       "1.0.0",
+			expectLatestVersion: "2.0.0",
+		},
+		{
+			name:                 "delete the only version removes entry entirely",
+			registryName:         "del-srv-only",
+			serverName:           "com.example/test-server",
+			publishVersions:      []string{"1.0.0"},
+			deleteVersion:        "1.0.0",
+			expectLatestNotFound: true,
+		},
+		{
+			name:              "delete non-existent version returns error",
+			registryName:      "del-srv-noexist",
+			serverName:        "com.example/test-server",
+			publishVersions:   []string{"1.0.0"},
+			deleteVersion:     "9.9.9",
+			expectDeleteErr:   true,
+			expectDeleteErrIs: service.ErrNotFound,
+		},
+		{
+			name:              "delete on non-managed registry returns error",
+			registryName:      "del-srv-remote",
+			serverName:        "com.example/test-server",
+			publishVersions:   nil,
+			deleteVersion:     "1.0.0",
+			useRemoteRegistry: true,
+			expectDeleteErr:   true,
+			expectDeleteErrIs: service.ErrNoManagedSource,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			ctx := context.Background()
+			queries := sqlc.New(svc.pool)
+
+			// Create the registry.
+			if tt.useRemoteRegistry {
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         tt.registryName,
+					SourceType:   "git",
+					CreationType: sqlc.CreationTypeAPI,
+					Syncable:     true,
+				})
+				require.NoError(t, err)
+			} else {
+				src, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         tt.registryName,
+					SourceType:   "managed",
+					CreationType: sqlc.CreationTypeCONFIG,
+					Syncable:     false,
+				})
+				require.NoError(t, err)
+
+				now := time.Now()
+				reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         tt.registryName,
+					CreationType: sqlc.CreationTypeCONFIG,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   src.ID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+			}
+
+			// Publish the requested versions.
+			for _, ver := range tt.publishVersions {
+				_, err := svc.PublishServerVersion(
+					ctx,
+					service.WithServerData(&upstreamv0.ServerJSON{
+						Name:    tt.serverName,
+						Version: ver,
+					}),
+				)
+				require.NoError(t, err)
+			}
+
+			// Perform the delete.
+			deleteErr := svc.DeleteServerVersion(
+				ctx,
+				service.WithName(tt.serverName),
+				service.WithVersion(tt.deleteVersion),
+			)
+
+			if tt.expectDeleteErr {
+				require.Error(t, deleteErr)
+				if tt.expectDeleteErrIs != nil {
+					require.ErrorIs(t, deleteErr, tt.expectDeleteErrIs)
+				}
+				return
+			}
+			require.NoError(t, deleteErr)
+
+			// Verify the latest pointer.
+			result, err := svc.GetServerVersion(
+				ctx,
+				service.WithRegistryName(tt.registryName),
+				service.WithName(tt.serverName),
+				service.WithVersion("latest"),
+			)
+
+			if tt.expectLatestNotFound {
+				require.ErrorIs(t, err, service.ErrNotFound)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, tt.expectLatestVersion, result.Version)
+		})
+	}
+}
+
+func TestDeleteSkillVersion(t *testing.T) {
+	t.Parallel()
+
+	const namespace = "com.example"
+
+	tests := []struct {
+		name         string
+		registryName string
+		skillName    string
+		// versions to publish in order before the delete
+		publishVersions []string
+		// version to delete
+		deleteVersion string
+		// if non-empty, the version we expect "latest" to resolve to after deletion
+		expectLatestVersion string
+		// if true, GET latest should return ErrNotFound after deletion
+		expectLatestNotFound bool
+		// if true, the delete call itself should return an error
+		expectDeleteErr bool
+		// expected error from the delete call (wrapped with ErrorIs)
+		expectDeleteErrIs error
+		// if true, use a non-managed (REMOTE) registry
+		useRemoteRegistry bool
+	}{
+		{
+			name:                "delete latest version re-points to next highest",
+			registryName:        "del-skill-repoint",
+			skillName:           "test-skill",
+			publishVersions:     []string{"1.0.0", "1.1.0", "2.0.0"},
+			deleteVersion:       "2.0.0",
+			expectLatestVersion: "1.1.0",
+		},
+		{
+			name:                "delete non-latest version does not change pointer",
+			registryName:        "del-skill-nonlatest",
+			skillName:           "test-skill",
+			publishVersions:     []string{"1.0.0", "2.0.0"},
+			deleteVersion:       "1.0.0",
+			expectLatestVersion: "2.0.0",
+		},
+		{
+			name:                 "delete the only version removes entry entirely",
+			registryName:         "del-skill-only",
+			skillName:            "test-skill",
+			publishVersions:      []string{"1.0.0"},
+			deleteVersion:        "1.0.0",
+			expectLatestNotFound: true,
+		},
+		{
+			name:              "delete non-existent version returns error",
+			registryName:      "del-skill-noexist",
+			skillName:         "test-skill",
+			publishVersions:   []string{"1.0.0"},
+			deleteVersion:     "9.9.9",
+			expectDeleteErr:   true,
+			expectDeleteErrIs: service.ErrNotFound,
+		},
+		{
+			name:              "delete on non-managed registry returns error",
+			registryName:      "del-skill-remote",
+			skillName:         "test-skill",
+			publishVersions:   nil,
+			deleteVersion:     "1.0.0",
+			useRemoteRegistry: true,
+			expectDeleteErr:   true,
+			expectDeleteErrIs: service.ErrNoManagedSource,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			ctx := context.Background()
+			queries := sqlc.New(svc.pool)
+
+			// Create the registry.
+			if tt.useRemoteRegistry {
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         tt.registryName,
+					SourceType:   "git",
+					CreationType: sqlc.CreationTypeAPI,
+					Syncable:     true,
+				})
+				require.NoError(t, err)
+			} else {
+				src, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         tt.registryName,
+					SourceType:   "managed",
+					CreationType: sqlc.CreationTypeCONFIG,
+					Syncable:     false,
+				})
+				require.NoError(t, err)
+
+				now := time.Now()
+				reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+					Name:         tt.registryName,
+					CreationType: sqlc.CreationTypeCONFIG,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+					RegistryID: reg.ID,
+					SourceID:   src.ID,
+					Position:   0,
+				})
+				require.NoError(t, err)
+			}
+
+			// Publish the requested versions.
+			for _, ver := range tt.publishVersions {
+				skill := &service.Skill{
+					Name:      tt.skillName,
+					Namespace: namespace,
+					Version:   ver,
+					Title:     "Test Skill",
+				}
+				_, err := svc.PublishSkill(
+					ctx,
+					skill,
+				)
+				require.NoError(t, err)
+			}
+
+			// Perform the delete.
+			deleteErr := svc.DeleteSkillVersion(
+				ctx,
+				service.WithName(tt.skillName),
+				service.WithVersion(tt.deleteVersion),
+				service.WithNamespace(namespace),
+			)
+
+			if tt.expectDeleteErr {
+				require.Error(t, deleteErr)
+				if tt.expectDeleteErrIs != nil {
+					require.ErrorIs(t, deleteErr, tt.expectDeleteErrIs)
+				}
+				return
+			}
+			require.NoError(t, deleteErr)
+
+			// Verify the latest pointer.
+			result, err := svc.GetSkillVersion(
+				ctx,
+				service.WithRegistryName(tt.registryName),
+				service.WithName(tt.skillName),
+				service.WithVersion("latest"),
+				service.WithNamespace(namespace),
+			)
+
+			if tt.expectLatestNotFound {
+				require.ErrorIs(t, err, service.ErrNotFound)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, tt.expectLatestVersion, result.Version)
+			require.True(t, result.IsLatest)
+		})
+	}
+}
+
+// setupSkillTestData creates a managed source, registry, and publishes skills for testing.
+//
+//nolint:thelper // We want to see these lines in the test output
+func setupSkillTestData(t *testing.T, svc *dbService, skills []string) {
+	ctx := context.Background()
+	queries := sqlc.New(svc.pool)
+	now := time.Now()
+
+	src, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+		Name:         "managed",
+		SourceType:   "managed",
+		CreationType: sqlc.CreationTypeCONFIG,
+		Syncable:     false,
+	})
+	require.NoError(t, err)
+
+	reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
+		Name:         "test-skills-registry",
+		CreationType: sqlc.CreationTypeCONFIG,
+		CreatedAt:    &now,
+		UpdatedAt:    &now,
+	})
+	require.NoError(t, err)
+
+	err = queries.LinkRegistrySource(ctx, sqlc.LinkRegistrySourceParams{
+		RegistryID: reg.ID,
+		SourceID:   src.ID,
+		Position:   0,
+	})
+	require.NoError(t, err)
+
+	for _, name := range skills {
+		_, err := svc.PublishSkill(ctx, &service.Skill{
+			Name:      name,
+			Namespace: "com.example",
+			Version:   "1.0.0",
+			Title:     name,
+		})
+		require.NoError(t, err)
+	}
+}
+
+func TestListSkills(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *dbService)
+		options      []service.Option
+		validateFunc func(*testing.T, *service.ListSkillsResult)
+	}{
+		{
+			name: "list all skills returns all published",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, svc *dbService) {
+				setupSkillTestData(t, svc, []string{"skill-a", "skill-b"})
+			},
+			options: []service.Option{
+				service.WithRegistryName("test-skills-registry"),
+				service.WithNamespace("com.example"),
+				service.WithLimit(10),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, result *service.ListSkillsResult) {
+				require.Len(t, result.Skills, 2)
+				names := make([]string, len(result.Skills))
+				for i, s := range result.Skills {
+					names[i] = s.Name
+				}
+				require.Contains(t, names, "skill-a")
+				require.Contains(t, names, "skill-b")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc)
+
+			result, err := svc.ListSkills(context.Background(), tt.options...)
+
+			if tt.validateFunc == nil {
+				require.Error(t, err)
+				require.Nil(t, result)
+				return
+			}
+
+			require.NoError(t, err)
+			tt.validateFunc(t, result)
+		})
+	}
+}
+
+func TestGetSkillVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupFunc    func(*testing.T, *dbService)
+		options      []service.Option
+		validateFunc func(*testing.T, *service.Skill)
+	}{
+		{
+			name: "get existing skill version",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, svc *dbService) {
+				setupSkillTestData(t, svc, []string{"skill-a"})
+			},
+			options: []service.Option{
+				service.WithRegistryName("test-skills-registry"),
+				service.WithNamespace("com.example"),
+				service.WithName("skill-a"),
+				service.WithVersion("1.0.0"),
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			validateFunc: func(t *testing.T, skill *service.Skill) {
+				require.NotNil(t, skill)
+				require.Equal(t, "skill-a", skill.Name)
+				require.Equal(t, "1.0.0", skill.Version)
+				require.Equal(t, "com.example", skill.Namespace)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			tt.setupFunc(t, svc)
+
+			skill, err := svc.GetSkillVersion(context.Background(), tt.options...)
+
+			if tt.validateFunc == nil {
+				require.Error(t, err)
+				require.True(t, errors.Is(err, service.ErrNotFound))
+				require.Nil(t, skill)
+				return
+			}
+
+			require.NoError(t, err)
+			tt.validateFunc(t, skill)
 		})
 	}
 }

@@ -188,7 +188,7 @@ curl http://localhost:8080/health
 Update `examples/config-docker.yaml`:
 
 ```yaml
-registries:
+sources:
   - name: toolhive
     format: toolhive
     git:
@@ -197,6 +197,10 @@ registries:
       path: path/to/registry.json
     syncPolicy:
       interval: "30m"
+
+registries:
+  - name: default
+    sources: ["toolhive"]
 ```
 
 Restart:

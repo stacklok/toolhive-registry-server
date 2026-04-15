@@ -40,7 +40,7 @@ func NewFileRegistryHandlerWithClient(client httpclient.Client) RegistryHandler 
 }
 
 // Validate validates the file registry configuration
-func (*fileRegistryHandler) Validate(regCfg *config.RegistryConfig) error {
+func (*fileRegistryHandler) Validate(regCfg *config.SourceConfig) error {
 	if regCfg == nil {
 		return fmt.Errorf("registry configuration cannot be nil")
 	}
@@ -64,12 +64,12 @@ func (*fileRegistryHandler) Validate(regCfg *config.RegistryConfig) error {
 }
 
 // isURLSource returns true if the configuration uses a URL source
-func (*fileRegistryHandler) isURLSource(regCfg *config.RegistryConfig) bool {
+func (*fileRegistryHandler) isURLSource(regCfg *config.SourceConfig) bool {
 	return regCfg.File != nil && regCfg.File.URL != ""
 }
 
 // FetchRegistry retrieves registry data from a local file or URL
-func (h *fileRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
+func (h *fileRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.SourceConfig) (*FetchResult, error) {
 	// Fetch data from appropriate source
 	data, hash, err := h.fetchData(ctx, regCfg)
 	if err != nil {
@@ -87,7 +87,7 @@ func (h *fileRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.
 }
 
 // fetchData routes to the appropriate fetch method based on configuration
-func (h *fileRegistryHandler) fetchData(ctx context.Context, regCfg *config.RegistryConfig) ([]byte, string, error) {
+func (h *fileRegistryHandler) fetchData(ctx context.Context, regCfg *config.SourceConfig) ([]byte, string, error) {
 	// Validate registry configuration
 	if err := h.Validate(regCfg); err != nil {
 		return nil, "", fmt.Errorf("registry validation failed: %w", err)
@@ -100,7 +100,7 @@ func (h *fileRegistryHandler) fetchData(ctx context.Context, regCfg *config.Regi
 }
 
 // fetchLocalFileData reads the local file and calculates its hash
-func (*fileRegistryHandler) fetchLocalFileData(regCfg *config.RegistryConfig) ([]byte, string, error) {
+func (*fileRegistryHandler) fetchLocalFileData(regCfg *config.SourceConfig) ([]byte, string, error) {
 	filePath := regCfg.File.Path
 
 	// Read the file
@@ -120,7 +120,7 @@ func (*fileRegistryHandler) fetchLocalFileData(regCfg *config.RegistryConfig) ([
 }
 
 // fetchURLData fetches the registry file from a URL and calculates its hash
-func (h *fileRegistryHandler) fetchURLData(ctx context.Context, regCfg *config.RegistryConfig) ([]byte, string, error) {
+func (h *fileRegistryHandler) fetchURLData(ctx context.Context, regCfg *config.SourceConfig) ([]byte, string, error) {
 	fileURL := regCfg.File.URL
 
 	// Create HTTP client with configured timeout if specified
@@ -143,16 +143,4 @@ func (h *fileRegistryHandler) fetchURLData(ctx context.Context, regCfg *config.R
 	hash := fmt.Sprintf("%x", sha256.Sum256(data))
 
 	return data, hash, nil
-}
-
-// CurrentHash returns the current hash of the source without performing a full parse
-func (h *fileRegistryHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
-	// For file/URL sources, we read and hash the content
-	// This is nearly as expensive as a full fetch, but maintains the interface
-	_, hash, err := h.fetchData(ctx, regCfg)
-	if err != nil {
-		return "", err
-	}
-
-	return hash, nil
 }

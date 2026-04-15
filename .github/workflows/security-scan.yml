@@ -5,8 +5,6 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   schedule:
     # Run daily at 2 AM UTC
     - cron: '0 2 * * *'
@@ -16,26 +14,29 @@ permissions:
   security-events: write
 
 jobs:
-  trivy-repo-scan:
-    name: Trivy Repository Scan
+  grype-repo-scan:
+    name: Grype Repository Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Run Trivy vulnerability scanner in repo mode
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+      - name: Run Grype vulnerability scanner
+        id: grype-scan
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
+          path: "."
+          output-format: "sarif"
+          fail-build: "true"
+          only-fixed: "true"
+          severity-cutoff: "high"
 
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@9e907b5e64f6b83e7804b09294d44122997950d6 # v4
+      - name: Upload Grype scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
         if: always()
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: ${{ steps.grype-scan.outputs.sarif }}
+          category: "grype"
 
   govulncheck:
     name: Go Vulnerability Check
@@ -48,6 +49,64 @@ jobs:
         uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1
         with:
           repo-checkout: false
-          go-version-input: ''
-          go-version-file: go.mod
+          go-version-input: 'stable'
           go-package: ./...
+          output-format: json
+          output-file: govulncheck-output.json
+
+      - name: Check for vulnerabilities (with exclusions)
+        run: |
+          # Ignored vulnerabilities with justification:
+          # GO-2026-4883: Off-by-one error in Moby plugin privilege validation (CVE-2026-33997)
+          #   Affects the Docker daemon's plugin privilege handling code. This project only
+          #   uses the Docker client SDK (via testcontainers) for integration tests, not the
+          #   daemon plugin subsystem. No fixed version exists for github.com/docker/docker;
+          #   fix is only in github.com/moby/moby/v2 v2.0.0-beta.8+ which is not yet
+          #   available as a docker/docker release.
+          # GO-2026-4887: AuthZ plugin bypass with oversized request bodies (CVE-2026-34040)
+          #   Affects the Docker daemon's AuthZ plugin mechanism. This project only uses the
+          #   Docker client SDK (via testcontainers) and does not run or configure AuthZ
+          #   plugins. No fixed version exists for github.com/docker/docker; fix is only in
+          #   github.com/moby/moby/v2 v2.0.0-beta.8+ which is not yet available as a
+          #   docker/docker release.
+          # GO-2026-4771: Memory-safety vulnerability in pgx pgproto3 Bind.Decode (CVE-2026-33815)
+          #   Affects the PostgreSQL wire protocol server-side message decoding. This project
+          #   is a PostgreSQL client connecting to trusted database servers, not a PostgreSQL
+          #   server. No fixed version of github.com/jackc/pgx/v5 exists yet.
+          # GO-2026-4772: Memory-safety vulnerability in pgx pgproto3 FunctionCall.Decode (CVE-2026-33816)
+          #   Same as above — affects server-side protocol decoding. This project is a
+          #   PostgreSQL client connecting to trusted database servers. No fixed version of
+          #   github.com/jackc/pgx/v5 exists yet.
+          IGNORED_VULNS="GO-2026-4883 GO-2026-4887 GO-2026-4771 GO-2026-4772"
+
+          # Show the raw output for debugging
+          echo "::group::govulncheck raw output"
+          cat govulncheck-output.json
+          echo "::endgroup::"
+
+          # Extract vulnerability IDs that have actual findings (called symbols)
+          FOUND_VULNS=$(jq -r 'select(.finding != null) | .finding.osv' govulncheck-output.json | sort -u | grep -E '^GO-' || true)
+
+          if [ -z "$FOUND_VULNS" ]; then
+            echo "✅ No vulnerabilities found"
+            exit 0
+          fi
+
+          echo "Found vulnerabilities: $FOUND_VULNS"
+
+          # Check if all found vulnerabilities are in the ignore list
+          UNIGNORED=""
+          for vuln in $FOUND_VULNS; do
+            if ! echo "$IGNORED_VULNS" | grep -qw "$vuln"; then
+              UNIGNORED="$UNIGNORED $vuln"
+            fi
+          done
+          UNIGNORED=$(echo "$UNIGNORED" | xargs)
+
+          if [ -z "$UNIGNORED" ]; then
+            echo "⚠️  All vulnerabilities are ignored: $FOUND_VULNS"
+            exit 0
+          fi
+
+          echo "❌ Vulnerabilities need attention: $UNIGNORED"
+          exit 1

@@ -25,8 +25,7 @@ import (
 func TestNewRegistryAppBuilder(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{
-		RegistryName: "test-registry",
-		Registries: []config.RegistryConfig{
+		Sources: []config.SourceConfig{
 			{
 				Name:   "test-registry-1",
 				Format: config.SourceFormatToolHive,
@@ -83,8 +82,7 @@ func TestRegistryAppBuilder_WithAddress(t *testing.T) {
 // createValidTestConfig creates a minimal valid config for testing
 func createValidTestConfig() *config.Config {
 	return &config.Config{
-		RegistryName: "test-registry",
-		Registries: []config.RegistryConfig{
+		Sources: []config.SourceConfig{
 			{
 				Name:   "test-registry-1",
 				Format: config.SourceFormatToolHive,
@@ -397,7 +395,7 @@ func TestBuildHTTPServer(t *testing.T) {
 			// Set auth middleware in config for tests
 			tt.config.authMiddleware = func(next http.Handler) http.Handler { return next }
 			tt.config.authInfoHandler = nil
-			server, err := buildHTTPServer(ctx, tt.config, mockSvc)
+			server, err := buildHTTPServer(ctx, tt.config, mockSvc, nil)
 
 			require.NoError(t, err)
 			require.NotNil(t, server)
@@ -413,7 +411,7 @@ func TestBuildHTTPServer(t *testing.T) {
 				assert.NotNil(t, tt.config.middlewares)
 				assert.Greater(t, len(tt.config.middlewares), 0, "default middlewares should be set")
 			} else {
-				assert.Equal(t, 2, len(tt.config.middlewares), "custom middlewares should be preserved plus auth middleware")
+				assert.Equal(t, 5, len(tt.config.middlewares), "custom middlewares should be preserved plus auth-failure-audit + auth + role-resolution + audit middlewares")
 			}
 		})
 	}
@@ -433,15 +431,15 @@ func TestBuildHTTPServer_WithMeterProvider(t *testing.T) {
 		{
 			name:                    "with meter provider adds metrics middleware",
 			meterProvider:           noop.NewMeterProvider(),
-			initialMiddlewareCount:  0, // nil triggers defaults (5) + metrics (1) + auth (1) = 7
-			expectedMiddlewareCount: 7, // 5 default + 1 metrics + 1 auth
+			initialMiddlewareCount:  0,  // nil triggers defaults (5) + metrics (1) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 10
+			expectedMiddlewareCount: 10, // 5 default + 1 metrics + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit
 			description:             "metrics middleware should be prepended when meter provider is set",
 		},
 		{
 			name:                    "without meter provider no metrics middleware",
 			meterProvider:           nil,
-			initialMiddlewareCount:  0, // nil triggers defaults (5) + auth (1) = 6
-			expectedMiddlewareCount: 6, // 5 default + 1 auth (no metrics)
+			initialMiddlewareCount:  0, // nil triggers defaults (5) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 9
+			expectedMiddlewareCount: 9, // 5 default + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit (no metrics)
 			description:             "no metrics middleware should be added when meter provider is nil",
 		},
 	}
@@ -465,7 +463,7 @@ func TestBuildHTTPServer_WithMeterProvider(t *testing.T) {
 				authMiddleware: func(next http.Handler) http.Handler { return next },
 			}
 
-			server, err := buildHTTPServer(ctx, cfg, mockSvc)
+			server, err := buildHTTPServer(ctx, cfg, mockSvc, nil)
 
 			require.NoError(t, err, tt.description)
 			require.NotNil(t, server)
@@ -489,21 +487,21 @@ func TestBuildHTTPServer_MetricsMiddlewareWithCustomMiddlewares(t *testing.T) {
 			name:                    "meter provider with custom middlewares prepends metrics",
 			meterProvider:           noop.NewMeterProvider(),
 			customMiddlewareCount:   2,
-			expectedMiddlewareCount: 4, // 1 metrics + 2 custom + 1 auth
+			expectedMiddlewareCount: 7, // 1 metrics + 2 custom + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit
 			description:             "metrics middleware should be prepended to custom middlewares",
 		},
 		{
 			name:                    "no meter provider with custom middlewares",
 			meterProvider:           nil,
 			customMiddlewareCount:   2,
-			expectedMiddlewareCount: 3, // 2 custom + 1 auth (no metrics)
+			expectedMiddlewareCount: 6, // 2 custom + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit (no metrics)
 			description:             "no metrics middleware with custom middlewares when provider is nil",
 		},
 		{
 			name:                    "meter provider with single custom middleware",
 			meterProvider:           noop.NewMeterProvider(),
 			customMiddlewareCount:   1,
-			expectedMiddlewareCount: 3, // 1 metrics + 1 custom + 1 auth
+			expectedMiddlewareCount: 6, // 1 metrics + 1 custom + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit
 			description:             "metrics middleware prepended to single custom middleware",
 		},
 	}
@@ -533,7 +531,7 @@ func TestBuildHTTPServer_MetricsMiddlewareWithCustomMiddlewares(t *testing.T) {
 				authMiddleware: func(next http.Handler) http.Handler { return next },
 			}
 
-			server, err := buildHTTPServer(ctx, cfg, mockSvc)
+			server, err := buildHTTPServer(ctx, cfg, mockSvc, nil)
 
 			require.NoError(t, err, tt.description)
 			require.NotNil(t, server)
@@ -756,7 +754,7 @@ func TestNewRegistryApp(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, app)
 		assert.NotNil(t, app.config)
-		assert.Equal(t, "test-registry", app.config.RegistryName)
+		assert.Equal(t, 1, len(app.config.Sources))
 		assert.NotNil(t, app.components)
 		assert.NotNil(t, app.components.SyncCoordinator)
 		assert.NotNil(t, app.components.RegistryService)

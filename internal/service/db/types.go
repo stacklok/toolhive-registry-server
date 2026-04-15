@@ -22,7 +22,6 @@ import (
 // but for some reason it does not and we have to duplicate at this
 // layer.
 type helper struct {
-	RegistryType        sqlc.RegistryType
 	ID                  uuid.UUID
 	Name                string
 	Version             string
@@ -38,13 +37,15 @@ type helper struct {
 	RepositoryID        *string
 	RepositorySubfolder *string
 	RepositoryType      *string
+	Claims              []byte
+	SourceID            uuid.UUID
+	Position            int32
 }
 
 func listServersRowToHelper(
 	dbServer sqlc.ListServersRow,
 ) helper {
 	return helper{
-		RegistryType:        dbServer.RegistryType,
 		ID:                  dbServer.ID,
 		Name:                dbServer.Name,
 		Version:             dbServer.Version,
@@ -60,29 +61,8 @@ func listServersRowToHelper(
 		RepositoryID:        dbServer.RepositoryID,
 		RepositorySubfolder: dbServer.RepositorySubfolder,
 		RepositoryType:      dbServer.RepositoryType,
-	}
-}
-
-func listServerVersionsRowToHelper(
-	dbServer sqlc.ListServerVersionsRow,
-) helper {
-	return helper{
-		RegistryType:        dbServer.RegistryType,
-		ID:                  dbServer.ID,
-		Name:                dbServer.Name,
-		Version:             dbServer.Version,
-		IsLatest:            dbServer.IsLatest,
-		CreatedAt:           dbServer.CreatedAt,
-		UpdatedAt:           dbServer.UpdatedAt,
-		Description:         dbServer.Description,
-		Title:               dbServer.Title,
-		Website:             dbServer.Website,
-		UpstreamMeta:        dbServer.UpstreamMeta,
-		ServerMeta:          dbServer.ServerMeta,
-		RepositoryUrl:       dbServer.RepositoryUrl,
-		RepositoryID:        dbServer.RepositoryID,
-		RepositorySubfolder: dbServer.RepositorySubfolder,
-		RepositoryType:      dbServer.RepositoryType,
+		Claims:              dbServer.Claims,
+		Position:            dbServer.Position,
 	}
 }
 
@@ -90,7 +70,6 @@ func getServerVersionRowToHelper(
 	dbServer sqlc.GetServerVersionRow,
 ) helper {
 	return helper{
-		RegistryType:        dbServer.RegistryType,
 		ID:                  dbServer.ID,
 		Name:                dbServer.Name,
 		Version:             dbServer.Version,
@@ -106,6 +85,33 @@ func getServerVersionRowToHelper(
 		RepositoryID:        dbServer.RepositoryID,
 		RepositorySubfolder: dbServer.RepositorySubfolder,
 		RepositoryType:      dbServer.RepositoryType,
+		Claims:              dbServer.Claims,
+		SourceID:            dbServer.SourceID,
+		Position:            dbServer.Position,
+	}
+}
+
+func getServerVersionBySourceNameRowToHelper(
+	dbServer sqlc.GetServerVersionBySourceNameRow,
+) helper {
+	return helper{
+		ID:                  dbServer.ID,
+		Name:                dbServer.Name,
+		Version:             dbServer.Version,
+		IsLatest:            dbServer.IsLatest,
+		CreatedAt:           dbServer.CreatedAt,
+		UpdatedAt:           dbServer.UpdatedAt,
+		Description:         dbServer.Description,
+		Title:               dbServer.Title,
+		Website:             dbServer.Website,
+		UpstreamMeta:        dbServer.UpstreamMeta,
+		ServerMeta:          dbServer.ServerMeta,
+		RepositoryUrl:       dbServer.RepositoryUrl,
+		RepositoryID:        dbServer.RepositoryID,
+		RepositorySubfolder: dbServer.RepositorySubfolder,
+		RepositoryType:      dbServer.RepositoryType,
+		Claims:              dbServer.Claims,
+		Position:            dbServer.Position,
 	}
 }
 

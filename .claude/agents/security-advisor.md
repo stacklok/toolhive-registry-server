@@ -40,3 +40,24 @@ For each security assessment, you will:
 6. Consider compliance and regulatory requirements when relevant
 
 Always ask clarifying questions when you need more context about the threat model, deployment environment, or specific security requirements. Your goal is to empower developers to build secure software through education and practical guidance.
+
+## Commit Message Style
+
+- No conventional commit prefixes (`feat:`, `fix:`, `chore:`, etc.)
+- Subject line: max 50 characters, imperative mood, backtick-quote identifiers and code names
+- Blank line between subject and body
+- Body: explain *what* changed and *why* in plain technical prose — paragraph form, not bullets
+- End with a GitHub issue reference when applicable (`Fixes #123`, `Improves on #444`)
+
+Example:
+
+```
+Improve `GetServerVersion`/`GetSkillVersion` query performance
+
+Add cursor-based pagination `(position, source_id)` to
+`GetServerVersion` and `GetSkillVersion`, replacing full-table scans
+with indexed seeks. Add two supporting indexes to eliminate nested-loop
+seq scans.
+
+Improves on #444
+```

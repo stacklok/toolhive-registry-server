@@ -12,35 +12,123 @@ import (
 	"github.com/google/uuid"
 )
 
-const deleteRegistryEntry = `-- name: DeleteRegistryEntry :execrows
-DELETE FROM registry_entry
-WHERE reg_id = $1
-  AND name = $2
-  AND version = $3
+const countEntryVersions = `-- name: CountEntryVersions :one
+SELECT count(*) FROM entry_version
+WHERE entry_id = $1
 `
 
-type DeleteRegistryEntryParams struct {
-	RegID   uuid.UUID `json:"reg_id"`
-	Name    string    `json:"name"`
+func (q *Queries) CountEntryVersions(ctx context.Context, entryID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countEntryVersions, entryID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const deleteEntryVersion = `-- name: DeleteEntryVersion :execrows
+DELETE FROM entry_version
+WHERE entry_id = $1
+  AND version = $2
+`
+
+type DeleteEntryVersionParams struct {
+	EntryID uuid.UUID `json:"entry_id"`
 	Version string    `json:"version"`
 }
 
-func (q *Queries) DeleteRegistryEntry(ctx context.Context, arg DeleteRegistryEntryParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteRegistryEntry, arg.RegID, arg.Name, arg.Version)
+func (q *Queries) DeleteEntryVersion(ctx context.Context, arg DeleteEntryVersionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEntryVersion, arg.EntryID, arg.Version)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const insertRegistryEntry = `-- name: InsertRegistryEntry :one
-INSERT INTO registry_entry (
-    reg_id,
-    entry_type,
+const deleteRegistryEntry = `-- name: DeleteRegistryEntry :execrows
+DELETE FROM registry_entry
+WHERE source_id = $1
+  AND entry_type = $2
+  AND name = $3
+`
+
+type DeleteRegistryEntryParams struct {
+	SourceID  uuid.UUID `json:"source_id"`
+	EntryType EntryType `json:"entry_type"`
+	Name      string    `json:"name"`
+}
+
+func (q *Queries) DeleteRegistryEntry(ctx context.Context, arg DeleteRegistryEntryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRegistryEntry, arg.SourceID, arg.EntryType, arg.Name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteRegistryEntryByID = `-- name: DeleteRegistryEntryByID :execrows
+DELETE FROM registry_entry
+WHERE id = $1
+`
+
+func (q *Queries) DeleteRegistryEntryByID(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRegistryEntryByID, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getLatestEntryVersion = `-- name: GetLatestEntryVersion :one
+SELECT l.version
+  FROM latest_entry_version l
+ WHERE l.name = $1
+   AND l.source_id = $2
+`
+
+type GetLatestEntryVersionParams struct {
+	Name     string    `json:"name"`
+	SourceID uuid.UUID `json:"source_id"`
+}
+
+func (q *Queries) GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error) {
+	row := q.db.QueryRow(ctx, getLatestEntryVersion, arg.Name, arg.SourceID)
+	var version string
+	err := row.Scan(&version)
+	return version, err
+}
+
+const getRegistryEntryByName = `-- name: GetRegistryEntryByName :one
+SELECT id, claims
+  FROM registry_entry
+ WHERE source_id = $1
+   AND entry_type = $2
+   AND name = $3
+`
+
+type GetRegistryEntryByNameParams struct {
+	SourceID  uuid.UUID `json:"source_id"`
+	EntryType EntryType `json:"entry_type"`
+	Name      string    `json:"name"`
+}
+
+type GetRegistryEntryByNameRow struct {
+	ID     uuid.UUID `json:"id"`
+	Claims []byte    `json:"claims"`
+}
+
+func (q *Queries) GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (GetRegistryEntryByNameRow, error) {
+	row := q.db.QueryRow(ctx, getRegistryEntryByName, arg.SourceID, arg.EntryType, arg.Name)
+	var i GetRegistryEntryByNameRow
+	err := row.Scan(&i.ID, &i.Claims)
+	return i, err
+}
+
+const insertEntryVersion = `-- name: InsertEntryVersion :one
+INSERT INTO entry_version (
+    entry_id,
     name,
+    version,
     title,
     description,
-    version,
     created_at,
     updated_at
 ) VALUES (
@@ -50,34 +138,227 @@ INSERT INTO registry_entry (
     $4,
     $5,
     $6,
-    $7,
-    $8
+    $7
 ) RETURNING id
 `
 
-type InsertRegistryEntryParams struct {
-	RegID       uuid.UUID  `json:"reg_id"`
-	EntryType   EntryType  `json:"entry_type"`
+type InsertEntryVersionParams struct {
+	EntryID     uuid.UUID  `json:"entry_id"`
 	Name        string     `json:"name"`
+	Version     string     `json:"version"`
 	Title       *string    `json:"title"`
 	Description *string    `json:"description"`
-	Version     string     `json:"version"`
 	CreatedAt   *time.Time `json:"created_at"`
 	UpdatedAt   *time.Time `json:"updated_at"`
 }
 
-func (q *Queries) InsertRegistryEntry(ctx context.Context, arg InsertRegistryEntryParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, insertRegistryEntry,
-		arg.RegID,
-		arg.EntryType,
+func (q *Queries) InsertEntryVersion(ctx context.Context, arg InsertEntryVersionParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, insertEntryVersion,
+		arg.EntryID,
 		arg.Name,
+		arg.Version,
 		arg.Title,
 		arg.Description,
-		arg.Version,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const insertRegistryEntry = `-- name: InsertRegistryEntry :one
+INSERT INTO registry_entry (
+    source_id,
+    entry_type,
+    name,
+    claims,
+    created_at,
+    updated_at
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6
+) RETURNING id
+`
+
+type InsertRegistryEntryParams struct {
+	SourceID  uuid.UUID  `json:"source_id"`
+	EntryType EntryType  `json:"entry_type"`
+	Name      string     `json:"name"`
+	Claims    []byte     `json:"claims"`
+	CreatedAt *time.Time `json:"created_at"`
+	UpdatedAt *time.Time `json:"updated_at"`
+}
+
+func (q *Queries) InsertRegistryEntry(ctx context.Context, arg InsertRegistryEntryParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, insertRegistryEntry,
+		arg.SourceID,
+		arg.EntryType,
+		arg.Name,
+		arg.Claims,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const listEntriesByRegistry = `-- name: ListEntriesByRegistry :many
+SELECT e.entry_type,
+       e.name,
+       v.version,
+       src.name AS source_name,
+       rs.position
+  FROM registry_source rs
+  JOIN source src ON rs.source_id = src.id
+  JOIN registry_entry e ON e.source_id = rs.source_id
+  JOIN entry_version v ON v.entry_id = e.id
+ WHERE rs.registry_id = $1
+ ORDER BY v.name ASC, v.version ASC, rs.position ASC
+`
+
+type ListEntriesByRegistryRow struct {
+	EntryType  EntryType `json:"entry_type"`
+	Name       string    `json:"name"`
+	Version    string    `json:"version"`
+	SourceName string    `json:"source_name"`
+	Position   int32     `json:"position"`
+}
+
+func (q *Queries) ListEntriesByRegistry(ctx context.Context, registryID uuid.UUID) ([]ListEntriesByRegistryRow, error) {
+	rows, err := q.db.Query(ctx, listEntriesByRegistry, registryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEntriesByRegistryRow{}
+	for rows.Next() {
+		var i ListEntriesByRegistryRow
+		if err := rows.Scan(
+			&i.EntryType,
+			&i.Name,
+			&i.Version,
+			&i.SourceName,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEntriesBySource = `-- name: ListEntriesBySource :many
+SELECT e.entry_type,
+       e.name,
+       e.claims,
+       v.version,
+       v.title,
+       v.description,
+       v.created_at,
+       v.updated_at
+  FROM registry_entry e
+  JOIN entry_version v ON v.entry_id = e.id
+ WHERE e.source_id = $1
+ ORDER BY v.name ASC, v.version ASC
+`
+
+type ListEntriesBySourceRow struct {
+	EntryType   EntryType  `json:"entry_type"`
+	Name        string     `json:"name"`
+	Claims      []byte     `json:"claims"`
+	Version     string     `json:"version"`
+	Title       *string    `json:"title"`
+	Description *string    `json:"description"`
+	CreatedAt   *time.Time `json:"created_at"`
+	UpdatedAt   *time.Time `json:"updated_at"`
+}
+
+func (q *Queries) ListEntriesBySource(ctx context.Context, sourceID uuid.UUID) ([]ListEntriesBySourceRow, error) {
+	rows, err := q.db.Query(ctx, listEntriesBySource, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEntriesBySourceRow{}
+	for rows.Next() {
+		var i ListEntriesBySourceRow
+		if err := rows.Scan(
+			&i.EntryType,
+			&i.Name,
+			&i.Claims,
+			&i.Version,
+			&i.Title,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEntryVersions = `-- name: ListEntryVersions :many
+SELECT id, version
+  FROM entry_version
+ WHERE entry_id = $1
+ ORDER BY version ASC
+`
+
+type ListEntryVersionsRow struct {
+	ID      uuid.UUID `json:"id"`
+	Version string    `json:"version"`
+}
+
+func (q *Queries) ListEntryVersions(ctx context.Context, entryID uuid.UUID) ([]ListEntryVersionsRow, error) {
+	rows, err := q.db.Query(ctx, listEntryVersions, entryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEntryVersionsRow{}
+	for rows.Next() {
+		var i ListEntryVersionsRow
+		if err := rows.Scan(&i.ID, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const propagateSourceClaimsToEntries = `-- name: PropagateSourceClaimsToEntries :exec
+UPDATE registry_entry
+   SET claims = $1,
+       updated_at = NOW()
+ WHERE source_id = $2
+   AND (claims IS DISTINCT FROM $1)
+`
+
+type PropagateSourceClaimsToEntriesParams struct {
+	Claims   []byte    `json:"claims"`
+	SourceID uuid.UUID `json:"source_id"`
+}
+
+// Update all registry entries for a source to match the source's current claims.
+// Used during initialization to fix drift when source claims change without data change.
+func (q *Queries) PropagateSourceClaimsToEntries(ctx context.Context, arg PropagateSourceClaimsToEntriesParams) error {
+	_, err := q.db.Exec(ctx, propagateSourceClaimsToEntries, arg.Claims, arg.SourceID)
+	return err
 }

@@ -76,6 +76,7 @@ func (s *defaultFilterService) ApplyFilters(
 		Data: toolhivetypes.UpstreamData{
 			Servers: make([]upstreamv0.ServerJSON, 0),
 			Groups:  reg.Data.Groups, // Preserve groups if any
+			Skills:  make([]toolhivetypes.Skill, 0),
 		},
 	}
 
@@ -121,10 +122,33 @@ func (s *defaultFilterService) ApplyFilters(
 		}
 	}
 
+	// Filter skills by name (namespace/name matches server name patterns)
+	skillIncluded := 0
+	skillExcluded := 0
+	for _, skill := range reg.Data.Skills {
+		skillName := skill.Namespace + "/" + skill.Name
+		included, reason := s.nameFilter.ShouldInclude(skillName, nameInclude, nameExclude)
+		if included {
+			filteredRegistry.Data.Skills = append(filteredRegistry.Data.Skills, skill)
+			skillIncluded++
+			slog.Info("Including skill",
+				"name", skillName,
+				"reason", reason)
+		} else {
+			skillExcluded++
+			slog.Info("Excluding skill",
+				"name", skillName,
+				"reason", reason)
+		}
+	}
+
 	slog.Info("Registry filtering completed",
 		"includedServers", includedCount,
 		"excludedServers", excludedCount,
-		"filteredServerCount", len(filteredRegistry.Data.Servers))
+		"filteredServerCount", len(filteredRegistry.Data.Servers),
+		"includedSkills", skillIncluded,
+		"excludedSkills", skillExcluded,
+		"filteredSkillCount", len(filteredRegistry.Data.Skills))
 
 	return filteredRegistry, nil
 }

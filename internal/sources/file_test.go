@@ -24,7 +24,7 @@ const testToolhiveRegistryData = `{
 
 // testUpstreamRegistryData is a test fixture for upstream MCP registry format
 const testUpstreamRegistryData = `{
-	"$schema": "https://raw.githubusercontent.com/stacklok/toolhive/main/pkg/registry/data/upstream-registry.schema.json",
+	"$schema": "https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/upstream-registry.schema.json",
 	"version": "1.0.0",
 	"meta": {
 		"last_updated": "2025-01-15T10:30:00Z"
@@ -73,13 +73,13 @@ func TestFileRegistryHandler_Validate(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		registryConfig *config.RegistryConfig
+		registryConfig *config.SourceConfig
 		expectError    bool
 		errorContains  string
 	}{
 		{
 			name: "valid file config with absolute path",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-file",
 				File: &config.FileConfig{
 					Path: "/tmp/registry.json",
@@ -89,7 +89,7 @@ func TestFileRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "valid file config with relative path",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-file",
 				File: &config.FileConfig{
 					Path: "./data/registry.json",
@@ -105,7 +105,7 @@ func TestFileRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "nil file config",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-file",
 				File: nil,
 			},
@@ -114,7 +114,7 @@ func TestFileRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "empty file path and url",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-file",
 				File: &config.FileConfig{
 					Path: "",
@@ -150,7 +150,7 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 	tests := []struct {
 		name           string
 		setupFile      func(t *testing.T) string
-		registryConfig func(filePath string) *config.RegistryConfig
+		registryConfig func(filePath string) *config.SourceConfig
 		expectError    bool
 		errorContains  string
 		checkResult    func(t *testing.T, result *FetchResult)
@@ -165,8 +165,8 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 				require.NoError(t, err)
 				return filePath
 			},
-			registryConfig: func(filePath string) *config.RegistryConfig {
-				return &config.RegistryConfig{
+			registryConfig: func(filePath string) *config.SourceConfig {
+				return &config.SourceConfig{
 					Name:   "test-file",
 					Format: config.SourceFormatToolHive,
 					File: &config.FileConfig{
@@ -193,8 +193,8 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 				require.NoError(t, err)
 				return filePath
 			},
-			registryConfig: func(filePath string) *config.RegistryConfig {
-				return &config.RegistryConfig{
+			registryConfig: func(filePath string) *config.SourceConfig {
+				return &config.SourceConfig{
 					Name:   "test-file",
 					Format: config.SourceFormatToolHive,
 					File: &config.FileConfig{
@@ -216,8 +216,8 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 			setupFile: func(_ *testing.T) string {
 				return "/nonexistent/path/registry.json"
 			},
-			registryConfig: func(filePath string) *config.RegistryConfig {
-				return &config.RegistryConfig{
+			registryConfig: func(filePath string) *config.SourceConfig {
+				return &config.SourceConfig{
 					Name:   "test-file",
 					Format: config.SourceFormatToolHive,
 					File: &config.FileConfig{
@@ -238,8 +238,8 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 				require.NoError(t, err)
 				return filePath
 			},
-			registryConfig: func(filePath string) *config.RegistryConfig {
-				return &config.RegistryConfig{
+			registryConfig: func(filePath string) *config.SourceConfig {
+				return &config.SourceConfig{
 					Name:   "test-file",
 					Format: config.SourceFormatToolHive,
 					File: &config.FileConfig{
@@ -255,8 +255,8 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 			setupFile: func(_ *testing.T) string {
 				return "/tmp/registry.json"
 			},
-			registryConfig: func(_ string) *config.RegistryConfig {
-				return &config.RegistryConfig{
+			registryConfig: func(_ string) *config.SourceConfig {
+				return &config.SourceConfig{
 					Name: "test-file",
 					File: &config.FileConfig{
 						Path: "", // Invalid - empty path
@@ -293,84 +293,18 @@ func TestFileRegistryHandler_FetchRegistry(t *testing.T) {
 	}
 }
 
-func TestFileRegistryHandler_CurrentHash(t *testing.T) {
-	t.Parallel()
-
-	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, "registry.json")
-	err := os.WriteFile(filePath, []byte(testToolhiveRegistryData), 0600)
-	require.NoError(t, err)
-
-	regCfg := &config.RegistryConfig{
-		Name:   "test-file",
-		Format: config.SourceFormatToolHive,
-		File: &config.FileConfig{
-			Path: filePath,
-		},
-	}
-
-	handler := NewFileRegistryHandler()
-	hash, err := handler.CurrentHash(context.Background(), regCfg)
-
-	require.NoError(t, err)
-	assert.NotEmpty(t, hash)
-
-	// Hash should be consistent
-	hash2, err := handler.CurrentHash(context.Background(), regCfg)
-	require.NoError(t, err)
-	assert.Equal(t, hash, hash2, "Hash should be deterministic for same file content")
-}
-
-func TestFileRegistryHandler_CurrentHash_FileNotFound(t *testing.T) {
-	t.Parallel()
-
-	regCfg := &config.RegistryConfig{
-		Name:   "test-file",
-		Format: config.SourceFormatToolHive,
-		File: &config.FileConfig{
-			Path: "/nonexistent/path/registry.json",
-		},
-	}
-
-	handler := NewFileRegistryHandler()
-	hash, err := handler.CurrentHash(context.Background(), regCfg)
-
-	require.Error(t, err)
-	assert.Empty(t, hash)
-	assert.Contains(t, err.Error(), "file not found")
-}
-
-func TestFileRegistryHandler_CurrentHash_ValidationFailure(t *testing.T) {
-	t.Parallel()
-
-	regCfg := &config.RegistryConfig{
-		Name:   "test-file",
-		Format: config.SourceFormatToolHive,
-		File: &config.FileConfig{
-			Path: "", // Invalid - empty path
-		},
-	}
-
-	handler := NewFileRegistryHandler()
-	hash, err := handler.CurrentHash(context.Background(), regCfg)
-
-	require.Error(t, err)
-	assert.Empty(t, hash)
-	assert.Contains(t, err.Error(), "registry validation failed")
-}
-
 func TestFileRegistryHandler_Validate_URL(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name           string
-		registryConfig *config.RegistryConfig
+		registryConfig *config.SourceConfig
 		expectError    bool
 		errorContains  string
 	}{
 		{
 			name: "valid url config",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-url",
 				File: &config.FileConfig{
 					URL: "https://example.com/registry.json",
@@ -380,7 +314,7 @@ func TestFileRegistryHandler_Validate_URL(t *testing.T) {
 		},
 		{
 			name: "valid url config with timeout",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-url",
 				File: &config.FileConfig{
 					URL:     "https://example.com/registry.json",
@@ -391,7 +325,7 @@ func TestFileRegistryHandler_Validate_URL(t *testing.T) {
 		},
 		{
 			name: "both path and url specified",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-file",
 				File: &config.FileConfig{
 					Path: "/tmp/registry.json",
@@ -403,7 +337,7 @@ func TestFileRegistryHandler_Validate_URL(t *testing.T) {
 		},
 		{
 			name: "neither path nor url specified",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-file",
 				File: &config.FileConfig{},
 			},
@@ -518,7 +452,7 @@ func TestFileRegistryHandler_FetchRegistry_URL(t *testing.T) {
 			client := httpclient.NewDefaultClient(DefaultURLTimeout)
 			handler := NewFileRegistryHandlerWithClient(client)
 
-			regCfg := &config.RegistryConfig{
+			regCfg := &config.SourceConfig{
 				Name:   "test-url",
 				Format: tt.format,
 				File: &config.FileConfig{
@@ -544,39 +478,6 @@ func TestFileRegistryHandler_FetchRegistry_URL(t *testing.T) {
 	}
 }
 
-func TestFileRegistryHandler_CurrentHash_URL(t *testing.T) {
-	t.Parallel()
-
-	// Create test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(testToolhiveRegistryData))
-	}))
-	defer server.Close()
-
-	// Create handler with custom HTTP client
-	client := httpclient.NewDefaultClient(DefaultURLTimeout)
-	handler := NewFileRegistryHandlerWithClient(client)
-
-	regCfg := &config.RegistryConfig{
-		Name:   "test-url",
-		Format: config.SourceFormatToolHive,
-		File: &config.FileConfig{
-			URL: server.URL,
-		},
-	}
-
-	hash, err := handler.CurrentHash(context.Background(), regCfg)
-
-	require.NoError(t, err)
-	assert.NotEmpty(t, hash)
-
-	// Hash should be consistent for same content
-	hash2, err := handler.CurrentHash(context.Background(), regCfg)
-	require.NoError(t, err)
-	assert.Equal(t, hash, hash2, "Hash should be deterministic for same content")
-}
-
 func TestFileRegistryHandler_FetchRegistry_URL_WithTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -591,7 +492,7 @@ func TestFileRegistryHandler_FetchRegistry_URL_WithTimeout(t *testing.T) {
 	client := httpclient.NewDefaultClient(DefaultURLTimeout)
 	handler := NewFileRegistryHandlerWithClient(client)
 
-	regCfg := &config.RegistryConfig{
+	regCfg := &config.SourceConfig{
 		Name:   "test-url",
 		Format: config.SourceFormatToolHive,
 		File: &config.FileConfig{

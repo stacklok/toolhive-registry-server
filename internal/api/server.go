@@ -15,7 +15,8 @@ import (
 	// Import generated docs package to register OpenAPI spec via init()
 	_ "github.com/stacklok/toolhive-registry-server/docs/thv-registry-api"
 	v01 "github.com/stacklok/toolhive-registry-server/internal/api/registry/v01"
-	extensionv0 "github.com/stacklok/toolhive-registry-server/internal/api/x/v0"
+	apiv1 "github.com/stacklok/toolhive-registry-server/internal/api/v1"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
@@ -28,10 +29,7 @@ type serverConfig struct {
 	// shared with the other layers of the application.
 	middlewares     []func(http.Handler) http.Handler
 	authInfoHandler http.Handler
-
-	// enableAggregatedEndpoints enables aggregated endpoints that access all
-	// configured registries.
-	enableAggregatedEndpoints bool
+	authzConfig     *config.AuthzConfig
 }
 
 // WithMiddlewares adds middleware to the server
@@ -48,10 +46,10 @@ func WithAuthInfoHandler(handler http.Handler) ServerOption {
 	}
 }
 
-// WithAggregatedEndpoints enables aggregated endpoints that access all configured registries
-func WithAggregatedEndpoints(enableAggregatedEndpoints bool) ServerOption {
+// WithAuthzConfig sets the authorization configuration for role-based access control
+func WithAuthzConfig(authzCfg *config.AuthzConfig) ServerOption {
 	return func(cfg *serverConfig) {
-		cfg.enableAggregatedEndpoints = enableAggregatedEndpoints
+		cfg.authzConfig = authzCfg
 	}
 }
 
@@ -74,11 +72,6 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 		r.Use(mw)
 	}
 
-	// Mount operational endpoints at root
-	r.Get("/health", healthHandler)
-	r.Get("/readiness", readinessHandler(svc))
-	r.Get("/version", versionHandler)
-
 	// Mount OpenAPI endpoint
 	r.Get("/openapi.json", openAPIHandler)
 
@@ -88,21 +81,27 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 	}
 
 	// Mount MCP Registry API v0.1 routes
-	r.Mount("/registry", v01.Router(svc, cfg.enableAggregatedEndpoints))
-	r.Mount("/extension/v0", extensionv0.Router(svc))
+	r.Mount("/registry", v01.Router(svc))
+	r.Mount("/v1", apiv1.Router(svc, cfg.authzConfig))
 
+	return r
+}
+
+// NewInternalServer creates a minimal HTTP router for internal operational
+// endpoints (health, readiness, version). These endpoints are intended to
+// run on a separate port so that Kubernetes probes hit a dedicated server
+// that carries no authentication or application middleware.
+func NewInternalServer(svc service.RegistryService) *chi.Mux {
+	r := chi.NewRouter()
+	r.Get("/health", healthHandler)
+	r.Get("/readiness", readinessHandler(svc))
+	r.Get("/version", versionHandler)
 	return r
 }
 
 // LoggingMiddleware logs HTTP requests
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip logging for health and readiness endpoints
-		if r.URL.Path == "/health" || r.URL.Path == "/readiness" {
-			next.ServeHTTP(w, r)
-			return
-		}
-
 		start := time.Now()
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 
@@ -142,10 +141,11 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
 	doc, err := swag.ReadDoc("swagger")
 	if err != nil {
+		slog.Error("Failed to read OpenAPI specification", "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		errorResp := map[string]string{
-			"error": "Failed to read OpenAPI specification: " + err.Error(),
+			"error": "failed to read OpenAPI specification",
 		}
 		if encodeErr := json.NewEncoder(w).Encode(errorResp); encodeErr != nil {
 			slog.Error("Failed to encode OpenAPI error response", "error", encodeErr)
@@ -187,13 +187,13 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 func readinessHandler(svc service.RegistryService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := svc.CheckReadiness(r.Context()); err != nil {
-			slog.Warn("Readiness check failed",
+			slog.WarnContext(r.Context(), "Readiness check failed",
 				"error", err,
 				"remote_addr", r.RemoteAddr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			errorResp := map[string]string{
-				"error": "RegistryService not ready: " + err.Error(),
+				"error": "service not ready",
 			}
 			if encodeErr := json.NewEncoder(w).Encode(errorResp); encodeErr != nil {
 				slog.Error("Failed to encode readiness error response", "error", encodeErr)

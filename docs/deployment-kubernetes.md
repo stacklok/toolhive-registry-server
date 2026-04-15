@@ -28,7 +28,7 @@ The Registry API is designed to run as a sidecar container alongside the ToolHiv
 
 - Kubernetes cluster (1.24+)
 - `kubectl` configured to access your cluster
-- PostgreSQL database (if using database backend)
+- PostgreSQL database (required)
 - Container image: `ghcr.io/stacklok/toolhive/thv-registry-api:latest`
 
 ## Basic Deployment
@@ -43,16 +43,18 @@ metadata:
   namespace: toolhive
 data:
   config.yaml: |
-    registryName: my-registry
-    registries:
+    sources:
       - name: toolhive
         format: toolhive
         git:
-          repository: https://github.com/stacklok/toolhive.git
+          repository: https://github.com/stacklok/toolhive-catalog.git
           branch: main
-          path: pkg/registry/data/registry.json
+          path: pkg/catalog/toolhive/data/registry-legacy.json
         syncPolicy:
           interval: "15m"
+    registries:
+      - name: default
+        sources: ["toolhive"]
     auth:
       mode: anonymous  # For development only!
 ---
@@ -190,16 +192,18 @@ metadata:
   namespace: toolhive
 data:
   config.yaml: |
-    registryName: my-registry
-    registries:
+    sources:
       - name: toolhive
         format: toolhive
         git:
-          repository: https://github.com/stacklok/toolhive.git
+          repository: https://github.com/stacklok/toolhive-catalog.git
           branch: main
-          path: pkg/registry/data/registry.json
+          path: pkg/catalog/toolhive/data/registry-legacy.json
         syncPolicy:
           interval: "15m"
+    registries:
+      - name: default
+        sources: ["toolhive"]
     auth:
       mode: oauth
       oauth:

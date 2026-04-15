@@ -60,23 +60,24 @@ The command removes all the Kubernetes components associated with the chart and 
 | config.database.port | int | `5432` |  |
 | config.database.sslMode | string | `"require"` |  |
 | config.database.user | string | `"thv_user"` |  |
-| config.registries[0].format | string | `"toolhive"` |  |
-| config.registries[0].git.branch | string | `"main"` |  |
-| config.registries[0].git.path | string | `"pkg/registry/data/registry.json"` |  |
-| config.registries[0].git.repository | string | `"https://github.com/stacklok/toolhive.git"` |  |
-| config.registries[0].name | string | `"toolhive"` |  |
-| config.registries[0].syncPolicy.interval | string | `"30m"` |  |
-| config.registryName | string | `"default"` |  |
+| config.registries[0].name | string | `"default"` |  |
+| config.registries[0].sources[0] | string | `"toolhive"` |  |
+| config.sources[0].format | string | `"toolhive"` |  |
+| config.sources[0].git.branch | string | `"main"` |  |
+| config.sources[0].git.path | string | `"pkg/catalog/toolhive/data/registry-legacy.json"` |  |
+| config.sources[0].git.repository | string | `"https://github.com/stacklok/toolhive-catalog.git"` |  |
+| config.sources[0].name | string | `"toolhive"` |  |
+| config.sources[0].syncPolicy.interval | string | `"30m"` |  |
 | extraEnv | list | `[]` | Additional environment variables to add to the container Use this for secrets, feature flags, or runtime configuration |
 | extraEnvFrom | list | `[]` | Additional environment variables from ConfigMap or Secret references |
 | extraVolumeMounts | list | `[]` | Additional volume mounts to add to the container |
 | extraVolumes | list | `[]` | Additional volumes to add to the pod |
 | fullnameOverride | string | `""` | Override the full name of the chart |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
-| image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v0.6.2"` | URL of the registry server image |
+| image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v1.1.1"` | URL of the registry server image |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries |
 | initContainers | list | `[]` | Init containers to run before the main container Use this for setup tasks like preparing pgpass files, waiting for dependencies, etc. Init containers share the same volumes as the main container (extraVolumes) |
-| livenessProbe | object | `{"httpGet":{"path":"/health","port":"http"},"initialDelaySeconds":30,"periodSeconds":10}` | Liveness probe configuration |
+| livenessProbe | object | `{"httpGet":{"path":"/health","port":"internal-http"},"initialDelaySeconds":30,"periodSeconds":10}` | Liveness probe configuration |
 | nameOverride | string | `""` | Override the name of the chart |
 | nodeSelector | object | `{}` | Node selector for pod scheduling |
 | podAnnotations | object | `{}` | Annotations to add to the pod |
@@ -85,7 +86,7 @@ The command removes all the Kubernetes components associated with the chart and 
 | rbac | object | `{"allowedNamespaces":[],"scope":"cluster"}` | RBAC configuration for the registry server |
 | rbac.allowedNamespaces | list | `[]` | List of namespaces that the registry server is allowed to watch. Only used if scope is set to "namespace". |
 | rbac.scope | string | `"cluster"` | Scope of the RBAC configuration. - cluster: The registry server will have cluster-wide permissions via ClusterRole and ClusterRoleBinding. - namespace: The registry server will have permissions to watch resources in the namespaces specified in `allowedNamespaces`.   The registry server will have a ClusterRole and RoleBinding for each namespace in `allowedNamespaces`. |
-| readinessProbe | object | `{"httpGet":{"path":"/readiness","port":"http"},"initialDelaySeconds":5,"periodSeconds":5}` | Readiness probe configuration |
+| readinessProbe | object | `{"httpGet":{"path":"/readiness","port":"internal-http"},"initialDelaySeconds":5,"periodSeconds":5}` | Readiness probe configuration |
 | replicaCount | int | `1` | Number of replicas |
 | resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | Resource requests and limits (matching operator defaults) |
 | securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"runAsUser":65535,"seccompProfile":{"type":"RuntimeDefault"}}` | Container security context |

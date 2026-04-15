@@ -117,7 +117,7 @@ func WithTags(tags ...string) ServerOption {
 		}
 
 		// Convert tags to interface slice
-		tagInterfaces := make([]interface{}, len(tags))
+		tagInterfaces := make([]any, len(tags))
 		for i, tag := range tags {
 			tagInterfaces[i] = tag
 		}

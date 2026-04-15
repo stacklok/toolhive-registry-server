@@ -5,7 +5,7 @@ package sources
 // Future enhancement should:
 // - Add updatedSince parameter to FetchRegistry (use /v0.1/servers?updated_since={timestamp})
 // - Modify storage layer to support UPSERT/merge instead of full replacement
-// - Optimize CurrentHash to avoid full fetch (use ETag/Last-Modified headers)
+// - Optimize change detection to avoid full fetch (use ETag/Last-Modified headers)
 // This would significantly reduce bandwidth and processing for large registries.
 // See: https://github.com/stacklok/toolhive-registry-server/issues/XXX (create issue)
 
@@ -63,13 +63,13 @@ func (h *upstreamAPIHandler) Validate(ctx context.Context, endpoint string) erro
 	}
 
 	// Parse YAML into a map
-	var openapiSpec map[string]interface{}
+	var openapiSpec map[string]any
 	if err := yaml.Unmarshal(data, &openapiSpec); err != nil {
 		return fmt.Errorf("failed to parse /openapi.yaml: %w", err)
 	}
 
 	// Check for 'info' section
-	info, ok := openapiSpec["info"].(map[string]interface{})
+	info, ok := openapiSpec["info"].(map[string]any)
 	if !ok {
 		return fmt.Errorf("/openapi.yaml missing 'info' section")
 	}
@@ -99,7 +99,7 @@ func (h *upstreamAPIHandler) Validate(ctx context.Context, endpoint string) erro
 
 // FetchRegistry retrieves registry data from the upstream MCP Registry API endpoint
 // It fetches all servers via pagination and converts them to ToolHive's UpstreamRegistry format
-func (h *upstreamAPIHandler) FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error) {
+func (h *upstreamAPIHandler) FetchRegistry(ctx context.Context, regCfg *config.SourceConfig) (*FetchResult, error) {
 	logger := log.FromContext(ctx)
 	baseURL := getBaseURL(regCfg)
 
@@ -122,17 +122,6 @@ func (h *upstreamAPIHandler) FetchRegistry(ctx context.Context, regCfg *config.R
 
 	// Return as FetchResult
 	return NewFetchResult(upstreamReg, hash, config.SourceFormatUpstream), nil
-}
-
-// CurrentHash returns the current hash of the API response
-// TODO: Optimize this - could use HEAD request, ETag header, or last-modified header
-// For now, perform full fetch to get hash (simple but consistent with git/file handlers)
-func (h *upstreamAPIHandler) CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error) {
-	result, err := h.FetchRegistry(ctx, regCfg)
-	if err != nil {
-		return "", err
-	}
-	return result.Hash, nil
 }
 
 // fetchAllServers performs paginated fetching and returns all ServerJSON objects
@@ -231,7 +220,7 @@ func (*upstreamAPIHandler) calculateHash(reg *toolhivetypes.UpstreamRegistry) (s
 }
 
 // getBaseURL extracts and normalizes the base URL from the registry configuration
-func getBaseURL(regCfg *config.RegistryConfig) string {
+func getBaseURL(regCfg *config.SourceConfig) string {
 	baseURL := regCfg.API.Endpoint
 
 	// Remove trailing slash

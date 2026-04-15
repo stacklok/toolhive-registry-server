@@ -102,6 +102,13 @@ func (d *DatabaseFactory) CreateRegistryService(_ context.Context) (service.Regi
 		slog.Debug("Database service tracing enabled")
 	}
 
+	// When authz is not configured, skip per-entry claims filtering and
+	// registry-level claims gating (auth-only mode).
+	if d.config.Auth == nil || d.config.Auth.Authz == nil {
+		slog.Warn("Authorization not configured, per-entry claims filtering disabled (auth-only mode)")
+		opts = append(opts, database.WithSkipAuthz())
+	}
+
 	return database.New(opts...)
 }
 
@@ -197,7 +204,7 @@ func buildDatabaseConnectionPool(ctx context.Context, cfg *config.Config) (*pgxp
 // of custom enum types into PostgreSQL array types.
 func registerCustomArrayCodecs(ctx context.Context, conn *pgx.Conn) error {
 	// List of enum types that need array codec registration
-	enumTypes := []string{"registry_type", "sync_status", "icon_theme", "creation_type"}
+	enumTypes := []string{"sync_status", "icon_theme", "creation_type"}
 
 	for _, enumName := range enumTypes {
 		// Get the OID for the enum from the database

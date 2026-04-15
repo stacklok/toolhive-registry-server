@@ -1,4 +1,4 @@
-name: Codegen
+name: Verify Generated Files
 
 on:
   workflow_call:
@@ -7,30 +7,34 @@ permissions:
   contents: read
 
 jobs:
-  verify-code-generation:
-    name: Verify Code Generation
+  verify-generated-files:
+    name: Verify Generated Files
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
-          go-version-file: go.mod
+          go-version: 'stable'
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.44.1
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install codegen tools
         run: task install-codegen
+      - name: Install swag
+        run: task install-swagger
       - name: Generate code files
         run: task gen
-      - name: Check for changes
+      - name: Check for codegen changes
         run: |
-          if ! git diff --exit-code docs/thv-registry-api/; then
+          if ! git diff --exit-code -- . ':!docs/'; then
             echo "❌ Generated code files are not up to date!"
             echo "Please run 'task gen' and commit the changes."
             exit 1
           else
             echo "✅ Generated code files are up to date!"
           fi
+      - name: Verify docs
+        run: ./cmd/help/verify.sh

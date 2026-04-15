@@ -14,7 +14,7 @@ func TestInterval_Scan(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		input    interface{}
+		input    any
 		expected Interval
 		wantErr  bool
 	}{
@@ -158,7 +158,7 @@ func TestInterval_Value(t *testing.T) {
 	tests := []struct {
 		name     string
 		interval Interval
-		expected interface{}
+		expected any
 	}{
 		{
 			name: "null interval",

@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	config "github.com/stacklok/toolhive-registry-server/internal/config"
+	sources "github.com/stacklok/toolhive-registry-server/internal/sources"
 	status "github.com/stacklok/toolhive-registry-server/internal/status"
 	sync "github.com/stacklok/toolhive-registry-server/internal/sync"
 	gomock "go.uber.org/mock/gomock"
@@ -44,26 +45,27 @@ func (m *MockManager) EXPECT() *MockManagerMockRecorder {
 }
 
 // PerformSync mocks base method.
-func (m *MockManager) PerformSync(ctx context.Context, regCfg *config.RegistryConfig) (*sync.Result, *sync.Error) {
+func (m *MockManager) PerformSync(ctx context.Context, regCfg *config.SourceConfig, prefetched *sources.FetchResult) (*sync.Result, *sync.Error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PerformSync", ctx, regCfg)
+	ret := m.ctrl.Call(m, "PerformSync", ctx, regCfg, prefetched)
 	ret0, _ := ret[0].(*sync.Result)
 	ret1, _ := ret[1].(*sync.Error)
 	return ret0, ret1
 }
 
 // PerformSync indicates an expected call of PerformSync.
-func (mr *MockManagerMockRecorder) PerformSync(ctx, regCfg any) *gomock.Call {
+func (mr *MockManagerMockRecorder) PerformSync(ctx, regCfg, prefetched any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PerformSync", reflect.TypeOf((*MockManager)(nil).PerformSync), ctx, regCfg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PerformSync", reflect.TypeOf((*MockManager)(nil).PerformSync), ctx, regCfg, prefetched)
 }
 
 // ShouldSync mocks base method.
-func (m *MockManager) ShouldSync(ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus, manualSyncRequested bool) sync.Reason {
+func (m *MockManager) ShouldSync(ctx context.Context, regCfg *config.SourceConfig, syncStatus *status.SyncStatus, manualSyncRequested bool) (sync.Reason, *sources.FetchResult) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ShouldSync", ctx, regCfg, syncStatus, manualSyncRequested)
 	ret0, _ := ret[0].(sync.Reason)
-	return ret0
+	ret1, _ := ret[1].(*sources.FetchResult)
+	return ret0, ret1
 }
 
 // ShouldSync indicates an expected call of ShouldSync.

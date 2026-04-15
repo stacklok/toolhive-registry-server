@@ -22,9 +22,10 @@ jobs:
   tests:
     name: Tests
     uses: ./.github/workflows/test.yml
-    secrets: inherit
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   codegen:
-    name: Codegen
+    name: Verify Generated Files
     uses: ./.github/workflows/verify-gen.yml
   image-build-and-push:
     name: Build and Sign Image

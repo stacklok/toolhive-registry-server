@@ -22,13 +22,10 @@ type RegistryDataValidator interface {
 // RegistryHandler is an interface with methods to fetch data from external data sources
 type RegistryHandler interface {
 	// FetchRegistry retrieves data from the source and returns the result
-	FetchRegistry(ctx context.Context, regCfg *config.RegistryConfig) (*FetchResult, error)
+	FetchRegistry(ctx context.Context, regCfg *config.SourceConfig) (*FetchResult, error)
 
 	// Validate validates the registry configuration
-	Validate(regCfg *config.RegistryConfig) error
-
-	// CurrentHash returns the current hash of the source data without performing a full fetch
-	CurrentHash(ctx context.Context, regCfg *config.RegistryConfig) (string, error)
+	Validate(regCfg *config.SourceConfig) error
 }
 
 // FetchResult contains the result of a fetch operation
@@ -42,22 +39,28 @@ type FetchResult struct {
 	// ServerCount is the number of servers found in the registry data
 	ServerCount int
 
+	// SkillCount is the number of skills found in the registry data
+	SkillCount int
+
 	// Format indicates the original format of the source data
 	Format string
 }
 
 // NewFetchResult creates a new FetchResult from a UpstreamRegistry instance and pre-calculated hash
-// The hash should be calculated by the registry handler to ensure consistency with CurrentHash
+// The hash should be calculated by the registry handler from the raw source data
 func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string, format string) *FetchResult {
 	serverCount := 0
+	skillCount := 0
 	if reg != nil {
 		serverCount = len(reg.Data.Servers)
+		skillCount = len(reg.Data.Skills)
 	}
 
 	return &FetchResult{
 		Registry:    reg,
 		Hash:        hash,
 		ServerCount: serverCount,
+		SkillCount:  skillCount,
 		Format:      format,
 	}
 }
@@ -66,7 +69,7 @@ func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string, format str
 type RegistryHandlerFactory interface {
 	// CreateHandler creates a registry handler for the given registry configuration
 	// The source type is inferred from which field is present (Git/API/File)
-	CreateHandler(regCfg *config.RegistryConfig) (RegistryHandler, error)
+	CreateHandler(regCfg *config.SourceConfig) (RegistryHandler, error)
 }
 
 // defaultRegistryDataValidator is the default implementation of RegistryDataValidator

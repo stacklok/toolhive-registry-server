@@ -21,8 +21,7 @@ func TestCoordinator_New(t *testing.T) {
 	mockManager := syncmocks.NewMockManager(ctrl)
 	mockStateSvc := statemocks.NewMockRegistryStateService(ctrl)
 	cfg := &config.Config{
-		RegistryName: "test-registry",
-		Registries: []config.RegistryConfig{
+		Sources: []config.SourceConfig{
 			{Name: "registry-1"},
 		},
 	}
@@ -41,8 +40,7 @@ func TestCoordinator_Stop_BeforeStart(t *testing.T) {
 	mockManager := syncmocks.NewMockManager(ctrl)
 	mockStateSvc := statemocks.NewMockRegistryStateService(ctrl)
 	cfg := &config.Config{
-		RegistryName: "test-registry",
-		Registries:   []config.RegistryConfig{},
+		Sources: []config.SourceConfig{},
 	}
 
 	coordinator := New(mockManager, mockStateSvc, cfg)

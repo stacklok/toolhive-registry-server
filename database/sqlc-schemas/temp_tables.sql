@@ -6,18 +6,27 @@
 
 CREATE TABLE temp_registry_entry (
     id UUID PRIMARY KEY,
-    reg_id UUID NOT NULL,
+    source_id UUID NOT NULL,
     entry_type entry_type NOT NULL,
     name TEXT NOT NULL,
+    claims JSONB,
+    created_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE temp_entry_version (
+    id UUID PRIMARY KEY,
+    entry_id UUID NOT NULL,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
     title TEXT,
     description TEXT,
-    version TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE,
     updated_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE TABLE temp_mcp_server (
-    entry_id UUID NOT NULL,
+    version_id UUID NOT NULL,
     website TEXT,
     upstream_meta JSONB,
     server_meta JSONB,

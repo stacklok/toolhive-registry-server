@@ -97,7 +97,7 @@ func TestHelperToServer(t *testing.T) {
 			},
 			packages: []sqlc.ListServerPackagesRow{
 				{
-					EntryID:        uuid.New(),
+					ServerID:       uuid.New(),
 					RegistryType:   "npm",
 					PkgRegistryUrl: "https://registry.npmjs.org",
 					PkgIdentifier:  "@example/mcp",
@@ -107,7 +107,7 @@ func TestHelperToServer(t *testing.T) {
 			},
 			remotes: []sqlc.McpServerRemote{
 				{
-					EntryID:      uuid.New(),
+					ServerID:     uuid.New(),
 					Transport:    "sse",
 					TransportUrl: "https://example.com/sse",
 				},
@@ -185,14 +185,14 @@ func TestSerializePublisherProvidedMeta(t *testing.T) {
 		{
 			name: "empty PublisherProvided",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{},
+				PublisherProvided: map[string]any{},
 			},
 			expectNil: true,
 		},
 		{
 			name: "with data within limit",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{
+				PublisherProvided: map[string]any{
 					"key": "value",
 				},
 			},
@@ -202,7 +202,7 @@ func TestSerializePublisherProvidedMeta(t *testing.T) {
 		{
 			name: "with data exceeding limit",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{
+				PublisherProvided: map[string]any{
 					"key": "value",
 				},
 			},
@@ -212,8 +212,8 @@ func TestSerializePublisherProvidedMeta(t *testing.T) {
 		{
 			name: "with nested data within limit",
 			meta: &upstreamv0.ServerMeta{
-				PublisherProvided: map[string]interface{}{
-					"nested": map[string]interface{}{
+				PublisherProvided: map[string]any{
+					"nested": map[string]any{
 						"key": "value",
 					},
 				},
@@ -240,6 +240,122 @@ func TestSerializePublisherProvidedMeta(t *testing.T) {
 					assert.Greater(t, len(result), 0)
 				}
 			}
+		})
+	}
+}
+
+func TestNewDeduplicatingFilter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		input  []helper
+		expect []helper
+	}{
+		{
+			name:   "empty input returns empty slice",
+			input:  []helper{},
+			expect: []helper{},
+		},
+		{
+			name: "single entry single version returned as-is",
+			input: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 0},
+			},
+			expect: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 0},
+			},
+		},
+		{
+			name: "single entry name multiple versions from same source all kept",
+			input: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 2},
+				{Name: "server-a", Version: "2.0.0", Position: 2},
+				{Name: "server-a", Version: "3.0.0", Position: 2},
+			},
+			expect: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 2},
+				{Name: "server-a", Version: "2.0.0", Position: 2},
+				{Name: "server-a", Version: "3.0.0", Position: 2},
+			},
+		},
+		{
+			name: "same entry name from two sources keeps only first-seen position",
+			input: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 1},
+				{Name: "server-a", Version: "2.0.0", Position: 1},
+				{Name: "server-a", Version: "1.0.0", Position: 5},
+				{Name: "server-a", Version: "3.0.0", Position: 5},
+			},
+			expect: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 1},
+				{Name: "server-a", Version: "2.0.0", Position: 1},
+			},
+		},
+		{
+			name: "multiple entry names independently resolved with position-ascending input",
+			input: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 3},
+				{Name: "server-a", Version: "2.0.0", Position: 3},
+				{Name: "server-b", Version: "1.0.0", Position: 3},
+				{Name: "server-a", Version: "1.0.0", Position: 7},
+				{Name: "server-b", Version: "1.0.0", Position: 7},
+				{Name: "server-b", Version: "2.0.0", Position: 7},
+			},
+			expect: []helper{
+				{Name: "server-a", Version: "1.0.0", Position: 3},
+				{Name: "server-a", Version: "2.0.0", Position: 3},
+				{Name: "server-b", Version: "1.0.0", Position: 3},
+			},
+		},
+		{
+			name: "first-seen position wins with position-ascending input",
+			input: []helper{
+				{Name: "server-x", Version: "best", Position: 2},
+				{Name: "server-x", Version: "also-best", Position: 2},
+				{Name: "server-x", Version: "mid", Position: 5},
+				{Name: "server-x", Version: "old", Position: 10},
+				{Name: "server-x", Version: "newer", Position: 10},
+			},
+			expect: []helper{
+				{Name: "server-x", Version: "best", Position: 2},
+				{Name: "server-x", Version: "also-best", Position: 2},
+			},
+		},
+		{
+			name: "same position for different names keeps both",
+			input: []helper{
+				{Name: "alpha", Version: "1.0.0", Position: 4},
+				{Name: "beta", Version: "1.0.0", Position: 4},
+				{Name: "beta", Version: "2.0.0", Position: 4},
+			},
+			expect: []helper{
+				{Name: "alpha", Version: "1.0.0", Position: 4},
+				{Name: "beta", Version: "1.0.0", Position: 4},
+				{Name: "beta", Version: "2.0.0", Position: 4},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			filter := newDeduplicatingFilter()
+			var got []helper
+			for _, h := range tt.input {
+				keep, err := filter(t.Context(), h)
+				require.NoError(t, err)
+				if keep {
+					got = append(got, h)
+				}
+			}
+			// Normalize nil to empty slice for comparison
+			if got == nil {
+				got = []helper{}
+			}
+
+			assert.Equal(t, tt.expect, got)
 		})
 	}
 }

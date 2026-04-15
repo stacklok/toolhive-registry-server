@@ -15,9 +15,10 @@ import (
 // RegistryApp encapsulates all components needed to run the registry API server
 // It provides lifecycle management and graceful shutdown capabilities
 type RegistryApp struct {
-	config     *config.Config
-	components *AppComponents
-	httpServer *http.Server
+	config             *config.Config
+	components         *AppComponents
+	httpServer         *http.Server
+	internalHTTPServer *http.Server
 
 	// Lifecycle management
 	ctx        context.Context
@@ -31,6 +32,14 @@ func (app *RegistryApp) Start() error {
 	go func() {
 		if err := app.components.SyncCoordinator.Start(app.ctx); err != nil {
 			slog.Error("Sync coordinator failed", "error", err)
+		}
+	}()
+
+	// Start internal HTTP server in background
+	go func() {
+		slog.Info("Internal server listening", "address", app.internalHTTPServer.Addr)
+		if err := app.internalHTTPServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("Internal HTTP server failed", "error", err)
 		}
 	}()
 
@@ -62,8 +71,22 @@ func (app *RegistryApp) Stop(timeout time.Duration) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	var shutdownErr error
 	if err := app.httpServer.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("server forced to shutdown: %w", err)
+		shutdownErr = fmt.Errorf("server forced to shutdown: %w", err)
+	}
+
+	if err := app.internalHTTPServer.Shutdown(shutdownCtx); err != nil {
+		internalErr := fmt.Errorf("internal server forced to shutdown: %w", err)
+		if shutdownErr != nil {
+			shutdownErr = errors.Join(shutdownErr, internalErr)
+		} else {
+			shutdownErr = internalErr
+		}
+	}
+
+	if shutdownErr != nil {
+		return shutdownErr
 	}
 
 	slog.Info("Server shutdown complete")
@@ -78,4 +101,9 @@ func (app *RegistryApp) GetConfig() *config.Config {
 // GetHTTPServer returns the HTTP server (useful for testing to get the actual port)
 func (app *RegistryApp) GetHTTPServer() *http.Server {
 	return app.httpServer
+}
+
+// GetInternalHTTPServer returns the internal HTTP server (useful for testing to get the actual port)
+func (app *RegistryApp) GetInternalHTTPServer() *http.Server {
+	return app.internalHTTPServer
 }

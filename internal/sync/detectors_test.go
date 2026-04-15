@@ -2,6 +2,8 @@ package sync
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/registry"
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 )
@@ -22,20 +25,22 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 	tempDir := t.TempDir()
 	testFilePath := filepath.Join(tempDir, "registry.json")
 
-	// Create test registry data with hash "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" (SHA256 of "test")
-	testData := []byte("test")
+	// Create valid ToolHive registry data so FetchRegistry can parse it
+	testReg := registry.NewTestToolHiveRegistry()
+	testData := registry.ToolHiveRegistryToJSON(testReg)
+	testHash := fmt.Sprintf("%x", sha256.Sum256(testData))
 	require.NoError(t, os.WriteFile(testFilePath, testData, 0644))
 
 	tests := []struct {
 		name            string
-		config          *config.RegistryConfig
+		config          *config.SourceConfig
 		status          *status.SyncStatus
 		expectedChanged bool
 		expectError     bool
 	}{
 		{
 			name: "data changed when no last sync hash",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -50,7 +55,7 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 		},
 		{
 			name: "data unchanged when hash matches",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -58,14 +63,14 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 				},
 			},
 			status: &status.SyncStatus{
-				LastSyncHash: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", // SHA256 of "test"
+				LastSyncHash: testHash,
 			},
 			expectedChanged: false,
 			expectError:     false,
 		},
 		{
 			name: "data changed when hash differs",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -80,7 +85,7 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 		},
 		{
 			name: "error when file not found",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -108,7 +113,7 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			changed, err := detector.IsDataChanged(ctx, tt.config, tt.status)
+			changed, fetchResult, err := detector.IsDataChanged(ctx, tt.config, tt.status)
 
 			assert.Equal(t, tt.expectedChanged, changed, "Data change detection result should match expected")
 
@@ -116,6 +121,7 @@ func TestDefaultDataChangeDetector_IsDataChanged(t *testing.T) {
 				assert.Error(t, err, "Expected an error")
 			} else {
 				assert.NoError(t, err, "Should not have an error")
+				assert.NotNil(t, fetchResult, "FetchResult should not be nil on success")
 			}
 		})
 	}
@@ -130,7 +136,7 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 
 	tests := []struct {
 		name                 string
-		config               *config.RegistryConfig
+		config               *config.SourceConfig
 		status               *status.SyncStatus
 		expectedSyncNeeded   bool
 		expectedNextTimeFunc func(time.Time) bool // Function to verify nextSyncTime
@@ -138,7 +144,7 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 	}{
 		{
 			name: "nil sync status - no sync needed",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 			},
@@ -148,7 +154,7 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 		},
 		{
 			name: "empty sync schedule - no sync needed (non-synced registry)",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 			},
@@ -160,7 +166,7 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 		},
 		{
 			name: "invalid interval format in sync status",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 			},
@@ -173,7 +179,7 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 		},
 		{
 			name: "no last sync time - sync needed",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 			},
@@ -191,7 +197,7 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 		},
 		{
 			name: "last sync time in past - sync needed",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 			},
@@ -209,7 +215,7 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 		},
 		{
 			name: "last sync time recent - sync not needed",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 			},
@@ -228,7 +234,7 @@ func TestDefaultAutomaticSyncChecker_IsIntervalSyncNeeded(t *testing.T) {
 		},
 		{
 			name: "last sync time exactly at interval - sync needed",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 			},

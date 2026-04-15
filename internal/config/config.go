@@ -7,11 +7,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/spf13/viper"
 
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
@@ -43,8 +45,8 @@ const (
 	EnvPrefix = "THV_REGISTRY"
 
 	// DefaultMaxMetaSize is the default maximum allowed size in bytes for
-	// publisher-provided metadata extensions (_meta). 65536 bytes = 64KB.
-	DefaultMaxMetaSize = 65536
+	// publisher-provided metadata extensions (_meta). 262144 bytes = 256KB.
+	DefaultMaxMetaSize = 262144
 
 	// defaultSSLMode is the default SSL mode for PostgreSQL connections.
 	defaultSSLMode = "require"
@@ -92,26 +94,70 @@ func WithConfigPath(path string) Option {
 	}
 }
 
+// Default audit configuration values.
+const (
+	// DefaultAuditMaxDataSize is the default maximum size (in bytes) for
+	// captured request bodies in audit events.
+	DefaultAuditMaxDataSize = 1024
+
+	// MaxAuditDataSize is the hard upper bound (1 MB) for captured request
+	// bodies to prevent memory exhaustion from misconfiguration.
+	MaxAuditDataSize = 1 << 20
+)
+
+// AuditConfig defines audit logging configuration.
+type AuditConfig struct {
+	// Enabled controls whether audit logging is active.
+	// When false (the default), API operations are not audit-logged.
+	Enabled bool `yaml:"enabled"`
+
+	// LogFile is the path to a dedicated audit log file.
+	// When empty (default), audit events are written to stdout.
+	LogFile string `yaml:"logFile,omitempty"`
+
+	// EventTypes is a whitelist of event types to audit.
+	// When empty (default), all event types are audited.
+	EventTypes []string `yaml:"eventTypes,omitempty"`
+
+	// ExcludeEventTypes is a blacklist of event types to skip.
+	// Takes precedence over EventTypes if both are set.
+	ExcludeEventTypes []string `yaml:"excludeEventTypes,omitempty"`
+
+	// IncludeRequestData controls whether request bodies are captured
+	// in audit events. Disabled by default for privacy.
+	IncludeRequestData bool `yaml:"includeRequestData,omitempty"`
+
+	// MaxDataSize is the maximum size (in bytes) for captured
+	// request/response bodies. Defaults to 1024.
+	MaxDataSize int `yaml:"maxDataSize,omitempty"`
+}
+
+// GetMaxDataSize returns the configured max data size or the default.
+func (a *AuditConfig) GetMaxDataSize() int {
+	if a == nil || a.MaxDataSize <= 0 {
+		return DefaultAuditMaxDataSize
+	}
+	return a.MaxDataSize
+}
+
 // Config represents the root configuration structure
 type Config struct {
-	// RegistryName is the name/identifier for this registry instance
-	// Defaults to "default" if not specified
-	RegistryName string            `yaml:"registryName,omitempty"`
-	Registries   []RegistryConfig  `yaml:"registries"`
-	Database     *DatabaseConfig   `yaml:"database,omitempty"`
-	Auth         *AuthConfig       `yaml:"auth,omitempty"`
-	Telemetry    *telemetry.Config `yaml:"telemetry,omitempty"`
+	Sources    []SourceConfig    `yaml:"sources"`
+	Registries []RegistryConfig  `yaml:"registries,omitempty"`
+	Database   *DatabaseConfig   `yaml:"database,omitempty"`
+	Auth       *AuthConfig       `yaml:"auth,omitempty"`
+	Telemetry  *telemetry.Config `yaml:"telemetry,omitempty"`
+	Audit      *AuditConfig      `yaml:"audit,omitempty"`
 
 	// insecureAllowHTTP allows HTTP URLs for OAuth issuer URLs (development only)
 	// Can be set via THV_REGISTRY_INSECURE_URL environment variable
 	// Not loaded from YAML file - environment variable only
 	insecureAllowHTTP bool
 
-	// EnableAggregatedEndpoints enables aggregated endpoints that access all
-	// configured registries.
-	// Can be set via THV_REGISTRY_ENABLE_AGGREGATED_ENDPOINTS environment variable
+	// compressResponse enables gzip compression of HTTP responses.
+	// Can be set via THV_REGISTRY_COMPRESS_RESPONSE environment variable
 	// Not loaded from YAML file - environment variable only
-	EnableAggregatedEndpoints bool
+	compressResponse bool
 
 	// WatchNamespace is the namespace to watch for MCP servers.
 	// Can be set via THV_REGISTRY_WATCH_NAMESPACE environment variable
@@ -124,9 +170,9 @@ type Config struct {
 	LeaderElectionID string
 }
 
-// RegistryConfig defines a single registry data source configuration
-type RegistryConfig struct {
-	// Name is the identifier for this registry
+// SourceConfig defines a single data source configuration
+type SourceConfig struct {
+	// Name is the identifier for this source
 	Name string `yaml:"name"`
 
 	// Format specifies the data format (toolhive or upstream)
@@ -139,13 +185,30 @@ type RegistryConfig struct {
 	Managed    *ManagedConfig    `yaml:"managed,omitempty"`
 	Kubernetes *KubernetesConfig `yaml:"kubernetes,omitempty"`
 
-	// Per-registry sync policy
-	// Note: Not applicable for non-synced registries (managed and kubernetes) - will be ignored if set
+	// Per-source sync policy
+	// Note: Not applicable for non-synced sources (managed and kubernetes) - will be ignored if set
 	SyncPolicy *SyncPolicyConfig `yaml:"syncPolicy,omitempty"`
 
-	// Per-registry filtering rules
-	// Note: Not applicable for non-synced registries (managed and kubernetes) - will be ignored if set
+	// Per-source filtering rules
+	// Note: Not applicable for non-synced sources (managed and kubernetes) - will be ignored if set
 	Filter *FilterConfig `yaml:"filter,omitempty"`
+
+	// Claims are key-value pairs attached to this source for authorization purposes
+	// Values must be string or []string
+	Claims map[string]any `yaml:"claims,omitempty"`
+}
+
+// RegistryConfig defines a lightweight registry view that aggregates sources
+type RegistryConfig struct {
+	// Name is the identifier for this registry
+	Name string `yaml:"name"`
+
+	// Claims are key-value pairs attached to this registry for authorization purposes
+	// Values must be string or []string
+	Claims map[string]any `yaml:"claims,omitempty"`
+
+	// Sources is an ordered list of source names that feed this registry
+	Sources []string `yaml:"sources"`
 }
 
 // GitConfig defines Git source settings
@@ -266,10 +329,15 @@ type ManagedConfig struct {
 	// Future fields can be added here as needed
 }
 
-// KubernetesConfig defines configuration for Kubernetes-based registries
-// Kubernetes registries discover MCP servers from running Kubernetes resources
-// No configuration is actually needed here.
-type KubernetesConfig struct{}
+// KubernetesConfig defines configuration for Kubernetes-based registries.
+// Kubernetes registries discover MCP servers from running Kubernetes resources.
+// Per-entry claims are set directly on CRDs via the toolhive.stacklok.dev/authz-claims
+// JSON annotation, which is merged with the source's base claims.
+type KubernetesConfig struct {
+	// Namespaces is a list of Kubernetes namespaces to watch for MCP servers
+	// If empty, watches the namespace configured via WatchNamespace environment variable
+	Namespaces []string `yaml:"namespaces,omitempty"`
+}
 
 // SyncPolicyConfig defines synchronization settings
 type SyncPolicyConfig struct {
@@ -309,6 +377,19 @@ const (
 	DefaultAuthMode AuthMode = AuthModeOAuth
 )
 
+// AuthzConfig defines authorization configuration for role-based access control
+type AuthzConfig struct {
+	Roles RolesConfig `yaml:"roles,omitempty"`
+}
+
+// RolesConfig defines role-based authorization rules
+type RolesConfig struct {
+	SuperAdmin       []map[string]any `yaml:"superAdmin,omitempty"`
+	ManageSources    []map[string]any `yaml:"manageSources,omitempty"`
+	ManageRegistries []map[string]any `yaml:"manageRegistries,omitempty"`
+	ManageEntries    []map[string]any `yaml:"manageEntries,omitempty"`
+}
+
 // AuthConfig defines authentication configuration for the registry server
 type AuthConfig struct {
 	// Mode specifies the authentication mode (anonymous or oauth)
@@ -324,6 +405,14 @@ type AuthConfig struct {
 	// OAuth contains OAuth/OIDC specific configuration
 	// Required when Mode is "oauth"
 	OAuth *OAuthConfig `yaml:"oauth,omitempty"`
+
+	// Authz contains authorization configuration for role-based access control
+	Authz *AuthzConfig `yaml:"authz,omitempty"`
+
+	// InsecureAllowHTTP allows HTTP issuer URLs for development/testing.
+	// Populated from the THV_REGISTRY_INSECURE_URL environment variable.
+	// Not loaded from YAML.
+	InsecureAllowHTTP bool `yaml:"-"`
 }
 
 // OAuthConfig defines OAuth/OIDC specific authentication settings
@@ -532,7 +621,7 @@ type DatabaseConfig struct {
 
 	// MaxMetaSize is the maximum allowed size in bytes for publisher-provided
 	// metadata extensions (_meta). Must be greater than zero.
-	// Defaults to 65536 (64KB) if not specified.
+	// Defaults to 262144 (256KB) if not specified.
 	// Can be overridden via THV_REGISTRY_DATABASE_MAXMETASIZE environment variable.
 	MaxMetaSize *int `yaml:"maxMetaSize,omitempty"`
 }
@@ -573,7 +662,7 @@ func (*DatabaseConfig) GetMigrationPassword() string {
 }
 
 // GetMaxMetaSize returns the configured maximum meta size in bytes.
-// Returns DefaultMaxMetaSize (64KB) if not explicitly configured.
+// Returns DefaultMaxMetaSize (256KB) if not explicitly configured.
 // The returned value is always positive — validation rejects non-positive values at startup.
 func (d *DatabaseConfig) GetMaxMetaSize() int {
 	if d == nil || d.MaxMetaSize == nil {
@@ -677,9 +766,15 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	// This is not loaded from YAML - environment variable only for security
 	config.insecureAllowHTTP = v.GetBool("insecure_url")
 
-	// Set enableAggregatedEndpoints from environment variable (THV_REGISTRY_ENABLE_AGGREGATED_ENDPOINTS)
+	// Propagate insecureAllowHTTP to AuthConfig so the auth factory can pass it
+	// to the token validator (which enforces HTTPS on OIDC discovery endpoints).
+	if config.Auth != nil {
+		config.Auth.InsecureAllowHTTP = config.insecureAllowHTTP
+	}
+
+	// Set compressResponse from environment variable (THV_REGISTRY_COMPRESS_RESPONSE)
 	// This is not loaded from YAML - environment variable only
-	config.EnableAggregatedEndpoints = v.GetBool("enable_aggregated_endpoints")
+	config.compressResponse = v.GetBool("compress_response")
 
 	// Set watchNamespace from environment variable (THV_REGISTRY_WATCH_NAMESPACE)
 	// This is not loaded from YAML - environment variable only
@@ -697,12 +792,15 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	return &config, nil
 }
 
-// GetRegistryName returns the registry name, using "default" if not specified
-func (c *Config) GetRegistryName() string {
-	if c.RegistryName == "" {
-		return "default"
-	}
-	return c.RegistryName
+// IsAuditEnabled returns true when audit logging is enabled in the config.
+func (c *Config) IsAuditEnabled() bool {
+	return c != nil && c.Audit != nil && c.Audit.Enabled
+}
+
+// IsCompressionEnabled returns true when HTTP response compression is enabled
+// via the THV_REGISTRY_COMPRESS_RESPONSE environment variable.
+func (c *Config) IsCompressionEnabled() bool {
+	return c != nil && c.compressResponse
 }
 
 // Validate performs validation on the configuration
@@ -711,29 +809,59 @@ func (c *Config) validate() error {
 		return fmt.Errorf("config cannot be nil")
 	}
 
+	// Validate at least one source is configured
+	if len(c.Sources) == 0 {
+		return fmt.Errorf("at least one source must be configured")
+	}
+
+	// Validate each source configuration
+	sourceNames := make(map[string]bool)
+	managedCount := 0
+	for i, src := range c.Sources {
+		// Validate source name
+		if src.Name == "" {
+			return fmt.Errorf("source[%d]: name is required", i)
+		}
+		if !IsValidDNSSubdomain(src.Name) {
+			return fmt.Errorf("source[%d]: name '%s' must be a valid DNS subdomain "+
+				"(lowercase alphanumeric and hyphens, max 63 chars)", i, src.Name)
+		}
+
+		// Check for duplicate source names
+		if sourceNames[src.Name] {
+			return fmt.Errorf("source[%d]: duplicate source name '%s'", i, src.Name)
+		}
+		sourceNames[src.Name] = true
+
+		// Track managed source count
+		if src.Managed != nil {
+			managedCount++
+		}
+
+		// Validate source-specific configuration
+		if err := c.validateSourceConfig(&src, i); err != nil {
+			return err
+		}
+
+		// Validate claims if present
+		if err := validateClaims(src.Claims, fmt.Sprintf("source[%d] (%s)", i, src.Name)); err != nil {
+			return err
+		}
+	}
+
+	// Validate at most one managed source is configured
+	if managedCount > 1 {
+		return fmt.Errorf("at most one managed source is allowed, found %d", managedCount)
+	}
+
 	// Validate at least one registry is configured
 	if len(c.Registries) == 0 {
 		return fmt.Errorf("at least one registry must be configured")
 	}
 
-	// Validate each registry configuration
-	registryNames := make(map[string]bool)
-	for i, reg := range c.Registries {
-		// Validate registry name
-		if reg.Name == "" {
-			return fmt.Errorf("registry[%d]: name is required", i)
-		}
-
-		// Check for duplicate registry names
-		if registryNames[reg.Name] {
-			return fmt.Errorf("registry[%d]: duplicate registry name '%s'", i, reg.Name)
-		}
-		registryNames[reg.Name] = true
-
-		// Validate registry-specific configuration
-		if err := c.validateRegistryConfig(&reg, i); err != nil {
-			return err
-		}
+	// Validate registries
+	if err := c.validateRegistries(sourceNames); err != nil {
+		return err
 	}
 
 	// Validate storage configuration
@@ -741,32 +869,80 @@ func (c *Config) validate() error {
 		return err
 	}
 
+	// Validate audit configuration if present
+	if err := c.validateAudit(); err != nil {
+		return err
+	}
+
 	// Validate auth configuration if present
 	return c.validateAuth()
 }
 
-// validateRegistryConfig validates a single registry configuration
-func (*Config) validateRegistryConfig(reg *RegistryConfig, index int) error {
-	prefix := fmt.Sprintf("registry[%d] (%s)", index, reg.Name)
+// validateSourceConfig validates a single source configuration
+func (*Config) validateSourceConfig(src *SourceConfig, index int) error {
+	prefix := fmt.Sprintf("source[%d] (%s)", index, src.Name)
 
 	// Validate exactly one source type is configured
-	if err := validateSourceTypeCount(reg, prefix); err != nil {
+	if err := validateSourceTypeCount(src, prefix); err != nil {
 		return err
 	}
 
-	// Non-synced registries (managed and kubernetes) don't require sync policy or filter
-	// If syncPolicy or filter are set for these registries, they will be silently ignored
-	if reg.IsNonSyncedRegistry() {
+	// Non-synced sources (managed and kubernetes) don't require sync policy or filter
+	// If syncPolicy or filter are set for these sources, they will be silently ignored
+	if src.IsNonSyncedSource() {
 		return nil
 	}
 
-	// Synced registries require sync policy
-	if err := validateSyncPolicy(reg.SyncPolicy, prefix); err != nil {
+	// Synced sources require sync policy
+	if err := validateSyncPolicy(src.SyncPolicy, prefix); err != nil {
 		return err
 	}
 
 	// Validate type-specific settings
-	return validateSourceSpecificConfig(reg, prefix)
+	return validateSourceSpecificConfig(src, prefix)
+}
+
+// validateRegistries validates the registries section of the configuration
+func (c *Config) validateRegistries(sourceNames map[string]bool) error {
+	registryNames := make(map[string]bool)
+	for i, reg := range c.Registries {
+		if reg.Name == "" {
+			return fmt.Errorf("registries[%d]: name is required", i)
+		}
+
+		if registryNames[reg.Name] {
+			return fmt.Errorf("registries[%d]: duplicate registry name '%s'", i, reg.Name)
+		}
+		registryNames[reg.Name] = true
+
+		// Validate that at least one source is referenced
+		if len(reg.Sources) == 0 {
+			return fmt.Errorf("registries[%d] (%s): at least one source is required", i, reg.Name)
+		}
+
+		// Validate that each referenced source exists
+		for _, srcName := range reg.Sources {
+			if !sourceNames[srcName] {
+				return fmt.Errorf("registries[%d] (%s): references unknown source '%s'", i, reg.Name, srcName)
+			}
+		}
+
+		// Validate claims if present
+		if err := validateClaims(reg.Claims, fmt.Sprintf("registries[%d] (%s)", i, reg.Name)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// dnsSubdomainRegex matches valid DNS subdomain labels per RFC 1123:
+// lowercase alphanumeric, hyphens allowed (not leading/trailing), max 63 chars.
+var dnsSubdomainRegex = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
+
+// IsValidDNSSubdomain checks whether s is a valid DNS subdomain label per RFC 1123.
+// Used for source names (K8s lease name suffixes) and K8s namespace validation.
+func IsValidDNSSubdomain(s string) bool {
+	return dnsSubdomainRegex.MatchString(s)
 }
 
 // validateSyncPolicy validates the sync policy configuration
@@ -784,21 +960,21 @@ func validateSyncPolicy(policy *SyncPolicyConfig, prefix string) error {
 }
 
 // validateSourceTypeCount ensures exactly one source type is configured
-func validateSourceTypeCount(reg *RegistryConfig, prefix string) error {
+func validateSourceTypeCount(src *SourceConfig, prefix string) error {
 	configCount := 0
-	if reg.Git != nil {
+	if src.Git != nil {
 		configCount++
 	}
-	if reg.API != nil {
+	if src.API != nil {
 		configCount++
 	}
-	if reg.File != nil {
+	if src.File != nil {
 		configCount++
 	}
-	if reg.Managed != nil {
+	if src.Managed != nil {
 		configCount++
 	}
-	if reg.Kubernetes != nil {
+	if src.Kubernetes != nil {
 		configCount++
 	}
 
@@ -813,19 +989,27 @@ func validateSourceTypeCount(reg *RegistryConfig, prefix string) error {
 }
 
 // validateSourceSpecificConfig validates the configuration for each source type
-func validateSourceSpecificConfig(reg *RegistryConfig, prefix string) error {
-	if reg.Git != nil {
-		return validateGitConfig(reg.Git, prefix)
+func validateSourceSpecificConfig(src *SourceConfig, prefix string) error {
+	if src.Git != nil {
+		return validateGitConfig(src.Git, prefix)
 	}
 
-	if reg.API != nil {
-		return validateAPIConfig(reg.API, reg.Format, prefix)
+	if src.API != nil {
+		return validateAPIConfig(src.API, src.Format, prefix)
 	}
 
-	if reg.File != nil {
-		return validateFileConfig(reg.File, prefix)
+	if src.File != nil {
+		return validateFileConfig(src.File, prefix)
 	}
 
+	return nil
+}
+
+// validateClaims validates that all claim values are string or []string
+func validateClaims(claims map[string]any, prefix string) error {
+	if err := db.ValidateClaimValues(claims); err != nil {
+		return fmt.Errorf("%s: %w", prefix, err)
+	}
 	return nil
 }
 
@@ -955,35 +1139,63 @@ func readSecretFromFile(filePath string) (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
-// GetType returns the inferred type of the registry config based on which field is present
-func (r *RegistryConfig) GetType() SourceType {
-	if r.Git != nil {
+// GetType returns the type of the source config, inferred from which configuration field is present.
+func (s *SourceConfig) GetType() SourceType {
+	if s.Git != nil {
 		return SourceTypeGit
 	}
-	if r.API != nil {
+	if s.API != nil {
 		return SourceTypeAPI
 	}
-	if r.File != nil {
+	if s.File != nil {
 		return SourceTypeFile
 	}
-	if r.Managed != nil {
+	if s.Managed != nil {
 		return SourceTypeManaged
 	}
-	if r.Kubernetes != nil {
+	if s.Kubernetes != nil {
 		return SourceTypeKubernetes
 	}
 	return ""
 }
 
-// IsNonSyncedRegistry returns true if the registry type doesn't sync from external sources.
-// This includes managed registries (manipulated via API) and kubernetes registries (query live deployments).
-// Non-synced registries do not require sync policy configuration and skip the sync loop.
-func (r *RegistryConfig) IsNonSyncedRegistry() bool {
-	regType := r.GetType()
-	return regType == SourceTypeManaged || regType == SourceTypeKubernetes
+// IsNonSyncedSource returns true if the source type doesn't sync from external sources.
+// This includes managed sources (manipulated via API) and kubernetes sources (query live deployments).
+// Non-synced sources do not require sync policy configuration and skip the sync loop.
+func (s *SourceConfig) IsNonSyncedSource() bool {
+	srcType := s.GetType()
+	return srcType == SourceTypeManaged || srcType == SourceTypeKubernetes
 }
 
-// validateAuth validates the auth configuration if present
+// validateAudit validates the audit logging configuration if present.
+func (c *Config) validateAudit() error {
+	if c.Audit == nil {
+		return nil // audit is optional
+	}
+	if c.Audit.MaxDataSize < 0 {
+		return fmt.Errorf("audit.maxDataSize must be non-negative, got %d", c.Audit.MaxDataSize)
+	}
+	if c.Audit.MaxDataSize > MaxAuditDataSize {
+		return fmt.Errorf("audit.maxDataSize must not exceed %d bytes, got %d", MaxAuditDataSize, c.Audit.MaxDataSize)
+	}
+	if c.Audit.LogFile != "" {
+		// Resolve symlinks to prevent writing to unexpected locations,
+		// consistent with how the config file path itself is validated.
+		realDir, err := filepath.EvalSymlinks(filepath.Dir(c.Audit.LogFile))
+		if err != nil {
+			return fmt.Errorf("audit.logFile directory does not exist: %w", err)
+		}
+		info, err := os.Stat(realDir)
+		if err != nil {
+			return fmt.Errorf("audit.logFile directory is not accessible: %w", err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("audit.logFile parent path is not a directory: %s", realDir)
+		}
+	}
+	return nil
+}
+
 func (c *Config) validateAuth() error {
 	if c.Auth == nil {
 		return errors.New("auth configuration is required")

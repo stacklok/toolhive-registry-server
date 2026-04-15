@@ -40,21 +40,18 @@
 #
 # Note: Database migrations run automatically when the server starts
 
-# Registry name/identifier
-registryName: production-registry
-
-# Registries configuration (can have multiple registries)
-registries:
+# Sources configuration (can have multiple sources)
+sources:
   - name: toolhive
     # Data format: toolhive (native) or upstream (MCP registry format)
     format: toolhive
 
     # Git repository configuration
     git:
-      repository: https://github.com/stacklok/toolhive.git
+      repository: https://github.com/stacklok/toolhive-catalog.git
       # Use a specific tag for production stability
       tag: v1.0.0
-      path: pkg/registry/data/registry.json
+      path: pkg/catalog/toolhive/data/registry-legacy.json
 
     # Per-registry automatic synchronization policy
     syncPolicy:
@@ -71,6 +68,10 @@ registries:
           - "experimental"
           - "beta"
           - "alpha"
+
+registries:
+  - name: default
+    sources: ["toolhive"]
 
 auth:
   mode: anonymous

@@ -1,6 +1,6 @@
 # Database Configuration
 
-The ToolHive Registry API server optionally supports PostgreSQL for storing registry state and metadata.
+The ToolHive Registry API server requires PostgreSQL for storing registry state and metadata.
 
 ## Table of Contents
 
@@ -97,7 +97,7 @@ The server includes built-in database migration support to manage the database s
 
 ### Automatic Migrations on Startup
 
-When you start the server with `serve`, database migrations run automatically if database configuration is present in your config file. This ensures your database schema is always up to date.
+When you start the server with `serve`, database migrations run automatically on startup. This ensures your database schema is always up to date.
 
 ### Manual Migration Commands
 
@@ -203,7 +203,7 @@ docker run -d --name postgres \
   -e POSTGRES_PASSWORD=devpassword \
   -e POSTGRES_DB=toolhive_registry \
   -p 5432:5432 \
-  postgres:16
+  postgres:18-alpine
 
 # 2. Create pgpass file with credentials
 cat > ~/.pgpass <<EOF

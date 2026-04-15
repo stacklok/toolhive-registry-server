@@ -22,14 +22,14 @@ func TestDefaultRegistryHandlerFactory_CreateHandler(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		registryConfig *config.RegistryConfig
+		registryConfig *config.SourceConfig
 		expectError    bool
-		expectedType   interface{}
+		expectedType   any
 		errorContains  string
 	}{
 		{
 			name: "file source type",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-file",
 				File: &config.FileConfig{Path: "/path/to/file"},
 			},
@@ -38,7 +38,7 @@ func TestDefaultRegistryHandlerFactory_CreateHandler(t *testing.T) {
 		},
 		{
 			name: "git source type",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-git",
 				Git:  &config.GitConfig{Repository: "https://github.com/test/repo.git"},
 			},
@@ -47,7 +47,7 @@ func TestDefaultRegistryHandlerFactory_CreateHandler(t *testing.T) {
 		},
 		{
 			name: "api source type",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-api",
 				API:  &config.APIConfig{Endpoint: "https://api.example.com"},
 			},
@@ -56,7 +56,7 @@ func TestDefaultRegistryHandlerFactory_CreateHandler(t *testing.T) {
 		},
 		{
 			name: "kubernetes source type not yet implemented",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name:       "test-kubernetes",
 				Kubernetes: &config.KubernetesConfig{},
 			},
@@ -65,7 +65,7 @@ func TestDefaultRegistryHandlerFactory_CreateHandler(t *testing.T) {
 		},
 		{
 			name: "no source type configured",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-invalid",
 			},
 			expectError:   true,

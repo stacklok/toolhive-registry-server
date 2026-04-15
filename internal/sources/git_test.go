@@ -2,9 +2,7 @@ package sources
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
-	"fmt"
 	"os"
 	"testing"
 
@@ -94,13 +92,13 @@ func TestGitRegistryHandler_Validate(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		registryConfig *config.RegistryConfig
+		registryConfig *config.SourceConfig
 		expectError    bool
 		errorContains  string
 	}{
 		{
 			name: "valid git config with repository only",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
@@ -110,7 +108,7 @@ func TestGitRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "valid git config with branch",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
@@ -121,7 +119,7 @@ func TestGitRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "valid git config with tag",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
@@ -132,7 +130,7 @@ func TestGitRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "valid git config with commit",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
@@ -143,7 +141,7 @@ func TestGitRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "valid git config with custom path",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
@@ -160,7 +158,7 @@ func TestGitRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "missing git configuration",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-git",
 				Git:  nil,
 			},
@@ -169,7 +167,7 @@ func TestGitRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "empty repository URL",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: "",
@@ -180,7 +178,7 @@ func TestGitRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "multiple reference types - branch and tag",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
@@ -193,7 +191,7 @@ func TestGitRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "multiple reference types - branch and commit",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
@@ -206,7 +204,7 @@ func TestGitRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "multiple reference types - tag and commit",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
@@ -219,7 +217,7 @@ func TestGitRegistryHandler_Validate(t *testing.T) {
 		},
 		{
 			name: "all three reference types",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name: "test-git",
 				Git: &config.GitConfig{
 					Repository: testGitRepoURL,
@@ -258,14 +256,14 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		registryConfig *config.RegistryConfig
+		registryConfig *config.SourceConfig
 		setupMocks     func(*MockGitClient, *MockRegistryDataValidator)
 		expectError    bool
 		errorContains  string
 	}{
 		{
 			name: "successful fetch with default path",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name:   "test-git",
 				Format: config.SourceFormatToolHive,
 				Git: &config.GitConfig{
@@ -297,7 +295,7 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "successful fetch with custom path",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name:   "test-git",
 				Format: config.SourceFormatToolHive,
 				Git: &config.GitConfig{
@@ -330,7 +328,7 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "validation failure",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name:   "test-git",
 				Format: config.SourceFormatToolHive,
 				Git: &config.GitConfig{
@@ -345,7 +343,7 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "clone failure",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name:   "test-git",
 				Format: config.SourceFormatToolHive,
 				Git: &config.GitConfig{
@@ -363,7 +361,7 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "file not found",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name:   "test-git",
 				Format: config.SourceFormatToolHive,
 				Git: &config.GitConfig{
@@ -384,7 +382,7 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 		},
 		{
 			name: "validation data failure",
-			registryConfig: &config.RegistryConfig{
+			registryConfig: &config.SourceConfig{
 				Name:   "test-git",
 				Format: config.SourceFormatToolHive,
 				Git: &config.GitConfig{
@@ -447,140 +445,11 @@ func TestGitRegistryHandler_FetchRegistry(t *testing.T) {
 	}
 }
 
-func TestGitRegistryHandler_CurrentHash(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name           string
-		registryConfig *config.RegistryConfig
-		setupMocks     func(*MockGitClient)
-		expectError    bool
-		errorContains  string
-		expectedHash   string
-	}{
-		{
-			name: "successful hash calculation",
-			registryConfig: &config.RegistryConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
-				Git: &config.GitConfig{
-					Repository: testGitRepoURL,
-					Branch:     testBranch,
-				},
-			},
-			setupMocks: func(gitClient *MockGitClient) {
-				repoInfo := &git.RepositoryInfo{
-					RemoteURL: testGitRepoURL,
-				}
-				testData := []byte(`{"version": "1.0.0"}`)
-
-				gitClient.On("Clone", mock.Anything, mock.MatchedBy(func(cfg *git.CloneConfig) bool {
-					return cfg.URL == testGitRepoURL && cfg.Branch == testBranch
-				})).Return(repoInfo, nil)
-
-				gitClient.On("GetFileContent", repoInfo, DefaultRegistryDataFile).Return(testData, nil)
-				gitClient.On("Cleanup", repoInfo).Return(nil)
-			},
-			expectError:  false,
-			expectedHash: fmt.Sprintf("%x", sha256.Sum256([]byte(`{"version": "1.0.0"}`))),
-		},
-		{
-			name: "validation failure",
-			registryConfig: &config.RegistryConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
-				Git: &config.GitConfig{
-					Repository: "",
-				},
-			},
-			setupMocks: func(_ *MockGitClient) {
-				// No mocks needed as validation should fail
-			},
-			expectError:   true,
-			errorContains: "registry validation failed",
-		},
-		{
-			name: "clone failure",
-			registryConfig: &config.RegistryConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
-				Git: &config.GitConfig{
-					Repository: testGitRepoURL,
-				},
-			},
-			setupMocks: func(gitClient *MockGitClient) {
-				gitClient.On("Clone", mock.Anything, mock.Anything).Return(nil, errors.New("clone failed"))
-			},
-			expectError:   true,
-			errorContains: "failed to clone repository",
-		},
-		{
-			name: "file not found",
-			registryConfig: &config.RegistryConfig{
-				Name:   "test-git",
-				Format: config.SourceFormatToolHive,
-				Git: &config.GitConfig{
-					Repository: testGitRepoURL,
-					Path:       testFilePath,
-				},
-			},
-			setupMocks: func(gitClient *MockGitClient) {
-				repoInfo := &git.RepositoryInfo{
-					RemoteURL: testGitRepoURL,
-				}
-
-				gitClient.On("Clone", mock.Anything, mock.Anything).Return(repoInfo, nil)
-				gitClient.On("GetFileContent", repoInfo, testFilePath).Return(nil, errors.New("file not found"))
-				gitClient.On("Cleanup", repoInfo).Return(nil)
-			},
-			expectError:   true,
-			errorContains: "failed to get file",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			// Create mocks
-			mockGitClient := new(MockGitClient)
-
-			// Setup mocks
-			tt.setupMocks(mockGitClient)
-
-			// Create handler with mocks
-			handler := &gitRegistryHandler{
-				gitClient: mockGitClient,
-				validator: NewRegistryDataValidator(), // Use real validator for hash tests
-			}
-
-			// Execute test
-			hash, err := handler.CurrentHash(context.Background(), tt.registryConfig)
-
-			// Verify results
-			if tt.expectError {
-				assert.Error(t, err)
-				assert.Empty(t, hash)
-				assert.Contains(t, err.Error(), tt.errorContains)
-			} else {
-				assert.NoError(t, err)
-				assert.NotEmpty(t, hash)
-				if tt.expectedHash != "" {
-					assert.Equal(t, tt.expectedHash, hash)
-				}
-			}
-
-			// Verify all mock expectations
-			mockGitClient.AssertExpectations(t)
-		})
-	}
-}
-
 func TestGitRegistryHandler_DefaultPath(t *testing.T) {
 	t.Parallel()
 
 	// Test that default path is set during validation
-	registryConfig := &config.RegistryConfig{
+	registryConfig := &config.SourceConfig{
 		Name: "test-git",
 		Git: &config.GitConfig{
 			Repository: testGitRepoURL,
@@ -599,7 +468,7 @@ func TestGitRegistryHandler_CleanupFailure(t *testing.T) {
 	t.Parallel()
 
 	// Test that cleanup failure doesn't prevent successful fetch
-	registryConfig := &config.RegistryConfig{
+	registryConfig := &config.SourceConfig{
 		Name:   "test-git",
 		Format: config.SourceFormatToolHive,
 		Git: &config.GitConfig{
@@ -646,7 +515,7 @@ func TestGitRegistryHandler_FetchRegistryWithAuth(t *testing.T) {
 	tests := []struct {
 		name           string
 		setupAuth      func(t *testing.T) *config.GitAuthConfig
-		registryConfig func(auth *config.GitAuthConfig) *config.RegistryConfig
+		registryConfig func(auth *config.GitAuthConfig) *config.SourceConfig
 		setupMocks     func(*MockGitClient, *MockRegistryDataValidator)
 		expectError    bool
 		errorContains  string
@@ -666,8 +535,8 @@ func TestGitRegistryHandler_FetchRegistryWithAuth(t *testing.T) {
 					PasswordFile: passwordFile,
 				}
 			},
-			registryConfig: func(auth *config.GitAuthConfig) *config.RegistryConfig {
-				return &config.RegistryConfig{
+			registryConfig: func(auth *config.GitAuthConfig) *config.SourceConfig {
+				return &config.SourceConfig{
 					Name:   "test-git-auth",
 					Format: config.SourceFormatToolHive,
 					Git: &config.GitConfig{
@@ -716,8 +585,8 @@ func TestGitRegistryHandler_FetchRegistryWithAuth(t *testing.T) {
 					PasswordFile: nonExistentFile,
 				}
 			},
-			registryConfig: func(auth *config.GitAuthConfig) *config.RegistryConfig {
-				return &config.RegistryConfig{
+			registryConfig: func(auth *config.GitAuthConfig) *config.SourceConfig {
+				return &config.SourceConfig{
 					Name:   "test-git-auth-fail",
 					Format: config.SourceFormatToolHive,
 					Git: &config.GitConfig{

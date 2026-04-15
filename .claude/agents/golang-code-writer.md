@@ -26,6 +26,7 @@ When writing Go code, you will:
 - Follow Go's memory management best practices
 - Implement interfaces when abstraction adds value
 - Use struct embedding and method sets effectively
+- **Option pattern**: Always define functional options as `type XxxOption func(*T) error`, never as `func(*T)`. This allows individual options to signal validation failures without panicking. Apply options in a constructor by ranging over them and returning on the first error.
 
 **Code Structure:**
 - Organize code into logical packages with clear responsibilities following SOLID principles
@@ -48,3 +49,24 @@ When writing Go code, you will:
 - Include usage examples when helpful
 
 Always ask for clarification if requirements are ambiguous, and provide code that is production-ready, well-structured, and follows Go best practices. When working within existing codebases, maintain consistency with established patterns and conventions.
+
+## Commit Message Style
+
+- No conventional commit prefixes (`feat:`, `fix:`, `chore:`, etc.)
+- Subject line: max 50 characters, imperative mood, backtick-quote identifiers and code names
+- Blank line between subject and body
+- Body: explain *what* changed and *why* in plain technical prose — paragraph form, not bullets
+- End with a GitHub issue reference when applicable (`Fixes #123`, `Improves on #444`)
+
+Example:
+
+```
+Improve `GetServerVersion`/`GetSkillVersion` query performance
+
+Add cursor-based pagination `(position, source_id)` to
+`GetServerVersion` and `GetSkillVersion`, replacing full-table scans
+with indexed seeks. Add two supporting indexes to eliminate nested-loop
+seq scans.
+
+Improves on #444
+```

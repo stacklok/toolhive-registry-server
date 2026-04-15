@@ -14,35 +14,36 @@ type defaultDataChangeDetector struct {
 	registryHandlerFactory sources.RegistryHandlerFactory
 }
 
-// IsDataChanged checks if source data has changed by comparing hashes for a specific registry
+// IsDataChanged checks if source data has changed by comparing hashes for a specific registry.
+// Returns the fetched data so PerformSync can reuse it without a second fetch.
 func (d *defaultDataChangeDetector) IsDataChanged(
-	ctx context.Context, regCfg *config.RegistryConfig, syncStatus *status.SyncStatus,
-) (bool, error) {
+	ctx context.Context, regCfg *config.SourceConfig, syncStatus *status.SyncStatus,
+) (bool, *sources.FetchResult, error) {
 	// Check for hash in syncStatus first, then fallback
 	var lastSyncHash string
 	if syncStatus != nil {
 		lastSyncHash = syncStatus.LastSyncHash
 	}
 
-	// If we don't have a last sync hash, consider data changed
-	if lastSyncHash == "" {
-		return true, nil
-	}
-
 	// Get registry handler
 	registryHandler, err := d.registryHandlerFactory.CreateHandler(regCfg)
 	if err != nil {
-		return true, err
+		return true, nil, err
 	}
 
-	// Get current hash from source
-	currentHash, err := registryHandler.CurrentHash(ctx, regCfg)
+	// Fetch current data from source — the result is returned so PerformSync can reuse it
+	fetchResult, err := registryHandler.FetchRegistry(ctx, regCfg)
 	if err != nil {
-		return true, err
+		return true, nil, err
+	}
+
+	// If we don't have a last sync hash, consider data changed
+	if lastSyncHash == "" {
+		return true, fetchResult, nil
 	}
 
 	// Compare hashes - data changed if different
-	return currentHash != lastSyncHash, nil
+	return fetchResult.Hash != lastSyncHash, fetchResult, nil
 }
 
 // defaultAutomaticSyncChecker implements AutomaticSyncChecker
@@ -54,7 +55,7 @@ type defaultAutomaticSyncChecker struct{}
 // Returns: (syncNeeded, nextSyncTime, error)
 // nextSyncTime is a future time when the next sync should occur, or zero time if no schedule configured
 func (*defaultAutomaticSyncChecker) IsIntervalSyncNeeded(
-	_ *config.RegistryConfig, syncStatus *status.SyncStatus,
+	_ *config.SourceConfig, syncStatus *status.SyncStatus,
 ) (bool, time.Time, error) {
 	// Read sync schedule from stored state instead of config
 	// Non-synced registries (managed, kubernetes) will have an empty SyncSchedule

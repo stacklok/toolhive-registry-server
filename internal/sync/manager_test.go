@@ -50,14 +50,14 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 	tests := []struct {
 		name                string
 		manualSyncRequested bool
-		config              *config.RegistryConfig
+		config              *config.SourceConfig
 		syncStatus          *status.SyncStatus
 		expectedReason      Reason
 	}{
 		{
 			name:                "sync needed when registry is in failed state",
 			manualSyncRequested: false,
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -72,7 +72,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 		{
 			name:                "sync not needed when already syncing",
 			manualSyncRequested: false,
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -87,7 +87,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 		{
 			name:                "sync needed when registry is in failed state",
 			manualSyncRequested: false,
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -103,7 +103,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 		{
 			name:                "manual sync not needed with new trigger value and same hash",
 			manualSyncRequested: true,
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -130,7 +130,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			reason := syncManager.ShouldSync(ctx, tt.config, tt.syncStatus, tt.manualSyncRequested)
+			reason, _ := syncManager.ShouldSync(ctx, tt.config, tt.syncStatus, tt.manualSyncRequested)
 
 			assert.Equal(t, tt.expectedReason, reason, "Expected specific sync reason for "+tt.name)
 			assert.Equal(t, tt.expectedReason.ShouldSync(), reason.ShouldSync(), "ShouldSync() should match expected reason")
@@ -162,14 +162,14 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 
 	tests := []struct {
 		name                string
-		config              *config.RegistryConfig
+		config              *config.SourceConfig
 		expectedError       bool
 		expectedServerCount *int // nil means don't validate
 		errorContains       string
 	}{
 		{
 			name: "successful sync with valid data",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -181,7 +181,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		},
 		{
 			name: "sync fails when source file not found",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -194,7 +194,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		},
 		{
 			name: "successful sync with empty registry data",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -206,7 +206,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		},
 		{
 			name: "successful sync with name filtering",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -223,7 +223,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		},
 		{
 			name: "successful sync with tag filtering",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -240,7 +240,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 		},
 		{
 			name: "successful sync with combined name and tag filtering",
-			config: &config.RegistryConfig{
+			config: &config.SourceConfig{
 				Name:   "test-registry",
 				Format: config.SourceFormatToolHive,
 				File: &config.FileConfig{
@@ -283,7 +283,7 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			syncResult, syncErr := syncManager.PerformSync(ctx, tt.config)
+			syncResult, syncErr := syncManager.PerformSync(ctx, tt.config, nil)
 
 			if tt.expectedError {
 				assert.NotNil(t, syncErr)
@@ -300,6 +300,52 @@ func TestDefaultSyncManager_PerformSync(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDefaultSyncManager_PerformSync_WithPrefetched(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Build a FetchResult directly without a real file source
+	testReg := registry.NewTestToolHiveRegistry(
+		registry.WithImageServer("prefetched-server", "test/image:latest"),
+	)
+	testData := registry.ToolHiveRegistryToJSON(testReg)
+	validator := sources.NewRegistryDataValidator()
+	reg, err := validator.ValidateData(testData, config.SourceFormatToolHive)
+	require.NoError(t, err)
+	hash := fmt.Sprintf("%x", sha256.Sum256(testData))
+	prefetched := sources.NewFetchResult(reg, hash, config.SourceFormatToolHive)
+
+	mockWriter := writermocks.NewMockSyncWriter(ctrl)
+	mockWriter.EXPECT().
+		Store(gomock.Any(), "test-registry", gomock.Any()).
+		Return(nil).
+		Times(1)
+
+	// Config points to a non-existent path — if PerformSync attempts a fetch it will fail,
+	// proving the prefetched data was reused instead.
+	regCfg := &config.SourceConfig{
+		Name:   "test-registry",
+		Format: config.SourceFormatToolHive,
+		File: &config.FileConfig{
+			Path: "/nonexistent/path/registry.json",
+		},
+	}
+
+	syncManager := NewDefaultSyncManager(sources.NewRegistryHandlerFactory(), mockWriter)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, syncErr := syncManager.PerformSync(ctx, regCfg, prefetched)
+
+	require.Nil(t, syncErr)
+	require.NotNil(t, result)
+	assert.Equal(t, hash, result.Hash)
+	assert.Equal(t, 1, result.ServerCount)
 }
 
 func TestIsManualSync(t *testing.T) {
