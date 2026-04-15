@@ -14,7 +14,6 @@ import (
 	reflect "reflect"
 
 	v0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
-	registry "github.com/stacklok/toolhive-core/registry/types"
 	service "github.com/stacklok/toolhive-registry-server/internal/service"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -72,6 +71,21 @@ func (mr *MockRegistryServiceMockRecorder) CreateRegistry(ctx, name, req any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRegistry", reflect.TypeOf((*MockRegistryService)(nil).CreateRegistry), ctx, name, req)
 }
 
+// CreateSource mocks base method.
+func (m *MockRegistryService) CreateSource(ctx context.Context, name string, req *service.SourceCreateRequest) (*service.SourceInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateSource", ctx, name, req)
+	ret0, _ := ret[0].(*service.SourceInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateSource indicates an expected call of CreateSource.
+func (mr *MockRegistryServiceMockRecorder) CreateSource(ctx, name, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSource", reflect.TypeOf((*MockRegistryService)(nil).CreateSource), ctx, name, req)
+}
+
 // DeleteRegistry mocks base method.
 func (m *MockRegistryService) DeleteRegistry(ctx context.Context, name string) error {
 	m.ctrl.T.Helper()
@@ -105,20 +119,37 @@ func (mr *MockRegistryServiceMockRecorder) DeleteServerVersion(ctx any, opts ...
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteServerVersion", reflect.TypeOf((*MockRegistryService)(nil).DeleteServerVersion), varargs...)
 }
 
-// GetRegistry mocks base method.
-func (m *MockRegistryService) GetRegistry(ctx context.Context) (*registry.UpstreamRegistry, string, error) {
+// DeleteSkillVersion mocks base method.
+func (m *MockRegistryService) DeleteSkillVersion(ctx context.Context, opts ...service.Option) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRegistry", ctx)
-	ret0, _ := ret[0].(*registry.UpstreamRegistry)
-	ret1, _ := ret[1].(string)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DeleteSkillVersion", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
-// GetRegistry indicates an expected call of GetRegistry.
-func (mr *MockRegistryServiceMockRecorder) GetRegistry(ctx any) *gomock.Call {
+// DeleteSkillVersion indicates an expected call of DeleteSkillVersion.
+func (mr *MockRegistryServiceMockRecorder) DeleteSkillVersion(ctx any, opts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRegistry", reflect.TypeOf((*MockRegistryService)(nil).GetRegistry), ctx)
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSkillVersion", reflect.TypeOf((*MockRegistryService)(nil).DeleteSkillVersion), varargs...)
+}
+
+// DeleteSource mocks base method.
+func (m *MockRegistryService) DeleteSource(ctx context.Context, name string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteSource", ctx, name)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteSource indicates an expected call of DeleteSource.
+func (mr *MockRegistryServiceMockRecorder) DeleteSource(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSource", reflect.TypeOf((*MockRegistryService)(nil).DeleteSource), ctx, name)
 }
 
 // GetRegistryByName mocks base method.
@@ -156,6 +187,41 @@ func (mr *MockRegistryServiceMockRecorder) GetServerVersion(ctx any, opts ...any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetServerVersion", reflect.TypeOf((*MockRegistryService)(nil).GetServerVersion), varargs...)
 }
 
+// GetSkillVersion mocks base method.
+func (m *MockRegistryService) GetSkillVersion(ctx context.Context, opts ...service.Option) (*service.Skill, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "GetSkillVersion", varargs...)
+	ret0, _ := ret[0].(*service.Skill)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSkillVersion indicates an expected call of GetSkillVersion.
+func (mr *MockRegistryServiceMockRecorder) GetSkillVersion(ctx any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkillVersion", reflect.TypeOf((*MockRegistryService)(nil).GetSkillVersion), varargs...)
+}
+
+// GetSourceByName mocks base method.
+func (m *MockRegistryService) GetSourceByName(ctx context.Context, name string) (*service.SourceInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSourceByName", ctx, name)
+	ret0, _ := ret[0].(*service.SourceInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSourceByName indicates an expected call of GetSourceByName.
+func (mr *MockRegistryServiceMockRecorder) GetSourceByName(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSourceByName", reflect.TypeOf((*MockRegistryService)(nil).GetSourceByName), ctx, name)
+}
+
 // ListRegistries mocks base method.
 func (m *MockRegistryService) ListRegistries(ctx context.Context) ([]service.RegistryInfo, error) {
 	m.ctrl.T.Helper()
@@ -169,6 +235,21 @@ func (m *MockRegistryService) ListRegistries(ctx context.Context) ([]service.Reg
 func (mr *MockRegistryServiceMockRecorder) ListRegistries(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRegistries", reflect.TypeOf((*MockRegistryService)(nil).ListRegistries), ctx)
+}
+
+// ListRegistryEntries mocks base method.
+func (m *MockRegistryService) ListRegistryEntries(ctx context.Context, registryName string) ([]service.RegistryEntryInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRegistryEntries", ctx, registryName)
+	ret0, _ := ret[0].([]service.RegistryEntryInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRegistryEntries indicates an expected call of ListRegistryEntries.
+func (mr *MockRegistryServiceMockRecorder) ListRegistryEntries(ctx, registryName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRegistryEntries", reflect.TypeOf((*MockRegistryService)(nil).ListRegistryEntries), ctx, registryName)
 }
 
 // ListServerVersions mocks base method.
@@ -211,18 +292,68 @@ func (mr *MockRegistryServiceMockRecorder) ListServers(ctx any, opts ...any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListServers", reflect.TypeOf((*MockRegistryService)(nil).ListServers), varargs...)
 }
 
-// ProcessInlineRegistryData mocks base method.
-func (m *MockRegistryService) ProcessInlineRegistryData(ctx context.Context, name, data, format string) error {
+// ListSkills mocks base method.
+func (m *MockRegistryService) ListSkills(ctx context.Context, opts ...service.Option) (*service.ListSkillsResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ProcessInlineRegistryData", ctx, name, data, format)
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ListSkills", varargs...)
+	ret0, _ := ret[0].(*service.ListSkillsResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListSkills indicates an expected call of ListSkills.
+func (mr *MockRegistryServiceMockRecorder) ListSkills(ctx any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSkills", reflect.TypeOf((*MockRegistryService)(nil).ListSkills), varargs...)
+}
+
+// ListSourceEntries mocks base method.
+func (m *MockRegistryService) ListSourceEntries(ctx context.Context, sourceName string) ([]service.SourceEntryInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListSourceEntries", ctx, sourceName)
+	ret0, _ := ret[0].([]service.SourceEntryInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListSourceEntries indicates an expected call of ListSourceEntries.
+func (mr *MockRegistryServiceMockRecorder) ListSourceEntries(ctx, sourceName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSourceEntries", reflect.TypeOf((*MockRegistryService)(nil).ListSourceEntries), ctx, sourceName)
+}
+
+// ListSources mocks base method.
+func (m *MockRegistryService) ListSources(ctx context.Context) ([]service.SourceInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListSources", ctx)
+	ret0, _ := ret[0].([]service.SourceInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListSources indicates an expected call of ListSources.
+func (mr *MockRegistryServiceMockRecorder) ListSources(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSources", reflect.TypeOf((*MockRegistryService)(nil).ListSources), ctx)
+}
+
+// ProcessInlineSourceData mocks base method.
+func (m *MockRegistryService) ProcessInlineSourceData(ctx context.Context, name, data, format string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ProcessInlineSourceData", ctx, name, data, format)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// ProcessInlineRegistryData indicates an expected call of ProcessInlineRegistryData.
-func (mr *MockRegistryServiceMockRecorder) ProcessInlineRegistryData(ctx, name, data, format any) *gomock.Call {
+// ProcessInlineSourceData indicates an expected call of ProcessInlineSourceData.
+func (mr *MockRegistryServiceMockRecorder) ProcessInlineSourceData(ctx, name, data, format any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessInlineRegistryData", reflect.TypeOf((*MockRegistryService)(nil).ProcessInlineRegistryData), ctx, name, data, format)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessInlineSourceData", reflect.TypeOf((*MockRegistryService)(nil).ProcessInlineSourceData), ctx, name, data, format)
 }
 
 // PublishServerVersion mocks base method.
@@ -245,6 +376,26 @@ func (mr *MockRegistryServiceMockRecorder) PublishServerVersion(ctx any, opts ..
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishServerVersion", reflect.TypeOf((*MockRegistryService)(nil).PublishServerVersion), varargs...)
 }
 
+// PublishSkill mocks base method.
+func (m *MockRegistryService) PublishSkill(ctx context.Context, skill *service.Skill, opts ...service.Option) (*service.Skill, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, skill}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "PublishSkill", varargs...)
+	ret0, _ := ret[0].(*service.Skill)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PublishSkill indicates an expected call of PublishSkill.
+func (mr *MockRegistryServiceMockRecorder) PublishSkill(ctx, skill any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, skill}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishSkill", reflect.TypeOf((*MockRegistryService)(nil).PublishSkill), varargs...)
+}
+
 // UpdateRegistry mocks base method.
 func (m *MockRegistryService) UpdateRegistry(ctx context.Context, name string, req *service.RegistryCreateRequest) (*service.RegistryInfo, error) {
 	m.ctrl.T.Helper()
@@ -258,4 +409,19 @@ func (m *MockRegistryService) UpdateRegistry(ctx context.Context, name string, r
 func (mr *MockRegistryServiceMockRecorder) UpdateRegistry(ctx, name, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRegistry", reflect.TypeOf((*MockRegistryService)(nil).UpdateRegistry), ctx, name, req)
+}
+
+// UpdateSource mocks base method.
+func (m *MockRegistryService) UpdateSource(ctx context.Context, name string, req *service.SourceCreateRequest) (*service.SourceInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateSource", ctx, name, req)
+	ret0, _ := ret[0].(*service.SourceInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateSource indicates an expected call of UpdateSource.
+func (mr *MockRegistryServiceMockRecorder) UpdateSource(ctx, name, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSource", reflect.TypeOf((*MockRegistryService)(nil).UpdateSource), ctx, name, req)
 }
