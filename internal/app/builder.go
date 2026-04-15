@@ -1,6 +1,7 @@
 package app
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
 	"log/slog"
@@ -428,27 +429,9 @@ func buildHTTPServer(
 		}
 	}
 
-	// Add metrics middleware if meter provider is configured
-	// This should be added early in the chain to capture all requests
-	if b.meterProvider != nil {
-		metricsMiddleware, err := telemetry.MetricsMiddleware(b.meterProvider)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create metrics middleware: %w", err)
-		}
-		if metricsMiddleware != nil {
-			// Prepend metrics middleware to capture all requests including those rejected by auth
-			b.middlewares = append([]func(http.Handler) http.Handler{metricsMiddleware}, b.middlewares...)
-			slog.Info("HTTP metrics middleware enabled")
-		}
-	}
-
-	// Add tracing middleware if tracer provider is configured
-	// This should be added early in the chain to capture all requests
-	if b.tracerProvider != nil {
-		tracingMiddleware := telemetry.TracingMiddleware(b.tracerProvider)
-		// Prepend tracing middleware to capture all requests including those rejected by auth
-		b.middlewares = append([]func(http.Handler) http.Handler{tracingMiddleware}, b.middlewares...)
-		slog.Info("HTTP tracing middleware enabled")
+	// Add observability and compression middlewares (metrics, tracing, compression)
+	if err := addObservabilityMiddlewares(b); err != nil {
+		return nil, err
 	}
 
 	// Create auth middleware that bypasses public paths
@@ -518,6 +501,42 @@ func buildInternalHTTPServer(b *registryAppConfig, svc service.RegistryService) 
 		WriteTimeout: b.writeTimeout,
 		IdleTimeout:  b.idleTimeout,
 	}
+}
+
+// addObservabilityMiddlewares prepends metrics, tracing, and compression
+// middlewares to the middleware chain when the corresponding providers or
+// feature flags are configured.
+func addObservabilityMiddlewares(b *registryAppConfig) error {
+	// Add metrics middleware if meter provider is configured
+	// This should be added early in the chain to capture all requests
+	if b.meterProvider != nil {
+		metricsMiddleware, err := telemetry.MetricsMiddleware(b.meterProvider)
+		if err != nil {
+			return fmt.Errorf("failed to create metrics middleware: %w", err)
+		}
+		if metricsMiddleware != nil {
+			// Prepend metrics middleware to capture all requests including those rejected by auth
+			b.middlewares = append([]func(http.Handler) http.Handler{metricsMiddleware}, b.middlewares...)
+			slog.Info("HTTP metrics middleware enabled")
+		}
+	}
+
+	// Add tracing middleware if tracer provider is configured
+	// This should be added early in the chain to capture all requests
+	if b.tracerProvider != nil {
+		tracingMiddleware := telemetry.TracingMiddleware(b.tracerProvider)
+		// Prepend tracing middleware to capture all requests including those rejected by auth
+		b.middlewares = append([]func(http.Handler) http.Handler{tracingMiddleware}, b.middlewares...)
+		slog.Info("HTTP tracing middleware enabled")
+	}
+
+	// Add compression middleware if enabled via THV_REGISTRY_COMPRESS_RESPONSE
+	if b.config != nil && b.config.IsCompressionEnabled() {
+		b.middlewares = append([]func(http.Handler) http.Handler{middleware.Compress(gzip.DefaultCompression)}, b.middlewares...)
+		slog.Info("HTTP response compression enabled")
+	}
+
+	return nil
 }
 
 // ensureStorageFactory creates the storage factory if not already injected.
