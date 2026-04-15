@@ -457,17 +457,8 @@ func (s *dbService) executePublishSkillTransaction(
 		})
 	} else if err == nil {
 		entryID = existing.ID
-		// Verify claim consistency: subsequent publishes of the same entry must
-		// carry exactly the same claims as the original. We use strict equality
-		// (not superset) so that claims cannot drift across publishes — any change
-		// requires an explicit delete-and-recreate.
-		if claimsJSON != nil && existing.Claims != nil {
-			var existingClaims, incoming map[string]any
-			_ = json.Unmarshal(existing.Claims, &existingClaims)
-			_ = json.Unmarshal(claimsJSON, &incoming)
-			if !claimsEqual(incoming, existingClaims) {
-				return "", fmt.Errorf("%w: claims do not match existing entry", service.ErrClaimsMismatch)
-			}
+		if err := checkClaimConsistency(claimsJSON, existing.Claims); err != nil {
+			return "", err
 		}
 	}
 	if err != nil {

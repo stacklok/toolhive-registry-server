@@ -48,6 +48,11 @@ func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if auth.ClaimsFromContext(r.Context()) != nil && len(req.Claims) == 0 {
+		common.WriteErrorResponse(w, "claims are required when authentication is enabled", http.StatusBadRequest)
+		return
+	}
+
 	// Extract JWT claims for authorization (subset validation)
 	var jwtOpts []service.Option
 	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {

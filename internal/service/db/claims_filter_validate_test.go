@@ -200,6 +200,80 @@ func TestClaimsFromCtx(t *testing.T) {
 	}
 }
 
+func TestCheckClaimConsistency(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		incomingJSON []byte
+		existingJSON []byte
+		wantErr      error
+	}{
+		{
+			name:         "both nil returns nil",
+			incomingJSON: nil,
+			existingJSON: nil,
+			wantErr:      nil,
+		},
+		{
+			name:         "both empty slices returns nil",
+			incomingJSON: []byte{},
+			existingJSON: []byte{},
+			wantErr:      nil,
+		},
+		{
+			name:         "incoming nil existing has claims returns ErrClaimsMismatch",
+			incomingJSON: nil,
+			existingJSON: mustMarshalAuthz(t, map[string]any{"sub": "user1"}),
+			wantErr:      service.ErrClaimsMismatch,
+		},
+		{
+			name:         "incoming has claims existing nil returns ErrClaimsMismatch",
+			incomingJSON: mustMarshalAuthz(t, map[string]any{"sub": "user1"}),
+			existingJSON: nil,
+			wantErr:      service.ErrClaimsMismatch,
+		},
+		{
+			name:         "both have identical claims returns nil",
+			incomingJSON: mustMarshalAuthz(t, map[string]any{"sub": "user1", "org": "acme"}),
+			existingJSON: mustMarshalAuthz(t, map[string]any{"sub": "user1", "org": "acme"}),
+			wantErr:      nil,
+		},
+		{
+			name:         "both have different claims returns ErrClaimsMismatch",
+			incomingJSON: mustMarshalAuthz(t, map[string]any{"sub": "user1"}),
+			existingJSON: mustMarshalAuthz(t, map[string]any{"sub": "user2"}),
+			wantErr:      service.ErrClaimsMismatch,
+		},
+		{
+			name:         "incoming has extra key returns ErrClaimsMismatch",
+			incomingJSON: mustMarshalAuthz(t, map[string]any{"sub": "user1", "org": "acme"}),
+			existingJSON: mustMarshalAuthz(t, map[string]any{"sub": "user1"}),
+			wantErr:      service.ErrClaimsMismatch,
+		},
+		{
+			name:         "existing has extra key returns ErrClaimsMismatch",
+			incomingJSON: mustMarshalAuthz(t, map[string]any{"sub": "user1"}),
+			existingJSON: mustMarshalAuthz(t, map[string]any{"sub": "user1", "org": "acme"}),
+			wantErr:      service.ErrClaimsMismatch,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := checkClaimConsistency(tt.incomingJSON, tt.existingJSON)
+
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 // mustMarshalAuthz is a test helper that marshals v to JSON or fails the test.
 func mustMarshalAuthz(t *testing.T, v any) []byte {
 	t.Helper()

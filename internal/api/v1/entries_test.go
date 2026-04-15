@@ -8,11 +8,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/golang-jwt/jwt/v5"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
@@ -123,6 +125,87 @@ func TestPublishEntry(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, tt.wantServerName, server.Name)
 				assert.Equal(t, "1.0.0", server.Version)
+			}
+		})
+	}
+}
+
+func TestPublishEntryClaimsRequired(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		body       []byte
+		jwtClaims  jwt.MapClaims
+		setupMock  func(*mocks.MockRegistryService)
+		wantStatus int
+		wantError  string
+	}{
+		{
+			name: "authenticated request without claims returns 400",
+			body: mustMarshal(publishEntryRequest{
+				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
+			}),
+			jwtClaims:  jwt.MapClaims{"sub": "user1"},
+			setupMock:  func(_ *mocks.MockRegistryService) {},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "claims are required",
+		},
+		{
+			name: "authenticated request with claims succeeds",
+			body: mustMarshal(publishEntryRequest{
+				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
+				Claims: map[string]any{"sub": "user1"},
+			}),
+			jwtClaims: jwt.MapClaims{"sub": "user1"},
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
+					Return(&upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"}, nil)
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "unauthenticated request without claims succeeds",
+			body: mustMarshal(publishEntryRequest{
+				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
+			}),
+			jwtClaims: nil,
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
+					Return(&upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"}, nil)
+			},
+			wantStatus: http.StatusCreated,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			mockSvc := mocks.NewMockRegistryService(ctrl)
+			tt.setupMock(mockSvc)
+
+			router := Router(mockSvc, nil)
+			req, err := http.NewRequest("POST", "/entries", bytes.NewReader(tt.body))
+			require.NoError(t, err)
+
+			if tt.jwtClaims != nil {
+				ctx := auth.ContextWithClaims(req.Context(), tt.jwtClaims)
+				req = req.WithContext(ctx)
+			}
+
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.wantStatus, rr.Code)
+
+			if tt.wantError != "" {
+				var response map[string]string
+				err = json.Unmarshal(rr.Body.Bytes(), &response)
+				require.NoError(t, err)
+				assert.Contains(t, response["error"], tt.wantError)
 			}
 		})
 	}
