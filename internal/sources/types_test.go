@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 

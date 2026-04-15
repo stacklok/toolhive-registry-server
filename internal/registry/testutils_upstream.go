@@ -5,7 +5,7 @@ import (
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 )
 
 // UpstreamRegistryOption is a function that configures an UpstreamRegistry for testing

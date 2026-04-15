@@ -8,7 +8,7 @@ import (
 	"time"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
-	toolhivetypes "github.com/stacklok/toolhive/pkg/registry/registry"
+	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
