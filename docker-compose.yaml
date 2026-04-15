@@ -61,13 +61,12 @@ services:
       - registry_data:/app/data
       # pgpass file is now built into the container image
     # Use CONFIG_FILE env var to switch between configs (defaults to config-docker.yaml)
-    # Examples: CONFIG_FILE=config-docker-dual.yaml docker-compose up
+    # Examples: CONFIG_FILE=config-docker-okta.yaml docker compose up
     command: ["serve", "--config", "/examples/${CONFIG_FILE:-config-docker.yaml}", "--address", ":8080"]
     environment:
       - LOG_LEVEL=debug
-      # Point to the pgpass file for PostgreSQL authentication
       - PGPASSFILE=/home/appuser/.pgpass
-      # No THV_DATABASE_PASSWORD - using pgpass file instead
+      - THV_REGISTRY_INSECURE_URL=true
     networks:
       - registry-network
     restart: unless-stopped
