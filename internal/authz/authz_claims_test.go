@@ -132,15 +132,24 @@ func TestAuthzIntegration_EmptyClaimsBehavior(t *testing.T) {
 
 	waitForSync(t, env, superAdmin)
 
-	// Publish three entries as superAdmin (bypasses all claim checks)
-	t.Run("publish open-entry with empty claims", func(t *testing.T) {
+	// Publishing with empty claims is rejected when auth is enabled — empty
+	// claims would create entries invisible to everyone except super-admins.
+	t.Run("publish with empty claims rejected", func(t *testing.T) {
 		resp := doRequest(t, "POST", env.baseURL+"/v1/entries", superAdmin, publishReq{
 			Claims: map[string]any{},
 			Server: serverJSON("open-entry"),
 		})
-		assertStatus(t, resp, 201)
+		assertStatus(t, resp, 400)
 	})
 
+	t.Run("publish without claims rejected", func(t *testing.T) {
+		resp := doRequest(t, "POST", env.baseURL+"/v1/entries", superAdmin, publishReq{
+			Server: serverJSON("open-entry"),
+		})
+		assertStatus(t, resp, 400)
+	})
+
+	// Publish two entries with proper claims
 	t.Run("publish acme-entry with org claim", func(t *testing.T) {
 		resp := doRequest(t, "POST", env.baseURL+"/v1/entries", superAdmin, publishReq{
 			Claims: map[string]any{"org": "acme"},
@@ -158,35 +167,6 @@ func TestAuthzIntegration_EmptyClaimsBehavior(t *testing.T) {
 	})
 
 	// Visibility checks
-	// Entries with empty claims {} are stored as NULL in the database (the claims
-	// serializer treats empty maps as nil). The read-path filter returns false for
-	// NULL record claims (default-deny), so only superAdmin can see them.
-	t.Run("platform user does NOT see empty-claims entry", func(t *testing.T) {
-		url := fmt.Sprintf("%s/registry/acme-all/v0.1/servers?search=open-entry", env.baseURL)
-		resp := doRequest(t, "GET", url, platformWriter, nil)
-		body := assertStatus(t, resp, 200)
-		var result struct {
-			Metadata struct {
-				Count int `json:"count"`
-			} `json:"metadata"`
-		}
-		require.NoError(t, json.Unmarshal([]byte(body), &result))
-		assert.Equal(t, 0, result.Metadata.Count, "empty-claims entry should be invisible to regular users")
-	})
-
-	t.Run("data user does NOT see empty-claims entry", func(t *testing.T) {
-		url := fmt.Sprintf("%s/registry/acme-all/v0.1/servers?search=open-entry", env.baseURL)
-		resp := doRequest(t, "GET", url, dataWriter, nil)
-		body := assertStatus(t, resp, 200)
-		var result struct {
-			Metadata struct {
-				Count int `json:"count"`
-			} `json:"metadata"`
-		}
-		require.NoError(t, json.Unmarshal([]byte(body), &result))
-		assert.Equal(t, 0, result.Metadata.Count, "empty-claims entry should be invisible to regular users")
-	})
-
 	t.Run("platform user sees acme entry", func(t *testing.T) {
 		url := fmt.Sprintf("%s/registry/acme-all/v0.1/servers?search=acme-entry", env.baseURL)
 		resp := doRequest(t, "GET", url, platformWriter, nil)
@@ -221,21 +201,15 @@ func TestAuthzIntegration_EmptyClaimsBehavior(t *testing.T) {
 		assert.Equal(t, 0, result.Metadata.Count, "expected 0 servers for data user searching platform-entry")
 	})
 
-	t.Run("superAdmin sees all three", func(t *testing.T) {
+	t.Run("superAdmin sees both entries", func(t *testing.T) {
 		url := fmt.Sprintf("%s/registry/acme-all/v0.1/servers?search=-entry", env.baseURL)
 		resp := doRequest(t, "GET", url, superAdmin, nil)
 		body := assertStatus(t, resp, 200)
-		assert.Contains(t, body, "open-entry")
 		assert.Contains(t, body, "acme-entry")
 		assert.Contains(t, body, "platform-entry")
 	})
 
-	// Cleanup: delete all three entries
-	t.Run("cleanup open-entry", func(t *testing.T) {
-		resp := doRequest(t, "DELETE", env.baseURL+"/v1/entries/server/io.test%2Fopen-entry/versions/1.0.0", superAdmin, nil)
-		assertStatus(t, resp, 204)
-	})
-
+	// Cleanup
 	t.Run("cleanup acme-entry", func(t *testing.T) {
 		resp := doRequest(t, "DELETE", env.baseURL+"/v1/entries/server/io.test%2Facme-entry/versions/1.0.0", superAdmin, nil)
 		assertStatus(t, resp, 204)
