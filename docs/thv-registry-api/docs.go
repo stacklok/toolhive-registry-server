@@ -416,49 +416,6 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "internal_api.HealthResponse": {
-                "properties": {
-                    "status": {
-                        "example": "healthy",
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api.ReadinessResponse": {
-                "properties": {
-                    "status": {
-                        "example": "ready",
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api.VersionResponse": {
-                "properties": {
-                    "build_date": {
-                        "example": "2025-01-15T10:30:00Z",
-                        "type": "string"
-                    },
-                    "commit": {
-                        "example": "abc123def",
-                        "type": "string"
-                    },
-                    "go_version": {
-                        "example": "go1.21.5",
-                        "type": "string"
-                    },
-                    "platform": {
-                        "example": "linux/amd64",
-                        "type": "string"
-                    },
-                    "version": {
-                        "example": "v0.1.0",
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
             "internal_api_v1.meResponse": {
                 "properties": {
                     "roles": {
@@ -1088,27 +1045,6 @@ const docTemplate = `{
         "url": ""
     },
     "paths": {
-        "/health": {
-            "get": {
-                "description": "Check if the registry API is healthy",
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/internal_api.HealthResponse"
-                                }
-                            }
-                        },
-                        "description": "OK"
-                    }
-                },
-                "summary": "Health check",
-                "tags": [
-                    "system"
-                ]
-            }
-        },
         "/openapi.json": {
             "get": {
                 "description": "Get the OpenAPI 3.1.0 specification for this API",
@@ -1138,40 +1074,6 @@ const docTemplate = `{
                     }
                 },
                 "summary": "OpenAPI specification",
-                "tags": [
-                    "system"
-                ]
-            }
-        },
-        "/readiness": {
-            "get": {
-                "description": "Check if the registry API is ready to serve requests",
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/internal_api.ReadinessResponse"
-                                }
-                            }
-                        },
-                        "description": "OK"
-                    },
-                    "503": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Service Unavailable"
-                    }
-                },
-                "summary": "Readiness check",
                 "tags": [
                     "system"
                 ]
@@ -2944,27 +2846,6 @@ const docTemplate = `{
                 "summary": "List source entries",
                 "tags": [
                     "v1"
-                ]
-            }
-        },
-        "/version": {
-            "get": {
-                "description": "Get version information about the registry API",
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/internal_api.VersionResponse"
-                                }
-                            }
-                        },
-                        "description": "OK"
-                    }
-                },
-                "summary": "Version information",
-                "tags": [
-                    "system"
                 ]
             }
         }

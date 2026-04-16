@@ -158,14 +158,8 @@ func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(doc))
 }
 
-// healthHandler handles health check requests
-//
-// @Summary		Health check
-// @Description	Check if the registry API is healthy
-// @Tags		system
-// @Produce		json
-// @Success		200	{object}	HealthResponse
-// @Router		/health [get]
+// healthHandler handles health check requests.
+// Served on the internal port only — not part of the public API.
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	response := HealthResponse{Status: "healthy"}
 	w.Header().Set("Content-Type", "application/json")
@@ -175,15 +169,8 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-// readinessHandler handles readiness check requests
-//
-// @Summary		Readiness check
-// @Description	Check if the registry API is ready to serve requests
-// @Tags		system
-// @Produce		json
-// @Success		200	{object}	ReadinessResponse
-// @Failure		503	{object}	map[string]string
-// @Router		/readiness [get]
+// readinessHandler handles readiness check requests.
+// Served on the internal port only — not part of the public API.
 func readinessHandler(svc service.RegistryService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := svc.CheckReadiness(r.Context()); err != nil {
@@ -210,14 +197,8 @@ func readinessHandler(svc service.RegistryService) http.HandlerFunc {
 	}
 }
 
-// versionHandler handles version information requests
-//
-// @Summary		Version information
-// @Description	Get version information about the registry API
-// @Tags		system
-// @Produce		json
-// @Success		200	{object}	VersionResponse
-// @Router		/version [get]
+// versionHandler handles version information requests.
+// Served on the internal port only — not part of the public API.
 func versionHandler(w http.ResponseWriter, _ *http.Request) {
 	info := versions.GetVersionInfo()
 
