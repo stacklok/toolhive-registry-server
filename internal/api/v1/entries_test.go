@@ -306,8 +306,8 @@ func TestUpdateEntryClaims(t *testing.T) {
 				m.EXPECT().UpdateEntryClaims(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 					Return(service.ErrNoManagedSource)
 			},
-			wantStatus: http.StatusInternalServerError,
-			wantError:  "no managed source available",
+			wantStatus: http.StatusServiceUnavailable,
+			wantError:  "no managed source available for updating claims",
 		},
 		{
 			name: "generic service error",

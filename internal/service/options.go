@@ -216,13 +216,10 @@ func WithJWTClaims(claims map[string]any) Option {
 }
 
 // WithEntryType sets the entry type for the UpdateEntryClaims operation.
-// Valid values are "server" and "skill".
+// Valid values are defined in entry_types.go (EntryTypeServer, EntryTypeSkill).
+// The setter fully validates the value via ValidateEntryType.
 func WithEntryType(entryType string) Option {
 	return func(o any) error {
-		if entryType == "" {
-			return fmt.Errorf("invalid entry type: %s", entryType)
-		}
-
 		switch o := o.(type) {
 		case entryTypeOption:
 			return o.setEntryType(entryType)

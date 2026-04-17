@@ -196,6 +196,7 @@ type updateEntryClaimsRequest struct {
 // @Failure		403	{object}	map[string]string	"Forbidden"
 // @Failure		404	{object}	map[string]string	"Not found"
 // @Failure		500	{object}	map[string]string	"Internal server error"
+// @Failure		503	{object}	map[string]string	"No managed source available"
 // @Router		/v1/entries/{type}/{name}/claims [put]
 func (routes *Routes) updateEntryClaims(w http.ResponseWriter, r *http.Request) {
 	entryType, err := common.GetAndValidateURLParam(r, "type")
@@ -210,11 +211,8 @@ func (routes *Routes) updateEntryClaims(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	switch entryType {
-	case "server", "skill":
-		// valid
-	default:
-		common.WriteErrorResponse(w, "unsupported entry type: must be 'server' or 'skill'", http.StatusBadRequest)
+	if err := service.ValidateEntryType(entryType); err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -245,7 +243,7 @@ func (routes *Routes) updateEntryClaims(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		if errors.Is(err, service.ErrNoManagedSource) {
-			common.WriteErrorResponse(w, "no managed source available", http.StatusInternalServerError)
+			common.WriteErrorResponse(w, "no managed source available for updating claims", http.StatusServiceUnavailable)
 			return
 		}
 		slog.ErrorContext(r.Context(), "failed to update entry claims", "error", err, "type", entryType)

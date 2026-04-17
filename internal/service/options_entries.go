@@ -1,23 +1,18 @@
 package service
 
-import "fmt"
-
 // UpdateEntryClaimsOptions is the options for the UpdateEntryClaims operation.
 type UpdateEntryClaimsOptions struct {
-	EntryType string // "server" or "skill"
+	EntryType string // EntryTypeServer or EntryTypeSkill
 	Name      string
 	Claims    map[string]any
 	JWTClaims map[string]any
 }
 
-//nolint:unparam
 func (o *UpdateEntryClaimsOptions) setEntryType(entryType string) error {
-	switch entryType {
-	case "server", "skill":
-		o.EntryType = entryType
-	default:
-		return fmt.Errorf("unsupported entry type: %s", entryType)
+	if err := ValidateEntryType(entryType); err != nil {
+		return err
 	}
+	o.EntryType = entryType
 	return nil
 }
 

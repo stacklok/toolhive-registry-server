@@ -2002,6 +2002,19 @@ const docTemplate = `{
                             }
                         },
                         "description": "Internal server error"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "No managed source available"
                     }
                 },
                 "summary": "Update entry claims",
