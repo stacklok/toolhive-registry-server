@@ -4,7 +4,6 @@
 
 sources:
   - name: local-file
-    format: upstream
     file:
       path: /examples/upstream-registry.json
     syncPolicy:
