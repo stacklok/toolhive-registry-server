@@ -14,6 +14,33 @@ import (
 // Write-path validation (gate checks, publish/delete authorization)
 // ---------------------------------------------------------------------------
 
+// checkClaimConsistency verifies that incoming claims match the existing entry's claims.
+// Both-nil is OK (no claims on either side). Both-non-nil are compared for equality.
+// One-nil-one-non-nil is a mismatch — the publisher must be explicit and consistent.
+func checkClaimConsistency(incomingJSON, existingJSON []byte) error {
+	incomingEmpty := len(incomingJSON) == 0
+	existingEmpty := len(existingJSON) == 0
+
+	if incomingEmpty && existingEmpty {
+		return nil
+	}
+	if incomingEmpty != existingEmpty {
+		return fmt.Errorf("%w: claims do not match existing entry", service.ErrClaimsMismatch)
+	}
+
+	var incoming, existing map[string]any
+	if err := json.Unmarshal(incomingJSON, &incoming); err != nil {
+		return fmt.Errorf("failed to unmarshal incoming claims: %w", err)
+	}
+	if err := json.Unmarshal(existingJSON, &existing); err != nil {
+		return fmt.Errorf("failed to unmarshal existing claims: %w", err)
+	}
+	if !claimsEqual(incoming, existing) {
+		return fmt.Errorf("%w: claims do not match existing entry", service.ErrClaimsMismatch)
+	}
+	return nil
+}
+
 // validateClaimsSubset checks that callerClaims covers resourceClaims.
 // Returns nil if:
 //   - callerClaims is nil (anonymous mode — no auth enforcement)
