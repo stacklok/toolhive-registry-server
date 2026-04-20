@@ -15,6 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
+	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
@@ -133,8 +134,12 @@ func TestPublishEntry(t *testing.T) {
 func TestPublishEntryClaimsRequired(t *testing.T) {
 	t.Parallel()
 
+	oauthCfg := &config.AuthConfig{Mode: config.AuthModeOAuth}
+	anonCfg := &config.AuthConfig{Mode: config.AuthModeAnonymous}
+
 	tests := []struct {
 		name       string
+		authCfg    *config.AuthConfig
 		body       []byte
 		jwtClaims  jwt.MapClaims
 		setupMock  func(*mocks.MockRegistryService)
@@ -142,7 +147,8 @@ func TestPublishEntryClaimsRequired(t *testing.T) {
 		wantError  string
 	}{
 		{
-			name: "authenticated request without claims returns 400",
+			name:    "auth enabled without claims returns 400",
+			authCfg: oauthCfg,
 			body: mustMarshal(publishEntryRequest{
 				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
 			}),
@@ -152,7 +158,20 @@ func TestPublishEntryClaimsRequired(t *testing.T) {
 			wantError:  "claims are required",
 		},
 		{
-			name: "authenticated request with claims succeeds",
+			name:    "auth enabled with empty claims returns 400",
+			authCfg: oauthCfg,
+			body: mustMarshal(publishEntryRequest{
+				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
+				Claims: map[string]any{},
+			}),
+			jwtClaims:  jwt.MapClaims{"sub": "user1"},
+			setupMock:  func(_ *mocks.MockRegistryService) {},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "claims are required",
+		},
+		{
+			name:    "auth enabled with claims succeeds",
+			authCfg: oauthCfg,
 			body: mustMarshal(publishEntryRequest{
 				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
 				Claims: map[string]any{"sub": "user1"},
@@ -165,11 +184,23 @@ func TestPublishEntryClaimsRequired(t *testing.T) {
 			wantStatus: http.StatusCreated,
 		},
 		{
-			name: "unauthenticated request without claims succeeds",
+			name:    "anonymous mode without claims succeeds",
+			authCfg: anonCfg,
 			body: mustMarshal(publishEntryRequest{
 				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
 			}),
-			jwtClaims: nil,
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
+					Return(&upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"}, nil)
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:    "no auth config without claims succeeds",
+			authCfg: nil,
+			body: mustMarshal(publishEntryRequest{
+				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
+			}),
 			setupMock: func(m *mocks.MockRegistryService) {
 				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
 					Return(&upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"}, nil)
@@ -187,7 +218,7 @@ func TestPublishEntryClaimsRequired(t *testing.T) {
 			mockSvc := mocks.NewMockRegistryService(ctrl)
 			tt.setupMock(mockSvc)
 
-			router := Router(mockSvc, nil)
+			router := Router(mockSvc, tt.authCfg)
 			req, err := http.NewRequest("POST", "/entries", bytes.NewReader(tt.body))
 			require.NoError(t, err)
 

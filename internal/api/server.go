@@ -29,7 +29,7 @@ type serverConfig struct {
 	// shared with the other layers of the application.
 	middlewares     []func(http.Handler) http.Handler
 	authInfoHandler http.Handler
-	authzConfig     *config.AuthzConfig
+	authConfig      *config.AuthConfig
 }
 
 // WithMiddlewares adds middleware to the server
@@ -46,10 +46,12 @@ func WithAuthInfoHandler(handler http.Handler) ServerOption {
 	}
 }
 
-// WithAuthzConfig sets the authorization configuration for role-based access control
-func WithAuthzConfig(authzCfg *config.AuthzConfig) ServerOption {
+// WithAuthConfig sets the authentication configuration used by the v1 router.
+// Both role-based access control (Authz) and publish-time claim enforcement
+// (Mode) are derived from it.
+func WithAuthConfig(authCfg *config.AuthConfig) ServerOption {
 	return func(cfg *serverConfig) {
-		cfg.authzConfig = authzCfg
+		cfg.authConfig = authCfg
 	}
 }
 
@@ -82,7 +84,7 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 
 	// Mount MCP Registry API v0.1 routes
 	r.Mount("/registry", v01.Router(svc))
-	r.Mount("/v1", apiv1.Router(svc, cfg.authzConfig))
+	r.Mount("/v1", apiv1.Router(svc, cfg.authConfig))
 
 	return r
 }

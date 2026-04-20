@@ -453,10 +453,15 @@ func buildHTTPServer(
 	authMw := auth.WrapWithPublicPaths(b.authMiddleware, publicPaths)
 	b.middlewares = append(b.middlewares, authMw)
 
-	// Extract authorization config if available
-	var authzCfg *config.AuthzConfig
+	// Extract authentication config if available; the v1 router derives both
+	// role checks (Authz) and publish-time claim enforcement (Mode) from it.
+	var authCfg *config.AuthConfig
 	if b.config != nil && b.config.Auth != nil {
-		authzCfg = b.config.Auth.Authz
+		authCfg = b.config.Auth
+	}
+	var authzCfg *config.AuthzConfig
+	if authCfg != nil {
+		authzCfg = authCfg.Authz
 	}
 
 	// Resolve roles for all authenticated requests so that downstream code
@@ -473,7 +478,7 @@ func buildHTTPServer(
 	serverOpts := []api.ServerOption{
 		api.WithMiddlewares(b.middlewares...),
 		api.WithAuthInfoHandler(b.authInfoHandler),
-		api.WithAuthzConfig(authzCfg),
+		api.WithAuthConfig(authCfg),
 	}
 	// Create router with middlewares
 	router := api.NewServer(svc, serverOpts...)

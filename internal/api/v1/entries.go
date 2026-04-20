@@ -48,7 +48,7 @@ func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if auth.ClaimsFromContext(r.Context()) != nil && len(req.Claims) == 0 {
+	if routes.authEnabled && len(req.Claims) == 0 {
 		common.WriteErrorResponse(w, "claims are required when authentication is enabled", http.StatusBadRequest)
 		return
 	}
