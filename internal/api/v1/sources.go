@@ -72,6 +72,7 @@ func (routes *Routes) getSource(w http.ResponseWriter, r *http.Request) {
 // @Success		201		{object}	service.SourceInfo	"Source created"
 // @Failure		400		{object}	map[string]string	"Bad request"
 // @Failure		403		{object}	map[string]string	"Cannot modify config-created source"
+// @Failure		409		{object}	map[string]string	"Managed source limit reached"
 // @Failure		500		{object}	map[string]string	"Internal server error"
 // @Router		/v1/sources/{name} [put]
 func (routes *Routes) upsertSource(w http.ResponseWriter, r *http.Request) {
@@ -181,6 +182,8 @@ func writeSourceError(w http.ResponseWriter, err error) {
 	case errors.Is(err, service.ErrSourceTypeChangeNotAllowed):
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 	case errors.Is(err, service.ErrSourceInUse):
+		common.WriteErrorResponse(w, err.Error(), http.StatusConflict)
+	case errors.Is(err, service.ErrManagedSourceLimitReached):
 		common.WriteErrorResponse(w, err.Error(), http.StatusConflict)
 	default:
 		slog.Error("unexpected source error", "error", err)

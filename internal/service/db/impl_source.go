@@ -84,6 +84,21 @@ func (s *dbService) CreateSource(
 		return nil, fmt.Errorf("failed to check source existence: %w", err)
 	}
 
+	// Enforce at most one managed source globally
+	if req.GetSourceType() == config.SourceTypeManaged {
+		managedSources, err := querier.GetManagedSources(ctx)
+		if err != nil {
+			otel.RecordError(span, err)
+			return nil, fmt.Errorf("failed to check managed source limit: %w", err)
+		}
+		if len(managedSources) > 0 {
+			slog.WarnContext(ctx, "Managed source limit reached",
+				"existing_source", managedSources[0].Name)
+			otel.RecordError(span, service.ErrManagedSourceLimitReached)
+			return nil, service.ErrManagedSourceLimitReached
+		}
+	}
+
 	// Prepare insert parameters
 	now := time.Now()
 	sourceType := string(req.GetSourceType())
@@ -122,14 +137,22 @@ func (s *dbService) CreateSource(
 	}
 
 	// Insert the source
+	isManagedSource := req.GetSourceType() == config.SourceTypeManaged
 	source, err := querier.InsertSource(ctx, params)
 	if err != nil {
-		// Check for unique constraint violation
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			err = fmt.Errorf("%w: %s", service.ErrSourceAlreadyExists, name)
-			otel.RecordError(span, err)
-			return nil, err
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505": // unique constraint violation
+				err = fmt.Errorf("%w: %s", service.ErrSourceAlreadyExists, name)
+				otel.RecordError(span, err)
+				return nil, err
+			case "40001": // serialization failure — concurrent managed source race
+				if isManagedSource {
+					otel.RecordError(span, service.ErrManagedSourceLimitReached)
+					return nil, service.ErrManagedSourceLimitReached
+				}
+			}
 		}
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to insert source: %w", err)
@@ -149,6 +172,12 @@ func (s *dbService) CreateSource(
 
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
+		// Serialization failure at commit means a concurrent managed source won the race
+		var pgErr *pgconn.PgError
+		if isManagedSource && errors.As(err, &pgErr) && pgErr.Code == "40001" {
+			otel.RecordError(span, service.ErrManagedSourceLimitReached)
+			return nil, service.ErrManagedSourceLimitReached
+		}
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}

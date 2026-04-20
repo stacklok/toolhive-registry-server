@@ -47,6 +47,8 @@ var (
 	ErrSourceNotFound = errors.New("source not found")
 	// ErrNoManagedSource is returned when no managed source is found
 	ErrNoManagedSource = errors.New("no managed source found")
+	// ErrManagedSourceLimitReached is returned when attempting to create a second managed source
+	ErrManagedSourceLimitReached = errors.New("at most one managed source is allowed")
 	// ErrRegistryAlreadyExists is returned when attempting to create a registry that already exists
 	ErrRegistryAlreadyExists = errors.New("registry already exists")
 	// ErrConfigRegistry is returned when attempting to modify a CONFIG-created registry via API

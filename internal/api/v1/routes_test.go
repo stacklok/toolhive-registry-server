@@ -189,6 +189,26 @@ func TestUpsertSourceBadBody(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
+func TestUpsertSourceManagedLimitReached(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockSvc := mocks.NewMockRegistryService(ctrl)
+	mockSvc.EXPECT().CreateSource(gomock.Any(), "second-managed", gomock.Any()).
+		Return(nil, service.ErrManagedSourceLimitReached)
+
+	router := Router(mockSvc, nil)
+	body, _ := json.Marshal(service.SourceCreateRequest{})
+	req, err := http.NewRequest("PUT", "/sources/second-managed", bytes.NewReader(body))
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusConflict, rr.Code)
+}
+
 func TestDeleteSource(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
