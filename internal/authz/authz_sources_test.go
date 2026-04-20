@@ -37,7 +37,7 @@ func TestAuthzIntegration_SourceCRUD(t *testing.T) {
 	// Use file-data sources (not managed) since the base config already has a
 	// managed source and at most one is allowed globally.
 	fileDataSource := map[string]any{
-		"file":   map[string]any{"data": `{"version":"1.0.0","last_updated":"2025-01-15T10:30:00Z","servers":{}}`},
+		"file":   map[string]any{"data": `{"version":"1.0.0","meta":{"last_updated":"2025-01-15T10:30:00Z"},"data":{"servers":[{"name":"io.test/placeholder","version":"1.0.0","description":"placeholder","packages":[{"registryType":"oci","identifier":"ghcr.io/test/placeholder:latest","transport":{"type":"stdio"}}]}]}}`},
 		"claims": map[string]any{"org": "acme", "team": "platform"},
 	}
 
@@ -48,7 +48,7 @@ func TestAuthzIntegration_SourceCRUD(t *testing.T) {
 
 	t.Run("create source with non-subset claims", func(t *testing.T) {
 		resp := doRequest(t, "PUT", env.baseURL+"/v1/sources/bad-src", platformAdmin, map[string]any{
-			"file":   map[string]any{"data": `{"version":"1.0.0","last_updated":"2025-01-15T10:30:00Z","servers":{}}`},
+			"file":   map[string]any{"data": `{"version":"1.0.0","meta":{"last_updated":"2025-01-15T10:30:00Z"},"data":{"servers":[{"name":"io.test/placeholder","version":"1.0.0","description":"placeholder","packages":[{"registryType":"oci","identifier":"ghcr.io/test/placeholder:latest","transport":{"type":"stdio"}}]}]}}`},
 			"claims": map[string]any{"org": "acme", "team": "finance"},
 		})
 		assertStatus(t, resp, 403)
