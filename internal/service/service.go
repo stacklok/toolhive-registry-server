@@ -61,6 +61,8 @@ var (
 	ErrClaimsMismatch = errors.New("claims mismatch")
 	// ErrClaimsInsufficient is returned when the caller's JWT claims do not cover a resource's claims
 	ErrClaimsInsufficient = errors.New("insufficient claims")
+	// ErrInvalidEntryType is returned when an unsupported entry type string is supplied to an option
+	ErrInvalidEntryType = errors.New("invalid entry type")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service

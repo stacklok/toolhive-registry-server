@@ -377,12 +377,15 @@ func TestUpdateEntryClaims(t *testing.T) {
 			wantStatus: http.StatusNoContent,
 		},
 		{
-			name:       "unsupported entry type",
-			path:       "/entries/unknown/test%2Fentry/claims",
-			body:       mustMarshal(map[string]any{"claims": map[string]any{}}),
-			setupMock:  func(_ *mocks.MockRegistryService) {},
+			name: "unsupported entry type",
+			path: "/entries/unknown/test%2Fentry/claims",
+			body: mustMarshal(map[string]any{"claims": map[string]any{}}),
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().UpdateEntryClaims(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(fmt.Errorf("invalid option: %w", service.ErrInvalidEntryType))
+			},
 			wantStatus: http.StatusBadRequest,
-			wantError:  "unsupported entry type",
+			wantError:  "invalid entry type",
 		},
 		{
 			name:       "invalid JSON body",

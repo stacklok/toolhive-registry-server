@@ -216,11 +216,6 @@ func (routes *Routes) updateEntryClaims(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := service.ValidateEntryType(entryType); err != nil {
-		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	var req updateEntryClaimsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		common.WriteErrorResponse(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
@@ -239,6 +234,10 @@ func (routes *Routes) updateEntryClaims(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := routes.service.UpdateEntryClaims(r.Context(), opts...); err != nil {
+		if errors.Is(err, service.ErrInvalidEntryType) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		if errors.Is(err, service.ErrClaimsInsufficient) {
 			common.WriteErrorResponse(w, err.Error(), http.StatusForbidden)
 			return
