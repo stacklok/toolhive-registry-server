@@ -88,7 +88,7 @@ func managedSourceReq(claims map[string]any) *service.SourceCreateRequest {
 func fileDataSourceReq(claims map[string]any) *service.SourceCreateRequest {
 	return &service.SourceCreateRequest{
 		File: &config.FileConfig{
-			Data: `{"version":"1.0.0","last_updated":"2025-01-15T10:30:00Z","servers":{}}`,
+			Data: `{"version":"1.0.0","meta":{"last_updated":"2025-01-15T10:30:00Z"},"data":{"servers":[{"name":"io.test/placeholder","version":"1.0.0","description":"placeholder","packages":[{"registryType":"oci","identifier":"ghcr.io/test/placeholder:latest","transport":{"type":"stdio"}}]}]}}`,
 		},
 		Claims: claims,
 	}
