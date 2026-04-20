@@ -32,6 +32,7 @@ func TestWithEntryType(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				assert.ErrorIs(t, err, ErrInvalidEntryType)
 				assert.Empty(t, opts.EntryType, "EntryType must remain unset on error")
 				return
 			}
@@ -93,33 +94,4 @@ func TestUpdateEntryClaimsOptions_Setters(t *testing.T) {
 		assert.Equal(t, map[string]any{"org": "acme"}, opts.Claims)
 		assert.Equal(t, map[string]any{"sub": "u1"}, opts.JWTClaims)
 	})
-}
-
-func TestValidateEntryType(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		input   string
-		wantErr bool
-	}{
-		{name: "server", input: EntryTypeServer, wantErr: false},
-		{name: "skill", input: EntryTypeSkill, wantErr: false},
-		{name: "empty", input: "", wantErr: true},
-		{name: "unknown", input: "widget", wantErr: true},
-		{name: "uppercase server", input: "SERVER", wantErr: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			err := ValidateEntryType(tt.input)
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), "unsupported entry type")
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
 }

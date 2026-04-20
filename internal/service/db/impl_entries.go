@@ -134,18 +134,15 @@ func (s *dbService) executeUpdateClaimsTransaction(
 }
 
 // mapEntryType converts a validated entry type string to the corresponding sqlc.EntryType.
-// Relies on service.ValidateEntryType as the single source of truth for valid inputs.
+// service.WithEntryType is the single source of truth for accepted values, so
+// reaching the default branch indicates a caller bypassed the option setter.
 func mapEntryType(entryType string) (sqlc.EntryType, error) {
-	if err := service.ValidateEntryType(entryType); err != nil {
-		return "", err
-	}
 	switch entryType {
 	case service.EntryTypeServer:
 		return sqlc.EntryTypeMCP, nil
 	case service.EntryTypeSkill:
 		return sqlc.EntryTypeSKILL, nil
 	default:
-		// Unreachable: ValidateEntryType guards the set of accepted values.
-		return "", fmt.Errorf("unsupported entry type: %s", entryType)
+		return "", fmt.Errorf("%w: %s", service.ErrInvalidEntryType, entryType)
 	}
 }

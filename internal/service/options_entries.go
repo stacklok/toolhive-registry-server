@@ -1,5 +1,7 @@
 package service
 
+import "fmt"
+
 // UpdateEntryClaimsOptions is the options for the UpdateEntryClaims operation.
 type UpdateEntryClaimsOptions struct {
 	EntryType string // EntryTypeServer or EntryTypeSkill
@@ -9,11 +11,13 @@ type UpdateEntryClaimsOptions struct {
 }
 
 func (o *UpdateEntryClaimsOptions) setEntryType(entryType string) error {
-	if err := ValidateEntryType(entryType); err != nil {
-		return err
+	switch entryType {
+	case EntryTypeServer, EntryTypeSkill:
+		o.EntryType = entryType
+		return nil
+	default:
+		return fmt.Errorf("%w: must be %q or %q", ErrInvalidEntryType, EntryTypeServer, EntryTypeSkill)
 	}
-	o.EntryType = entryType
-	return nil
 }
 
 //nolint:unparam
