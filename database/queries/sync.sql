@@ -143,8 +143,11 @@ SELECT s.name,
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id
 WHERE s.syncable = true
+  AND (rs.ended_at IS NULL
+       OR rs.ended_at + s.sync_schedule::interval <= now())
 ORDER BY rs.ended_at ASC NULLS FIRST, s.name ASC
-FOR UPDATE OF rs SKIP LOCKED;
+FOR UPDATE OF rs SKIP LOCKED
+LIMIT 1;
 
 -- name: UpdateSourceSyncStatusByName :exec
 UPDATE registry_sync
