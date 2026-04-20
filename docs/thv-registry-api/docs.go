@@ -495,19 +495,53 @@ const docTemplate = `{
             },
             "model.Argument": {
                 "properties": {
+                    "choices": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "default": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "format": {
+                        "$ref": "#/components/schemas/model.Format"
+                    },
                     "isRepeated": {
+                        "type": "boolean"
+                    },
+                    "isRequired": {
+                        "type": "boolean"
+                    },
+                    "isSecret": {
                         "type": "boolean"
                     },
                     "name": {
                         "example": "--port",
                         "type": "string"
                     },
+                    "placeholder": {
+                        "type": "string"
+                    },
                     "type": {
                         "$ref": "#/components/schemas/model.ArgumentType"
+                    },
+                    "value": {
+                        "type": "string"
                     },
                     "valueHint": {
                         "example": "file_path",
                         "type": "string"
+                    },
+                    "variables": {
+                        "additionalProperties": {
+                            "$ref": "#/components/schemas/model.Input"
+                        },
+                        "type": "object"
                     }
                 },
                 "type": "object"
@@ -599,9 +633,43 @@ const docTemplate = `{
             },
             "model.KeyValueInput": {
                 "properties": {
+                    "choices": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "default": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "format": {
+                        "$ref": "#/components/schemas/model.Format"
+                    },
+                    "isRequired": {
+                        "type": "boolean"
+                    },
+                    "isSecret": {
+                        "type": "boolean"
+                    },
                     "name": {
                         "example": "SOME_VARIABLE",
                         "type": "string"
+                    },
+                    "placeholder": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "type": "string"
+                    },
+                    "variables": {
+                        "additionalProperties": {
+                            "$ref": "#/components/schemas/model.Input"
+                        },
+                        "type": "object"
                     }
                 },
                 "type": "object"
