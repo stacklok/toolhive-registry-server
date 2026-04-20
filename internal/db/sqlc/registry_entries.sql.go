@@ -362,3 +362,32 @@ func (q *Queries) PropagateSourceClaimsToEntries(ctx context.Context, arg Propag
 	_, err := q.db.Exec(ctx, propagateSourceClaimsToEntries, arg.Claims, arg.SourceID)
 	return err
 }
+
+const updateRegistryEntryClaims = `-- name: UpdateRegistryEntryClaims :execrows
+UPDATE registry_entry
+   SET claims = $1,
+       updated_at = NOW()
+ WHERE source_id = $2
+   AND entry_type = $3
+   AND name = $4
+`
+
+type UpdateRegistryEntryClaimsParams struct {
+	Claims    []byte    `json:"claims"`
+	SourceID  uuid.UUID `json:"source_id"`
+	EntryType EntryType `json:"entry_type"`
+	Name      string    `json:"name"`
+}
+
+func (q *Queries) UpdateRegistryEntryClaims(ctx context.Context, arg UpdateRegistryEntryClaimsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateRegistryEntryClaims,
+		arg.Claims,
+		arg.SourceID,
+		arg.EntryType,
+		arg.Name,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

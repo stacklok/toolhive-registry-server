@@ -181,6 +181,11 @@ func (routes *Routes) deletePublishedEntry(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// updateEntryClaimsRequest is the request body for updating entry claims.
+type updateEntryClaimsRequest struct {
+	Claims map[string]any `json:"claims"`
+}
+
 // updateEntryClaims handles PUT /v1/entries/{type}/{name}/claims
 //
 // @Summary		Update entry claims
@@ -190,19 +195,66 @@ func (routes *Routes) deletePublishedEntry(w http.ResponseWriter, r *http.Reques
 // @Produce		json
 // @Param		type	path	string	true	"Entry Type (server or skill)"
 // @Param		name	path	string	true	"Entry Name"
+// @Param		request	body	updateEntryClaimsRequest	true	"Claims to set"
+// @Success		204	"No Content"
 // @Failure		400	{object}	map[string]string	"Bad request"
-// @Failure		501	{object}	map[string]string	"Not implemented"
+// @Failure		403	{object}	map[string]string	"Forbidden"
+// @Failure		404	{object}	map[string]string	"Not found"
+// @Failure		500	{object}	map[string]string	"Internal server error"
+// @Failure		503	{object}	map[string]string	"No managed source available"
 // @Router		/v1/entries/{type}/{name}/claims [put]
-func (*Routes) updateEntryClaims(w http.ResponseWriter, r *http.Request) {
-	if _, err := common.GetAndValidateURLParam(r, "type"); err != nil {
+func (routes *Routes) updateEntryClaims(w http.ResponseWriter, r *http.Request) {
+	entryType, err := common.GetAndValidateURLParam(r, "type")
+	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if _, err := common.GetAndValidateURLParam(r, "name"); err != nil {
+	name, err := common.GetAndValidateURLParam(r, "name")
+	if err != nil {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	common.WriteErrorResponse(w, "Updating entry claims is not yet implemented", http.StatusNotImplemented)
+	if err := service.ValidateEntryType(entryType); err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req updateEntryClaimsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		common.WriteErrorResponse(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	opts := []service.Option{
+		service.WithEntryType(entryType),
+		service.WithName(name),
+	}
+	if req.Claims != nil {
+		opts = append(opts, service.WithClaims(req.Claims))
+	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		opts = append(opts, service.WithJWTClaims(map[string]any(jwtClaims)))
+	}
+
+	if err := routes.service.UpdateEntryClaims(r.Context(), opts...); err != nil {
+		if errors.Is(err, service.ErrClaimsInsufficient) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, service.ErrNotFound) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, service.ErrNoManagedSource) {
+			common.WriteErrorResponse(w, "no managed source available for updating claims", http.StatusServiceUnavailable)
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to update entry claims", "error", err, "type", entryType)
+		common.WriteErrorResponse(w, "failed to update entry claims", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
