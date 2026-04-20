@@ -174,15 +174,27 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	return app.Stop(defaultGracefulTimeout)
 }
 
+// buildMigrationConnString builds a connection string for the migration user.
+// Precedence: dynamic auth token > config password > PGPASSFILE.
+func buildMigrationConnString(ctx context.Context, dbCfg *config.DatabaseConfig) (string, error) {
+	user := dbCfg.GetMigrationUser()
+	token, err := auth.NewAuthToken(ctx, dbCfg, user)
+	if err != nil {
+		return "", fmt.Errorf("failed to build migration connection string: %w", err)
+	}
+	password := token
+	if password == "" {
+		password = dbCfg.GetMigrationPassword()
+	}
+	return dbCfg.BuildConnectionStringWithAuth(user, password), nil
+}
+
 // runMigrations executes database migrations on startup
 func runMigrations(ctx context.Context, cfg *config.Config) error {
-	// Build migration connection string with dynamic auth support
-	user := cfg.Database.GetMigrationUser()
-	token, err := auth.NewAuthToken(ctx, cfg.Database, user)
+	connString, err := buildMigrationConnString(ctx, cfg.Database)
 	if err != nil {
-		return fmt.Errorf("failed to build migration connection string: %w", err)
+		return err
 	}
-	connString := cfg.Database.BuildConnectionStringWithAuth(user, token)
 
 	// Log which user is running migrations
 	slog.Info("Running migrations as user", "user", cfg.Database.GetMigrationUser())

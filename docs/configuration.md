@@ -372,7 +372,7 @@ database:
 ```
 
 **Password management:**
-Passwords are provided via PostgreSQL's standard pgpass file (`~/.pgpass` or `$PGPASSFILE`). See [Database Configuration](database.md#password-security) for details.
+Passwords can be provided via `THV_REGISTRY_DATABASE_PASSWORD` / `THV_REGISTRY_DATABASE_MIGRATIONPASSWORD` environment variables, the `password` / `migrationPassword` config fields, or PostgreSQL's pgpass file (`~/.pgpass` or `$PGPASSFILE`). See [Database Configuration](database.md#password-security) for details.
 
 ## Environment Variables
 
@@ -388,13 +388,13 @@ Configuration values can be overridden using environment variables with the `THV
 | `THV_REGISTRY_AUTH_MODE` | Override authentication mode (anonymous or oauth) |
 | `THV_REGISTRY_LOG_LEVEL` | Set log level (debug, info, warn, error) |
 
-### PostgreSQL Standard
-
-Database passwords are managed via PostgreSQL's pgpass file:
+### Database Passwords
 
 | Variable | Description |
 |----------|-------------|
-| `PGPASSFILE` | Path to pgpass file (default: `~/.pgpass`) |
+| `THV_REGISTRY_DATABASE_PASSWORD` | Database password for the application user |
+| `THV_REGISTRY_DATABASE_MIGRATIONPASSWORD` | Database password for the migration user |
+| `PGPASSFILE` | Path to pgpass file (default: `~/.pgpass`) — used as fallback when password env vars are not set |
 
 See [Database Configuration](database.md#password-security) for password management details.
 

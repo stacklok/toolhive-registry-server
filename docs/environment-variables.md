@@ -61,13 +61,17 @@ export THV_REGISTRY_DATABASE_DATABASE=registry_prod
 export THV_REGISTRY_DATABASE_SSLMODE=verify-full
 export THV_REGISTRY_DATABASE_MIGRATIONUSER=registry_migrator
 
+# Database passwords (optional — alternative to pgpass file)
+export THV_REGISTRY_DATABASE_PASSWORD=my_app_password
+export THV_REGISTRY_DATABASE_MIGRATIONPASSWORD=my_migration_password
+
 # Connection pool settings
 export THV_REGISTRY_DATABASE_MAXOPENCONNS=25
 export THV_REGISTRY_DATABASE_MAXIDLECONNS=5
 export THV_REGISTRY_DATABASE_CONNMAXLIFETIME=1h
 ```
 
-**Note**: Database passwords are managed via PostgreSQL's [`.pgpass` file](https://www.postgresql.org/docs/current/libpq-pgpass.html) or the `PGPASSFILE` environment variable, not through `THV_REGISTRY_*` variables.
+**Note**: Database passwords can be provided via `THV_REGISTRY_DATABASE_PASSWORD` / `THV_REGISTRY_DATABASE_MIGRATIONPASSWORD` environment variables, or via PostgreSQL's [`.pgpass` file](https://www.postgresql.org/docs/current/libpq-pgpass.html). When an environment variable is set, it takes precedence over the pgpass file. For Kubernetes deployments, prefer injecting passwords from a Secret via `secretKeyRef` rather than plain environment variable values.
 
 ### Authentication Configuration
 

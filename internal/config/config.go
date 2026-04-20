@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -601,6 +602,21 @@ type DatabaseConfig struct {
 	// If not specified, defaults to User for backward compatibility
 	MigrationUser string `yaml:"migrationUser,omitempty"`
 
+	// Password is the database password for the application user (optional).
+	// When set, it is embedded in the connection string.
+	// When empty, pgx falls back to PGPASSFILE / ~/.pgpass.
+	// Mutually exclusive with dynamicAuth.
+	// Can be overridden via THV_REGISTRY_DATABASE_PASSWORD environment variable.
+	Password string `yaml:"password,omitempty" json:"-"`
+
+	// MigrationPassword is the database password for the migration user (optional).
+	// When set, it is embedded in the migration connection string.
+	// When empty and migrationUser equals user, falls back to Password.
+	// When empty and migrationUser differs from user, falls back to PGPASSFILE / ~/.pgpass.
+	// Mutually exclusive with dynamicAuth.
+	// Can be overridden via THV_REGISTRY_DATABASE_MIGRATIONPASSWORD environment variable.
+	MigrationPassword string `yaml:"migrationPassword,omitempty" json:"-"`
+
 	// DynamicAuth is configuration for dynamic database authentication
 	DynamicAuth *DynamicAuthConfig `yaml:"dynamicAuth,omitempty"`
 
@@ -626,22 +642,31 @@ type DatabaseConfig struct {
 	MaxMetaSize *int `yaml:"maxMetaSize,omitempty"`
 }
 
+// LogValue implements slog.LogValuer to prevent accidental logging of passwords.
+func (d *DatabaseConfig) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("host", d.Host),
+		slog.Int("port", d.Port),
+		slog.String("user", d.User),
+		slog.String("database", d.Database),
+		slog.Bool("has_password", d.Password != ""),
+		slog.Bool("has_migration_password", d.MigrationPassword != ""),
+		slog.Bool("dynamic_auth", d.DynamicAuth != nil),
+	)
+}
+
 // GetPassword returns the database password for the application user.
-// Returns empty string to let pgx use PGPASSFILE env var or ~/.pgpass.
-// This is the recommended approach - use a pgpass file to provide credentials
-// for both the application user and the migration user.
+// Returns the configured Password field, or empty string if not set.
+// When empty, pgx falls back to PGPASSFILE env var or ~/.pgpass.
 //
-// The pgpass file format is: hostname:port:database:username:password
-// Example:
-//
-//	localhost:5432:registry:db_app:app_password
-//	localhost:5432:registry:db_migrator:migration_password
+// Passwords can be provided via:
+//   - The password config field or THV_REGISTRY_DATABASE_PASSWORD env var
+//   - PostgreSQL's pgpass file (PGPASSFILE env var or ~/.pgpass)
+//   - Dynamic auth (e.g., AWS RDS IAM) via the dynamicAuth config block
 //
 // See: https://www.postgresql.org/docs/current/libpq-pgpass.html
-func (*DatabaseConfig) GetPassword() string {
-	// Return empty string to allow pgx to use PGPASSFILE or default ~/.pgpass
-	// The pgx driver will automatically check these if no password is provided
-	return ""
+func (d *DatabaseConfig) GetPassword() string {
+	return d.Password
 }
 
 // GetMigrationUser returns the database user for running migrations.
@@ -654,10 +679,16 @@ func (d *DatabaseConfig) GetMigrationUser() string {
 }
 
 // GetMigrationPassword returns the database password for the migration user.
-// Returns empty string to let pgx use PGPASSFILE env var or ~/.pgpass.
-// This allows different passwords for app user and migration user via pgpass.
-func (*DatabaseConfig) GetMigrationPassword() string {
-	// Return empty string to allow pgx to use PGPASSFILE or default ~/.pgpass
+// Returns MigrationPassword if set. If not set and the migration user is the
+// same as the application user, falls back to Password. Otherwise returns
+// empty string to let pgx use PGPASSFILE env var or ~/.pgpass.
+func (d *DatabaseConfig) GetMigrationPassword() string {
+	if d.MigrationPassword != "" {
+		return d.MigrationPassword
+	}
+	if d.GetMigrationUser() == d.User {
+		return d.Password
+	}
 	return ""
 }
 
@@ -702,18 +733,18 @@ func (d *DatabaseConfig) BuildConnectionStringWithAuth(user, password string) st
 }
 
 // GetConnectionString builds a PostgreSQL connection string for the application user.
-// The connection string omits the password, allowing pgx to look up the password
-// from PGPASSFILE or ~/.pgpass.
+// Embeds the password in the URL when configured via the password field or
+// THV_REGISTRY_DATABASE_PASSWORD env var. When no password is set, pgx falls
+// back to PGPASSFILE or ~/.pgpass.
 func (d *DatabaseConfig) GetConnectionString() string {
-	return d.BuildConnectionStringWithAuth(d.User, "")
+	return d.BuildConnectionStringWithAuth(d.User, d.GetPassword())
 }
 
 // GetMigrationConnectionString builds a PostgreSQL connection string for the migration user.
 // Uses GetMigrationUser() which defaults to User if MigrationUser is not set.
-// The connection string omits the password, allowing pgx to look up the password
-// from PGPASSFILE or ~/.pgpass.
+// Embeds the password when configured; otherwise pgx falls back to PGPASSFILE or ~/.pgpass.
 func (d *DatabaseConfig) GetMigrationConnectionString() string {
-	return d.BuildConnectionStringWithAuth(d.GetMigrationUser(), "")
+	return d.BuildConnectionStringWithAuth(d.GetMigrationUser(), d.GetMigrationPassword())
 }
 
 // LoadConfig loads and parses configuration from a YAML file with environment variable support.
@@ -750,6 +781,13 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	// Replace dots with underscores for nested keys
 	// e.g., database.host becomes THV_REGISTRY_DATABASE_HOST
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	// Register password keys so AutomaticEnv can override them even when
+	// they are absent from the YAML config file. Without this, Viper does
+	// not recognize the keys and THV_REGISTRY_DATABASE_PASSWORD /
+	// THV_REGISTRY_DATABASE_MIGRATIONPASSWORD would be silently ignored.
+	v.SetDefault("database.password", "")
+	v.SetDefault("database.migrationPassword", "")
 
 	// Read config file
 	if err := v.ReadInConfig(); err != nil {
@@ -1108,6 +1146,15 @@ func (c *Config) validateStorageConfig() error {
 	}
 	if c.Database.MaxMetaSize != nil && *c.Database.MaxMetaSize <= 0 {
 		return fmt.Errorf("database.maxMetaSize must be greater than zero")
+	}
+
+	if c.Database.DynamicAuth != nil {
+		if c.Database.Password != "" {
+			return fmt.Errorf("database.password and database.dynamicAuth are mutually exclusive; use one authentication method")
+		}
+		if c.Database.MigrationPassword != "" {
+			return fmt.Errorf("database.migrationPassword and database.dynamicAuth are mutually exclusive; use one authentication method")
+		}
 	}
 
 	return nil

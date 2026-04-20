@@ -19,17 +19,27 @@ The ToolHive Registry API server requires PostgreSQL for storing registry state 
 | `port` | int | Yes | - | Database server port |
 | `user` | string | Yes | - | Database username for normal operations |
 | `migrationUser` | string | No | `user` | Database username for running migrations (should have elevated privileges) |
+| `password` | string | No | - | Database password for the application user. Alternative to pgpass. Mutually exclusive with `dynamicAuth`. |
+| `migrationPassword` | string | No | - | Database password for the migration user. Defaults to `password` when `migrationUser` equals `user`. Mutually exclusive with `dynamicAuth`. |
 | `database` | string | Yes | - | Database name |
 | `sslMode` | string | No | `require` | SSL mode (`disable`, `require`, `verify-ca`, `verify-full`) |
 | `maxOpenConns` | int | No | `25` | Maximum number of open connections to the database |
 | `maxIdleConns` | int | No | `5` | Maximum number of idle connections in the pool |
 | `connMaxLifetime` | string | No | `5m` | Maximum lifetime of a connection (e.g., "1h", "30m") |
 
-**Note**: Passwords are managed via PostgreSQL's pgpass file (see [Password Security](#password-security))
-
 ## Password Security
 
-The server uses PostgreSQL's standard pgpass file for password management. This approach supports secure credential handling with separate passwords for normal operations and migrations.
+The server supports three methods for providing database passwords, in order of precedence:
+
+1. **Dynamic auth** (e.g., AWS RDS IAM) — short-lived tokens generated automatically via the `dynamicAuth` config block
+2. **Config field / environment variable** — set `password` and `migrationPassword` in config YAML, or use `THV_REGISTRY_DATABASE_PASSWORD` and `THV_REGISTRY_DATABASE_MIGRATIONPASSWORD` environment variables
+3. **pgpass file** — PostgreSQL's standard `~/.pgpass` or `$PGPASSFILE` mechanism (used when no password is configured via methods 1 or 2)
+
+The `password`/`migrationPassword` fields and `dynamicAuth` are mutually exclusive — the server rejects configurations that set both.
+
+### pgpass File
+
+The pgpass file approach supports secure credential handling with separate passwords for normal operations and migrations.
 
 ### Password File Format
 

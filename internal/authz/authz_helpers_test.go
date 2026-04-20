@@ -193,18 +193,11 @@ func dbConfigFromConnStr(t *testing.T, connStr string) *config.DatabaseConfig {
 		_, _ = fmt.Sscanf(portStr, "%d", &port)
 	}
 
-	// The DatabaseConfig doesn't carry a password field — the production system
-	// uses pgpass/PGPASSFILE. For integration tests, set PGPASSWORD so pgx can
-	// authenticate when the app creates its own connection pool.
-	// All testcontainers use the same password so this is safe with parallel tests.
-	if password != "" {
-		os.Setenv("PGPASSWORD", password) //nolint:tenv // can't use t.Setenv in parallel tests
-	}
-
 	return &config.DatabaseConfig{
 		Host:     host,
 		Port:     port,
 		User:     user,
+		Password: password,
 		Database: dbName,
 		SSLMode:  "disable",
 	}
