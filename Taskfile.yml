@@ -35,7 +35,7 @@ tasks:
   install-sqlc:
     desc: Install the sqlc tool for generating database code
     cmds:
-      - go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+      - go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
 
   install-swagger:
     desc: Install the swag tool for OpenAPI/Swagger generation
