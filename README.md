@@ -133,14 +133,12 @@ In this example, the "production" registry only exposes vetted entries from the 
 ```yaml
 sources:
   - name: official-catalog
-    format: upstream
     api:
       endpoint: https://registry.modelcontextprotocol.io
     syncPolicy:
       interval: "1h"
 
   - name: internal-tools
-    format: toolhive
     git:
       repository: https://github.com/myorg/mcp-catalog.git
       branch: main
@@ -232,7 +230,6 @@ All configuration is done via YAML files. The server requires a `--config` flag.
 ```yaml
 sources:
   - name: local
-    format: toolhive
     file:
       path: /data/registry.json
 

@@ -134,22 +134,19 @@ func baseSourceConfigs(t *testing.T) []config.SourceConfig {
 
 	return []config.SourceConfig{
 		{
-			Name:       "shared-catalog",
-			Format:     "upstream",
+			Name: "shared-catalog",
 			File:       &config.FileConfig{Path: writeFixture("shared-catalog", sharedData)},
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme"},
 		},
 		{
-			Name:       "platform-tools",
-			Format:     "upstream",
+			Name: "platform-tools",
 			File:       &config.FileConfig{Path: writeFixture("platform-tools", platformData)},
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme", "team": "platform"},
 		},
 		{
-			Name:       "data-tools",
-			Format:     "upstream",
+			Name: "data-tools",
 			File:       &config.FileConfig{Path: writeFixture("data-tools", dataToolsData)},
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme", "team": "data"},

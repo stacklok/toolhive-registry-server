@@ -51,7 +51,6 @@ registryName: toolhive
 
 registries:
   - name: toolhive
-    format: toolhive
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
@@ -92,7 +91,6 @@ registryName: mcp-registry
 
 registries:
   - name: mcp-upstream
-    format: upstream
     api:
       endpoint: https://registry.modelcontextprotocol.io
     syncPolicy:
@@ -129,7 +127,6 @@ registryName: toolhive
 
 registries:
   - name: local-file
-    format: toolhive
     file:
       path: ./data/registry.json
     syncPolicy:
@@ -177,8 +174,6 @@ registryName: <name>
 # Registries configuration (can have multiple registries)
 registries:
   - name: <registry-name>
-    # Data format: toolhive (native) or upstream (MCP registry format)
-    format: <toolhive|upstream>
 
     # Source-specific config (one of: git, api, file, managed)
     git:
@@ -267,7 +262,6 @@ See the example files for format reference:
 ```yaml
 registries:
   - name: my-registry
-    format: toolhive  # or "upstream"
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
 
@@ -369,7 +363,6 @@ Fast updates for local development:
 ```yaml
 registries:
   - name: dev-registry
-    format: toolhive
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: develop  # Use dev branch
@@ -385,7 +378,6 @@ Conservative config with filtering:
 ```yaml
 registries:
   - name: prod-registry
-    format: toolhive
     git:
       repository: https://github.com/your-org/registry.git
       branch: production

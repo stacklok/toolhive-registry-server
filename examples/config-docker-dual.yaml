@@ -8,23 +8,21 @@
 #   CONFIG_FILE=config-docker-dual.yaml docker-compose up
 #
 # This example shows:
-# - Loading from two different file formats (upstream and toolhive)
+# - Loading from two different file sources
 # - Different sync intervals for each registry
 # - How the server merges data from multiple sources
 
-# Two file-based sources with different formats
+# Two file-based sources
 sources:
-  # Source 1: Upstream format (MCP standard)
+  # Source 1: Upstream MCP standard
   - name: upstream-servers
-    format: upstream
     file:
       path: /examples/upstream-registry.json  # All examples files are mounted
     syncPolicy:
       interval: "30s"  # Quick sync for testing
 
-  # Source 2: ToolHive format (legacy)
+  # Source 2: ToolHive catalog
   - name: toolhive-servers
-    format: toolhive
     file:
       path: /examples/toolhive-registry.json  # All examples files are mounted
     syncPolicy:

@@ -18,7 +18,6 @@ INSERT INTO source (
     name,
     creation_type,
     source_type,
-    format,
     source_config,
     filter_config,
     sync_schedule,
@@ -31,17 +30,15 @@ SELECT
     unnest($1::text[]),
     'CONFIG',
     unnest($2::text[]),
-    NULLIF(unnest($3::text[]), ''),
+    unnest($3::jsonb[]),
     unnest($4::jsonb[]),
-    unnest($5::jsonb[]),
-    unnest($6::interval[]),
-    unnest($7::boolean[]),
-    unnest($8::jsonb[]),
-    unnest($9::timestamp with time zone[]),
-    unnest($10::timestamp with time zone[])
+    unnest($5::interval[]),
+    unnest($6::boolean[]),
+    unnest($7::jsonb[]),
+    unnest($8::timestamp with time zone[]),
+    unnest($9::timestamp with time zone[])
 ON CONFLICT (name) DO UPDATE SET
     source_type = EXCLUDED.source_type,
-    format = EXCLUDED.format,
     source_config = EXCLUDED.source_config,
     filter_config = EXCLUDED.filter_config,
     sync_schedule = EXCLUDED.sync_schedule,
@@ -55,7 +52,6 @@ RETURNING id, name
 type BulkUpsertConfigSourcesParams struct {
 	Names         []string           `json:"names"`
 	SourceTypes   []string           `json:"source_types"`
-	Formats       []string           `json:"formats"`
 	SourceConfigs [][]byte           `json:"source_configs"`
 	FilterConfigs [][]byte           `json:"filter_configs"`
 	SyncSchedules []pgtypes.Interval `json:"sync_schedules"`
@@ -75,7 +71,6 @@ func (q *Queries) BulkUpsertConfigSources(ctx context.Context, arg BulkUpsertCon
 	rows, err := q.db.Query(ctx, bulkUpsertConfigSources,
 		arg.Names,
 		arg.SourceTypes,
-		arg.Formats,
 		arg.SourceConfigs,
 		arg.FilterConfigs,
 		arg.SyncSchedules,
@@ -133,7 +128,6 @@ SELECT id,
        name,
        creation_type,
        source_type,
-       format,
        source_config,
        filter_config,
        sync_schedule,
@@ -150,7 +144,6 @@ type GetAPISourcesByNamesRow struct {
 	Name         string           `json:"name"`
 	CreationType CreationType     `json:"creation_type"`
 	SourceType   string           `json:"source_type"`
-	Format       *string          `json:"format"`
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
 	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
@@ -173,7 +166,6 @@ func (q *Queries) GetAPISourcesByNames(ctx context.Context, names []string) ([]G
 			&i.Name,
 			&i.CreationType,
 			&i.SourceType,
-			&i.Format,
 			&i.SourceConfig,
 			&i.FilterConfig,
 			&i.SyncSchedule,
@@ -239,7 +231,6 @@ SELECT id,
        name,
        creation_type,
        source_type,
-       format,
        source_config,
        filter_config,
        sync_schedule,
@@ -255,7 +246,6 @@ type GetSourceRow struct {
 	Name         string           `json:"name"`
 	CreationType CreationType     `json:"creation_type"`
 	SourceType   string           `json:"source_type"`
-	Format       *string          `json:"format"`
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
 	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
@@ -272,7 +262,6 @@ func (q *Queries) GetSource(ctx context.Context, id uuid.UUID) (GetSourceRow, er
 		&i.Name,
 		&i.CreationType,
 		&i.SourceType,
-		&i.Format,
 		&i.SourceConfig,
 		&i.FilterConfig,
 		&i.SyncSchedule,
@@ -288,7 +277,6 @@ SELECT id,
        name,
        creation_type,
        source_type,
-       format,
        source_config,
        filter_config,
        sync_schedule,
@@ -304,7 +292,6 @@ type GetSourceByNameRow struct {
 	Name         string           `json:"name"`
 	CreationType CreationType     `json:"creation_type"`
 	SourceType   string           `json:"source_type"`
-	Format       *string          `json:"format"`
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
 	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
@@ -321,7 +308,6 @@ func (q *Queries) GetSourceByName(ctx context.Context, name string) (GetSourceBy
 		&i.Name,
 		&i.CreationType,
 		&i.SourceType,
-		&i.Format,
 		&i.SourceConfig,
 		&i.FilterConfig,
 		&i.SyncSchedule,
@@ -338,7 +324,6 @@ INSERT INTO source (
     name,
     creation_type,
     source_type,
-    format,
     source_config,
     filter_config,
     sync_schedule,
@@ -356,16 +341,14 @@ INSERT INTO source (
     $7,
     $8,
     $9,
-    $10,
-    $11
-) RETURNING id, name, created_at, updated_at, creation_type, sync_schedule, source_type, format, source_config, filter_config, syncable, claims
+    $10
+) RETURNING id, name, created_at, updated_at, creation_type, sync_schedule, source_type, source_config, filter_config, syncable, claims
 `
 
 type InsertSourceParams struct {
 	Name         string           `json:"name"`
 	CreationType CreationType     `json:"creation_type"`
 	SourceType   string           `json:"source_type"`
-	Format       *string          `json:"format"`
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
 	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
@@ -384,7 +367,6 @@ func (q *Queries) InsertSource(ctx context.Context, arg InsertSourceParams) (Sou
 		arg.Name,
 		arg.CreationType,
 		arg.SourceType,
-		arg.Format,
 		arg.SourceConfig,
 		arg.FilterConfig,
 		arg.SyncSchedule,
@@ -402,7 +384,6 @@ func (q *Queries) InsertSource(ctx context.Context, arg InsertSourceParams) (Sou
 		&i.CreationType,
 		&i.SyncSchedule,
 		&i.SourceType,
-		&i.Format,
 		&i.SourceConfig,
 		&i.FilterConfig,
 		&i.Syncable,
@@ -440,7 +421,6 @@ SELECT id,
        name,
        creation_type,
        source_type,
-       format,
        source_config,
        filter_config,
        sync_schedule,
@@ -471,7 +451,6 @@ type ListSourcesRow struct {
 	Name         string           `json:"name"`
 	CreationType CreationType     `json:"creation_type"`
 	SourceType   string           `json:"source_type"`
-	Format       *string          `json:"format"`
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
 	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
@@ -494,7 +473,6 @@ func (q *Queries) ListSources(ctx context.Context, arg ListSourcesParams) ([]Lis
 			&i.Name,
 			&i.CreationType,
 			&i.SourceType,
-			&i.Format,
 			&i.SourceConfig,
 			&i.FilterConfig,
 			&i.SyncSchedule,
@@ -515,20 +493,18 @@ func (q *Queries) ListSources(ctx context.Context, arg ListSourcesParams) ([]Lis
 const updateSource = `-- name: UpdateSource :one
 UPDATE source SET
     source_type = $1,
-    format = $2,
-    source_config = $3,
-    filter_config = $4,
-    sync_schedule = $5,
-    syncable = $6,
-    claims = $7,
-    updated_at = $8
-WHERE name = $9
-RETURNING id, name, created_at, updated_at, creation_type, sync_schedule, source_type, format, source_config, filter_config, syncable, claims
+    source_config = $2,
+    filter_config = $3,
+    sync_schedule = $4,
+    syncable = $5,
+    claims = $6,
+    updated_at = $7
+WHERE name = $8
+RETURNING id, name, created_at, updated_at, creation_type, sync_schedule, source_type, source_config, filter_config, syncable, claims
 `
 
 type UpdateSourceParams struct {
 	SourceType   string           `json:"source_type"`
-	Format       *string          `json:"format"`
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
 	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
@@ -542,7 +518,6 @@ type UpdateSourceParams struct {
 func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error) {
 	row := q.db.QueryRow(ctx, updateSource,
 		arg.SourceType,
-		arg.Format,
 		arg.SourceConfig,
 		arg.FilterConfig,
 		arg.SyncSchedule,
@@ -560,7 +535,6 @@ func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Sou
 		&i.CreationType,
 		&i.SyncSchedule,
 		&i.SourceType,
-		&i.Format,
 		&i.SourceConfig,
 		&i.FilterConfig,
 		&i.Syncable,
@@ -575,7 +549,6 @@ INSERT INTO source (
     name,
     creation_type,
     source_type,
-    format,
     source_config,
     filter_config,
     sync_schedule,
@@ -593,12 +566,10 @@ INSERT INTO source (
     $7,
     $8,
     $9,
-    $10,
-    $11
+    $10
 )
 ON CONFLICT (name) DO UPDATE SET
     source_type = EXCLUDED.source_type,
-    format = EXCLUDED.format,
     source_config = EXCLUDED.source_config,
     filter_config = EXCLUDED.filter_config,
     sync_schedule = EXCLUDED.sync_schedule,
@@ -612,7 +583,6 @@ type UpsertSourceParams struct {
 	Name         string           `json:"name"`
 	CreationType CreationType     `json:"creation_type"`
 	SourceType   string           `json:"source_type"`
-	Format       *string          `json:"format"`
 	SourceConfig []byte           `json:"source_config"`
 	FilterConfig []byte           `json:"filter_config"`
 	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
@@ -632,7 +602,6 @@ func (q *Queries) UpsertSource(ctx context.Context, arg UpsertSourceParams) (uui
 		arg.Name,
 		arg.CreationType,
 		arg.SourceType,
-		arg.Format,
 		arg.SourceConfig,
 		arg.FilterConfig,
 		arg.SyncSchedule,

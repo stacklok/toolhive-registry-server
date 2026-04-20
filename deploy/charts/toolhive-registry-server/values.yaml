@@ -132,7 +132,6 @@ config:
   # Sources configuration - at least one source must be configured
   sources:
     - name: toolhive
-      format: toolhive
       git:
         repository: https://github.com/stacklok/toolhive-catalog.git
         branch: main
@@ -170,7 +169,6 @@ config:
 # config:
 #   sources:
 #     - name: toolhive
-#       format: toolhive
 #       git:
 #         repository: https://github.com/stacklok/toolhive-catalog.git
 #         tag: v1.0.0
@@ -194,13 +192,11 @@ config:
 #
 #     # Additional source types:
 #     # - name: upstream-mcp
-#     #   format: upstream
 #     #   api:
 #     #     endpoint: https://registry.modelcontextprotocol.io/
 #     #   syncPolicy:
 #     #     interval: "1h"
 #     # - name: local-data
-#     #   format: toolhive
 #     #   file:
 #     #     path: /data/registry.json    # or url: https://... or inline data: '...'
 #     #   syncPolicy:

@@ -345,10 +345,6 @@ const docTemplate = `{
                     "filterConfig": {
                         "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig"
                     },
-                    "format": {
-                        "description": "toolhive or upstream",
-                        "type": "string"
-                    },
                     "name": {
                         "type": "string"
                     },

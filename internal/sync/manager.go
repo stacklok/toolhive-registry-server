@@ -340,7 +340,6 @@ func (s *defaultSyncManager) fetchAndProcessRegistryData(
 		// Validation was already performed by FetchRegistry inside IsDataChanged.
 		slog.Info("Reusing prefetched registry data",
 			"serverCount", prefetched.ServerCount,
-			"format", prefetched.Format,
 			"hash", prefetched.Hash)
 		fetchResult = prefetched
 	} else {
@@ -379,7 +378,6 @@ func (s *defaultSyncManager) fetchAndProcessRegistryData(
 
 		slog.Info("Registry data fetched successfully from source",
 			"serverCount", result.ServerCount,
-			"format", result.Format,
 			"hash", result.Hash)
 		fetchResult = result
 	}

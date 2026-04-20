@@ -131,7 +131,7 @@ type RegistryService interface {
 	ListRegistryEntries(ctx context.Context, registryName string) ([]RegistryEntryInfo, error)
 
 	// ProcessInlineSourceData processes inline data for a managed/file registry
-	ProcessInlineSourceData(ctx context.Context, name string, data string, format string) error
+	ProcessInlineSourceData(ctx context.Context, name string, data string) error
 
 	// ********** SKILL OPERATIONS **********
 
@@ -155,7 +155,6 @@ type SourceInfo struct {
 	Type         string               `json:"type"`                   // MANAGED, FILE, REMOTE, KUBERNETES
 	CreationType CreationType         `json:"creationType,omitempty"` // API or CONFIG
 	SourceType   config.SourceType    `json:"sourceType,omitempty"`   // git, api, file, managed, kubernetes
-	Format       string               `json:"format,omitempty"`       // toolhive or upstream
 	SourceConfig any                  `json:"sourceConfig,omitempty"` // Type-specific source configuration
 	FilterConfig *config.FilterConfig `json:"filterConfig,omitempty"` // Filtering rules
 	SyncSchedule string               `json:"syncSchedule,omitempty"` // Sync interval string

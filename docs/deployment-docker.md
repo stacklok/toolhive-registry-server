@@ -190,7 +190,6 @@ Update `examples/config-docker.yaml`:
 ```yaml
 sources:
   - name: toolhive
-    format: toolhive
     git:
       repository: https://github.com/your-org/your-repo.git
       branch: main

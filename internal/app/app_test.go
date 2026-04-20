@@ -112,8 +112,7 @@ func createTestAppConfig() *config.Config {
 	return &config.Config{
 		Sources: []config.SourceConfig{
 			{
-				Name:   "test-registry-1",
-				Format: config.SourceFormatToolHive,
+				Name: "test-registry-1",
 				File: &config.FileConfig{
 					Path: "/tmp/test-registry.json",
 				},

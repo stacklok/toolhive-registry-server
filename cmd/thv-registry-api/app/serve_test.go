@@ -135,8 +135,7 @@ func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 		Sources: []config.SourceConfig{
 			// Add a minimal source config to satisfy validation
 			{
-				Name:   "test",
-				Format: "toolhive",
+				Name: "test",
 				File: &config.FileConfig{
 					Path: "./examples/registry-sample.json",
 				},

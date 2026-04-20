@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/stacklok/toolhive-core/registry/converters"
 	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
@@ -14,7 +13,7 @@ import (
 // RegistryDataValidator is an interface for validating registry source configurations
 type RegistryDataValidator interface {
 	// ValidateData validates raw data and returns a parsed UpstreamRegistry
-	ValidateData(data []byte, format string) (*toolhivetypes.UpstreamRegistry, error)
+	ValidateData(data []byte) (*toolhivetypes.UpstreamRegistry, error)
 }
 
 //go:generate mockgen -destination=mocks/mock_registry_handler.go -package=mocks -source=types.go RegistryHandler,RegistryHandlerFactory
@@ -41,14 +40,11 @@ type FetchResult struct {
 
 	// SkillCount is the number of skills found in the registry data
 	SkillCount int
-
-	// Format indicates the original format of the source data
-	Format string
 }
 
 // NewFetchResult creates a new FetchResult from a UpstreamRegistry instance and pre-calculated hash
 // The hash should be calculated by the registry handler from the raw source data
-func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string, format string) *FetchResult {
+func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string) *FetchResult {
 	serverCount := 0
 	skillCount := 0
 	if reg != nil {
@@ -61,7 +57,6 @@ func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string, format str
 		Hash:        hash,
 		ServerCount: serverCount,
 		SkillCount:  skillCount,
-		Format:      format,
 	}
 }
 
@@ -83,41 +78,12 @@ func NewRegistryDataValidator() RegistryDataValidator {
 }
 
 // ValidateData validates raw data and returns a parsed UpstreamRegistry
-func (*defaultRegistryDataValidator) ValidateData(data []byte, format string) (*toolhivetypes.UpstreamRegistry, error) {
+func (*defaultRegistryDataValidator) ValidateData(data []byte) (*toolhivetypes.UpstreamRegistry, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("data cannot be empty")
 	}
 
-	switch format {
-	case config.SourceFormatToolHive:
-		return validateToolhiveFormatAndParse(data)
-	case config.SourceFormatUpstream:
-		return validateUpstreamFormatAndParse(data)
-	default:
-		return nil, fmt.Errorf("unsupported format: %s", format)
-	}
-}
-
-// validateToolhiveFormatAndParse validates data against ToolHive registry format and returns parsed UpstreamRegistry
-func validateToolhiveFormatAndParse(data []byte) (*toolhivetypes.UpstreamRegistry, error) {
-	// Use the existing schema validation from toolhive package
-	if err := toolhivetypes.ValidateRegistrySchema(data); err != nil {
-		return nil, err
-	}
-
-	// Parse the validated data as ToolHive Registry
-	var toolhiveReg toolhivetypes.Registry
-	if err := json.Unmarshal(data, &toolhiveReg); err != nil {
-		return nil, fmt.Errorf("failed to parse ToolHive registry format: %w", err)
-	}
-
-	// Convert to UpstreamRegistry using constructor
-	serverReg, err := converters.NewUpstreamRegistryFromToolhiveRegistry(&toolhiveReg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert to UpstreamRegistry: %w", err)
-	}
-
-	return serverReg, nil
+	return validateUpstreamFormatAndParse(data)
 }
 
 // validateUpstreamFormatAndParse validates data against upstream registry format and returns UpstreamRegistry

@@ -343,17 +343,17 @@ func (mr *MockRegistryServiceMockRecorder) ListSources(ctx any) *gomock.Call {
 }
 
 // ProcessInlineSourceData mocks base method.
-func (m *MockRegistryService) ProcessInlineSourceData(ctx context.Context, name, data, format string) error {
+func (m *MockRegistryService) ProcessInlineSourceData(ctx context.Context, name, data string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ProcessInlineSourceData", ctx, name, data, format)
+	ret := m.ctrl.Call(m, "ProcessInlineSourceData", ctx, name, data)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ProcessInlineSourceData indicates an expected call of ProcessInlineSourceData.
-func (mr *MockRegistryServiceMockRecorder) ProcessInlineSourceData(ctx, name, data, format any) *gomock.Call {
+func (mr *MockRegistryServiceMockRecorder) ProcessInlineSourceData(ctx, name, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessInlineSourceData", reflect.TypeOf((*MockRegistryService)(nil).ProcessInlineSourceData), ctx, name, data, format)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessInlineSourceData", reflect.TypeOf((*MockRegistryService)(nil).ProcessInlineSourceData), ctx, name, data)
 }
 
 // PublishServerVersion mocks base method.

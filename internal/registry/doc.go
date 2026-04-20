@@ -9,7 +9,6 @@
 //
 //   - Tag Extraction: Utilities for extracting tags from upstream server metadata
 //   - Test Utilities: Builder pattern functions for creating test registry data
-//   - Format Conversions: Helpers for converting between registry formats
 //
 // # Tag Extraction
 //
@@ -115,8 +114,7 @@
 //
 // The utilities support creating test data that is compatible with:
 //
-//   - Upstream MCP registry format (primary)
-//   - ToolHive registry format (via conversion functions)
+//   - Upstream MCP registry format
 //   - Filtering operations (name patterns, tags)
 //   - API serialization (JSON output)
 package registry

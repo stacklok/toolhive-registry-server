@@ -17,12 +17,10 @@
 
 sources:
   # ------------------------------------------------------------------------------
-  # FIRST SOURCE: Git Source (ToolHive Format)
+  # FIRST SOURCE: Git Source
   # ------------------------------------------------------------------------------
   - name: toolhive
     # Explicit source type (git, api, file, managed, kubernetes)
-    # Data format: toolhive (native) or upstream (MCP registry format)
-    format: toolhive
 
     # Git repository configuration
     git:
@@ -74,11 +72,9 @@ sources:
           - "beta"
 
   # ------------------------------------------------------------------------------
-  # SECOND SOURCE: API Source (Upstream MCP Format)
+  # SECOND SOURCE: API Source
   # ------------------------------------------------------------------------------
   - name: mcp-upstream
-    # Data format: upstream is required for API sources
-    format: upstream
 
     # API endpoint configuration
     api:
@@ -117,7 +113,6 @@ sources:
   # Uncomment to add a local file source for testing
   # - name: local-test
   #   type: file
-  #   format: toolhive
   #
   #   # Local file configuration
   #   file:

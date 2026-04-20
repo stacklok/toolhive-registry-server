@@ -53,14 +53,6 @@ const (
 	defaultSSLMode = "require"
 )
 
-const (
-	// SourceFormatToolHive is the native ToolHive registry format
-	SourceFormatToolHive = "toolhive"
-
-	// SourceFormatUpstream is the upstream MCP registry format
-	SourceFormatUpstream = "upstream"
-)
-
 // Option defines the interface for configuration options
 type Option func(*loaderConfig) error
 
@@ -175,9 +167,6 @@ type Config struct {
 type SourceConfig struct {
 	// Name is the identifier for this source
 	Name string `yaml:"name"`
-
-	// Format specifies the data format (toolhive or upstream)
-	Format string `yaml:"format"`
 
 	// Type-specific configurations (only one should be set)
 	Git        *GitConfig        `yaml:"git,omitempty"`
@@ -1033,7 +1022,7 @@ func validateSourceSpecificConfig(src *SourceConfig, prefix string) error {
 	}
 
 	if src.API != nil {
-		return validateAPIConfig(src.API, src.Format, prefix)
+		return validateAPIConfig(src.API, prefix)
 	}
 
 	if src.File != nil {
@@ -1067,12 +1056,9 @@ func validateGitConfig(git *GitConfig, prefix string) error {
 }
 
 // validateAPIConfig validates API-specific configuration
-func validateAPIConfig(api *APIConfig, format string, prefix string) error {
+func validateAPIConfig(api *APIConfig, prefix string) error {
 	if api.Endpoint == "" {
 		return fmt.Errorf("%s: api.endpoint is required", prefix)
-	}
-	if format != "" && format != SourceFormatUpstream {
-		return fmt.Errorf("%s: format must be either empty or %s when using api, got %s", prefix, SourceFormatUpstream, format)
 	}
 	return nil
 }

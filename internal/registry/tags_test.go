@@ -4,26 +4,11 @@ import (
 	"testing"
 
 	upstream "github.com/modelcontextprotocol/registry/pkg/api/v0"
-	"github.com/stacklok/toolhive-core/registry/converters"
-	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestExtractTags(t *testing.T) {
 	t.Parallel()
-
-	serverFromToolhive, _ := converters.ImageMetadataToServerJSON("test-server", &toolhivetypes.ImageMetadata{
-		Image: "test/image:latest",
-		BaseServerMetadata: toolhivetypes.BaseServerMetadata{
-			Name:        "test-server",
-			Description: "Test server description",
-			Tier:        "Community",
-			Status:      "Active",
-			Transport:   "stdio",
-			Tools:       []string{"test_tool"},
-			Tags:        []string{"tag1", "tag2"},
-		},
-	})
 
 	tests := []struct {
 		name         string
@@ -53,8 +38,18 @@ func TestExtractTags(t *testing.T) {
 			expectedTags: []string{},
 		},
 		{
-			name:         "test from converted toolhive tags",
-			server:       serverFromToolhive,
+			name: "test with nested metadata tags",
+			server: &upstream.ServerJSON{
+				Meta: &upstream.ServerMeta{
+					PublisherProvided: map[string]any{
+						"provider": map[string]any{
+							"metadata": map[string]any{
+								"tags": []any{"tag1", "tag2"},
+							},
+						},
+					},
+				},
+			},
 			expectedTags: []string{"tag1", "tag2"},
 		},
 		{

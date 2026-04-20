@@ -43,8 +43,6 @@
 # Sources configuration (can have multiple sources)
 sources:
   - name: toolhive
-    # Data format: toolhive (native) or upstream (MCP registry format)
-    format: toolhive
 
     # Git repository configuration
     git:

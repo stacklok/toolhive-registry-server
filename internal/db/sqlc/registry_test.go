@@ -470,9 +470,9 @@ func TestBulkUpsertSources(t *testing.T) {
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC()
 				result, err := queries.BulkUpsertConfigSources(context.Background(), BulkUpsertConfigSourcesParams{
-					Names:         []string{"src1", "src2"},
-					SourceTypes:   []string{"git", "file"},
-					Formats:       []string{"upstream", "upstream"},
+					Names:       []string{"src1", "src2"},
+					SourceTypes: []string{"git", "file"},
+
 					SourceConfigs: [][]byte{nil, nil},
 					FilterConfigs: [][]byte{nil, nil},
 					SyncSchedules: []pgtypes.Interval{pgtypes.NewNullInterval(), pgtypes.NewNullInterval()},
@@ -503,9 +503,9 @@ func TestBulkUpsertSources(t *testing.T) {
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC().Add(1 * time.Hour)
 				result, err := queries.BulkUpsertConfigSources(context.Background(), BulkUpsertConfigSourcesParams{
-					Names:         []string{"config-src"},
-					SourceTypes:   []string{"git"},
-					Formats:       []string{"upstream"},
+					Names:       []string{"config-src"},
+					SourceTypes: []string{"git"},
+
 					SourceConfigs: [][]byte{nil},
 					FilterConfigs: [][]byte{nil},
 					SyncSchedules: []pgtypes.Interval{pgtypes.NewNullInterval()},
@@ -537,9 +537,9 @@ func TestBulkUpsertSources(t *testing.T) {
 			scenarioFunc: func(t *testing.T, queries *Queries) {
 				now := time.Now().UTC().Add(1 * time.Hour)
 				result, err := queries.BulkUpsertConfigSources(context.Background(), BulkUpsertConfigSourcesParams{
-					Names:         []string{"api-src"},
-					SourceTypes:   []string{"managed"},
-					Formats:       []string{"upstream"},
+					Names:       []string{"api-src"},
+					SourceTypes: []string{"managed"},
+
 					SourceConfigs: [][]byte{nil},
 					FilterConfigs: [][]byte{nil},
 					SyncSchedules: []pgtypes.Interval{pgtypes.NewNullInterval()},

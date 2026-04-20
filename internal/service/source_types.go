@@ -17,7 +17,6 @@ const (
 
 // SourceCreateRequest represents the request body for creating or updating a source
 type SourceCreateRequest struct {
-	Format     string                   `json:"format,omitempty"`     // "toolhive" or "upstream"
 	Git        *config.GitConfig        `json:"git,omitempty"`        // Git repository source
 	API        *config.APIConfig        `json:"api,omitempty"`        // API endpoint source
 	File       *config.FileConfig       `json:"file,omitempty"`       // Local file or URL source

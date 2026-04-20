@@ -52,11 +52,6 @@ func ValidateSourceConfig(req *SourceCreateRequest) error {
 		}
 	}
 
-	// Validate format if specified
-	if req.Format != "" && req.Format != "toolhive" && req.Format != "upstream" {
-		return fmt.Errorf("format must be 'toolhive' or 'upstream', got '%s'", req.Format)
-	}
-
 	// Source-specific validation
 	return validateSourceSpecific(req)
 }
@@ -174,32 +169,14 @@ func validateFileConfig(cfg *config.FileConfig) error {
 	return nil
 }
 
-// ValidateInlineDataBasic performs basic validation on inline registry data.
-// It uses the existing registry data validator to parse and validate both
-// toolhive and upstream formats.
+// ValidateInlineDataBasic performs basic validation on inline registry data
+// against the upstream MCP registry format.
 func ValidateInlineDataBasic(data string) error {
-	return ValidateInlineDataWithFormat(data, "")
-}
-
-// ValidateInlineDataWithFormat validates inline registry data with a specific format.
-// If format is empty, it tries upstream format first, then falls back to toolhive.
-func ValidateInlineDataWithFormat(data string, format string) error {
 	if data == "" {
 		return fmt.Errorf("data cannot be empty")
 	}
 
 	validator := sources.NewRegistryDataValidator()
-
-	// If format is specified, use it directly
-	if format != "" {
-		_, err := validator.ValidateData([]byte(data), format)
-		return err
-	}
-
-	// Try upstream format first (more common for API usage), then toolhive
-	_, err := validator.ValidateData([]byte(data), "upstream")
-	if err != nil {
-		_, err = validator.ValidateData([]byte(data), "toolhive")
-	}
+	_, err := validator.ValidateData([]byte(data))
 	return err
 }

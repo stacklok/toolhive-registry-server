@@ -113,7 +113,6 @@ func TestAuthzIntegration_SourceDeleteProtection(t *testing.T) {
 
 	t.Run("create source", func(t *testing.T) {
 		resp := doRequest(t, "PUT", env.baseURL+"/v1/sources/ref-src", platformAdmin, map[string]any{
-			"format":     "upstream",
 			"file":       map[string]any{"path": f.Name()},
 			"syncPolicy": map[string]any{"interval": "5m"},
 			"claims":     map[string]any{"org": "acme", "team": "platform"},
@@ -174,15 +173,13 @@ func TestAuthzIntegration_SourceShadowing(t *testing.T) {
 
 	sources := []config.SourceConfig{
 		{
-			Name:       "high-prio-src",
-			Format:     "upstream",
+			Name: "high-prio-src",
 			File:       &config.FileConfig{Path: writeFixture("high-prio", highPrioData)},
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme"},
 		},
 		{
-			Name:       "low-prio-src",
-			Format:     "upstream",
+			Name: "low-prio-src",
 			File:       &config.FileConfig{Path: writeFixture("low-prio", lowPrioData)},
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme"},

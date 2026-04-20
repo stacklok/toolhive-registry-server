@@ -121,7 +121,7 @@ func (h *upstreamAPIHandler) FetchRegistry(ctx context.Context, regCfg *config.S
 	}
 
 	// Return as FetchResult
-	return NewFetchResult(upstreamReg, hash, config.SourceFormatUpstream), nil
+	return NewFetchResult(upstreamReg, hash), nil
 }
 
 // fetchAllServers performs paginated fetching and returns all ServerJSON objects

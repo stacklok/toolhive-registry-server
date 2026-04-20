@@ -2,15 +2,12 @@ package registry
 
 import upstream "github.com/modelcontextprotocol/registry/pkg/api/v0"
 
-// ExtractTags extracts tags from an upstream server
-// It uses the conventions of the Toolhive conversions function in
-// github.com/stacklok/toolhive-core/registry/converters/toolhive_to_upstream.go
+// ExtractTags extracts tags from an upstream server's publisher-provided metadata
 func ExtractTags(server *upstream.ServerJSON) []string {
 	extractedTags := make([]string, 0)
 	if server.Meta != nil {
 		for _, metadata := range server.Meta.PublisherProvided {
-			// Handle case where metadata might be a string (upstream format)
-			// instead of a map (toolhive format)
+			// Metadata entries may be maps or primitive values; skip non-maps
 			metadataMap, ok := metadata.(map[string]any)
 			if !ok {
 				// Skip non-map values (e.g., strings)

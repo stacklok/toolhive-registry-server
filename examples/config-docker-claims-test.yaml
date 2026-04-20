@@ -2,7 +2,6 @@
 # Tests that source-level claims flow to entries during sync
 sources:
   - name: trusted-source
-    format: upstream
     file:
       path: /examples/upstream-registry.json
     syncPolicy:
@@ -12,7 +11,6 @@ sources:
       tier: "premium"
 
   - name: community-source
-    format: upstream
     file:
       path: /examples/upstream-registry-overlap.json
     syncPolicy:

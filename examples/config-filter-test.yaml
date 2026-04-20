@@ -17,7 +17,6 @@
 sources:
   # Test 1: Include only database-related servers by name pattern
   - name: database-servers
-    format: toolhive
     file:
       path: /examples/toolhive-registry.json
     syncPolicy:
@@ -33,7 +32,6 @@ sources:
 
   # Test 2: Filter by tags - only security and database servers
   - name: security-and-database
-    format: toolhive
     file:
       path: /examples/toolhive-registry.json
     syncPolicy:
@@ -49,7 +47,6 @@ sources:
 
   # Test 3: Complex filter - GitHub/GitLab servers excluding certain tags
   - name: version-control
-    format: toolhive
     file:
       path: /examples/toolhive-registry.json
     syncPolicy:
@@ -65,7 +62,6 @@ sources:
 
   # Test 4: Wildcard patterns with proper prefix
   - name: dev-tools
-    format: toolhive
     file:
       path: /examples/toolhive-registry.json
     syncPolicy:
@@ -80,7 +76,6 @@ sources:
 
   # Test 5: No filters - should include all servers for comparison
   - name: all-servers
-    format: toolhive
     file:
       path: /examples/toolhive-registry.json
     syncPolicy:

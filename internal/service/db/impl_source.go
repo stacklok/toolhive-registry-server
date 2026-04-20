@@ -102,10 +102,6 @@ func (s *dbService) CreateSource(
 	// Prepare insert parameters
 	now := time.Now()
 	sourceType := string(req.GetSourceType())
-	format := req.Format
-	if format == "" {
-		format = "upstream" // default format
-	}
 
 	sourceConfig, err := serializeSourceConfigFromRequest(req)
 	if err != nil {
@@ -126,7 +122,6 @@ func (s *dbService) CreateSource(
 		Name:         name,
 		CreationType: sqlc.CreationTypeAPI,
 		SourceType:   sourceType,
-		Format:       &format,
 		SourceConfig: sourceConfig,
 		FilterConfig: filterConfig,
 		SyncSchedule: syncSchedule,
@@ -274,10 +269,6 @@ func (s *dbService) UpdateSource(
 	// Prepare update parameters
 	now := time.Now()
 	sourceType := string(req.GetSourceType())
-	format := req.Format
-	if format == "" {
-		format = "upstream" // default format
-	}
 
 	sourceConfig, err := serializeSourceConfigFromRequest(req)
 	if err != nil {
@@ -297,7 +288,6 @@ func (s *dbService) UpdateSource(
 	params := sqlc.UpdateSourceParams{
 		Name:         name,
 		SourceType:   sourceType,
-		Format:       &format,
 		SourceConfig: sourceConfig,
 		FilterConfig: filterConfig,
 		SyncSchedule: syncSchedule,
@@ -520,13 +510,13 @@ func (s *dbService) GetSourceByName(ctx context.Context, name string) (*service.
 
 // ProcessInlineSourceData processes inline source data synchronously.
 // It parses the data, validates it, and stores the servers in the database.
-func (s *dbService) ProcessInlineSourceData(ctx context.Context, name string, data string, format string) error {
+func (s *dbService) ProcessInlineSourceData(ctx context.Context, name string, data string) error {
 	// Capture actual start time for accurate timing
 	startTime := time.Now()
 
 	// Parse the inline data using the registry validator
 	validator := sources.NewRegistryDataValidator()
-	registry, err := validator.ValidateData([]byte(data), format)
+	registry, err := validator.ValidateData([]byte(data))
 	if err != nil {
 		// Update sync status to failed with actual timing
 		errMsg := fmt.Sprintf("failed to parse registry data: %v", err)
@@ -792,7 +782,6 @@ type sourceRow struct {
 	Name         string
 	SourceType   string
 	CreationType sqlc.CreationType
-	Format       *string
 	SourceConfig []byte
 	FilterConfig []byte
 	SyncSchedule pgtypes.Interval
@@ -811,10 +800,6 @@ func buildSourceInfo(row *sourceRow) *service.SourceInfo {
 
 	if row.SourceType != "" {
 		info.SourceType = config.SourceType(row.SourceType)
-	}
-
-	if row.Format != nil {
-		info.Format = *row.Format
 	}
 
 	if row.SourceType != "" {
@@ -845,7 +830,6 @@ func buildSourceInfoFromDBSource(source *sqlc.Source) *service.SourceInfo {
 		Name:         source.Name,
 		SourceType:   source.SourceType,
 		CreationType: source.CreationType,
-		Format:       source.Format,
 		SourceConfig: source.SourceConfig,
 		FilterConfig: source.FilterConfig,
 		SyncSchedule: source.SyncSchedule,
@@ -861,7 +845,6 @@ func buildSourceInfoFromListRow(row *sqlc.ListSourcesRow) *service.SourceInfo {
 		Name:         row.Name,
 		SourceType:   row.SourceType,
 		CreationType: row.CreationType,
-		Format:       row.Format,
 		SourceConfig: row.SourceConfig,
 		FilterConfig: row.FilterConfig,
 		SyncSchedule: row.SyncSchedule,
@@ -877,7 +860,6 @@ func buildSourceInfoFromGetByNameRow(row *sqlc.GetSourceByNameRow) *service.Sour
 		Name:         row.Name,
 		SourceType:   row.SourceType,
 		CreationType: row.CreationType,
-		Format:       row.Format,
 		SourceConfig: row.SourceConfig,
 		FilterConfig: row.FilterConfig,
 		SyncSchedule: row.SyncSchedule,

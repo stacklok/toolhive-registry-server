@@ -15,7 +15,7 @@
 //   - GitRegistryHandler: Retrieves registry data from Git repositories
 //     Supports public repos via HTTPS with branch/tag/commit checkout
 //   - APIRegistryHandler: Retrieves registry data from HTTP/HTTPS endpoints
-//     Delegates to format-specific handlers (ToolHiveAPIHandler, UpstreamAPIHandler)
+//     Validates upstream MCP registry format and delegates to UpstreamAPIHandler
 //   - FileRegistryHandler: Retrieves registry data from local filesystem
 //     Supports both absolute and relative file paths for development and production
 //

@@ -15,18 +15,16 @@
 
 # Multiple sources from different origins
 sources:
-  # File-based source with ToolHive format
+  # File-based source from ToolHive catalog
   - name: toolhive-file
-    format: toolhive
     file:
       # Path to mounted file in Docker container
       path: /examples/toolhive-registry.json
     syncPolicy:
       interval: "30s"  # Short interval for testing
 
-  # File-based source with upstream format
+  # File-based source from upstream registry
   - name: upstream-file
-    format: upstream
     file:
       path: /examples/upstream-registry.json
     syncPolicy:
@@ -34,7 +32,6 @@ sources:
 
   # API-based source from MCP official registry with filtering
   - name: mcp-api
-    format: upstream
     api:
       endpoint: https://registry.modelcontextprotocol.io
     syncPolicy:
@@ -52,9 +49,8 @@ sources:
     #       - "official"
     #       - "stable"
 
-  # Git-based source from ToolHive catalog (upstream format)
+  # Git-based source from ToolHive catalog
   - name: toolhive-git
-    format: upstream
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main

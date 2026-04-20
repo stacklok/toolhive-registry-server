@@ -14,8 +14,6 @@
 # Sources configuration (can have multiple sources)
 sources:
   - name: mcp-upstream
-    # Data format: only 'upstream' is supported for API sources
-    format: upstream
 
     # API endpoint configuration
     api:

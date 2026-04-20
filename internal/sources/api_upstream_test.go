@@ -231,7 +231,6 @@ func TestUpstreamAPIHandler_FetchRegistry(t *testing.T) {
 		expectError        bool
 		errorContains      string
 		expectedCount      int
-		expectedFormat     string
 		expectedServerName string
 		verifyHash         bool
 	}{
@@ -264,7 +263,6 @@ func TestUpstreamAPIHandler_FetchRegistry(t *testing.T) {
 			},
 			expectError:        false,
 			expectedCount:      1,
-			expectedFormat:     config.SourceFormatUpstream,
 			expectedServerName: "test-server",
 			verifyHash:         true,
 		},
@@ -306,8 +304,7 @@ func TestUpstreamAPIHandler_FetchRegistry(t *testing.T) {
 			ctx := context.Background()
 
 			registryConfig := &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatUpstream,
+				Name: "test-registry",
 				API: &config.APIConfig{
 					Endpoint: mockServer.URL,
 				},
@@ -324,7 +321,6 @@ func TestUpstreamAPIHandler_FetchRegistry(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			assert.Equal(t, tt.expectedCount, result.ServerCount)
-			assert.Equal(t, tt.expectedFormat, result.Format)
 			require.NotNil(t, result.Registry)
 			require.Len(t, result.Registry.Data.Servers, tt.expectedCount)
 
@@ -398,8 +394,7 @@ func TestUpstreamAPIHandler_FetchRegistry_Pagination(t *testing.T) {
 	ctx := context.Background()
 
 	registryConfig := &config.SourceConfig{
-		Name:   "test-registry",
-		Format: config.SourceFormatUpstream,
+		Name: "test-registry",
 		API: &config.APIConfig{
 			Endpoint: mockServer.URL,
 		},
@@ -444,8 +439,7 @@ func TestUpstreamAPIHandler_EmptyServers(t *testing.T) {
 	ctx := context.Background()
 
 	registryConfig := &config.SourceConfig{
-		Name:   "test-registry",
-		Format: config.SourceFormatUpstream,
+		Name: "test-registry",
 		API: &config.APIConfig{
 			Endpoint: mockServer.URL,
 		},
@@ -504,8 +498,7 @@ func TestUpstreamAPIHandler_MultiplePages(t *testing.T) {
 	ctx := context.Background()
 
 	registryConfig := &config.SourceConfig{
-		Name:   "test-registry",
-		Format: config.SourceFormatUpstream,
+		Name: "test-registry",
 		API: &config.APIConfig{
 			Endpoint: mockServer.URL,
 		},
@@ -563,8 +556,7 @@ func TestUpstreamAPIHandler_HTTPErrorCodes(t *testing.T) {
 			ctx := context.Background()
 
 			registryConfig := &config.SourceConfig{
-				Name:   "test-registry",
-				Format: config.SourceFormatUpstream,
+				Name: "test-registry",
 				API: &config.APIConfig{
 					Endpoint: mockServer.URL,
 				},

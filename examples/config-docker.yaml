@@ -25,8 +25,6 @@
 # Sources configuration (can have multiple sources)
 sources:
   - name: local-file
-    # Data format: toolhive (native) or upstream (MCP registry format)
-    format: upstream
 
     # Local file configuration
     # Use file source for docker-compose demo
