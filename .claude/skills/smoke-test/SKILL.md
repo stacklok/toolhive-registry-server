@@ -171,6 +171,34 @@ Feature: Registry Server smoke tests
     When I POST /v1/entries with an empty payload
     Then the response status is 400
 
+  # ── Claims update on edit ──────────────────────────────────────────────────
+
+  Scenario: Registry claims are updated on PUT
+    When I PUT /v1/registries/claims-test with claims {"org":"acme"}
+    Then the response status is 201
+    And the body contains "acme"
+    When I PUT /v1/registries/claims-test with claims {"org":"contoso"}
+    Then the response status is 200
+    And the body contains "contoso"
+    When I GET /v1/registries/claims-test
+    Then the body contains "contoso"
+    And the body does not contain "acme"
+
+  Scenario: Source claims are updated on PUT
+    When I PUT /v1/sources/claims-test with file-data and claims {"org":"acme"}
+    Then the response status is 201
+    When I GET /v1/sources/claims-test
+    Then the body contains "acme"
+    When I PUT /v1/sources/claims-test with file-data and claims {"org":"contoso"}
+    Then the response status is 200
+    When I GET /v1/sources/claims-test
+    Then the body contains "contoso"
+    And the body does not contain "acme"
+
+  Scenario: Entry claims are updated via PUT
+    When I PUT /v1/entries/skill/test-skill/claims with {"claims":{"team":"eng"}}
+    Then the response status is 204
+
   # ── Managed source limit ──────────────────────────────────────────────────
 
   Scenario: Second managed source is rejected with 409
@@ -449,6 +477,58 @@ check "POST /v1/entries with both server+skill returns 400" 400 "$SC" "$(body)"
 
 SC=$(curl_post /v1/entries '{}')
 check "POST /v1/entries with neither server nor skill returns 400" 400 "$SC" "$(body)"
+
+# ─── Claims update on edit ────────────────────────────────────────────────────
+echo ""
+echo "── Claims update on edit ──"
+
+# Registry: create with claims, update with different claims, verify GET
+SC=$(curl_put /v1/registries/claims-test '{"sources":["local-file"],"claims":{"org":"acme"}}')
+check "PUT /v1/registries/claims-test (create with claims) returns 201" 201 "$SC" "$(body)" "acme"
+
+SC=$(curl_put /v1/registries/claims-test '{"sources":["local-file"],"claims":{"org":"contoso"}}')
+check "PUT /v1/registries/claims-test (update claims) returns 200" 200 "$SC" "$(body)" "contoso"
+
+SC=$(curl_get /v1/registries/claims-test); BODY="$(body)"
+check "GET /v1/registries/claims-test returns updated claims" 200 "$SC" "$BODY" "contoso"
+if echo "$BODY" | grep -q '"acme"'; then
+  echo "  ✗ GET /v1/registries/claims-test still contains old claim value \"acme\""
+  FAIL=$((FAIL + 1))
+else
+  echo "  ✓ GET /v1/registries/claims-test does not contain old claim value \"acme\""
+  PASS=$((PASS + 1))
+fi
+
+# Source: create with claims, update with different claims, verify GET
+FILE_DATA_CLAIMS_A='{"file":{"data":"{\"version\":\"1.0.0\",\"last_updated\":\"2025-01-15T10:30:00Z\",\"servers\":{}}"},"claims":{"org":"acme"}}'
+FILE_DATA_CLAIMS_B='{"file":{"data":"{\"version\":\"1.0.0\",\"last_updated\":\"2025-01-15T10:30:00Z\",\"servers\":{}}"},"claims":{"org":"contoso"}}'
+
+SC=$(curl_put /v1/sources/claims-test "$FILE_DATA_CLAIMS_A")
+check "PUT /v1/sources/claims-test (create with claims) returns 201" 201 "$SC" "$(body)"
+
+SC=$(curl_get /v1/sources/claims-test)
+check "GET /v1/sources/claims-test returns initial claims" 200 "$SC" "$(body)" "acme"
+
+SC=$(curl_put /v1/sources/claims-test "$FILE_DATA_CLAIMS_B")
+check "PUT /v1/sources/claims-test (update claims) returns 200" 200 "$SC" "$(body)"
+
+SC=$(curl_get /v1/sources/claims-test); BODY="$(body)"
+check "GET /v1/sources/claims-test returns updated claims" 200 "$SC" "$BODY" "contoso"
+if echo "$BODY" | grep -q '"acme"'; then
+  echo "  ✗ GET /v1/sources/claims-test still contains old claim value \"acme\""
+  FAIL=$((FAIL + 1))
+else
+  echo "  ✓ GET /v1/sources/claims-test does not contain old claim value \"acme\""
+  PASS=$((PASS + 1))
+fi
+
+# Entry: update claims on the published skill, verify 204
+SC=$(curl_put /v1/entries/skill/test-skill/claims '{"claims":{"team":"eng"}}')
+check "PUT /v1/entries/skill/test-skill/claims returns 204" 204 "$SC" "$(body)"
+
+# Clean up claims-test resources
+SC=$(curl_del /v1/registries/claims-test); check "DELETE /v1/registries/claims-test returns 204" 204 "$SC" "$(body)"
+SC=$(curl_del /v1/sources/claims-test);    check "DELETE /v1/sources/claims-test returns 204" 204 "$SC" "$(body)"
 
 # ─── Managed source limit ─────────────────────────────────────────────────────
 echo ""
