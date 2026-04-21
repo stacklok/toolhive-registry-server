@@ -620,7 +620,7 @@ func (s *dbService) PublishServerVersion(
 
 	// Defensive check: validate server name format (should never fail if API layer is correct)
 	if !validators.IsValidServerName(serverData.Name) {
-		err := fmt.Errorf("invalid server name format: %s", serverData.Name)
+		err := fmt.Errorf("%w: %s", service.ErrInvalidServerName, serverData.Name)
 		otel.RecordError(span, err)
 		return nil, err
 	}
