@@ -48,8 +48,8 @@ func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if routes.authEnabled && len(req.Claims) == 0 {
-		common.WriteErrorResponse(w, "claims are required when authentication is enabled", http.StatusBadRequest)
+	if routes.authzEnabled && len(req.Claims) == 0 {
+		common.WriteErrorResponse(w, "claims are required when authorization is enabled", http.StatusBadRequest)
 		return
 	}
 
