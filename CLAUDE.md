@@ -2,18 +2,9 @@
 
 This file provides AI assistant guidance for working with the ToolHive Registry API Server codebase.
 
-## Design Invariants — Read Before Changing Core Behavior
+## Design Rules
 
-[**docs/invariants.md**](docs/invariants.md) lists the design decisions that shaped this codebase and must not be broken without explicit discussion. Check it before:
-
-- Touching layering boundaries (API ↔ service ↔ sources/storage)
-- Changing anything in `internal/auth/**` or `internal/authz/**`, or how claims are matched, scoped, or inherited
-- Changing the shape of `/registry/{name}/v0.1/**` responses — that is the upstream MCP Registry spec surface, not ours
-- Adding a source type, changing `SourceConfig`, or touching `creation_type` semantics
-- Modifying the sync pipeline (writer, coordinator, transaction boundaries)
-- Introducing caching, SQL-level JSONB filtering, or a second publish endpoint
-
-When reviewing code (directly or via the `code-reviewer` subagent), cite invariants by section number if a change conflicts — e.g. "this violates §3.3 (uniform claim matching)".
+Scoped design rules live in [`.claude/rules/`](.claude/rules/). Each file has a `paths:` frontmatter glob and is auto-loaded when Claude Code is working on files that match. They cover layering, the data model, auth/claims, the API surface (admin vs upstream spec), the sync pipeline, and secrets handling. Read the rule file that matches the area you're changing, and cite it by section when reviewing a PR that conflicts with one (e.g. "this violates `auth.md` §3 — uniform claim matching").
 
 ## Available Subagents
 
@@ -25,7 +16,7 @@ Registry Server uses specialized AI subagents for different aspects of developme
 
 - **unit-test-writer**: Specialized in writing comprehensive unit tests for Go code. Use when you need thorough test coverage for functions, methods, or components.
 
-- **code-reviewer**: Reviews code for Registry Server best practices, security patterns, Go conventions, and architectural consistency. Use after significant code changes. Should cross-check changes against `docs/invariants.md`.
+- **code-reviewer**: Reviews code for Registry Server best practices, security patterns, Go conventions, and architectural consistency. Use after significant code changes. Should cross-check changes against the matching rule file under `.claude/rules/`.
 
 - **tech-lead-orchestrator**: Provides architectural oversight, task delegation, and technical leadership for code development projects. Use for complex features or architectural decisions.
 
@@ -63,7 +54,7 @@ See [README.md](README.md#development) for complete build and development docume
 
 ## Code Architecture
 
-High-level shape (read `docs/invariants.md` §1 for the rules that govern layering):
+High-level shape (read `.claude/rules/layering.md` for the rules that govern layer boundaries):
 
 ```
 cmd/thv-registry-api/      # Entrypoint only: main.go, app wiring, generated OpenAPI docs
@@ -88,7 +79,8 @@ internal/
   filtering/               # Name/tag filter implementation (used during ingestion)
   telemetry/               # OpenTelemetry setup (metrics + tracing)
 database/migrations/       # SQL migrations (numbered, up/down)
-docs/                      # Developer documentation — configuration, deployment, invariants, etc.
+docs/                      # Developer documentation — configuration, deployment, etc.
+.claude/rules/             # Scoped design rules, auto-loaded by Claude Code per paths glob
 ```
 
 The app is assembled with a builder + functional options pattern (`app.NewRegistryApp(ctx, opts...)`) so tests can inject fakes for storage, sync manager, registry handler factory, and coordinator options. Two HTTP servers are started: public (default `:8080`) and internal (`:8081` — health/readiness/version only, no auth).
@@ -98,7 +90,7 @@ The app is assembled with a builder + functional options pattern (`app.NewRegist
 - **Builder + functional options**: Wire new components through `internal/app/builder.go` using `With*` options. Factory interfaces preferred over direct dependencies — tests need injection points.
 - **Layered flow**: API handlers call `service.RegistryService`, which calls storage and source interfaces. API must not call DB or `sources.*` directly. Service must not import `net/http` or `client-go`.
 - **Source type inference**: `SourceConfig.GetType()` is the single source of truth for which source type a config represents. No `type:` field — exactly one of `git/api/file/managed/kubernetes` blocks must be set.
-- **Record filters**: Claims filtering and dedup are composed as `RecordFilter` chains in `internal/service/db/`, applied during row streaming. No SQL-level JSONB operators — see invariants §6.1.
+- **Record filters**: Claims filtering and dedup are composed as `RecordFilter` chains in `internal/service/db/`, applied during row streaming. No SQL-level JSONB operators — see `.claude/rules/data-model.md` §7.
 - **Table-driven tests**: Standard pattern throughout. Mock HTTP clients, filesystem, Git operations.
 - **Mock generation**: Use `go.uber.org/mock` via `//go:generate mockgen` directives. Run `task gen` to regenerate — never hand-write mocks.
 
@@ -129,14 +121,14 @@ The app is assembled with a builder + functional options pattern (`app.NewRegist
 
 **Adding a new admin API endpoint:**
 1. Add handler in [internal/api/v1/](internal/api/v1/) (e.g., `routes.go` for wiring, plus a dedicated handler file)
-2. Wrap with the appropriate `auditmw.Audited*` helper and put it inside the correct role group (`RequireRole(auth.RoleX, authzCfg)`) — invariant §4.4
+2. Wrap with the appropriate `auditmw.Audited*` helper and put it inside the correct role group (`RequireRole(auth.RoleX, authzCfg)`) — `.claude/rules/api.md` §4
 3. Add Swagger annotations on the handler
 4. Run `task docs` to regenerate the OpenAPI spec
 5. Add unit tests (handler-level) plus an authz integration test in [internal/authz/](internal/authz/) if the endpoint is claim-scoped
 
 **Adding a new source type:**
 1. Add the type constant in [internal/config/config.go](internal/config/config.go) and a new config struct
-2. Update `SourceConfig`, `GetType()`, `validateSourceTypeCount`, `validateSourceSpecificConfig`, and `IsNonSyncedSource` if appropriate — invariant §2.2
+2. Update `SourceConfig`, `GetType()`, `validateSourceTypeCount`, `validateSourceSpecificConfig`, and `IsNonSyncedSource` if appropriate — `.claude/rules/data-model.md` §2
 3. Implement `sources.RegistryHandler` (if synced) or wire a controller (if non-synced, like Kubernetes)
 4. Register in [internal/sources/factory.go](internal/sources/factory.go)
 5. Add a DB migration if new columns are needed
