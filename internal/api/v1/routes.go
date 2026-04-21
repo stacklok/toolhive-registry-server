@@ -14,33 +14,32 @@ import (
 
 // Routes handles HTTP requests for API v1 endpoints.
 type Routes struct {
-	service     service.RegistryService
-	authEnabled bool
+	service      service.RegistryService
+	authzEnabled bool
 }
 
 // NewRoutes creates a new Routes instance with the given service.
-// authEnabled reflects whether the server is configured to require
-// authentication (i.e. Auth.Mode != anonymous); handlers use it to gate
-// policies that only make sense when publishers are authenticated users.
-func NewRoutes(svc service.RegistryService, authEnabled bool) *Routes {
+// authzEnabled reflects whether the server has authorization configured
+// (i.e. AuthConfig.Authz != nil); handlers use it to gate policies that
+// only make sense when publishers are subject to authorization checks.
+func NewRoutes(svc service.RegistryService, authzEnabled bool) *Routes {
 	return &Routes{
-		service:     svc,
-		authEnabled: authEnabled,
+		service:      svc,
+		authzEnabled: authzEnabled,
 	}
 }
 
 // Router creates and configures the HTTP router for API v1 endpoints.
 // authCfg is the full authentication configuration; its Authz subtree drives
-// role checks and its Mode determines whether publish-time claim requirements
-// are enforced. A nil authCfg means no auth is configured (development).
+// role checks and publish-time claim requirements. A nil authCfg means no
+// auth is configured (development).
 func Router(svc service.RegistryService, authCfg *config.AuthConfig) http.Handler {
 	var authzCfg *config.AuthzConfig
-	authEnabled := false
 	if authCfg != nil {
 		authzCfg = authCfg.Authz
-		authEnabled = authCfg.Mode != config.AuthModeAnonymous
 	}
-	routes := NewRoutes(svc, authEnabled)
+	authzEnabled := authzCfg != nil
+	routes := NewRoutes(svc, authzEnabled)
 
 	r := chi.NewRouter()
 

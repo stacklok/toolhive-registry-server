@@ -146,6 +146,7 @@ func TestPublishEntry(t *testing.T) {
 func TestPublishEntryClaimsRequired(t *testing.T) {
 	t.Parallel()
 
+	authzCfg := &config.AuthConfig{Mode: config.AuthModeOAuth, Authz: &config.AuthzConfig{}}
 	oauthCfg := &config.AuthConfig{Mode: config.AuthModeOAuth}
 	anonCfg := &config.AuthConfig{Mode: config.AuthModeAnonymous}
 
@@ -159,8 +160,8 @@ func TestPublishEntryClaimsRequired(t *testing.T) {
 		wantError  string
 	}{
 		{
-			name:    "auth enabled without claims returns 400",
-			authCfg: oauthCfg,
+			name:    "authz enabled without claims returns 400",
+			authCfg: authzCfg,
 			body: mustMarshal(publishEntryRequest{
 				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
 			}),
@@ -170,8 +171,8 @@ func TestPublishEntryClaimsRequired(t *testing.T) {
 			wantError:  "claims are required",
 		},
 		{
-			name:    "auth enabled with empty claims returns 400",
-			authCfg: oauthCfg,
+			name:    "authz enabled with empty claims returns 400",
+			authCfg: authzCfg,
 			body: mustMarshal(publishEntryRequest{
 				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
 				Claims: map[string]any{},
@@ -182,11 +183,24 @@ func TestPublishEntryClaimsRequired(t *testing.T) {
 			wantError:  "claims are required",
 		},
 		{
-			name:    "auth enabled with claims succeeds",
-			authCfg: oauthCfg,
+			name:    "authz enabled with claims succeeds",
+			authCfg: authzCfg,
 			body: mustMarshal(publishEntryRequest{
 				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
 				Claims: map[string]any{"sub": "user1"},
+			}),
+			jwtClaims: jwt.MapClaims{"sub": "user1"},
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
+					Return(&upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"}, nil)
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:    "auth enabled without authz config without claims succeeds",
+			authCfg: oauthCfg,
+			body: mustMarshal(publishEntryRequest{
+				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
 			}),
 			jwtClaims: jwt.MapClaims{"sub": "user1"},
 			setupMock: func(m *mocks.MockRegistryService) {
@@ -236,6 +250,10 @@ func TestPublishEntryClaimsRequired(t *testing.T) {
 
 			if tt.jwtClaims != nil {
 				ctx := auth.ContextWithClaims(req.Context(), tt.jwtClaims)
+				// Grant all roles so RequireRole middleware does not block
+				// the request. This test focuses on the claims-required
+				// check, not role enforcement.
+				ctx = auth.ContextWithRoles(ctx, auth.AllRoles())
 				req = req.WithContext(ctx)
 			}
 
