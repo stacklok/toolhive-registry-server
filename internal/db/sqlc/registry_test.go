@@ -910,3 +910,123 @@ func TestGetRegistryByName(t *testing.T) {
 		})
 	}
 }
+
+func TestUpsertRegistryUpdatesClaims(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		setupFunc    func(t *testing.T, queries *Queries)
+		scenarioFunc func(t *testing.T, queries *Queries)
+	}{
+		{
+			name: "claims are updated on upsert conflict",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
+				oldClaims, err := json.Marshal(map[string]string{"org": "acme"})
+				require.NoError(t, err)
+
+				_, err = queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
+					Name:         "claims-update-test",
+					Claims:       oldClaims,
+					CreationType: CreationTypeAPI,
+					CreatedAt:    &createdAt,
+					UpdatedAt:    &createdAt,
+				})
+				require.NoError(t, err)
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries) {
+				updatedAt := time.Now().UTC()
+				newClaims, err := json.Marshal(map[string]string{"org": "contoso", "team": "eng"})
+				require.NoError(t, err)
+
+				// Upsert the same registry with updated claims.
+				returned, err := queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
+					Name:         "claims-update-test",
+					Claims:       newClaims,
+					CreationType: CreationTypeAPI,
+					CreatedAt:    &updatedAt,
+					UpdatedAt:    &updatedAt,
+				})
+				require.NoError(t, err)
+
+				// The RETURNING row must carry the new claims.
+				var returnedClaims map[string]string
+				err = json.Unmarshal(returned.Claims, &returnedClaims)
+				require.NoError(t, err)
+				require.Equal(t, "contoso", returnedClaims["org"])
+				require.Equal(t, "eng", returnedClaims["team"])
+				_, hasAcme := returnedClaims["org"]
+				require.True(t, hasAcme) // key exists but value is "contoso", not "acme"
+				require.NotEqual(t, "acme", returnedClaims["org"])
+
+				// A fresh GET must also reflect the updated claims.
+				fetched, err := queries.GetRegistryByName(context.Background(), "claims-update-test")
+				require.NoError(t, err)
+
+				var fetchedClaims map[string]string
+				err = json.Unmarshal(fetched.Claims, &fetchedClaims)
+				require.NoError(t, err)
+				require.Equal(t, "contoso", fetchedClaims["org"])
+				require.Equal(t, "eng", fetchedClaims["team"])
+				require.NotEqual(t, "acme", fetchedClaims["org"])
+			},
+		},
+		{
+			name: "claims cleared to nil on upsert conflict",
+			//nolint:thelper // We want to see these lines in the test output
+			setupFunc: func(t *testing.T, queries *Queries) {
+				createdAt := time.Now().UTC()
+				oldClaims, err := json.Marshal(map[string]string{"org": "acme"})
+				require.NoError(t, err)
+
+				_, err = queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
+					Name:         "claims-nil-test",
+					Claims:       oldClaims,
+					CreationType: CreationTypeAPI,
+					CreatedAt:    &createdAt,
+					UpdatedAt:    &createdAt,
+				})
+				require.NoError(t, err)
+			},
+			//nolint:thelper // We want to see these lines in the test output
+			scenarioFunc: func(t *testing.T, queries *Queries) {
+				updatedAt := time.Now().UTC()
+
+				// Upsert the same registry with nil claims.
+				returned, err := queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
+					Name:         "claims-nil-test",
+					Claims:       nil,
+					CreationType: CreationTypeAPI,
+					CreatedAt:    &updatedAt,
+					UpdatedAt:    &updatedAt,
+				})
+				require.NoError(t, err)
+
+				// The RETURNING row must have nil claims.
+				require.Nil(t, returned.Claims)
+
+				// A fresh GET must also show nil claims.
+				fetched, err := queries.GetRegistryByName(context.Background(), "claims-nil-test")
+				require.NoError(t, err)
+				require.Nil(t, fetched.Claims)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			db, cleanupFunc := database.SetupTestDB(t)
+			t.Cleanup(cleanupFunc)
+			queries := New(db)
+			require.NotNil(t, queries)
+
+			tc.setupFunc(t, queries)
+			tc.scenarioFunc(t, queries)
+		})
+	}
+}
