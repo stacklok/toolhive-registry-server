@@ -188,7 +188,7 @@ func (q *Queries) UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySo
 const upsertRegistry = `-- name: UpsertRegistry :one
 INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
+ON CONFLICT (name) DO UPDATE SET claims = EXCLUDED.claims, updated_at = EXCLUDED.updated_at
 RETURNING id, name, claims, creation_type, created_at, updated_at
 `
 
