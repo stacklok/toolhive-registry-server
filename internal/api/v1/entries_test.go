@@ -82,6 +82,18 @@ func TestPublishEntry(t *testing.T) {
 			wantError:  "no managed source available for publishing",
 		},
 		{
+			name: "invalid server name returns 400",
+			body: mustMarshal(publishEntryRequest{
+				Server: &upstreamv0.ServerJSON{Name: "bad/name-", Version: "1.0.0"},
+			}),
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
+					Return(nil, fmt.Errorf("%w: bad/name-", service.ErrInvalidServerName))
+			},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid server name",
+		},
+		{
 			name: "generic service error",
 			body: mustMarshal(publishEntryRequest{
 				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},

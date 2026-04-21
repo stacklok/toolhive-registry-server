@@ -63,6 +63,8 @@ var (
 	ErrClaimsInsufficient = errors.New("insufficient claims")
 	// ErrInvalidEntryType is returned when an unsupported entry type string is supplied to an option
 	ErrInvalidEntryType = errors.New("invalid entry type")
+	// ErrInvalidServerName is returned when a server name fails format validation
+	ErrInvalidServerName = errors.New("invalid server name")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service
