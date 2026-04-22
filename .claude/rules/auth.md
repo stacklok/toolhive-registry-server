@@ -1,0 +1,129 @@
+---
+paths:
+  - "internal/auth/**/*.go"
+  - "internal/authz/**/*.go"
+  - "internal/service/db/claims_filter.go"
+  - "internal/service/db/*claims*.go"
+  - "internal/api/v1/entries.go"
+---
+
+# Authentication, Authorization, and Claims
+
+Applies to all code that handles JWTs, resolves roles, or compares claims. These rules keep
+the authz story coherent: one matching algorithm, subset validation everywhere, default-deny
+when claims don't cover.
+
+## 1. Authentication and Authorization Are Separate Concerns
+
+"Who are you?" (JWT validation) and "what can you do?" (role + claim matching) live in
+separate config blocks and separate middleware stages. Conflating them produces a config
+surface that is hard to secure.
+
+**What must hold:**
+- `auth.mode` controls authentication: `anonymous` or `oauth`. Default is `oauth`
+  (secure-by-default).
+- `auth.authz` is optional and separate; it controls authorization (roles and their claim
+  maps).
+- Without `auth.authz`, authenticated users implicitly get all roles (open mode). Role
+  enforcement is opt-in.
+
+**Detect**: a single `auth:` block combining identity and permissions; a default that
+allows anonymous access; role checks inside JWT validation middleware.
+
+## 2. Roles Come From the IdP — No Local Role Storage
+
+Four fixed roles: `superAdmin`, `manageSources`, `manageRegistries`, `manageEntries`. Each
+is a list of claim maps in config. No role table, no role CRUD API, no migration that adds
+one.
+
+**Detect**: a new role added at runtime via API; a database table storing role-to-user
+mappings; middleware that reads "role" from anywhere other than the resolved context
+populated by `ResolveRolesMiddleware`.
+
+**Instead**: add roles in config under `auth.authz.roles`. Adding a new role name requires
+a code change (new constant + handler wiring). `ResolveRolesMiddleware` runs after JWT
+extraction and injects resolved roles into the request context.
+
+## 3. Claim Matching Is Uniform Everywhere
+
+One algorithm — **AND across keys, OR within array values, absent key = not checked** — is
+used for every claim comparison: registry access gate, per-user entry filtering, role
+resolution, and write-path subset validation.
+
+**Detect**: a new containment check that doesn't call `claimsContain` /
+`validateClaimsSubset` / `validateClaimsSubsetBytes`; hand-rolled JSON comparison loops
+over claim maps; a "just this one case" matching rule.
+
+**Instead**: use the existing helpers in `internal/auth/claims.go`. Super-admin bypass is
+uniform across every check — do not reimplement it ad-hoc. If you need a new matching
+semantic, change the helper and audit every caller.
+
+**Why**: five different matching algorithms for the same question is a recipe for subtle
+bypass bugs. A user should never see an entry via one endpoint but not another.
+
+## 4. Default-Deny When Authz Is Enabled
+
+If an entry has claims the caller's JWT doesn't cover, the entry is invisible. Missing data
+means "not permitted," not "open."
+
+**What must hold:**
+- Per-user filtering on a row with non-empty claims fails closed.
+- Registry access gate returns **403** (not 404) when the caller fails it. 404 would leak
+  registry existence.
+- Empty-claims rows are visible to all authenticated users (deliberate — operators can
+  create "open" entries). Publishing with empty claims is **forbidden** when authz is
+  active (see §6).
+
+**Detect**: new code paths that return an entry when the claims check is ambiguous; 404
+responses on registry access denial; publish handlers that accept empty claims when
+`authzEnabled`.
+
+## 5. Subset Validation on Every Write
+
+A resource's claims must be a subset of the caller's JWT claims. Without this, a user can
+create a source/registry/entry with broader visibility than their own identity allows —
+that's privilege escalation.
+
+**What must hold:** every write validates `resource.claims ⊆ caller.JWT` (except
+super-admin):
+
+- Source create/update, read, delete
+- Registry create/update (including covering each referenced source's claims), read
+- Publish, delete published entry, update entry claims
+
+**Detect**: a new write handler that doesn't call `validateClaimsSubset` /
+`validateClaimsSubsetBytes`; a super-admin exemption applied to role gates (super-admin is
+exempt from *subset* checks, not from *role* gates).
+
+## 6. First Publish Owns the Name; Claims Immutable on Re-Publish
+
+Entry names are allocated on a first-come, first-served basis. All versions of a name share
+one claim set. Changing claims on an already-published name goes through
+`PUT /v1/entries/{type}/{name}/claims`, not through re-publish.
+
+**What must hold:**
+- `POST /v1/entries` with empty/missing `claims` returns 400 when auth is active (caller
+  has JWT claims in context).
+- In anonymous mode, claims remain optional (the filter is bypassed).
+- Re-publishing with claims that don't match the allocated set returns 409
+  (`ErrClaimsMismatch`).
+
+**Detect**: publish handlers that allow claim drift between versions; code paths that
+accept re-publish with a different claim set and silently update the name's claims.
+
+## 7. OAuth Issuer URLs Require HTTPS
+
+JWKS fetched over HTTP is trivially MITM'd, which defeats JWT validation. Allowing HTTP is
+an explicit dev-only escape hatch.
+
+**What must hold:**
+- OAuth `issuerUrl` must be HTTPS. Exceptions: `localhost` / `127.0.0.1` / `::1`, or the
+  env-only flag `THV_REGISTRY_INSECURE_URL=true`.
+- The insecure-allow flag is **env-only** — it must not be readable from YAML. This
+  prevents committing it to a repo.
+
+**Detect**: YAML schemas that accept `insecureAllowHTTP` as a field; token-validator code
+that bypasses scheme checks; test fixtures that set `http://` issuer URLs without localhost.
+
+**Instead**: propagate `insecureAllowHTTP` from `Config.insecureAllowHTTP` →
+`AuthConfig.InsecureAllowHTTP` → the token validator, as currently wired.
