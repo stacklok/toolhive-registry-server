@@ -7,6 +7,7 @@ import (
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -212,7 +213,7 @@ func createMCPServerObject(name string, annotations map[string]string) client.Ob
 			Namespace:   "default",
 			Annotations: annotations,
 		},
-		Spec: mcpv1alpha1.MCPServerSpec{
+		Spec: mcpv1beta1.MCPServerSpec{
 			Image:     "test/image:latest",
 			Transport: "stdio",
 		},

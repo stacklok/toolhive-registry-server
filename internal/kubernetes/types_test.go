@@ -9,6 +9,7 @@ import (
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stacklok/toolhive-core/registry/types"
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,7 +17,7 @@ import (
 )
 
 // createTestMCPServer creates a test MCPServer with the given configuration
-func createTestMCPServer(name, namespace string, annotations map[string]string, spec mcpv1alpha1.MCPServerSpec) *mcpv1alpha1.MCPServer {
+func createTestMCPServer(name, namespace string, annotations map[string]string, spec mcpv1beta1.MCPServerSpec) *mcpv1alpha1.MCPServer {
 	return &mcpv1alpha1.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -50,7 +51,7 @@ func TestExtractServer(t *testing.T) {
 					defaultRegistryDescriptionAnnotation: "A test MCP server",
 					defaultRegistryURLAnnotation:         "https://example.com/mcp",
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/image:latest",
 					Transport: "stdio",
 				},
@@ -93,7 +94,7 @@ func TestExtractServer(t *testing.T) {
 				"test-server",
 				"default",
 				nil,
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/image:latest",
 					Transport: "sse",
 				},
@@ -107,7 +108,7 @@ func TestExtractServer(t *testing.T) {
 				"test-server",
 				"default",
 				map[string]string{},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/image:latest",
 					Transport: "streamable-http",
 				},
@@ -123,7 +124,7 @@ func TestExtractServer(t *testing.T) {
 				map[string]string{
 					defaultRegistryURLAnnotation: "https://example.com/mcp",
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/image:latest",
 					Transport: "sse",
 				},
@@ -139,7 +140,7 @@ func TestExtractServer(t *testing.T) {
 				map[string]string{
 					defaultRegistryDescriptionAnnotation: "A test server",
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/image:latest",
 					Transport: "sse",
 				},
@@ -156,7 +157,7 @@ func TestExtractServer(t *testing.T) {
 					defaultRegistryDescriptionAnnotation: "Full featured server",
 					defaultRegistryURLAnnotation:         "https://api.example.com/mcp-server",
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "registry.example.com/image:tag",
 					Transport: "sse",
 				},
@@ -202,7 +203,7 @@ func TestExtractServer(t *testing.T) {
 					defaultRegistryURLAnnotation:             "https://example.com/tools",
 					defaultRegistryToolDefinitionsAnnotation: `[{"name":"test_tool","description":"A test tool","inputSchema":{"type":"object","properties":{"param":{"type":"string"}}},"annotations":{"readOnlyHint":true}}]`,
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/tools:v1",
 					Transport: "sse",
 				},
@@ -245,7 +246,7 @@ func TestExtractServer(t *testing.T) {
 					defaultRegistryURLAnnotation:             "https://example.com/invalid",
 					defaultRegistryToolDefinitionsAnnotation: `{invalid json}`,
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/invalid:v1",
 					Transport: "sse",
 				},
@@ -273,7 +274,7 @@ func TestExtractServer(t *testing.T) {
 					defaultRegistryURLAnnotation:             "https://example.com/empty",
 					defaultRegistryToolDefinitionsAnnotation: "",
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/empty:v1",
 					Transport: "sse",
 				},
@@ -301,7 +302,7 @@ func TestExtractServer(t *testing.T) {
 					defaultRegistryURLAnnotation:             "https://example.com/multi",
 					defaultRegistryToolDefinitionsAnnotation: `[{"name":"tool_one","description":"First tool"},{"name":"tool_two","description":"Second tool","inputSchema":{"type":"object"},"outputSchema":{"type":"object"},"annotations":{"destructiveHint":true}}]`,
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/multi:v1",
 					Transport: "sse",
 				},
@@ -346,7 +347,7 @@ func TestExtractServer(t *testing.T) {
 					defaultRegistryURLAnnotation:         "https://example.com/tools-list",
 					defaultRegistryToolsAnnotation:       `["get_weather","get_forecast"]`,
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/tools-list:v1",
 					Transport: "sse",
 				},
@@ -380,7 +381,7 @@ func TestExtractServer(t *testing.T) {
 					defaultRegistryURLAnnotation:         "https://example.com/invalid-tools",
 					defaultRegistryToolsAnnotation:       `[invalid]`,
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/invalid-tools:v1",
 					Transport: "sse",
 				},
@@ -408,7 +409,7 @@ func TestExtractServer(t *testing.T) {
 					defaultRegistryURLAnnotation:         "https://example.com/empty-tools",
 					defaultRegistryToolsAnnotation:       "",
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/empty-tools:v1",
 					Transport: "sse",
 				},
@@ -436,7 +437,7 @@ func TestExtractServer(t *testing.T) {
 					defaultRegistryURLAnnotation:         "https://example.com/titled",
 					defaultRegistryTitleAnnotation:       "My Custom Server Title",
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/titled:v1",
 					Transport: "sse",
 				},
@@ -464,7 +465,7 @@ func TestExtractServer(t *testing.T) {
 					defaultRegistryToolDefinitionsAnnotation: `[{"name":"get_weather","description":"Get weather data"}]`,
 					defaultRegistryToolsAnnotation:           `["get_weather","get_forecast"]`,
 				},
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/both:v1",
 					Transport: "sse",
 				},
@@ -543,7 +544,7 @@ func TestExtractPackages(t *testing.T) {
 				"test",
 				"default",
 				nil,
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/image:latest",
 					Transport: "",
 				},
@@ -560,7 +561,7 @@ func TestExtractPackages(t *testing.T) {
 				"test",
 				"default",
 				nil,
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/image:latest",
 					Transport: "stdio",
 				},
@@ -577,7 +578,7 @@ func TestExtractPackages(t *testing.T) {
 				"test",
 				"default",
 				nil,
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/image:latest",
 					Transport: "stdio",
 					ProxyMode: "sse",
@@ -595,7 +596,7 @@ func TestExtractPackages(t *testing.T) {
 				"test",
 				"default",
 				nil,
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "registry.example.com/image:v1.2.3",
 					Transport: "sse",
 				},
@@ -612,7 +613,7 @@ func TestExtractPackages(t *testing.T) {
 				"test",
 				"default",
 				nil,
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/image:tag",
 					Transport: "streamable-http",
 				},
@@ -629,7 +630,7 @@ func TestExtractPackages(t *testing.T) {
 				"test",
 				"default",
 				nil,
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "test/image:latest",
 					Transport: "custom-transport",
 				},
@@ -646,7 +647,7 @@ func TestExtractPackages(t *testing.T) {
 				"test",
 				"default",
 				nil,
-				mcpv1alpha1.MCPServerSpec{
+				mcpv1beta1.MCPServerSpec{
 					Image:     "registry.example.com/image@sha256:abc123def4567890abcdef1234567890abcdef1234567890abcdef1234567890",
 					Transport: "streamable-http",
 				},
