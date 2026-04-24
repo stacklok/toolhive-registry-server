@@ -231,10 +231,15 @@ type SourceEntriesResponse struct {
 
 // RegistryEntryInfo represents a lightweight entry in a registry listing.
 type RegistryEntryInfo struct {
-	EntryType  string `json:"entryType"`
-	Name       string `json:"name"`
-	Version    string `json:"version"`
-	SourceName string `json:"sourceName"`
+	EntryType   string    `json:"entryType"`
+	Name        string    `json:"name"`
+	Version     string    `json:"version"`
+	Title       string    `json:"title,omitempty"`
+	Description string    `json:"description,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+	SourceName  string    `json:"sourceName"`
+	Position    int32     `json:"position"`
 }
 
 // RegistryEntriesResponse is the JSON envelope for listing registry entries.

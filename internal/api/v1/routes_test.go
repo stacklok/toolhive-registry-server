@@ -677,10 +677,12 @@ func TestListRegistryEntries(t *testing.T) {
 			registryName: "my-registry",
 			mockReturn: []service.RegistryEntryInfo{
 				{
-					EntryType:  "MCP",
-					Name:       "my-server",
-					Version:    "1.0.0",
-					SourceName: "src1",
+					EntryType:   "MCP",
+					Name:        "my-server",
+					Version:     "1.0.0",
+					Title:       "My Server",
+					Description: "A test server",
+					SourceName:  "src1",
 				},
 			},
 			wantStatus: http.StatusOK,
@@ -730,6 +732,10 @@ func TestListRegistryEntries(t *testing.T) {
 				err = json.Unmarshal(rr.Body.Bytes(), &resp)
 				require.NoError(t, err)
 				assert.Len(t, resp.Entries, tt.wantLen)
+				if tt.wantLen > 0 {
+					assert.Equal(t, tt.mockReturn[0].Title, resp.Entries[0].Title)
+					assert.Equal(t, tt.mockReturn[0].Description, resp.Entries[0].Description)
+				}
 			}
 		})
 	}
