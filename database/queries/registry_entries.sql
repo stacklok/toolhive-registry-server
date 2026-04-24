@@ -99,6 +99,10 @@ SELECT e.entry_type,
 SELECT e.entry_type,
        e.name,
        v.version,
+       v.title,
+       v.description,
+       v.created_at,
+       v.updated_at,
        src.name AS source_name,
        rs.position
   FROM registry_source rs

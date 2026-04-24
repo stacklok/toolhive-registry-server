@@ -122,13 +122,28 @@ const docTemplate = `{
             },
             "github_com_stacklok_toolhive-registry-server_internal_service.RegistryEntryInfo": {
                 "properties": {
+                    "createdAt": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
                     "entryType": {
                         "type": "string"
                     },
                     "name": {
                         "type": "string"
                     },
+                    "position": {
+                        "type": "integer"
+                    },
                     "sourceName": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "updatedAt": {
                         "type": "string"
                     },
                     "version": {

@@ -426,12 +426,26 @@ func (s *dbService) ListRegistryEntries(ctx context.Context, registryName string
 	// Map each row directly to RegistryEntryInfo (flat, no grouping)
 	result := make([]service.RegistryEntryInfo, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, service.RegistryEntryInfo{
+		info := service.RegistryEntryInfo{
 			EntryType:  string(row.EntryType),
 			Name:       row.Name,
 			Version:    row.Version,
 			SourceName: row.SourceName,
-		})
+			Position:   row.Position,
+		}
+		if row.Title != nil {
+			info.Title = *row.Title
+		}
+		if row.Description != nil {
+			info.Description = *row.Description
+		}
+		if row.CreatedAt != nil {
+			info.CreatedAt = *row.CreatedAt
+		}
+		if row.UpdatedAt != nil {
+			info.UpdatedAt = *row.UpdatedAt
+		}
+		result = append(result, info)
 	}
 
 	span.SetAttributes(otel.AttrResultCount.Int(len(result)))

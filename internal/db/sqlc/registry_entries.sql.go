@@ -212,6 +212,10 @@ const listEntriesByRegistry = `-- name: ListEntriesByRegistry :many
 SELECT e.entry_type,
        e.name,
        v.version,
+       v.title,
+       v.description,
+       v.created_at,
+       v.updated_at,
        src.name AS source_name,
        rs.position
   FROM registry_source rs
@@ -223,11 +227,15 @@ SELECT e.entry_type,
 `
 
 type ListEntriesByRegistryRow struct {
-	EntryType  EntryType `json:"entry_type"`
-	Name       string    `json:"name"`
-	Version    string    `json:"version"`
-	SourceName string    `json:"source_name"`
-	Position   int32     `json:"position"`
+	EntryType   EntryType  `json:"entry_type"`
+	Name        string     `json:"name"`
+	Version     string     `json:"version"`
+	Title       *string    `json:"title"`
+	Description *string    `json:"description"`
+	CreatedAt   *time.Time `json:"created_at"`
+	UpdatedAt   *time.Time `json:"updated_at"`
+	SourceName  string     `json:"source_name"`
+	Position    int32      `json:"position"`
 }
 
 func (q *Queries) ListEntriesByRegistry(ctx context.Context, registryID uuid.UUID) ([]ListEntriesByRegistryRow, error) {
@@ -243,6 +251,10 @@ func (q *Queries) ListEntriesByRegistry(ctx context.Context, registryID uuid.UUI
 			&i.EntryType,
 			&i.Name,
 			&i.Version,
+			&i.Title,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 			&i.SourceName,
 			&i.Position,
 		); err != nil {
