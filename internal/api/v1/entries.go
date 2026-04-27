@@ -185,6 +185,64 @@ func (routes *Routes) deletePublishedEntry(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// entryClaimsResponse is the response body for fetching or returning entry claims.
+type entryClaimsResponse struct {
+	Claims map[string]any `json:"claims"`
+}
+
+// getEntryClaims handles GET /v1/entries/{type}/{name}/claims
+//
+// @Summary		Get entry claims
+// @Description	Get the claims for a published entry name. Claims are stored at the
+// @Description	entry-name level and are shared by every version of that name.
+// @Tags		v1
+// @Produce		json
+// @Param		type	path		string	true	"Entry Type (server or skill)"
+// @Param		name	path		string	true	"Entry Name"
+// @Success		200	{object}	entryClaimsResponse	"Entry claims"
+// @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		404	{object}	map[string]string	"Not found"
+// @Failure		500	{object}	map[string]string	"Internal server error"
+// @Failure		503	{object}	map[string]string	"No managed source available"
+// @Router		/v1/entries/{type}/{name}/claims [get]
+func (routes *Routes) getEntryClaims(w http.ResponseWriter, r *http.Request) {
+	entryType, err := common.GetAndValidateURLParam(r, "type")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	name, err := common.GetAndValidateURLParam(r, "name")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	claims, err := routes.service.GetEntryClaims(r.Context(),
+		service.WithEntryType(entryType),
+		service.WithName(name),
+	)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidEntryType) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, service.ErrNotFound) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, service.ErrNoManagedSource) {
+			common.WriteErrorResponse(w, "no managed source available", http.StatusServiceUnavailable)
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to get entry claims", "error", err, "type", entryType)
+		common.WriteErrorResponse(w, "failed to get entry claims", http.StatusInternalServerError)
+		return
+	}
+
+	common.WriteJSONResponse(w, entryClaimsResponse{Claims: claims}, http.StatusOK)
+}
+
 // updateEntryClaimsRequest is the request body for updating entry claims.
 type updateEntryClaimsRequest struct {
 	Claims map[string]any `json:"claims"`
