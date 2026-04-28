@@ -572,6 +572,16 @@ func TestGetEntryClaims(t *testing.T) {
 			wantError:  "no managed source available",
 		},
 		{
+			name: "claims insufficient",
+			path: "/entries/server/test%2Fserver/claims",
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().GetEntryClaims(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil, service.ErrClaimsInsufficient)
+			},
+			wantStatus: http.StatusForbidden,
+			wantError:  "insufficient claims",
+		},
+		{
 			name: "generic service error",
 			path: "/entries/server/test%2Fserver/claims",
 			setupMock: func(m *mocks.MockRegistryService) {

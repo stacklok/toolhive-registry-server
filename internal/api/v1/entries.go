@@ -201,6 +201,7 @@ type entryClaimsResponse struct {
 // @Param		name	path		string	true	"Entry Name"
 // @Success		200	{object}	entryClaimsResponse	"Entry claims"
 // @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		403	{object}	map[string]string	"Forbidden"
 // @Failure		404	{object}	map[string]string	"Not found"
 // @Failure		500	{object}	map[string]string	"Internal server error"
 // @Failure		503	{object}	map[string]string	"No managed source available"
@@ -218,13 +219,22 @@ func (routes *Routes) getEntryClaims(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, err := routes.service.GetEntryClaims(r.Context(),
+	opts := []service.Option{
 		service.WithEntryType(entryType),
 		service.WithName(name),
-	)
+	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		opts = append(opts, service.WithJWTClaims(map[string]any(jwtClaims)))
+	}
+
+	claims, err := routes.service.GetEntryClaims(r.Context(), opts...)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidEntryType) {
 			common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, service.ErrClaimsInsufficient) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusForbidden)
 			return
 		}
 		if errors.Is(err, service.ErrNotFound) {
