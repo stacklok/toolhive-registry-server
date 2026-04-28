@@ -77,7 +77,8 @@ func TestNewClaimsFilterWith(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			filter := newClaimsFilterWith(t.Context(), tt.callerClaims, extract)
+			svc := &dbService{}
+			filter := svc.newClaimsFilterWith(t.Context(), tt.callerClaims, extract)
 
 			if tt.wantNilFn {
 				assert.Nil(t, filter)

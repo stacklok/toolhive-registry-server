@@ -121,16 +121,13 @@ func (s *dbService) ListServers(
 		return helpers, nil
 	}
 
-	claimsFilter := newClaimsFilterWith(
+	claimsFilter := s.newClaimsFilterWith(
 		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			h, ok := record.(helper)
 			return h.Claims, ok
 		},
 	)
-	if s.skipAuthz {
-		claimsFilter = nil
-	}
 	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit, claimsFilter)
 	if err != nil {
 		otel.RecordError(span, err)
@@ -222,16 +219,13 @@ func (s *dbService) ListServerVersions(
 		return helpers, nil
 	}
 
-	claimsFilter := newClaimsFilterWith(
+	claimsFilter := s.newClaimsFilterWith(
 		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			h, ok := record.(helper)
 			return h.Claims, ok
 		},
 	)
-	if s.skipAuthz {
-		claimsFilter = nil
-	}
 	results, err := s.sharedListServers(ctx, querierFunc, claimsFilter)
 	if err != nil {
 		otel.RecordError(span, err)
@@ -325,16 +319,13 @@ func (s *dbService) GetServerVersion(
 		return helpers, nil
 	}
 
-	claimsFilter := newClaimsFilterWith(
+	claimsFilter := s.newClaimsFilterWith(
 		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			h, ok := record.(helper)
 			return h.Claims, ok
 		},
 	)
-	if s.skipAuthz {
-		claimsFilter = nil
-	}
 	res, err := s.sharedListServers(ctx, querierFunc, claimsFilter)
 	if err != nil {
 		otel.RecordError(span, err)

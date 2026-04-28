@@ -84,16 +84,13 @@ func (s *dbService) ListSkills(
 		params.CursorVersion = &cursorVersion
 	}
 
-	claimsFilter := newClaimsFilterWith(
+	claimsFilter := s.newClaimsFilterWith(
 		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			r, ok := record.(sqlc.ListSkillsRow)
 			return r.Claims, ok
 		},
 	)
-	if s.skipAuthz {
-		claimsFilter = nil
-	}
 	listRows, nextCursor, err := streamSkillRows(ctx, querier, params, claimsFilter, options.Limit)
 	if err != nil {
 		otel.RecordError(span, err)
