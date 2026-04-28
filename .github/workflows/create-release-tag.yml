@@ -20,6 +20,13 @@ jobs:
   create-tag:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate release app token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -119,13 +126,14 @@ jobs:
           echo "Created and pushed tag: $TAG"
 
           # Create GitHub Release (triggers releaser.yml via release event)
-          # Note: Must use PAT (GH_TOKEN) because GITHUB_TOKEN cannot trigger other workflows
+          # Note: Uses a GitHub App installation token rather than GITHUB_TOKEN,
+          # because events from GITHUB_TOKEN cannot trigger downstream workflows.
           gh release create "$TAG" \
             --title "Release $TAG" \
             --generate-notes
           echo "Created GitHub Release: $TAG"
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Summary
         run: |
