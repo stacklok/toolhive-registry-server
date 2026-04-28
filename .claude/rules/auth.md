@@ -93,6 +93,23 @@ denial; publish handlers that accept empty claims when `authzEnabled`.
 short-circuits to allow — claim-based authorization is opt-in, and turning authz off
 disables the entire gate, including its default-deny posture on empty claims.
 
+**Upgrading from "empty = open" to default-deny**: deployments that ran with authz off,
+or that ingest synced sources whose entries have no claims, will have rows in
+`registry_entry`, `sources`, and `registries` with `claims IS NULL`. After turning authz
+on (or upgrading to a release that includes default-deny), those rows are invisible to
+every claim-bearing caller. Two recovery paths:
+
+- **Per-entry**: a super-admin can read and re-tag each affected row via
+  `PUT /v1/entries/{type}/{name}/claims` (or the equivalent source/registry endpoints).
+- **Operator-managed sources**: tag the managed source itself with a tenant-wide claim
+  (e.g. `{org: "acme"}`) in config so writers can reference it; otherwise no
+  non-super-admin caller can publish to it. This is the most common stumbling block when
+  enabling authz on an existing deployment — forgetting to tag the managed source looks
+  like a permissions bug at publish time.
+
+There is intentionally no automatic "backfill claims from JWT" path — that would
+re-introduce the "empty = the caller's identity" behavior that this rule rejects.
+
 ## 5. Subset Validation on Every Write
 
 A resource's claims must be a subset of the caller's JWT claims. Without this, a user can
