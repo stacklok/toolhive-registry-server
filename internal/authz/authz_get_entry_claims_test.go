@@ -13,9 +13,10 @@ import (
 )
 
 // TestAuthzIntegration_GetEntryClaims exercises the GET /v1/entries/{type}/{name}/claims
-// endpoint across roles:
-//   - manageEntries (writer) and superAdmin can read claims (200)
-//   - admin (manageSources + manageRegistries only) is denied (403)
+// endpoint across roles and claim coverage:
+//   - manageEntries (writer) covering the entry's claims and superAdmin can read (200)
+//   - manageEntries (writer) NOT covering the entry's claims is denied (403)
+//   - admin (manageSources + manageRegistries only) is denied by role gate (403)
 //   - tokens with no matching role are denied (403)
 //   - unauthenticated requests are rejected (401)
 //
@@ -32,6 +33,7 @@ func TestAuthzIntegration_GetEntryClaims(t *testing.T) {
 	})
 
 	platformWriter := env.oidc.token(t, map[string]any{"org": "acme", "team": "platform", "role": "writer"})
+	dataWriter := env.oidc.token(t, map[string]any{"org": "acme", "team": "data", "role": "writer"})
 	platformAdmin := env.oidc.token(t, map[string]any{"org": "acme", "team": "platform", "role": "admin"})
 	superAdmin := env.oidc.token(t, map[string]any{"org": "acme", "role": "super-admin"})
 	noRole := env.oidc.token(t, map[string]any{"org": "acme"})
@@ -68,6 +70,12 @@ func TestAuthzIntegration_GetEntryClaims(t *testing.T) {
 		resp := doRequest(t, "GET", env.baseURL+claimsPath, superAdmin, nil)
 		body := assertStatus(t, resp, 200)
 		assertClaims(t, body, publishedClaims)
+	})
+
+	t.Run("cross-team writer denied", func(t *testing.T) {
+		// dataWriter has manageEntries role but no claim coverage for team=platform.
+		resp := doRequest(t, "GET", env.baseURL+claimsPath, dataWriter, nil)
+		assertStatus(t, resp, 403)
 	})
 
 	t.Run("manageSources/manageRegistries denied", func(t *testing.T) {

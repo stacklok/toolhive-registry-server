@@ -42,6 +42,7 @@ func (o *UpdateEntryClaimsOptions) setJWTClaims(claims map[string]any) error {
 type GetEntryClaimsOptions struct {
 	EntryType string // EntryTypeServer or EntryTypeSkill
 	Name      string
+	JWTClaims map[string]any
 }
 
 func (o *GetEntryClaimsOptions) setEntryType(entryType string) error {
@@ -57,5 +58,11 @@ func (o *GetEntryClaimsOptions) setEntryType(entryType string) error {
 //nolint:unparam
 func (o *GetEntryClaimsOptions) setName(name string) error {
 	o.Name = name
+	return nil
+}
+
+//nolint:unparam
+func (o *GetEntryClaimsOptions) setJWTClaims(claims map[string]any) error {
+	o.JWTClaims = claims
 	return nil
 }

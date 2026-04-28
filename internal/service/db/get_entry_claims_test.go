@@ -67,6 +67,66 @@ func TestGetEntryClaims_EmptyClaimsReturnsNonNilMap(t *testing.T) {
 	assert.Empty(t, claims)
 }
 
+func TestGetEntryClaims_ClaimsInsufficient(t *testing.T) {
+	t.Parallel()
+
+	svc, cleanup := setupTestService(t)
+	defer cleanup()
+
+	createManagedSource(t, svc, "gec-insufficient")
+
+	ctx := context.Background()
+
+	// Publish an entry scoped to team=data.
+	_, err := svc.PublishServerVersion(ctx,
+		service.WithServerData(&upstreamv0.ServerJSON{
+			Name:    "com.test/gec-insufficient",
+			Version: "1.0.0",
+		}),
+		service.WithClaims(map[string]any{"org": "acme", "team": "data"}),
+		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{"data"}}),
+	)
+	require.NoError(t, err)
+
+	// A caller in team=platform must not be able to read its claims.
+	_, err = svc.GetEntryClaims(ctx,
+		service.WithEntryType(service.EntryTypeServer),
+		service.WithName("com.test/gec-insufficient"),
+		service.WithJWTClaims(map[string]any{"org": "acme", "team": "platform"}),
+	)
+	assert.ErrorIs(t, err, service.ErrClaimsInsufficient)
+}
+
+func TestGetEntryClaims_ClaimsSufficient(t *testing.T) {
+	t.Parallel()
+
+	svc, cleanup := setupTestService(t)
+	defer cleanup()
+
+	createManagedSource(t, svc, "gec-sufficient")
+
+	ctx := context.Background()
+
+	_, err := svc.PublishServerVersion(ctx,
+		service.WithServerData(&upstreamv0.ServerJSON{
+			Name:    "com.test/gec-sufficient",
+			Version: "1.0.0",
+		}),
+		service.WithClaims(map[string]any{"org": "acme", "team": "platform"}),
+		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{"platform"}}),
+	)
+	require.NoError(t, err)
+
+	// A caller whose JWT covers the entry's claims must succeed.
+	claims, err := svc.GetEntryClaims(ctx,
+		service.WithEntryType(service.EntryTypeServer),
+		service.WithName("com.test/gec-sufficient"),
+		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{"platform", "ops"}}),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"org": "acme", "team": "platform"}, claims)
+}
+
 func TestGetEntryClaims_EntryNotFound(t *testing.T) {
 	t.Parallel()
 

@@ -149,8 +149,9 @@ func mapEntryType(entryType string) (sqlc.EntryType, error) {
 
 // GetEntryClaims returns the claims map for a published entry within the managed source.
 // The returned map is non-nil even when the entry has no claims set, so callers can
-// rely on a stable JSON shape. The endpoint is admin-side and gated by role; it does
-// not run a claim-subset check against the caller's JWT.
+// rely on a stable JSON shape. Access is gated by the manageEntries role plus a
+// JWT-subset check against the entry's claims, mirroring the matching PUT and the
+// default-deny visibility rule (auth.md §4).
 func (s *dbService) GetEntryClaims(ctx context.Context, opts ...service.Option) (map[string]any, error) {
 	ctx, span := s.startSpan(ctx, "dbService.GetEntryClaims")
 	defer span.End()
@@ -193,6 +194,11 @@ func (s *dbService) GetEntryClaims(ctx context.Context, opts ...service.Option) 
 		}
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to look up registry entry: %w", err)
+	}
+
+	if err := s.validateClaimsSubsetBytes(ctx, options.JWTClaims, row.Claims); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
 	}
 
 	claims := db.DeserializeClaims(row.Claims)
