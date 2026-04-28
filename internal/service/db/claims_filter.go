@@ -43,18 +43,26 @@ func checkClaimConsistency(incomingJSON, existingJSON []byte) error {
 
 // validateClaimsSubset checks that callerClaims covers resourceClaims.
 // Returns nil if:
-//   - callerClaims is nil (anonymous mode — no auth enforcement)
-//   - resourceClaims is nil/empty (open resource — no restriction)
+//   - skipAuthz is true (auth-only mode — claim-based gating disabled)
+//   - callerClaims is nil (anonymous — no caller identity to gate on)
 //   - the caller is a super-admin (bypasses all claim checks)
 //   - callerClaims is a superset of resourceClaims
 //
-// Returns ErrClaimsInsufficient otherwise.
-func validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[string]any) error {
-	if callerClaims == nil || len(resourceClaims) == 0 {
+// Returns ErrClaimsInsufficient when authz is enabled and either:
+//   - resourceClaims is nil/empty (default-deny on unlabeled resources — see auth.md §4)
+//   - callerClaims does not cover resourceClaims
+func (s *dbService) validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[string]any) error {
+	if s.skipAuthz {
+		return nil
+	}
+	if callerClaims == nil {
 		return nil
 	}
 	if auth.IsSuperAdmin(ctx) {
 		return nil
+	}
+	if len(resourceClaims) == 0 {
+		return fmt.Errorf("%w: resource has no claims", service.ErrClaimsInsufficient)
 	}
 	if !claimsContain(callerClaims, resourceClaims) {
 		return fmt.Errorf("%w: caller claims do not cover resource claims", service.ErrClaimsInsufficient)
@@ -63,13 +71,17 @@ func validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[
 }
 
 // validateClaimsSubsetBytes is like validateClaimsSubset but accepts raw JSON
-// for resourceClaims. Nil or empty JSON is treated as an open resource.
-func validateClaimsSubsetBytes(ctx context.Context, callerClaims map[string]any, resourceClaimsJSON []byte) error {
-	if callerClaims == nil || len(resourceClaimsJSON) == 0 {
+// for resourceClaims. When authz is enabled, an empty resource JSON is
+// default-deny (unlabeled resources are not visible to claim-bearing callers).
+func (s *dbService) validateClaimsSubsetBytes(ctx context.Context, callerClaims map[string]any, resourceClaimsJSON []byte) error {
+	if s.skipAuthz {
+		return nil
+	}
+	if callerClaims == nil {
 		return nil
 	}
 	resourceClaims := db.DeserializeClaims(resourceClaimsJSON)
-	return validateClaimsSubset(ctx, callerClaims, resourceClaims)
+	return s.validateClaimsSubset(ctx, callerClaims, resourceClaims)
 }
 
 // claimsFromCtx extracts JWT claims from the context as map[string]any.
@@ -90,14 +102,22 @@ func claimsFromCtx(ctx context.Context) map[string]any {
 // caller's claims are non-empty, the record has stored claims, and they match.
 // extract retrieves the raw claims JSON from a record; returning ok=false
 // causes the filter to reject the record with a type error.
-// Returns nil when callerClaims is nil or empty so the caller can skip
-// filtering entirely. Also returns nil for super-admin users (they see all
-// entries regardless of claims).
-func newClaimsFilterWith(
+// Returns nil (no filter applied — every record visible) when:
+//   - s.skipAuthz is true (no auth.authz configured — claim-based gating disabled)
+//   - callerClaims is nil/empty (anonymous — no caller identity to gate on)
+//   - the caller is a super-admin (uniform bypass)
+//
+// The skipAuthz short-circuit lives here, not at the callsite, so a new list
+// path can't forget the guard and silently apply claim filtering when the
+// gate is supposed to be off.
+func (s *dbService) newClaimsFilterWith(
 	ctx context.Context,
 	callerClaims map[string]any,
 	extract func(record any) (claims []byte, ok bool),
 ) service.RecordFilter {
+	if s.skipAuthz {
+		return nil
+	}
 	callerJSON := marshalClaims(callerClaims)
 	if callerJSON == nil {
 		return nil
@@ -155,8 +175,17 @@ func checkClaims(callerJSON, recordJSON []byte) bool {
 // An empty-array value (e.g. "teams": []) is vacuously satisfied by any caller
 // value for that key — this is intentional since ValidateClaimValues accepts
 // empty arrays, and presence of the key is the meaningful signal.
+//
+// Fails closed (returns false) when a record value has an unsupported type
+// (nil, number, nested object, etc.). ValidateClaimValues blocks such values
+// at the API edge, but rows persisted via direct DB writes or future sync
+// paths could carry them — the gate must not silently treat them as
+// vacuously-satisfied requirements.
 func claimsContain(caller, record map[string]any) bool {
 	for k, rv := range record {
+		if !isValidClaimValue(rv) {
+			return false
+		}
 		cv, ok := caller[k]
 		if !ok {
 			return false
@@ -170,6 +199,27 @@ func claimsContain(caller, record map[string]any) bool {
 		}
 	}
 	return true
+}
+
+// isValidClaimValue reports whether v is a supported claim value (string,
+// []string, or []any of strings). Used by claimsContain to fail closed on
+// rows whose values bypassed ValidateClaimValues.
+func isValidClaimValue(v any) bool {
+	switch val := v.(type) {
+	case string:
+		return true
+	case []string:
+		return true
+	case []any:
+		for _, elem := range val {
+			if _, ok := elem.(string); !ok {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 // claimsEqual returns true when a and b have exactly the same keys and values.

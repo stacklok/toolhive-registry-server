@@ -130,12 +130,19 @@ func TestListServersClaimsVisibility(t *testing.T) {
 			queries := sqlc.New(svc.pool)
 			now := time.Now().UTC()
 
+			// Tag the registry and sources with claims that the standard test caller
+			// covers — default-deny on empty claims (auth.md §4) means untagged
+			// resources are invisible to claim-bearing callers.
+			gateClaimsJSON, err := json.Marshal(map[string]any{"sub": "claims-test-user"})
+			require.NoError(t, err)
+
 			// Create three sources.
 			srcA, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 				Name:         "claims-src-a",
 				CreationType: sqlc.CreationTypeCONFIG,
 				SourceType:   "git",
 				Syncable:     true,
+				Claims:       gateClaimsJSON,
 				CreatedAt:    &now,
 				UpdatedAt:    &now,
 			})
@@ -146,6 +153,7 @@ func TestListServersClaimsVisibility(t *testing.T) {
 				CreationType: sqlc.CreationTypeCONFIG,
 				SourceType:   "git",
 				Syncable:     true,
+				Claims:       gateClaimsJSON,
 				CreatedAt:    &now,
 				UpdatedAt:    &now,
 			})
@@ -156,6 +164,7 @@ func TestListServersClaimsVisibility(t *testing.T) {
 				CreationType: sqlc.CreationTypeCONFIG,
 				SourceType:   "git",
 				Syncable:     true,
+				Claims:       gateClaimsJSON,
 				CreatedAt:    &now,
 				UpdatedAt:    &now,
 			})
@@ -165,6 +174,7 @@ func TestListServersClaimsVisibility(t *testing.T) {
 			reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
 				Name:         "claims-registry",
 				CreationType: sqlc.CreationTypeCONFIG,
+				Claims:       gateClaimsJSON,
 				CreatedAt:    &now,
 				UpdatedAt:    &now,
 			})

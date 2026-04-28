@@ -26,7 +26,7 @@ func (s *dbService) CheckReadiness(ctx context.Context) error {
 // after verifying the caller's claims satisfy the registry's access gate.
 // Returns ErrClaimsInsufficient if the caller's JWT claims do not cover the
 // registry's claims. Returns ErrRegistryNotFound if the registry does not exist.
-func lookupRegistryIDWithGate(
+func (s *dbService) lookupRegistryIDWithGate(
 	ctx context.Context, pool sqlc.DBTX, registryName string, callerClaims map[string]any,
 ) (uuid.UUID, error) {
 	querier := sqlc.New(pool)
@@ -37,7 +37,7 @@ func lookupRegistryIDWithGate(
 		}
 		return uuid.Nil, err
 	}
-	if err := validateClaimsSubsetBytes(ctx, callerClaims, row.Claims); err != nil {
+	if err := s.validateClaimsSubsetBytes(ctx, callerClaims, row.Claims); err != nil {
 		return uuid.Nil, err
 	}
 	return row.ID, nil
@@ -45,8 +45,10 @@ func lookupRegistryIDWithGate(
 
 // checkRegistryExistsWithGate validates that a registry exists and the caller's
 // claims satisfy the registry's access gate.
-func checkRegistryExistsWithGate(ctx context.Context, pool sqlc.DBTX, registryName string, callerClaims map[string]any) error {
-	_, err := lookupRegistryIDWithGate(ctx, pool, registryName, callerClaims)
+func (s *dbService) checkRegistryExistsWithGate(
+	ctx context.Context, pool sqlc.DBTX, registryName string, callerClaims map[string]any,
+) error {
+	_, err := s.lookupRegistryIDWithGate(ctx, pool, registryName, callerClaims)
 	return err
 }
 

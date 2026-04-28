@@ -49,11 +49,7 @@ func (s *dbService) ListSkills(
 		options.Limit = service.MaxPageSize
 	}
 
-	gateClaims := options.Claims
-	if s.skipAuthz {
-		gateClaims = nil
-	}
-	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
+	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -84,16 +80,13 @@ func (s *dbService) ListSkills(
 		params.CursorVersion = &cursorVersion
 	}
 
-	claimsFilter := newClaimsFilterWith(
+	claimsFilter := s.newClaimsFilterWith(
 		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			r, ok := record.(sqlc.ListSkillsRow)
 			return r.Claims, ok
 		},
 	)
-	if s.skipAuthz {
-		claimsFilter = nil
-	}
 	listRows, nextCursor, err := streamSkillRows(ctx, querier, params, claimsFilter, options.Limit)
 	if err != nil {
 		otel.RecordError(span, err)
@@ -181,11 +174,7 @@ func (s *dbService) GetSkillVersion(
 
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	gateClaims := options.Claims
-	if s.skipAuthz {
-		gateClaims = nil
-	}
-	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
+	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -313,7 +302,7 @@ func (s *dbService) PublishSkill(
 	}
 
 	// Validate published claims are a subset of the publisher's JWT claims
-	if err := validateClaimsSubset(ctx, options.JWTClaims, options.Claims); err != nil {
+	if err := s.validateClaimsSubset(ctx, options.JWTClaims, options.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -667,7 +656,7 @@ func (s *dbService) executeDeleteSkillTransaction(
 			}
 			return fmt.Errorf("failed to look up registry entry: %w", err)
 		}
-		if err := validateClaimsSubsetBytes(ctx, options.JWTClaims, existing.Claims); err != nil {
+		if err := s.validateClaimsSubsetBytes(ctx, options.JWTClaims, existing.Claims); err != nil {
 			return err
 		}
 	}

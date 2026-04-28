@@ -63,20 +63,52 @@ bypass bugs. A user should never see an entry via one endpoint but not another.
 
 ## 4. Default-Deny When Authz Is Enabled
 
-If an entry has claims the caller's JWT doesn't cover, the entry is invisible. Missing data
-means "not permitted," not "open."
+When authz is enabled, **unlabeled is not the same as public**. A resource with no claims
+is treated as "no rule matches" → deny, not "open to all." This is the Saltzer–Schroeder
+*fail-safe defaults* principle and matches how every Zero Trust framework (NIST SP
+800-162, OWASP Access Control, AWS IAM "implicit deny") handles the absence of an
+authorization rule.
 
 **What must hold:**
-- Per-user filtering on a row with non-empty claims fails closed.
+- A row with claims the caller's JWT doesn't cover is invisible to that caller.
+- A row with **empty/missing claims** is also invisible to claim-bearing callers — only
+  super-admin (or anonymous mode / authz-off, where the gate is bypassed entirely) can
+  reach it. "Public" must be expressed with an explicit positive claim that the role
+  config maps to all authenticated users.
 - Registry access gate returns **403** (not 404) when the caller fails it. 404 would leak
   registry existence.
-- Empty-claims rows are visible to all authenticated users (deliberate — operators can
-  create "open" entries). Publishing with empty claims is **forbidden** when authz is
-  active (see §6).
+- The list filter and the single-resource gate must agree on this rule. Inconsistency
+  between list and get/put paths produces "visible via one endpoint, invisible via
+  another" bugs.
+- Publishing with empty claims is **forbidden** when authz is active (see §6) — this is
+  the write-time enforcement that complements the read-time default-deny.
 
-**Detect**: new code paths that return an entry when the claims check is ambiguous; 404
-responses on registry access denial; publish handlers that accept empty claims when
-`authzEnabled`.
+**Detect**: a gate that returns nil when the resource's claims are empty and the caller's
+claims are non-empty; new "empty = open" carve-outs; 404 responses on registry access
+denial; publish handlers that accept empty claims when `authzEnabled`.
+
+**Implementation note**: `validateClaimsSubset` and `validateClaimsSubsetBytes` in
+`internal/service/db/claims_filter.go` are methods on `*dbService` so they can read
+`s.skipAuthz`. When `skipAuthz` is true (no `auth.authz` configured), the gate
+short-circuits to allow — claim-based authorization is opt-in, and turning authz off
+disables the entire gate, including its default-deny posture on empty claims.
+
+**Upgrading from "empty = open" to default-deny**: deployments that ran with authz off,
+or that ingest synced sources whose entries have no claims, will have rows in
+`registry_entry`, `sources`, and `registries` with `claims IS NULL`. After turning authz
+on (or upgrading to a release that includes default-deny), those rows are invisible to
+every claim-bearing caller. Two recovery paths:
+
+- **Per-entry**: a super-admin can read and re-tag each affected row via
+  `PUT /v1/entries/{type}/{name}/claims` (or the equivalent source/registry endpoints).
+- **Operator-managed sources**: tag the managed source itself with a tenant-wide claim
+  (e.g. `{org: "acme"}`) in config so writers can reference it; otherwise no
+  non-super-admin caller can publish to it. This is the most common stumbling block when
+  enabling authz on an existing deployment — forgetting to tag the managed source looks
+  like a permissions bug at publish time.
+
+There is intentionally no automatic "backfill claims from JWT" path — that would
+re-introduce the "empty = the caller's identity" behavior that this rule rejects.
 
 ## 5. Subset Validation on Every Write
 

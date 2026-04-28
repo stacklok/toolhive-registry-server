@@ -18,11 +18,26 @@ func TestValidateClaimsSubset(t *testing.T) {
 
 	tests := []struct {
 		name           string
+		skipAuthz      bool
 		callerClaims   map[string]any
 		resourceClaims map[string]any
 		superAdmin     bool
 		wantErr        error
 	}{
+		{
+			name:           "skipAuthz bypasses gate even for non-covering claims",
+			skipAuthz:      true,
+			callerClaims:   map[string]any{"sub": "user2"},
+			resourceClaims: map[string]any{"sub": "user1"},
+			wantErr:        nil,
+		},
+		{
+			name:           "skipAuthz bypasses gate for empty resource claims",
+			skipAuthz:      true,
+			callerClaims:   map[string]any{"sub": "user1"},
+			resourceClaims: map[string]any{},
+			wantErr:        nil,
+		},
 		{
 			name:           "nil caller claims (anonymous) returns nil",
 			callerClaims:   nil,
@@ -30,15 +45,22 @@ func TestValidateClaimsSubset(t *testing.T) {
 			wantErr:        nil,
 		},
 		{
-			name:           "nil resource claims returns nil",
+			name:           "nil resource claims returns ErrClaimsInsufficient (default-deny)",
 			callerClaims:   map[string]any{"sub": "user1"},
 			resourceClaims: nil,
-			wantErr:        nil,
+			wantErr:        service.ErrClaimsInsufficient,
 		},
 		{
-			name:           "empty resource claims returns nil",
+			name:           "empty resource claims returns ErrClaimsInsufficient (default-deny)",
 			callerClaims:   map[string]any{"sub": "user1"},
 			resourceClaims: map[string]any{},
+			wantErr:        service.ErrClaimsInsufficient,
+		},
+		{
+			name:           "super-admin bypasses default-deny on empty resource claims",
+			callerClaims:   map[string]any{"sub": "admin"},
+			resourceClaims: map[string]any{},
+			superAdmin:     true,
 			wantErr:        nil,
 		},
 		{
@@ -95,7 +117,8 @@ func TestValidateClaimsSubset(t *testing.T) {
 				ctx = auth.ContextWithRoles(ctx, []auth.Role{auth.RoleSuperAdmin})
 			}
 
-			err := validateClaimsSubset(ctx, tt.callerClaims, tt.resourceClaims)
+			svc := &dbService{skipAuthz: tt.skipAuthz}
+			err := svc.validateClaimsSubset(ctx, tt.callerClaims, tt.resourceClaims)
 
 			if tt.wantErr != nil {
 				require.Error(t, err)
@@ -112,10 +135,18 @@ func TestValidateClaimsSubsetBytes(t *testing.T) {
 
 	tests := []struct {
 		name         string
+		skipAuthz    bool
 		callerClaims map[string]any
 		resourceJSON []byte
 		wantErr      error
 	}{
+		{
+			name:         "skipAuthz bypasses gate for empty resource JSON",
+			skipAuthz:    true,
+			callerClaims: map[string]any{"sub": "user1"},
+			resourceJSON: nil,
+			wantErr:      nil,
+		},
 		{
 			name:         "nil caller claims returns nil",
 			callerClaims: nil,
@@ -123,16 +154,16 @@ func TestValidateClaimsSubsetBytes(t *testing.T) {
 			wantErr:      nil,
 		},
 		{
-			name:         "nil resource JSON returns nil",
+			name:         "nil resource JSON returns ErrClaimsInsufficient (default-deny)",
 			callerClaims: map[string]any{"sub": "user1"},
 			resourceJSON: nil,
-			wantErr:      nil,
+			wantErr:      service.ErrClaimsInsufficient,
 		},
 		{
-			name:         "empty resource JSON returns nil",
+			name:         "empty resource JSON returns ErrClaimsInsufficient (default-deny)",
 			callerClaims: map[string]any{"sub": "user1"},
 			resourceJSON: []byte{},
-			wantErr:      nil,
+			wantErr:      service.ErrClaimsInsufficient,
 		},
 		{
 			name:         "matching JSON returns nil",
@@ -153,7 +184,8 @@ func TestValidateClaimsSubsetBytes(t *testing.T) {
 			t.Parallel()
 
 			ctx := t.Context()
-			err := validateClaimsSubsetBytes(ctx, tt.callerClaims, tt.resourceJSON)
+			svc := &dbService{skipAuthz: tt.skipAuthz}
+			err := svc.validateClaimsSubsetBytes(ctx, tt.callerClaims, tt.resourceJSON)
 
 			if tt.wantErr != nil {
 				require.Error(t, err)

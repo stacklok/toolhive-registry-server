@@ -46,7 +46,7 @@ func (s *dbService) CreateSource(
 	}
 
 	// Validate source claims are a subset of the caller's JWT claims
-	if err := validateClaimsSubset(ctx, claimsFromCtx(ctx), req.Claims); err != nil {
+	if err := s.validateClaimsSubset(ctx, claimsFromCtx(ctx), req.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -243,11 +243,11 @@ func (s *dbService) UpdateSource(
 
 	// Validate caller's JWT covers both the existing and new claims
 	callerClaims := claimsFromCtx(ctx)
-	if err := validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
+	if err := s.validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
-	if err := validateClaimsSubset(ctx, callerClaims, req.Claims); err != nil {
+	if err := s.validateClaimsSubset(ctx, callerClaims, req.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -366,7 +366,7 @@ func (s *dbService) DeleteSource(ctx context.Context, name string) error {
 	}
 
 	// Validate caller's JWT covers the source's claims
-	if err := validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), existing.Claims); err != nil {
+	if err := s.validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), existing.Claims); err != nil {
 		otel.RecordError(span, err)
 		return err
 	}
@@ -430,7 +430,7 @@ func (s *dbService) ListSources(ctx context.Context) ([]service.SourceInfo, erro
 	querier := sqlc.New(tx)
 	callerClaims := claimsFromCtx(ctx)
 
-	dbSources, err := streamSourceRows(ctx, querier, callerClaims)
+	dbSources, err := s.streamSourceRows(ctx, querier, callerClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to list sources: %w", err)
@@ -494,7 +494,7 @@ func (s *dbService) GetSourceByName(ctx context.Context, name string) (*service.
 	info := buildSourceInfoFromGetByNameRow(&source)
 
 	// Validate caller's JWT covers the source's claims (hide existence on failure)
-	if err := validateClaimsSubset(ctx, claimsFromCtx(ctx), info.Claims); err != nil {
+	if err := s.validateClaimsSubset(ctx, claimsFromCtx(ctx), info.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %s", service.ErrSourceNotFound, name)
 	}
@@ -610,7 +610,7 @@ func (s *dbService) ListSourceEntries(ctx context.Context, sourceName string) ([
 	}
 
 	// Validate caller's JWT covers the source's claims (hide existence on failure)
-	if err := validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), source.Claims); err != nil {
+	if err := s.validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), source.Claims); err != nil {
 		err = fmt.Errorf("%w: %s", service.ErrSourceNotFound, sourceName)
 		otel.RecordError(span, err)
 		return nil, err
@@ -979,7 +979,7 @@ func getStatusMessage(errorMsg *string) string {
 // streamSourceRows fetches source rows in batches, filtering by caller claims,
 // until the DB is exhausted. This avoids underfilled responses when post-filtering
 // drops rows that fail claims checks.
-func streamSourceRows(
+func (s *dbService) streamSourceRows(
 	ctx context.Context,
 	querier *sqlc.Queries,
 	callerClaims map[string]any,
@@ -996,7 +996,7 @@ func streamSourceRows(
 		}
 
 		for _, src := range batch {
-			if err := validateClaimsSubsetBytes(ctx, callerClaims, src.Claims); err != nil {
+			if err := s.validateClaimsSubsetBytes(ctx, callerClaims, src.Claims); err != nil {
 				continue
 			}
 			accumulated = append(accumulated, src)
