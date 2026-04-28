@@ -629,6 +629,39 @@ func TestGetEntryClaims(t *testing.T) {
 	}
 }
 
+// TestGetEntryClaims_PassesJWTClaimsToService verifies the handler plumbs JWT
+// claims through to the service when they're present in the request context.
+// Without this case, the table test above would let a regression slip — its
+// mock expectations use exactly three matchers (ctx + 2 options) and would
+// fail at runtime if the handler started passing a third option silently.
+func TestGetEntryClaims_PassesJWTClaimsToService(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockSvc := mocks.NewMockRegistryService(ctrl)
+	// Four matchers: ctx + WithEntryType + WithName + WithJWTClaims.
+	mockSvc.EXPECT().GetEntryClaims(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(map[string]any{"org": "acme", "team": "platform"}, nil)
+
+	router := Router(mockSvc, nil)
+	req, err := http.NewRequest(http.MethodGet, "/entries/server/test%2Fserver/claims", nil)
+	require.NoError(t, err)
+	req = req.WithContext(auth.ContextWithClaims(
+		req.Context(), jwt.MapClaims{"org": "acme", "team": "platform"},
+	))
+
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var resp entryClaimsResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.Equal(t, map[string]any{"org": "acme", "team": "platform"}, resp.Claims)
+}
+
 // mustMarshal is a test helper that marshals v to JSON or panics.
 func mustMarshal(v any) []byte {
 	b, err := json.Marshal(v)

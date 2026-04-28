@@ -192,7 +192,21 @@ type entryClaimsResponse struct {
 	Claims map[string]any `json:"claims"`
 }
 
-// getEntryClaims handles GET /v1/entries/{type}/{name}/claims
+// getEntryClaims handles GET /v1/entries/{type}/{name}/claims.
+//
+// Authorization model:
+//   - manageEntries role gate runs in middleware (see routes.go).
+//   - Service-layer JWT subset check denies cross-team reads (403) when authz
+//     is enabled, mirroring the matching PUT.
+//   - Anonymous mode (no JWT in context): the handler skips WithJWTClaims, the
+//     gate short-circuits, and any caller reads any entry's claims. Intended,
+//     but worth knowing if you ever run partial-anonymous deployments.
+//
+// The response envelope `{"claims": {...}}` is always a non-nil JSON object —
+// the impl normalises a missing/nil claims blob to `map[string]any{}`. Under
+// authz, that branch is unreachable in practice (publish forbids empty claims
+// per auth.md §6, and the gate denies empty-claim rows per §4); the
+// normalisation is for the auth-off / synced-source case.
 //
 // @Summary		Get entry claims
 // @Description	Get the claims for a published entry name. Claims are stored at the
