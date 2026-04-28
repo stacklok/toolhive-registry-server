@@ -49,11 +49,7 @@ func (s *dbService) ListSkills(
 		options.Limit = service.MaxPageSize
 	}
 
-	gateClaims := options.Claims
-	if s.skipAuthz {
-		gateClaims = nil
-	}
-	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
+	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -178,11 +174,7 @@ func (s *dbService) GetSkillVersion(
 
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	gateClaims := options.Claims
-	if s.skipAuthz {
-		gateClaims = nil
-	}
-	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
+	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err

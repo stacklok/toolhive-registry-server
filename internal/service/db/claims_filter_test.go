@@ -192,6 +192,46 @@ func TestCheckClaims(t *testing.T) {
 			recordJSON: []byte(`{"sub":"u1"}`),
 			want:       false,
 		},
+		// Default-deny on unsupported record value types (auth.md §4).
+		// ValidateClaimValues blocks these at the API edge, but synced
+		// sources or direct DB writes could persist them — claimsContain
+		// must fail closed rather than treat them as vacuously satisfied.
+		{
+			name:       "record null value drops record",
+			callerJSON: []byte(`{"team":"platform"}`),
+			recordJSON: []byte(`{"team":null}`),
+			want:       false,
+		},
+		{
+			name:       "record number value drops record",
+			callerJSON: []byte(`{"team":"platform"}`),
+			recordJSON: []byte(`{"team":42}`),
+			want:       false,
+		},
+		{
+			name:       "record nested object value drops record",
+			callerJSON: []byte(`{"team":"platform"}`),
+			recordJSON: []byte(`{"team":{"nested":"x"}}`),
+			want:       false,
+		},
+		{
+			name:       "record mixed-type array drops record",
+			callerJSON: []byte(`{"team":["platform","ops"]}`),
+			recordJSON: []byte(`{"team":["platform",42]}`),
+			want:       false,
+		},
+		{
+			name:       "record boolean value drops record",
+			callerJSON: []byte(`{"team":"platform"}`),
+			recordJSON: []byte(`{"team":true}`),
+			want:       false,
+		},
+		{
+			name:       "record empty array vacuously satisfied (intentional)",
+			callerJSON: []byte(`{"team":"platform"}`),
+			recordJSON: []byte(`{"team":[]}`),
+			want:       true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -200,6 +240,38 @@ func TestCheckClaims(t *testing.T) {
 
 			got := checkClaims(tt.callerJSON, tt.recordJSON)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestIsValidClaimValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		v    any
+		want bool
+	}{
+		{name: "string", v: "platform", want: true},
+		{name: "empty string", v: "", want: true},
+		{name: "[]string", v: []string{"a", "b"}, want: true},
+		{name: "empty []string", v: []string{}, want: true},
+		{name: "[]any of strings", v: []any{"a", "b"}, want: true},
+		{name: "empty []any", v: []any{}, want: true},
+		{name: "nil", v: nil, want: false},
+		{name: "int", v: 42, want: false},
+		{name: "float", v: 3.14, want: false},
+		{name: "bool", v: true, want: false},
+		{name: "nested map", v: map[string]any{"k": "v"}, want: false},
+		{name: "[]any with int", v: []any{"a", 42}, want: false},
+		{name: "[]any with nil", v: []any{"a", nil}, want: false},
+		{name: "[]any with nested map", v: []any{"a", map[string]any{}}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, isValidClaimValue(tt.v))
 		})
 	}
 }

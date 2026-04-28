@@ -58,11 +58,7 @@ func (s *dbService) ListServers(
 	}
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	gateClaims := options.Claims
-	if s.skipAuthz {
-		gateClaims = nil
-	}
-	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
+	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -186,11 +182,7 @@ func (s *dbService) ListServerVersions(
 	}
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	gateClaims := options.Claims
-	if s.skipAuthz {
-		gateClaims = nil
-	}
-	registryIDForVersions, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
+	registryIDForVersions, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -271,11 +263,7 @@ func (s *dbService) GetServerVersion(
 		otel.AttrRegistryName.String(options.RegistryName),
 	)
 
-	gateClaims := options.Claims
-	if s.skipAuthz {
-		gateClaims = nil
-	}
-	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
+	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
