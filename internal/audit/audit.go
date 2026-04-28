@@ -59,6 +59,7 @@ const (
 	EventRegistryList        = "registry.list"
 	EventRegistryRead        = "registry.read"
 	EventRegistryEntriesList = "registry.entries.list"
+	EventEntryClaimsRead     = "entry.claims.read"
 	EventUserInfo            = "user.info"
 )
 

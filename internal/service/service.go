@@ -154,6 +154,12 @@ type RegistryService interface {
 
 	// UpdateEntryClaims updates the claims on a published entry within the managed source.
 	UpdateEntryClaims(ctx context.Context, opts ...Option) error
+
+	// GetEntryClaims returns the claims map for a published entry within the managed source.
+	// The returned map is non-nil even when the entry has no claims set.
+	// Returns ErrInvalidEntryType for unknown entry types, ErrNotFound when the entry
+	// does not exist, and ErrNoManagedSource when no managed source is configured.
+	GetEntryClaims(ctx context.Context, opts ...Option) (map[string]any, error)
 }
 
 // SourceInfo represents detailed information about a source

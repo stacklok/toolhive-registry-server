@@ -424,6 +424,15 @@
                 },
                 "type": "object"
             },
+            "internal_api_v1.entryClaimsResponse": {
+                "properties": {
+                    "claims": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    }
+                },
+                "type": "object"
+            },
             "internal_api_v1.meResponse": {
                 "properties": {
                     "roles": {
@@ -1994,6 +2003,110 @@
             }
         },
         "/v1/entries/{type}/{name}/claims": {
+            "get": {
+                "description": "Get the claims for a published entry name. Claims are stored at the\nentry-name level and are shared by every version of that name.",
+                "parameters": [
+                    {
+                        "description": "Entry Type (server or skill)",
+                        "in": "path",
+                        "name": "type",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Entry Name",
+                        "in": "path",
+                        "name": "name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/internal_api_v1.entryClaimsResponse"
+                                }
+                            }
+                        },
+                        "description": "Entry claims"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Bad request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Not found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Internal server error"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "No managed source available"
+                    }
+                },
+                "summary": "Get entry claims",
+                "tags": [
+                    "v1"
+                ]
+            },
             "put": {
                 "description": "Update claims for a published entry name",
                 "parameters": [
