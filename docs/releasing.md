@@ -14,22 +14,24 @@ The release process is fully automated using the [releaseo](https://github.com/s
 
 ## Prerequisites
 
-### Required Secrets
+### Required GitHub App
 
-The following repository secrets must be configured:
+A GitHub App must be installed on this repository to mint short-lived
+installation tokens for the release workflows. An installation token (rather
+than `GITHUB_TOKEN`) is required because events authored by `GITHUB_TOKEN`
+cannot trigger downstream workflows.
 
-| Secret | Description |
-|--------|-------------|
-| `RELEASE_TOKEN` | Personal Access Token with `contents: write` and `pull-requests: write` scope. Required because `GITHUB_TOKEN` cannot trigger other workflows. |
+| Setting | Value |
+|---------|-------|
+| Repository **variable** `RELEASE_APP_CLIENT_ID` | The GitHub App's Client ID |
+| Repository **secret** `RELEASE_APP_PRIVATE_KEY` | The GitHub App's private key (PEM) |
+| App repository permissions | `contents: write`, `pull-requests: write` |
+| App installation | Must be installed on this repository |
 
-> **Warning: Token Expiry**
->
-> The `RELEASE_TOKEN` PAT has a **90-day expiry**. Set a calendar reminder to rotate it before expiration. When the token expires, releases will fail at the tag creation step.
->
-> To rotate:
-> 1. Create a new PAT at https://github.com/settings/tokens with `contents: write` and `pull-requests: write` scope
-> 2. Update the `RELEASE_TOKEN` repository secret
-> 3. Delete the old PAT
+The release workflows use [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token)
+to mint a token at the start of each job. The token is automatically scoped
+to this repository and expires after one hour, so there is nothing to
+rotate manually.
 
 ## Creating a Release
 
@@ -161,7 +163,8 @@ The release process includes multiple security checks:
 **Workflow fails to create PR**
 
 Check the workflow logs in GitHub Actions for specific error messages. Common issues:
-- `RELEASE_TOKEN` secret is not configured or has expired
+- Release GitHub App is not installed on the repo, or `RELEASE_APP_CLIENT_ID` variable / `RELEASE_APP_PRIVATE_KEY` secret is missing
+- App lacks `contents: write` and/or `pull-requests: write` permission
 - Branch `release/v{version}` already exists
 
 **"Branch release/v{version} already exists"**
@@ -194,11 +197,11 @@ Solution: Delete the tag and release, fix the VERSION file, and create a new rel
 
 ### Release Not Triggered After Merge
 
-The `create-release-tag.yml` workflow uses a Personal Access Token (`RELEASE_TOKEN`) to create the tag and release. If releases aren't triggering:
+The `create-release-tag.yml` workflow uses a GitHub App installation token (minted via `actions/create-github-app-token`) to create the tag and release. Installation tokens are required because tags pushed under `GITHUB_TOKEN` do not trigger downstream workflows. If releases aren't triggering:
 
-1. Verify `RELEASE_TOKEN` secret is configured
-2. Verify the PAT has `contents: write` scope
-3. Verify the PAT hasn't expired
+1. Verify the release GitHub App is installed on the repo
+2. Verify `RELEASE_APP_CLIENT_ID` repository variable and `RELEASE_APP_PRIVATE_KEY` repository secret are configured
+3. Verify the app has `contents: write` permission
 
 ## Manual Release (Emergency Only)
 
