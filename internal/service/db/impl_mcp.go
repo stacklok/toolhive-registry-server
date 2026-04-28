@@ -62,7 +62,7 @@ func (s *dbService) ListServers(
 	if s.skipAuthz {
 		gateClaims = nil
 	}
-	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
+	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -193,7 +193,7 @@ func (s *dbService) ListServerVersions(
 	if s.skipAuthz {
 		gateClaims = nil
 	}
-	registryIDForVersions, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
+	registryIDForVersions, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -281,7 +281,7 @@ func (s *dbService) GetServerVersion(
 	if s.skipAuthz {
 		gateClaims = nil
 	}
-	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
+	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -626,7 +626,7 @@ func (s *dbService) PublishServerVersion(
 	}
 
 	// Validate published claims are a subset of the publisher's JWT claims
-	if err := validateClaimsSubset(ctx, options.JWTClaims, options.Claims); err != nil {
+	if err := s.validateClaimsSubset(ctx, options.JWTClaims, options.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -876,7 +876,7 @@ func (s *dbService) executeDeleteTransaction(
 			}
 			return fmt.Errorf("failed to look up registry entry: %w", err)
 		}
-		if err := validateClaimsSubsetBytes(ctx, options.JWTClaims, existing.Claims); err != nil {
+		if err := s.validateClaimsSubsetBytes(ctx, options.JWTClaims, existing.Claims); err != nil {
 			return err
 		}
 	}

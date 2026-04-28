@@ -53,7 +53,7 @@ func (s *dbService) ListSkills(
 	if s.skipAuthz {
 		gateClaims = nil
 	}
-	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
+	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -185,7 +185,7 @@ func (s *dbService) GetSkillVersion(
 	if s.skipAuthz {
 		gateClaims = nil
 	}
-	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
+	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -313,7 +313,7 @@ func (s *dbService) PublishSkill(
 	}
 
 	// Validate published claims are a subset of the publisher's JWT claims
-	if err := validateClaimsSubset(ctx, options.JWTClaims, options.Claims); err != nil {
+	if err := s.validateClaimsSubset(ctx, options.JWTClaims, options.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -667,7 +667,7 @@ func (s *dbService) executeDeleteSkillTransaction(
 			}
 			return fmt.Errorf("failed to look up registry entry: %w", err)
 		}
-		if err := validateClaimsSubsetBytes(ctx, options.JWTClaims, existing.Claims); err != nil {
+		if err := s.validateClaimsSubsetBytes(ctx, options.JWTClaims, existing.Claims); err != nil {
 			return err
 		}
 	}

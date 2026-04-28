@@ -73,10 +73,10 @@ func TestLookupRegistryIDWithGate(t *testing.T) {
 		wantErr      error
 	}{
 		{
-			name:         "nil registry claims with caller claims passes",
+			name:         "nil registry claims with caller claims returns ErrClaimsInsufficient (default-deny)",
 			claims:       nil,
 			callerClaims: map[string]any{"org": "acme"},
-			wantErr:      nil,
+			wantErr:      service.ErrClaimsInsufficient,
 		},
 		{
 			name:         "nil registry claims with nil caller claims passes",
@@ -124,7 +124,7 @@ func TestLookupRegistryIDWithGate(t *testing.T) {
 				ctx = auth.ContextWithRoles(ctx, []auth.Role{auth.RoleSuperAdmin})
 			}
 
-			gotID, err := lookupRegistryIDWithGate(ctx, svc.pool, regName, tt.callerClaims)
+			gotID, err := svc.lookupRegistryIDWithGate(ctx, svc.pool, regName, tt.callerClaims)
 
 			if tt.wantErr != nil {
 				require.Error(t, err)
@@ -141,7 +141,7 @@ func TestLookupRegistryIDWithGate(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		gotID, err := lookupRegistryIDWithGate(ctx, svc.pool, "does-not-exist", nil)
+		gotID, err := svc.lookupRegistryIDWithGate(ctx, svc.pool, "does-not-exist", nil)
 		require.Error(t, err)
 		assert.True(t, errors.Is(err, service.ErrRegistryNotFound), "expected ErrRegistryNotFound, got %v", err)
 		assert.Equal(t, uuid.Nil, gotID)
@@ -161,10 +161,10 @@ func TestCheckRegistryExistsWithGate(t *testing.T) {
 		wantErr      error
 	}{
 		{
-			name:         "open registry with caller claims passes",
+			name:         "open registry with caller claims returns ErrClaimsInsufficient (default-deny)",
 			claims:       nil,
 			callerClaims: map[string]any{"org": "acme"},
-			wantErr:      nil,
+			wantErr:      service.ErrClaimsInsufficient,
 		},
 		{
 			name:         "matching claims passes",
@@ -189,7 +189,7 @@ func TestCheckRegistryExistsWithGate(t *testing.T) {
 
 			createRegistryWithClaims(t, svc, regName, tt.claims)
 
-			err := checkRegistryExistsWithGate(ctx, svc.pool, regName, tt.callerClaims)
+			err := svc.checkRegistryExistsWithGate(ctx, svc.pool, regName, tt.callerClaims)
 
 			if tt.wantErr != nil {
 				require.Error(t, err)
@@ -204,7 +204,7 @@ func TestCheckRegistryExistsWithGate(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		err := checkRegistryExistsWithGate(ctx, svc.pool, "does-not-exist-check", nil)
+		err := svc.checkRegistryExistsWithGate(ctx, svc.pool, "does-not-exist-check", nil)
 		require.Error(t, err)
 		assert.True(t, errors.Is(err, service.ErrRegistryNotFound), "expected ErrRegistryNotFound, got %v", err)
 	})

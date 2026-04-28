@@ -93,11 +93,11 @@ func TestPublishServerVersion_ClaimsSubset(t *testing.T) {
 			wantErr:    nil,
 		},
 		{
-			name:       "nil request claims with any JWT succeeds",
+			name:       "nil request claims with any JWT returns ErrClaimsInsufficient (default-deny)",
 			serverSlug: "nil-req-claims",
 			claims:     nil,
 			jwtClaims:  map[string]any{"org": "acme", "team": "eng"},
-			wantErr:    nil,
+			wantErr:    service.ErrClaimsInsufficient,
 		},
 	}
 
@@ -168,10 +168,10 @@ func TestPublishSkill_ClaimsSubset(t *testing.T) {
 			wantErr:   nil,
 		},
 		{
-			name:      "nil request claims with any JWT succeeds",
+			name:      "nil request claims with any JWT returns ErrClaimsInsufficient (default-deny)",
 			claims:    nil,
 			jwtClaims: map[string]any{"org": "acme", "team": "eng"},
-			wantErr:   nil,
+			wantErr:   service.ErrClaimsInsufficient,
 		},
 	}
 

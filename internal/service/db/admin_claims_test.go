@@ -583,7 +583,9 @@ func TestListSources_ReturnsAllMatchingWithMixedClaims(t *testing.T) {
 	_, err = svc.CreateSource(createCtx, "lsm-open", fileDataSourceReq(nil))
 	require.NoError(t, err)
 
-	// List with acme JWT — should see both acme sources and the open (no-claims) source
+	// List with acme JWT — should see both acme sources only.
+	// The open (no-claims) source is invisible by default-deny (auth.md §4):
+	// unlabeled resources are not visible to claim-bearing callers.
 	listCtx := auth.ContextWithClaims(t.Context(), jwt.MapClaims{"org": "acme"})
 	sources, err := svc.ListSources(listCtx)
 	require.NoError(t, err)
@@ -592,7 +594,7 @@ func TestListSources_ReturnsAllMatchingWithMixedClaims(t *testing.T) {
 	assert.Contains(t, names, "lsm-acme-1")
 	assert.Contains(t, names, "lsm-acme-2")
 	assert.NotContains(t, names, "lsm-contoso")
-	assert.Contains(t, names, "lsm-open")
+	assert.NotContains(t, names, "lsm-open")
 }
 
 func TestListRegistries_ReturnsAllMatchingWithMixedClaims(t *testing.T) {
@@ -632,7 +634,8 @@ func TestListRegistries_ReturnsAllMatchingWithMixedClaims(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// List with acme JWT — should see both acme registries and the open one
+	// List with acme JWT — should see both acme registries only.
+	// The open (no-claims) registry is invisible by default-deny (auth.md §4).
 	listCtx := auth.ContextWithClaims(t.Context(), jwt.MapClaims{"org": "acme"})
 	registries, err := svc.ListRegistries(listCtx)
 	require.NoError(t, err)
@@ -641,7 +644,7 @@ func TestListRegistries_ReturnsAllMatchingWithMixedClaims(t *testing.T) {
 	assert.Contains(t, names, "lrm-acme-reg-1")
 	assert.Contains(t, names, "lrm-acme-reg-2")
 	assert.NotContains(t, names, "lrm-contoso-reg")
-	assert.Contains(t, names, "lrm-open-reg")
+	assert.NotContains(t, names, "lrm-open-reg")
 }
 
 func TestListSources_AnonymousReturnsAll(t *testing.T) {

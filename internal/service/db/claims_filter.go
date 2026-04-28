@@ -43,18 +43,26 @@ func checkClaimConsistency(incomingJSON, existingJSON []byte) error {
 
 // validateClaimsSubset checks that callerClaims covers resourceClaims.
 // Returns nil if:
-//   - callerClaims is nil (anonymous mode — no auth enforcement)
-//   - resourceClaims is nil/empty (open resource — no restriction)
+//   - skipAuthz is true (auth-only mode — claim-based gating disabled)
+//   - callerClaims is nil (anonymous — no caller identity to gate on)
 //   - the caller is a super-admin (bypasses all claim checks)
 //   - callerClaims is a superset of resourceClaims
 //
-// Returns ErrClaimsInsufficient otherwise.
-func validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[string]any) error {
-	if callerClaims == nil || len(resourceClaims) == 0 {
+// Returns ErrClaimsInsufficient when authz is enabled and either:
+//   - resourceClaims is nil/empty (default-deny on unlabeled resources — see auth.md §4)
+//   - callerClaims does not cover resourceClaims
+func (s *dbService) validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[string]any) error {
+	if s.skipAuthz {
+		return nil
+	}
+	if callerClaims == nil {
 		return nil
 	}
 	if auth.IsSuperAdmin(ctx) {
 		return nil
+	}
+	if len(resourceClaims) == 0 {
+		return fmt.Errorf("%w: resource has no claims", service.ErrClaimsInsufficient)
 	}
 	if !claimsContain(callerClaims, resourceClaims) {
 		return fmt.Errorf("%w: caller claims do not cover resource claims", service.ErrClaimsInsufficient)
@@ -63,13 +71,17 @@ func validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[
 }
 
 // validateClaimsSubsetBytes is like validateClaimsSubset but accepts raw JSON
-// for resourceClaims. Nil or empty JSON is treated as an open resource.
-func validateClaimsSubsetBytes(ctx context.Context, callerClaims map[string]any, resourceClaimsJSON []byte) error {
-	if callerClaims == nil || len(resourceClaimsJSON) == 0 {
+// for resourceClaims. When authz is enabled, an empty resource JSON is
+// default-deny (unlabeled resources are not visible to claim-bearing callers).
+func (s *dbService) validateClaimsSubsetBytes(ctx context.Context, callerClaims map[string]any, resourceClaimsJSON []byte) error {
+	if s.skipAuthz {
+		return nil
+	}
+	if callerClaims == nil {
 		return nil
 	}
 	resourceClaims := db.DeserializeClaims(resourceClaimsJSON)
-	return validateClaimsSubset(ctx, callerClaims, resourceClaims)
+	return s.validateClaimsSubset(ctx, callerClaims, resourceClaims)
 }
 
 // claimsFromCtx extracts JWT claims from the context as map[string]any.
