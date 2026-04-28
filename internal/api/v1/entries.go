@@ -202,9 +202,10 @@ type entryClaimsResponse struct {
 //
 // The response envelope `{"claims": {...}}` is always a non-nil JSON object —
 // the impl normalises a missing/nil claims blob to `map[string]any{}`. Under
-// authz, that branch is unreachable in practice (publish forbids empty claims
-// per auth.md §6, and the gate denies empty-claim rows per §4); the
-// normalisation is for the auth-off / synced-source case.
+// authz, that branch is reachable only by super-admin (the publish path
+// forbids empty claims per auth.md §6, and the gate denies empty-claim rows
+// for everyone else per §4) or by callers in `skipAuthz=true` deployments.
+// Either way the response shape stays stable.
 //
 // @Summary		Get entry claims
 // @Description	Get the claims for a published entry name. Claims are stored at the

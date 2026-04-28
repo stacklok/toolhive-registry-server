@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
@@ -95,6 +96,39 @@ func TestGetEntryClaims_ClaimsInsufficient(t *testing.T) {
 		service.WithJWTClaims(map[string]any{"org": "acme", "team": "platform"}),
 	)
 	assert.ErrorIs(t, err, service.ErrClaimsInsufficient)
+}
+
+func TestGetEntryClaims_SuperAdminBypassesSubsetCheck(t *testing.T) {
+	t.Parallel()
+
+	svc, cleanup := setupTestService(t)
+	defer cleanup()
+
+	createManagedSource(t, svc, "gec-superadmin")
+
+	ctx := context.Background()
+
+	// Publish an entry scoped to team=data with JWT claims that cover it.
+	_, err := svc.PublishServerVersion(ctx,
+		service.WithServerData(&upstreamv0.ServerJSON{
+			Name:    "com.test/gec-superadmin",
+			Version: "1.0.0",
+		}),
+		service.WithClaims(map[string]any{"org": "acme", "team": "data"}),
+		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{"data"}}),
+	)
+	require.NoError(t, err)
+
+	// A super-admin caller in a completely different org must still read the
+	// entry's claims — the bypass is uniform across every claim check.
+	superAdminCtx := auth.ContextWithRoles(ctx, []auth.Role{auth.RoleSuperAdmin})
+	claims, err := svc.GetEntryClaims(superAdminCtx,
+		service.WithEntryType(service.EntryTypeServer),
+		service.WithName("com.test/gec-superadmin"),
+		service.WithJWTClaims(map[string]any{"org": "contoso"}),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"org": "acme", "team": "data"}, claims)
 }
 
 func TestGetEntryClaims_ClaimsSufficient(t *testing.T) {
