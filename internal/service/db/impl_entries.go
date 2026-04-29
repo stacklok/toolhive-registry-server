@@ -155,11 +155,20 @@ func mapEntryType(entryType string) (sqlc.EntryType, error) {
 	}
 }
 
-// GetEntryClaims returns the claims map for a published entry within the managed source.
-// The returned map is non-nil even when the entry has no claims set, so callers can
-// rely on a stable JSON shape. Access is gated by the manageEntries role plus a
-// JWT-subset check against the entry's claims, mirroring the matching PUT and the
-// default-deny visibility rule (auth.md §4).
+// GetEntryClaims returns the claims map for an API-published entry within the
+// managed source. Synced-source entries (git/api/file/kubernetes) are out of
+// scope here for two reasons: their claim source-of-truth is upstream — the
+// source row's claims for git/api/file (inherited per entry) or the
+// `toolhive.stacklok.dev/authz-claims` annotation for kubernetes — and every
+// sync overwrites entry claims via `ON CONFLICT DO UPDATE SET claims = EXCLUDED.claims`,
+// so any API write would be ephemeral. The matching PUT is managed-source-only
+// for the same reason. To inspect synced-entry claims, list endpoints under
+// `/v1/sources/{name}/entries` and `/v1/registries/{name}/entries` surface them.
+//
+// The returned map is non-nil even when the entry has no claims set, so callers
+// can rely on a stable JSON shape. Access is gated by the manageEntries role
+// plus a JWT-subset check against the entry's claims, mirroring the matching
+// PUT and the default-deny visibility rule (auth.md §4).
 func (s *dbService) GetEntryClaims(ctx context.Context, opts ...service.Option) (map[string]any, error) {
 	ctx, span := s.startSpan(ctx, "dbService.GetEntryClaims")
 	defer span.End()

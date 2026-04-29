@@ -208,8 +208,11 @@ type entryClaimsResponse struct {
 // Either way the response shape stays stable.
 //
 // @Summary		Get entry claims
-// @Description	Get the claims for a published entry name. Claims are stored at the
-// @Description	entry-name level and are shared by every version of that name.
+// @Description	Get the claims for an API-published entry name within the managed source.
+// @Description	Claims are stored at the entry-name level and are shared by every version of that name.
+// @Description	Synced-source entries (git/api/file/kubernetes) are out of scope: their claims come from
+// @Description	upstream (the source manifest or the `toolhive.stacklok.dev/authz-claims` annotation) and
+// @Description	are surfaced through the `/v1/sources/{name}/entries` and `/v1/registries/{name}/entries` lists.
 // @Tags		v1
 // @Produce		json
 // @Param		type	path		string	true	"Entry Type (server or skill)"

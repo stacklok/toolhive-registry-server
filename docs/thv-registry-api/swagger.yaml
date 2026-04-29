@@ -1361,8 +1361,11 @@ paths:
   /v1/entries/{type}/{name}/claims:
     get:
       description: |-
-        Get the claims for a published entry name. Claims are stored at the
-        entry-name level and are shared by every version of that name.
+        Get the claims for an API-published entry name within the managed source.
+        Claims are stored at the entry-name level and are shared by every version of that name.
+        Synced-source entries (git/api/file/kubernetes) are out of scope: their claims come from
+        upstream (the source manifest or the `toolhive.stacklok.dev/authz-claims` annotation) and
+        are surfaced through the `/v1/sources/{name}/entries` and `/v1/registries/{name}/entries` lists.
       parameters:
       - description: Entry Type (server or skill)
         in: path
