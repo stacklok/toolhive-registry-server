@@ -73,10 +73,10 @@ func TestLookupRegistryIDWithGate(t *testing.T) {
 		wantErr      error
 	}{
 		{
-			name:         "nil registry claims with caller claims passes",
+			name:         "nil registry claims with caller claims returns ErrClaimsInsufficient (default-deny)",
 			claims:       nil,
 			callerClaims: map[string]any{"org": "acme"},
-			wantErr:      nil,
+			wantErr:      service.ErrClaimsInsufficient,
 		},
 		{
 			name:         "nil registry claims with nil caller claims passes",
@@ -161,10 +161,10 @@ func TestCheckRegistryExistsWithGate(t *testing.T) {
 		wantErr      error
 	}{
 		{
-			name:         "open registry with caller claims passes",
+			name:         "open registry with caller claims returns ErrClaimsInsufficient (default-deny)",
 			claims:       nil,
 			callerClaims: map[string]any{"org": "acme"},
-			wantErr:      nil,
+			wantErr:      service.ErrClaimsInsufficient,
 		},
 		{
 			name:         "matching claims passes",

@@ -41,6 +41,9 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 
 	querier := sqlc.New(tx)
 	callerClaims := claimsFromCtx(ctx)
+	if s.skipAuthz {
+		callerClaims = nil
+	}
 
 	registries, err := streamRegistryRows(ctx, querier, callerClaims)
 	if err != nil {
@@ -105,7 +108,11 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 	}
 
 	// Validate caller's JWT covers the registry's claims (hide existence on failure)
-	if err := validateClaimsSubset(ctx, claimsFromCtx(ctx), db.DeserializeClaims(reg.Claims)); err != nil {
+	callerClaims := claimsFromCtx(ctx)
+	if s.skipAuthz {
+		callerClaims = nil
+	}
+	if err := validateClaimsSubset(ctx, callerClaims, db.DeserializeClaims(reg.Claims)); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
 	}
@@ -172,6 +179,9 @@ func (s *dbService) CreateRegistry(
 
 	// Validate registry claims are a subset of the caller's JWT claims
 	callerClaims := claimsFromCtx(ctx)
+	if s.skipAuthz {
+		callerClaims = nil
+	}
 	if err := validateClaimsSubset(ctx, callerClaims, req.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -263,6 +273,9 @@ func (s *dbService) UpdateRegistry(
 
 	// Validate caller's JWT covers both the existing and new registry claims
 	callerClaims := claimsFromCtx(ctx)
+	if s.skipAuthz {
+		callerClaims = nil
+	}
 	if err := validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -344,7 +357,11 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 	}
 
 	// Validate caller's JWT covers the registry's claims
-	if err := validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), existing.Claims); err != nil {
+	callerClaims := claimsFromCtx(ctx)
+	if s.skipAuthz {
+		callerClaims = nil
+	}
+	if err := validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
 		otel.RecordError(span, err)
 		return err
 	}
@@ -410,7 +427,11 @@ func (s *dbService) ListRegistryEntries(ctx context.Context, registryName string
 	}
 
 	// Validate caller's JWT covers the registry's claims (hide existence on failure)
-	if err := validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), registry.Claims); err != nil {
+	callerClaims := claimsFromCtx(ctx)
+	if s.skipAuthz {
+		callerClaims = nil
+	}
+	if err := validateClaimsSubsetBytes(ctx, callerClaims, registry.Claims); err != nil {
 		err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
 		otel.RecordError(span, err)
 		return nil, err

@@ -26,6 +26,8 @@ func (s *dbService) CheckReadiness(ctx context.Context) error {
 // after verifying the caller's claims satisfy the registry's access gate.
 // Returns ErrClaimsInsufficient if the caller's JWT claims do not cover the
 // registry's claims. Returns ErrRegistryNotFound if the registry does not exist.
+// Callers must pass nil for callerClaims when the gate should be bypassed
+// (skipAuthz mode or anonymous mode).
 func lookupRegistryIDWithGate(
 	ctx context.Context, pool sqlc.DBTX, registryName string, callerClaims map[string]any,
 ) (uuid.UUID, error) {

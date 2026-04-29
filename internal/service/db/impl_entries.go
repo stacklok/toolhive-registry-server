@@ -49,7 +49,11 @@ func (s *dbService) UpdateEntryClaims(ctx context.Context, opts ...service.Optio
 		}
 	}
 
-	if err := validateClaimsSubset(ctx, options.JWTClaims, options.Claims); err != nil {
+	gateClaims := options.JWTClaims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	if err := validateClaimsSubset(ctx, gateClaims, options.Claims); err != nil {
 		otel.RecordError(span, err)
 		return err
 	}
@@ -107,7 +111,11 @@ func (s *dbService) executeUpdateClaimsTransaction(
 		return fmt.Errorf("failed to look up registry entry: %w", err)
 	}
 
-	if err := validateClaimsSubsetBytes(ctx, options.JWTClaims, existing.Claims); err != nil {
+	gateClaims := options.JWTClaims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	if err := validateClaimsSubsetBytes(ctx, gateClaims, existing.Claims); err != nil {
 		return err
 	}
 

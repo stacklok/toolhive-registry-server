@@ -43,18 +43,22 @@ func checkClaimConsistency(incomingJSON, existingJSON []byte) error {
 
 // validateClaimsSubset checks that callerClaims covers resourceClaims.
 // Returns nil if:
-//   - callerClaims is nil (anonymous mode — no auth enforcement)
-//   - resourceClaims is nil/empty (open resource — no restriction)
+//   - callerClaims is nil (caller has opted out of the gate — callers pass
+//     nil when skipAuthz is enabled or in anonymous mode)
 //   - the caller is a super-admin (bypasses all claim checks)
 //   - callerClaims is a superset of resourceClaims
 //
-// Returns ErrClaimsInsufficient otherwise.
+// Returns ErrClaimsInsufficient otherwise, including when resourceClaims
+// is nil/empty (default-deny on unlabeled resources — see auth.md §4).
 func validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[string]any) error {
-	if callerClaims == nil || len(resourceClaims) == 0 {
+	if callerClaims == nil {
 		return nil
 	}
 	if auth.IsSuperAdmin(ctx) {
 		return nil
+	}
+	if len(resourceClaims) == 0 {
+		return fmt.Errorf("%w: resource has no claims", service.ErrClaimsInsufficient)
 	}
 	if !claimsContain(callerClaims, resourceClaims) {
 		return fmt.Errorf("%w: caller claims do not cover resource claims", service.ErrClaimsInsufficient)
@@ -63,9 +67,10 @@ func validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[
 }
 
 // validateClaimsSubsetBytes is like validateClaimsSubset but accepts raw JSON
-// for resourceClaims. Nil or empty JSON is treated as an open resource.
+// for resourceClaims. An empty resource JSON is default-deny when callerClaims
+// is non-nil (unlabeled resources are invisible to claim-bearing callers).
 func validateClaimsSubsetBytes(ctx context.Context, callerClaims map[string]any, resourceClaimsJSON []byte) error {
-	if callerClaims == nil || len(resourceClaimsJSON) == 0 {
+	if callerClaims == nil {
 		return nil
 	}
 	resourceClaims := db.DeserializeClaims(resourceClaimsJSON)
@@ -90,9 +95,10 @@ func claimsFromCtx(ctx context.Context) map[string]any {
 // caller's claims are non-empty, the record has stored claims, and they match.
 // extract retrieves the raw claims JSON from a record; returning ok=false
 // causes the filter to reject the record with a type error.
-// Returns nil when callerClaims is nil or empty so the caller can skip
-// filtering entirely. Also returns nil for super-admin users (they see all
-// entries regardless of claims).
+// Returns nil (no filter applied — every record visible) when:
+//   - callerClaims is nil/empty (callers pass nil when skipAuthz is enabled
+//     or in anonymous mode)
+//   - the caller is a super-admin (uniform bypass)
 func newClaimsFilterWith(
 	ctx context.Context,
 	callerClaims map[string]any,
@@ -155,8 +161,17 @@ func checkClaims(callerJSON, recordJSON []byte) bool {
 // An empty-array value (e.g. "teams": []) is vacuously satisfied by any caller
 // value for that key — this is intentional since ValidateClaimValues accepts
 // empty arrays, and presence of the key is the meaningful signal.
+//
+// Fails closed (returns false) when a record value has an unsupported type
+// (nil, number, nested object, etc.). ValidateClaimValues blocks such values
+// at the API edge, but rows persisted via direct DB writes or future sync
+// paths could carry them — the gate must not silently treat them as
+// vacuously-satisfied requirements.
 func claimsContain(caller, record map[string]any) bool {
 	for k, rv := range record {
+		if !isValidClaimValue(rv) {
+			return false
+		}
 		cv, ok := caller[k]
 		if !ok {
 			return false
@@ -170,6 +185,27 @@ func claimsContain(caller, record map[string]any) bool {
 		}
 	}
 	return true
+}
+
+// isValidClaimValue reports whether v is a supported claim value (string,
+// []string, or []any of strings). Used by claimsContain to fail closed on
+// rows whose values bypassed ValidateClaimValues.
+func isValidClaimValue(v any) bool {
+	switch val := v.(type) {
+	case string:
+		return true
+	case []string:
+		return true
+	case []any:
+		for _, elem := range val {
+			if _, ok := elem.(string); !ok {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 // claimsEqual returns true when a and b have exactly the same keys and values.

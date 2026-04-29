@@ -151,7 +151,11 @@ func baseSourceConfigs(t *testing.T) []config.SourceConfig {
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme", "team": "data"},
 		},
-		{Name: "internal", Managed: &config.ManagedConfig{}},
+		// Tag the managed "internal" source with a tenant-wide claim so any acme
+		// caller can reference it. Default-deny on empty claims (auth.md §4)
+		// would otherwise make this source unreferenceable for everyone but
+		// super-admin.
+		{Name: "internal", Claims: map[string]any{"org": "acme"}, Managed: &config.ManagedConfig{}},
 	}
 }
 

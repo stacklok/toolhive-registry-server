@@ -204,7 +204,10 @@ func TestAuthzIntegration_FullAuthzMode(t *testing.T) {
 			assertStatus(t, resp, 403)
 		})
 
-		t.Run("outsider sees only internal source", func(t *testing.T) {
+		t.Run("outsider sees no sources", func(t *testing.T) {
+			// Default-deny on empty claims (auth.md §4) plus the tenant-wide
+			// {org: acme} claim on every fixture source means a contoso outsider
+			// covers nothing. There are no truly-public sources in this fixture.
 			resp := doRequest(t, "GET", env.baseURL+"/v1/sources", outsider, nil)
 			body := assertStatus(t, resp, 200)
 			var result struct {
@@ -213,7 +216,7 @@ func TestAuthzIntegration_FullAuthzMode(t *testing.T) {
 				} `json:"sources"`
 			}
 			require.NoError(t, json.Unmarshal([]byte(body), &result))
-			assert.Len(t, result.Sources, 1)
+			assert.Empty(t, result.Sources)
 		})
 
 		t.Run("super-admin sees all sources", func(t *testing.T) {

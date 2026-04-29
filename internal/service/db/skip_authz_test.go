@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -93,11 +94,18 @@ func TestListServers_SkipAuthz(t *testing.T) {
 			srcName := "sa-srv-src-" + tt.name
 			entryName := "com.skipauth/" + tt.name
 
+			// Tag registry and source with claims that the caller covers so the
+			// registry-access gate passes; the entry's own claims drive what we're
+			// testing (visibility under skipAuthz vs. default-deny on empty).
+			gateClaims, err := json.Marshal(map[string]any{"org": "caller-org"})
+			require.NoError(t, err)
+
 			src, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 				Name:         srcName,
 				CreationType: sqlc.CreationTypeCONFIG,
 				SourceType:   "git",
 				Syncable:     true,
+				Claims:       gateClaims,
 				CreatedAt:    &now,
 				UpdatedAt:    &now,
 			})
@@ -106,6 +114,7 @@ func TestListServers_SkipAuthz(t *testing.T) {
 			reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
 				Name:         regName,
 				CreationType: sqlc.CreationTypeCONFIG,
+				Claims:       gateClaims,
 				CreatedAt:    &now,
 				UpdatedAt:    &now,
 			})
@@ -215,11 +224,15 @@ func TestListSkills_SkipAuthz(t *testing.T) {
 			srcName := "sa-skl-src-" + tt.name
 			entryName := "com.skipauth/" + tt.name
 
+			gateClaims, err := json.Marshal(map[string]any{"org": "caller-org"})
+			require.NoError(t, err)
+
 			src, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 				Name:         srcName,
 				CreationType: sqlc.CreationTypeCONFIG,
 				SourceType:   "git",
 				Syncable:     true,
+				Claims:       gateClaims,
 				CreatedAt:    &now,
 				UpdatedAt:    &now,
 			})
@@ -228,6 +241,7 @@ func TestListSkills_SkipAuthz(t *testing.T) {
 			reg, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
 				Name:         regName,
 				CreationType: sqlc.CreationTypeCONFIG,
+				Claims:       gateClaims,
 				CreatedAt:    &now,
 				UpdatedAt:    &now,
 			})

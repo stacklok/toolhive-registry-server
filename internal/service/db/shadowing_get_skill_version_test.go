@@ -10,6 +10,7 @@ import (
 	"github.com/aws/smithy-go/ptr"
 	"github.com/stretchr/testify/require"
 
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
@@ -195,4 +196,104 @@ func TestGetSkillVersionClaimsVisibility(t *testing.T) {
 			require.Equal(t, tt.expectDesc, result.Description)
 		})
 	}
+}
+
+// TestGetSkillVersion_SuperAdminBypassesPromotion verifies that the version
+// promotion loop honours the uniform super-admin bypass — i.e. a super-admin
+// caller whose JWT does not cover any source's claims still sees the
+// highest-priority row, matching the behaviour of every other claim check
+// (auth.md §3, claims_filter.go newClaimsFilterWith godoc).
+func TestGetSkillVersion_SuperAdminBypassesPromotion(t *testing.T) {
+	t.Parallel()
+
+	const (
+		entryName    = "com.claims/super-admin-skill"
+		descFromSrcA = "from source-A"
+		descFromSrcB = "from source-B"
+		descFromSrcC = "from source-C"
+	)
+
+	svc, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queries := sqlc.New(svc.pool)
+	now := time.Now().UTC()
+
+	srcA, srcB, srcC := setupShadowingRegistry(t, svc)
+
+	// Tag every entry with claims the super-admin's JWT does NOT cover, so the
+	// only path to a non-empty result is the super-admin bypass in
+	// newClaimsFilterWith.
+	entryClaimsJSON, err := json.Marshal(map[string]any{"org": "acme", "team": "data"})
+	require.NoError(t, err)
+
+	insertEntry := func(src sqlc.Source, desc string) {
+		entryID, err := queries.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
+			SourceID:  src.ID,
+			EntryType: sqlc.EntryTypeSKILL,
+			Name:      entryName,
+			Claims:    entryClaimsJSON,
+			CreatedAt: &now,
+			UpdatedAt: &now,
+		})
+		require.NoError(t, err)
+
+		versionID, err := queries.InsertEntryVersion(ctx, sqlc.InsertEntryVersionParams{
+			EntryID:     entryID,
+			Name:        entryName,
+			Version:     "1.0.0",
+			Title:       ptr.String(entryName),
+			Description: ptr.String(desc),
+			CreatedAt:   &now,
+			UpdatedAt:   &now,
+		})
+		require.NoError(t, err)
+
+		_, err = queries.InsertSkillVersion(ctx, sqlc.InsertSkillVersionParams{
+			VersionID:     versionID,
+			Namespace:     "com.example",
+			Status:        sqlc.NullSkillStatus{},
+			AllowedTools:  nil,
+			Repository:    []byte("null"),
+			Icons:         []byte("null"),
+			Metadata:      []byte("null"),
+			ExtensionMeta: []byte("null"),
+		})
+		require.NoError(t, err)
+	}
+
+	insertEntry(srcA, descFromSrcA)
+	insertEntry(srcB, descFromSrcB)
+	insertEntry(srcC, descFromSrcC)
+
+	// JWT claims that don't cover the entries — the bypass must come from the
+	// super-admin role, not from claim coverage. The registry-access gate
+	// (lookupRegistryIDWithGate) is bypassed for the same reason.
+	saCtx := auth.ContextWithRoles(ctx, []auth.Role{auth.RoleSuperAdmin})
+
+	result, err := svc.GetSkillVersion(
+		saCtx,
+		service.WithName(entryName),
+		service.WithVersion("1.0.0"),
+		service.WithNamespace("com.example"),
+		service.WithRegistryName("claims-registry"),
+		service.WithClaims(map[string]any{"role": "super-admin"}),
+	)
+	require.NoError(t, err)
+	require.Equal(t, descFromSrcA, result.Description,
+		"super-admin must see the highest-priority source's row regardless of claim coverage")
+
+	// Sanity check: the same caller without the super-admin role gets ErrNotFound
+	// (every entry's claims are uncovered).
+	_, err = svc.GetSkillVersion(
+		ctx,
+		service.WithName(entryName),
+		service.WithVersion("1.0.0"),
+		service.WithNamespace("com.example"),
+		service.WithRegistryName("claims-registry"),
+		service.WithClaims(map[string]any{"sub": "claims-test-user"}),
+	)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, service.ErrNotFound))
 }

@@ -24,21 +24,28 @@ func TestValidateClaimsSubset(t *testing.T) {
 		wantErr        error
 	}{
 		{
-			name:           "nil caller claims (anonymous) returns nil",
+			name:           "nil caller claims (anonymous or skipAuthz) returns nil",
 			callerClaims:   nil,
 			resourceClaims: map[string]any{"sub": "user1"},
 			wantErr:        nil,
 		},
 		{
-			name:           "nil resource claims returns nil",
+			name:           "nil resource claims returns ErrClaimsInsufficient (default-deny)",
 			callerClaims:   map[string]any{"sub": "user1"},
 			resourceClaims: nil,
-			wantErr:        nil,
+			wantErr:        service.ErrClaimsInsufficient,
 		},
 		{
-			name:           "empty resource claims returns nil",
+			name:           "empty resource claims returns ErrClaimsInsufficient (default-deny)",
 			callerClaims:   map[string]any{"sub": "user1"},
 			resourceClaims: map[string]any{},
+			wantErr:        service.ErrClaimsInsufficient,
+		},
+		{
+			name:           "super-admin bypasses default-deny on empty resource claims",
+			callerClaims:   map[string]any{"sub": "admin"},
+			resourceClaims: map[string]any{},
+			superAdmin:     true,
 			wantErr:        nil,
 		},
 		{
@@ -117,22 +124,22 @@ func TestValidateClaimsSubsetBytes(t *testing.T) {
 		wantErr      error
 	}{
 		{
-			name:         "nil caller claims returns nil",
+			name:         "nil caller claims (anonymous or skipAuthz) returns nil",
 			callerClaims: nil,
 			resourceJSON: []byte(`{"sub":"user1"}`),
 			wantErr:      nil,
 		},
 		{
-			name:         "nil resource JSON returns nil",
+			name:         "nil resource JSON returns ErrClaimsInsufficient (default-deny)",
 			callerClaims: map[string]any{"sub": "user1"},
 			resourceJSON: nil,
-			wantErr:      nil,
+			wantErr:      service.ErrClaimsInsufficient,
 		},
 		{
-			name:         "empty resource JSON returns nil",
+			name:         "empty resource JSON returns ErrClaimsInsufficient (default-deny)",
 			callerClaims: map[string]any{"sub": "user1"},
 			resourceJSON: []byte{},
-			wantErr:      nil,
+			wantErr:      service.ErrClaimsInsufficient,
 		},
 		{
 			name:         "matching JSON returns nil",
