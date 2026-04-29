@@ -41,8 +41,11 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 
 	querier := sqlc.New(tx)
 	callerClaims := claimsFromCtx(ctx)
+	if s.skipAuthz {
+		callerClaims = nil
+	}
 
-	registries, err := s.streamRegistryRows(ctx, querier, callerClaims)
+	registries, err := streamRegistryRows(ctx, querier, callerClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to list registries: %w", err)
@@ -105,7 +108,11 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 	}
 
 	// Validate caller's JWT covers the registry's claims (hide existence on failure)
-	if err := s.validateClaimsSubset(ctx, claimsFromCtx(ctx), db.DeserializeClaims(reg.Claims)); err != nil {
+	callerClaims := claimsFromCtx(ctx)
+	if s.skipAuthz {
+		callerClaims = nil
+	}
+	if err := validateClaimsSubset(ctx, callerClaims, db.DeserializeClaims(reg.Claims)); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
 	}
@@ -172,13 +179,16 @@ func (s *dbService) CreateRegistry(
 
 	// Validate registry claims are a subset of the caller's JWT claims
 	callerClaims := claimsFromCtx(ctx)
-	if err := s.validateClaimsSubset(ctx, callerClaims, req.Claims); err != nil {
+	if s.skipAuthz {
+		callerClaims = nil
+	}
+	if err := validateClaimsSubset(ctx, callerClaims, req.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
 	// Resolve source names to IDs, validating caller covers each source's claims
-	sourceIDs, err := s.resolveSourceIDsWithGate(ctx, querier, req.Sources, callerClaims)
+	sourceIDs, err := resolveSourceIDsWithGate(ctx, querier, req.Sources, callerClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -263,17 +273,20 @@ func (s *dbService) UpdateRegistry(
 
 	// Validate caller's JWT covers both the existing and new registry claims
 	callerClaims := claimsFromCtx(ctx)
-	if err := s.validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
+	if s.skipAuthz {
+		callerClaims = nil
+	}
+	if err := validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
-	if err := s.validateClaimsSubset(ctx, callerClaims, req.Claims); err != nil {
+	if err := validateClaimsSubset(ctx, callerClaims, req.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
 	// Replace source links: resolve with claim gate, unlink old, link new
-	if err := s.replaceRegistrySourcesWithGate(ctx, querier, existing.ID, req.Sources, callerClaims); err != nil {
+	if err := replaceRegistrySourcesWithGate(ctx, querier, existing.ID, req.Sources, callerClaims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -344,7 +357,11 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 	}
 
 	// Validate caller's JWT covers the registry's claims
-	if err := s.validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), existing.Claims); err != nil {
+	callerClaims := claimsFromCtx(ctx)
+	if s.skipAuthz {
+		callerClaims = nil
+	}
+	if err := validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
 		otel.RecordError(span, err)
 		return err
 	}
@@ -410,7 +427,11 @@ func (s *dbService) ListRegistryEntries(ctx context.Context, registryName string
 	}
 
 	// Validate caller's JWT covers the registry's claims (hide existence on failure)
-	if err := s.validateClaimsSubsetBytes(ctx, claimsFromCtx(ctx), registry.Claims); err != nil {
+	callerClaims := claimsFromCtx(ctx)
+	if s.skipAuthz {
+		callerClaims = nil
+	}
+	if err := validateClaimsSubsetBytes(ctx, callerClaims, registry.Claims); err != nil {
 		err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
 		otel.RecordError(span, err)
 		return nil, err
@@ -481,11 +502,11 @@ func getExistingAPIRegistry(
 
 // replaceRegistrySourcesWithGate is like replaceRegistrySources but validates
 // the caller's claims cover each source's claims.
-func (s *dbService) replaceRegistrySourcesWithGate(
+func replaceRegistrySourcesWithGate(
 	ctx context.Context, querier *sqlc.Queries, registryID uuid.UUID,
 	sourceNames []string, callerClaims map[string]any,
 ) error {
-	sourceIDs, err := s.resolveSourceIDsWithGate(ctx, querier, sourceNames, callerClaims)
+	sourceIDs, err := resolveSourceIDsWithGate(ctx, querier, sourceNames, callerClaims)
 	if err != nil {
 		return err
 	}
@@ -530,7 +551,7 @@ func registryToInfo(reg sqlc.Registry, sources []sqlc.ListRegistrySourcesRow) *s
 
 // resolveSourceIDsWithGate resolves source names to UUIDs and validates that
 // the caller's claims cover each source's claims.
-func (s *dbService) resolveSourceIDsWithGate(
+func resolveSourceIDsWithGate(
 	ctx context.Context, querier *sqlc.Queries, names []string, callerClaims map[string]any,
 ) ([]uuid.UUID, error) {
 	ids := make([]uuid.UUID, 0, len(names))
@@ -542,7 +563,7 @@ func (s *dbService) resolveSourceIDsWithGate(
 			}
 			return nil, fmt.Errorf("failed to resolve source %s: %w", name, err)
 		}
-		if err := s.validateClaimsSubsetBytes(ctx, callerClaims, src.Claims); err != nil {
+		if err := validateClaimsSubsetBytes(ctx, callerClaims, src.Claims); err != nil {
 			return nil, fmt.Errorf("%w: cannot reference source %s", err, name)
 		}
 		ids = append(ids, src.ID)
@@ -575,7 +596,7 @@ func unlinkAllSources(
 // streamRegistryRows fetches registry rows in batches, filtering by caller claims,
 // until the DB is exhausted. This avoids underfilled responses when post-filtering
 // drops rows that fail claims checks.
-func (s *dbService) streamRegistryRows(
+func streamRegistryRows(
 	ctx context.Context,
 	querier *sqlc.Queries,
 	callerClaims map[string]any,
@@ -592,7 +613,7 @@ func (s *dbService) streamRegistryRows(
 		}
 
 		for _, reg := range batch {
-			if err := s.validateClaimsSubsetBytes(ctx, callerClaims, reg.Claims); err != nil {
+			if err := validateClaimsSubsetBytes(ctx, callerClaims, reg.Claims); err != nil {
 				continue
 			}
 			accumulated = append(accumulated, reg)

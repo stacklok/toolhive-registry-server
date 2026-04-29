@@ -49,7 +49,11 @@ func (s *dbService) ListSkills(
 		options.Limit = service.MaxPageSize
 	}
 
-	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
+	gateClaims := options.Claims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -80,13 +84,16 @@ func (s *dbService) ListSkills(
 		params.CursorVersion = &cursorVersion
 	}
 
-	claimsFilter := s.newClaimsFilterWith(
+	claimsFilter := newClaimsFilterWith(
 		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			r, ok := record.(sqlc.ListSkillsRow)
 			return r.Claims, ok
 		},
 	)
+	if s.skipAuthz {
+		claimsFilter = nil
+	}
 	listRows, nextCursor, err := streamSkillRows(ctx, querier, params, claimsFilter, options.Limit)
 	if err != nil {
 		otel.RecordError(span, err)
@@ -174,7 +181,11 @@ func (s *dbService) GetSkillVersion(
 
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
+	gateClaims := options.Claims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -207,13 +218,16 @@ func (s *dbService) GetSkillVersion(
 	// higher-priority ones fail. The filter is nil for skipAuthz, anonymous,
 	// and super-admin callers (uniform bypass — see newClaimsFilterWith), in
 	// which case the highest-priority row wins outright.
-	claimsFilter := s.newClaimsFilterWith(
+	claimsFilter := newClaimsFilterWith(
 		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			r, ok := record.(sqlc.GetSkillVersionRow)
 			return r.Claims, ok
 		},
 	)
+	if s.skipAuthz {
+		claimsFilter = nil
+	}
 	var row sqlc.GetSkillVersionRow
 	found := false
 	for _, r := range rows {
@@ -320,7 +334,11 @@ func (s *dbService) PublishSkill(
 	}
 
 	// Validate published claims are a subset of the publisher's JWT claims
-	if err := s.validateClaimsSubset(ctx, options.JWTClaims, options.Claims); err != nil {
+	gateClaims := options.JWTClaims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	if err := validateClaimsSubset(ctx, gateClaims, options.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -674,7 +692,11 @@ func (s *dbService) executeDeleteSkillTransaction(
 			}
 			return fmt.Errorf("failed to look up registry entry: %w", err)
 		}
-		if err := s.validateClaimsSubsetBytes(ctx, options.JWTClaims, existing.Claims); err != nil {
+		gateClaims := options.JWTClaims
+		if s.skipAuthz {
+			gateClaims = nil
+		}
+		if err := validateClaimsSubsetBytes(ctx, gateClaims, existing.Claims); err != nil {
 			return err
 		}
 	}

@@ -58,7 +58,11 @@ func (s *dbService) ListServers(
 	}
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
+	gateClaims := options.Claims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -117,13 +121,16 @@ func (s *dbService) ListServers(
 		return helpers, nil
 	}
 
-	claimsFilter := s.newClaimsFilterWith(
+	claimsFilter := newClaimsFilterWith(
 		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			h, ok := record.(helper)
 			return h.Claims, ok
 		},
 	)
+	if s.skipAuthz {
+		claimsFilter = nil
+	}
 	results, lastCursor, err := s.sharedListServersWithCursor(ctx, querierFunc, options.Limit, claimsFilter)
 	if err != nil {
 		otel.RecordError(span, err)
@@ -182,7 +189,11 @@ func (s *dbService) ListServerVersions(
 	}
 	span.SetAttributes(otel.AttrRegistryName.String(options.RegistryName))
 
-	registryIDForVersions, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
+	gateClaims := options.Claims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	registryIDForVersions, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -211,13 +222,16 @@ func (s *dbService) ListServerVersions(
 		return helpers, nil
 	}
 
-	claimsFilter := s.newClaimsFilterWith(
+	claimsFilter := newClaimsFilterWith(
 		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			h, ok := record.(helper)
 			return h.Claims, ok
 		},
 	)
+	if s.skipAuthz {
+		claimsFilter = nil
+	}
 	results, err := s.sharedListServers(ctx, querierFunc, claimsFilter)
 	if err != nil {
 		otel.RecordError(span, err)
@@ -263,7 +277,11 @@ func (s *dbService) GetServerVersion(
 		otel.AttrRegistryName.String(options.RegistryName),
 	)
 
-	registryID, err := s.lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, options.Claims)
+	gateClaims := options.Claims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	registryID, err := lookupRegistryIDWithGate(ctx, s.pool, options.RegistryName, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -307,13 +325,16 @@ func (s *dbService) GetServerVersion(
 		return helpers, nil
 	}
 
-	claimsFilter := s.newClaimsFilterWith(
+	claimsFilter := newClaimsFilterWith(
 		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
 			h, ok := record.(helper)
 			return h.Claims, ok
 		},
 	)
+	if s.skipAuthz {
+		claimsFilter = nil
+	}
 	res, err := s.sharedListServers(ctx, querierFunc, claimsFilter)
 	if err != nil {
 		otel.RecordError(span, err)
@@ -605,7 +626,11 @@ func (s *dbService) PublishServerVersion(
 	}
 
 	// Validate published claims are a subset of the publisher's JWT claims
-	if err := s.validateClaimsSubset(ctx, options.JWTClaims, options.Claims); err != nil {
+	gateClaims := options.JWTClaims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	if err := validateClaimsSubset(ctx, gateClaims, options.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -855,7 +880,11 @@ func (s *dbService) executeDeleteTransaction(
 			}
 			return fmt.Errorf("failed to look up registry entry: %w", err)
 		}
-		if err := s.validateClaimsSubsetBytes(ctx, options.JWTClaims, existing.Claims); err != nil {
+		gateClaims := options.JWTClaims
+		if s.skipAuthz {
+			gateClaims = nil
+		}
+		if err := validateClaimsSubsetBytes(ctx, gateClaims, existing.Claims); err != nil {
 			return err
 		}
 	}

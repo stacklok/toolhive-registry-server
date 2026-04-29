@@ -43,18 +43,14 @@ func checkClaimConsistency(incomingJSON, existingJSON []byte) error {
 
 // validateClaimsSubset checks that callerClaims covers resourceClaims.
 // Returns nil if:
-//   - skipAuthz is true (auth-only mode — claim-based gating disabled)
-//   - callerClaims is nil (anonymous — no caller identity to gate on)
+//   - callerClaims is nil (caller has opted out of the gate — callers pass
+//     nil when skipAuthz is enabled or in anonymous mode)
 //   - the caller is a super-admin (bypasses all claim checks)
 //   - callerClaims is a superset of resourceClaims
 //
-// Returns ErrClaimsInsufficient when authz is enabled and either:
-//   - resourceClaims is nil/empty (default-deny on unlabeled resources — see auth.md §4)
-//   - callerClaims does not cover resourceClaims
-func (s *dbService) validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[string]any) error {
-	if s.skipAuthz {
-		return nil
-	}
+// Returns ErrClaimsInsufficient otherwise, including when resourceClaims
+// is nil/empty (default-deny on unlabeled resources — see auth.md §4).
+func validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[string]any) error {
 	if callerClaims == nil {
 		return nil
 	}
@@ -71,17 +67,14 @@ func (s *dbService) validateClaimsSubset(ctx context.Context, callerClaims, reso
 }
 
 // validateClaimsSubsetBytes is like validateClaimsSubset but accepts raw JSON
-// for resourceClaims. When authz is enabled, an empty resource JSON is
-// default-deny (unlabeled resources are not visible to claim-bearing callers).
-func (s *dbService) validateClaimsSubsetBytes(ctx context.Context, callerClaims map[string]any, resourceClaimsJSON []byte) error {
-	if s.skipAuthz {
-		return nil
-	}
+// for resourceClaims. An empty resource JSON is default-deny when callerClaims
+// is non-nil (unlabeled resources are invisible to claim-bearing callers).
+func validateClaimsSubsetBytes(ctx context.Context, callerClaims map[string]any, resourceClaimsJSON []byte) error {
 	if callerClaims == nil {
 		return nil
 	}
 	resourceClaims := db.DeserializeClaims(resourceClaimsJSON)
-	return s.validateClaimsSubset(ctx, callerClaims, resourceClaims)
+	return validateClaimsSubset(ctx, callerClaims, resourceClaims)
 }
 
 // claimsFromCtx extracts JWT claims from the context as map[string]any.
@@ -103,21 +96,14 @@ func claimsFromCtx(ctx context.Context) map[string]any {
 // extract retrieves the raw claims JSON from a record; returning ok=false
 // causes the filter to reject the record with a type error.
 // Returns nil (no filter applied — every record visible) when:
-//   - s.skipAuthz is true (no auth.authz configured — claim-based gating disabled)
-//   - callerClaims is nil/empty (anonymous — no caller identity to gate on)
+//   - callerClaims is nil/empty (callers pass nil when skipAuthz is enabled
+//     or in anonymous mode)
 //   - the caller is a super-admin (uniform bypass)
-//
-// The skipAuthz short-circuit lives here, not at the callsite, so a new list
-// path can't forget the guard and silently apply claim filtering when the
-// gate is supposed to be off.
-func (s *dbService) newClaimsFilterWith(
+func newClaimsFilterWith(
 	ctx context.Context,
 	callerClaims map[string]any,
 	extract func(record any) (claims []byte, ok bool),
 ) service.RecordFilter {
-	if s.skipAuthz {
-		return nil
-	}
 	callerJSON := marshalClaims(callerClaims)
 	if callerJSON == nil {
 		return nil

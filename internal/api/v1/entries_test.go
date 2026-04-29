@@ -78,7 +78,7 @@ func TestPublishEntry(t *testing.T) {
 				m.EXPECT().PublishServerVersion(gomock.Any(), gomock.Any()).
 					Return(nil, service.ErrNoManagedSource)
 			},
-			wantStatus: http.StatusServiceUnavailable,
+			wantStatus: http.StatusInternalServerError,
 			wantError:  "no managed source available for publishing",
 		},
 		{
@@ -321,7 +321,7 @@ func TestDeletePublishedEntry(t *testing.T) {
 				m.EXPECT().DeleteServerVersion(gomock.Any(), gomock.Any(), gomock.Any()).
 					Return(service.ErrNoManagedSource)
 			},
-			wantStatus: http.StatusServiceUnavailable,
+			wantStatus: http.StatusInternalServerError,
 			wantError:  "no managed source available for deletion",
 		},
 		{

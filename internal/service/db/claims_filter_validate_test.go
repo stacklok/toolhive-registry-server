@@ -18,28 +18,13 @@ func TestValidateClaimsSubset(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		skipAuthz      bool
 		callerClaims   map[string]any
 		resourceClaims map[string]any
 		superAdmin     bool
 		wantErr        error
 	}{
 		{
-			name:           "skipAuthz bypasses gate even for non-covering claims",
-			skipAuthz:      true,
-			callerClaims:   map[string]any{"sub": "user2"},
-			resourceClaims: map[string]any{"sub": "user1"},
-			wantErr:        nil,
-		},
-		{
-			name:           "skipAuthz bypasses gate for empty resource claims",
-			skipAuthz:      true,
-			callerClaims:   map[string]any{"sub": "user1"},
-			resourceClaims: map[string]any{},
-			wantErr:        nil,
-		},
-		{
-			name:           "nil caller claims (anonymous) returns nil",
+			name:           "nil caller claims (anonymous or skipAuthz) returns nil",
 			callerClaims:   nil,
 			resourceClaims: map[string]any{"sub": "user1"},
 			wantErr:        nil,
@@ -117,8 +102,7 @@ func TestValidateClaimsSubset(t *testing.T) {
 				ctx = auth.ContextWithRoles(ctx, []auth.Role{auth.RoleSuperAdmin})
 			}
 
-			svc := &dbService{skipAuthz: tt.skipAuthz}
-			err := svc.validateClaimsSubset(ctx, tt.callerClaims, tt.resourceClaims)
+			err := validateClaimsSubset(ctx, tt.callerClaims, tt.resourceClaims)
 
 			if tt.wantErr != nil {
 				require.Error(t, err)
@@ -135,20 +119,12 @@ func TestValidateClaimsSubsetBytes(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		skipAuthz    bool
 		callerClaims map[string]any
 		resourceJSON []byte
 		wantErr      error
 	}{
 		{
-			name:         "skipAuthz bypasses gate for empty resource JSON",
-			skipAuthz:    true,
-			callerClaims: map[string]any{"sub": "user1"},
-			resourceJSON: nil,
-			wantErr:      nil,
-		},
-		{
-			name:         "nil caller claims returns nil",
+			name:         "nil caller claims (anonymous or skipAuthz) returns nil",
 			callerClaims: nil,
 			resourceJSON: []byte(`{"sub":"user1"}`),
 			wantErr:      nil,
@@ -184,8 +160,7 @@ func TestValidateClaimsSubsetBytes(t *testing.T) {
 			t.Parallel()
 
 			ctx := t.Context()
-			svc := &dbService{skipAuthz: tt.skipAuthz}
-			err := svc.validateClaimsSubsetBytes(ctx, tt.callerClaims, tt.resourceJSON)
+			err := validateClaimsSubsetBytes(ctx, tt.callerClaims, tt.resourceJSON)
 
 			if tt.wantErr != nil {
 				require.Error(t, err)

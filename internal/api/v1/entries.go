@@ -33,7 +33,6 @@ type publishEntryRequest struct {
 // @Failure		400	{object}	map[string]string	"Bad request"
 // @Failure		409	{object}	map[string]string	"Conflict"
 // @Failure		500	{object}	map[string]string	"Internal server error"
-// @Failure		503	{object}	map[string]string	"No managed source available"
 // @Router		/v1/entries [post]
 func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 	var req publishEntryRequest
@@ -108,7 +107,7 @@ func writePublishError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	if errors.Is(err, service.ErrNoManagedSource) {
-		common.WriteErrorResponse(w, "no managed source available for publishing", http.StatusServiceUnavailable)
+		common.WriteErrorResponse(w, "no managed source available for publishing", http.StatusInternalServerError)
 		return
 	}
 	slog.ErrorContext(r.Context(), "failed to publish entry", "error", err)
@@ -129,7 +128,6 @@ func writePublishError(w http.ResponseWriter, r *http.Request, err error) {
 // @Failure		400	{object}	map[string]string	"Bad request"
 // @Failure		404	{object}	map[string]string	"Not found"
 // @Failure		500	{object}	map[string]string	"Internal server error"
-// @Failure		503	{object}	map[string]string	"No managed source available"
 // @Router		/v1/entries/{type}/{name}/versions/{version} [delete]
 func (routes *Routes) deletePublishedEntry(w http.ResponseWriter, r *http.Request) {
 	entryType, err := common.GetAndValidateURLParam(r, "type")
@@ -176,7 +174,7 @@ func (routes *Routes) deletePublishedEntry(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if errors.Is(err, service.ErrNoManagedSource) {
-			common.WriteErrorResponse(w, "no managed source available for deletion", http.StatusServiceUnavailable)
+			common.WriteErrorResponse(w, "no managed source available for deletion", http.StatusInternalServerError)
 			return
 		}
 		slog.ErrorContext(r.Context(), "failed to delete entry", "error", err, "type", entryType)

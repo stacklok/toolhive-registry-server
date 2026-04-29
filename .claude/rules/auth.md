@@ -88,10 +88,13 @@ claims are non-empty; new "empty = open" carve-outs; 404 responses on registry a
 denial; publish handlers that accept empty claims when `authzEnabled`.
 
 **Implementation note**: `validateClaimsSubset` and `validateClaimsSubsetBytes` in
-`internal/service/db/claims_filter.go` are methods on `*dbService` so they can read
-`s.skipAuthz`. When `skipAuthz` is true (no `auth.authz` configured), the gate
-short-circuits to allow — claim-based authorization is opt-in, and turning authz off
-disables the entire gate, including its default-deny posture on empty claims.
+`internal/service/db/claims_filter.go` are package-level functions and intentionally
+have no knowledge of `s.skipAuthz`. They short-circuit when `callerClaims == nil`, so
+every callsite is responsible for passing `nil` when authz is off — the standard pattern
+is `gateClaims := …; if s.skipAuthz { gateClaims = nil }`. Keeping the gate functions
+pure preserves the layering: internal-state inspection lives at the callsite, not inside
+the matching algorithm. Turning authz off disables the entire gate, including its
+default-deny posture on empty claims.
 
 **Upgrading from "empty = open" to default-deny**: deployments that ran with authz off,
 or that ingest synced sources whose entries have no claims, will have rows in
