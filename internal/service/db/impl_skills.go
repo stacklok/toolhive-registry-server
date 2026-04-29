@@ -204,12 +204,30 @@ func (s *dbService) GetSkillVersion(
 
 	// Iterate rows in priority order (position ascending) and pick the first
 	// one that passes the claims check, promoting lower-priority sources when
-	// higher-priority ones fail.
-	callerJSON := marshalClaims(options.Claims)
+	// higher-priority ones fail. The filter is nil for skipAuthz, anonymous,
+	// and super-admin callers (uniform bypass — see newClaimsFilterWith), in
+	// which case the highest-priority row wins outright.
+	claimsFilter := s.newClaimsFilterWith(
+		ctx, options.Claims,
+		func(record any) ([]byte, bool) {
+			r, ok := record.(sqlc.GetSkillVersionRow)
+			return r.Claims, ok
+		},
+	)
 	var row sqlc.GetSkillVersionRow
 	found := false
 	for _, r := range rows {
-		if s.skipAuthz || callerJSON == nil || checkClaims(callerJSON, r.Claims) {
+		if claimsFilter == nil {
+			row = r
+			found = true
+			break
+		}
+		ok, err := claimsFilter(ctx, r)
+		if err != nil {
+			otel.RecordError(span, err)
+			return nil, err
+		}
+		if ok {
 			row = r
 			found = true
 			break
