@@ -152,6 +152,26 @@ func (mr *MockRegistryServiceMockRecorder) DeleteSource(ctx, name any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSource", reflect.TypeOf((*MockRegistryService)(nil).DeleteSource), ctx, name)
 }
 
+// GetEntryClaims mocks base method.
+func (m *MockRegistryService) GetEntryClaims(ctx context.Context, opts ...service.Option) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "GetEntryClaims", varargs...)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetEntryClaims indicates an expected call of GetEntryClaims.
+func (mr *MockRegistryServiceMockRecorder) GetEntryClaims(ctx any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEntryClaims", reflect.TypeOf((*MockRegistryService)(nil).GetEntryClaims), varargs...)
+}
+
 // GetRegistryByName mocks base method.
 func (m *MockRegistryService) GetRegistryByName(ctx context.Context, name string) (*service.RegistryInfo, error) {
 	m.ctrl.T.Helper()

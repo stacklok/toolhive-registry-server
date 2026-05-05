@@ -185,6 +185,92 @@ func (routes *Routes) deletePublishedEntry(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// entryClaimsResponse is the response body for fetching or returning entry claims.
+type entryClaimsResponse struct {
+	Claims map[string]any `json:"claims"`
+}
+
+// getEntryClaims handles GET /v1/entries/{type}/{name}/claims.
+//
+// Authorization model:
+//   - manageEntries role gate runs in middleware (see routes.go).
+//   - Service-layer JWT subset check denies cross-team reads (403) when authz
+//     is enabled, mirroring the matching PUT.
+//   - Anonymous mode (no JWT in context): the handler skips WithJWTClaims, the
+//     gate short-circuits, and any caller reads any entry's claims. Intended,
+//     but worth knowing if you ever run partial-anonymous deployments.
+//
+// The response envelope `{"claims": {...}}` is always a non-nil JSON object —
+// the impl normalises a missing/nil claims blob to `map[string]any{}`. Under
+// authz, that branch is reachable only by super-admin (the publish path
+// forbids empty claims per auth.md §6, and the gate denies empty-claim rows
+// for everyone else per §4) or by callers in `skipAuthz=true` deployments.
+// Either way the response shape stays stable.
+//
+// @Summary		Get entry claims
+// @Description	Get the claims for an API-published entry name within the managed source.
+// @Description	Claims are stored at the entry-name level and are shared by every version of that name.
+// @Description	Synced-source entries (git/api/file/kubernetes) are out of scope: their claims come from
+// @Description	upstream (the source manifest or the `toolhive.stacklok.dev/authz-claims` annotation) and
+// @Description	are surfaced through the `/v1/sources/{name}/entries` and `/v1/registries/{name}/entries` lists.
+// @Tags		v1
+// @Produce		json
+// @Param		type	path		string	true	"Entry Type (server or skill)"
+// @Param		name	path		string	true	"Entry Name"
+// @Success		200	{object}	entryClaimsResponse	"Entry claims"
+// @Failure		400	{object}	map[string]string	"Bad request"
+// @Failure		403	{object}	map[string]string	"Forbidden"
+// @Failure		404	{object}	map[string]string	"Not found"
+// @Failure		500	{object}	map[string]string	"Internal server error"
+// @Failure		503	{object}	map[string]string	"No managed source available"
+// @Router		/v1/entries/{type}/{name}/claims [get]
+func (routes *Routes) getEntryClaims(w http.ResponseWriter, r *http.Request) {
+	entryType, err := common.GetAndValidateURLParam(r, "type")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	name, err := common.GetAndValidateURLParam(r, "name")
+	if err != nil {
+		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	opts := []service.Option{
+		service.WithEntryType(entryType),
+		service.WithName(name),
+	}
+	if jwtClaims := auth.ClaimsFromContext(r.Context()); jwtClaims != nil {
+		opts = append(opts, service.WithJWTClaims(map[string]any(jwtClaims)))
+	}
+
+	claims, err := routes.service.GetEntryClaims(r.Context(), opts...)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidEntryType) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, service.ErrClaimsInsufficient) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, service.ErrNotFound) {
+			common.WriteErrorResponse(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, service.ErrNoManagedSource) {
+			common.WriteErrorResponse(w, "no managed source available", http.StatusServiceUnavailable)
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to get entry claims", "error", err, "type", entryType)
+		common.WriteErrorResponse(w, "failed to get entry claims", http.StatusInternalServerError)
+		return
+	}
+
+	common.WriteJSONResponse(w, entryClaimsResponse{Claims: claims}, http.StatusOK)
+}
+
 // updateEntryClaimsRequest is the request body for updating entry claims.
 type updateEntryClaimsRequest struct {
 	Claims map[string]any `json:"claims"`
