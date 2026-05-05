@@ -23,6 +23,18 @@ const (
 	ResourceTypeSkill    = "skill"
 )
 
+// Target field keys.
+const (
+	targetFieldMethod       = "method"
+	targetFieldPath         = "path"
+	targetFieldResourceType = "resource_type"
+	targetFieldResourceName = "resource_name"
+	targetFieldRegistryName = "registry_name"
+	targetFieldNamespace    = "namespace"
+	targetFieldEntryType    = "entry_type"
+	targetFieldVersion      = "version"
+)
+
 // Event types for the MCP registry v0.1 discovery API.
 const (
 	EventServerList         = "server.list"

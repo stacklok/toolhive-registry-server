@@ -68,7 +68,7 @@ func WithTracerInsecure(insecure bool) TracerProviderOption {
 func NewTracerProvider(ctx context.Context, opts ...TracerProviderOption) (trace.TracerProvider, error) {
 	cfg := &tracerProviderConfig{
 		serviceName:    DefaultServiceName,
-		serviceVersion: "unknown",
+		serviceVersion: DefaultServiceVersion,
 		endpoint:       DefaultEndpoint,
 	}
 
