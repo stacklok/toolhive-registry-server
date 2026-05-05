@@ -517,7 +517,7 @@ func (p *OAuthProviderConfig) validateProvider(index int, insecureAllowHTTP bool
 	// Enforce HTTPS unless THV_REGISTRY_INSECURE_URL=true or localhost
 	if issuerURL.Scheme != "https" && !insecureAllowHTTP {
 		host := issuerURL.Hostname()
-		if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+		if !isLoopbackHost(host) {
 			const msg = "must use HTTPS (set THV_REGISTRY_INSECURE_URL=true to allow HTTP)"
 			return fmt.Errorf("auth.oauth.providers[%d].issuerUrl %s", index, msg)
 		}
@@ -1238,4 +1238,18 @@ func (c *Config) validateAuth() error {
 	}
 
 	return nil
+}
+
+// hostLocalhost is the DNS loopback alias accepted alongside 127.0.0.1 and ::1.
+const hostLocalhost = "localhost"
+
+// isLoopbackHost reports whether host is a loopback identifier for which
+// HTTP issuer URLs are accepted without THV_REGISTRY_INSECURE_URL.
+func isLoopbackHost(host string) bool {
+	switch host {
+	case hostLocalhost, "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
 }

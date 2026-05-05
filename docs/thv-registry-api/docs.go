@@ -759,6 +759,7 @@ const docTemplate = `{
                     "version": {
                         "description": "Version is the package version (required for npm, pypi, nuget; optional for mcpb; not used by oci where version is in the identifier)",
                         "example": "1.0.2",
+                        "maxLength": 255,
                         "minLength": 1,
                         "type": "string"
                     }
@@ -1074,6 +1075,8 @@ const docTemplate = `{
                     },
                     "version": {
                         "example": "1.0.2",
+                        "maxLength": 255,
+                        "minLength": 1,
                         "type": "string"
                     },
                     "websiteUrl": {

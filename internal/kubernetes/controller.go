@@ -76,6 +76,11 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
+// annotationValueTrue is the literal value treated as opt-in for boolean
+// annotations on registry-export CRDs. Kubernetes annotations are string-typed,
+// so we accept only the exact string "true".
+const annotationValueTrue = "true"
+
 func checkAnnotation(annotations map[string]string, annotation string) bool {
 	if annotations == nil {
 		return false
@@ -84,10 +89,7 @@ func checkAnnotation(annotations map[string]string, annotation string) bool {
 	if !ok {
 		return false
 	}
-	if value == "true" {
-		return true
-	}
-	return false
+	return value == annotationValueTrue
 }
 
 func makeNewObjectPredicate[T client.Object](
