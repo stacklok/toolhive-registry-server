@@ -17,6 +17,9 @@ const (
 	// DefaultSampling is the default trace sampling rate (5%)
 	// This provides a reasonable balance between observability and overhead
 	DefaultSampling = 0.05
+
+	// DefaultServiceVersion is the placeholder reported when ServiceVersion is unset.
+	DefaultServiceVersion = "unknown"
 )
 
 // Config represents the root telemetry configuration
@@ -78,10 +81,10 @@ func (c *Config) GetServiceName() string {
 	return c.ServiceName
 }
 
-// GetServiceVersion returns the service version, using "unknown" if not specified
+// GetServiceVersion returns the service version, using DefaultServiceVersion if not specified.
 func (c *Config) GetServiceVersion() string {
 	if c.ServiceVersion == "" {
-		return "unknown"
+		return DefaultServiceVersion
 	}
 	return c.ServiceVersion
 }
