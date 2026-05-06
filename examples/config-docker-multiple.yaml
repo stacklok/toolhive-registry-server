@@ -15,20 +15,13 @@
 
 # Multiple sources from different origins
 sources:
-  # File-based source from ToolHive catalog
-  - name: toolhive-file
-    file:
-      # Path to mounted file in Docker container
-      path: /examples/toolhive-registry.json
-    syncPolicy:
-      interval: "30s"  # Short interval for testing
-
   # File-based source from upstream registry
   - name: upstream-file
     file:
+      # Path to mounted file in Docker container
       path: /examples/upstream-registry.json
     syncPolicy:
-      interval: "30s"
+      interval: "30s"  # Short interval for testing
 
   # API-based source from MCP official registry with filtering
   - name: mcp-api
@@ -70,7 +63,7 @@ sources:
 
 registries:
   - name: default
-    sources: ["toolhive-file", "upstream-file", "mcp-api", "toolhive-git"]
+    sources: ["upstream-file", "mcp-api", "toolhive-git"]
 
 auth:
   mode: anonymous
