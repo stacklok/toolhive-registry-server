@@ -1,36 +1,47 @@
-# Dual-registry configuration for Docker Compose
+# Dual-source configuration for Docker Compose
 #
-# This configuration demonstrates merging data from multiple registry sources.
-# The API server will combine servers from both registries and serve them
-# through the unified MCP Registry API.
+# This configuration demonstrates merging data from two sources backed by the
+# same MCP Registry v0.1 file but with different per-source filters. The API
+# server combines the filtered subsets and serves them through the unified
+# MCP Registry API.
 #
 # Usage:
 #   CONFIG_FILE=config-docker-dual.yaml docker-compose up
 #
 # This example shows:
-# - Loading from two different file sources
-# - Different sync intervals for each registry
-# - How the server merges data from multiple sources
+# - Two file sources with different sync intervals
+# - Per-source filters carving the catalog into a database subset and a
+#   version-control subset
+# - How the server merges filtered data from multiple sources
 
 # Two file-based sources
 sources:
-  # Source 1: Upstream MCP standard
-  - name: upstream-servers
+  # Source 1: Database-related servers
+  - name: database-servers
     file:
       path: /examples/upstream-registry.json  # All examples files are mounted
     syncPolicy:
       interval: "30s"  # Quick sync for testing
+    filter:
+      names:
+        include:
+          - "*/*-mysql-*"
+          - "*/genai-*"
 
-  # Source 2: ToolHive catalog
-  - name: toolhive-servers
+  # Source 2: Version-control servers
+  - name: version-control-servers
     file:
-      path: /examples/toolhive-registry.json  # All examples files are mounted
+      path: /examples/upstream-registry.json  # All examples files are mounted
     syncPolicy:
       interval: "45s"  # Different interval
+    filter:
+      names:
+        include:
+          - "*/git*"
 
 registries:
   - name: default
-    sources: ["upstream-servers", "toolhive-servers"]
+    sources: ["database-servers", "version-control-servers"]
 
 # Authentication configuration
 auth:

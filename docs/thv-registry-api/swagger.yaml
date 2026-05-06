@@ -275,7 +275,7 @@ components:
           description: Last sync attempt
           type: string
         lastSyncTime:
-          description: Last successful sync
+          description: Last completed sync attempt
           type: string
         message:
           description: Status or error message

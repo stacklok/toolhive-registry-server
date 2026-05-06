@@ -87,6 +87,13 @@ const (
 	ManualSyncReasonRequested        = "manual-sync-requested"
 )
 
+// orphanedSyncGracePeriod is the maximum time a source may legitimately stay
+// at IN_PROGRESS before ShouldSync treats the row as orphaned (left over from
+// a process killed mid-sync) and re-runs the sync. Comfortably longer than
+// any realistic sync run, but well under the multi-day wedge windows we have
+// observed when this guardrail was missing.
+const orphanedSyncGracePeriod = time.Hour
+
 // Condition reasons for status conditions
 const (
 	// Failure reasons
@@ -192,8 +199,16 @@ func (s *defaultSyncManager) ShouldSync(
 	syncStatus *status.SyncStatus,
 	manualSyncRequested bool,
 ) (Reason, *sources.FetchResult) {
-	// If registry is currently syncing, don't start another sync
-	if syncStatus.Phase == status.SyncPhaseSyncing {
+	// If registry is currently syncing, don't start another sync — unless the
+	// row is orphaned (see isOrphanedInProgressSync), in which case the
+	// previous sync was killed mid-flight and we fall through so the regular
+	// sync flow can land a fresh terminal status.
+	if syncStatus.Phase == status.SyncPhaseSyncing && !isOrphanedInProgressSync(regCfg.Name, syncStatus) {
+		slog.Info("ShouldSync returning",
+			"reason", ReasonAlreadyInProgress.String(),
+			"shouldSync", false,
+			"registry", regCfg.Name,
+			"started_at", syncStatus.LastAttempt)
 		return ReasonAlreadyInProgress, nil
 	}
 
@@ -252,6 +267,26 @@ func (s *defaultSyncManager) ShouldSync(
 	slog.Info("ShouldSync returning", "reason", reason.String(), "shouldSync", reason.ShouldSync())
 
 	return reason, prefetched
+}
+
+// isOrphanedInProgressSync returns true when an IN_PROGRESS row was almost
+// certainly left over from a sync process killed mid-flight. The deferred
+// status update in coordinator.performRegistrySync is the only path that
+// clears IN_PROGRESS; if the process dies (SIGKILL, OOM, eviction) the defer
+// never runs and the row stays IN_PROGRESS forever, wedging the source on
+// every subsequent coordinator tick. The grace window is comfortably longer
+// than any realistic sync run, so a real in-flight sync is never misclassified
+// as orphaned. A nil started_at is treated as orphaned because we have no
+// timestamp to bound it against.
+func isOrphanedInProgressSync(registryName string, syncStatus *status.SyncStatus) bool {
+	if syncStatus.LastAttempt != nil && time.Since(*syncStatus.LastAttempt) <= orphanedSyncGracePeriod {
+		return false
+	}
+	slog.Warn("Detected stale IN_PROGRESS sync, treating as failed",
+		"registry", registryName,
+		"started_at", syncStatus.LastAttempt,
+		"grace_period", orphanedSyncGracePeriod.String())
+	return true
 }
 
 // isSyncNeededForState checks if sync is needed based on the registry's current state

@@ -42,7 +42,11 @@ type SyncStatus struct {
 	// AttemptCount is the number of sync attempts since last success
 	AttemptCount int `yaml:"attemptCount,omitempty"`
 
-	// LastSyncTime is the timestamp of the last successful sync
+	// LastSyncTime is the timestamp at which the most recent sync attempt
+	// ended (mapped to the `registry_sync.ended_at` column). It is set on
+	// both success and failure so the scheduler can advance past sources
+	// that are failing — see coordinator.performRegistrySync. Use Phase to
+	// distinguish a successful sync from a failed attempt.
 	LastSyncTime *time.Time `yaml:"lastSyncTime,omitempty"`
 
 	// LastSyncHash is the hash of the last successfully synced data
