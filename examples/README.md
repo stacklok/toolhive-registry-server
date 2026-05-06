@@ -54,7 +54,7 @@ registries:
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/catalog/toolhive/data/registry-legacy.json
+      path: pkg/catalog/toolhive/data/registry-upstream.json
     syncPolicy:
       interval: "30m"
 ```
@@ -62,7 +62,7 @@ registries:
 **What happens when you start:**
 1. Background sync coordinator starts immediately
 2. Clones `https://github.com/stacklok/toolhive-catalog.git` (shallow, depth=1)
-3. Extracts `pkg/catalog/toolhive/data/registry-legacy.json` from the `main` branch
+3. Extracts `pkg/catalog/toolhive/data/registry-upstream.json` from the `main` branch
 4. Stores synced data in the PostgreSQL database
 5. Repeats every 30 minutes
 
@@ -99,9 +99,8 @@ registries:
 
 **What happens when you start:**
 1. Makes HTTP GET to `https://registry.modelcontextprotocol.io/registry/v0.1/servers`
-2. Converts from upstream MCP format to ToolHive format
-3. Stores synced data in the PostgreSQL database
-4. Repeats every hour (less frequent to be respectful of external APIs)
+2. Stores synced data in the PostgreSQL database
+3. Repeats every hour (less frequent to be respectful of external APIs)
 
 **Best for:**
 - Aggregating multiple registry sources
@@ -251,11 +250,9 @@ filter:
 3. Tag include (empty = include all)
 4. Tag exclude
 
-### Data Format Examples
+### Data Format
 
-See the example files for format reference:
-- **ToolHive format** (`examples/toolhive-registry.json`): Flat structure with servers as an object/map
-- **Upstream format** (`examples/upstream-registry.json`): Wrapper structure with meta/data sections and MCP 2025-10-17 schema
+See [`examples/upstream-registry.json`](upstream-registry.json) for a reference file in the MCP Registry v0.1 format consumed by this server.
 
 ### Git Version Pinning
 
@@ -274,7 +271,7 @@ registries:
       # Option 3: Pin to exact commit
       commit: abc123def456
 
-      path: pkg/catalog/toolhive/data/registry-legacy.json
+      path: pkg/catalog/toolhive/data/registry-upstream.json
     syncPolicy:
       interval: "30m"
 ```
@@ -366,7 +363,7 @@ registries:
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: develop  # Use dev branch
-      path: pkg/catalog/toolhive/data/registry-legacy.json
+      path: pkg/catalog/toolhive/data/registry-upstream.json
     syncPolicy:
       interval: "1m"  # Very frequent for testing
 ```
