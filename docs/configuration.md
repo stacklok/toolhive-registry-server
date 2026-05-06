@@ -61,7 +61,7 @@ sources:
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/catalog/toolhive/data/registry-legacy.json
+      path: pkg/catalog/toolhive/data/registry-upstream.json
     syncPolicy:
       interval: "30m"
     filter:
@@ -149,7 +149,7 @@ git:
   branch: main                    # Optional: defaults to default branch
   tag: v1.0.0                     # Optional: use specific tag
   commit: abc123                  # Optional: pin to specific commit
-  path: pkg/catalog/toolhive/data/registry-legacy.json
+  path: pkg/catalog/toolhive/data/registry-upstream.json
   auth:                           # Optional: for private repos
     username: user
     passwordFile: /secrets/git-password
@@ -430,7 +430,7 @@ sources:
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/catalog/toolhive/data/registry-legacy.json
+      path: pkg/catalog/toolhive/data/registry-upstream.json
     syncPolicy:
       interval: "15m"
     filter:
@@ -473,7 +473,7 @@ sources:
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
       branch: main
-      path: pkg/catalog/toolhive/data/registry-legacy.json
+      path: pkg/catalog/toolhive/data/registry-upstream.json
     syncPolicy:
       interval: "30m"
 
