@@ -57,7 +57,7 @@ Every source has a sync status that reflects the outcome of the most recent sync
 ```
 
 The sync record also includes:
-- The timestamp of the last sync attempt and last successful sync
+- The start time of the last sync attempt and the finish time of the last completed sync attempt
 - The number of consecutive failures since the last success
 - The server count from the last successful sync
 - A hash of the last synced data, used for change detection
@@ -66,7 +66,7 @@ The sync record also includes:
 
 The coordinator polls for pending work every **two minutes**, with a small random jitter applied to each interval. This prevents multiple server instances from hitting the database simultaneously.
 
-When selecting a source to sync, the coordinator always picks the source with the oldest successful sync first (sources that have never synced are prioritized). Row-level locking ensures that multiple instances of the server can run concurrently without processing the same source twice.
+When selecting a source to sync, the coordinator always picks the source with the oldest completed sync attempt first (sources that have never completed an attempt are prioritized). Row-level locking ensures that multiple instances of the server can run concurrently without processing the same source twice.
 
 ## When Sync Is Triggered
 

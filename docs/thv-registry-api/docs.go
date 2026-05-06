@@ -409,7 +409,7 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "lastSyncTime": {
-                        "description": "Last successful sync",
+                        "description": "Last completed sync attempt",
                         "type": "string"
                     },
                     "message": {

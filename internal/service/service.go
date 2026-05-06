@@ -184,7 +184,7 @@ type RegistryInfo struct {
 // SourceSyncStatus represents the sync status of a registry
 type SourceSyncStatus struct {
 	Phase        string     `json:"phase"`                  // complete, syncing, failed
-	LastSyncTime *time.Time `json:"lastSyncTime,omitempty"` // Last successful sync
+	LastSyncTime *time.Time `json:"lastSyncTime,omitempty"` // Last completed sync attempt
 	LastAttempt  *time.Time `json:"lastAttempt,omitempty"`  // Last sync attempt
 	AttemptCount int        `json:"attemptCount"`           // Number of sync attempts
 	ServerCount  int        `json:"serverCount"`            // Number of servers in registry
