@@ -12,6 +12,11 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
+// teamDataClaim is the team-name fixture used across the
+// `GetEntryClaims` tests. Extracted to keep `goconst` happy when the same
+// literal would otherwise repeat across files and test cases.
+const teamDataClaim = "data"
+
 func TestGetEntryClaims_ReturnsClaims(t *testing.T) {
 	t.Parallel()
 
@@ -84,8 +89,8 @@ func TestGetEntryClaims_ClaimsInsufficient(t *testing.T) {
 			Name:    "com.test/gec-insufficient",
 			Version: "1.0.0",
 		}),
-		service.WithClaims(map[string]any{"org": "acme", "team": "data"}),
-		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{"data"}}),
+		service.WithClaims(map[string]any{"org": "acme", "team": teamDataClaim}),
+		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{teamDataClaim}}),
 	)
 	require.NoError(t, err)
 
@@ -114,8 +119,8 @@ func TestGetEntryClaims_SuperAdminBypassesSubsetCheck(t *testing.T) {
 			Name:    "com.test/gec-superadmin",
 			Version: "1.0.0",
 		}),
-		service.WithClaims(map[string]any{"org": "acme", "team": "data"}),
-		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{"data"}}),
+		service.WithClaims(map[string]any{"org": "acme", "team": teamDataClaim}),
+		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{teamDataClaim}}),
 	)
 	require.NoError(t, err)
 
@@ -128,7 +133,7 @@ func TestGetEntryClaims_SuperAdminBypassesSubsetCheck(t *testing.T) {
 		service.WithJWTClaims(map[string]any{"org": "contoso"}),
 	)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]any{"org": "acme", "team": "data"}, claims)
+	assert.Equal(t, map[string]any{"org": "acme", "team": teamDataClaim}, claims)
 }
 
 func TestGetEntryClaims_ClaimsSufficient(t *testing.T) {
