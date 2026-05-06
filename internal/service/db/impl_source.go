@@ -903,9 +903,17 @@ func fetchSyncStatus(ctx context.Context, querier *sqlc.Queries, sourceName stri
 		}
 		return nil
 	}
+	// `ended_at` is set on every attempt (success and failure) so the scheduler
+	// can advance past failing sources. The public `lastSyncTime` field is
+	// documented as the last *successful* sync, so only surface it when the
+	// most recent attempt completed.
+	var lastSyncTime *time.Time
+	if syncRecord.SyncStatus == sqlc.SyncStatusCOMPLETED {
+		lastSyncTime = syncRecord.EndedAt
+	}
 	return &service.SourceSyncStatus{
 		Phase:        convertSyncPhase(syncRecord.SyncStatus),
-		LastSyncTime: syncRecord.EndedAt,
+		LastSyncTime: lastSyncTime,
 		LastAttempt:  syncRecord.StartedAt,
 		AttemptCount: int(syncRecord.AttemptCount),
 		ServerCount:  int(syncRecord.ServerCount),
