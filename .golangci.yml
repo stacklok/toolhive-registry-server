@@ -83,7 +83,13 @@ linters:
           - errcheck
           - dupl
           - gosec
+          - goconst
         path: (.+)_test\.go
+      # Test helper / fixture files are not named *_test.go but contain
+      # the same kind of repeated literal data that goconst flags noisily.
+      - linters:
+          - goconst
+        path: (test_helpers|testutils.*)\.go
       - linters:
           - lll
         path: .golangci.yml

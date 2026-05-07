@@ -62,15 +62,15 @@ func setRouteInfo(ctx context.Context, info *RouteInfo) {
 func Audited(eventType, resourceType, nameParam string, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		target := map[string]string{
-			"method": r.Method,
-			"path":   r.URL.Path,
+			targetFieldMethod: r.Method,
+			targetFieldPath:   r.URL.Path,
 		}
 		if resourceType != "" {
-			target["resource_type"] = resourceType
+			target[targetFieldResourceType] = resourceType
 		}
 		if nameParam != "" {
 			if name := chi.URLParam(r, nameParam); name != "" {
-				target["resource_name"] = name
+				target[targetFieldResourceName] = name
 			}
 		}
 		setRouteInfo(r.Context(), &RouteInfo{
@@ -86,15 +86,15 @@ func Audited(eventType, resourceType, nameParam string, h http.HandlerFunc) http
 func AuditedUpsert(onCreate, onUpdate, resourceType, nameParam string, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		target := map[string]string{
-			"method": r.Method,
-			"path":   r.URL.Path,
+			targetFieldMethod: r.Method,
+			targetFieldPath:   r.URL.Path,
 		}
 		if resourceType != "" {
-			target["resource_type"] = resourceType
+			target[targetFieldResourceType] = resourceType
 		}
 		if nameParam != "" {
 			if name := chi.URLParam(r, nameParam); name != "" {
-				target["resource_name"] = name
+				target[targetFieldResourceName] = name
 			}
 		}
 		setRouteInfo(r.Context(), &RouteInfo{
@@ -111,18 +111,18 @@ func AuditedUpsert(onCreate, onUpdate, resourceType, nameParam string, h http.Ha
 func AuditedEntry(eventType string, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		target := map[string]string{
-			"method":        r.Method,
-			"path":          r.URL.Path,
-			"resource_type": ResourceTypeEntry,
+			targetFieldMethod:       r.Method,
+			targetFieldPath:         r.URL.Path,
+			targetFieldResourceType: ResourceTypeEntry,
 		}
 		if entryType := chi.URLParam(r, "type"); entryType != "" {
-			target["entry_type"] = entryType
+			target[targetFieldEntryType] = entryType
 		}
 		if name := chi.URLParam(r, "name"); name != "" {
-			target["resource_name"] = name
+			target[targetFieldResourceName] = name
 		}
 		if version := chi.URLParam(r, "version"); version != "" {
-			target["version"] = version
+			target[targetFieldVersion] = version
 		}
 		setRouteInfo(r.Context(), &RouteInfo{
 			EventType: eventType,
@@ -137,18 +137,18 @@ func AuditedEntry(eventType string, h http.HandlerFunc) http.HandlerFunc {
 func AuditedServer(eventType string, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		target := map[string]string{
-			"method":        r.Method,
-			"path":          r.URL.Path,
-			"resource_type": ResourceTypeServer,
+			targetFieldMethod:       r.Method,
+			targetFieldPath:         r.URL.Path,
+			targetFieldResourceType: ResourceTypeServer,
 		}
 		if registryName := chi.URLParam(r, "registryName"); registryName != "" {
-			target["registry_name"] = registryName
+			target[targetFieldRegistryName] = registryName
 		}
 		if serverName := chi.URLParam(r, "serverName"); serverName != "" {
-			target["resource_name"] = serverName
+			target[targetFieldResourceName] = serverName
 		}
 		if version := chi.URLParam(r, "version"); version != "" {
-			target["version"] = version
+			target[targetFieldVersion] = version
 		}
 		setRouteInfo(r.Context(), &RouteInfo{
 			EventType: eventType,
@@ -163,21 +163,21 @@ func AuditedServer(eventType string, h http.HandlerFunc) http.HandlerFunc {
 func AuditedSkill(eventType string, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		target := map[string]string{
-			"method":        r.Method,
-			"path":          r.URL.Path,
-			"resource_type": ResourceTypeSkill,
+			targetFieldMethod:       r.Method,
+			targetFieldPath:         r.URL.Path,
+			targetFieldResourceType: ResourceTypeSkill,
 		}
 		if registryName := chi.URLParam(r, "registryName"); registryName != "" {
-			target["registry_name"] = registryName
+			target[targetFieldRegistryName] = registryName
 		}
 		if namespace := chi.URLParam(r, "namespace"); namespace != "" {
-			target["namespace"] = namespace
+			target[targetFieldNamespace] = namespace
 		}
 		if name := chi.URLParam(r, "name"); name != "" {
-			target["resource_name"] = name
+			target[targetFieldResourceName] = name
 		}
 		if version := chi.URLParam(r, "version"); version != "" {
-			target["version"] = version
+			target[targetFieldVersion] = version
 		}
 		setRouteInfo(r.Context(), &RouteInfo{
 			EventType: eventType,

@@ -13,6 +13,18 @@ import (
 	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 )
 
+const (
+	// defaultServerVersion is used when an MCPServer resource does not carry
+	// an explicit version annotation.
+	defaultServerVersion = "1.0.0"
+	// defaultServerStatus is the registry.ServerExtensions.Status value used
+	// for entries derived from running Kubernetes resources.
+	defaultServerStatus = "active"
+	// defaultImageVersion is returned by parseImageTagOrDigest when no tag or
+	// digest can be extracted from the container image reference.
+	defaultImageVersion = "latest"
+)
+
 // extractServer converts an MCPServer to a ServerJSON object
 //
 //nolint:unparam
@@ -27,9 +39,9 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 	// Note: MCPServer is a Kubernetes deployment resource, so we extract
 	// what information is available and create a minimal ServerJSON
 	serverJSON := &upstreamv0.ServerJSON{
-		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+		Schema:  model.CurrentSchemaURL,
 		Name:    serverName,
-		Version: "1.0.0", // Default version, could be extracted from annotations or labels
+		Version: defaultServerVersion, // Default version, could be extracted from annotations or labels
 	}
 
 	// Extract packages from MCPServer spec (using the container image)
@@ -69,7 +81,7 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 
 	// Create ServerExtensions with Kubernetes metadata
 	extensions := &registry.ServerExtensions{
-		Status: "active", // Default status
+		Status: defaultServerStatus, // Default status
 		Metadata: &registry.Metadata{
 			Kubernetes: &registry.KubernetesMetadata{
 				Kind:      mcpServer.Kind,
@@ -119,9 +131,9 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 	// Note: VirtualMCPServer is a Kubernetes deployment resource, so we extract
 	// what information is available and create a minimal ServerJSON
 	serverJSON := &upstreamv0.ServerJSON{
-		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+		Schema:  model.CurrentSchemaURL,
 		Name:    serverName,
-		Version: "1.0.0", // Default version, could be extracted from annotations or labels
+		Version: defaultServerVersion, // Default version, could be extracted from annotations or labels
 	}
 
 	annotations := virtualMCPServer.GetAnnotations()
@@ -157,7 +169,7 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 
 	// Create ServerExtensions with Kubernetes metadata
 	extensions := &registry.ServerExtensions{
-		Status: "active", // Default status
+		Status: defaultServerStatus, // Default status
 		Metadata: &registry.Metadata{
 			Kubernetes: &registry.KubernetesMetadata{
 				Kind:      virtualMCPServer.Kind,
@@ -205,9 +217,9 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 	// Note: MCPRemoteProxy is a Kubernetes deployment resource, so we extract
 	// what information is available and create a minimal ServerJSON
 	serverJSON := &upstreamv0.ServerJSON{
-		Schema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+		Schema:  model.CurrentSchemaURL,
 		Name:    serverName,
-		Version: "1.0.0", // Default version, could be extracted from annotations or labels
+		Version: defaultServerVersion, // Default version, could be extracted from annotations or labels
 	}
 
 	annotations := mcpRemoteProxy.GetAnnotations()
@@ -243,7 +255,7 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 
 	// Create ServerExtensions with Kubernetes metadata
 	extensions := &registry.ServerExtensions{
-		Status: "active", // Default status
+		Status: defaultServerStatus, // Default status
 		Metadata: &registry.Metadata{
 			Kubernetes: &registry.KubernetesMetadata{
 				Kind:      mcpRemoteProxy.Kind,
@@ -329,17 +341,17 @@ func extractPackages(mcpServer *mcpv1alpha1.MCPServer) []model.Package {
 		transportType = model.TransportTypeStreamableHTTP
 	}
 
-	if transportType == "stdio" {
+	if transportType == model.TransportTypeStdio {
 		if mcpServer.Spec.ProxyMode != "" {
 			transportType = mcpServer.Spec.ProxyMode
 		} else {
-			transportType = "streamable-http"
+			transportType = model.TransportTypeStreamableHTTP
 		}
 	}
 
 	version := parseImageTagOrDigest(mcpServer.Spec.Image)
 	packageModel := model.Package{
-		RegistryType: "oci",
+		RegistryType: model.RegistryTypeOCI,
 		Identifier:   mcpServer.Spec.Image,
 		Version:      version,
 		Transport: model.Transport{
@@ -375,7 +387,7 @@ func parseImageTagOrDigest(image string) string {
 		return potentialTag
 	}
 
-	return "latest"
+	return defaultImageVersion
 }
 
 // structToMap converts a struct to map[string]any using JSON marshaling.

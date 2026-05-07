@@ -21,6 +21,8 @@ import (
 	writermocks "github.com/stacklok/toolhive-registry-server/internal/sync/writer/mocks"
 )
 
+func ptrTime(t time.Time) *time.Time { return &t }
+
 func TestNewDefaultSyncManager(t *testing.T) {
 	t.Parallel()
 
@@ -73,7 +75,46 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			expectedReason: ReasonRegistryNotReady,
 		},
 		{
-			name:                "sync not needed when already syncing",
+			name:                "sync not needed when already syncing within grace window",
+			manualSyncRequested: false,
+			config: &config.SourceConfig{
+				Name: "test-registry",
+				File: &config.FileConfig{
+					Path: testFilePath,
+				},
+			},
+			syncStatus: &status.SyncStatus{
+				Phase:       status.SyncPhaseSyncing,
+				LastAttempt: ptrTime(time.Now().Add(-5 * time.Minute)), // recent — real in-flight sync
+			},
+			expectedReason: ReasonAlreadyInProgress,
+		},
+		{
+			// Regression coverage for the "wedged IN_PROGRESS" bug: when a sync
+			// process is killed mid-flight, its deferred status update never
+			// lands and the row stays IN_PROGRESS forever. Once started_at is
+			// older than orphanedSyncGracePeriod, ShouldSync must treat the row
+			// as orphaned and fall through to the normal sync path, which lets
+			// the coordinator's defer write a fresh terminal status.
+			name:                "stale IN_PROGRESS past grace window is treated as orphaned",
+			manualSyncRequested: false,
+			config: &config.SourceConfig{
+				Name: "test-registry",
+				File: &config.FileConfig{
+					Path: testFilePath,
+				},
+			},
+			syncStatus: &status.SyncStatus{
+				Phase:       status.SyncPhaseSyncing,
+				LastAttempt: ptrTime(time.Now().Add(-2 * time.Hour)), // well past 1h grace
+			},
+			expectedReason: ReasonRegistryNotReady,
+		},
+		{
+			// IN_PROGRESS without a started_at can only come from legacy data
+			// or a code path that forgot to set it; either way we can't tell
+			// when the sync started, so default to treating it as orphaned.
+			name:                "IN_PROGRESS with no started_at is treated as orphaned",
 			manualSyncRequested: false,
 			config: &config.SourceConfig{
 				Name: "test-registry",
@@ -84,7 +125,7 @@ func TestDefaultSyncManager_ShouldSync(t *testing.T) {
 			syncStatus: &status.SyncStatus{
 				Phase: status.SyncPhaseSyncing,
 			},
-			expectedReason: ReasonAlreadyInProgress,
+			expectedReason: ReasonRegistryNotReady,
 		},
 		{
 			name:                "sync needed when registry is in failed state",

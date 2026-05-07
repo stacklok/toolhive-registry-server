@@ -268,8 +268,15 @@ func (c *defaultCoordinator) performRegistrySync(
 		attribute.Float64("sync.duration_seconds", syncDuration.Seconds()),
 	)
 
-	// Update status based on result
+	// Update status based on result.
+	//
+	// LastSyncTime is set on every attempt — success and failure — because it is
+	// persisted as the `registry_sync.ended_at` column, which the scheduler uses
+	// to pick the next source to sync (`ORDER BY ended_at ASC NULLS FIRST`). If
+	// we only advanced it on success, a permanently failing source would keep
+	// `ended_at` NULL and starve every other source by sorting first forever.
 	now := time.Now()
+	syncStatus.LastSyncTime = &now
 	if syncErr != nil {
 		syncStatus.Phase = status.SyncPhaseFailed
 		syncStatus.Message = syncErr.Message
@@ -287,7 +294,6 @@ func (c *defaultCoordinator) performRegistrySync(
 	} else {
 		syncStatus.Phase = status.SyncPhaseComplete
 		syncStatus.Message = "Sync completed successfully"
-		syncStatus.LastSyncTime = &now
 		syncStatus.LastSyncHash = result.Hash
 		syncStatus.ServerCount = result.ServerCount
 		syncStatus.SkillCount = result.SkillCount

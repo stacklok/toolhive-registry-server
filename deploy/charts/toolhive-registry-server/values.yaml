@@ -6,7 +6,7 @@ replicaCount: 1
 
 image:
   # -- URL of the registry server image
-  registryServerUrl: "ghcr.io/stacklok/thv-registry-api:v1.4.0"
+  registryServerUrl: "ghcr.io/stacklok/thv-registry-api:v1.4.1"
 
   # -- Image pull policy
   pullPolicy: IfNotPresent
@@ -135,7 +135,7 @@ config:
       git:
         repository: https://github.com/stacklok/toolhive-catalog.git
         branch: main
-        path: pkg/catalog/toolhive/data/registry-legacy.json
+        path: pkg/catalog/toolhive/data/registry-upstream.json
       syncPolicy:
         interval: "30m"
 
@@ -172,7 +172,7 @@ config:
 #       git:
 #         repository: https://github.com/stacklok/toolhive-catalog.git
 #         tag: v1.0.0
-#         path: pkg/catalog/toolhive/data/registry-legacy.json
+#         path: pkg/catalog/toolhive/data/registry-upstream.json
 #         # auth:
 #         #   username: git-user
 #         #   passwordFile: /secrets/git-token

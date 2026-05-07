@@ -29,6 +29,15 @@ const (
 	iconThemeDark  = "DARK"
 )
 
+// colServerID is the FK column shared by every per-server temp table fed by COPY.
+const colServerID = "server_id"
+
+// Skill package registry types (see toolhive-core skills_types.go).
+const (
+	skillRegistryTypeOCI = "oci"
+	skillRegistryTypeGit = "git"
+)
+
 // dbSyncWriter is a SyncWriter implementation that persists data to a database
 type dbSyncWriter struct {
 	pool        *pgxpool.Pool
@@ -365,7 +374,7 @@ func bulkInsertPackages(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_package"},
-		[]string{"server_id", "registry_type", "pkg_registry_url", "pkg_identifier", "pkg_version",
+		[]string{colServerID, "registry_type", "pkg_registry_url", "pkg_identifier", "pkg_version",
 			"runtime_hint", "runtime_arguments", "package_arguments", "env_vars", "sha256_hash",
 			"transport", "transport_url", "transport_headers"},
 		pgx.CopyFromRows(packageRows))
@@ -460,7 +469,7 @@ func bulkInsertRemotes(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_remote"},
-		[]string{"server_id", "transport", "transport_url", "transport_headers"},
+		[]string{colServerID, "transport", "transport_url", "transport_headers"},
 		pgx.CopyFromRows(remoteRows))
 	if err != nil {
 		return fmt.Errorf("failed to copy remotes: %w", err)
@@ -544,7 +553,7 @@ func bulkInsertIcons(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_icon"},
-		[]string{"server_id", "source_uri", "mime_type", "theme"},
+		[]string{colServerID, "source_uri", "mime_type", "theme"},
 		pgx.CopyFromRows(iconRows))
 	if err != nil {
 		return fmt.Errorf("failed to copy icons: %w", err)
@@ -1111,7 +1120,7 @@ func replaceSkillPackages(
 
 	for _, pkg := range skill.Packages {
 		switch pkg.RegistryType {
-		case "oci":
+		case skillRegistryTypeOCI:
 			if err := querier.InsertSkillOciPackage(ctx, sqlc.InsertSkillOciPackageParams{
 				SkillID:    skillVersionID,
 				Identifier: pkg.Identifier,
@@ -1120,7 +1129,7 @@ func replaceSkillPackages(
 			}); err != nil {
 				return fmt.Errorf("failed to insert OCI package for skill %s: %w", key, err)
 			}
-		case "git":
+		case skillRegistryTypeGit:
 			if err := querier.InsertSkillGitPackage(ctx, sqlc.InsertSkillGitPackageParams{
 				SkillID:   skillVersionID,
 				Url:       pkg.URL,
@@ -1191,7 +1200,7 @@ func marshalJSONOrNil(v any) ([]byte, error) {
 		return nil, nil
 	}
 	rv := reflect.ValueOf(v)
-	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+	if rv.Kind() == reflect.Pointer && rv.IsNil() {
 		return nil, nil
 	}
 	return json.Marshal(v)

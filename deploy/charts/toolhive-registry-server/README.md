@@ -63,7 +63,7 @@ The command removes all the Kubernetes components associated with the chart and 
 | config.registries[0].name | string | `"default"` |  |
 | config.registries[0].sources[0] | string | `"toolhive"` |  |
 | config.sources[0].git.branch | string | `"main"` |  |
-| config.sources[0].git.path | string | `"pkg/catalog/toolhive/data/registry-legacy.json"` |  |
+| config.sources[0].git.path | string | `"pkg/catalog/toolhive/data/registry-upstream.json"` |  |
 | config.sources[0].git.repository | string | `"https://github.com/stacklok/toolhive-catalog.git"` |  |
 | config.sources[0].name | string | `"toolhive"` |  |
 | config.sources[0].syncPolicy.interval | string | `"30m"` |  |
@@ -73,7 +73,7 @@ The command removes all the Kubernetes components associated with the chart and 
 | extraVolumes | list | `[]` | Additional volumes to add to the pod |
 | fullnameOverride | string | `""` | Override the full name of the chart |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
-| image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v1.4.0"` | URL of the registry server image |
+| image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v1.4.1"` | URL of the registry server image |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries |
 | initContainers | list | `[]` | Init containers to run before the main container Use this for setup tasks like preparing pgpass files, waiting for dependencies, etc. Init containers share the same volumes as the main container (extraVolumes) |
 | livenessProbe | object | `{"httpGet":{"path":"/health","port":"internal-http"},"initialDelaySeconds":30,"periodSeconds":10}` | Liveness probe configuration |

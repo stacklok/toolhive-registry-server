@@ -73,7 +73,7 @@ func WithMeterInsecure(insecure bool) MeterProviderOption {
 func NewMeterProvider(ctx context.Context, opts ...MeterProviderOption) (metric.MeterProvider, error) {
 	cfg := &meterProviderConfig{
 		serviceName:    DefaultServiceName,
-		serviceVersion: "unknown",
+		serviceVersion: DefaultServiceVersion,
 		endpoint:       DefaultEndpoint,
 	}
 

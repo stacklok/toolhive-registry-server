@@ -205,8 +205,8 @@ func emitAuthFailureEvent(r *http.Request, logger *Logger) {
 	source := SourceFromRequest(r)
 
 	target := map[string]string{
-		"method": r.Method,
-		"path":   r.URL.Path,
+		targetFieldMethod: r.Method,
+		targetFieldPath:   r.URL.Path,
 	}
 
 	event := audit.NewAuditEvent(
