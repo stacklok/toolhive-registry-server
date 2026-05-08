@@ -363,8 +363,10 @@ func TestWrapWithPublicPaths(t *testing.T) {
 // Also proves the identity holder is populated so an outer access logger
 // can read it after the chain returns.
 //
-// Not t.Parallel: this test mutates slog.Default() globally to capture
-// log output.
+// This test (and the fallback test below) mutate slog.Default() to
+// capture log output, so they must run sequentially.
+//
+//nolint:paralleltest,tparallel // mutates slog.Default(); see comment above
 func TestMultiProviderMiddleware_LogsIdentity(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockValidator := mocks.NewMocktokenValidatorInterface(ctrl)
@@ -445,6 +447,8 @@ func TestMultiProviderMiddleware_LogsIdentity(t *testing.T) {
 // TestMultiProviderMiddleware_LogsIdentity_PreferredUsernameFallback verifies
 // that when the JWT lacks `name` but has `preferred_username`, the latter is
 // used as the user display name in the log line.
+//
+//nolint:paralleltest,tparallel // mutates slog.Default()
 func TestMultiProviderMiddleware_LogsIdentity_PreferredUsernameFallback(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockValidator := mocks.NewMocktokenValidatorInterface(ctrl)

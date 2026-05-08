@@ -211,8 +211,10 @@ func findRecord(t *testing.T, records []map[string]any, msg string) map[string]a
 // sub: "anonymous" (with empty user) when no auth middleware populates
 // the identity holder, and that all pre-existing fields are preserved.
 //
-// Not t.Parallel: captureSlog mutates the process-global slog.Default(),
-// so running these tests concurrently would cross-pollute their buffers.
+// captureSlog mutates the process-global slog.Default(), so this and
+// the other LoggingMiddleware tests below must run sequentially.
+//
+//nolint:paralleltest,tparallel // mutates slog.Default(); see comment above
 func TestLoggingMiddleware_AnonymousRequest(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -244,6 +246,8 @@ func TestLoggingMiddleware_AnonymousRequest(t *testing.T) {
 // reads those values back even though the inner ctx is a child branch.
 // This is the exact middleware-ordering wrinkle the change is meant to
 // solve.
+//
+//nolint:paralleltest,tparallel // mutates slog.Default()
 func TestLoggingMiddleware_AuthenticatedRequest(t *testing.T) {
 	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Stand-in for the auth middleware: write identity into the holder
@@ -267,6 +271,8 @@ func TestLoggingMiddleware_AuthenticatedRequest(t *testing.T) {
 // TestLoggingMiddleware_ErrorStatus verifies sub/user are still populated
 // when the handler returns 4xx/5xx — the log level changes but identity
 // fields remain on the line.
+//
+//nolint:paralleltest,tparallel // mutates slog.Default()
 func TestLoggingMiddleware_ErrorStatus(t *testing.T) {
 	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth.SetIdentity(r.Context(), "user-1", "Bob")
