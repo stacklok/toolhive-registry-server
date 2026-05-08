@@ -29,7 +29,7 @@ func (*Routes) getMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subject, _ := claims["sub"].(string)
+	subject, _ := auth.IdentityFromClaims(claims)
 	roles := auth.RolesFromContext(r.Context())
 
 	roleStrings := make([]string, 0, len(roles))

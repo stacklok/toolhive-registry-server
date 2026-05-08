@@ -1117,55 +1117,6 @@ func TestSubjectsFromRequest(t *testing.T) {
 	}
 }
 
-func TestClaimString(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		claims   map[string]any
-		key      string
-		expected string
-	}{
-		{
-			name:     "existing string claim",
-			claims:   map[string]any{"name": "Alice"},
-			key:      "name",
-			expected: "Alice",
-		},
-		{
-			name:     "missing claim returns empty",
-			claims:   map[string]any{"name": "Alice"},
-			key:      "email",
-			expected: "",
-		},
-		{
-			name:     "non-string claim returns empty",
-			claims:   map[string]any{"iat": 12345},
-			key:      "iat",
-			expected: "",
-		},
-		{
-			name:     "nil claims map returns empty",
-			claims:   nil,
-			key:      "name",
-			expected: "",
-		},
-		{
-			name:     "empty string claim returns empty",
-			claims:   map[string]any{"name": ""},
-			key:      "name",
-			expected: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tt.expected, claimString(tt.claims, tt.key))
-		})
-	}
-}
-
 func TestMiddleware_UnannotatedRouteSkips(t *testing.T) {
 	t.Parallel()
 

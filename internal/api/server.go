@@ -16,6 +16,7 @@ import (
 	_ "github.com/stacklok/toolhive-registry-server/docs/thv-registry-api"
 	v01 "github.com/stacklok/toolhive-registry-server/internal/api/registry/v01"
 	apiv1 "github.com/stacklok/toolhive-registry-server/internal/api/v1"
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
@@ -101,11 +102,18 @@ func NewInternalServer(svc service.RegistryService) *chi.Mux {
 	return r
 }
 
-// LoggingMiddleware logs HTTP requests
+// LoggingMiddleware logs HTTP requests, including the authenticated subject
+// when available. It installs a mutable identity holder before the chain
+// runs because Go's context is replaced (not mutated) by inner middleware
+// — the auth middleware's r.WithContext(ctx) is invisible here without a
+// shared holder. Auth populates the holder via auth.SetIdentity on success.
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+		ctx := auth.WithIdentityHolder(r.Context())
+		r = r.WithContext(ctx)
 
 		next.ServeHTTP(ww, r)
 
@@ -119,6 +127,11 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 			logLevel = slog.LevelWarn
 		}
 
+		sub, user := auth.IdentityFromContext(r.Context())
+		if sub == "" {
+			sub = auth.AnonymousSubject
+		}
+
 		slog.Log(r.Context(), logLevel, "HTTP request",
 			"method", r.Method,
 			"path", r.URL.Path,
@@ -127,6 +140,8 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 			"response_bytes", ww.BytesWritten(),
 			"request_id", middleware.GetReqID(r.Context()),
 			"remote_addr", r.RemoteAddr,
+			"sub", sub,
+			"user", user,
 		)
 	})
 }

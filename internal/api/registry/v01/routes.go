@@ -125,10 +125,16 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
+	sub, user := auth.IdentityFromContext(r.Context())
+	if sub == "" {
+		sub = auth.AnonymousSubject
+	}
 	slog.InfoContext(r.Context(), "List servers completed",
 		"result_count", len(listResult.Servers),
 		"has_more", listResult.NextCursor != "",
 		"request_id", middleware.GetReqID(r.Context()),
+		"sub", sub,
+		"user", user,
 	)
 
 	serverResponses := make([]upstreamv0.ServerResponse, len(listResult.Servers))
@@ -208,10 +214,16 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	sub, user := auth.IdentityFromContext(r.Context())
+	if sub == "" {
+		sub = auth.AnonymousSubject
+	}
 	slog.InfoContext(r.Context(), "List versions completed",
 		"result_count", len(versions),
 		"server_name", serverName,
 		"request_id", middleware.GetReqID(r.Context()),
+		"sub", sub,
+		"user", user,
 	)
 
 	serverResponses := make([]upstreamv0.ServerResponse, len(versions))

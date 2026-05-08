@@ -226,44 +226,29 @@ func emitAuthFailureEvent(r *http.Request, logger *Logger) {
 	event.LogTo(r.Context(), logger.Slog(), auditLevel)
 }
 
-// subjectsFromRequest extracts the authenticated subject from JWT claims.
-// Follows toolhive's fallback order: sub, then name/preferred_username/email
-// for display name. Returns an "anonymous" marker when no claims are present.
+// subjectsFromRequest extracts the authenticated subject from JWT claims for
+// audit event logging. Returns an "anonymous" marker when no claims are
+// present, or when claims lack a `sub`, preserving the existing audit shape.
+// Identity resolution itself (sub + display-name fallback) is delegated to
+// auth.IdentityFromClaims so the access logger and audit pipeline cannot drift.
 func subjectsFromRequest(r *http.Request) map[string]string {
 	claims := auth.ClaimsFromContext(r.Context())
 	if claims == nil {
 		return map[string]string{"identity": "anonymous"}
 	}
 
+	sub, user := auth.IdentityFromClaims(claims)
 	subjects := make(map[string]string, 4)
-
-	if sub, ok := claims["sub"].(string); ok && sub != "" {
+	if sub != "" {
 		subjects["sub"] = sub
 	} else {
 		subjects["identity"] = "anonymous"
 	}
-
-	// Display name: name → preferred_username → email (toolhive parity)
-	if name := claimString(claims, "name"); name != "" {
-		subjects["user"] = name
-	} else if pref := claimString(claims, "preferred_username"); pref != "" {
-		subjects["user"] = pref
-	} else if email := claimString(claims, "email"); email != "" {
-		subjects["user"] = email
+	if user != "" {
+		subjects["user"] = user
 	}
-
 	if auth.IsSuperAdmin(r.Context()) {
 		subjects["role"] = "super_admin"
 	}
-
 	return subjects
-}
-
-// claimString extracts a string claim value, returning "" if missing or wrong type.
-func claimString(claims map[string]any, key string) string {
-	v, ok := claims[key].(string)
-	if !ok {
-		return ""
-	}
-	return v
 }
