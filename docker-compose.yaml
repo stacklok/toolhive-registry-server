@@ -32,6 +32,11 @@ services:
       POSTGRES_PASSWORD: registry_password
       POSTGRES_DB: registry
       POSTGRES_INITDB_ARGS: "-E UTF8"
+      # postgres:18 changed the default PGDATA to /var/lib/postgresql/$PG_MAJOR/docker.
+      # The entrypoint then refuses to start when it sees a mount at the legacy
+      # /var/lib/postgresql/data path (even on a fresh volume). Pin PGDATA to the
+      # legacy path so the existing volume layout keeps working.
+      PGDATA: /var/lib/postgresql/data
     ports:
       - "5432:5432"
     volumes:
