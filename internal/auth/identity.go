@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"sync"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -19,17 +20,28 @@ const AnonymousSubject = "anonymous"
 // child branch — without a shared holder, an outer access logger cannot see
 // claims attached by inner auth middleware.
 //
-// Concurrency note: the holder is intentionally unsynchronised. The chi
-// middleware chain runs synchronously on a single goroutine, so the writer
-// (auth middleware) and the reader (LoggingMiddleware after next.ServeHTTP)
-// are sequenced via the call/return of next.ServeHTTP. Introducing a
-// goroutine-hopping middleware above LoggingMiddleware (e.g. http.TimeoutHandler,
-// or any handler that spawns the inner chain in a goroutine) would race the
-// fields below — wrap them in atomic.Pointer or a mutex if that ever lands.
+// All access goes through store/load so the holder remains safe even if a
+// future middleware (e.g. http.TimeoutHandler) hops the inner chain to a
+// separate goroutine. Contention is essentially zero in the normal chi
+// chain — one writer, one reader, sequenced by next.ServeHTTP — so the
+// mutex is purely defensive.
 type identityHolder struct {
+	mu   sync.Mutex
 	sub  string
 	user string
 	set  bool
+}
+
+func (h *identityHolder) store(sub, user string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.sub, h.user, h.set = sub, user, true
+}
+
+func (h *identityHolder) load() (sub, user string, ok bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.sub, h.user, h.set
 }
 
 type identityHolderKey struct{}
@@ -47,7 +59,7 @@ func WithIdentityHolder(ctx context.Context) context.Context {
 // requests not routed through the access logger).
 func SetIdentity(ctx context.Context, sub, user string) {
 	if h, ok := ctx.Value(identityHolderKey{}).(*identityHolder); ok && h != nil {
-		h.sub, h.user, h.set = sub, user, true
+		h.store(sub, user)
 	}
 }
 
@@ -59,8 +71,10 @@ func SetIdentity(ctx context.Context, sub, user string) {
 // Returns ("", "") when no identity is available. Use AnonymousSubject when
 // emitting log fields so the schema stays uniform.
 func IdentityFromContext(ctx context.Context) (sub, user string) {
-	if h, ok := ctx.Value(identityHolderKey{}).(*identityHolder); ok && h != nil && h.set {
-		return h.sub, h.user
+	if h, ok := ctx.Value(identityHolderKey{}).(*identityHolder); ok && h != nil {
+		if sub, user, set := h.load(); set {
+			return sub, user
+		}
 	}
 	return IdentityFromClaims(ClaimsFromContext(ctx))
 }

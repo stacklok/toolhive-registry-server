@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -154,6 +156,50 @@ func TestSetIdentity_NoHolderIsNoOp(t *testing.T) {
 	require.NotPanics(t, func() {
 		SetIdentity(context.Background(), "user-1", "Alice")
 	})
+}
+
+// TestIdentityHolder_ConcurrentAccess hammers the holder from multiple
+// goroutines so the race detector exercises the mutex. The values read
+// don't matter — we only care that no race is reported.
+func TestIdentityHolder_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithIdentityHolder(context.Background())
+
+	const iters = 1000
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iters; i++ {
+			SetIdentity(ctx, "u-"+strconv.Itoa(i), "Alice")
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iters; i++ {
+			SetIdentity(ctx, "v-"+strconv.Itoa(i), "Bob")
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iters; i++ {
+			_, _ = IdentityFromContext(ctx)
+		}
+	}()
+	wg.Wait()
+
+	// Final state must be coherent: whichever writer landed last, both
+	// strings reflect that single store call (no torn read).
+	sub, user := IdentityFromContext(ctx)
+	switch user {
+	case "Alice":
+		assert.Truef(t, len(sub) > 0 && sub[0] == 'u', "torn read: sub=%q user=%q", sub, user)
+	case "Bob":
+		assert.Truef(t, len(sub) > 0 && sub[0] == 'v', "torn read: sub=%q user=%q", sub, user)
+	default:
+		t.Fatalf("unexpected user value: %q", user)
+	}
 }
 
 func TestClaimString(t *testing.T) {
