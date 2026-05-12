@@ -263,11 +263,11 @@
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
           "expr": "thv_reg_srv_servers_total",
-          "legendFormat": "{{ registry }}",
+          "legendFormat": "{{ source }}",
           "refId": "A"
         }
       ],
-      "title": "Servers per Registry",
+      "title": "Servers per Source",
       "type": "stat"
     },
     {
@@ -316,11 +316,11 @@
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
           "expr": "thv_reg_srv_servers_total",
-          "legendFormat": "{{ registry }}",
+          "legendFormat": "{{ source }}",
           "refId": "A"
         }
       ],
-      "title": "Servers per Registry (over time)",
+      "title": "Servers per Source (over time)",
       "type": "timeseries"
     },
     {

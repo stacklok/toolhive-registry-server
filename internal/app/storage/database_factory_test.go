@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -96,6 +97,108 @@ func TestNewDatabaseFactory(t *testing.T) {
 			factory.Cleanup()
 		})
 	}
+}
+
+func TestDatabaseFactory_CreateRegistryMetricsReader(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db, cleanupFunc := database.SetupTestDBContainer(t, ctx)
+	t.Cleanup(cleanupFunc)
+
+	err := database.MigrateUp(ctx, db)
+	require.NoError(t, err)
+
+	cfg := &config.Config{
+		Database: &config.DatabaseConfig{
+			Host:     db.Config().Host,
+			Port:     int(db.Config().Port),
+			User:     db.Config().User,
+			Password: database.DBPass,
+			Database: db.Config().Database,
+			SSLMode:  "disable",
+		},
+	}
+	factory, err := NewDatabaseFactory(ctx, cfg)
+	require.NoError(t, err)
+	t.Cleanup(factory.Cleanup)
+
+	alphaSourceID := insertMetricTestSource(t, ctx, factory, "alpha")
+	insertMetricTestSource(t, ctx, factory, "empty")
+
+	serverEntryID := insertMetricTestEntry(t, ctx, factory, alphaSourceID, "MCP", "server-a")
+	insertMetricTestVersion(t, ctx, factory, serverEntryID, "server-a", "1.0.0")
+	insertMetricTestVersion(t, ctx, factory, serverEntryID, "server-a", "2.0.0")
+	skillEntryID := insertMetricTestEntry(t, ctx, factory, alphaSourceID, "SKILL", "skill-a")
+	insertMetricTestVersion(t, ctx, factory, skillEntryID, "skill-a", "1.0.0")
+
+	reader, err := factory.CreateRegistryMetricsReader(ctx)
+	require.NoError(t, err)
+
+	counts, err := reader.RegistryMetricCounts(ctx)
+	require.NoError(t, err)
+
+	bySource := make(map[string][2]int64, len(counts))
+	for _, count := range counts {
+		bySource[count.SourceName] = [2]int64{count.ServerCount, count.SkillCount}
+	}
+
+	assert.Equal(t, [2]int64{1, 1}, bySource["alpha"])
+	assert.Equal(t, [2]int64{0, 0}, bySource["empty"])
+}
+
+func insertMetricTestSource(
+	t *testing.T,
+	ctx context.Context,
+	factory *DatabaseFactory,
+	name string,
+) uuid.UUID {
+	t.Helper()
+
+	var sourceID uuid.UUID
+	err := factory.pool.QueryRow(ctx, `
+INSERT INTO source (name, source_type, syncable, creation_type)
+VALUES ($1, 'git', true, 'CONFIG')
+RETURNING id`, name).Scan(&sourceID)
+	require.NoError(t, err)
+
+	return sourceID
+}
+
+func insertMetricTestEntry(
+	t *testing.T,
+	ctx context.Context,
+	factory *DatabaseFactory,
+	sourceID uuid.UUID,
+	entryType string,
+	name string,
+) uuid.UUID {
+	t.Helper()
+
+	var entryID uuid.UUID
+	err := factory.pool.QueryRow(ctx, `
+INSERT INTO registry_entry (source_id, entry_type, name)
+VALUES ($1, $2, $3)
+RETURNING id`, sourceID, entryType, name).Scan(&entryID)
+	require.NoError(t, err)
+
+	return entryID
+}
+
+func insertMetricTestVersion(
+	t *testing.T,
+	ctx context.Context,
+	factory *DatabaseFactory,
+	entryID uuid.UUID,
+	name string,
+	version string,
+) {
+	t.Helper()
+
+	_, err := factory.pool.Exec(ctx, `
+INSERT INTO entry_version (entry_id, name, version)
+VALUES ($1, $2, $3)`, entryID, name, version)
+	require.NoError(t, err)
 }
 
 func TestDatabaseFactory_CreateStateService(t *testing.T) {
