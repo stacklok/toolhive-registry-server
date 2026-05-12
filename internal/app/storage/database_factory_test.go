@@ -123,14 +123,14 @@ func TestDatabaseFactory_CreateRegistryMetricsReader(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(factory.Cleanup)
 
-	alphaSourceID := insertMetricTestSource(t, ctx, factory, "alpha")
-	insertMetricTestSource(t, ctx, factory, "empty")
+	alphaSourceID := insertMetricTestSource(ctx, t, factory, "alpha")
+	insertMetricTestSource(ctx, t, factory, "empty")
 
-	serverEntryID := insertMetricTestEntry(t, ctx, factory, alphaSourceID, "MCP", "server-a")
-	insertMetricTestVersion(t, ctx, factory, serverEntryID, "server-a", "1.0.0")
-	insertMetricTestVersion(t, ctx, factory, serverEntryID, "server-a", "2.0.0")
-	skillEntryID := insertMetricTestEntry(t, ctx, factory, alphaSourceID, "SKILL", "skill-a")
-	insertMetricTestVersion(t, ctx, factory, skillEntryID, "skill-a", "1.0.0")
+	serverEntryID := insertMetricTestEntry(ctx, t, factory, alphaSourceID, "MCP", "server-a")
+	insertMetricTestVersion(ctx, t, factory, serverEntryID, "server-a", "1.0.0")
+	insertMetricTestVersion(ctx, t, factory, serverEntryID, "server-a", "2.0.0")
+	skillEntryID := insertMetricTestEntry(ctx, t, factory, alphaSourceID, "SKILL", "skill-a")
+	insertMetricTestVersion(ctx, t, factory, skillEntryID, "skill-a", "1.0.0")
 
 	reader, err := factory.CreateRegistryMetricsReader(ctx)
 	require.NoError(t, err)
@@ -148,8 +148,8 @@ func TestDatabaseFactory_CreateRegistryMetricsReader(t *testing.T) {
 }
 
 func insertMetricTestSource(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	factory *DatabaseFactory,
 	name string,
 ) uuid.UUID {
@@ -166,8 +166,8 @@ RETURNING id`, name).Scan(&sourceID)
 }
 
 func insertMetricTestEntry(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	factory *DatabaseFactory,
 	sourceID uuid.UUID,
 	entryType string,
@@ -186,8 +186,8 @@ RETURNING id`, sourceID, entryType, name).Scan(&entryID)
 }
 
 func insertMetricTestVersion(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	factory *DatabaseFactory,
 	entryID uuid.UUID,
 	name string,
