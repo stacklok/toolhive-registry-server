@@ -188,6 +188,9 @@ func (c *defaultCoordinator) Stop() error {
 		// Wait for coordinator to finish
 		<-c.done
 	}
+	if err := c.registryMetrics.Unregister(); err != nil {
+		return fmt.Errorf("failed to unregister registry metrics: %w", err)
+	}
 	return nil
 }
 
@@ -319,10 +322,5 @@ func (c *defaultCoordinator) performRegistrySync(
 			c.syncMetrics.RecordSyncDuration(ctx, registryName, syncDuration, true)
 		}
 
-		// Record registry metrics
-		if c.registryMetrics != nil {
-			c.registryMetrics.RecordServersTotal(ctx, registryName, int64(result.ServerCount))
-			c.registryMetrics.RecordSkillsTotal(ctx, registryName, int64(result.SkillCount))
-		}
 	}
 }

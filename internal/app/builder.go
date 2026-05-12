@@ -74,6 +74,10 @@ type registryAppConfig struct {
 	coordinatorOpts []coordinator.Option
 }
 
+type registryMetricsReaderFactory interface {
+	CreateRegistryMetricsReader(ctx context.Context) (telemetry.RegistryMetricReader, error)
+}
+
 func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
 	cfg := &registryAppConfig{
 		address:         defaultHTTPAddress,
@@ -359,13 +363,22 @@ func buildSyncComponents(
 			slog.Info("Sync metrics enabled")
 		}
 
-		registryMetrics, err := telemetry.NewRegistryMetrics(b.meterProvider)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create registry metrics: %w", err)
-		}
-		if registryMetrics != nil {
-			coordOpts = append(coordOpts, coordinator.WithRegistryMetrics(registryMetrics))
-			slog.Info("Registry metrics enabled")
+		if readerFactory, ok := b.storageFactory.(registryMetricsReaderFactory); ok {
+			registryMetricsReader, err := readerFactory.CreateRegistryMetricsReader(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create registry metrics reader: %w", err)
+			}
+
+			registryMetrics, err := telemetry.NewRegistryMetrics(b.meterProvider, registryMetricsReader)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create registry metrics: %w", err)
+			}
+			if registryMetrics != nil {
+				coordOpts = append(coordOpts, coordinator.WithRegistryMetrics(registryMetrics))
+				slog.Info("Registry metrics enabled")
+			}
+		} else {
+			slog.Debug("Registry metrics disabled: storage factory does not provide a registry metrics reader")
 		}
 	}
 

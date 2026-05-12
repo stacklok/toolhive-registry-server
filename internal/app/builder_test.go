@@ -686,7 +686,7 @@ func TestBuildSyncComponents_WithMeterProvider(t *testing.T) {
 		description   string
 	}{
 		{
-			name:          "with meter provider creates sync and registry metrics",
+			name:          "with meter provider creates available metrics",
 			meterProvider: noop.NewMeterProvider(),
 			description:   "coordinator should be created with metrics when meter provider is set",
 		},
