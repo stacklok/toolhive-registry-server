@@ -336,9 +336,6 @@ auth:
   oauth:
     resourceUrl: https://registry.example.com
     realm: mcp-registry          # Optional
-    scopesSupported:             # Optional
-      - mcp-registry:read
-      - mcp-registry:write
     providers:
       - name: my-idp
         issuerUrl: https://idp.example.com

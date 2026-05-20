@@ -95,7 +95,7 @@ func createOAuthMiddleware(
 	}
 
 	// Create RFC 9728 compliant protected resource handler
-	handler, err := newProtectedResourceHandler(oauth.ResourceURL, issuerURLs, oauth.ScopesSupported)
+	handler, err := newProtectedResourceHandler(oauth.ResourceURL, issuerURLs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create protected resource handler: %w", err)
 	}

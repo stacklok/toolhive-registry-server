@@ -415,24 +415,9 @@ type OAuthConfig struct {
 	// Multiple providers can be configured (e.g., Kubernetes + external IDP)
 	Providers []OAuthProviderConfig `yaml:"providers,omitempty"`
 
-	// ScopesSupported defines the OAuth scopes supported by this resource (RFC 9728)
-	// Defaults to ["mcp-registry:read", "mcp-registry:write"] if not specified
-	ScopesSupported []string `yaml:"scopesSupported,omitempty"`
-
 	// Realm is the protection space identifier for WWW-Authenticate header (RFC 7235)
 	// Defaults to "mcp-registry" if not specified
 	Realm string `yaml:"realm,omitempty"`
-}
-
-// DefaultScopes are the default OAuth scopes for the registry when not configured
-var DefaultScopes = []string{"mcp-registry:read", "mcp-registry:write"}
-
-// GetScopes returns the configured OAuth scopes or defaults if not specified
-func (o *OAuthConfig) GetScopes() []string {
-	if len(o.ScopesSupported) == 0 {
-		return DefaultScopes
-	}
-	return o.ScopesSupported
 }
 
 // OAuthProviderConfig defines configuration for an OAuth/OIDC provider
