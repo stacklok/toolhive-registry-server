@@ -25,7 +25,6 @@ func NewTestUpstreamRegistry(opts ...UpstreamRegistryOption) *toolhivetypes.Upst
 		},
 		Data: toolhivetypes.UpstreamData{
 			Servers: []upstreamv0.ServerJSON{},
-			Groups:  []toolhivetypes.UpstreamGroup{},
 		},
 	}
 
