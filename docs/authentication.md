@@ -120,13 +120,6 @@ auth:
     # Defaults to "mcp-registry"
     realm: mcp-registry
 
-    # OAuth scopes supported by this resource (optional)
-    # Defaults to ["mcp-registry:read", "mcp-registry:write"]
-    scopesSupported:
-      - mcp-registry:read
-      - mcp-registry:write
-      - mcp-registry:admin
-
     # OAuth/OIDC providers (at least one required)
     providers:
       - name: primary-idp
@@ -223,11 +216,7 @@ GET /.well-known/oauth-protected-resource
     "https://idp.example.com",
     "https://kubernetes.default.svc"
   ],
-  "bearer_methods_supported": ["header"],
-  "scopes_supported": [
-    "mcp-registry:read",
-    "mcp-registry:write"
-  ]
+  "bearer_methods_supported": ["header"]
 }
 ```
 

@@ -57,12 +57,6 @@ auth:
     # Defaults to "mcp-registry"
     realm: mcp-registry
 
-    # OAuth scopes supported by this resource (optional)
-    # Defaults to ["mcp-registry:read", "mcp-registry:write"]
-    scopesSupported:
-      - mcp-registry:read
-      - mcp-registry:write
-
     # OAuth/OIDC providers (at least one required)
     # Multiple providers can be configured (e.g., external IDP + Kubernetes)
     providers:
