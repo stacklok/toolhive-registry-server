@@ -92,6 +92,8 @@ func Router(svc service.RegistryService, authCfg *config.AuthConfig) http.Handle
 			auditmw.Audited(auditmw.EventEntryPublish, auditmw.ResourceTypeEntry, "", routes.publishEntry))
 		r.Delete("/entries/{type}/{name}/versions/{version}",
 			auditmw.AuditedEntry(auditmw.EventEntryDelete, routes.deletePublishedEntry))
+		r.Get("/entries/{type}/{name}/claims",
+			auditmw.AuditedEntry(auditmw.EventEntryClaimsRead, routes.getEntryClaims))
 		r.Put("/entries/{type}/{name}/claims",
 			auditmw.AuditedEntry(auditmw.EventEntryClaims, routes.updateEntryClaims))
 	})

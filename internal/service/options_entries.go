@@ -37,3 +37,32 @@ func (o *UpdateEntryClaimsOptions) setJWTClaims(claims map[string]any) error {
 	o.JWTClaims = claims
 	return nil
 }
+
+// GetEntryClaimsOptions is the options for the GetEntryClaims operation.
+type GetEntryClaimsOptions struct {
+	EntryType string // EntryTypeServer or EntryTypeSkill
+	Name      string
+	JWTClaims map[string]any
+}
+
+func (o *GetEntryClaimsOptions) setEntryType(entryType string) error {
+	switch entryType {
+	case EntryTypeServer, EntryTypeSkill:
+		o.EntryType = entryType
+		return nil
+	default:
+		return fmt.Errorf("%w: must be %q or %q", ErrInvalidEntryType, EntryTypeServer, EntryTypeSkill)
+	}
+}
+
+//nolint:unparam
+func (o *GetEntryClaimsOptions) setName(name string) error {
+	o.Name = name
+	return nil
+}
+
+//nolint:unparam
+func (o *GetEntryClaimsOptions) setJWTClaims(claims map[string]any) error {
+	o.JWTClaims = claims
+	return nil
+}
