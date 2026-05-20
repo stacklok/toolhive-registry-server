@@ -8,7 +8,6 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stacklok/toolhive-core/registry/types"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,8 +16,8 @@ import (
 )
 
 // createTestMCPServer creates a test MCPServer with the given configuration
-func createTestMCPServer(name, namespace string, annotations map[string]string, spec mcpv1beta1.MCPServerSpec) *mcpv1alpha1.MCPServer {
-	return &mcpv1alpha1.MCPServer{
+func createTestMCPServer(name, namespace string, annotations map[string]string, spec mcpv1beta1.MCPServerSpec) *mcpv1beta1.MCPServer {
+	return &mcpv1beta1.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Namespace:   namespace,
@@ -34,7 +33,7 @@ func TestExtractServer(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		mcpServer   *mcpv1alpha1.MCPServer
+		mcpServer   *mcpv1beta1.MCPServer
 		wantSchema  string
 		wantName    string
 		wantVersion string
@@ -531,7 +530,7 @@ func TestExtractPackages(t *testing.T) {
 
 	tests := []struct {
 		name             string
-		mcpServer        *mcpv1alpha1.MCPServer
+		mcpServer        *mcpv1beta1.MCPServer
 		wantCount        int
 		wantRegistryType string
 		wantIdentifier   string
@@ -679,8 +678,8 @@ func TestExtractPackages(t *testing.T) {
 }
 
 // createTestVirtualMCPServer creates a test VirtualMCPServer with the given configuration
-func createTestVirtualMCPServer(name, namespace string, annotations map[string]string) *mcpv1alpha1.VirtualMCPServer {
-	return &mcpv1alpha1.VirtualMCPServer{
+func createTestVirtualMCPServer(name, namespace string, annotations map[string]string) *mcpv1beta1.VirtualMCPServer {
+	return &mcpv1beta1.VirtualMCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Namespace:   namespace,
@@ -695,7 +694,7 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		vmcpServer  *mcpv1alpha1.VirtualMCPServer
+		vmcpServer  *mcpv1beta1.VirtualMCPServer
 		wantSchema  string
 		wantName    string
 		wantVersion string
@@ -993,8 +992,8 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 }
 
 // createTestMCPRemoteProxy creates a test MCPRemoteProxy with the given configuration
-func createTestMCPRemoteProxy(name, namespace string, annotations map[string]string) *mcpv1alpha1.MCPRemoteProxy {
-	return &mcpv1alpha1.MCPRemoteProxy{
+func createTestMCPRemoteProxy(name, namespace string, annotations map[string]string) *mcpv1beta1.MCPRemoteProxy {
+	return &mcpv1beta1.MCPRemoteProxy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Namespace:   namespace,
@@ -1009,7 +1008,7 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy
+		mcpRemoteProxy *mcpv1beta1.MCPRemoteProxy
 		wantSchema     string
 		wantName       string
 		wantVersion    string

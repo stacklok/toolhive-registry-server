@@ -10,7 +10,7 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 	registry "github.com/stacklok/toolhive-core/registry/types"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 // extractServer converts an MCPServer to a ServerJSON object
 //
 //nolint:unparam
-func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, error) {
+func extractServer(mcpServer *mcpv1beta1.MCPServer) (*upstreamv0.ServerJSON, error) {
 	// Generate reverse-DNS formatted server name
 	serverName, err := GenerateServerName(mcpServer.Namespace, mcpServer.Name)
 	if err != nil {
@@ -120,7 +120,7 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 // extractVirtualMCPServer converts a VirtualMCPServer to a ServerJSON object
 //
 //nolint:unparam
-func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*upstreamv0.ServerJSON, error) {
+func extractVirtualMCPServer(virtualMCPServer *mcpv1beta1.VirtualMCPServer) (*upstreamv0.ServerJSON, error) {
 	// Generate reverse-DNS formatted server name
 	serverName, err := GenerateServerName(virtualMCPServer.Namespace, virtualMCPServer.Name)
 	if err != nil {
@@ -206,7 +206,7 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 // extractMCPRemoteProxy converts a MCPRemoteProxy to a ServerJSON object
 //
 //nolint:unparam
-func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstreamv0.ServerJSON, error) {
+func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1beta1.MCPRemoteProxy) (*upstreamv0.ServerJSON, error) {
 	// Generate reverse-DNS formatted server name
 	serverName, err := GenerateServerName(mcpRemoteProxy.Namespace, mcpRemoteProxy.Name)
 	if err != nil {
@@ -333,7 +333,7 @@ func extractTools(annotations map[string]string, name, namespace string) []strin
 
 // extractPackages extracts packages from MCPServer spec
 // MCPServer uses container images, so we create an OCI package from the image
-func extractPackages(mcpServer *mcpv1alpha1.MCPServer) []model.Package {
+func extractPackages(mcpServer *mcpv1beta1.MCPServer) []model.Package {
 	var packages []model.Package
 
 	transportType := mcpServer.Spec.Transport
