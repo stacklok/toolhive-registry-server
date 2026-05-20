@@ -198,7 +198,6 @@ func (*upstreamAPIHandler) buildUpstreamRegistry(servers []v0.ServerJSON) *toolh
 		},
 		Data: toolhivetypes.UpstreamData{
 			Servers: servers,
-			Groups:  []toolhivetypes.UpstreamGroup{},
 		},
 	}
 }
