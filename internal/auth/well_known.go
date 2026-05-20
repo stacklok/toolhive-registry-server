@@ -5,8 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-
-	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
 // protectedResourceMetadata represents RFC 9728 OAuth 2.0 Protected Resource Metadata
@@ -14,7 +12,6 @@ type protectedResourceMetadata struct {
 	Resource               string   `json:"resource"`
 	AuthorizationServers   []string `json:"authorization_servers"`
 	BearerMethodsSupported []string `json:"bearer_methods_supported,omitempty"`
-	ScopesSupported        []string `json:"scopes_supported,omitempty"`
 }
 
 // newProtectedResourceHandler creates an RFC 9728 compliant handler.
@@ -24,15 +21,9 @@ type protectedResourceMetadata struct {
 func newProtectedResourceHandler(
 	resourceURL string,
 	authorizationServers []string,
-	scopes []string,
 ) (http.Handler, error) {
 	if len(authorizationServers) == 0 {
 		return nil, errors.New("at least one authorization server is required")
-	}
-
-	// Apply default scopes if not specified (defensive copy to avoid aliasing)
-	if len(scopes) == 0 {
-		scopes = append([]string{}, config.DefaultScopes...)
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -40,7 +31,6 @@ func newProtectedResourceHandler(
 			Resource:               resourceURL,
 			AuthorizationServers:   authorizationServers,
 			BearerMethodsSupported: []string{"header"},
-			ScopesSupported:        scopes,
 		}
 
 		data, err := json.Marshal(metadata)
