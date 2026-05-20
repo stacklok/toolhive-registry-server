@@ -9,7 +9,7 @@ import (
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -166,9 +166,9 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(r.registryName).
-		For(&mcpv1alpha1.MCPServer{}, builder.WithPredicates(annotationPredicate)).
-		Watches(&mcpv1alpha1.VirtualMCPServer{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
-		Watches(&mcpv1alpha1.MCPRemoteProxy{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
+		For(&mcpv1beta1.MCPServer{}, builder.WithPredicates(annotationPredicate)).
+		Watches(&mcpv1beta1.VirtualMCPServer{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
+		Watches(&mcpv1beta1.MCPRemoteProxy{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
 		Complete(r)
 }
 
@@ -229,15 +229,15 @@ func getMCPServerList(
 		client.InNamespace(namespace),
 	}
 
-	var mcpServerList mcpv1alpha1.MCPServerList
+	var mcpServerList mcpv1beta1.MCPServerList
 	if err := c.List(ctx, &mcpServerList, listOptions...); err != nil {
 		return nil, fmt.Errorf("failed to list MCPServers: %w", err)
 	}
-	var vmcpServerList mcpv1alpha1.VirtualMCPServerList
+	var vmcpServerList mcpv1beta1.VirtualMCPServerList
 	if err := c.List(ctx, &vmcpServerList, listOptions...); err != nil {
 		return nil, fmt.Errorf("failed to list VirtualMCPServers: %w", err)
 	}
-	var mcpRemoteProxyList mcpv1alpha1.MCPRemoteProxyList
+	var mcpRemoteProxyList mcpv1beta1.MCPRemoteProxyList
 	if err := c.List(ctx, &mcpRemoteProxyList, listOptions...); err != nil {
 		return nil, fmt.Errorf("failed to list MCPRemoteProxies: %w", err)
 	}
@@ -251,7 +251,7 @@ func getMCPServerList(
 		mcpObjects[i] = &mcpServerList.Items[i]
 	}
 	serverJSONs = processResources(mcpObjects, "MCPServer", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
-		inner, ok := obj.(*mcpv1alpha1.MCPServer)
+		inner, ok := obj.(*mcpv1beta1.MCPServer)
 		if !ok {
 			return nil, fmt.Errorf("unexpected type %T", obj)
 		}
@@ -263,7 +263,7 @@ func getMCPServerList(
 		vmcpObjects[i] = &vmcpServerList.Items[i]
 	}
 	serverJSONs = processResources(vmcpObjects, "VirtualMCPServer", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
-		inner, ok := obj.(*mcpv1alpha1.VirtualMCPServer)
+		inner, ok := obj.(*mcpv1beta1.VirtualMCPServer)
 		if !ok {
 			return nil, fmt.Errorf("unexpected type %T", obj)
 		}
@@ -275,7 +275,7 @@ func getMCPServerList(
 		mcpProxyObjects[i] = &mcpRemoteProxyList.Items[i]
 	}
 	serverJSONs = processResources(mcpProxyObjects, "MCPRemoteProxy", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
-		inner, ok := obj.(*mcpv1alpha1.MCPRemoteProxy)
+		inner, ok := obj.(*mcpv1beta1.MCPRemoteProxy)
 		if !ok {
 			return nil, fmt.Errorf("unexpected type %T", obj)
 		}
