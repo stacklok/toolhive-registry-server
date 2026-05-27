@@ -1,0 +1,22 @@
+# Grype configuration for the registry server.
+#
+# Ignore rules below mirror the justifications in
+# .github/workflows/security-scan.yml for govulncheck. Each entry should cite
+# the equivalent GO-* advisory so the two scanners stay aligned.
+
+ignore:
+  # GHSA-x744-4wpc-v9h2 / CVE-2026-34040 / GO-2026-4887
+  # AuthZ plugin bypass with oversized request bodies in the Docker daemon.
+  # This project only uses the Docker client SDK (via testcontainers) for
+  # integration tests; it does not run or configure AuthZ plugins. The fix
+  # lives in github.com/moby/moby v29.3.1 / github.com/moby/moby/v2
+  # v2.0.0-beta.8 — neither is available as a github.com/docker/docker
+  # release on the Go module proxy yet.
+  - vulnerability: GHSA-x744-4wpc-v9h2
+    package:
+      name: github.com/docker/docker
+      type: go-module
+  - vulnerability: CVE-2026-34040
+    package:
+      name: github.com/docker/docker
+      type: go-module
