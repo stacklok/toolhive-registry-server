@@ -12,10 +12,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/stacklok/toolhive-core/postgres"
 
 	"github.com/stacklok/toolhive-registry-server/database"
 	registryapp "github.com/stacklok/toolhive-registry-server/internal/app"
-	"github.com/stacklok/toolhive-registry-server/internal/app/storage/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
@@ -177,16 +177,25 @@ func runServe(cmd *cobra.Command, _ []string) error {
 // buildMigrationConnString builds a connection string for the migration user.
 // Precedence: dynamic auth token > config password > PGPASSFILE.
 func buildMigrationConnString(ctx context.Context, dbCfg *config.DatabaseConfig) (string, error) {
-	user := dbCfg.GetMigrationUser()
-	token, err := auth.NewAuthToken(ctx, dbCfg, user)
+	corePgCfg, err := dbCfg.ToCorePostgresConfig()
 	if err != nil {
 		return "", fmt.Errorf("failed to build migration connection string: %w", err)
 	}
-	password := token
-	if password == "" {
-		password = dbCfg.GetMigrationPassword()
+
+	user := corePgCfg.GetMigrationUser()
+
+	// Dynamic auth (e.g. AWS RDS IAM) cannot use a pool BeforeConnect hook for
+	// the one-shot migration connection, so materialize a single token here.
+	token, err := postgres.NewAuthToken(ctx, corePgCfg, user)
+	if err != nil {
+		return "", fmt.Errorf("failed to build migration connection string: %w", err)
 	}
-	return dbCfg.BuildConnectionStringWithAuth(user, password), nil
+	if token != "" {
+		return corePgCfg.BuildConnectionStringWithAuth(user, token), nil
+	}
+
+	// Static password / PGPASSFILE fallback.
+	return corePgCfg.MigrationConnectionString(), nil
 }
 
 // runMigrations executes database migrations on startup
