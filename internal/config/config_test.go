@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/aws/smithy-go/ptr"
 	"github.com/stretchr/testify/assert"
@@ -1491,146 +1492,11 @@ func TestDatabaseConfigGetMigrationPassword(t *testing.T) {
 	}
 }
 
-func TestDatabaseConfigGetConnectionString(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name        string
-		dbConfig    *DatabaseConfig
-		wantConnStr string
-	}{
-		{
-			name: "connection_string_with_default_sslmode",
-			dbConfig: &DatabaseConfig{
-				Host:     "localhost",
-				Port:     5432,
-				User:     "testuser",
-				Database: "testdb",
-			},
-			// Password omitted - pgx will use pgpass file
-			wantConnStr: "postgres://testuser@localhost:5432/testdb?sslmode=require",
-		},
-		{
-			name: "connection_string_with_custom_sslmode",
-			dbConfig: &DatabaseConfig{
-				Host:     "db.example.com",
-				Port:     5433,
-				User:     "admin",
-				Database: "production",
-				SSLMode:  "verify-full",
-			},
-			wantConnStr: "postgres://admin@db.example.com:5433/production?sslmode=verify-full",
-		},
-		{
-			name: "connection_string_with_disable_sslmode",
-			dbConfig: &DatabaseConfig{
-				Host:     "localhost",
-				Port:     5432,
-				User:     "testuser",
-				Database: "testdb",
-				SSLMode:  "disable",
-			},
-			wantConnStr: "postgres://testuser@localhost:5432/testdb?sslmode=disable",
-		},
-		{
-			name: "connection_string_with_password",
-			dbConfig: &DatabaseConfig{
-				Host:     "localhost",
-				Port:     5432,
-				User:     "testuser",
-				Database: "testdb",
-				Password: "s3cret",
-			},
-			wantConnStr: "postgres://testuser:s3cret@localhost:5432/testdb?sslmode=require",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			connStr := tt.dbConfig.GetConnectionString()
-			assert.Equal(t, tt.wantConnStr, connStr)
-		})
-	}
-}
-
-func TestDatabaseConfigGetMigrationConnectionString(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name        string
-		dbConfig    *DatabaseConfig
-		wantConnStr string
-	}{
-		{
-			name: "migration_connection_string_with_migration_user",
-			dbConfig: &DatabaseConfig{
-				Host:          "localhost",
-				Port:          5432,
-				User:          "appuser",
-				MigrationUser: "migratoruser",
-				Database:      "testdb",
-			},
-			// Uses migration user, password omitted - pgx will use pgpass file
-			wantConnStr: "postgres://migratoruser@localhost:5432/testdb?sslmode=require",
-		},
-		{
-			name: "migration_connection_string_defaults_to_user",
-			dbConfig: &DatabaseConfig{
-				Host:     "localhost",
-				Port:     5432,
-				User:     "appuser",
-				Database: "testdb",
-			},
-			// Falls back to regular user when MigrationUser not set
-			wantConnStr: "postgres://appuser@localhost:5432/testdb?sslmode=require",
-		},
-		{
-			name: "migration_connection_string_with_custom_sslmode",
-			dbConfig: &DatabaseConfig{
-				Host:          "db.example.com",
-				Port:          5433,
-				User:          "appuser",
-				MigrationUser: "migratoruser",
-				Database:      "production",
-				SSLMode:       "verify-full",
-			},
-			wantConnStr: "postgres://migratoruser@db.example.com:5433/production?sslmode=verify-full",
-		},
-		{
-			name: "migration_connection_string_with_migration_password",
-			dbConfig: &DatabaseConfig{
-				Host:              "localhost",
-				Port:              5432,
-				User:              "appuser",
-				MigrationUser:     "migratoruser",
-				Database:          "testdb",
-				MigrationPassword: "migpass",
-			},
-			wantConnStr: "postgres://migratoruser:migpass@localhost:5432/testdb?sslmode=require",
-		},
-		{
-			name: "migration_connection_string_password_fallback_same_user",
-			dbConfig: &DatabaseConfig{
-				Host:     "localhost",
-				Port:     5432,
-				User:     "appuser",
-				Database: "testdb",
-				Password: "apppass",
-			},
-			// No MigrationUser set, so it defaults to User; same user means Password is used
-			wantConnStr: "postgres://appuser:apppass@localhost:5432/testdb?sslmode=require",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			connStr := tt.dbConfig.GetMigrationConnectionString()
-			assert.Equal(t, tt.wantConnStr, connStr)
-		})
-	}
-}
+// Connection-string assembly (default sslmode, migration-user selection,
+// password embedding, URL escaping) now lives in the shared toolhive-core
+// postgres package and is covered by its tests. The registry side is exercised
+// through TestDatabaseConfigToCorePostgresConfig, which verifies the mapping
+// and that the resulting config builds the expected connection strings.
 
 func TestLoadConfigWithDatabase(t *testing.T) {
 	t.Parallel()
@@ -2336,14 +2202,6 @@ func TestDatabaseConfigPgpassDelegation(t *testing.T) {
 
 	migrationPassword := dbConfig.GetMigrationPassword()
 	assert.Equal(t, "", migrationPassword, "GetMigrationPassword should delegate to pgpass")
-
-	// Verify connection string format (no password - pgpass will provide it)
-	connStr := dbConfig.GetConnectionString()
-	assert.Equal(t, "postgres://testuser@localhost:5432/testdb?sslmode=require", connStr)
-
-	// Verify migration connection string uses migration user
-	migrationConnStr := dbConfig.GetMigrationConnectionString()
-	assert.Equal(t, "postgres://migratoruser@localhost:5432/testdb?sslmode=require", migrationConnStr)
 }
 
 // TestEnvPrefix verifies the environment variable prefix constant is correctly defined
@@ -3045,84 +2903,97 @@ func TestDatabaseConfigGetMaxMetaSize(t *testing.T) {
 	}
 }
 
-func TestDatabaseConfigBuildConnectionStringWithAuth(t *testing.T) {
+func TestDatabaseConfigToCorePostgresConfig(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name        string
-		dbConfig    *DatabaseConfig
-		user        string
-		password    string
-		wantConnStr string
-	}{
-		{
-			name: "empty password produces passwordless URL",
-			dbConfig: &DatabaseConfig{
-				Host:     "localhost",
-				Port:     5432,
-				Database: "testdb",
-			},
-			user:        "appuser",
-			password:    "",
-			wantConnStr: "postgres://appuser@localhost:5432/testdb?sslmode=require",
-		},
-		{
-			name: "non-empty password is embedded in URL",
-			dbConfig: &DatabaseConfig{
-				Host:     "localhost",
-				Port:     5432,
-				Database: "testdb",
-			},
-			user:        "appuser",
-			password:    "secret123",
-			wantConnStr: "postgres://appuser:secret123@localhost:5432/testdb?sslmode=require",
-		},
-		{
-			name: "password with special characters is URL-escaped",
-			dbConfig: &DatabaseConfig{
-				Host:     "localhost",
-				Port:     5432,
-				Database: "testdb",
-			},
-			user:     "appuser",
-			password: "p@ss/word=",
-			// url.UserPassword escapes @ and / but not =
-			wantConnStr: "postgres://appuser:p%40ss%2Fword=@localhost:5432/testdb?sslmode=require",
-		},
-		{
-			name: "custom sslmode is respected",
-			dbConfig: &DatabaseConfig{
-				Host:     "db.example.com",
-				Port:     5433,
-				Database: "production",
-				SSLMode:  "verify-full",
-			},
-			user:        "migratoruser",
-			password:    "token",
-			wantConnStr: "postgres://migratoruser:token@db.example.com:5433/production?sslmode=verify-full",
-		},
-		{
-			name: "migration user differs from app user",
-			dbConfig: &DatabaseConfig{
-				Host:          "localhost",
-				Port:          5432,
-				User:          "appuser",
-				MigrationUser: "migratoruser",
-				Database:      "testdb",
-			},
-			user:        "migratoruser",
-			password:    "",
-			wantConnStr: "postgres://migratoruser@localhost:5432/testdb?sslmode=require",
-		},
-	}
+	t.Run("maps connection and pool fields", func(t *testing.T) {
+		t.Parallel()
+		maxIdle := int32(3)
+		dbConfig := &DatabaseConfig{
+			Host:              "db.example.com",
+			Port:              5433,
+			User:              "appuser",
+			Password:          "s3cret",
+			MigrationUser:     "migratoruser",
+			MigrationPassword: "migpass",
+			Database:          "production",
+			SSLMode:           "verify-full",
+			MaxOpenConns:      10,
+			MaxIdleConns:      maxIdle,
+			ConnMaxLifetime:   "1h30m",
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			connStr := tt.dbConfig.BuildConnectionStringWithAuth(tt.user, tt.password)
-			assert.Equal(t, tt.wantConnStr, connStr)
-		})
-	}
+		got, err := dbConfig.ToCorePostgresConfig()
+		require.NoError(t, err)
+		require.NotNil(t, got)
+
+		assert.Equal(t, "db.example.com", got.Host)
+		assert.Equal(t, 5433, got.Port)
+		assert.Equal(t, "appuser", got.User)
+		assert.Equal(t, "s3cret", got.Password)
+		assert.Equal(t, "migratoruser", got.MigrationUser)
+		assert.Equal(t, "migpass", got.MigrationPassword)
+		assert.Equal(t, "production", got.Database)
+		assert.Equal(t, "verify-full", got.SSLMode)
+		assert.Equal(t, int32(10), got.MaxOpenConns)
+		// maxIdleConns maps onto pgxpool's MinConns floor.
+		assert.Equal(t, maxIdle, got.MinConns)
+		assert.Equal(t, 90*time.Minute, got.ConnMaxLifetime)
+		assert.Nil(t, got.DynamicAuth)
+	})
+
+	t.Run("passes through dynamic auth", func(t *testing.T) {
+		t.Parallel()
+		dbConfig := &DatabaseConfig{
+			Host:     "localhost",
+			Port:     5432,
+			User:     "appuser",
+			Database: "testdb",
+			DynamicAuth: &DynamicAuthConfig{
+				AWSRDSIAM: &DynamicAuthAWSRDSIAM{Region: "us-east-1"},
+			},
+		}
+
+		got, err := dbConfig.ToCorePostgresConfig()
+		require.NoError(t, err)
+		require.NotNil(t, got.DynamicAuth)
+		require.NotNil(t, got.DynamicAuth.AWSRDSIAM)
+		assert.Equal(t, "us-east-1", got.DynamicAuth.AWSRDSIAM.Region)
+	})
+
+	t.Run("rejects malformed connMaxLifetime", func(t *testing.T) {
+		t.Parallel()
+		dbConfig := &DatabaseConfig{
+			Host:            "localhost",
+			Port:            5432,
+			User:            "appuser",
+			Database:        "testdb",
+			ConnMaxLifetime: "not-a-duration",
+		}
+
+		got, err := dbConfig.ToCorePostgresConfig()
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "connMaxLifetime")
+	})
+
+	t.Run("produces a config that builds the expected connection strings", func(t *testing.T) {
+		t.Parallel()
+		dbConfig := &DatabaseConfig{
+			Host:          "localhost",
+			Port:          5432,
+			User:          "appuser",
+			MigrationUser: "migratoruser",
+			Database:      "testdb",
+		}
+
+		got, err := dbConfig.ToCorePostgresConfig()
+		require.NoError(t, err)
+		// Connection-string assembly is owned by the shared package; verify the
+		// mapped config drives it correctly (default sslmode, migration user).
+		assert.Equal(t, "postgres://appuser@localhost:5432/testdb?sslmode=require", got.ConnectionString())
+		assert.Equal(t, "postgres://migratoruser@localhost:5432/testdb?sslmode=require", got.MigrationConnectionString())
+	})
 }
 
 func TestValidateStorageConfigRejectsInvalidMaxMetaSize(t *testing.T) {

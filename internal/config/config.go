@@ -9,10 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgpassfile"
 	"github.com/spf13/viper"
+	"github.com/stacklok/toolhive-core/postgres"
 
 	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
@@ -48,9 +51,6 @@ const (
 	// DefaultMaxMetaSize is the default maximum allowed size in bytes for
 	// publisher-provided metadata extensions (_meta). 262144 bytes = 256KB.
 	DefaultMaxMetaSize = 262144
-
-	// defaultSSLMode is the default SSL mode for PostgreSQL connections.
-	defaultSSLMode = "require"
 )
 
 // Option defines the interface for configuration options
@@ -676,49 +676,88 @@ func (d *DatabaseConfig) GetMaxMetaSize() int {
 	return *d.MaxMetaSize
 }
 
-// BuildConnectionStringWithAuth builds a PostgreSQL connection string for the given user,
-// embedding the password in the URL if non-empty. When password is empty, pgx will
-// fall back to PGPASSFILE or ~/.pgpass as usual.
+// ToCorePostgresConfig maps the registry DatabaseConfig onto the shared
+// toolhive-core postgres.Config. Connection mechanics — pool creation,
+// connection-string assembly, and dynamic-auth token resolution — are owned by
+// the shared package; this config layer remains responsible for secret
+// resolution (env/pgpass) and the password/dynamicAuth mutual-exclusion check
+// enforced in validateStorageConfig.
 //
-// The caller is responsible for resolving the password (e.g., via dynamic auth token
-// resolution or static configuration). This keeps the config package free of auth
-// dependencies.
-func (d *DatabaseConfig) BuildConnectionStringWithAuth(user, password string) string {
-	sslMode := d.SSLMode
-	if sslMode == "" {
-		sslMode = defaultSSLMode
+// connMaxLifetime is parsed from its string form here so a malformed duration
+// surfaces as a configuration error rather than at pool-build time. maxIdleConns
+// maps onto pgxpool's MinConns floor, preserving the previous pool behaviour.
+func (d *DatabaseConfig) ToCorePostgresConfig() (*postgres.Config, error) {
+	if d == nil {
+		return nil, fmt.Errorf("database configuration is required")
 	}
 
-	var userInfo *url.Userinfo
-	if password != "" {
-		userInfo = url.UserPassword(user, password)
-	} else {
-		userInfo = url.User(user)
+	cfg := &postgres.Config{
+		Host:              d.Host,
+		Port:              d.Port,
+		User:              d.User,
+		Password:          d.GetPassword(),
+		MigrationUser:     d.MigrationUser,
+		MigrationPassword: d.MigrationPassword,
+		Database:          d.Database,
+		SSLMode:           d.SSLMode,
+		MaxOpenConns:      d.MaxOpenConns,
+		MinConns:          d.MaxIdleConns,
 	}
 
-	return fmt.Sprintf(
-		"postgres://%s@%s:%d/%s?sslmode=%s",
-		userInfo.String(),
-		d.Host,
-		d.Port,
-		d.Database,
-		sslMode,
-	)
+	if d.ConnMaxLifetime != "" {
+		lifetime, err := time.ParseDuration(d.ConnMaxLifetime)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse connMaxLifetime: %w", err)
+		}
+		cfg.ConnMaxLifetime = lifetime
+	}
+
+	if d.DynamicAuth != nil && d.DynamicAuth.AWSRDSIAM != nil {
+		cfg.DynamicAuth = &postgres.DynamicAuthConfig{
+			AWSRDSIAM: &postgres.DynamicAuthAWSRDSIAM{
+				Region: d.DynamicAuth.AWSRDSIAM.Region,
+			},
+		}
+		// Dynamic auth supplies credentials at connect time; leave the password
+		// fields empty so the shared pool installs its BeforeConnect hook.
+		return cfg, nil
+	}
+
+	// The shared pool builder assembles its pgx config structurally and treats
+	// Password as already resolved, so — unlike a full libpq DSN handed to pgx —
+	// it does not consult the PostgreSQL password file itself. Resolve pgpass
+	// here so deployments that rely on a pgpass file (e.g. a pgpass-init
+	// container) instead of an inline password continue to authenticate.
+	if cfg.Password == "" {
+		cfg.Password = resolvePgpassPassword(cfg.Host, cfg.Port, cfg.Database, cfg.User)
+	}
+	if migrationUser := cfg.GetMigrationUser(); cfg.MigrationPassword == "" && migrationUser != cfg.User {
+		cfg.MigrationPassword = resolvePgpassPassword(cfg.Host, cfg.Port, cfg.Database, migrationUser)
+	}
+
+	return cfg, nil
 }
 
-// GetConnectionString builds a PostgreSQL connection string for the application user.
-// Embeds the password in the URL when configured via the password field or
-// THV_REGISTRY_DATABASE_PASSWORD env var. When no password is set, pgx falls
-// back to PGPASSFILE or ~/.pgpass.
-func (d *DatabaseConfig) GetConnectionString() string {
-	return d.BuildConnectionStringWithAuth(d.User, d.GetPassword())
-}
+// resolvePgpassPassword looks up a password for the given connection target in
+// the PostgreSQL password file (PGPASSFILE, or ~/.pgpass when unset). It returns
+// an empty string when no file or matching entry is found, mirroring pgx's own
+// pgpass fallback for callers that hand it a full DSN.
+func resolvePgpassPassword(host string, port int, database, user string) string {
+	path := os.Getenv("PGPASSFILE")
+	if path == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		path = filepath.Join(home, ".pgpass")
+	}
 
-// GetMigrationConnectionString builds a PostgreSQL connection string for the migration user.
-// Uses GetMigrationUser() which defaults to User if MigrationUser is not set.
-// Embeds the password when configured; otherwise pgx falls back to PGPASSFILE or ~/.pgpass.
-func (d *DatabaseConfig) GetMigrationConnectionString() string {
-	return d.BuildConnectionStringWithAuth(d.GetMigrationUser(), d.GetMigrationPassword())
+	passfile, err := pgpassfile.ReadPassfile(path)
+	if err != nil {
+		return ""
+	}
+
+	return passfile.FindPassword(host, strconv.Itoa(port), database, user)
 }
 
 // LoadConfig loads and parses configuration from a YAML file with environment variable support.
