@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgpassfile"
 	"github.com/spf13/viper"
 	"github.com/stacklok/toolhive-core/postgres"
 
@@ -716,9 +718,46 @@ func (d *DatabaseConfig) ToCorePostgresConfig() (*postgres.Config, error) {
 				Region: d.DynamicAuth.AWSRDSIAM.Region,
 			},
 		}
+		// Dynamic auth supplies credentials at connect time; leave the password
+		// fields empty so the shared pool installs its BeforeConnect hook.
+		return cfg, nil
+	}
+
+	// The shared pool builder assembles its pgx config structurally and treats
+	// Password as already resolved, so — unlike a full libpq DSN handed to pgx —
+	// it does not consult the PostgreSQL password file itself. Resolve pgpass
+	// here so deployments that rely on a pgpass file (e.g. a pgpass-init
+	// container) instead of an inline password continue to authenticate.
+	if cfg.Password == "" {
+		cfg.Password = resolvePgpassPassword(cfg.Host, cfg.Port, cfg.Database, cfg.User)
+	}
+	if migrationUser := cfg.GetMigrationUser(); cfg.MigrationPassword == "" && migrationUser != cfg.User {
+		cfg.MigrationPassword = resolvePgpassPassword(cfg.Host, cfg.Port, cfg.Database, migrationUser)
 	}
 
 	return cfg, nil
+}
+
+// resolvePgpassPassword looks up a password for the given connection target in
+// the PostgreSQL password file (PGPASSFILE, or ~/.pgpass when unset). It returns
+// an empty string when no file or matching entry is found, mirroring pgx's own
+// pgpass fallback for callers that hand it a full DSN.
+func resolvePgpassPassword(host string, port int, database, user string) string {
+	path := os.Getenv("PGPASSFILE")
+	if path == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		path = filepath.Join(home, ".pgpass")
+	}
+
+	passfile, err := pgpassfile.ReadPassfile(path)
+	if err != nil {
+		return ""
+	}
+
+	return passfile.FindPassword(host, strconv.Itoa(port), database, user)
 }
 
 // LoadConfig loads and parses configuration from a YAML file with environment variable support.

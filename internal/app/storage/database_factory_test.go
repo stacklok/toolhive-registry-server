@@ -2,6 +2,9 @@ package storage
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/uuid"
@@ -97,6 +100,53 @@ func TestNewDatabaseFactory(t *testing.T) {
 			factory.Cleanup()
 		})
 	}
+}
+
+// TestNewDatabaseFactory_PgpassResolution verifies the pool authenticates using
+// a password resolved from PGPASSFILE when no inline password is configured.
+// The shared toolhive-core pool builder treats Password as already resolved, so
+// the config layer must consult the password file itself; without that, the
+// pool connects with an empty password and fails SASL auth.
+//
+// Not parallel: it sets the process-wide PGPASSFILE via t.Setenv.
+func TestNewDatabaseFactory_PgpassResolution(t *testing.T) {
+	ctx := context.Background()
+	db, cleanupFunc := database.SetupTestDBContainer(t, ctx)
+	t.Cleanup(cleanupFunc)
+
+	require.NoError(t, database.MigrateUp(ctx, db))
+
+	host := db.Config().Host
+	port := int(db.Config().Port)
+	user := db.Config().User
+	dbName := db.Config().Database
+	password := db.Config().Password
+	require.NotEmpty(t, password, "test container should require a password")
+
+	// Write a pgpass entry for the container and point PGPASSFILE at it.
+	pgpassPath := filepath.Join(t.TempDir(), ".pgpass")
+	entry := fmt.Sprintf("%s:%d:%s:%s:%s\n", host, port, dbName, user, password)
+	require.NoError(t, os.WriteFile(pgpassPath, []byte(entry), 0o600))
+	t.Setenv("PGPASSFILE", pgpassPath)
+
+	cfg := &config.Config{
+		Database: &config.DatabaseConfig{
+			Host:     host,
+			Port:     port,
+			User:     user,
+			Database: dbName,
+			SSLMode:  "disable",
+			// No Password configured — it must be resolved from PGPASSFILE.
+		},
+	}
+
+	factory, err := NewDatabaseFactory(ctx, cfg)
+	require.NoError(t, err)
+	t.Cleanup(factory.Cleanup)
+
+	// Acquiring a connection forces authentication; with the empty password the
+	// pool would fail SASL auth here.
+	require.NoError(t, factory.pool.Ping(ctx))
 }
 
 func TestDatabaseFactory_CreateRegistryMetricsReader(t *testing.T) {
