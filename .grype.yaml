@@ -2,9 +2,9 @@
 #
 # No active ignore rules. The previous GHSA-x744-4wpc-v9h2 / CVE-2026-34040
 # (GO-2026-4887, docker/docker daemon AuthZ advisory) suppression was removed;
-# it is resolved by the upstream docker/docker -> github.com/moby/moby/{client,api}
-# migration (toolhive#5420). Until that bump lands, the Grype Repository Scan is
-# expected to fail on this advisory.
+# it is resolved by the toolhive v0.29.0 bump, which drops github.com/docker/docker
+# from the build (toolhive migrated to github.com/moby/moby/{client,api},
+# toolhive#5420).
 #
 # Keep this aligned with the govulncheck ignore list in
 # .github/workflows/security-scan.yml — each entry should cite the equivalent

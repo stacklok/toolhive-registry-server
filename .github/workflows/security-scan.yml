@@ -56,10 +56,12 @@ jobs:
 
       - name: Check for vulnerabilities (with exclusions)
         run: |
-          # No suppressions. The previous GO-2026-4883 / GO-2026-4887 (docker/docker
-          # daemon advisories) ignores were removed; they are resolved by the upstream
-          # docker/docker -> github.com/moby/moby/{client,api} migration (toolhive#5420).
-          # Until that bump lands, this job is expected to fail on those two advisories.
+          # No suppressions. The GO-2026-4883 / GO-2026-4887 (docker/docker daemon
+          # advisories) are resolved by the toolhive v0.29.0 bump, which drops
+          # github.com/docker/docker from the build (toolhive migrated to
+          # github.com/moby/moby/{client,api}, toolhive#5420). This job may still report
+          # the pre-existing stdlib GO-2026-50xx findings until CI's Go toolchain
+          # includes their fix.
           IGNORED_VULNS=""
 
           # Show the raw output for debugging

@@ -19,7 +19,7 @@ require (
 	github.com/modelcontextprotocol/registry v1.7.9
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	github.com/stacklok/toolhive v0.28.3
+	github.com/stacklok/toolhive v0.29.0
 	github.com/stacklok/toolhive-core v0.0.23
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag/v2 v2.0.0-rc5
@@ -48,20 +48,20 @@ require (
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.41.8 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.32.19 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.18 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.24 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.41.9 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.32.20 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.19 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.25 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.6.24 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.24 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.24 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.25 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.24 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.1.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.30.18 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.42.2 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.25 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.25 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.26 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.10 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.25 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.1.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.30.19 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.42.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -82,7 +82,6 @@ require (
 	github.com/dgraph-io/ristretto v1.0.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/cli v29.4.3+incompatible // indirect
-	github.com/docker/docker v28.5.2+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
@@ -131,6 +130,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/ianlancetaylor/demangle v0.0.0-20250417193237-f615e6bd150b // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -156,7 +156,6 @@ require (
 	github.com/moby/moby/client v0.4.1 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect
 	github.com/moby/spdystream v0.5.1 // indirect
-	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
@@ -234,7 +233,7 @@ require (
 	golang.ngrok.com/ngrok/v2 v2.1.4 // indirect
 	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/exp/event v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/exp/jsonrpc2 v0.0.0-20260508232706-74f9aab9d74a // indirect
+	golang.org/x/exp/jsonrpc2 v0.0.0-20260529124908-c761662dc8c9 // indirect
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
