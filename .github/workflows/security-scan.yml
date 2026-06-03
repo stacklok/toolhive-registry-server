@@ -56,13 +56,18 @@ jobs:
 
       - name: Check for vulnerabilities (with exclusions)
         run: |
-          # No suppressions. The GO-2026-4883 / GO-2026-4887 (docker/docker daemon
-          # advisories) are resolved by the toolhive v0.29.0 bump, which drops
-          # github.com/docker/docker from the build (toolhive migrated to
-          # github.com/moby/moby/{client,api}, toolhive#5420). This job may still report
-          # the pre-existing stdlib GO-2026-50xx findings until CI's Go toolchain
-          # includes their fix.
-          IGNORED_VULNS=""
+          # The GO-2026-4883 / GO-2026-4887 (docker/docker daemon advisories) are
+          # resolved by the toolhive v0.29.0 bump, which drops github.com/docker/docker
+          # from the build (toolhive migrated to github.com/moby/moby/{client,api},
+          # toolhive#5420) — no suppression needed.
+          #
+          # TEMPORARY: GO-2026-5037 / GO-2026-5038 / GO-2026-5039 are Go standard
+          # library advisories (crypto/x509, mime, net/textproto) fixed in Go 1.26.4.
+          # CI's `stable` Go currently resolves 1.26.3 because the actions/go-versions
+          # manifest has not published 1.26.4 yet. Ignore them only until `stable`
+          # picks up 1.26.4 and we have verified govulncheck is clean against it, then
+          # REMOVE these three entries.
+          IGNORED_VULNS="GO-2026-5037 GO-2026-5038 GO-2026-5039"
 
           # Show the raw output for debugging
           echo "::group::govulncheck raw output"
