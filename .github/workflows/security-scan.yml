@@ -56,28 +56,11 @@ jobs:
 
       - name: Check for vulnerabilities (with exclusions)
         run: |
-          # Ignored vulnerabilities with justification:
-          # GO-2026-4883: Off-by-one error in Moby plugin privilege validation (CVE-2026-33997)
-          #   Affects the Docker daemon's plugin privilege handling code. This project only
-          #   uses the Docker client SDK (via testcontainers) for integration tests, not the
-          #   daemon plugin subsystem. No fixed version exists for github.com/docker/docker;
-          #   fix is only in github.com/moby/moby/v2 v2.0.0-beta.8+ which is not yet
-          #   available as a docker/docker release.
-          # GO-2026-4887: AuthZ plugin bypass with oversized request bodies (CVE-2026-34040)
-          #   Affects the Docker daemon's AuthZ plugin mechanism. This project only uses the
-          #   Docker client SDK (via testcontainers) and does not run or configure AuthZ
-          #   plugins. No fixed version exists for github.com/docker/docker; fix is only in
-          #   github.com/moby/moby/v2 v2.0.0-beta.8+ which is not yet available as a
-          #   docker/docker release.
-          # GO-2026-4771: Memory-safety vulnerability in pgx pgproto3 Bind.Decode (CVE-2026-33815)
-          #   Affects the PostgreSQL wire protocol server-side message decoding. This project
-          #   is a PostgreSQL client connecting to trusted database servers, not a PostgreSQL
-          #   server. No fixed version of github.com/jackc/pgx/v5 exists yet.
-          # GO-2026-4772: Memory-safety vulnerability in pgx pgproto3 FunctionCall.Decode (CVE-2026-33816)
-          #   Same as above — affects server-side protocol decoding. This project is a
-          #   PostgreSQL client connecting to trusted database servers. No fixed version of
-          #   github.com/jackc/pgx/v5 exists yet.
-          IGNORED_VULNS="GO-2026-4883 GO-2026-4887 GO-2026-4771 GO-2026-4772"
+          # No suppressions. The previous GO-2026-4883 / GO-2026-4887 (docker/docker
+          # daemon advisories) ignores were removed; they are resolved by the upstream
+          # docker/docker -> github.com/moby/moby/{client,api} migration (toolhive#5420).
+          # Until that bump lands, this job is expected to fail on those two advisories.
+          IGNORED_VULNS=""
 
           # Show the raw output for debugging
           echo "::group::govulncheck raw output"
