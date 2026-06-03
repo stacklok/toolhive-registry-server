@@ -7,11 +7,16 @@
 ignore:
   # GHSA-x744-4wpc-v9h2 / CVE-2026-34040 / GO-2026-4887
   # AuthZ plugin bypass with oversized request bodies in the Docker daemon.
-  # This project only uses the Docker client SDK (via testcontainers) for
-  # integration tests; it does not run or configure AuthZ plugins. The fix
-  # lives in github.com/moby/moby v29.3.1 / github.com/moby/moby/v2
-  # v2.0.0-beta.8 — neither is available as a github.com/docker/docker
-  # release on the Go module proxy yet.
+  # This project only consumes the Docker API client/types transitively (via
+  # toolhive's CRD types and testcontainers); it runs no daemon and never
+  # configures AuthZ plugins, so the vulnerable path is unreachable.
+  # github.com/docker/docker is deprecated as of Docker v29 (Nov 2025) and
+  # receives no further releases — there is no docker/docker version to bump
+  # to. The advisory's "29.3.1" is the engine product release; the library
+  # remediation is migrating docker/docker imports to the maintained
+  # github.com/moby/moby/client and github.com/moby/moby/api modules (both
+  # already in our graph), which is an upstream task in our dependencies
+  # (toolhive, golang-migrate, ory/x).
   - vulnerability: GHSA-x744-4wpc-v9h2
     package:
       name: github.com/docker/docker
