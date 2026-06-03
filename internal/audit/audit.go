@@ -103,10 +103,11 @@ const maxUserAgentLen = 512
 
 // SourceFromRequest extracts the client IP and User-Agent for audit events.
 //
-// For the IP address, it uses r.RemoteAddr as the primary source because
-// Chi's middleware.RealIP runs earlier in the middleware chain and already
-// resolves X-Forwarded-For / X-Real-IP into RemoteAddr. The raw
-// X-Forwarded-For header is preserved in Extra for forensic context.
+// For the IP address, it uses r.RemoteAddr as the primary source. This is the
+// direct peer address (typically the ingress/proxy in front of the server); we
+// deliberately do not resolve it from client-supplied X-Forwarded-For /
+// X-Real-IP headers, which are spoofable. The raw X-Forwarded-For header is
+// preserved in Extra for forensic context.
 func SourceFromRequest(r *http.Request) audit.EventSource {
 	source := audit.EventSource{
 		Type:  audit.SourceTypeNetwork,
@@ -115,8 +116,8 @@ func SourceFromRequest(r *http.Request) audit.EventSource {
 
 	extra := make(map[string]any, 2)
 
-	// Preserve raw X-Forwarded-For for forensic context (may differ from
-	// RemoteAddr after RealIP middleware processing).
+	// Preserve raw X-Forwarded-For for forensic context (the client-claimed
+	// chain, which may differ from the RemoteAddr peer recorded above).
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		extra["x_forwarded_for"] = xff
 	}

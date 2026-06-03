@@ -435,7 +435,12 @@ func buildHTTPServer(
 	if b.middlewares == nil {
 		b.middlewares = []func(http.Handler) http.Handler{
 			middleware.RequestID,
-			middleware.RealIP,
+			// middleware.RealIP is intentionally omitted: it was deprecated in
+			// chi v5.3.0 because it blindly trusts client-supplied headers
+			// (True-Client-IP / X-Real-IP / leftmost X-Forwarded-For) and
+			// mutates r.RemoteAddr, which is an IP-spoofing risk. We keep
+			// r.RemoteAddr as the direct peer address; the raw X-Forwarded-For
+			// header is still preserved for forensics in audit events.
 			middleware.Recoverer,
 			middleware.Timeout(b.requestTimeout),
 			api.LoggingMiddleware,
