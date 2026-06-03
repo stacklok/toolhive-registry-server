@@ -56,24 +56,11 @@ jobs:
 
       - name: Check for vulnerabilities (with exclusions)
         run: |
-          # Ignored vulnerabilities with justification:
-          # GO-2026-4883: Off-by-one error in Moby plugin privilege validation (CVE-2026-33997)
-          #   Affects the Docker daemon's plugin privilege handling code. This project only
-          #   consumes the Docker API client/types transitively (toolhive CRD types +
-          #   testcontainers), runs no daemon, and never touches the plugin subsystem, so the
-          #   vulnerable path is unreachable. github.com/docker/docker is deprecated as of
-          #   Docker v29 (Nov 2025) and gets no further releases — there is no docker/docker
-          #   version to bump to. Remediation is the upstream migration of docker/docker
-          #   imports to github.com/moby/moby/client + github.com/moby/moby/api.
-          # GO-2026-4887: AuthZ plugin bypass with oversized request bodies (CVE-2026-34040)
-          #   Affects the Docker daemon's AuthZ plugin mechanism. This project only consumes the
-          #   Docker API client/types transitively (toolhive CRD types + testcontainers), runs
-          #   no daemon, and configures no AuthZ plugins, so the vulnerable path is unreachable.
-          #   github.com/docker/docker is deprecated as of Docker v29 (Nov 2025) and gets no
-          #   further releases — there is no docker/docker version to bump to. Remediation is
-          #   the upstream migration of docker/docker imports to github.com/moby/moby/client +
-          #   github.com/moby/moby/api.
-          IGNORED_VULNS="GO-2026-4883 GO-2026-4887"
+          # No suppressions. The previous GO-2026-4883 / GO-2026-4887 (docker/docker
+          # daemon advisories) ignores were removed; they are resolved by the upstream
+          # docker/docker -> github.com/moby/moby/{client,api} migration (toolhive#5420).
+          # Until that bump lands, this job is expected to fail on those two advisories.
+          IGNORED_VULNS=""
 
           # Show the raw output for debugging
           echo "::group::govulncheck raw output"

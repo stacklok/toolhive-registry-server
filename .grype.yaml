@@ -1,27 +1,12 @@
 # Grype configuration for the registry server.
 #
-# Ignore rules below mirror the justifications in
-# .github/workflows/security-scan.yml for govulncheck. Each entry should cite
-# the equivalent GO-* advisory so the two scanners stay aligned.
-
-ignore:
-  # GHSA-x744-4wpc-v9h2 / CVE-2026-34040 / GO-2026-4887
-  # AuthZ plugin bypass with oversized request bodies in the Docker daemon.
-  # This project only consumes the Docker API client/types transitively (via
-  # toolhive's CRD types and testcontainers); it runs no daemon and never
-  # configures AuthZ plugins, so the vulnerable path is unreachable.
-  # github.com/docker/docker is deprecated as of Docker v29 (Nov 2025) and
-  # receives no further releases — there is no docker/docker version to bump
-  # to. The advisory's "29.3.1" is the engine product release; the library
-  # remediation is migrating docker/docker imports to the maintained
-  # github.com/moby/moby/client and github.com/moby/moby/api modules (both
-  # already in our graph), which is an upstream task in our dependencies
-  # (toolhive, golang-migrate, ory/x).
-  - vulnerability: GHSA-x744-4wpc-v9h2
-    package:
-      name: github.com/docker/docker
-      type: go-module
-  - vulnerability: CVE-2026-34040
-    package:
-      name: github.com/docker/docker
-      type: go-module
+# No active ignore rules. The previous GHSA-x744-4wpc-v9h2 / CVE-2026-34040
+# (GO-2026-4887, docker/docker daemon AuthZ advisory) suppression was removed;
+# it is resolved by the upstream docker/docker -> github.com/moby/moby/{client,api}
+# migration (toolhive#5420). Until that bump lands, the Grype Repository Scan is
+# expected to fail on this advisory.
+#
+# Keep this aligned with the govulncheck ignore list in
+# .github/workflows/security-scan.yml — each entry should cite the equivalent
+# GO-* advisory so the two scanners stay in sync.
+ignore: []
