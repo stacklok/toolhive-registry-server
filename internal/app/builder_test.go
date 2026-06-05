@@ -430,15 +430,15 @@ func TestBuildHTTPServer_WithMeterProvider(t *testing.T) {
 		{
 			name:                    "with meter provider adds metrics middleware",
 			meterProvider:           noop.NewMeterProvider(),
-			initialMiddlewareCount:  0, // nil triggers defaults (4) + metrics (1) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 9
-			expectedMiddlewareCount: 9, // 4 default + 1 metrics + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit
+			initialMiddlewareCount:  0, // nil triggers defaults (5) + metrics (1) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 10
+			expectedMiddlewareCount: 10, // 5 default + 1 metrics + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit
 			description:             "metrics middleware should be prepended when meter provider is set",
 		},
 		{
 			name:                    "without meter provider no metrics middleware",
 			meterProvider:           nil,
-			initialMiddlewareCount:  0, // nil triggers defaults (4) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 8
-			expectedMiddlewareCount: 8, // 4 default + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit (no metrics)
+			initialMiddlewareCount:  0, // nil triggers defaults (5) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 9
+			expectedMiddlewareCount: 9, // 5 default + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit (no metrics)
 			description:             "no metrics middleware should be added when meter provider is nil",
 		},
 	}
