@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 	"time"
@@ -981,4 +982,21 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 			// Cleanup verification is done through gomock expectations
 		})
 	}
+}
+
+func TestSecurityHeadersInDefaultMiddleware(t *testing.T) {
+	t.Parallel()
+
+	// securityHeadersMiddleware is part of the default middleware chain in
+	// buildHTTPServer. Verify the named function sets both headers.
+	req, err := http.NewRequest(http.MethodGet, "/", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	securityHeadersMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rr, req)
+
+	assert.Equal(t, "nosniff", rr.Header().Get("X-Content-Type-Options"))
+	assert.Equal(t, "same-origin", rr.Header().Get("Cross-Origin-Resource-Policy"))
 }

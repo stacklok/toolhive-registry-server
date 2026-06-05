@@ -444,6 +444,7 @@ func buildHTTPServer(
 			middleware.Recoverer,
 			middleware.Timeout(b.requestTimeout),
 			api.LoggingMiddleware,
+			securityHeadersMiddleware,
 		}
 	}
 
@@ -632,4 +633,13 @@ func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWrit
 		}
 	}
 	return nil
+}
+
+// securityHeadersMiddleware sets baseline security response headers on every request.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+		next.ServeHTTP(w, r)
+	})
 }
