@@ -132,6 +132,24 @@ func TestVersionEndpoint(t *testing.T) {
 	assert.Contains(t, response, "platform")
 }
 
+func TestSecurityHeaders(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockSvc := mocks.NewMockRegistryService(ctrl)
+	server := api.NewServer(mockSvc)
+
+	req, err := http.NewRequest(http.MethodGet, "/health", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	server.ServeHTTP(rr, req)
+
+	assert.Equal(t, "nosniff", rr.Header().Get("X-Content-Type-Options"))
+	assert.Equal(t, "same-origin", rr.Header().Get("Cross-Origin-Resource-Policy"))
+}
+
 func TestOpenAPIEndpoint(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
