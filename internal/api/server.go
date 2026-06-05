@@ -56,11 +56,20 @@ func WithAuthConfig(authCfg *config.AuthConfig) ServerOption {
 	}
 }
 
+// securityHeadersMiddleware sets baseline security response headers on every request.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // NewServer creates and configures the HTTP router with the given service and options
 func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 	// Initialize configuration with defaults
 	cfg := &serverConfig{
-		middlewares: []func(http.Handler) http.Handler{},
+		middlewares: []func(http.Handler) http.Handler{securityHeadersMiddleware},
 	}
 
 	// Apply options
@@ -74,13 +83,6 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 	for _, mw := range cfg.middlewares {
 		r.Use(mw)
 	}
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("X-Content-Type-Options", "nosniff")
-			w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
-			next.ServeHTTP(w, r)
-		})
-	})
 
 	// Mount OpenAPI endpoint
 	r.Get("/openapi.json", openAPIHandler)
