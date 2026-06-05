@@ -74,6 +74,13 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 	for _, mw := range cfg.middlewares {
 		r.Use(mw)
 	}
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+			next.ServeHTTP(w, r)
+		})
+	})
 
 	// Mount OpenAPI endpoint
 	r.Get("/openapi.json", openAPIHandler)
