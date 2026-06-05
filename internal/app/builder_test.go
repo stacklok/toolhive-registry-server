@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 	"time"
@@ -429,15 +430,15 @@ func TestBuildHTTPServer_WithMeterProvider(t *testing.T) {
 		{
 			name:                    "with meter provider adds metrics middleware",
 			meterProvider:           noop.NewMeterProvider(),
-			initialMiddlewareCount:  0, // nil triggers defaults (4) + metrics (1) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 9
-			expectedMiddlewareCount: 9, // 4 default + 1 metrics + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit
+			initialMiddlewareCount:  0,  // nil triggers defaults (5) + metrics (1) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 10
+			expectedMiddlewareCount: 10, // 5 default + 1 metrics + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit
 			description:             "metrics middleware should be prepended when meter provider is set",
 		},
 		{
 			name:                    "without meter provider no metrics middleware",
 			meterProvider:           nil,
-			initialMiddlewareCount:  0, // nil triggers defaults (4) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 8
-			expectedMiddlewareCount: 8, // 4 default + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit (no metrics)
+			initialMiddlewareCount:  0, // nil triggers defaults (5) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 9
+			expectedMiddlewareCount: 9, // 5 default + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit (no metrics)
 			description:             "no metrics middleware should be added when meter provider is nil",
 		},
 	}
@@ -981,4 +982,21 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 			// Cleanup verification is done through gomock expectations
 		})
 	}
+}
+
+func TestSecurityHeadersInDefaultMiddleware(t *testing.T) {
+	t.Parallel()
+
+	// securityHeadersMiddleware is part of the default middleware chain in
+	// buildHTTPServer. Verify the named function sets both headers.
+	req, err := http.NewRequest(http.MethodGet, "/", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	securityHeadersMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rr, req)
+
+	assert.Equal(t, "nosniff", rr.Header().Get("X-Content-Type-Options"))
+	assert.Equal(t, "same-origin", rr.Header().Get("Cross-Origin-Resource-Policy"))
 }
