@@ -1185,6 +1185,39 @@
           }
         }
       }
+    ],
+    "skills": [
+      {
+        "namespace": "com.xquik",
+        "name": "tweetclaw",
+        "description": "Search tweets, scrape tweet replies, post tweets and replies, export followers, manage media, monitor tweets, deliver webhooks, run giveaway draws, and use direct messages from OpenClaw with approval-aware X/Twitter workflows.",
+        "version": "1.6.32",
+        "status": "active",
+        "title": "TweetClaw",
+        "license": "MIT",
+        "compatibility": "OpenClaw 2026.6.1 or newer with the TweetClaw plugin installed from npm.",
+        "allowedTools": [
+          "explore",
+          "tweetclaw"
+        ],
+        "repository": {
+          "url": "https://github.com/Xquik-dev/tweetclaw",
+          "type": "git"
+        },
+        "packages": [
+          {
+            "registryType": "git",
+            "url": "https://github.com/Xquik-dev/tweetclaw",
+            "ref": "master",
+            "commit": "7113d9e534a94f8279438b1373f741343c39523a",
+            "subfolder": "skills/tweetclaw"
+          }
+        ],
+        "metadata": {
+          "npmPackage": "@xquik/tweetclaw",
+          "openclawInstall": "openclaw plugins install npm:@xquik/tweetclaw"
+        }
+      }
     ]
   }
 }

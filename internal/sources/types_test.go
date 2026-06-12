@@ -270,12 +270,15 @@ func TestExampleFiles(t *testing.T) {
 		name               string
 		filename           string
 		expectedServers    int
+		expectedSkills     int
 		validateServerName func(*testing.T, *toolhivetypes.UpstreamRegistry)
+		validateSkillName  func(*testing.T, *toolhivetypes.UpstreamRegistry)
 	}{
 		{
 			name:            "upstream-registry.json",
 			filename:        "upstream-registry.json",
 			expectedServers: 12,
+			expectedSkills:  1,
 			validateServerName: func(t *testing.T, reg *toolhivetypes.UpstreamRegistry) {
 				t.Helper()
 				// Verify some expected servers are present
@@ -293,6 +296,16 @@ func TestExampleFiles(t *testing.T) {
 				for _, name := range expectedNames {
 					assert.True(t, serverNames[name], "Expected server %s not found", name)
 				}
+			},
+			validateSkillName: func(t *testing.T, reg *toolhivetypes.UpstreamRegistry) {
+				t.Helper()
+				require.Len(t, reg.Data.Skills, 1)
+				skill := reg.Data.Skills[0]
+				assert.Equal(t, "com.xquik", skill.Namespace)
+				assert.Equal(t, "tweetclaw", skill.Name)
+				require.NotEmpty(t, skill.Packages)
+				assert.Equal(t, "git", skill.Packages[0].RegistryType)
+				assert.Equal(t, "skills/tweetclaw", skill.Packages[0].Subfolder)
 			},
 		},
 	}
@@ -315,6 +328,8 @@ func TestExampleFiles(t *testing.T) {
 			// Verify expected server count
 			assert.Len(t, reg.Data.Servers, tt.expectedServers,
 				"Example file %s has unexpected server count", tt.filename)
+			assert.Len(t, reg.Data.Skills, tt.expectedSkills,
+				"Example file %s has unexpected skill count", tt.filename)
 
 			// Verify all servers have required fields
 			for i, server := range reg.Data.Servers {
@@ -329,6 +344,9 @@ func TestExampleFiles(t *testing.T) {
 			// Run custom validation if provided
 			if tt.validateServerName != nil {
 				tt.validateServerName(t, reg)
+			}
+			if tt.validateSkillName != nil {
+				tt.validateSkillName(t, reg)
 			}
 
 			// Verify metadata is present
