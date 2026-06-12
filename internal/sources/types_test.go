@@ -305,6 +305,7 @@ func TestExampleFiles(t *testing.T) {
 				assert.Equal(t, "tweetclaw", skill.Name)
 				require.NotEmpty(t, skill.Packages)
 				assert.Equal(t, "git", skill.Packages[0].RegistryType)
+				assert.Equal(t, "7113d9e534a94f8279438b1373f741343c39523a", skill.Packages[0].Commit)
 				assert.Equal(t, "skills/tweetclaw", skill.Packages[0].Subfolder)
 			},
 		},

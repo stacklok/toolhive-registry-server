@@ -1208,7 +1208,6 @@
           {
             "registryType": "git",
             "url": "https://github.com/Xquik-dev/tweetclaw",
-            "ref": "master",
             "commit": "7113d9e534a94f8279438b1373f741343c39523a",
             "subfolder": "skills/tweetclaw"
           }
