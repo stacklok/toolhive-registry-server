@@ -27,6 +27,10 @@ ignore:
     package:
       name: github.com/docker/docker
       type: go-module
+  - vulnerability: GO-2026-4610
+    package:
+      name: github.com/docker/cli
+      type: go-module
   - vulnerability: GHSA-p436-gjf2-799p
     package:
       name: github.com/docker/cli
