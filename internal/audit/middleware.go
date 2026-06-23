@@ -197,7 +197,7 @@ func emitEvent(
 		}
 	}
 
-	event.LogTo(r.Context(), logger.Slog(), auditLevel)
+	event.LogTo(r.Context(), logger.Slog(), audit.LevelAudit)
 }
 
 // emitAuthFailureEvent builds an audit event for a failed authentication attempt.
@@ -223,7 +223,7 @@ func emitAuthFailureEvent(r *http.Request, logger *Logger) {
 		}
 	}
 
-	event.LogTo(r.Context(), logger.Slog(), auditLevel)
+	event.LogTo(r.Context(), logger.Slog(), audit.LevelAudit)
 }
 
 // subjectsFromRequest extracts the authenticated subject from JWT claims for
