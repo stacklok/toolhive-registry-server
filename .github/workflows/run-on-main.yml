@@ -24,6 +24,8 @@ jobs:
     uses: ./.github/workflows/test.yml
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
   codegen:
     name: Verify Generated Files
     uses: ./.github/workflows/verify-gen.yml
