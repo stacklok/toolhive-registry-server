@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/stacklok/toolhive-core/audit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -23,7 +24,7 @@ import (
 // newTestLogger creates a Logger that writes to the provided buffer.
 // Since tests are in the same package, we can access unexported fields.
 func newTestLogger(buf *bytes.Buffer) *Logger {
-	handler := slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: auditLevel})
+	handler := slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: audit.LevelAudit})
 	return &Logger{logger: slog.New(handler)}
 }
 
@@ -1161,7 +1162,7 @@ func TestLogger_NewLoggerFile(t *testing.T) {
 	assert.NotNil(t, l.Slog())
 
 	// Write at the audit level (which the handler accepts) to verify the file is usable.
-	l.Slog().Log(t.Context(), auditLevel, "test audit message")
+	l.Slog().Log(t.Context(), audit.LevelAudit, "test audit message")
 
 	// Verify the file was created and has content.
 	info, err := os.Stat(tmpFile)
@@ -1170,6 +1171,28 @@ func TestLogger_NewLoggerFile(t *testing.T) {
 
 	// Close should work and not error.
 	assert.NoError(t, l.Close())
+}
+
+func TestLogger_RendersAuditLevelAsString(t *testing.T) {
+	t.Parallel()
+
+	tmpFile := t.TempDir() + "/audit.log"
+
+	l, err := NewLogger(tmpFile)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, l.Close()) })
+
+	l.Slog().Log(t.Context(), audit.LevelAudit, "test audit message")
+
+	data, err := os.ReadFile(tmpFile) //nolint:gosec // path is test-controlled
+	require.NoError(t, err)
+
+	var entry map[string]any
+	require.NoError(t, json.Unmarshal(data, &entry))
+
+	// The custom audit level must serialize as "AUDIT" rather than the default
+	// "INFO+2" so log aggregators can filter on a named level. See issue #826.
+	assert.Equal(t, "AUDIT", entry["level"])
 }
 
 func TestLogger_NewLoggerInvalidPath(t *testing.T) {
