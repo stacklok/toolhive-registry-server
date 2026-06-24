@@ -159,11 +159,11 @@ config:
   #   3. Dynamic auth (e.g., AWS RDS IAM) via the dynamicAuth config block
   # See: https://www.postgresql.org/docs/current/libpq-pgpass.html
   database:
-    host: localhost
+    host: ""
     port: 5432
     user: thv_user
     database: toolhive_registry
-    sslMode: require
+    sslMode: ""
 
 # Example production configuration with OAuth and authorization (uncomment and customize):
 # config:
