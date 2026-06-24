@@ -1,0 +1,14 @@
+{{/*
+Values guard for the PostgreSQL backend.
+Fails at template time if no database host is configured — either directly
+via config.database.host or via the global.postgres fallback.
+This fires before the ConfigMap is rendered, giving a clear error.
+*/}}
+{{- $gp := dict }}
+{{- if .Values.global }}
+{{-   $gp = .Values.global.postgres | default dict }}
+{{- end }}
+{{- $dbHost := .Values.config.database.host | default $gp.host }}
+{{- if not $dbHost }}
+{{-   fail "registry-server: PostgreSQL host is required. Set config.database.host or global.postgres.host." }}
+{{- end }}
