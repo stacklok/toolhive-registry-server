@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/stacklok/toolhive-core/audit"
 )
 
 // Logger wraps a dedicated *slog.Logger for audit events and manages
@@ -38,7 +40,18 @@ func NewLogger(logFile string) (*Logger, error) {
 	handler := slog.NewJSONHandler(w, &slog.HandlerOptions{
 		// Use a custom level between Info and Warn so audit events can be
 		// filtered independently from regular application logs.
-		Level: auditLevel,
+		Level: audit.LevelAudit,
+		// Render the custom audit level as the string "AUDIT" instead of the
+		// default "INFO+2", matching the toolhive operator so operators running
+		// both can filter audit streams with a single level pattern.
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.LevelKey {
+				if level, ok := a.Value.Any().(slog.Level); ok && level == audit.LevelAudit {
+					a.Value = slog.StringValue("AUDIT")
+				}
+			}
+			return a
+		},
 	})
 
 	return &Logger{
@@ -59,7 +72,3 @@ func (l *Logger) Close() error {
 	}
 	return nil
 }
-
-// auditLevel is a custom slog level between Info (0) and Warn (4).
-// This allows log infrastructure to filter audit events independently.
-var auditLevel = slog.Level(2) //nolint:gochecknoglobals // package-level log level constant
