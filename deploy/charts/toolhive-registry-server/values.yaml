@@ -163,7 +163,7 @@ config:
     port: 5432
     user: thv_user
     database: toolhive_registry
-    sslMode: ""
+    sslMode: require
 
 # Example production configuration with OAuth and authorization (uncomment and customize):
 # config:
