@@ -63,6 +63,8 @@ func extractServer(mcpServer *mcpv1beta1.MCPServer) (*upstreamv0.ServerJSON, err
 		serverJSON.Title = title
 	}
 
+	applyRegistryIcon(serverJSON, annotations)
+
 	transportURL, ok := annotations[defaultRegistryURLAnnotation]
 	if !ok {
 		return nil, fmt.Errorf("URL not found in annotations")
@@ -103,6 +105,8 @@ func extractServer(mcpServer *mcpv1beta1.MCPServer) (*upstreamv0.ServerJSON, err
 	if tools := extractTools(annotations, mcpServer.Name, mcpServer.Namespace); tools != nil {
 		extensions.Tools = tools
 	}
+
+	applyRegistryCategory(extensions, annotations)
 
 	// Convert extensions struct to map[string]any for JSON serialization
 	extensionsMap, err := structToMap(extensions)
@@ -151,6 +155,8 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1beta1.VirtualMCPServer) (*up
 		serverJSON.Title = title
 	}
 
+	applyRegistryIcon(serverJSON, annotations)
+
 	transportURL, ok := annotations[defaultRegistryURLAnnotation]
 	if !ok {
 		return nil, fmt.Errorf("URL not found in annotations")
@@ -189,6 +195,8 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1beta1.VirtualMCPServer) (*up
 	if tools := extractTools(annotations, virtualMCPServer.Name, virtualMCPServer.Namespace); tools != nil {
 		extensions.Tools = tools
 	}
+
+	applyRegistryCategory(extensions, annotations)
 
 	// Convert extensions struct to map[string]any for JSON serialization
 	extensionsMap, err := structToMap(extensions)
@@ -237,6 +245,8 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1beta1.MCPRemoteProxy) (*upstream
 		serverJSON.Title = title
 	}
 
+	applyRegistryIcon(serverJSON, annotations)
+
 	transportURL, ok := annotations[defaultRegistryURLAnnotation]
 	if !ok {
 		return nil, fmt.Errorf("URL not found in annotations")
@@ -275,6 +285,8 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1beta1.MCPRemoteProxy) (*upstream
 	if tools := extractTools(annotations, mcpRemoteProxy.Name, mcpRemoteProxy.Namespace); tools != nil {
 		extensions.Tools = tools
 	}
+
+	applyRegistryCategory(extensions, annotations)
 
 	// Convert extensions struct to map[string]any for JSON serialization
 	extensionsMap, err := structToMap(extensions)
@@ -329,6 +341,25 @@ func extractTools(annotations map[string]string, name, namespace string) []strin
 	}
 
 	return tools
+}
+
+// applyRegistryIcon sets the server's icon from the registry-icon annotation
+// when present. Icons are a first-class field of the upstream server.json, so
+// the annotation value (a single icon source URL) is placed there directly.
+func applyRegistryIcon(serverJSON *upstreamv0.ServerJSON, annotations map[string]string) {
+	if icon, ok := annotations[defaultRegistryIconAnnotation]; ok && icon != "" {
+		serverJSON.Icons = []model.Icon{{Src: icon}}
+	}
+}
+
+// applyRegistryCategory records the registry-category annotation as a ToolHive
+// tag when present. Category is not an upstream server.json field; ToolHive's
+// Tags extension is the categorization and filtering mechanism, so the category
+// is carried there.
+func applyRegistryCategory(extensions *registry.ServerExtensions, annotations map[string]string) {
+	if category, ok := annotations[defaultRegistryCategoryAnnotation]; ok && category != "" {
+		extensions.Tags = append(extensions.Tags, category)
+	}
 }
 
 // extractPackages extracts packages from MCPServer spec

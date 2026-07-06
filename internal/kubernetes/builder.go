@@ -26,6 +26,8 @@ const (
 	defaultRegistryURLAnnotation             = "toolhive.stacklok.dev/registry-url"
 	defaultRegistryDescriptionAnnotation     = "toolhive.stacklok.dev/registry-description"
 	defaultRegistryTitleAnnotation           = "toolhive.stacklok.dev/registry-title"
+	defaultRegistryIconAnnotation            = "toolhive.stacklok.dev/registry-icon"
+	defaultRegistryCategoryAnnotation        = "toolhive.stacklok.dev/registry-category"
 	defaultRegistryToolDefinitionsAnnotation = "toolhive.stacklok.dev/tool-definitions"
 	defaultRegistryToolsAnnotation           = "toolhive.stacklok.dev/tools"
 	defaultAuthzClaimsAnnotation             = "toolhive.stacklok.dev/authz-claims"

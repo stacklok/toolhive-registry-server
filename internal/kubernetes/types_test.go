@@ -88,6 +88,74 @@ func TestExtractServer(t *testing.T) {
 			},
 		},
 		{
+			name: "MCPServer with icon and category annotations",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+					defaultRegistryTitleAnnotation:       "Test Server",
+					defaultRegistryIconAnnotation:        "https://example.com/icon.png",
+					defaultRegistryCategoryAnnotation:    "developer-tools",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "test/image:latest",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Equal(t, "Test Server", sj.Title)
+				// Icon rides on the upstream server.json as a first-class field.
+				require.Len(t, sj.Icons, 1)
+				assert.Equal(t, "https://example.com/icon.png", sj.Icons[0].Src)
+
+				// Category rides on the ToolHive Tags extension.
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+				mcpMetadata := ioStacklok["https://example.com/mcp"].(map[string]any)
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
+				assert.Contains(t, ext.Tags, "developer-tools")
+			},
+		},
+		{
+			name: "MCPServer without icon or category annotations leaves them unset",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "test/image:latest",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Empty(t, sj.Icons, "Icons should be empty when the icon annotation is not set")
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+				mcpMetadata := ioStacklok["https://example.com/mcp"].(map[string]any)
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
+				assert.Empty(t, ext.Tags, "Tags should be empty when the category annotation is not set")
+			},
+		},
+		{
 			name: "MCPServer with nil annotations",
 			mcpServer: createTestMCPServer(
 				"test-server",
