@@ -67,7 +67,13 @@ jobs:
           # manifest has not published 1.26.4 yet. Ignore them only until `stable`
           # picks up 1.26.4 and we have verified govulncheck is clean against it, then
           # REMOVE these three entries.
-          IGNORED_VULNS="GO-2026-5037 GO-2026-5038 GO-2026-5039"
+          #
+          # GO-2026-5932 flags golang.org/x/crypto/openpgp as deprecated and unsafe.
+          # It affects all versions with no fix available, and it is pulled in only as
+          # a transitive dependency: govulncheck reports it at the module level with no
+          # called symbol ("in modules you require, but your code doesn't appear to
+          # call"). Suppress it until the dependency drops openpgp from our build.
+          IGNORED_VULNS="GO-2026-5037 GO-2026-5038 GO-2026-5039 GO-2026-5932"
 
           # Show the raw output for debugging
           echo "::group::govulncheck raw output"

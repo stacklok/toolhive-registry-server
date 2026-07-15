@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
+	mcp "github.com/stacklok/toolhive-core/mcpcompat/mcp"
 	registry "github.com/stacklok/toolhive-core/registry/types"
 	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 )
