@@ -138,11 +138,19 @@ func (m *multiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
+		sub, user := IdentityFromClaims(result.Claims)
 		slog.Info("Authentication successful",
 			"provider", result.Provider,
-			"subject", result.Claims["sub"],
+			"sub", sub,
+			"user", user,
 			"remote_addr", r.RemoteAddr,
 			"path", r.URL.Path)
+
+		// Publish identity to the outer access-log holder so the deferred
+		// "HTTP request" line emitted from the outer LoggingMiddleware can
+		// see the authenticated subject (its r.Context() is fixed before the
+		// chain runs, so it cannot otherwise reach claims attached below).
+		SetIdentity(r.Context(), sub, user)
 
 		// Store validated claims in request context for downstream authorization
 		ctx := ContextWithClaims(r.Context(), result.Claims)

@@ -1,8 +1,11 @@
 package auth
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -352,4 +355,140 @@ func TestWrapWithPublicPaths(t *testing.T) {
 			assert.Equal(t, tt.expectAuthCall, authCalled)
 		})
 	}
+}
+
+// TestMultiProviderMiddleware_LogsIdentity verifies that on successful
+// authentication the middleware emits sub/user fields (not the legacy
+// "subject" field that returned null in v1.1.2 — the symptom in #731).
+// Also proves the identity holder is populated so an outer access logger
+// can read it after the chain returns.
+//
+// This test (and the fallback test below) mutate slog.Default() to
+// capture log output, so they must run sequentially.
+//
+//nolint:paralleltest,tparallel // mutates slog.Default(); see comment above
+func TestMultiProviderMiddleware_LogsIdentity(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockValidator := mocks.NewMocktokenValidatorInterface(ctrl)
+	mockValidator.EXPECT().ValidateToken(gomock.Any(), "valid-token").
+		Return(map[string]any{
+			"sub":                "f1c2d3e4-5678-90ab-cdef-1234567890ab",
+			"name":               "Alice Example",
+			"preferred_username": "alice",
+			"email":              "alice@example.com",
+		}, nil)
+
+	m, err := newMultiProviderMiddleware(
+		context.Background(),
+		singleProviderConfig(),
+		"",
+		"",
+		func(_ context.Context, _ thvauth.TokenValidatorConfig) (tokenValidatorInterface, error) {
+			return mockValidator, nil
+		},
+	)
+	require.NoError(t, err)
+
+	// Capture both the slog output AND the post-chain identity from a
+	// holder installed in the outer context.
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	wrapped := m.Middleware(handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/registry/demo/v0.1/servers", nil)
+	req.Header.Set("Authorization", "Bearer valid-token")
+
+	// Install holder in the request's context — this stands in for the
+	// outer LoggingMiddleware. After the chain returns, the holder must
+	// be populated.
+	outerCtx := WithIdentityHolder(req.Context())
+	req = req.WithContext(outerCtx)
+
+	rr := httptest.NewRecorder()
+	wrapped.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	// Holder must reflect the authenticated identity, visible to the
+	// outer scope despite the auth middleware attaching claims via a
+	// child context.
+	sub, user := IdentityFromContext(req.Context())
+	assert.Equal(t, "f1c2d3e4-5678-90ab-cdef-1234567890ab", sub)
+	assert.Equal(t, "Alice Example", user)
+
+	// Slog line for "Authentication successful" must carry sub/user (not
+	// the broken "subject" field with a null value).
+	var found bool
+	for _, line := range bytes.Split(bytes.TrimRight(buf.Bytes(), "\n"), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var rec map[string]any
+		require.NoError(t, json.Unmarshal(line, &rec))
+		if rec["msg"] != "Authentication successful" {
+			continue
+		}
+		found = true
+		assert.Equal(t, "f1c2d3e4-5678-90ab-cdef-1234567890ab", rec["sub"])
+		assert.Equal(t, "Alice Example", rec["user"])
+		assert.NotContains(t, rec, "subject", `legacy "subject" field should be gone`)
+		assert.Equal(t, "test-provider", rec["provider"])
+		assert.Equal(t, "/registry/demo/v0.1/servers", rec["path"])
+	}
+	assert.True(t, found, "Authentication successful log line not emitted")
+}
+
+// TestMultiProviderMiddleware_LogsIdentity_PreferredUsernameFallback verifies
+// that when the JWT lacks `name` but has `preferred_username`, the latter is
+// used as the user display name in the log line.
+//
+//nolint:paralleltest,tparallel // mutates slog.Default()
+func TestMultiProviderMiddleware_LogsIdentity_PreferredUsernameFallback(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockValidator := mocks.NewMocktokenValidatorInterface(ctrl)
+	mockValidator.EXPECT().ValidateToken(gomock.Any(), "tok").
+		Return(map[string]any{
+			"sub":                "u-1",
+			"preferred_username": "alice",
+		}, nil)
+
+	m, err := newMultiProviderMiddleware(
+		context.Background(),
+		singleProviderConfig(),
+		"",
+		"",
+		func(_ context.Context, _ thvauth.TokenValidatorConfig) (tokenValidatorInterface, error) {
+			return mockValidator, nil
+		},
+	)
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	wrapped := m.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	wrapped.ServeHTTP(httptest.NewRecorder(), req)
+
+	for _, line := range bytes.Split(bytes.TrimRight(buf.Bytes(), "\n"), []byte("\n")) {
+		var rec map[string]any
+		require.NoError(t, json.Unmarshal(line, &rec))
+		if rec["msg"] == "Authentication successful" {
+			assert.Equal(t, "u-1", rec["sub"])
+			assert.Equal(t, "alice", rec["user"])
+			return
+		}
+	}
+	t.Fatal("Authentication successful log line not emitted")
 }

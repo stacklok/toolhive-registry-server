@@ -4,14 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stacklok/toolhive-core/postgres"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/stacklok/toolhive-registry-server/internal/app/storage/auth"
+	schemadb "github.com/stacklok/toolhive-registry-server/database"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
@@ -41,7 +39,11 @@ func WithTracer(tracer trace.Tracer) DatabaseFactoryOption {
 }
 
 // NewDatabaseFactory creates a new database-backed storage factory.
-// It establishes a connection pool to the configured PostgreSQL database.
+// It establishes a connection pool to the configured PostgreSQL database via
+// the shared toolhive-core postgres package. Dynamic authentication (e.g. AWS
+// RDS IAM) is wired automatically by postgres.NewPool when configured; this
+// factory only supplies the AfterConnect hook that registers the schema's
+// custom enum-array codecs.
 func NewDatabaseFactory(ctx context.Context, cfg *config.Config, opts ...DatabaseFactoryOption) (*DatabaseFactory, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config cannot be nil")
@@ -53,12 +55,21 @@ func NewDatabaseFactory(ctx context.Context, cfg *config.Config, opts ...Databas
 
 	slog.Info("Creating database-backed storage factory")
 
-	pool, err := buildDatabaseConnectionPool(ctx, cfg)
+	corePgCfg, err := cfg.Database.ToCorePostgresConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build database configuration: %w", err)
+	}
+
+	pool, err := postgres.NewPool(ctx, corePgCfg,
+		postgres.WithAfterConnect(schemadb.RegisterEnumArrayCodecs),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database connection pool: %w", err)
 	}
 
-	StartPoolStatsLogger(ctx, pool)
+	// Emit periodic pool statistics at DEBUG using the package defaults
+	// (60s cadence, slog.Default()).
+	postgres.StartPoolStatsLogger(ctx, pool, nil, 0)
 
 	factory := &DatabaseFactory{
 		config: cfg,
@@ -119,121 +130,4 @@ func (d *DatabaseFactory) Cleanup() {
 		slog.Info("Closing database connection pool")
 		d.pool.Close()
 	}
-}
-
-// StartPoolStatsLogger starts a goroutine that periodically logs database connection
-// pool statistics at DEBUG level. The goroutine exits when ctx is cancelled.
-func StartPoolStatsLogger(ctx context.Context, pool *pgxpool.Pool) {
-	go func() {
-		ticker := time.NewTicker(60 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				stat := pool.Stat()
-				slog.DebugContext(ctx, "Database connection pool stats",
-					"total_conns", stat.TotalConns(),
-					"acquired_conns", stat.AcquiredConns(),
-					"idle_conns", stat.IdleConns(),
-					"max_conns", stat.MaxConns(),
-					"acquire_count", stat.AcquireCount(),
-					"acquire_duration_ms", stat.AcquireDuration().Milliseconds(),
-					"canceled_acquire_count", stat.CanceledAcquireCount(),
-					"empty_acquire_count", stat.EmptyAcquireCount(),
-				)
-			}
-		}
-	}()
-}
-
-// buildDatabaseConnectionPool creates a database connection pool with proper configuration.
-func buildDatabaseConnectionPool(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
-	// Get connection string from config (for application user)
-	connStr := cfg.Database.GetConnectionString()
-
-	// Parse connection string into config
-	poolConfig, err := pgxpool.ParseConfig(connStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse database connection string: %w", err)
-	}
-
-	// Configure pool settings from config
-	if cfg.Database.MaxOpenConns > 0 {
-		poolConfig.MaxConns = int32(cfg.Database.MaxOpenConns)
-	}
-	if cfg.Database.MaxIdleConns > 0 {
-		poolConfig.MinConns = int32(cfg.Database.MaxIdleConns)
-	}
-	if cfg.Database.ConnMaxLifetime != "" {
-		lifetime, err := time.ParseDuration(cfg.Database.ConnMaxLifetime)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse connMaxLifetime: %w", err)
-		}
-		poolConfig.MaxConnLifetime = lifetime
-	}
-
-	if cfg.Database.DynamicAuth != nil {
-		authFunc, err := auth.NewDynamicAuth(ctx, cfg.Database, cfg.Database.User)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create dynamic authentication function: %w", err)
-		}
-		poolConfig.BeforeConnect = authFunc
-	}
-
-	// Register custom type codecs after connection is established
-	poolConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		// Register array codecs for all custom enum types
-		return registerCustomArrayCodecs(ctx, conn)
-	}
-
-	// Create connection pool
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create database connection pool: %w", err)
-	}
-
-	slog.Info("Database connection pool created successfully")
-	return pool, nil
-}
-
-// registerCustomArrayCodecs registers codecs for all custom enum array types.
-// This is needed because pgx doesn't automatically know how to encode Go slices
-// of custom enum types into PostgreSQL array types.
-func registerCustomArrayCodecs(ctx context.Context, conn *pgx.Conn) error {
-	// List of enum types that need array codec registration
-	enumTypes := []string{"sync_status", "icon_theme", "creation_type"}
-
-	for _, enumName := range enumTypes {
-		// Get the OID for the enum from the database
-		var enumOID uint32
-		err := conn.QueryRow(ctx, "SELECT oid FROM pg_type WHERE typname = $1", enumName).Scan(&enumOID)
-		if err != nil {
-			return fmt.Errorf("failed to get %s OID: %w", enumName, err)
-		}
-
-		// Get the OID for the array type (PostgreSQL prefixes array types with _)
-		var arrayOID uint32
-		err = conn.QueryRow(ctx, "SELECT oid FROM pg_type WHERE typname = $1", "_"+enumName).Scan(&arrayOID)
-		if err != nil {
-			return fmt.Errorf("failed to get %s[] array OID: %w", enumName, err)
-		}
-
-		// Register the array codec with proper element type codec
-		conn.TypeMap().RegisterType(&pgtype.Type{
-			Name: enumName + "[]",
-			OID:  arrayOID,
-			Codec: &pgtype.ArrayCodec{
-				ElementType: &pgtype.Type{
-					Name:  enumName,
-					OID:   enumOID,
-					Codec: pgtype.TextCodec{},
-				},
-			},
-		})
-	}
-
-	return nil
 }

@@ -27,6 +27,9 @@ services:
       POSTGRES_PASSWORD: registry_password
       POSTGRES_DB: registry
       POSTGRES_INITDB_ARGS: "-E UTF8"
+      # See docker-compose.yaml for the rationale; postgres:18 needs PGDATA
+      # pinned to the legacy path to keep the existing volume mount usable.
+      PGDATA: /var/lib/postgresql/data
     # No host-port binding: postgres is reachable only within the smoke-network.
     volumes:
       - smoke_postgres_data:/var/lib/postgresql/data

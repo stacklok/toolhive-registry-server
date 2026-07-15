@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
@@ -12,19 +13,13 @@ import (
 // apiRegistryHandler handles registry data from API endpoints
 // It validates the Upstream format and delegates to the appropriate handler
 type apiRegistryHandler struct {
-	httpClient      httpclient.Client
-	validator       RegistryDataValidator
-	upstreamHandler *upstreamAPIHandler
+	validator RegistryDataValidator
 }
 
 // NewAPIRegistryHandler creates a new API registry handler
 func NewAPIRegistryHandler() RegistryHandler {
-	httpClient := httpclient.NewDefaultClient(0) // Use default timeout
-
 	return &apiRegistryHandler{
-		httpClient:      httpClient,
-		validator:       NewRegistryDataValidator(),
-		upstreamHandler: NewUpstreamAPIHandler(httpClient),
+		validator: NewRegistryDataValidator(),
 	}
 }
 
@@ -53,9 +48,15 @@ func (h *apiRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.S
 		return nil, fmt.Errorf("registry validation failed: %w", err)
 	}
 
-	// Validate Upstream format and get appropriate handler
-	handler, err := h.validateUstreamFormat(ctx, regCfg)
+	// Build the upstream handler with an HTTP client whose timeout honors the
+	// optional per-source override, falling back to DefaultAPITimeout.
+	handler, err := h.newUpstreamHandler(regCfg)
 	if err != nil {
+		return nil, err
+	}
+
+	// Validate Upstream format before delegating
+	if err := h.validateUpstreamFormat(ctx, handler, regCfg); err != nil {
 		return nil, fmt.Errorf("upstream format validation failed: %w", err)
 	}
 
@@ -65,22 +66,38 @@ func (h *apiRegistryHandler) FetchRegistry(ctx context.Context, regCfg *config.S
 	return handler.FetchRegistry(ctx, regCfg)
 }
 
-// validateUstreamFormat validates the Upstream format and returns the appropriate handler
-func (h *apiRegistryHandler) validateUstreamFormat(
+// newUpstreamHandler builds an upstream API handler backed by an HTTP client whose
+// timeout honors the optional per-source override, defaulting to httpclient.DefaultTimeout.
+// Bounds on the override are enforced at config load (see config.validateAPIConfig).
+func (*apiRegistryHandler) newUpstreamHandler(regCfg *config.SourceConfig) (*upstreamAPIHandler, error) {
+	timeout := httpclient.DefaultTimeout
+	if regCfg.API.Timeout != "" {
+		parsed, err := time.ParseDuration(regCfg.API.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("invalid api timeout %q: %w", regCfg.API.Timeout, err)
+		}
+		timeout = parsed
+	}
+
+	return NewUpstreamAPIHandler(httpclient.NewDefaultClient(timeout)), nil
+}
+
+// validateUpstreamFormat validates the endpoint speaks the upstream MCP Registry format
+// (by checking /openapi.yaml via the given handler)
+func (h *apiRegistryHandler) validateUpstreamFormat(
 	ctx context.Context,
+	handler *upstreamAPIHandler,
 	regCfg *config.SourceConfig,
-) (*upstreamAPIHandler, error) {
+) error {
 	endpoint := h.getBaseURL(regCfg)
 
-	// Try upstream format (/openapi.yaml)
-	upstreamErr := h.upstreamHandler.Validate(ctx, endpoint)
-	if upstreamErr == nil {
-		slog.Info("Validated as upstream MCP Registry format")
-		return h.upstreamHandler, nil
+	if err := handler.Validate(ctx, endpoint); err != nil {
+		slog.Debug("Upstream format validation failed", "error", err.Error())
+		return fmt.Errorf("unable to validate Upstream format")
 	}
-	slog.Debug("Upstream format validation failed", "error", upstreamErr.Error())
 
-	return nil, fmt.Errorf("unable to validate Upstream format")
+	slog.Info("Validated as upstream MCP Registry format")
+	return nil
 }
 
 // getBaseURL extracts and normalizes the base URL

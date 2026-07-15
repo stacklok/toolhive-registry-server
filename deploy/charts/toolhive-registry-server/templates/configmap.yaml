@@ -6,4 +6,16 @@ metadata:
     {{- include "toolhive-registry-server.labels" . | nindent 4 }}
 data:
   config.yaml: |
-    {{- .Values.config | toYaml | nindent 4 }}
+    {{- $cfg := .Values.config | deepCopy }}
+    {{- $gp := dict }}
+    {{- if .Values.global }}
+    {{-   $gp = .Values.global.postgres | default dict }}
+    {{- end }}
+    {{- if and (not $cfg.database.host) $gp.host }}
+    {{-   $_ := set $cfg.database "host" $gp.host }}
+    {{-   $_ := set $cfg.database "port" ($gp.port | default 5432) }}
+    {{-   if $gp.sslMode }}
+    {{-     $_ := set $cfg.database "sslMode" $gp.sslMode }}
+    {{-   end }}
+    {{- end }}
+    {{- $cfg | toYaml | nindent 4 }}

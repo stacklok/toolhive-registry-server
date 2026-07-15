@@ -99,7 +99,8 @@ All metrics are prefixed with `thv_reg_srv_` to distinguish them from other metr
 | `thv_reg_srv_http_request_duration_seconds` | Histogram | `method`, `route`, `status_code` | Duration of HTTP requests |
 | `thv_reg_srv_http_requests_total` | Counter | `method`, `route`, `status_code` | Total number of HTTP requests |
 | `thv_reg_srv_http_active_requests` | UpDownCounter | - | Number of in-flight requests |
-| `thv_reg_srv_servers_total` | Gauge | `registry` | Number of servers in each registry |
+| `thv_reg_srv_servers_total` | Gauge | `source` | Number of distinct servers in each source |
+| `thv_reg_srv_skills_total` | Gauge | `source` | Number of distinct skills in each source |
 | `thv_reg_srv_sync_duration_seconds` | Histogram | `registry`, `success` | Duration of sync operations |
 
 ### Histogram Buckets

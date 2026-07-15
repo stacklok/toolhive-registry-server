@@ -6,11 +6,11 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
+	mcp "github.com/stacklok/toolhive-core/mcpcompat/mcp"
 	registry "github.com/stacklok/toolhive-core/registry/types"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 // extractServer converts an MCPServer to a ServerJSON object
 //
 //nolint:unparam
-func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, error) {
+func extractServer(mcpServer *mcpv1beta1.MCPServer) (*upstreamv0.ServerJSON, error) {
 	// Generate reverse-DNS formatted server name
 	serverName, err := GenerateServerName(mcpServer.Namespace, mcpServer.Name)
 	if err != nil {
@@ -62,6 +62,8 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 	if title, ok := annotations[defaultRegistryTitleAnnotation]; ok {
 		serverJSON.Title = title
 	}
+
+	applyRegistryIcon(serverJSON, annotations)
 
 	transportURL, ok := annotations[defaultRegistryURLAnnotation]
 	if !ok {
@@ -104,6 +106,8 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 		extensions.Tools = tools
 	}
 
+	applyRegistryCategory(extensions, annotations)
+
 	// Convert extensions struct to map[string]any for JSON serialization
 	extensionsMap, err := structToMap(extensions)
 	if err != nil {
@@ -120,7 +124,7 @@ func extractServer(mcpServer *mcpv1alpha1.MCPServer) (*upstreamv0.ServerJSON, er
 // extractVirtualMCPServer converts a VirtualMCPServer to a ServerJSON object
 //
 //nolint:unparam
-func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*upstreamv0.ServerJSON, error) {
+func extractVirtualMCPServer(virtualMCPServer *mcpv1beta1.VirtualMCPServer) (*upstreamv0.ServerJSON, error) {
 	// Generate reverse-DNS formatted server name
 	serverName, err := GenerateServerName(virtualMCPServer.Namespace, virtualMCPServer.Name)
 	if err != nil {
@@ -150,6 +154,8 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 	if title, ok := annotations[defaultRegistryTitleAnnotation]; ok {
 		serverJSON.Title = title
 	}
+
+	applyRegistryIcon(serverJSON, annotations)
 
 	transportURL, ok := annotations[defaultRegistryURLAnnotation]
 	if !ok {
@@ -190,6 +196,8 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 		extensions.Tools = tools
 	}
 
+	applyRegistryCategory(extensions, annotations)
+
 	// Convert extensions struct to map[string]any for JSON serialization
 	extensionsMap, err := structToMap(extensions)
 	if err != nil {
@@ -206,7 +214,7 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1alpha1.VirtualMCPServer) (*u
 // extractMCPRemoteProxy converts a MCPRemoteProxy to a ServerJSON object
 //
 //nolint:unparam
-func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstreamv0.ServerJSON, error) {
+func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1beta1.MCPRemoteProxy) (*upstreamv0.ServerJSON, error) {
 	// Generate reverse-DNS formatted server name
 	serverName, err := GenerateServerName(mcpRemoteProxy.Namespace, mcpRemoteProxy.Name)
 	if err != nil {
@@ -236,6 +244,8 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 	if title, ok := annotations[defaultRegistryTitleAnnotation]; ok {
 		serverJSON.Title = title
 	}
+
+	applyRegistryIcon(serverJSON, annotations)
 
 	transportURL, ok := annotations[defaultRegistryURLAnnotation]
 	if !ok {
@@ -275,6 +285,8 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy) (*upstrea
 	if tools := extractTools(annotations, mcpRemoteProxy.Name, mcpRemoteProxy.Namespace); tools != nil {
 		extensions.Tools = tools
 	}
+
+	applyRegistryCategory(extensions, annotations)
 
 	// Convert extensions struct to map[string]any for JSON serialization
 	extensionsMap, err := structToMap(extensions)
@@ -331,9 +343,28 @@ func extractTools(annotations map[string]string, name, namespace string) []strin
 	return tools
 }
 
+// applyRegistryIcon sets the server's icon from the registry-icon annotation
+// when present. Icons are a first-class field of the upstream server.json, so
+// the annotation value (a single icon source URL) is placed there directly.
+func applyRegistryIcon(serverJSON *upstreamv0.ServerJSON, annotations map[string]string) {
+	if icon, ok := annotations[defaultRegistryIconAnnotation]; ok && icon != "" {
+		serverJSON.Icons = []model.Icon{{Src: icon}}
+	}
+}
+
+// applyRegistryCategory records the registry-category annotation as a ToolHive
+// tag when present. Category is not an upstream server.json field; ToolHive's
+// Tags extension is the categorization and filtering mechanism, so the category
+// is carried there.
+func applyRegistryCategory(extensions *registry.ServerExtensions, annotations map[string]string) {
+	if category, ok := annotations[defaultRegistryCategoryAnnotation]; ok && category != "" {
+		extensions.Tags = append(extensions.Tags, category)
+	}
+}
+
 // extractPackages extracts packages from MCPServer spec
 // MCPServer uses container images, so we create an OCI package from the image
-func extractPackages(mcpServer *mcpv1alpha1.MCPServer) []model.Package {
+func extractPackages(mcpServer *mcpv1beta1.MCPServer) []model.Package {
 	var packages []model.Package
 
 	transportType := mcpServer.Spec.Transport

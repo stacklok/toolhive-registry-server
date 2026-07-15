@@ -8,7 +8,6 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stacklok/toolhive-core/registry/types"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,8 +16,8 @@ import (
 )
 
 // createTestMCPServer creates a test MCPServer with the given configuration
-func createTestMCPServer(name, namespace string, annotations map[string]string, spec mcpv1beta1.MCPServerSpec) *mcpv1alpha1.MCPServer {
-	return &mcpv1alpha1.MCPServer{
+func createTestMCPServer(name, namespace string, annotations map[string]string, spec mcpv1beta1.MCPServerSpec) *mcpv1beta1.MCPServer {
+	return &mcpv1beta1.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Namespace:   namespace,
@@ -34,7 +33,7 @@ func TestExtractServer(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		mcpServer   *mcpv1alpha1.MCPServer
+		mcpServer   *mcpv1beta1.MCPServer
 		wantSchema  string
 		wantName    string
 		wantVersion string
@@ -86,6 +85,74 @@ func TestExtractServer(t *testing.T) {
 				require.Len(t, sj.Remotes, 1)
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/mcp", sj.Remotes[0].URL)
+			},
+		},
+		{
+			name: "MCPServer with icon and category annotations",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+					defaultRegistryTitleAnnotation:       "Test Server",
+					defaultRegistryIconAnnotation:        "https://example.com/icon.png",
+					defaultRegistryCategoryAnnotation:    "developer-tools",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "test/image:latest",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Equal(t, "Test Server", sj.Title)
+				// Icon rides on the upstream server.json as a first-class field.
+				require.Len(t, sj.Icons, 1)
+				assert.Equal(t, "https://example.com/icon.png", sj.Icons[0].Src)
+
+				// Category rides on the ToolHive Tags extension.
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+				mcpMetadata := ioStacklok["https://example.com/mcp"].(map[string]any)
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
+				assert.Contains(t, ext.Tags, "developer-tools")
+			},
+		},
+		{
+			name: "MCPServer without icon or category annotations leaves them unset",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "test/image:latest",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "1.0.0",
+			wantErr:     false,
+			//nolint:thelper // We want to see these lines in the test output
+			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
+				assert.Empty(t, sj.Icons, "Icons should be empty when the icon annotation is not set")
+				ioStacklok := sj.Meta.PublisherProvided["io.github.stacklok"].(map[string]any)
+				mcpMetadata := ioStacklok["https://example.com/mcp"].(map[string]any)
+				data, err := json.Marshal(mcpMetadata)
+				require.NoError(t, err)
+				var ext registry.ServerExtensions
+				require.NoError(t, json.Unmarshal(data, &ext))
+				assert.Empty(t, ext.Tags, "Tags should be empty when the category annotation is not set")
 			},
 		},
 		{
@@ -531,7 +598,7 @@ func TestExtractPackages(t *testing.T) {
 
 	tests := []struct {
 		name             string
-		mcpServer        *mcpv1alpha1.MCPServer
+		mcpServer        *mcpv1beta1.MCPServer
 		wantCount        int
 		wantRegistryType string
 		wantIdentifier   string
@@ -679,8 +746,8 @@ func TestExtractPackages(t *testing.T) {
 }
 
 // createTestVirtualMCPServer creates a test VirtualMCPServer with the given configuration
-func createTestVirtualMCPServer(name, namespace string, annotations map[string]string) *mcpv1alpha1.VirtualMCPServer {
-	return &mcpv1alpha1.VirtualMCPServer{
+func createTestVirtualMCPServer(name, namespace string, annotations map[string]string) *mcpv1beta1.VirtualMCPServer {
+	return &mcpv1beta1.VirtualMCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Namespace:   namespace,
@@ -695,7 +762,7 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		vmcpServer  *mcpv1alpha1.VirtualMCPServer
+		vmcpServer  *mcpv1beta1.VirtualMCPServer
 		wantSchema  string
 		wantName    string
 		wantVersion string
@@ -993,8 +1060,8 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 }
 
 // createTestMCPRemoteProxy creates a test MCPRemoteProxy with the given configuration
-func createTestMCPRemoteProxy(name, namespace string, annotations map[string]string) *mcpv1alpha1.MCPRemoteProxy {
-	return &mcpv1alpha1.MCPRemoteProxy{
+func createTestMCPRemoteProxy(name, namespace string, annotations map[string]string) *mcpv1beta1.MCPRemoteProxy {
+	return &mcpv1beta1.MCPRemoteProxy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Namespace:   namespace,
@@ -1009,7 +1076,7 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		mcpRemoteProxy *mcpv1alpha1.MCPRemoteProxy
+		mcpRemoteProxy *mcpv1beta1.MCPRemoteProxy
 		wantSchema     string
 		wantName       string
 		wantVersion    string

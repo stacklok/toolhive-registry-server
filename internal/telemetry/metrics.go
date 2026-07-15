@@ -19,67 +19,89 @@ const (
 
 // RegistryMetrics holds the OpenTelemetry instruments for registry metrics
 type RegistryMetrics struct {
-	serversTotal metric.Int64Gauge
-	skillsTotal  metric.Int64Gauge
+	serversTotal metric.Int64ObservableGauge
+	skillsTotal  metric.Int64ObservableGauge
+	registration metric.Registration
+}
+
+// RegistryMetricCount is the point-in-time count of registry entries for a source.
+type RegistryMetricCount struct {
+	SourceName  string
+	ServerCount int64
+	SkillCount  int64
+}
+
+// RegistryMetricReader reads registry metric values at collection time.
+type RegistryMetricReader interface {
+	RegistryMetricCounts(ctx context.Context) ([]RegistryMetricCount, error)
 }
 
 // NewRegistryMetrics creates a new RegistryMetrics instance with the given meter provider.
 // If provider is nil, it returns nil (no-op metrics).
-func NewRegistryMetrics(provider metric.MeterProvider) (*RegistryMetrics, error) {
+func NewRegistryMetrics(provider metric.MeterProvider, reader RegistryMetricReader) (*RegistryMetrics, error) {
 	if provider == nil {
 		return nil, nil
 	}
 
 	meter := provider.Meter(RegistryMetricsMeterName)
 
-	serversTotal, err := meter.Int64Gauge(
+	serversTotal, err := meter.Int64ObservableGauge(
 		"thv_reg_srv_servers_total",
-		metric.WithDescription("Number of servers in each registry"),
+		metric.WithDescription("Number of distinct servers in each source"),
 		metric.WithUnit("{server}"),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	skillsTotal, err := meter.Int64Gauge(
+	skillsTotal, err := meter.Int64ObservableGauge(
 		"thv_reg_srv_skills_total",
-		metric.WithDescription("Number of skills in each registry"),
+		metric.WithDescription("Number of distinct skills in each source"),
 		metric.WithUnit("{skill}"),
 	)
 	if err != nil {
 		return nil, err
 	}
 
+	var registration metric.Registration
+	if reader != nil {
+		registration, err = meter.RegisterCallback(
+			func(ctx context.Context, observer metric.Observer) error {
+				counts, err := reader.RegistryMetricCounts(ctx)
+				if err != nil {
+					return err
+				}
+
+				for _, count := range counts {
+					attrs := metric.WithAttributes(attribute.String("source", count.SourceName))
+					observer.ObserveInt64(serversTotal, count.ServerCount, attrs)
+					observer.ObserveInt64(skillsTotal, count.SkillCount, attrs)
+				}
+
+				return nil
+			},
+			serversTotal,
+			skillsTotal,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &RegistryMetrics{
 		serversTotal: serversTotal,
 		skillsTotal:  skillsTotal,
+		registration: registration,
 	}, nil
 }
 
-// RecordServersTotal records the current number of servers in a registry
-func (m *RegistryMetrics) RecordServersTotal(ctx context.Context, registryName string, count int64) {
-	if m == nil || m.serversTotal == nil {
-		return
+// Unregister removes the observable callback registered for registry metrics.
+func (m *RegistryMetrics) Unregister() error {
+	if m == nil || m.registration == nil {
+		return nil
 	}
 
-	attrs := []attribute.KeyValue{
-		attribute.String("registry", registryName),
-	}
-
-	m.serversTotal.Record(ctx, count, metric.WithAttributes(attrs...))
-}
-
-// RecordSkillsTotal records the current number of skills in a registry
-func (m *RegistryMetrics) RecordSkillsTotal(ctx context.Context, registryName string, count int64) {
-	if m == nil || m.skillsTotal == nil {
-		return
-	}
-
-	attrs := []attribute.KeyValue{
-		attribute.String("registry", registryName),
-	}
-
-	m.skillsTotal.Record(ctx, count, metric.WithAttributes(attrs...))
+	return m.registration.Unregister()
 }
 
 // SyncMetrics holds the OpenTelemetry instruments for sync operation metrics

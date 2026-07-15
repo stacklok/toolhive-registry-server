@@ -74,6 +74,10 @@ type registryAppConfig struct {
 	coordinatorOpts []coordinator.Option
 }
 
+type registryMetricsReaderFactory interface {
+	CreateRegistryMetricsReader(ctx context.Context) (telemetry.RegistryMetricReader, error)
+}
+
 func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
 	cfg := &registryAppConfig{
 		address:         defaultHTTPAddress,
@@ -359,13 +363,22 @@ func buildSyncComponents(
 			slog.Info("Sync metrics enabled")
 		}
 
-		registryMetrics, err := telemetry.NewRegistryMetrics(b.meterProvider)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create registry metrics: %w", err)
-		}
-		if registryMetrics != nil {
-			coordOpts = append(coordOpts, coordinator.WithRegistryMetrics(registryMetrics))
-			slog.Info("Registry metrics enabled")
+		if readerFactory, ok := b.storageFactory.(registryMetricsReaderFactory); ok {
+			registryMetricsReader, err := readerFactory.CreateRegistryMetricsReader(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create registry metrics reader: %w", err)
+			}
+
+			registryMetrics, err := telemetry.NewRegistryMetrics(b.meterProvider, registryMetricsReader)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create registry metrics: %w", err)
+			}
+			if registryMetrics != nil {
+				coordOpts = append(coordOpts, coordinator.WithRegistryMetrics(registryMetrics))
+				slog.Info("Registry metrics enabled")
+			}
+		} else {
+			slog.Debug("Registry metrics disabled: storage factory does not provide a registry metrics reader")
 		}
 	}
 
@@ -422,10 +435,16 @@ func buildHTTPServer(
 	if b.middlewares == nil {
 		b.middlewares = []func(http.Handler) http.Handler{
 			middleware.RequestID,
-			middleware.RealIP,
+			// middleware.RealIP is intentionally omitted: it was deprecated in
+			// chi v5.3.0 because it blindly trusts client-supplied headers
+			// (True-Client-IP / X-Real-IP / leftmost X-Forwarded-For) and
+			// mutates r.RemoteAddr, which is an IP-spoofing risk. We keep
+			// r.RemoteAddr as the direct peer address; the raw X-Forwarded-For
+			// header is still preserved for forensics in audit events.
 			middleware.Recoverer,
 			middleware.Timeout(b.requestTimeout),
 			api.LoggingMiddleware,
+			securityHeadersMiddleware,
 		}
 	}
 
@@ -614,4 +633,13 @@ func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWrit
 		}
 	}
 	return nil
+}
+
+// securityHeadersMiddleware sets baseline security response headers on every request.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+		next.ServeHTTP(w, r)
+	})
 }

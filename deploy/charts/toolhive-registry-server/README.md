@@ -56,7 +56,7 @@ The command removes all the Kubernetes components associated with the chart and 
 | affinity | object | `{}` | Affinity rules for pod scheduling |
 | config.auth.mode | string | `"anonymous"` |  |
 | config.database.database | string | `"toolhive_registry"` |  |
-| config.database.host | string | `"localhost"` |  |
+| config.database.host | string | `""` |  |
 | config.database.port | int | `5432` |  |
 | config.database.sslMode | string | `"require"` |  |
 | config.database.user | string | `"thv_user"` |  |
@@ -73,7 +73,7 @@ The command removes all the Kubernetes components associated with the chart and 
 | extraVolumes | list | `[]` | Additional volumes to add to the pod |
 | fullnameOverride | string | `""` | Override the full name of the chart |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
-| image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v1.4.0"` | URL of the registry server image |
+| image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v1.4.13"` | URL of the registry server image |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries |
 | initContainers | list | `[]` | Init containers to run before the main container Use this for setup tasks like preparing pgpass files, waiting for dependencies, etc. Init containers share the same volumes as the main container (extraVolumes) |
 | livenessProbe | object | `{"httpGet":{"path":"/health","port":"internal-http"},"initialDelaySeconds":30,"periodSeconds":10}` | Liveness probe configuration |

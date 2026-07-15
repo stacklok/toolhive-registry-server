@@ -3,7 +3,6 @@ package kubernetes
 import (
 	"testing"
 
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -11,8 +10,8 @@ import (
 )
 
 // createTestMCPServerForPredicate creates a test MCPServer object with the given annotations for predicate tests
-func createTestMCPServerForPredicate(annotations map[string]string) *mcpv1alpha1.MCPServer {
-	return &mcpv1alpha1.MCPServer{
+func createTestMCPServerForPredicate(annotations map[string]string) *mcpv1beta1.MCPServer {
+	return &mcpv1beta1.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "test-server",
 			Namespace:   "default",
@@ -88,9 +87,9 @@ func TestMakeNewObjectPredicate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			predicate := makeNewObjectPredicate[*mcpv1alpha1.MCPServer](annotation)
+			predicate := makeNewObjectPredicate[*mcpv1beta1.MCPServer](annotation)
 			obj := createTestMCPServerForPredicate(tt.annotations)
-			createEvent := event.TypedCreateEvent[*mcpv1alpha1.MCPServer]{
+			createEvent := event.TypedCreateEvent[*mcpv1beta1.MCPServer]{
 				Object: obj,
 			}
 
@@ -202,10 +201,10 @@ func TestMakeUpdateObjectPredicate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			predicate := makeUpdateObjectPredicate[*mcpv1alpha1.MCPServer](annotation)
+			predicate := makeUpdateObjectPredicate[*mcpv1beta1.MCPServer](annotation)
 			oldObj := createTestMCPServerForPredicate(tt.oldAnnots)
 			newObj := createTestMCPServerForPredicate(tt.newAnnots)
-			updateEvent := event.TypedUpdateEvent[*mcpv1alpha1.MCPServer]{
+			updateEvent := event.TypedUpdateEvent[*mcpv1beta1.MCPServer]{
 				ObjectOld: oldObj,
 				ObjectNew: newObj,
 			}
@@ -278,9 +277,9 @@ func TestMakeDeleteObjectPredicate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			predicate := makeDeleteObjectPredicate[*mcpv1alpha1.MCPServer](annotation)
+			predicate := makeDeleteObjectPredicate[*mcpv1beta1.MCPServer](annotation)
 			obj := createTestMCPServerForPredicate(tt.annotations)
-			deleteEvent := event.TypedDeleteEvent[*mcpv1alpha1.MCPServer]{
+			deleteEvent := event.TypedDeleteEvent[*mcpv1beta1.MCPServer]{
 				Object: obj,
 			}
 

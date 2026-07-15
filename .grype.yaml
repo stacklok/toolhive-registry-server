@@ -1,0 +1,41 @@
+# Grype configuration for the registry server.
+#
+# TEMPORARY: github.com/docker/docker is no longer in the build after the
+# toolhive v0.29.0 bump — it is absent from go.mod and govulncheck confirms it is
+# unreachable (toolhive migrated to github.com/moby/moby/{client,api},
+# toolhive#5420). It survives only as a go.sum checksum pulled in by other
+# indirect deps (golang-migrate, ory/x). The Grype repository scan catalogs
+# go.sum entries, so it still reports the daemon-side GHSA-x744-4wpc-v9h2 /
+# CVE-2026-34040 (high) against a module that is not compiled in — a false
+# positive. Remove this ignore once github.com/docker/docker drops out of go.sum
+# (i.e. once golang-migrate and ory/x stop requiring it). govulncheck needs no
+# matching entry because it is build/reachability based, not go.sum based.
+#
+# TEMPORARY: GO-2026-4610 / GHSA-p436-gjf2-799p / CVE-2025-15558 affects
+# github.com/docker/cli versions < 29.2.0+incompatible. We have v29.4.3+incompatible,
+# which is past the fixed version. Grype incorrectly flags it as vulnerable because
+# it misparses the +incompatible version suffix when matching the Go ecosystem range.
+# govulncheck does not flag this (it is reachability-based). Additionally, `go mod why`
+# shows the main module does not use this package at all. Remove this ignore once Grype
+# correctly handles +incompatible version comparison.
+ignore:
+  - vulnerability: GHSA-x744-4wpc-v9h2
+    package:
+      name: github.com/docker/docker
+      type: go-module
+  - vulnerability: CVE-2026-34040
+    package:
+      name: github.com/docker/docker
+      type: go-module
+  - vulnerability: GO-2026-4610
+    package:
+      name: github.com/docker/cli
+      type: go-module
+  - vulnerability: GHSA-p436-gjf2-799p
+    package:
+      name: github.com/docker/cli
+      type: go-module
+  - vulnerability: CVE-2025-15558
+    package:
+      name: github.com/docker/cli
+      type: go-module

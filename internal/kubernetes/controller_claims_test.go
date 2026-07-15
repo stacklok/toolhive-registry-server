@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
-	mcpv1alpha1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -207,7 +206,7 @@ func TestValidateClaimValues(t *testing.T) {
 
 // createMCPServerObject creates a test MCPServer as a client.Object with the given name and annotations.
 func createMCPServerObject(name string, annotations map[string]string) client.Object {
-	return &mcpv1alpha1.MCPServer{
+	return &mcpv1beta1.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Namespace:   "default",
