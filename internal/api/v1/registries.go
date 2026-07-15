@@ -20,7 +20,6 @@ type registryListResponse struct {
 // @Summary		List registries
 // @Description	List all registries
 // @Tags		v1
-// @Accept		json
 // @Produce		json
 // @Success		200	{object}	registryListResponse	"Registries list"
 // @Failure		500	{object}	map[string]string		"Internal server error"
@@ -41,7 +40,6 @@ func (routes *Routes) listRegistries(w http.ResponseWriter, r *http.Request) {
 // @Summary		Get registry
 // @Description	Get a registry by name
 // @Tags		v1
-// @Accept		json
 // @Produce		json
 // @Param		name	path		string					true	"Registry Name"
 // @Success		200		{object}	service.RegistryInfo	"Registry details"
@@ -73,6 +71,7 @@ func (routes *Routes) getRegistry(w http.ResponseWriter, r *http.Request) {
 // @Accept		json
 // @Produce		json
 // @Param		name	path		string					true	"Registry Name"
+// @Param		request	body		service.RegistryCreateRequest	true	"Registry configuration"
 // @Success		200		{object}	service.RegistryInfo	"Registry updated"
 // @Success		201		{object}	service.RegistryInfo	"Registry created"
 // @Failure		400		{object}	map[string]string		"Bad request"
@@ -118,7 +117,6 @@ func (routes *Routes) upsertRegistry(w http.ResponseWriter, r *http.Request) {
 // @Summary		Delete registry
 // @Description	Delete a registry by name
 // @Tags		v1
-// @Accept		json
 // @Produce		json
 // @Param		name	path	string	true	"Registry Name"
 // @Success		204	"Registry deleted"
@@ -147,7 +145,6 @@ func (routes *Routes) deleteRegistry(w http.ResponseWriter, r *http.Request) {
 // @Summary		List registry entries
 // @Description	List all entries for a registry
 // @Tags		v1
-// @Accept		json
 // @Produce		json
 // @Param		name	path		string							true	"Registry Name"
 // @Success		200		{object}	service.RegistryEntriesResponse	"Registry entries"
