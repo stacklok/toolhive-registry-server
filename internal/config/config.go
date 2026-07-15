@@ -1090,24 +1090,35 @@ func validateGitConfig(git *GitConfig, prefix string) error {
 // so an unbounded value could make a single sync cycle run for hours.
 const maxAPITimeout = 5 * time.Minute
 
+// ValidateAPITimeout validates an optional api.timeout override. An empty value is
+// valid (the default timeout is used). Otherwise it must be a Go duration greater
+// than zero and no larger than maxAPITimeout. It is shared by the config-load and
+// API validation paths so both enforce identical bounds.
+func ValidateAPITimeout(timeout string) error {
+	if timeout == "" {
+		return nil
+	}
+	d, err := time.ParseDuration(timeout)
+	if err != nil {
+		return fmt.Errorf("api.timeout must be a valid duration (e.g., '30s', '1m'): %w", err)
+	}
+	if d <= 0 {
+		return fmt.Errorf("api.timeout must be greater than zero")
+	}
+	if d > maxAPITimeout {
+		return fmt.Errorf("api.timeout must not exceed %s", maxAPITimeout)
+	}
+	return nil
+}
+
 // validateAPIConfig validates API-specific configuration
 func validateAPIConfig(api *APIConfig, prefix string) error {
 	if api.Endpoint == "" {
 		return fmt.Errorf("%s: api.endpoint is required", prefix)
 	}
 
-	// Validate timeout if specified
-	if api.Timeout != "" {
-		timeout, err := time.ParseDuration(api.Timeout)
-		if err != nil {
-			return fmt.Errorf("%s: api.timeout must be a valid duration (e.g., '30s', '1m'): %w", prefix, err)
-		}
-		if timeout <= 0 {
-			return fmt.Errorf("%s: api.timeout must be greater than zero", prefix)
-		}
-		if timeout > maxAPITimeout {
-			return fmt.Errorf("%s: api.timeout must not exceed %s", prefix, maxAPITimeout)
-		}
+	if err := ValidateAPITimeout(api.Timeout); err != nil {
+		return fmt.Errorf("%s: %w", prefix, err)
 	}
 
 	return nil

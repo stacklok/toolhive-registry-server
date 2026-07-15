@@ -527,6 +527,41 @@ func TestValidateAPIConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "valid_endpoint_with_timeout",
+			cfg: &config.APIConfig{
+				Endpoint: "https://api.example.com",
+				Timeout:  "1m",
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid_timeout_duration",
+			cfg: &config.APIConfig{
+				Endpoint: "https://api.example.com",
+				Timeout:  "not-a-duration",
+			},
+			wantErr: true,
+			errMsg:  "api.timeout must be a valid duration",
+		},
+		{
+			name: "zero_timeout_returns_error",
+			cfg: &config.APIConfig{
+				Endpoint: "https://api.example.com",
+				Timeout:  "0s",
+			},
+			wantErr: true,
+			errMsg:  "api.timeout must be greater than zero",
+		},
+		{
+			name: "timeout_exceeds_max",
+			cfg: &config.APIConfig{
+				Endpoint: "https://api.example.com",
+				Timeout:  "10m",
+			},
+			wantErr: true,
+			errMsg:  "api.timeout must not exceed",
+		},
 	}
 
 	for _, tt := range tests {
