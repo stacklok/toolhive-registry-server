@@ -121,7 +121,7 @@ func validateAPIConfig(cfg *config.APIConfig) error {
 		return fmt.Errorf("api.endpoint is required")
 	}
 
-	return nil
+	return config.ValidateAPITimeout(cfg.Timeout)
 }
 
 // validateFileConfig validates File source configuration
