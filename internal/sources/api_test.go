@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -246,6 +247,117 @@ func TestAPIRegistryHandler_NilAPIConfig(t *testing.T) {
 	registryConfig := &config.SourceConfig{
 		Name: "test-registry",
 		API:  nil,
+	}
+
+	_, err := handler.FetchRegistry(ctx, registryConfig)
+
+	require.Error(t, err)
+}
+
+// newUpstreamMockServer returns an httptest.Server that speaks the upstream MCP
+// Registry format with a single server, optionally delaying every response by
+// delay to exercise client timeout behavior.
+func newUpstreamMockServer(delay time.Duration) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+		switch r.URL.Path {
+		case openapiPath:
+			w.Header().Set("Content-Type", "application/x-yaml")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`
+info:
+  title: Official MCP Registry
+  description: |
+    A community driven registry service for Model Context Protocol (MCP) servers.
+
+    [GitHub repository](https://github.com/modelcontextprotocol/registry)
+  version: 1.0.0
+openapi: 3.1.0
+`))
+		case "/v0.1/servers":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"servers": [
+					{
+						"server": {
+							"name": "test-server",
+							"description": "A test MCP server"
+						},
+						"_meta": {}
+					}
+				],
+				"metadata": {"nextCursor": "", "count": 1}
+			}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+}
+
+func TestAPIRegistryHandler_FetchRegistry_WithConfiguredTimeout(t *testing.T) {
+	t.Parallel()
+
+	mockServer := newUpstreamMockServer(0)
+	defer mockServer.Close()
+
+	handler := sources.NewAPIRegistryHandler()
+	ctx := context.Background()
+
+	registryConfig := &config.SourceConfig{
+		Name: "test-registry",
+		API: &config.APIConfig{
+			Endpoint: mockServer.URL,
+			Timeout:  "1m",
+		},
+	}
+
+	result, err := handler.FetchRegistry(ctx, registryConfig)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 1, result.ServerCount)
+}
+
+func TestAPIRegistryHandler_FetchRegistry_InvalidTimeout(t *testing.T) {
+	t.Parallel()
+
+	handler := sources.NewAPIRegistryHandler()
+	ctx := context.Background()
+
+	registryConfig := &config.SourceConfig{
+		Name: "test-registry",
+		API: &config.APIConfig{
+			Endpoint: "https://example.com",
+			Timeout:  "not-a-duration",
+		},
+	}
+
+	_, err := handler.FetchRegistry(ctx, registryConfig)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid api timeout")
+}
+
+func TestAPIRegistryHandler_FetchRegistry_TimeoutEnforced(t *testing.T) {
+	t.Parallel()
+
+	// Server delays longer than the configured per-request timeout, so the
+	// request should fail rather than hang until the default timeout.
+	mockServer := newUpstreamMockServer(200 * time.Millisecond)
+	defer mockServer.Close()
+
+	handler := sources.NewAPIRegistryHandler()
+	ctx := context.Background()
+
+	registryConfig := &config.SourceConfig{
+		Name: "test-registry",
+		API: &config.APIConfig{
+			Endpoint: mockServer.URL,
+			Timeout:  "50ms",
+		},
 	}
 
 	_, err := handler.FetchRegistry(ctx, registryConfig)

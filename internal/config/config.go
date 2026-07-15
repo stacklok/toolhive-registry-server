@@ -286,6 +286,12 @@ type APIConfig struct {
 	//   - /v0.1/servers/{name}/versions/{version} - Get specific version
 	// Example: "http://my-registry-api.default.svc.cluster.local/registry"
 	Endpoint string `yaml:"endpoint" json:"endpoint"`
+
+	// Timeout is the per-request timeout for HTTP requests to the API endpoint
+	// Accepts a Go duration string (e.g., "30s", "1m"); must be > 0 and <= 5m
+	// Defaults to 10s if not specified
+	// Useful for public or occasionally-slow upstreams where the default is too aggressive
+	Timeout string `yaml:"timeout,omitempty" json:"timeout,omitempty"`
 }
 
 // FileConfig defines file source configuration
@@ -1079,11 +1085,31 @@ func validateGitConfig(git *GitConfig, prefix string) error {
 	return nil
 }
 
+// maxAPITimeout is the upper bound for a per-source api.timeout override. The
+// timeout applies per HTTP request and pagination can loop up to maxPaginationPages,
+// so an unbounded value could make a single sync cycle run for hours.
+const maxAPITimeout = 5 * time.Minute
+
 // validateAPIConfig validates API-specific configuration
 func validateAPIConfig(api *APIConfig, prefix string) error {
 	if api.Endpoint == "" {
 		return fmt.Errorf("%s: api.endpoint is required", prefix)
 	}
+
+	// Validate timeout if specified
+	if api.Timeout != "" {
+		timeout, err := time.ParseDuration(api.Timeout)
+		if err != nil {
+			return fmt.Errorf("%s: api.timeout must be a valid duration (e.g., '30s', '1m'): %w", prefix, err)
+		}
+		if timeout <= 0 {
+			return fmt.Errorf("%s: api.timeout must be greater than zero", prefix)
+		}
+		if timeout > maxAPITimeout {
+			return fmt.Errorf("%s: api.timeout must not exceed %s", prefix, maxAPITimeout)
+		}
+	}
+
 	return nil
 }
 

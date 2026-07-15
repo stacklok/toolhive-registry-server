@@ -563,6 +563,102 @@ func TestConfigValidate(t *testing.T) {
 			errMsg:  "file.timeout must be a valid duration",
 		},
 		{
+			name: "valid_api_with_timeout",
+			config: &Config{
+				Sources: []SourceConfig{
+					{
+						Name: "test-registry",
+						API: &APIConfig{
+							Endpoint: "https://registry.modelcontextprotocol.io",
+							Timeout:  "1m",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "1h",
+						},
+					},
+				},
+				Registries: []RegistryConfig{
+					{Name: "default", Sources: []string{"test-registry"}},
+				},
+				Database: &DatabaseConfig{
+					Host:     "localhost",
+					Port:     5432,
+					User:     "testuser",
+					Database: "testdb",
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid_api_timeout",
+			config: &Config{
+				Sources: []SourceConfig{
+					{
+						Name: "test-registry",
+						API: &APIConfig{
+							Endpoint: "https://registry.modelcontextprotocol.io",
+							Timeout:  "invalid",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "1h",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: true,
+			errMsg:  "api.timeout must be a valid duration",
+		},
+		{
+			name: "invalid_api_timeout_zero",
+			config: &Config{
+				Sources: []SourceConfig{
+					{
+						Name: "test-registry",
+						API: &APIConfig{
+							Endpoint: "https://registry.modelcontextprotocol.io",
+							Timeout:  "0s",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "1h",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: true,
+			errMsg:  "api.timeout must be greater than zero",
+		},
+		{
+			name: "invalid_api_timeout_too_large",
+			config: &Config{
+				Sources: []SourceConfig{
+					{
+						Name: "test-registry",
+						API: &APIConfig{
+							Endpoint: "https://registry.modelcontextprotocol.io",
+							Timeout:  "10m",
+						},
+						SyncPolicy: &SyncPolicyConfig{
+							Interval: "1h",
+						},
+					},
+				},
+				Auth: &AuthConfig{
+					Mode: AuthModeAnonymous,
+				},
+			},
+			wantErr: true,
+			errMsg:  "api.timeout must not exceed",
+		},
+		{
 			name: "invalid_file_url_scheme",
 			config: &Config{
 				Sources: []SourceConfig{
