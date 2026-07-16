@@ -154,3 +154,77 @@ func mapEntryType(entryType string) (sqlc.EntryType, error) {
 		return "", fmt.Errorf("%w: %s", service.ErrInvalidEntryType, entryType)
 	}
 }
+
+// GetEntryClaims returns the claims map for an API-published entry within the
+// managed source. Synced-source entries (git/api/file/kubernetes) are out of
+// scope here for two reasons: their claim source-of-truth is upstream — the
+// source row's claims for git/api/file (inherited per entry) or the
+// `toolhive.stacklok.dev/authz-claims` annotation for kubernetes — and every
+// sync overwrites entry claims via `ON CONFLICT DO UPDATE SET claims = EXCLUDED.claims`,
+// so any API write would be ephemeral. The matching PUT is managed-source-only
+// for the same reason. To inspect synced-entry claims, list endpoints under
+// `/v1/sources/{name}/entries` and `/v1/registries/{name}/entries` surface them.
+//
+// The returned map is non-nil even when the entry has no claims set, so callers
+// can rely on a stable JSON shape. Access is gated by the manageEntries role
+// plus a JWT-subset check against the entry's claims, mirroring the matching
+// PUT and the default-deny visibility rule (auth.md §4).
+func (s *dbService) GetEntryClaims(ctx context.Context, opts ...service.Option) (map[string]any, error) {
+	ctx, span := s.startSpan(ctx, "dbService.GetEntryClaims")
+	defer span.End()
+
+	options := &service.GetEntryClaimsOptions{}
+	for _, opt := range opts {
+		if err := opt(options); err != nil {
+			otel.RecordError(span, err)
+			return nil, fmt.Errorf("invalid option: %w", err)
+		}
+	}
+
+	span.SetAttributes(
+		attribute.String("entry.type", options.EntryType),
+		attribute.String("entry.name", options.Name),
+	)
+
+	entryType, err := mapEntryType(options.EntryType)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
+	querier := sqlc.New(s.pool)
+
+	source, err := getManagedSource(ctx, querier)
+	if err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
+	row, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
+		SourceID:  source.ID,
+		EntryType: entryType,
+		Name:      options.Name,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %s", service.ErrNotFound, options.Name)
+		}
+		otel.RecordError(span, err)
+		return nil, fmt.Errorf("failed to look up registry entry: %w", err)
+	}
+
+	gateClaims := options.JWTClaims
+	if s.skipAuthz {
+		gateClaims = nil
+	}
+	if err := validateClaimsSubsetBytes(ctx, gateClaims, row.Claims); err != nil {
+		otel.RecordError(span, err)
+		return nil, err
+	}
+
+	claims := db.DeserializeClaims(row.Claims)
+	if claims == nil {
+		claims = map[string]any{}
+	}
+	return claims, nil
+}
