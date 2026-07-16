@@ -161,7 +161,6 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 // @Summary		List servers in specific registry
 // @Description	Get a list of available servers from a specific registry
 // @Tags		registry
-// @Accept		json
 // @Produce		json
 // @Param		registryName	path	string	true	"Registry name"
 // @Param		cursor			query	string	false	"Pagination cursor for retrieving next set of results"
@@ -250,7 +249,6 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 // @Summary		List all versions of an MCP server in specific registry
 // @Description	Returns all available versions for a specific MCP server from a specific registry
 // @Tags		registry
-// @Accept		json
 // @Produce		json
 // @Param		registryName	path	string	true	"Registry name"
 // @Param		serverName	path		string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"
@@ -322,7 +320,6 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 // @Description	Returns detailed information about a specific version of an MCP server from a specific registry.
 // @Description	Use the special version `latest` to get the latest version.
 // @Tags		registry
-// @Accept		json
 // @Produce		json
 // @Param		registryName	path		string	true	"Registry name"
 // @Param		serverName		path		string	true	"URL-encoded server name (e.g., \"com.example%2Fmy-server\")"

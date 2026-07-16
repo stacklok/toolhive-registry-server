@@ -15,7 +15,6 @@ import (
 // @Summary		List sources
 // @Description	List all sources
 // @Tags		v1
-// @Accept		json
 // @Produce		json
 // @Success		200	{object}	service.SourceListResponse	"Sources list"
 // @Failure		500	{object}	map[string]string			"Internal server error"
@@ -36,7 +35,6 @@ func (routes *Routes) listSources(w http.ResponseWriter, r *http.Request) {
 // @Summary		Get source
 // @Description	Get a source by name
 // @Tags		v1
-// @Accept		json
 // @Produce		json
 // @Param		name	path		string				true	"Source Name"
 // @Success		200		{object}	service.SourceInfo	"Source details"
@@ -68,6 +66,7 @@ func (routes *Routes) getSource(w http.ResponseWriter, r *http.Request) {
 // @Accept		json
 // @Produce		json
 // @Param		name	path		string				true	"Source Name"
+// @Param		request	body		service.SourceCreateRequest	true	"Source configuration"
 // @Success		200		{object}	service.SourceInfo	"Source updated"
 // @Success		201		{object}	service.SourceInfo	"Source created"
 // @Failure		400		{object}	map[string]string	"Bad request"
@@ -114,7 +113,6 @@ func (routes *Routes) upsertSource(w http.ResponseWriter, r *http.Request) {
 // @Summary		Delete source
 // @Description	Delete a source by name
 // @Tags		v1
-// @Accept		json
 // @Produce		json
 // @Param		name	path	string	true	"Source Name"
 // @Success		204	"Source deleted"
@@ -144,7 +142,6 @@ func (routes *Routes) deleteSource(w http.ResponseWriter, r *http.Request) {
 // @Summary		List source entries
 // @Description	List all entries for a source
 // @Tags		v1
-// @Accept		json
 // @Produce		json
 // @Param		name	path		string						true	"Source Name"
 // @Success		200		{object}	service.SourceEntriesResponse	"Source entries"

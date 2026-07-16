@@ -8,6 +8,42 @@ const docTemplate = `{
     "schemes": {{ marshal .Schemes }},
     "components": {
         "schemas": {
+            "github_com_stacklok_toolhive-registry-server_internal_config.APIConfig": {
+                "description": "API endpoint source",
+                "properties": {
+                    "endpoint": {
+                        "description": "Endpoint is the base API URL (without path)\nThe registry handler will append the appropriate paths for the MCP Registry API v0.1:\n  - /v0.1/servers - List all servers\n  - /v0.1/servers/{name}/versions - List server versions\n  - /v0.1/servers/{name}/versions/{version} - Get specific version\nExample: \"http://my-registry-api.default.svc.cluster.local/registry\"",
+                        "type": "string"
+                    },
+                    "timeout": {
+                        "description": "Timeout is the per-request timeout for HTTP requests to the API endpoint\nAccepts a Go duration string (e.g., \"30s\", \"1m\"); must be \u003e 0 and \u003c= 5m\nDefaults to 10s if not specified\nUseful for public or occasionally-slow upstreams where the default is too aggressive",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_config.FileConfig": {
+                "description": "Local file or URL source",
+                "properties": {
+                    "data": {
+                        "description": "Data is the inline registry data as a JSON string\nMutually exclusive with Path and URL - exactly one must be specified\nUseful for API-created registries where the data is provided directly",
+                        "type": "string"
+                    },
+                    "path": {
+                        "description": "Path is the path to the registry.json file on the local filesystem\nCan be absolute or relative to the working directory\nMutually exclusive with URL and Data - exactly one must be specified",
+                        "type": "string"
+                    },
+                    "timeout": {
+                        "description": "Timeout is the timeout for HTTP requests when using URL\nDefaults to 30s if not specified\nOnly applicable when URL is set",
+                        "type": "string"
+                    },
+                    "url": {
+                        "description": "URL is the HTTP/HTTPS URL to fetch the registry file from\nMutually exclusive with Path and Data - exactly one must be specified\nHTTPS is required unless the host is localhost or THV_REGISTRY_INSECURE_URL=true",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig": {
                 "description": "Filtering rules",
                 "properties": {
@@ -18,6 +54,57 @@ const docTemplate = `{
                         "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig"
                     }
                 },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig": {
+                "description": "Auth contains optional authentication for private repositories",
+                "properties": {
+                    "passwordFile": {
+                        "description": "PasswordFile is the path to a file containing the Git password/token\nMust be an absolute path; whitespace is trimmed from the content",
+                        "type": "string"
+                    },
+                    "username": {
+                        "description": "Username is the Git username for HTTP Basic authentication",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_config.GitConfig": {
+                "description": "Git repository source",
+                "properties": {
+                    "auth": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig"
+                    },
+                    "branch": {
+                        "description": "Branch is the Git branch to use (mutually exclusive with Tag and Commit)",
+                        "type": "string"
+                    },
+                    "commit": {
+                        "description": "Commit is the Git commit SHA to use (mutually exclusive with Branch and Tag)",
+                        "type": "string"
+                    },
+                    "path": {
+                        "description": "Path is the path to the registry file within the repository",
+                        "type": "string"
+                    },
+                    "repository": {
+                        "description": "Repository is the Git repository URL (HTTP/HTTPS/SSH)",
+                        "type": "string"
+                    },
+                    "tag": {
+                        "description": "Tag is the Git tag to use (mutually exclusive with Branch and Commit)",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig": {
+                "description": "Kubernetes discovery source",
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig": {
+                "description": "Managed registry (no sync)",
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig": {
@@ -56,6 +143,15 @@ const docTemplate = `{
                     "SourceTypeManaged",
                     "SourceTypeKubernetes"
                 ]
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig": {
+                "description": "Sync schedule configuration",
+                "properties": {
+                    "interval": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig": {
                 "properties": {
@@ -104,6 +200,24 @@ const docTemplate = `{
                     },
                     "version": {
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest": {
+                "properties": {
+                    "claims": {
+                        "additionalProperties": {},
+                        "description": "Authorization claims",
+                        "type": "object"
+                    },
+                    "sources": {
+                        "description": "ordered list of source names",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
                     }
                 },
                 "type": "object"
@@ -306,6 +420,37 @@ const docTemplate = `{
                     },
                     "url": {
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_internal_service.SourceCreateRequest": {
+                "properties": {
+                    "api": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.APIConfig"
+                    },
+                    "claims": {
+                        "additionalProperties": {},
+                        "description": "Authorization claims",
+                        "type": "object"
+                    },
+                    "file": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FileConfig"
+                    },
+                    "filter": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig"
+                    },
+                    "git": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitConfig"
+                    },
+                    "kubernetes": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig"
+                    },
+                    "managed": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig"
+                    },
+                    "syncPolicy": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig"
                     }
                 },
                 "type": "object"
@@ -1220,15 +1365,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -1314,15 +1450,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -1417,15 +1544,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -1534,15 +1652,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -1624,15 +1733,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -1727,15 +1827,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -1839,15 +1930,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -2141,15 +2223,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "204": {
                         "description": "No Content"
@@ -2237,15 +2310,6 @@ const docTemplate = `{
         "/v1/registries": {
             "get": {
                 "description": "List all registries",
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -2291,15 +2355,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "204": {
                         "description": "Registry deleted"
@@ -2375,15 +2430,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -2457,10 +2503,21 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "type": "object"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest",
+                                        "summary": "request",
+                                        "description": "Registry configuration"
+                                    }
+                                ]
                             }
                         }
-                    }
+                    },
+                    "description": "Registry configuration",
+                    "required": true
                 },
                 "responses": {
                     "200": {
@@ -2543,15 +2600,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -2612,15 +2660,6 @@ const docTemplate = `{
         "/v1/sources": {
             "get": {
                 "description": "List all sources",
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -2666,15 +2705,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "204": {
                         "description": "Source deleted"
@@ -2763,15 +2793,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
@@ -2845,10 +2866,21 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "type": "object"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceCreateRequest",
+                                        "summary": "request",
+                                        "description": "Source configuration"
+                                    }
+                                ]
                             }
                         }
-                    }
+                    },
+                    "description": "Source configuration",
+                    "required": true
                 },
                 "responses": {
                     "200": {
@@ -2944,15 +2976,6 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "content": {
