@@ -47,7 +47,6 @@ type Routes struct {
 // @Summary		List skills in registry
 // @Description	List skills in a registry (paginated, latest versions).
 // @Tags		skills
-// @Accept		json
 // @Produce		json
 // @Param		registryName	path		string	true	"Registry name"
 // @Param		search		query		string	false	"Filter by name/description substring"
@@ -108,7 +107,6 @@ func (routes *Routes) listSkills(w http.ResponseWriter, r *http.Request) {
 // @Summary		Get latest skill version
 // @Description	Get the latest version of a skill by namespace and name.
 // @Tags		skills
-// @Accept		json
 // @Produce		json
 // @Param		registryName	path		string	true	"Registry name"
 // @Param		namespace	path		string	true	"Skill namespace (reverse-DNS)"
@@ -160,7 +158,6 @@ func (routes *Routes) getLatestVersion(w http.ResponseWriter, r *http.Request) {
 // @Summary		List skill versions
 // @Description	List all versions of a skill.
 // @Tags		skills
-// @Accept		json
 // @Produce		json
 // @Param		registryName	path		string	true	"Registry name"
 // @Param		namespace	path		string	true	"Skill namespace (reverse-DNS)"
@@ -219,7 +216,6 @@ func (routes *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 // @Summary		Get specific skill version
 // @Description	Get a specific version of a skill.
 // @Tags		skills
-// @Accept		json
 // @Produce		json
 // @Param		registryName	path		string	true	"Registry name"
 // @Param		namespace	path		string	true	"Skill namespace (reverse-DNS)"

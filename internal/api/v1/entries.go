@@ -119,7 +119,6 @@ func writePublishError(w http.ResponseWriter, r *http.Request, err error) {
 // @Summary		Delete published entry
 // @Description	Delete a published entry version
 // @Tags		v1
-// @Accept		json
 // @Produce		json
 // @Param		type	path	string	true	"Entry Type (server or skill)"
 // @Param		name	path	string	true	"Entry Name"
