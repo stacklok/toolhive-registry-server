@@ -8,12 +8,25 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/stretchr/testify/require"
 
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
-// createManagedSource is a helper that creates a managed source for publish tests.
+// createManagedSource creates a managed source tagged with the default test
+// claims ({org: acme}). Publishing now gates on the source's claims (#845), so
+// the source must carry a claim the publisher's JWT covers; every publish setup
+// in these tests uses an org:acme (or nil) JWT. Use createManagedSourceWithClaims
+// to control the source's claims explicitly.
 func createManagedSource(t *testing.T, svc *dbService, name string) {
+	t.Helper()
+	createManagedSourceWithClaims(t, svc, name, map[string]any{"org": "acme"})
+}
+
+// createManagedSourceWithClaims creates a managed source with the given claims
+// (pass nil for an untagged source).
+func createManagedSourceWithClaims(t *testing.T, svc *dbService, name string, claims map[string]any) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -24,13 +37,22 @@ func createManagedSource(t *testing.T, svc *dbService, name string) {
 		CreationType: sqlc.CreationTypeCONFIG,
 		SourceType:   "managed",
 		Syncable:     false,
+		Claims:       db.SerializeClaims(claims),
 	})
 	require.NoError(t, err)
 }
 
-// createManagedSourceWithRegistry creates a managed source and a registry linked to it.
-// This is needed for skill operations which require a registry.
+// createManagedSourceWithRegistry creates a managed source (tagged {org: acme})
+// and a registry linked to it. This is needed for skill operations which require
+// a registry.
 func createManagedSourceWithRegistry(t *testing.T, svc *dbService, name string) {
+	t.Helper()
+	createManagedSourceWithRegistryClaims(t, svc, name, map[string]any{"org": "acme"})
+}
+
+// createManagedSourceWithRegistryClaims is createManagedSourceWithRegistry with
+// explicit source claims (pass nil for an untagged source).
+func createManagedSourceWithRegistryClaims(t *testing.T, svc *dbService, name string, claims map[string]any) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -41,6 +63,7 @@ func createManagedSourceWithRegistry(t *testing.T, svc *dbService, name string) 
 		CreationType: sqlc.CreationTypeCONFIG,
 		SourceType:   "managed",
 		Syncable:     false,
+		Claims:       db.SerializeClaims(claims),
 	})
 	require.NoError(t, err)
 
@@ -135,6 +158,188 @@ func TestPublishServerVersion_ClaimsSubset(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, result)
 				require.Equal(t, "1.0.0", result.Version)
+			}
+		})
+	}
+}
+
+// TestPublishServerVersion_SourceClaimsGate covers #845: publishing must also
+// verify the caller's JWT covers the managed source's claims (visibility / OR),
+// independent of the entry-claims subset check.
+func TestPublishServerVersion_SourceClaimsGate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		slug         string
+		sourceClaims map[string]any
+		entryClaims  map[string]any
+		jwtClaims    map[string]any
+		superAdmin   bool
+		wantErr      error
+	}{
+		{
+			name:         "caller covers source claims succeeds",
+			slug:         "covered",
+			sourceClaims: map[string]any{"org": "acme"},
+			entryClaims:  map[string]any{"org": "acme"},
+			jwtClaims:    map[string]any{"org": "acme", "team": "eng"},
+			wantErr:      nil,
+		},
+		{
+			name:         "caller does not cover source claims returns ErrClaimsInsufficient",
+			slug:         "uncovered",
+			sourceClaims: map[string]any{"org": "acme"},
+			entryClaims:  map[string]any{"org": "contoso"},
+			jwtClaims:    map[string]any{"org": "contoso"},
+			wantErr:      service.ErrClaimsInsufficient,
+		},
+		{
+			name:         "untagged source denies claim-bearing caller (default-deny)",
+			slug:         "untagged",
+			sourceClaims: nil,
+			entryClaims:  map[string]any{"org": "acme"},
+			jwtClaims:    map[string]any{"org": "acme"},
+			wantErr:      service.ErrClaimsInsufficient,
+		},
+		{
+			name:         "untagged source with nil JWT (anonymous/skipAuthz) succeeds",
+			slug:         "untagged-anon",
+			sourceClaims: nil,
+			entryClaims:  map[string]any{"org": "acme"},
+			jwtClaims:    nil,
+			wantErr:      nil,
+		},
+		{
+			name:         "caller shares one value of source array claim succeeds (OR)",
+			slug:         "array-or",
+			sourceClaims: map[string]any{"org": "acme", "team": []any{"platform", teamDataClaim}},
+			entryClaims:  map[string]any{"org": "acme", "team": "platform"},
+			jwtClaims:    map[string]any{"org": "acme", "team": "platform"},
+			wantErr:      nil,
+		},
+		{
+			name:         "super-admin bypasses source claims gate",
+			slug:         "superadmin",
+			sourceClaims: map[string]any{"org": "acme"},
+			entryClaims:  map[string]any{"org": "contoso"},
+			jwtClaims:    map[string]any{"org": "contoso"},
+			superAdmin:   true,
+			wantErr:      nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			createManagedSourceWithClaims(t, svc, "pubsrc-"+tt.slug, tt.sourceClaims)
+
+			ctx := context.Background()
+			if tt.superAdmin {
+				ctx = auth.ContextWithRoles(ctx, []auth.Role{auth.RoleSuperAdmin})
+			}
+
+			opts := []service.Option{
+				service.WithServerData(&upstreamv0.ServerJSON{
+					Name:    "com.test/pubsrc-" + tt.slug,
+					Version: "1.0.0",
+				}),
+			}
+			if tt.entryClaims != nil {
+				opts = append(opts, service.WithClaims(tt.entryClaims))
+			}
+			if tt.jwtClaims != nil {
+				opts = append(opts, service.WithJWTClaims(tt.jwtClaims))
+			}
+
+			result, err := svc.PublishServerVersion(ctx, opts...)
+
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				require.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+			}
+		})
+	}
+}
+
+// TestPublishSkill_SourceClaimsGate is the skill counterpart of the #845 gate.
+func TestPublishSkill_SourceClaimsGate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		slug         string
+		sourceClaims map[string]any
+		entryClaims  map[string]any
+		jwtClaims    map[string]any
+		wantErr      error
+	}{
+		{
+			name:         "caller covers source claims succeeds",
+			slug:         "covered",
+			sourceClaims: map[string]any{"org": "acme"},
+			entryClaims:  map[string]any{"org": "acme"},
+			jwtClaims:    map[string]any{"org": "acme", "team": "eng"},
+			wantErr:      nil,
+		},
+		{
+			name:         "caller does not cover source claims returns ErrClaimsInsufficient",
+			slug:         "uncovered",
+			sourceClaims: map[string]any{"org": "acme"},
+			entryClaims:  map[string]any{"org": "contoso"},
+			jwtClaims:    map[string]any{"org": "contoso"},
+			wantErr:      service.ErrClaimsInsufficient,
+		},
+		{
+			name:         "untagged source denies claim-bearing caller (default-deny)",
+			slug:         "untagged",
+			sourceClaims: nil,
+			entryClaims:  map[string]any{"org": "acme"},
+			jwtClaims:    map[string]any{"org": "acme"},
+			wantErr:      service.ErrClaimsInsufficient,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, cleanup := setupTestService(t)
+			defer cleanup()
+
+			createManagedSourceWithRegistryClaims(t, svc, "pubskill-"+tt.slug, tt.sourceClaims)
+
+			ctx := context.Background()
+			skill := &service.Skill{
+				Namespace: "com.test",
+				Name:      "pubskill-" + tt.slug,
+				Version:   "1.0.0",
+				Title:     "Test Skill",
+			}
+
+			opts := []service.Option{}
+			if tt.entryClaims != nil {
+				opts = append(opts, service.WithClaims(tt.entryClaims))
+			}
+			if tt.jwtClaims != nil {
+				opts = append(opts, service.WithJWTClaims(tt.jwtClaims))
+			}
+
+			result, err := svc.PublishSkill(ctx, skill, opts...)
+
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				require.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, result)
 			}
 		})
 	}
