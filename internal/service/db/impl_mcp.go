@@ -581,6 +581,7 @@ func getManagedSource(ctx context.Context, querier *sqlc.Queries) (*sqlc.Source,
 		Name:         row.Name,
 		SourceType:   row.SourceType,
 		CreationType: row.CreationType,
+		Claims:       row.Claims,
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
 	}, nil
@@ -647,7 +648,7 @@ func (s *dbService) PublishServerVersion(
 	}
 
 	// Execute the publish operation in a transaction
-	sourceName, err := s.executePublishTransaction(ctx, serverData, claimsJSON)
+	sourceName, err := s.executePublishTransaction(ctx, serverData, claimsJSON, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -712,6 +713,7 @@ func (s *dbService) executePublishTransaction(
 	ctx context.Context,
 	serverData *upstreamv0.ServerJSON,
 	claimsJSON []byte,
+	gateClaims map[string]any,
 ) (string, error) {
 	// Begin transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
@@ -733,6 +735,13 @@ func (s *dbService) executePublishTransaction(
 	// Find the managed source automatically
 	source, err := getManagedSource(ctx, querier)
 	if err != nil {
+		return "", err
+	}
+
+	// Verify the caller may publish into this source: their JWT must cover the
+	// source's claims (visibility / OR — auth.md §3/§5). An untagged managed
+	// source is publishable only by super-admin (default-deny, #845).
+	if err := validateClaimsVisibleBytes(ctx, gateClaims, source.Claims); err != nil {
 		return "", err
 	}
 
@@ -884,7 +893,7 @@ func (s *dbService) executeDeleteTransaction(
 		if s.skipAuthz {
 			gateClaims = nil
 		}
-		if err := validateClaimsSubsetBytes(ctx, gateClaims, existing.Claims); err != nil {
+		if err := validateClaimsVisibleBytes(ctx, gateClaims, existing.Claims); err != nil {
 			return err
 		}
 	}

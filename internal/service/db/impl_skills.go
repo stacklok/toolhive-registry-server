@@ -354,7 +354,7 @@ func (s *dbService) PublishSkill(
 		}
 	}
 
-	sourceName, err := s.executePublishSkillTransaction(ctx, skill, claimsJSON)
+	sourceName, err := s.executePublishSkillTransaction(ctx, skill, claimsJSON, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -439,6 +439,7 @@ func (s *dbService) executePublishSkillTransaction(
 	ctx context.Context,
 	skill *service.Skill,
 	claimsJSON []byte,
+	gateClaims map[string]any,
 ) (string, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.Serializable,
@@ -458,6 +459,13 @@ func (s *dbService) executePublishSkillTransaction(
 
 	managedSource, err := getManagedSource(ctx, querier)
 	if err != nil {
+		return "", err
+	}
+
+	// Verify the caller may publish into this source: their JWT must cover the
+	// source's claims (visibility / OR — auth.md §3/§5). An untagged managed
+	// source is publishable only by super-admin (default-deny, #845).
+	if err := validateClaimsVisibleBytes(ctx, gateClaims, managedSource.Claims); err != nil {
 		return "", err
 	}
 	sourceName := managedSource.Name
@@ -696,7 +704,7 @@ func (s *dbService) executeDeleteSkillTransaction(
 		if s.skipAuthz {
 			gateClaims = nil
 		}
-		if err := validateClaimsSubsetBytes(ctx, gateClaims, existing.Claims); err != nil {
+		if err := validateClaimsVisibleBytes(ctx, gateClaims, existing.Claims); err != nil {
 			return err
 		}
 	}

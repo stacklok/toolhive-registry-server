@@ -41,7 +41,12 @@ func checkClaimConsistency(incomingJSON, existingJSON []byte) error {
 	return nil
 }
 
-// validateClaimsSubset checks that callerClaims covers resourceClaims.
+// validateClaimsSubset checks that callerClaims cover resourceClaims using the
+// write-path containment rule (claimsContain — AND within arrays). Use it when
+// the caller supplies NEW claims for a resource (create/update/publish/
+// update-claims): the caller must hold every value, or they could stamp a
+// resource with broader visibility than their own identity allows (auth.md §5).
+//
 // Returns nil if:
 //   - callerClaims is nil (caller has opted out of the gate — callers pass
 //     nil when skipAuthz is enabled or in anonymous mode)
@@ -51,6 +56,30 @@ func checkClaimConsistency(incomingJSON, existingJSON []byte) error {
 // Returns ErrClaimsInsufficient otherwise, including when resourceClaims
 // is nil/empty (default-deny on unlabeled resources — see auth.md §4).
 func validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[string]any) error {
+	return validateClaimsWith(ctx, callerClaims, resourceClaims, claimsContain)
+}
+
+// validateClaimsVisible checks whether callerClaims may see or access a resource
+// whose claims are resourceClaims, using the read-path visibility rule
+// (claimsVisible — OR within arrays). Use it for access gates and any check
+// against an EXISTING resource's stored claims (read/list/delete, the registry
+// access gate, referencing a source) so the single-resource gate agrees with
+// the list filter (auth.md §4). Same nil-caller / super-admin / default-deny
+// short-circuits as validateClaimsSubset.
+func validateClaimsVisible(ctx context.Context, callerClaims, resourceClaims map[string]any) error {
+	return validateClaimsWith(ctx, callerClaims, resourceClaims, claimsVisible)
+}
+
+// validateClaimsWith is the shared claim gate. It applies the uniform
+// short-circuits — nil caller (authz off / anonymous) and super-admin bypass,
+// empty resource claims are default-deny (auth.md §4) — then defers the claim
+// comparison to match: claimsContain for write-path subset, claimsVisible for
+// read-path visibility.
+func validateClaimsWith(
+	ctx context.Context,
+	callerClaims, resourceClaims map[string]any,
+	match func(caller, record map[string]any) bool,
+) error {
 	if callerClaims == nil {
 		return nil
 	}
@@ -60,21 +89,21 @@ func validateClaimsSubset(ctx context.Context, callerClaims, resourceClaims map[
 	if len(resourceClaims) == 0 {
 		return fmt.Errorf("%w: resource has no claims", service.ErrClaimsInsufficient)
 	}
-	if !claimsContain(callerClaims, resourceClaims) {
+	if !match(callerClaims, resourceClaims) {
 		return fmt.Errorf("%w: caller claims do not cover resource claims", service.ErrClaimsInsufficient)
 	}
 	return nil
 }
 
-// validateClaimsSubsetBytes is like validateClaimsSubset but accepts raw JSON
+// validateClaimsVisibleBytes is like validateClaimsVisible but accepts raw JSON
 // for resourceClaims. An empty resource JSON is default-deny when callerClaims
 // is non-nil (unlabeled resources are invisible to claim-bearing callers).
-func validateClaimsSubsetBytes(ctx context.Context, callerClaims map[string]any, resourceClaimsJSON []byte) error {
+func validateClaimsVisibleBytes(ctx context.Context, callerClaims map[string]any, resourceClaimsJSON []byte) error {
 	if callerClaims == nil {
 		return nil
 	}
 	resourceClaims := db.DeserializeClaims(resourceClaimsJSON)
-	return validateClaimsSubset(ctx, callerClaims, resourceClaims)
+	return validateClaimsVisible(ctx, callerClaims, resourceClaims)
 }
 
 // claimsFromCtx extracts JWT claims from the context as map[string]any.
@@ -137,8 +166,10 @@ func marshalClaims(callerClaims map[string]any) []byte {
 	return b
 }
 
-// checkClaims returns true only when callerJSON satisfies every claim in recordJSON.
-// The caller's claims must be a superset of the record's claims (containment, not equality).
+// checkClaims reports whether a caller with callerJSON may see a record whose
+// claims are recordJSON. It applies the read-path visibility rule via
+// claimsVisible (AND across keys, OR within array values) — not the write-path
+// containment rule (claimsContain).
 func checkClaims(callerJSON, recordJSON []byte) bool {
 	if len(callerJSON) == 0 || len(recordJSON) == 0 {
 		return false
@@ -150,24 +181,45 @@ func checkClaims(callerJSON, recordJSON []byte) bool {
 	if err := json.Unmarshal(recordJSON, &record); err != nil {
 		return false
 	}
-	return claimsContain(caller, record)
+	return claimsVisible(caller, record)
 }
 
-// claimsContain reports whether callerClaims satisfies every claim in recordClaims.
-// For each key K in recordClaims the caller must have K, and every value required
-// by the record must appear in the caller's value(s) for K.
-// Both plain strings and []string values are supported.
-//
-// An empty-array value (e.g. "teams": []) is vacuously satisfied by any caller
-// value for that key — this is intentional since ValidateClaimValues accepts
-// empty arrays, and presence of the key is the meaningful signal.
-//
-// Fails closed (returns false) when a record value has an unsupported type
-// (nil, number, nested object, etc.). ValidateClaimValues blocks such values
-// at the API edge, but rows persisted via direct DB writes or future sync
-// paths could carry them — the gate must not silently treat them as
-// vacuously-satisfied requirements.
+// claimsContain reports whether callerClaims satisfies every claim in recordClaims
+// using the write-path / subset rule: AND across keys, AND within arrays
+// (containment). It backs validateClaimsSubset and claimsEqual, where the caller
+// must cover *all* of a resource's values or they could create resources with
+// broader visibility than their own identity (auth.md §5). Read-path visibility
+// uses claimsVisible (OR within arrays) — do not swap one for the other.
 func claimsContain(caller, record map[string]any) bool {
+	return claimsMatch(caller, record, subsetOf)
+}
+
+// claimsVisible reports whether a caller may see a record whose claims are
+// recordClaims using the read-path / visibility rule: AND across keys, OR within
+// arrays. A record tagged team:[eng,data] is an allow-list — visible to a caller
+// in *either* team (auth.md §3). This is the deliberate mirror of claimsContain's
+// within-array direction; keep them separate.
+func claimsVisible(caller, record map[string]any) bool {
+	return claimsMatch(caller, record, overlaps)
+}
+
+// claimsMatch runs the key-level contract shared by both claim rules and defers
+// the within-array decision to matchValues (subsetOf for containment, overlaps
+// for visibility). The shared contract, identical for both rules, is:
+//
+//   - AND across keys: every key in the record must be satisfied.
+//   - The caller must hold each record key (absent key on the caller → fail).
+//   - An empty-array record value (e.g. "teams": []) is vacuously satisfied by
+//     any caller value for that key — presence of the key is the meaningful
+//     signal, matching what ValidateClaimValues accepts.
+//   - Fails closed (returns false) on unsupported record value types (nil,
+//     number, nested object, mixed array). ValidateClaimValues blocks these at
+//     the API edge, but rows persisted via direct DB writes or future sync paths
+//     could carry them — the gate must not treat them as vacuously satisfied.
+//
+// Keeping the contract in one place is deliberate: the two rules must differ
+// only in the within-array test, never in the key-level handling (auth.md §3).
+func claimsMatch(caller, record map[string]any, matchValues func(required, have map[string]struct{}) bool) bool {
 	for k, rv := range record {
 		if !isValidClaimValue(rv) {
 			return false
@@ -177,18 +229,45 @@ func claimsContain(caller, record map[string]any) bool {
 			return false
 		}
 		required := toStringSet(rv)
+		if len(required) == 0 {
+			continue // empty array: presence of the key is enough
+		}
 		have := toStringSet(cv)
-		for v := range required {
-			if _, found := have[v]; !found {
-				return false
-			}
+		if !matchValues(required, have) {
+			return false
 		}
 	}
 	return true
 }
 
+// subsetOf reports whether every element of required is present in have
+// (containment — the write-path within-array rule).
+func subsetOf(required, have map[string]struct{}) bool {
+	for v := range required {
+		if _, found := have[v]; !found {
+			return false
+		}
+	}
+	return true
+}
+
+// overlaps reports whether two string sets share at least one element
+// (the read-path within-array rule).
+func overlaps(a, b map[string]struct{}) bool {
+	// Iterate the smaller set for fewer lookups.
+	if len(b) < len(a) {
+		a, b = b, a
+	}
+	for v := range a {
+		if _, found := b[v]; found {
+			return true
+		}
+	}
+	return false
+}
+
 // isValidClaimValue reports whether v is a supported claim value (string,
-// []string, or []any of strings). Used by claimsContain to fail closed on
+// []string, or []any of strings). Used by claimsMatch to fail closed on
 // rows whose values bypassed ValidateClaimValues.
 func isValidClaimValue(v any) bool {
 	switch val := v.(type) {

@@ -115,7 +115,7 @@ func (s *dbService) executeUpdateClaimsTransaction(
 	if s.skipAuthz {
 		gateClaims = nil
 	}
-	if err := validateClaimsSubsetBytes(ctx, gateClaims, existing.Claims); err != nil {
+	if err := validateClaimsVisibleBytes(ctx, gateClaims, existing.Claims); err != nil {
 		return err
 	}
 
@@ -167,8 +167,10 @@ func mapEntryType(entryType string) (sqlc.EntryType, error) {
 //
 // The returned map is non-nil even when the entry has no claims set, so callers
 // can rely on a stable JSON shape. Access is gated by the manageEntries role
-// plus a JWT-subset check against the entry's claims, mirroring the matching
-// PUT and the default-deny visibility rule (auth.md §4).
+// plus a JWT-visibility check against the entry's claims (validateClaimsVisibleBytes
+// — OR within arrays, §3), so this read agrees with the list filter and the
+// default-deny rule (auth.md §4). The matching PUT, which sets new claims, uses
+// the stricter subset check instead (§5).
 func (s *dbService) GetEntryClaims(ctx context.Context, opts ...service.Option) (map[string]any, error) {
 	ctx, span := s.startSpan(ctx, "dbService.GetEntryClaims")
 	defer span.End()
@@ -217,7 +219,7 @@ func (s *dbService) GetEntryClaims(ctx context.Context, opts ...service.Option) 
 	if s.skipAuthz {
 		gateClaims = nil
 	}
-	if err := validateClaimsSubsetBytes(ctx, gateClaims, row.Claims); err != nil {
+	if err := validateClaimsVisibleBytes(ctx, gateClaims, row.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
