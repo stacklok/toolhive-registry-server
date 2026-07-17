@@ -114,7 +114,95 @@ func TestValidateClaimsSubset(t *testing.T) {
 	}
 }
 
-func TestValidateClaimsSubsetBytes(t *testing.T) {
+func TestValidateClaimsVisible(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		callerClaims   map[string]any
+		resourceClaims map[string]any
+		superAdmin     bool
+		wantErr        error
+	}{
+		{
+			name:           "nil caller claims (anonymous or skipAuthz) returns nil",
+			callerClaims:   nil,
+			resourceClaims: map[string]any{"sub": "user1"},
+			wantErr:        nil,
+		},
+		{
+			name:           "empty resource claims returns ErrClaimsInsufficient (default-deny)",
+			callerClaims:   map[string]any{"sub": "user1"},
+			resourceClaims: map[string]any{},
+			wantErr:        service.ErrClaimsInsufficient,
+		},
+		{
+			name:           "super-admin bypasses claim checks",
+			callerClaims:   map[string]any{"sub": "admin"},
+			resourceClaims: map[string]any{"sub": "user1"},
+			superAdmin:     true,
+			wantErr:        nil,
+		},
+		{
+			name:           "caller missing required key returns ErrClaimsInsufficient",
+			callerClaims:   map[string]any{"org": "acme"},
+			resourceClaims: map[string]any{"sub": "user1"},
+			wantErr:        service.ErrClaimsInsufficient,
+		},
+		{
+			// The defining difference from validateClaimsSubset: sharing ONE
+			// value of a multi-value resource claim grants visibility (OR).
+			name:           "caller shares one value of resource array returns nil",
+			callerClaims:   map[string]any{"groups": []any{"engineering"}},
+			resourceClaims: map[string]any{"groups": []any{"engineering", "devops"}},
+			wantErr:        nil,
+		},
+		{
+			name:           "caller shares no value of resource array returns ErrClaimsInsufficient",
+			callerClaims:   map[string]any{"groups": []any{"sales"}},
+			resourceClaims: map[string]any{"groups": []any{"engineering", "devops"}},
+			wantErr:        service.ErrClaimsInsufficient,
+		},
+		{
+			// AND-across-keys still holds under OR-within-array: overlapping one
+			// array key does not grant access when another key mismatches.
+			name:           "array key overlaps but scalar key mismatches returns ErrClaimsInsufficient",
+			callerClaims:   map[string]any{"org": "other", "groups": []any{"engineering"}},
+			resourceClaims: map[string]any{"org": "acme", "groups": []any{"engineering", "devops"}},
+			wantErr:        service.ErrClaimsInsufficient,
+		},
+		{
+			// Empty-array record value is vacuously satisfied for any caller
+			// holding the key (parity with claimsContain / write path).
+			name:           "empty-array resource value vacuously satisfied returns nil",
+			callerClaims:   map[string]any{"team": "platform"},
+			resourceClaims: map[string]any{"team": []any{}},
+			wantErr:        nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := t.Context()
+			if tt.superAdmin {
+				ctx = auth.ContextWithRoles(ctx, []auth.Role{auth.RoleSuperAdmin})
+			}
+
+			err := validateClaimsVisible(ctx, tt.callerClaims, tt.resourceClaims)
+
+			if tt.wantErr != nil {
+				require.Error(t, err)
+				assert.True(t, errors.Is(err, tt.wantErr), "expected %v, got %v", tt.wantErr, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateClaimsVisibleBytes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -153,6 +241,20 @@ func TestValidateClaimsSubsetBytes(t *testing.T) {
 			resourceJSON: mustMarshalAuthz(t, map[string]any{"sub": "user2"}),
 			wantErr:      service.ErrClaimsInsufficient,
 		},
+		{
+			// Visibility is OR-within-array: overlapping one value is enough,
+			// unlike the write-path subset check (see TestValidateClaimsSubset).
+			name:         "record array overlaps caller returns nil (visibility OR)",
+			callerClaims: map[string]any{"groups": []any{"engineering"}},
+			resourceJSON: mustMarshalAuthz(t, map[string]any{"groups": []any{"engineering", "devops"}}),
+			wantErr:      nil,
+		},
+		{
+			name:         "record array no overlap returns ErrClaimsInsufficient",
+			callerClaims: map[string]any{"groups": []any{"sales"}},
+			resourceJSON: mustMarshalAuthz(t, map[string]any{"groups": []any{"engineering", "devops"}}),
+			wantErr:      service.ErrClaimsInsufficient,
+		},
 	}
 
 	for _, tt := range tests {
@@ -160,7 +262,7 @@ func TestValidateClaimsSubsetBytes(t *testing.T) {
 			t.Parallel()
 
 			ctx := t.Context()
-			err := validateClaimsSubsetBytes(ctx, tt.callerClaims, tt.resourceJSON)
+			err := validateClaimsVisibleBytes(ctx, tt.callerClaims, tt.resourceJSON)
 
 			if tt.wantErr != nil {
 				require.Error(t, err)

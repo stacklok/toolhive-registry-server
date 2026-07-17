@@ -884,7 +884,7 @@ func (s *dbService) executeDeleteTransaction(
 		if s.skipAuthz {
 			gateClaims = nil
 		}
-		if err := validateClaimsSubsetBytes(ctx, gateClaims, existing.Claims); err != nil {
+		if err := validateClaimsVisibleBytes(ctx, gateClaims, existing.Claims); err != nil {
 			return err
 		}
 	}

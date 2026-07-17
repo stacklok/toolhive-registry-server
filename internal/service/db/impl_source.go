@@ -250,7 +250,7 @@ func (s *dbService) UpdateSource(
 	if s.skipAuthz {
 		callerClaims = nil
 	}
-	if err := validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
+	if err := validateClaimsVisibleBytes(ctx, callerClaims, existing.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -377,7 +377,7 @@ func (s *dbService) DeleteSource(ctx context.Context, name string) error {
 	if s.skipAuthz {
 		callerClaims = nil
 	}
-	if err := validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
+	if err := validateClaimsVisibleBytes(ctx, callerClaims, existing.Claims); err != nil {
 		otel.RecordError(span, err)
 		return err
 	}
@@ -512,7 +512,7 @@ func (s *dbService) GetSourceByName(ctx context.Context, name string) (*service.
 	if s.skipAuthz {
 		callerClaims = nil
 	}
-	if err := validateClaimsSubset(ctx, callerClaims, info.Claims); err != nil {
+	if err := validateClaimsVisible(ctx, callerClaims, info.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %s", service.ErrSourceNotFound, name)
 	}
@@ -632,7 +632,7 @@ func (s *dbService) ListSourceEntries(ctx context.Context, sourceName string) ([
 	if s.skipAuthz {
 		callerClaims = nil
 	}
-	if err := validateClaimsSubsetBytes(ctx, callerClaims, source.Claims); err != nil {
+	if err := validateClaimsVisibleBytes(ctx, callerClaims, source.Claims); err != nil {
 		err = fmt.Errorf("%w: %s", service.ErrSourceNotFound, sourceName)
 		otel.RecordError(span, err)
 		return nil, err
@@ -1018,7 +1018,7 @@ func streamSourceRows(
 		}
 
 		for _, src := range batch {
-			if err := validateClaimsSubsetBytes(ctx, callerClaims, src.Claims); err != nil {
+			if err := validateClaimsVisibleBytes(ctx, callerClaims, src.Claims); err != nil {
 				continue
 			}
 			accumulated = append(accumulated, src)

@@ -112,7 +112,7 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 	if s.skipAuthz {
 		callerClaims = nil
 	}
-	if err := validateClaimsSubset(ctx, callerClaims, db.DeserializeClaims(reg.Claims)); err != nil {
+	if err := validateClaimsVisible(ctx, callerClaims, db.DeserializeClaims(reg.Claims)); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %s", service.ErrRegistryNotFound, name)
 	}
@@ -276,7 +276,7 @@ func (s *dbService) UpdateRegistry(
 	if s.skipAuthz {
 		callerClaims = nil
 	}
-	if err := validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
+	if err := validateClaimsVisibleBytes(ctx, callerClaims, existing.Claims); err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
@@ -361,7 +361,7 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 	if s.skipAuthz {
 		callerClaims = nil
 	}
-	if err := validateClaimsSubsetBytes(ctx, callerClaims, existing.Claims); err != nil {
+	if err := validateClaimsVisibleBytes(ctx, callerClaims, existing.Claims); err != nil {
 		otel.RecordError(span, err)
 		return err
 	}
@@ -431,7 +431,7 @@ func (s *dbService) ListRegistryEntries(ctx context.Context, registryName string
 	if s.skipAuthz {
 		callerClaims = nil
 	}
-	if err := validateClaimsSubsetBytes(ctx, callerClaims, registry.Claims); err != nil {
+	if err := validateClaimsVisibleBytes(ctx, callerClaims, registry.Claims); err != nil {
 		err = fmt.Errorf("%w: %s", service.ErrRegistryNotFound, registryName)
 		otel.RecordError(span, err)
 		return nil, err
@@ -563,7 +563,7 @@ func resolveSourceIDsWithGate(
 			}
 			return nil, fmt.Errorf("failed to resolve source %s: %w", name, err)
 		}
-		if err := validateClaimsSubsetBytes(ctx, callerClaims, src.Claims); err != nil {
+		if err := validateClaimsVisibleBytes(ctx, callerClaims, src.Claims); err != nil {
 			return nil, fmt.Errorf("%w: cannot reference source %s", err, name)
 		}
 		ids = append(ids, src.ID)
@@ -613,7 +613,7 @@ func streamRegistryRows(
 		}
 
 		for _, reg := range batch {
-			if err := validateClaimsSubsetBytes(ctx, callerClaims, reg.Claims); err != nil {
+			if err := validateClaimsVisibleBytes(ctx, callerClaims, reg.Claims); err != nil {
 				continue
 			}
 			accumulated = append(accumulated, reg)

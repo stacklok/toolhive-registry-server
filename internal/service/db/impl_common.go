@@ -39,7 +39,7 @@ func lookupRegistryIDWithGate(
 		}
 		return uuid.Nil, err
 	}
-	if err := validateClaimsSubsetBytes(ctx, callerClaims, row.Claims); err != nil {
+	if err := validateClaimsVisibleBytes(ctx, callerClaims, row.Claims); err != nil {
 		return uuid.Nil, err
 	}
 	return row.ID, nil

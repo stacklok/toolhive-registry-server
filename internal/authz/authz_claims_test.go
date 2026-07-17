@@ -40,7 +40,7 @@ func TestAuthzIntegration_ArrayClaimValues(t *testing.T) {
 
 	sources := []config.SourceConfig{
 		{
-			Name: "multi-team-src",
+			Name:       "multi-team-src",
 			File:       &config.FileConfig{Path: writeFixture("multi-team", multiTeamData)},
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme", "team": []any{"platform", "data"}},
@@ -65,9 +65,9 @@ func TestAuthzIntegration_ArrayClaimValues(t *testing.T) {
 
 	waitForSyncSimple(t, env, superAdmin, "/registry/array-claims-reg/v0.1/servers?search=multi-team-tool", "multi-team-tool")
 
-	// Entry inherits source claims {"team": ["platform", "data"]} which means
-	// the user must have ALL listed values. A user with both teams sees it;
-	// a user with only one team does not.
+	// Entry inherits source claims {"team": ["platform", "data"]}, which is an
+	// allow-list: OR-within-array (auth.md §3). A user in *either* team sees it;
+	// a user in neither does not.
 	searchURL := fmt.Sprintf("%s/registry/array-claims-reg/v0.1/servers?search=multi-team-tool", env.baseURL)
 
 	t.Run("user with both teams sees entry", func(t *testing.T) {
@@ -77,17 +77,11 @@ func TestAuthzIntegration_ArrayClaimValues(t *testing.T) {
 		assert.Contains(t, body, "multi-team-tool")
 	})
 
-	t.Run("user with only platform does not see entry", func(t *testing.T) {
+	t.Run("user with only platform sees entry (OR-within-array)", func(t *testing.T) {
 		platformOnly := env.oidc.token(t, map[string]any{"org": "acme", "team": "platform"})
 		resp := doRequest(t, "GET", searchURL, platformOnly, nil)
 		body := assertStatus(t, resp, 200)
-		var result struct {
-			Metadata struct {
-				Count int `json:"count"`
-			} `json:"metadata"`
-		}
-		require.NoError(t, json.Unmarshal([]byte(body), &result))
-		assert.Equal(t, 0, result.Metadata.Count, "single-team user should not see multi-team entry")
+		assert.Contains(t, body, "multi-team-tool")
 	})
 
 	t.Run("finance user does not see entry", func(t *testing.T) {

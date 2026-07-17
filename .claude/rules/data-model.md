@@ -60,8 +60,10 @@ writes that create a second managed source silently succeed and diverge.
 
 ## 4. Claim Values Are Flat: Scalar or Flat Array of Scalars
 
-Nested objects inside claim values are unsupported. The whole "AND across keys, OR within
-arrays" matching contract assumes flat values.
+Nested objects inside claim values are unsupported. Both claim-matching rules — visibility
+(OR within arrays) and write-subset (AND within arrays); see `auth.md` §3 — assume flat
+values and reduce to simple boolean tests over scalars; nested values would require
+recursive traversal.
 
 **Detect**: `ValidateClaimValues` changes that allow nested maps; callers that pass
 `map[string]any{"k": map[string]any{...}}` as claims; YAML examples with nested claim

@@ -174,9 +174,25 @@ func TestCheckClaims(t *testing.T) {
 			want:       true,
 		},
 		{
-			name:       "record list not subset of caller list drops record",
+			// Read-path visibility is OR-within-array (auth.md §3): sharing
+			// any one value with a multi-value record claim grants visibility.
+			name:       "record list overlaps caller list keeps record",
 			callerJSON: []byte(`{"roles":["a"]}`),
 			recordJSON: []byte(`{"roles":["a","b"]}`),
+			want:       true,
+		},
+		{
+			// Issue #843 canonical case: a source tagged groups:[engineering,
+			// devops] must be visible to a caller in only one of those groups.
+			name:       "record multi-value group visible to caller in one group",
+			callerJSON: []byte(`{"groups":["engineering"]}`),
+			recordJSON: []byte(`{"groups":["engineering","devops"]}`),
+			want:       true,
+		},
+		{
+			name:       "record list no overlap with caller list drops record",
+			callerJSON: []byte(`{"groups":["sales"]}`),
+			recordJSON: []byte(`{"groups":["engineering","devops"]}`),
 			want:       false,
 		},
 		{
