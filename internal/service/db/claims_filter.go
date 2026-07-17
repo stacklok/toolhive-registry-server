@@ -267,7 +267,7 @@ func overlaps(a, b map[string]struct{}) bool {
 }
 
 // isValidClaimValue reports whether v is a supported claim value (string,
-// []string, or []any of strings). Used by claimsContain to fail closed on
+// []string, or []any of strings). Used by claimsMatch to fail closed on
 // rows whose values bypassed ValidateClaimValues.
 func isValidClaimValue(v any) bool {
 	switch val := v.(type) {
