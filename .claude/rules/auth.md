@@ -129,9 +129,10 @@ every claim-bearing caller. Two recovery paths:
   `PUT /v1/entries/{type}/{name}/claims` (or the equivalent source/registry endpoints).
 - **Operator-managed sources**: tag the managed source itself with a tenant-wide claim
   (e.g. `{org: "acme"}`) in config so writers can reference it; otherwise no
-  non-super-admin caller can publish to it. This is the most common stumbling block when
-  enabling authz on an existing deployment — forgetting to tag the managed source looks
-  like a permissions bug at publish time.
+  non-super-admin caller can publish to it (enforced by the publish source-claims gate —
+  §5). This is the most common stumbling block when enabling authz on an existing
+  deployment — forgetting to tag the managed source looks like a permissions bug at
+  publish time.
 
 There is intentionally no automatic "backfill claims from JWT" path — that would
 re-introduce the "empty = the caller's identity" behavior that this rule rejects.
@@ -161,6 +162,9 @@ list, get, and delete paths agree (§4).
 - Source/registry/entry read, delete
 - The "cover current claims" check on update
 - Covering each referenced source's claims when creating/updating a registry
+- Publishing into the managed source — the caller must cover the *source's* claims
+  (§4; #845), in addition to the entry-claims subset check above. An untagged managed
+  source is therefore publishable only by super-admin (default-deny).
 
 **Detect**: a create/update/publish handler that doesn't call `validateClaimsSubset` on its
 incoming request claims; a read/delete/gate that calls `validateClaimsSubset` instead of a
