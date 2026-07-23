@@ -10,6 +10,7 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
+	"golang.org/x/oauth2"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -33,18 +34,22 @@ type reconcileResult struct {
 
 // MCPServerReconciler reconciles MCPServer objects
 type MCPServerReconciler struct {
-	client       client.Client
-	scheme       *runtime.Scheme
-	requeueAfter time.Duration
-	syncWriter   writer.SyncWriter
-	registryName string
+	client          client.Client
+	scheme          *runtime.Scheme
+	requeueAfter    time.Duration
+	discoverTimeout time.Duration
+	// discoverTokenSource, when non-nil, supplies OAuth2 access tokens attached
+	// as Bearer credentials on MCP tools/list calls. Nil means anonymous.
+	discoverTokenSource oauth2.TokenSource
+	syncWriter          writer.SyncWriter
+	registryName        string
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// Fetch the MCPServer instance
-	result, err := getMCPServerList(ctx, r.client, req.Namespace)
+	result, err := getMCPServerList(ctx, r.client, req.Namespace, r.discoverTimeout, r.discoverTokenSource)
 	if err != nil {
 		slog.Error("Failed to get MCPServer list", "error", err)
 		return ctrl.Result{}, err
@@ -173,13 +178,14 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // extractorFunc converts a K8s resource into a ServerJSON.
-type extractorFunc func(client.Object) (*upstreamv0.ServerJSON, error)
+type extractorFunc func(context.Context, client.Object) (*upstreamv0.ServerJSON, error)
 
 // processResources filters, extracts, and builds per-entry claims for a list of K8s resources.
 // Returns the extracted servers appended to serverJSONs and populates perEntryClaims for
 // entries that have valid authz-claims annotations. Entries without the annotation get no
 // claims — they are visible in anonymous mode but invisible when authz is configured.
 func processResources(
+	ctx context.Context,
 	items []client.Object,
 	typeName string,
 	extractor extractorFunc,
@@ -190,7 +196,7 @@ func processResources(
 		if !hasRequiredRegistryAnnotations(obj.GetAnnotations()) {
 			continue
 		}
-		serverJSON, err := extractor(obj)
+		serverJSON, err := extractor(ctx, obj)
 		if err != nil {
 			slog.Warn("Failed to extract ServerJSON from K8s resource, skipping",
 				"type", typeName,
@@ -223,7 +229,7 @@ func processResources(
 // getMCPServerList retrieves all MCPServer objects, extracts ServerJSON objects,
 // and builds per-entry claims from the authz-claims annotation.
 func getMCPServerList(
-	ctx context.Context, c client.Client, namespace string,
+	ctx context.Context, c client.Client, namespace string, discoverTimeout time.Duration, ts oauth2.TokenSource,
 ) (*reconcileResult, error) {
 	listOptions := []client.ListOption{
 		client.InNamespace(namespace),
@@ -250,37 +256,40 @@ func getMCPServerList(
 	for i := range mcpServerList.Items {
 		mcpObjects[i] = &mcpServerList.Items[i]
 	}
-	serverJSONs = processResources(mcpObjects, "MCPServer", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
-		inner, ok := obj.(*mcpv1beta1.MCPServer)
-		if !ok {
-			return nil, fmt.Errorf("unexpected type %T", obj)
-		}
-		return extractServer(inner)
-	}, serverJSONs, perEntryClaims)
+	serverJSONs = processResources(ctx, mcpObjects, "MCPServer",
+		func(ctx context.Context, obj client.Object) (*upstreamv0.ServerJSON, error) {
+			inner, ok := obj.(*mcpv1beta1.MCPServer)
+			if !ok {
+				return nil, fmt.Errorf("unexpected type %T", obj)
+			}
+			return extractServer(ctx, inner, discoverTimeout, ts)
+		}, serverJSONs, perEntryClaims)
 
 	vmcpObjects := make([]client.Object, len(vmcpServerList.Items))
 	for i := range vmcpServerList.Items {
 		vmcpObjects[i] = &vmcpServerList.Items[i]
 	}
-	serverJSONs = processResources(vmcpObjects, "VirtualMCPServer", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
-		inner, ok := obj.(*mcpv1beta1.VirtualMCPServer)
-		if !ok {
-			return nil, fmt.Errorf("unexpected type %T", obj)
-		}
-		return extractVirtualMCPServer(inner)
-	}, serverJSONs, perEntryClaims)
+	serverJSONs = processResources(ctx, vmcpObjects, "VirtualMCPServer",
+		func(ctx context.Context, obj client.Object) (*upstreamv0.ServerJSON, error) {
+			inner, ok := obj.(*mcpv1beta1.VirtualMCPServer)
+			if !ok {
+				return nil, fmt.Errorf("unexpected type %T", obj)
+			}
+			return extractVirtualMCPServer(ctx, inner, discoverTimeout, ts)
+		}, serverJSONs, perEntryClaims)
 
 	mcpProxyObjects := make([]client.Object, len(mcpRemoteProxyList.Items))
 	for i := range mcpRemoteProxyList.Items {
 		mcpProxyObjects[i] = &mcpRemoteProxyList.Items[i]
 	}
-	serverJSONs = processResources(mcpProxyObjects, "MCPRemoteProxy", func(obj client.Object) (*upstreamv0.ServerJSON, error) {
-		inner, ok := obj.(*mcpv1beta1.MCPRemoteProxy)
-		if !ok {
-			return nil, fmt.Errorf("unexpected type %T", obj)
-		}
-		return extractMCPRemoteProxy(inner)
-	}, serverJSONs, perEntryClaims)
+	serverJSONs = processResources(ctx, mcpProxyObjects, "MCPRemoteProxy",
+		func(ctx context.Context, obj client.Object) (*upstreamv0.ServerJSON, error) {
+			inner, ok := obj.(*mcpv1beta1.MCPRemoteProxy)
+			if !ok {
+				return nil, fmt.Errorf("unexpected type %T", obj)
+			}
+			return extractMCPRemoteProxy(ctx, inner, discoverTimeout, ts)
+		}, serverJSONs, perEntryClaims)
 
 	// Return nil instead of empty map when no per-entry claims exist
 	var resultClaims map[string][]byte

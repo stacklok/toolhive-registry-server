@@ -1,10 +1,13 @@
 package kubernetes
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
+	mcpclient "github.com/mark3labs/mcp-go/client"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stacklok/toolhive-core/registry/types"
@@ -28,8 +31,14 @@ func createTestMCPServer(name, namespace string, annotations map[string]string, 
 	}
 }
 
+//nolint:paralleltest,tparallel // writes connectMCPClient package-level var; must run sequentially to prevent data race
 func TestExtractServer(t *testing.T) {
-	t.Parallel()
+	// stub connectMCPClient to avoid real network calls during extract* tests
+	origConnect := connectMCPClient
+	connectMCPClient = func(_ context.Context, _ string, _ map[string]string) (*mcpclient.Client, error) {
+		return nil, fmt.Errorf("lazy discovery disabled in unit tests")
+	}
+	t.Cleanup(func() { connectMCPClient = origConnect })
 
 	tests := []struct {
 		name        string
@@ -567,7 +576,7 @@ func TestExtractServer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result, err := extractServer(tt.mcpServer)
+			result, err := extractServer(context.Background(), tt.mcpServer, defaultDiscoverTimeout, nil)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -757,8 +766,14 @@ func createTestVirtualMCPServer(name, namespace string, annotations map[string]s
 	}
 }
 
+//nolint:paralleltest,tparallel // writes connectMCPClient package-level var; must run sequentially to prevent data race
 func TestExtractVirtualMCPServer(t *testing.T) {
-	t.Parallel()
+	// stub connectMCPClient to avoid real network calls during extract* tests
+	origConnect := connectMCPClient
+	connectMCPClient = func(_ context.Context, _ string, _ map[string]string) (*mcpclient.Client, error) {
+		return nil, fmt.Errorf("lazy discovery disabled in unit tests")
+	}
+	t.Cleanup(func() { connectMCPClient = origConnect })
 
 	tests := []struct {
 		name        string
@@ -1034,7 +1049,7 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result, err := extractVirtualMCPServer(tt.vmcpServer)
+			result, err := extractVirtualMCPServer(context.Background(), tt.vmcpServer, defaultDiscoverTimeout, nil)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -1071,8 +1086,14 @@ func createTestMCPRemoteProxy(name, namespace string, annotations map[string]str
 	}
 }
 
+//nolint:paralleltest,tparallel // writes connectMCPClient package-level var; must run sequentially to prevent data race
 func TestExtractMCPRemoteProxy(t *testing.T) {
-	t.Parallel()
+	// stub connectMCPClient to avoid real network calls during extract* tests
+	origConnect := connectMCPClient
+	connectMCPClient = func(_ context.Context, _ string, _ map[string]string) (*mcpclient.Client, error) {
+		return nil, fmt.Errorf("lazy discovery disabled in unit tests")
+	}
+	t.Cleanup(func() { connectMCPClient = origConnect })
 
 	tests := []struct {
 		name           string
@@ -1355,7 +1376,7 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result, err := extractMCPRemoteProxy(tt.mcpRemoteProxy)
+			result, err := extractMCPRemoteProxy(context.Background(), tt.mcpRemoteProxy, defaultDiscoverTimeout, nil)
 
 			if tt.wantErr {
 				require.Error(t, err)

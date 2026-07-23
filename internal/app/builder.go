@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/oauth2"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/app/storage"
@@ -613,6 +614,19 @@ func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWrit
 			opts = append(opts, kubernetes.WithNamespaces(namespaces...))
 		}
 
+		if reg.Kubernetes != nil && reg.Kubernetes.DiscoverTimeout != "" {
+			d, _ := time.ParseDuration(reg.Kubernetes.DiscoverTimeout) // already validated at config load
+			opts = append(opts, kubernetes.WithDiscoverTimeout(d))
+		}
+
+		if reg.Kubernetes != nil && reg.Kubernetes.DiscoverOAuth2 != nil {
+			ts, err := buildDiscoverTokenSource(ctx, reg.Kubernetes.DiscoverOAuth2)
+			if err != nil {
+				return fmt.Errorf("failed to build discover OAuth2 token source for source %s: %w", reg.Name, err)
+			}
+			opts = append(opts, kubernetes.WithDiscoverTokenSource(ts))
+		}
+
 		// Each K8s source needs a unique leader election ID to avoid lease conflicts.
 		// Source names are validated as unique (config validation rejects duplicates),
 		// so appending the source name is sufficient for uniqueness. We intentionally
@@ -633,6 +647,28 @@ func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWrit
 		}
 	}
 	return nil
+}
+
+// buildDiscoverTokenSource resolves the YAML-side DiscoverOAuth2 block into a
+// concrete oauth2.TokenSource. The client secret is read at wire time via
+// readSecretFromFile semantics (delegated to config.DiscoverOAuth2Yaml.GetClientSecret);
+// the returned TokenSource then caches and refreshes tokens on its own.
+func buildDiscoverTokenSource(ctx context.Context, yaml *config.DiscoverOAuth2Yaml) (oauth2.TokenSource, error) {
+	if yaml == nil {
+		return nil, nil
+	}
+	secret, err := yaml.GetClientSecret()
+	if err != nil {
+		return nil, err
+	}
+	return kubernetes.NewTokenSource(ctx, &kubernetes.DiscoverOAuth2Config{
+		TokenURL:       yaml.TokenURL,
+		ClientID:       yaml.ClientID,
+		ClientSecret:   secret,
+		Scopes:         yaml.Scopes,
+		Audience:       yaml.Audience,
+		EndpointParams: yaml.EndpointParams,
+	})
 }
 
 // securityHeadersMiddleware sets baseline security response headers on every request.

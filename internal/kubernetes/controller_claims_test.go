@@ -1,6 +1,7 @@
 package kubernetes
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -244,7 +245,7 @@ func TestProcessResources(t *testing.T) {
 
 	// A simple extractor that returns a ServerJSON with the object's name.
 	// If the object name starts with "error-", it returns an error.
-	goodExtractor := func(obj client.Object) (*upstreamv0.ServerJSON, error) {
+	goodExtractor := func(_ context.Context, obj client.Object) (*upstreamv0.ServerJSON, error) {
 		name := obj.GetName()
 		if len(name) > 6 && name[:6] == "error-" {
 			return nil, fmt.Errorf("extractor failure for %s", name)
@@ -361,7 +362,7 @@ func TestProcessResources(t *testing.T) {
 			var serverJSONs []upstreamv0.ServerJSON
 			perEntryClaims := make(map[string][]byte)
 
-			serverJSONs = processResources(tt.items, "MCPServer", goodExtractor, serverJSONs, perEntryClaims)
+			serverJSONs = processResources(context.Background(), tt.items, "MCPServer", goodExtractor, serverJSONs, perEntryClaims)
 
 			// Verify serverJSONs count and names
 			if tt.wantServerNames == nil {
