@@ -238,6 +238,19 @@ Discover MCP servers from Kubernetes deployments.
 kubernetes:
   namespaces:                    # Optional: specific namespaces to watch
     - default
+  discoverTimeout: "10s"         # Optional: per-server MCP tools/list timeout
+  # Optional: OAuth2 client_credentials for authenticated lazy tools/list discovery.
+  # Required when the MCP proxies fronting the workloads enforce Cedar authorization —
+  # anonymous tools/list would be denied. Registry-server obtains a Bearer token from
+  # this IdP and attaches it to tools/list requests.
+  discoverOAuth2:
+    tokenUrl: https://keycloak.example.com/realms/toolhive/protocol/openid-connect/token
+    clientId: registry-server-discovery
+    clientSecretFile: /var/run/secrets/toolhive/discover-oauth2/client-secret
+    scopes: ["mcp.discover"]
+    # audience: registry-server              # optional (Auth0-style)
+    # endpointParams:                        # optional extra token endpoint params
+    #   resource: https://mcp.example
 ```
 
 **Fields:**
@@ -245,6 +258,23 @@ kubernetes:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `namespaces` | array | No | Kubernetes namespaces to watch (empty = uses `THV_REGISTRY_WATCH_NAMESPACE` env var) |
+| `discoverTimeout` | string | No | Per-server timeout for lazy MCP `tools/list` discovery calls (default `10s`) |
+| `discoverOAuth2` | object | No | OAuth2 client_credentials config for authenticated `tools/list` discovery — see below |
+
+**`discoverOAuth2` fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `tokenUrl` | string | Yes | OAuth2 token endpoint. Must be HTTPS unless host is loopback or `THV_REGISTRY_INSECURE_URL=true` |
+| `clientId` | string | Yes | OAuth2 client identifier |
+| `clientSecretFile` | string | Yes | Absolute path to a file containing the client secret. Symlinks are resolved (`filepath.EvalSymlinks`) before reading. Env vars are not accepted here — mount the secret as a file (Kubernetes Secret volume) per [`secrets.md`](../.claude/rules/secrets.md) §1 |
+| `scopes` | array | No | OAuth2 scopes to request |
+| `audience` | string | No | Sent as an `audience` token-endpoint parameter (Auth0-style) |
+| `endpointParams` | object | No | Additional token-endpoint parameters merged into the request body |
+
+The client secret is transmitted in the token request body (`AuthStyleInParams`). Tokens
+are cached and reused until expiry by the OAuth2 client (`clientcredentials.Config.TokenSource`).
+When `discoverOAuth2` is omitted, discovery runs anonymously (no `Authorization` header).
 
 **Per-entry claims:** CRDs can carry per-entry authorization claims via the
 `toolhive.stacklok.dev/authz-claims` JSON annotation. The annotation value uses the same

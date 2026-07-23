@@ -12,6 +12,7 @@ import (
 	"time"
 
 	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
+	"golang.org/x/oauth2"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -32,7 +33,8 @@ const (
 	defaultRegistryToolsAnnotation           = "toolhive.stacklok.dev/tools"
 	defaultAuthzClaimsAnnotation             = "toolhive.stacklok.dev/authz-claims"
 
-	defaultRequeueAfter = 10 * time.Second
+	defaultRequeueAfter    = 10 * time.Second
+	defaultDiscoverTimeout = 10 * time.Second
 
 	leaderElectionID = "toolhive-registry-server-leader-election"
 )
@@ -56,11 +58,13 @@ func hasRequiredRegistryAnnotations(annotations map[string]string) bool {
 }
 
 type mcpServerReconcilerOptions struct {
-	namespaces       []string
-	requeueAfter     time.Duration
-	syncWriter       writer.SyncWriter
-	registryName     string
-	leaderElectionID string
+	namespaces          []string
+	requeueAfter        time.Duration
+	discoverTimeout     time.Duration
+	discoverTokenSource oauth2.TokenSource
+	syncWriter          writer.SyncWriter
+	registryName        string
+	leaderElectionID    string
 }
 
 // Option is a function that sets an option for the MCPServerReconciler.
@@ -141,6 +145,27 @@ func WithRequeueAfter(requeueAfter time.Duration) Option {
 	}
 }
 
+// WithDiscoverTimeout sets the timeout for lazy tool discovery connections.
+func WithDiscoverTimeout(d time.Duration) Option {
+	return func(o *mcpServerReconcilerOptions) error {
+		if d <= 0 {
+			return fmt.Errorf("discoverTimeout must be greater than 0")
+		}
+		o.discoverTimeout = d
+		return nil
+	}
+}
+
+// WithDiscoverTokenSource configures the OAuth2 token source used to fetch
+// Bearer tokens for MCP tools/list discovery calls. Passing nil leaves the
+// reconciler in anonymous discovery mode (no Authorization header).
+func WithDiscoverTokenSource(ts oauth2.TokenSource) Option {
+	return func(o *mcpServerReconcilerOptions) error {
+		o.discoverTokenSource = ts
+		return nil
+	}
+}
+
 // WithSyncWriter sets the sync writer.
 func WithSyncWriter(sw writer.SyncWriter) Option {
 	return func(o *mcpServerReconcilerOptions) error {
@@ -183,8 +208,9 @@ func NewMCPServerReconciler(
 	opts ...Option,
 ) (ctrl.Manager, error) {
 	o := &mcpServerReconcilerOptions{
-		namespaces:   []string{},
-		requeueAfter: defaultRequeueAfter,
+		namespaces:      []string{},
+		requeueAfter:    defaultRequeueAfter,
+		discoverTimeout: defaultDiscoverTimeout,
 	}
 
 	for _, opt := range opts {
@@ -239,9 +265,11 @@ func NewMCPServerReconciler(
 	}
 
 	controller := &MCPServerReconciler{
-		requeueAfter: o.requeueAfter,
-		syncWriter:   o.syncWriter,
-		registryName: o.registryName,
+		requeueAfter:        o.requeueAfter,
+		discoverTimeout:     o.discoverTimeout,
+		discoverTokenSource: o.discoverTokenSource,
+		syncWriter:          o.syncWriter,
+		registryName:        o.registryName,
 	}
 
 	if err := controller.SetupWithManager(mgr); err != nil {

@@ -50,7 +50,14 @@ See [README.md](README.md#development) for complete build and development docume
 - `task lint-fix` - **Preferred** linting (auto-fixes issues)
 - `task test` - Run tests
 - `task gen` - Generate mocks (run before testing)
+- `task docs` - Regenerate OpenAPI spec (run after adding/changing Swagger annotations)
 - `task all` - Lint, test, and build
+
+**Run a single package or test:**
+```sh
+task test PACKAGES=./internal/api/v1/...
+go test -run TestFooBar ./internal/service/db/...
+```
 
 ## Code Architecture
 
