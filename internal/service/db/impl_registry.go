@@ -19,8 +19,8 @@ import (
 
 // ListRegistries returns all configured registries
 func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.ListRegistries")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.ListRegistries")
+	defer done()
 	start := time.Now()
 
 	// Begin a read-only transaction
@@ -71,8 +71,8 @@ func (s *dbService) ListRegistries(ctx context.Context) ([]service.RegistryInfo,
 
 // GetRegistryByName returns a single registry by name
 func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*service.RegistryInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.GetRegistryByName")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.GetRegistryByName")
+	defer done()
 	start := time.Now()
 
 	// Add tracing attributes
@@ -134,8 +134,8 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 func (s *dbService) CreateRegistry(
 	ctx context.Context, name string, req *service.RegistryCreateRequest,
 ) (*service.RegistryInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.CreateRegistry")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.CreateRegistry")
+	defer done()
 	start := time.Now()
 
 	// Add tracing attributes
@@ -233,8 +233,8 @@ func (s *dbService) CreateRegistry(
 func (s *dbService) UpdateRegistry(
 	ctx context.Context, name string, req *service.RegistryCreateRequest,
 ) (*service.RegistryInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.UpdateRegistry")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.UpdateRegistry")
+	defer done()
 	start := time.Now()
 
 	// Add tracing attributes
@@ -324,8 +324,8 @@ func (s *dbService) UpdateRegistry(
 
 // DeleteRegistry deletes a lightweight registry.
 func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
-	ctx, span := s.startSpan(ctx, "dbService.DeleteRegistry")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.DeleteRegistry")
+	defer done()
 	start := time.Now()
 
 	// Add tracing attributes
@@ -389,8 +389,8 @@ func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
 
 // ListRegistryEntries returns all entries across a registry's linked sources.
 func (s *dbService) ListRegistryEntries(ctx context.Context, registryName string) ([]service.RegistryEntryInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.ListRegistryEntries")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.ListRegistryEntries")
+	defer done()
 	start := time.Now()
 
 	// Add tracing attributes

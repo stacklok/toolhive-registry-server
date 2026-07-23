@@ -572,6 +572,9 @@ func ensureStorageFactory(ctx context.Context, cfg *registryAppConfig) error {
 	if cfg.tracerProvider != nil {
 		storageOpts = append(storageOpts, storage.WithTracerProvider(cfg.tracerProvider))
 	}
+	if cfg.meterProvider != nil {
+		storageOpts = append(storageOpts, storage.WithMeterProvider(cfg.meterProvider))
+	}
 	var err error
 	cfg.storageFactory, err = storage.NewStorageFactory(ctx, cfg.config, storageOpts...)
 	if err != nil {

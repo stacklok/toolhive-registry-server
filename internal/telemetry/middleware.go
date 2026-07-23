@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	coremetrics "github.com/stacklok/toolhive-core/telemetry/metrics"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -17,11 +18,21 @@ const (
 	HTTPMetricsMeterName = "github.com/stacklok/toolhive-registry-server/http"
 )
 
+// componentHTTP is the bounded component-label value stamped on
+// stacklok.registry.errors for HTTP-layer errors.
+const componentHTTP = "http"
+
 // HTTPMetrics holds the OpenTelemetry instruments for HTTP metrics
 type HTTPMetrics struct {
 	requestDuration metric.Float64Histogram
 	requestsTotal   metric.Int64Counter
 	activeRequests  metric.Int64UpDownCounter
+	// errorsTotal is the additive error-by-type detail counter (RFC §3.6
+	// coverage gap). It carries the response status class as error_type
+	// alongside the fixed component="http" label. It is orthogonal to the
+	// status_code label already on requestsTotal: this series exists so an
+	// error ratio can be split by class without a high-cardinality join.
+	errorsTotal metric.Int64Counter
 }
 
 // NewHTTPMetrics creates a new HTTPMetrics instance with the given meter provider.
@@ -34,17 +45,17 @@ func NewHTTPMetrics(provider metric.MeterProvider) (*HTTPMetrics, error) {
 	meter := provider.Meter(HTTPMetricsMeterName)
 
 	requestDuration, err := meter.Float64Histogram(
-		"thv_reg_srv_http_request_duration_seconds",
+		"stacklok.registry.http.request.duration",
 		metric.WithDescription("Duration of HTTP requests in seconds"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
+		metric.WithExplicitBucketBoundaries(coremetrics.BucketsFastHTTP()...),
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	requestsTotal, err := meter.Int64Counter(
-		"thv_reg_srv_http_requests_total",
+		"stacklok.registry.http.requests",
 		metric.WithDescription("Total number of HTTP requests"),
 		metric.WithUnit("{request}"),
 	)
@@ -53,9 +64,18 @@ func NewHTTPMetrics(provider metric.MeterProvider) (*HTTPMetrics, error) {
 	}
 
 	activeRequests, err := meter.Int64UpDownCounter(
-		"thv_reg_srv_http_active_requests",
+		"stacklok.registry.http.active_requests",
 		metric.WithDescription("Number of currently in-flight HTTP requests"),
 		metric.WithUnit("{request}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	errorsTotal, err := meter.Int64Counter(
+		"stacklok.registry.errors",
+		metric.WithDescription("Errors by type and component (additive error-by-type detail counter)"),
+		metric.WithUnit("{error}"),
 	)
 	if err != nil {
 		return nil, err
@@ -65,7 +85,23 @@ func NewHTTPMetrics(provider metric.MeterProvider) (*HTTPMetrics, error) {
 		requestDuration: requestDuration,
 		requestsTotal:   requestsTotal,
 		activeRequests:  activeRequests,
+		errorsTotal:     errorsTotal,
 	}, nil
+}
+
+// errorClassForStatus maps an HTTP status code to a bounded error_type value.
+// Only 5xx and 4xx are classified as errors; anything below 400 returns "" and
+// records nothing. Keeping the value to the status class (not the exact code)
+// bounds cardinality on the error_type label.
+func errorClassForStatus(status int) string {
+	switch {
+	case status >= 500:
+		return "server_error"
+	case status >= 400:
+		return "client_error"
+	default:
+		return ""
+	}
 }
 
 // Middleware returns an HTTP middleware that records metrics for each request.
@@ -107,6 +143,16 @@ func (m *HTTPMetrics) Middleware(next http.Handler) http.Handler {
 		duration := time.Since(start).Seconds()
 		m.requestDuration.Record(ctx, duration, metric.WithAttributes(attrs...))
 		m.requestsTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
+
+		// Additive error-by-type detail: increment on 5xx responses. The
+		// status class (not the exact code) is the bounded error_type value;
+		// area distinguishes this from sync/db errors on the same metric.
+		if errType := errorClassForStatus(ww.Status()); errType == "server_error" {
+			m.errorsTotal.Add(ctx, 1, metric.WithAttributes(
+				attribute.String(coremetrics.LabelErrorType, errType),
+				attribute.String("area", componentHTTP),
+			))
+		}
 	})
 }
 

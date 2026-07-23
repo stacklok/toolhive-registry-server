@@ -15,14 +15,16 @@ import (
 	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
+	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
 // DatabaseFactory creates database-backed storage components.
 // All components created by this factory use PostgreSQL for persistence.
 type DatabaseFactory struct {
-	config *config.Config
-	pool   *pgxpool.Pool
-	tracer trace.Tracer
+	config    *config.Config
+	pool      *pgxpool.Pool
+	tracer    trace.Tracer
+	dbMetrics *telemetry.DBMetrics
 }
 
 var _ Factory = (*DatabaseFactory)(nil)
@@ -35,6 +37,14 @@ type DatabaseFactoryOption func(*DatabaseFactory)
 func WithTracer(tracer trace.Tracer) DatabaseFactoryOption {
 	return func(f *DatabaseFactory) {
 		f.tracer = tracer
+	}
+}
+
+// WithDBMetrics sets the OpenTelemetry database metrics for the database
+// service. If not set, query-duration recording is disabled (no-op).
+func WithDBMetrics(m *telemetry.DBMetrics) DatabaseFactoryOption {
+	return func(f *DatabaseFactory) {
+		f.dbMetrics = m
 	}
 }
 
@@ -111,6 +121,12 @@ func (d *DatabaseFactory) CreateRegistryService(_ context.Context) (service.Regi
 	if d.tracer != nil {
 		opts = append(opts, database.WithTracer(d.tracer))
 		slog.Debug("Database service tracing enabled")
+	}
+
+	// Add query-duration metrics if configured
+	if d.dbMetrics != nil {
+		opts = append(opts, database.WithDBMetrics(d.dbMetrics))
+		slog.Debug("Database service query metrics enabled")
 	}
 
 	// When authz is not configured, skip per-entry claims filtering and

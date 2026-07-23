@@ -73,12 +73,12 @@ func TestRegistryMetrics_ObservableTotals(t *testing.T) {
 		err = reader.Collect(context.Background(), &rm)
 		require.NoError(t, err)
 
-		servers := findInt64Gauge(t, rm, "thv_reg_srv_servers_total")
+		servers := findInt64Gauge(t, rm, "stacklok.registry.servers")
 		require.Len(t, servers.DataPoints, 2)
 		assertInt64GaugePoint(t, servers, "prod-source", 42)
 		assertInt64GaugePoint(t, servers, "dev-source", 10)
 
-		skills := findInt64Gauge(t, rm, "thv_reg_srv_skills_total")
+		skills := findInt64Gauge(t, rm, "stacklok.registry.skills")
 		require.Len(t, skills.DataPoints, 2)
 		assertInt64GaugePoint(t, skills, "prod-source", 3)
 		assertInt64GaugePoint(t, skills, "dev-source", 1)
@@ -134,6 +134,32 @@ func assertInt64GaugePoint(t *testing.T, gauge metricdata.Gauge[int64], sourceNa
 	}
 
 	require.FailNowf(t, "gauge point not found", "source=%s", sourceName)
+}
+
+func findFloat64Histogram(t *testing.T, rm metricdata.ResourceMetrics, name string) metricdata.Histogram[float64] {
+	t.Helper()
+
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name == name {
+				hist, ok := m.Data.(metricdata.Histogram[float64])
+				require.True(t, ok, "expected float64 histogram data type for %s", name)
+				return hist
+			}
+		}
+	}
+
+	require.FailNow(t, "metric not found", name)
+	return metricdata.Histogram[float64]{}
+}
+
+func hasHistogramPoint(hist metricdata.Histogram[float64], attrs attribute.Set) bool {
+	for _, dp := range hist.DataPoints {
+		if dp.Attributes.Equals(&attrs) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestNewSyncMetrics(t *testing.T) {
@@ -193,27 +219,26 @@ func TestSyncMetrics_RecordSyncDuration(t *testing.T) {
 		err = reader.Collect(context.Background(), &rm)
 		require.NoError(t, err)
 
-		// Verify metrics were recorded
-		require.NotEmpty(t, rm.ScopeMetrics)
+		hist := findFloat64Histogram(t, rm, "stacklok.registry.sync.duration")
+		require.Len(t, hist.DataPoints, 2)
 
-		// Find our sync metrics scope
-		var foundScope bool
-		for _, scope := range rm.ScopeMetrics {
-			if scope.Scope.Name == SyncMetricsMeterName {
-				foundScope = true
-				assert.NotEmpty(t, scope.Metrics)
+		// Outcome is the canonical string label, never a boolean.
+		successAttrs := attribute.NewSet(
+			attribute.String("registry", "prod-registry"),
+			attribute.String("outcome", "success"),
+		)
+		errorAttrs := attribute.NewSet(
+			attribute.String("registry", "dev-registry"),
+			attribute.String("outcome", "error"),
+		)
+		assert.True(t, hasHistogramPoint(hist, successAttrs), "expected outcome=success data point for prod-registry")
+		assert.True(t, hasHistogramPoint(hist, errorAttrs), "expected outcome=error data point for dev-registry")
 
-				// Verify we have the histogram metric
-				for _, m := range scope.Metrics {
-					if m.Name == "thv_reg_srv_sync_duration_seconds" {
-						// Verify it's a histogram
-						_, ok := m.Data.(metricdata.Histogram[float64])
-						assert.True(t, ok, "expected histogram data type")
-					}
-				}
-			}
+		// A boolean success label must never be emitted.
+		for _, dp := range hist.DataPoints {
+			_, present := dp.Attributes.Value(attribute.Key("success"))
+			assert.False(t, present, "boolean success label must not be emitted")
 		}
-		assert.True(t, foundScope, "expected to find sync metrics scope")
 	})
 
 	t.Run("records duration in seconds", func(t *testing.T) {
@@ -238,7 +263,7 @@ func TestSyncMetrics_RecordSyncDuration(t *testing.T) {
 		for _, scope := range rm.ScopeMetrics {
 			if scope.Scope.Name == SyncMetricsMeterName {
 				for _, m := range scope.Metrics {
-					if m.Name == "thv_reg_srv_sync_duration_seconds" {
+					if m.Name == "stacklok.registry.sync.duration" {
 						hist, ok := m.Data.(metricdata.Histogram[float64])
 						require.True(t, ok)
 						require.NotEmpty(t, hist.DataPoints)

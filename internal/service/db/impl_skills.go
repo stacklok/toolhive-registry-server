@@ -26,8 +26,8 @@ func (s *dbService) ListSkills(
 	ctx context.Context,
 	opts ...service.Option,
 ) (*service.ListSkillsResult, error) {
-	ctx, span := s.startSpan(ctx, "dbService.ListSkills")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.ListSkills")
+	defer done()
 
 	options := &service.ListSkillsOptions{
 		Limit: service.DefaultPageSize,
@@ -158,8 +158,8 @@ func (s *dbService) GetSkillVersion(
 	ctx context.Context,
 	opts ...service.Option,
 ) (*service.Skill, error) {
-	ctx, span := s.startSpan(ctx, "dbService.GetSkillVersion")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.GetSkillVersion")
+	defer done()
 
 	options := &service.GetSkillVersionOptions{}
 	for _, opt := range opts {
@@ -319,8 +319,8 @@ func (s *dbService) PublishSkill(
 	skill *service.Skill,
 	opts ...service.Option,
 ) (*service.Skill, error) {
-	ctx, span := s.startSpan(ctx, "dbService.PublishSkill")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.PublishSkill")
+	defer done()
 
 	options := &service.PublishSkillOptions{}
 	for _, opt := range opts {
@@ -642,8 +642,8 @@ func (s *dbService) DeleteSkillVersion(
 	ctx context.Context,
 	opts ...service.Option,
 ) error {
-	ctx, span := s.startSpan(ctx, "dbService.DeleteSkillVersion")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.DeleteSkillVersion")
+	defer done()
 
 	options := &service.DeleteSkillVersionOptions{}
 	for _, opt := range opts {

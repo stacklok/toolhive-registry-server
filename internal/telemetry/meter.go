@@ -4,10 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
+	promclient "github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	coremetrics "github.com/stacklok/toolhive-core/telemetry/metrics"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	promexporter "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -15,10 +21,8 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
-const (
-	// DefaultMetricsInterval is the default interval for metric collection
-	DefaultMetricsInterval = 60 * time.Second
-)
+// DefaultMetricsInterval is the default interval for metric collection
+const DefaultMetricsInterval = 60 * time.Second
 
 // MeterProviderOption is a function that configures the meter provider setup
 type MeterProviderOption func(*meterProviderConfig)
@@ -70,7 +74,11 @@ func WithMeterInsecure(insecure bool) MeterProviderOption {
 // NewMeterProvider creates a new OpenTelemetry MeterProvider based on the configuration.
 // Returns a no-op provider if metrics are disabled or configuration is nil.
 // The caller is responsible for calling Shutdown on the returned provider.
-func NewMeterProvider(ctx context.Context, opts ...MeterProviderOption) (metric.MeterProvider, error) {
+//
+// When metrics are enabled, a Prometheus reader is attached alongside the OTLP
+// reader; the returned http.Handler serves the promoted /metrics surface. The
+// handler is nil for a no-op provider.
+func NewMeterProvider(ctx context.Context, opts ...MeterProviderOption) (metric.MeterProvider, http.Handler, error) {
 	cfg := &meterProviderConfig{
 		serviceName:    DefaultServiceName,
 		serviceVersion: DefaultServiceVersion,
@@ -84,30 +92,42 @@ func NewMeterProvider(ctx context.Context, opts ...MeterProviderOption) (metric.
 	// Return no-op provider if metrics are disabled
 	if cfg.metricsConfig == nil || !cfg.metricsConfig.Enabled {
 		slog.Info("Metrics disabled, using no-op meter provider")
-		return noop.NewMeterProvider(), nil
+		return noop.NewMeterProvider(), nil, nil
 	}
 
 	// Create resource with service information
-	// We use resource.New to avoid schema URL conflicts with resource.Default()
+	// We use resource.New to avoid schema URL conflicts with resource.Default().
+	// The stacklok.component/stacklok.product ownership attributes (D8) are
+	// merged last so they cannot be spoofed via OTEL_RESOURCE_ATTRIBUTES.
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName(cfg.serviceName),
 			semconv.ServiceVersion(cfg.serviceVersion),
+			attribute.String(coremetrics.AttrStacklokComponent, ComponentRegistry),
+			attribute.String(coremetrics.AttrStacklokProduct, coremetrics.ProductStacklokPlatform),
 		),
 		resource.WithHost(),
 		resource.WithTelemetrySDK(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
+		return nil, nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
 	// Create OTLP exporter
 	exporter, err := createOTLPMetricsExporter(ctx, cfg.endpoint, cfg.insecure)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create OTLP metrics exporter: %w", err)
+		return nil, nil, fmt.Errorf("failed to create OTLP metrics exporter: %w", err)
 	}
 
-	// Create meter provider with periodic reader
+	// Create the Prometheus reader, promoting the two ownership attributes to
+	// per-series constant labels (D8); host/process/env attributes stay in
+	// target_info via the allow filter.
+	promReader, promHandler, err := newPrometheusReader()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create Prometheus metrics reader: %w", err)
+	}
+
+	// Create meter provider with periodic OTLP reader plus the Prometheus reader
 	mp := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
 		sdkmetric.WithReader(
@@ -116,6 +136,7 @@ func NewMeterProvider(ctx context.Context, opts ...MeterProviderOption) (metric.
 				sdkmetric.WithInterval(DefaultMetricsInterval),
 			),
 		),
+		sdkmetric.WithReader(promReader),
 	)
 
 	// Set as global meter provider
@@ -126,7 +147,31 @@ func NewMeterProvider(ctx context.Context, opts ...MeterProviderOption) (metric.
 		"insecure", cfg.insecure,
 	)
 
-	return mp, nil
+	return mp, promHandler, nil
+}
+
+// newPrometheusReader builds a Prometheus exporter (which is itself an
+// sdkmetric.Reader) that promotes the stacklok.component/stacklok.product
+// resource attributes to per-series constant labels (D8), plus an HTTP handler
+// that serves its registry.
+func newPrometheusReader() (sdkmetric.Reader, http.Handler, error) {
+	registry := promclient.NewRegistry()
+
+	promExp, err := promexporter.New(
+		promexporter.WithRegisterer(registry),
+		promexporter.WithResourceAsConstantLabels(attribute.NewAllowKeysFilter(
+			coremetrics.AttrStacklokComponent, coremetrics.AttrStacklokProduct,
+		)),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	handler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{
+		ErrorHandling: promhttp.ContinueOnError,
+	})
+
+	return promExp, handler, nil
 }
 
 // createOTLPMetricsExporter creates an OTLP HTTP metric exporter
