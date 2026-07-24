@@ -231,7 +231,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.custom-ns/full-server",
-			wantVersion: "1.0.0",
+			wantVersion: "tag",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -277,7 +277,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-with-tools",
-			wantVersion: "1.0.0",
+			wantVersion: "v1",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -320,7 +320,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-invalid-json",
-			wantVersion: "1.0.0",
+			wantVersion: "v1",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -348,7 +348,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-empty-tools",
-			wantVersion: "1.0.0",
+			wantVersion: "v1",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -376,7 +376,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-multi-tools",
-			wantVersion: "1.0.0",
+			wantVersion: "v1",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -421,7 +421,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-with-tools-list",
-			wantVersion: "1.0.0",
+			wantVersion: "v1",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -455,7 +455,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-invalid-tools",
-			wantVersion: "1.0.0",
+			wantVersion: "v1",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -483,7 +483,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-empty-tools-list",
-			wantVersion: "1.0.0",
+			wantVersion: "v1",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -511,7 +511,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/titled-server",
-			wantVersion: "1.0.0",
+			wantVersion: "v1",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -539,7 +539,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-with-both",
-			wantVersion: "1.0.0",
+			wantVersion: "v1",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -560,6 +560,45 @@ func TestExtractServer(t *testing.T) {
 				assert.Equal(t, "get_weather", tools[0])
 				assert.Equal(t, "get_forecast", tools[1])
 			},
+		},
+		{
+			name: "version annotation overrides the image tag",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+					defaultRegistryVersionAnnotation:     "2.5.0",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "test/image:v1.2.3",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "2.5.0",
+			wantErr:     false,
+		},
+		{
+			name: "digest-pinned image uses the digest as version",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "registry.example.com/image@sha256:abc123def4567890abcdef1234567890abcdef1234567890abcdef1234567890",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "sha256:abc123def4567890abcdef1234567890abcdef1234567890abcdef1234567890",
+			wantErr:     false,
 		},
 	}
 
@@ -809,6 +848,22 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/vmcp", sj.Remotes[0].URL)
 			},
+		},
+		{
+			name: "VirtualMCPServer with version annotation",
+			vmcpServer: createTestVirtualMCPServer(
+				"test-vmcp-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test Virtual MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/vmcp",
+					defaultRegistryVersionAnnotation:     "3.1.4",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-vmcp-server",
+			wantVersion: "3.1.4",
+			wantErr:     false,
 		},
 		{
 			name: "VirtualMCPServer with nil annotations",
@@ -1125,6 +1180,22 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 			},
 		},
 		{
+			name: "MCPRemoteProxy with version annotation",
+			mcpRemoteProxy: createTestMCPRemoteProxy(
+				"test-proxy",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP Remote Proxy",
+					defaultRegistryURLAnnotation:         "https://example.com/proxy",
+					defaultRegistryVersionAnnotation:     "0.9.1",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-proxy",
+			wantVersion: "0.9.1",
+			wantErr:     false,
+		},
+		{
 			name: "MCPRemoteProxy with nil annotations",
 			mcpRemoteProxy: createTestMCPRemoteProxy(
 				"test-proxy",
@@ -1374,6 +1445,62 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 					tt.checkMeta(t, result)
 				}
 			}
+		})
+	}
+}
+
+func TestResolveServerVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		annotations  map[string]string
+		imageVersion string
+		want         string
+	}{
+		{
+			name:         "annotation wins over image version",
+			annotations:  map[string]string{defaultRegistryVersionAnnotation: "2.5.0"},
+			imageVersion: "v1.2.3",
+			want:         "2.5.0",
+		},
+		{
+			name:         "image tag used when no annotation",
+			annotations:  map[string]string{},
+			imageVersion: "v1.2.3",
+			want:         "v1.2.3",
+		},
+		{
+			name:         "image digest used when no annotation",
+			annotations:  map[string]string{},
+			imageVersion: "sha256:abc123",
+			want:         "sha256:abc123",
+		},
+		{
+			name:         "latest image version falls back to default",
+			annotations:  map[string]string{},
+			imageVersion: "latest",
+			want:         "1.0.0",
+		},
+		{
+			name:         "no annotation and no image falls back to default",
+			annotations:  map[string]string{},
+			imageVersion: "",
+			want:         "1.0.0",
+		},
+		{
+			name:         "empty annotation value is ignored",
+			annotations:  map[string]string{defaultRegistryVersionAnnotation: ""},
+			imageVersion: "v1.2.3",
+			want:         "v1.2.3",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, resolveServerVersion(tt.annotations, tt.imageVersion))
 		})
 	}
 }
