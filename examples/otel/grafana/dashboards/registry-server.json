@@ -424,11 +424,11 @@
         },
         "overrides": [
           {
-            "matcher": { "id": "byRegexp", "options": ".*false.*" },
+            "matcher": { "id": "byRegexp", "options": ".*error.*" },
             "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
           },
           {
-            "matcher": { "id": "byRegexp", "options": ".*true.*" },
+            "matcher": { "id": "byRegexp", "options": ".*success.*" },
             "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
           }
         ]
@@ -442,8 +442,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(increase(stacklok_registry_sync_duration_seconds_count[5m])) by (registry, success)",
-          "legendFormat": "{{ registry }} (success={{ success }})",
+          "expr": "sum(increase(stacklok_registry_sync_duration_seconds_count[5m])) by (registry, outcome)",
+          "legendFormat": "{{ registry }} (outcome={{ outcome }})",
           "refId": "A"
         }
       ],
