@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	coremetrics "github.com/stacklok/toolhive-core/telemetry/metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -100,6 +101,8 @@ func TestNewMeterProvider_PrometheusHandlerScrape(t *testing.T) {
 	require.NoError(t, err)
 	counter.Add(ctx, 1)
 
+	require.NoError(t, coremetrics.RegisterBuildInfo(meter, ComponentRegistry, "1.2.3", "abcdef"))
+
 	req := httptest.NewRequest("GET", "/metrics", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
@@ -110,6 +113,14 @@ func TestNewMeterProvider_PrometheusHandlerScrape(t *testing.T) {
 	text := string(body)
 
 	require.Contains(t, text, "test_scrape_counter_total", "recorded instrument should appear in the scrape")
+
+	// stacklok.build_info is an Int64ObservableGauge with unit "1"; the OTel
+	// Prometheus exporter appends "_ratio" to gauges with that unit
+	// (otlptranslator's metric_namer.go), so the scraped name is
+	// stacklok_build_info_ratio, not stacklok_build_info. Pin the actual
+	// exported name so docs/observability.md can't silently drift from it.
+	require.NotContains(t, text, "stacklok_build_info ", "build_info must not be exported without the _ratio suffix")
+	require.Contains(t, text, "stacklok_build_info_ratio", "build_info gauge should be exported as stacklok_build_info_ratio")
 
 	for line := range strings.SplitSeq(text, "\n") {
 		if !strings.HasPrefix(line, "test_scrape_counter_total{") {

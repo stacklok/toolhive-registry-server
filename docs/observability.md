@@ -113,7 +113,7 @@ Every series additionally carries the constant labels `stacklok_component="regis
 | `stacklok_registry_sync_duration_seconds` | Histogram | `registry`, `outcome` | Duration of sync operations (`outcome` is `success` or `error`) |
 | `stacklok_registry_errors_total` | Counter | `error_type`, `area` | Errors by type, for the sync (`area="sync"`) and HTTP (`area="http"`) paths |
 | `stacklok_registry_db_query_duration_seconds` | Histogram | `operation` | Duration of database queries, by operation |
-| `stacklok_build_info` | Gauge | `component`, `version`, `commit` | Always `1`; build identity carried on labels |
+| `stacklok_build_info_ratio` | Gauge | `component`, `version`, `commit` | Always `1`; build identity carried on labels. The OTel Prometheus exporter appends `_ratio` to gauges with unit `1` |
 
 ### Histogram Buckets
 
