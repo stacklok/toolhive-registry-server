@@ -2,6 +2,9 @@ package telemetry
 
 import (
 	"context"
+	"io"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -71,6 +74,52 @@ func TestNewMeterProvider(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNewMeterProvider_PrometheusHandlerScrape(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	mp, handler, err := NewMeterProvider(ctx,
+		WithMetricsConfig(&MetricsConfig{Enabled: true}),
+		WithMeterInsecure(true),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, handler)
+
+	sdkMP, ok := mp.(*sdkmetric.MeterProvider)
+	require.True(t, ok, "expected SDK meter provider")
+	t.Cleanup(func() { _ = sdkMP.Shutdown(ctx) })
+
+	// Record a value on an instrument so the Prometheus registry has at
+	// least one series to scrape, in addition to the always-present
+	// stacklok.build_info-style target_info.
+	meter := mp.Meter("meter_test")
+	counter, err := meter.Int64Counter("test.scrape.counter")
+	require.NoError(t, err)
+	counter.Add(ctx, 1)
+
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	require.Equal(t, 200, rr.Code)
+
+	body, err := io.ReadAll(rr.Body)
+	require.NoError(t, err)
+	text := string(body)
+
+	require.Contains(t, text, "test_scrape_counter_total", "recorded instrument should appear in the scrape")
+
+	for line := range strings.SplitSeq(text, "\n") {
+		if !strings.HasPrefix(line, "test_scrape_counter_total{") {
+			continue
+		}
+		assert.Contains(t, line, `stacklok_component="registry"`,
+			"every series must carry the D8 stacklok_component constant label")
+		assert.Contains(t, line, "stacklok_product=", "every series must carry the D8 stacklok_product constant label")
+		assert.NotContains(t, line, "host_name=", "host resource attributes must not leak into per-series labels")
+		assert.NotContains(t, line, "process_pid=", "process resource attributes must not leak into per-series labels")
 	}
 }
 
