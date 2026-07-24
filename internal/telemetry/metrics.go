@@ -111,6 +111,12 @@ func NewRegistryMetrics(provider metric.MeterProvider, reader RegistryMetricRead
 }
 
 // Unregister removes the observable callback registered for registry metrics.
+// It does not unregister the stacklok.build_info gauge registered alongside
+// it in NewRegistryMetrics: coremetrics.RegisterBuildInfo attaches its
+// callback directly to the instrument via metric.WithInt64Callback and
+// returns no metric.Registration, so there is nothing this method can
+// capture or release. The build_info gauge keeps observing for the life of
+// the meter provider even after Unregister is called.
 func (m *RegistryMetrics) Unregister() error {
 	if m == nil || m.registration == nil {
 		return nil
@@ -122,6 +128,27 @@ func (m *RegistryMetrics) Unregister() error {
 // areaSync is the bounded area-label value stamped on
 // stacklok.registry.errors for sync-path errors.
 const areaSync = "sync"
+
+// errorsCounterName, errorsCounterDescription, and errorsCounterUnit are
+// shared by every meter (sync, HTTP) that registers the additive
+// stacklok.registry.errors detail counter, so the instrument's identity
+// can't drift between registration sites.
+const (
+	errorsCounterName        = "stacklok.registry.errors"
+	errorsCounterDescription = "Errors by type and area (additive error-by-type detail counter)"
+	errorsCounterUnit        = "{error}"
+)
+
+// newErrorsCounter registers the stacklok.registry.errors counter on the
+// given meter. Shared by NewSyncMetrics and NewHTTPMetrics so both
+// registrations stay identical.
+func newErrorsCounter(meter metric.Meter) (metric.Int64Counter, error) {
+	return meter.Int64Counter(
+		errorsCounterName,
+		metric.WithDescription(errorsCounterDescription),
+		metric.WithUnit(errorsCounterUnit),
+	)
+}
 
 // SyncMetrics holds the OpenTelemetry instruments for sync operation metrics
 type SyncMetrics struct {
@@ -153,11 +180,7 @@ func NewSyncMetrics(provider metric.MeterProvider) (*SyncMetrics, error) {
 		return nil, err
 	}
 
-	errorsTotal, err := meter.Int64Counter(
-		"stacklok.registry.errors",
-		metric.WithDescription("Errors by type and area (additive error-by-type detail counter)"),
-		metric.WithUnit("{error}"),
-	)
+	errorsTotal, err := newErrorsCounter(meter)
 	if err != nil {
 		return nil, err
 	}

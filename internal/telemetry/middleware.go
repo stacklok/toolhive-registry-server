@@ -72,11 +72,7 @@ func NewHTTPMetrics(provider metric.MeterProvider) (*HTTPMetrics, error) {
 		return nil, err
 	}
 
-	errorsTotal, err := meter.Int64Counter(
-		"stacklok.registry.errors",
-		metric.WithDescription("Errors by type and area (additive error-by-type detail counter)"),
-		metric.WithUnit("{error}"),
-	)
+	errorsTotal, err := newErrorsCounter(meter)
 	if err != nil {
 		return nil, err
 	}
