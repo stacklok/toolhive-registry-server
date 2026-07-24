@@ -262,7 +262,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "stacklok_registry_servers",
+          "expr": "sum(stacklok_registry_servers) by (source)",
           "legendFormat": "{{ source }}",
           "refId": "A"
         }
@@ -315,7 +315,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "stacklok_registry_servers",
+          "expr": "sum(stacklok_registry_servers) by (source)",
           "legendFormat": "{{ source }}",
           "refId": "A"
         }
