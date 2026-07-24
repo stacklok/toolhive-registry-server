@@ -91,14 +91,20 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 }
 
 // NewInternalServer creates a minimal HTTP router for internal operational
-// endpoints (health, readiness, version). These endpoints are intended to
-// run on a separate port so that Kubernetes probes hit a dedicated server
-// that carries no authentication or application middleware.
-func NewInternalServer(svc service.RegistryService) *chi.Mux {
+// endpoints (health, readiness, version, metrics). These endpoints are
+// intended to run on a separate port so that Kubernetes probes and metrics
+// scrapers hit a dedicated server that carries no authentication or
+// application middleware. metricsHandler is mounted at /metrics when
+// non-nil; a nil handler means metrics are disabled and the route is
+// omitted entirely.
+func NewInternalServer(svc service.RegistryService, metricsHandler http.Handler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Get("/health", healthHandler)
 	r.Get("/readiness", readinessHandler(svc))
 	r.Get("/version", versionHandler)
+	if metricsHandler != nil {
+		r.Handle("/metrics", metricsHandler)
+	}
 	return r
 }
 

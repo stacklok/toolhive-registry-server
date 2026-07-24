@@ -69,6 +69,7 @@ type registryAppConfig struct {
 	// Telemetry components
 	meterProvider  metric.MeterProvider
 	tracerProvider trace.TracerProvider
+	metricsHandler http.Handler
 
 	// Coordinator options (primarily for testing)
 	coordinatorOpts []coordinator.Option
@@ -313,6 +314,16 @@ func WithTracerProvider(tp trace.TracerProvider) RegistryAppOptions {
 	}
 }
 
+// WithMetricsHandler sets the Prometheus /metrics HTTP handler, mounted on
+// the internal server alongside health/readiness/version. Nil disables the
+// route (metrics disabled or no Prometheus reader configured).
+func WithMetricsHandler(h http.Handler) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		cfg.metricsHandler = h
+		return nil
+	}
+}
+
 // buildSyncComponents builds sync manager, coordinator, and related components
 func buildSyncComponents(
 	ctx context.Context,
@@ -515,9 +526,9 @@ func buildHTTPServer(
 	return server, nil
 }
 
-// buildInternalHTTPServer builds the internal HTTP server for health, readiness, and version endpoints
+// buildInternalHTTPServer builds the internal HTTP server for health, readiness, version, and metrics endpoints
 func buildInternalHTTPServer(b *registryAppConfig, svc service.RegistryService) *http.Server {
-	router := api.NewInternalServer(svc)
+	router := api.NewInternalServer(svc, b.metricsHandler)
 	return &http.Server{
 		Addr:         b.internalAddress,
 		Handler:      router,

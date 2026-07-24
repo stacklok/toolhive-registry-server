@@ -94,6 +94,10 @@ telemetry:
 
 All metrics are prefixed with `stacklok_registry_` to distinguish them from other metrics in the system.
 
+When `metrics.enabled` is `true`, the same metrics are also directly scrapable at
+`/metrics` on the internal server (default port `8081`), independent of the OTLP export
+path described above.
+
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
 | `stacklok_registry_http_request_duration_seconds` | Histogram | `method`, `route`, `status_code` | Duration of HTTP requests |
@@ -101,12 +105,14 @@ All metrics are prefixed with `stacklok_registry_` to distinguish them from othe
 | `stacklok_registry_http_active_requests` | UpDownCounter | - | Number of in-flight requests |
 | `stacklok_registry_servers` | Gauge | `source` | Number of distinct servers in each source |
 | `stacklok_registry_skills` | Gauge | `source` | Number of distinct skills in each source |
-| `stacklok_registry_sync_duration_seconds` | Histogram | `registry`, `success` | Duration of sync operations |
+| `stacklok_registry_sync_duration_seconds` | Histogram | `registry`, `outcome` | Duration of sync operations (`outcome` is `success` or `error`) |
+| `stacklok_registry_errors` | Counter | `error_type`, `area` | Errors by type, for the sync (`area="sync"`) and HTTP (`area="http"`) paths |
+| `stacklok_registry_db_query_duration_seconds` | Histogram | `operation` | Duration of database queries, by operation |
 
 ### Histogram Buckets
 
-- **HTTP metrics:** 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10 seconds
-- **Sync metrics:** 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300 seconds
+- **HTTP and DB query metrics:** 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10 seconds
+- **Sync metrics:** 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 180, 300 seconds
 
 ## Distributed Tracing
 
