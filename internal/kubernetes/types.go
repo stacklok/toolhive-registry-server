@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	// defaultServerVersion is used when an MCPServer resource does not carry
-	// an explicit version annotation.
+	// defaultServerVersion is the fallback entry version when the resource
+	// carries neither a registry-version annotation nor a versioned
+	// container image.
 	defaultServerVersion = "1.0.0"
 	// defaultServerStatus is the registry.ServerExtensions.Status value used
 	// for entries derived from running Kubernetes resources.
@@ -39,9 +40,8 @@ func extractServer(mcpServer *mcpv1beta1.MCPServer) (*upstreamv0.ServerJSON, err
 	// Note: MCPServer is a Kubernetes deployment resource, so we extract
 	// what information is available and create a minimal ServerJSON
 	serverJSON := &upstreamv0.ServerJSON{
-		Schema:  model.CurrentSchemaURL,
-		Name:    serverName,
-		Version: defaultServerVersion, // Default version, could be extracted from annotations or labels
+		Schema: model.CurrentSchemaURL,
+		Name:   serverName,
 	}
 
 	// Extract packages from MCPServer spec (using the container image)
@@ -52,6 +52,8 @@ func extractServer(mcpServer *mcpv1beta1.MCPServer) (*upstreamv0.ServerJSON, err
 	if annotations == nil {
 		return nil, fmt.Errorf("annotations not found")
 	}
+
+	serverJSON.Version = resolveServerVersion(annotations, parseImageTagOrDigest(mcpServer.Spec.Image))
 
 	desc, ok := annotations[defaultRegistryDescriptionAnnotation]
 	if !ok {
@@ -135,15 +137,17 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1beta1.VirtualMCPServer) (*up
 	// Note: VirtualMCPServer is a Kubernetes deployment resource, so we extract
 	// what information is available and create a minimal ServerJSON
 	serverJSON := &upstreamv0.ServerJSON{
-		Schema:  model.CurrentSchemaURL,
-		Name:    serverName,
-		Version: defaultServerVersion, // Default version, could be extracted from annotations or labels
+		Schema: model.CurrentSchemaURL,
+		Name:   serverName,
 	}
 
 	annotations := virtualMCPServer.GetAnnotations()
 	if annotations == nil {
 		return nil, fmt.Errorf("annotations not found")
 	}
+
+	// VirtualMCPServer has no container image to derive a version from.
+	serverJSON.Version = resolveServerVersion(annotations, "")
 
 	desc, ok := annotations[defaultRegistryDescriptionAnnotation]
 	if !ok {
@@ -225,15 +229,17 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1beta1.MCPRemoteProxy) (*upstream
 	// Note: MCPRemoteProxy is a Kubernetes deployment resource, so we extract
 	// what information is available and create a minimal ServerJSON
 	serverJSON := &upstreamv0.ServerJSON{
-		Schema:  model.CurrentSchemaURL,
-		Name:    serverName,
-		Version: defaultServerVersion, // Default version, could be extracted from annotations or labels
+		Schema: model.CurrentSchemaURL,
+		Name:   serverName,
 	}
 
 	annotations := mcpRemoteProxy.GetAnnotations()
 	if annotations == nil {
 		return nil, fmt.Errorf("annotations not found")
 	}
+
+	// MCPRemoteProxy has no container image to derive a version from.
+	serverJSON.Version = resolveServerVersion(annotations, "")
 
 	desc, ok := annotations[defaultRegistryDescriptionAnnotation]
 	if !ok {
@@ -392,6 +398,21 @@ func extractPackages(mcpServer *mcpv1beta1.MCPServer) []model.Package {
 	packages = append(packages, packageModel)
 
 	return packages
+}
+
+// resolveServerVersion determines the version of a registry entry derived
+// from a Kubernetes resource. Precedence: the registry-version annotation,
+// then the container image tag or digest (for resources that run an image),
+// then defaultServerVersion. An image version equal to defaultImageVersion
+// ("latest") is not a meaningful version and is treated as absent.
+func resolveServerVersion(annotations map[string]string, imageVersion string) string {
+	if version, ok := annotations[defaultRegistryVersionAnnotation]; ok && version != "" {
+		return version
+	}
+	if imageVersion != "" && imageVersion != defaultImageVersion {
+		return imageVersion
+	}
+	return defaultServerVersion
 }
 
 // parseImageTagOrDigest is a rudimentary parser that parses the tag or digest
