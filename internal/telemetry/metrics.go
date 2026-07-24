@@ -5,8 +5,11 @@ import (
 	"context"
 	"time"
 
+	coremetrics "github.com/stacklok/toolhive-core/telemetry/metrics"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	"github.com/stacklok/toolhive-registry-server/internal/versions"
 )
 
 const (
@@ -15,6 +18,14 @@ const (
 
 	// SyncMetricsMeterName is the name used for the sync metrics meter
 	SyncMetricsMeterName = "github.com/stacklok/toolhive-registry-server/sync"
+
+	// DBMetricsMeterName is the name used for the database metrics meter
+	DBMetricsMeterName = "github.com/stacklok/toolhive-registry-server/db"
+
+	// ComponentRegistry is this service's stacklok.component value (RFC D8).
+	// toolhive-core defines only the AttrStacklokComponent key; each component
+	// supplies its own value.
+	ComponentRegistry = "registry"
 )
 
 // RegistryMetrics holds the OpenTelemetry instruments for registry metrics
@@ -46,7 +57,7 @@ func NewRegistryMetrics(provider metric.MeterProvider, reader RegistryMetricRead
 	meter := provider.Meter(RegistryMetricsMeterName)
 
 	serversTotal, err := meter.Int64ObservableGauge(
-		"thv_reg_srv_servers_total",
+		"stacklok.registry.servers",
 		metric.WithDescription("Number of distinct servers in each source"),
 		metric.WithUnit("{server}"),
 	)
@@ -55,11 +66,16 @@ func NewRegistryMetrics(provider metric.MeterProvider, reader RegistryMetricRead
 	}
 
 	skillsTotal, err := meter.Int64ObservableGauge(
-		"thv_reg_srv_skills_total",
+		"stacklok.registry.skills",
 		metric.WithDescription("Number of distinct skills in each source"),
 		metric.WithUnit("{skill}"),
 	)
 	if err != nil {
+		return nil, err
+	}
+
+	info := versions.GetVersionInfo()
+	if err := coremetrics.RegisterBuildInfo(meter, ComponentRegistry, info.Version, info.Commit); err != nil {
 		return nil, err
 	}
 
@@ -80,8 +96,7 @@ func NewRegistryMetrics(provider metric.MeterProvider, reader RegistryMetricRead
 
 				return nil
 			},
-			serversTotal,
-			skillsTotal,
+			serversTotal, skillsTotal,
 		)
 		if err != nil {
 			return nil, err
@@ -104,9 +119,19 @@ func (m *RegistryMetrics) Unregister() error {
 	return m.registration.Unregister()
 }
 
+// componentSync is the bounded component-label value stamped on
+// stacklok.registry.errors for sync-path errors.
+const componentSync = "sync"
+
 // SyncMetrics holds the OpenTelemetry instruments for sync operation metrics
 type SyncMetrics struct {
 	syncDuration metric.Float64Histogram
+	// errorsTotal is the additive error-by-type detail counter (RFC §3.6
+	// coverage gap) for the sync path. error_type carries the structured
+	// sync failure reason (a bounded condition-reason string), component is
+	// the fixed "sync" value. Orthogonal to the outcome label on
+	// syncDuration, which only distinguishes success from failure.
+	errorsTotal metric.Int64Counter
 }
 
 // NewSyncMetrics creates a new SyncMetrics instance with the given meter provider.
@@ -119,10 +144,19 @@ func NewSyncMetrics(provider metric.MeterProvider) (*SyncMetrics, error) {
 	meter := provider.Meter(SyncMetricsMeterName)
 
 	syncDuration, err := meter.Float64Histogram(
-		"thv_reg_srv_sync_duration_seconds",
+		"stacklok.registry.sync.duration",
 		metric.WithDescription("Duration of sync operations in seconds"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300),
+		metric.WithExplicitBucketBoundaries(coremetrics.BucketsLongRunning()...),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	errorsTotal, err := meter.Int64Counter(
+		"stacklok.registry.errors",
+		metric.WithDescription("Errors by type and component (additive error-by-type detail counter)"),
+		metric.WithUnit("{error}"),
 	)
 	if err != nil {
 		return nil, err
@@ -130,18 +164,84 @@ func NewSyncMetrics(provider metric.MeterProvider) (*SyncMetrics, error) {
 
 	return &SyncMetrics{
 		syncDuration: syncDuration,
+		errorsTotal:  errorsTotal,
 	}, nil
 }
 
-// RecordSyncDuration records the duration of a sync operation for a registry
+// DBMetrics holds the OpenTelemetry instruments for database query metrics.
+type DBMetrics struct {
+	queryDuration metric.Float64Histogram
+}
+
+// NewDBMetrics creates a new DBMetrics instance with the given meter provider.
+// If provider is nil, it returns nil (no-op metrics).
+func NewDBMetrics(provider metric.MeterProvider) (*DBMetrics, error) {
+	if provider == nil {
+		return nil, nil
+	}
+
+	meter := provider.Meter(DBMetricsMeterName)
+
+	queryDuration, err := meter.Float64Histogram(
+		"stacklok.registry.db.query.duration",
+		metric.WithDescription("Duration of database queries in seconds, by operation"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(coremetrics.BucketsFastHTTP()...),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DBMetrics{queryDuration: queryDuration}, nil
+}
+
+// RecordQueryDuration records one database query duration observation labeled
+// with the bounded operation name. operation must be a fixed query-name string
+// (never raw SQL) to keep cardinality bounded. No-op on a nil receiver /
+// instrument.
+func (m *DBMetrics) RecordQueryDuration(ctx context.Context, operation string, duration time.Duration) {
+	if m == nil || m.queryDuration == nil {
+		return
+	}
+	m.queryDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(
+		attribute.String("operation", operation),
+	))
+}
+
+// RecordSyncError increments stacklok.registry.errors for a sync failure,
+// tagged with the bounded errorType (the structured sync condition reason) and
+// the fixed component="sync" label. errorType is expected to be a bounded
+// condition-reason string; an empty value falls back to "unknown" so the
+// series never carries an empty label. No-op on a nil receiver / instrument.
+func (m *SyncMetrics) RecordSyncError(ctx context.Context, errorType string) {
+	if m == nil || m.errorsTotal == nil {
+		return
+	}
+	if errorType == "" {
+		errorType = "unknown"
+	}
+	m.errorsTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String(coremetrics.LabelErrorType, errorType),
+		attribute.String("area", componentSync),
+	))
+}
+
+// RecordSyncDuration records the duration of a sync operation for a registry.
+// The outcome is emitted as the canonical string label "outcome" ("success" or
+// "error"), never as a boolean.
 func (m *SyncMetrics) RecordSyncDuration(ctx context.Context, registryName string, duration time.Duration, success bool) {
 	if m == nil || m.syncDuration == nil {
 		return
 	}
 
+	outcome := coremetrics.OutcomeSuccess
+	if !success {
+		outcome = coremetrics.OutcomeError
+	}
+
 	attrs := []attribute.KeyValue{
 		attribute.String("registry", registryName),
-		attribute.Bool("success", success),
+		attribute.String(coremetrics.LabelOutcome, outcome),
 	}
 
 	m.syncDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(attrs...))

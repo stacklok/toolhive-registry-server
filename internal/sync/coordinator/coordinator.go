@@ -293,6 +293,9 @@ func (c *defaultCoordinator) performRegistrySync(
 		// Record sync failure metric
 		if c.syncMetrics != nil {
 			c.syncMetrics.RecordSyncDuration(ctx, registryName, syncDuration, false)
+			// Additive error-by-type detail: classify by the structured sync
+			// condition reason (a bounded set), never the free-text message.
+			c.syncMetrics.RecordSyncError(ctx, syncErr.ConditionReason)
 		}
 	} else {
 		syncStatus.Phase = status.SyncPhaseComplete

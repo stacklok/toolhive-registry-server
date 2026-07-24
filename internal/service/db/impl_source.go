@@ -32,8 +32,8 @@ func (s *dbService) CreateSource(
 	name string,
 	req *service.SourceCreateRequest,
 ) (*service.SourceInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.CreateSource")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.CreateSource")
+	defer done()
 	start := time.Now()
 
 	// Add tracing attributes
@@ -200,8 +200,8 @@ func (s *dbService) UpdateSource(
 	name string,
 	req *service.SourceCreateRequest,
 ) (*service.SourceInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.UpdateSource")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.UpdateSource")
+	defer done()
 	start := time.Now()
 
 	// Add tracing attributes
@@ -330,8 +330,8 @@ func (s *dbService) UpdateSource(
 
 // DeleteSource deletes an API source
 func (s *dbService) DeleteSource(ctx context.Context, name string) error {
-	ctx, span := s.startSpan(ctx, "dbService.DeleteSource")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.DeleteSource")
+	defer done()
 	start := time.Now()
 
 	// Add tracing attributes
@@ -418,8 +418,8 @@ func (s *dbService) DeleteSource(ctx context.Context, name string) error {
 
 // ListSources returns all configured sources
 func (s *dbService) ListSources(ctx context.Context) ([]service.SourceInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.ListSources")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.ListSources")
+	defer done()
 	start := time.Now()
 
 	// Begin a read-only transaction
@@ -467,8 +467,8 @@ func (s *dbService) ListSources(ctx context.Context) ([]service.SourceInfo, erro
 
 // GetSourceByName returns a single source by name
 func (s *dbService) GetSourceByName(ctx context.Context, name string) (*service.SourceInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.GetSourceByName")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.GetSourceByName")
+	defer done()
 	start := time.Now()
 
 	// Add tracing attributes
@@ -590,8 +590,8 @@ func (s *dbService) ProcessInlineSourceData(ctx context.Context, name string, da
 
 // ListSourceEntries returns all entries for a source with their versions.
 func (s *dbService) ListSourceEntries(ctx context.Context, sourceName string) ([]service.SourceEntryInfo, error) {
-	ctx, span := s.startSpan(ctx, "dbService.ListSourceEntries")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.ListSourceEntries")
+	defer done()
 	start := time.Now()
 
 	// Add tracing attributes

@@ -19,8 +19,8 @@ import (
 
 // UpdateEntryClaims updates the claims on a published registry entry within the managed source.
 func (s *dbService) UpdateEntryClaims(ctx context.Context, opts ...service.Option) error {
-	ctx, span := s.startSpan(ctx, "dbService.UpdateEntryClaims")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.UpdateEntryClaims")
+	defer done()
 	start := time.Now()
 
 	options := &service.UpdateEntryClaimsOptions{}
@@ -172,8 +172,8 @@ func mapEntryType(entryType string) (sqlc.EntryType, error) {
 // default-deny rule (auth.md §4). The matching PUT, which sets new claims, uses
 // the stricter subset check instead (§5).
 func (s *dbService) GetEntryClaims(ctx context.Context, opts ...service.Option) (map[string]any, error) {
-	ctx, span := s.startSpan(ctx, "dbService.GetEntryClaims")
-	defer span.End()
+	ctx, span, done := s.startSpan(ctx, "dbService.GetEntryClaims")
+	defer done()
 
 	options := &service.GetEntryClaimsOptions{}
 	for _, opt := range opts {

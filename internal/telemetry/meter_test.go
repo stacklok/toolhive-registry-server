@@ -49,7 +49,7 @@ func TestNewMeterProvider(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
 
-			mp, err := NewMeterProvider(ctx, tt.opts...)
+			mp, handler, err := NewMeterProvider(ctx, tt.opts...)
 
 			require.NoError(t, err)
 			require.NotNil(t, mp)
@@ -57,9 +57,11 @@ func TestNewMeterProvider(t *testing.T) {
 			if tt.expectNoOp {
 				_, ok := mp.(noop.MeterProvider)
 				assert.True(t, ok, "expected no-op meter provider")
+				assert.Nil(t, handler, "no-op provider exposes no metrics handler")
 			} else {
 				sdkMP, ok := mp.(*sdkmetric.MeterProvider)
 				assert.True(t, ok, "expected SDK meter provider")
+				assert.NotNil(t, handler, "enabled provider exposes a Prometheus handler")
 
 				// Cleanup - ignore shutdown errors as there's no collector running
 				// The OTLP exporter will try to flush metrics on shutdown, which fails

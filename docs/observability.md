@@ -92,16 +92,16 @@ telemetry:
 
 ## Metrics Reference
 
-All metrics are prefixed with `thv_reg_srv_` to distinguish them from other metrics in the system.
+All metrics are prefixed with `stacklok_registry_` to distinguish them from other metrics in the system.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `thv_reg_srv_http_request_duration_seconds` | Histogram | `method`, `route`, `status_code` | Duration of HTTP requests |
-| `thv_reg_srv_http_requests_total` | Counter | `method`, `route`, `status_code` | Total number of HTTP requests |
-| `thv_reg_srv_http_active_requests` | UpDownCounter | - | Number of in-flight requests |
-| `thv_reg_srv_servers_total` | Gauge | `source` | Number of distinct servers in each source |
-| `thv_reg_srv_skills_total` | Gauge | `source` | Number of distinct skills in each source |
-| `thv_reg_srv_sync_duration_seconds` | Histogram | `registry`, `success` | Duration of sync operations |
+| `stacklok_registry_http_request_duration_seconds` | Histogram | `method`, `route`, `status_code` | Duration of HTTP requests |
+| `stacklok_registry_http_requests_total` | Counter | `method`, `route`, `status_code` | Total number of HTTP requests |
+| `stacklok_registry_http_active_requests` | UpDownCounter | - | Number of in-flight requests |
+| `stacklok_registry_servers` | Gauge | `source` | Number of distinct servers in each source |
+| `stacklok_registry_skills` | Gauge | `source` | Number of distinct skills in each source |
+| `stacklok_registry_sync_duration_seconds` | Histogram | `registry`, `success` | Duration of sync operations |
 
 ### Histogram Buckets
 
@@ -171,7 +171,7 @@ The following endpoints are intentionally excluded from tracing:
 
 5. **Industry best practice**: Most observability frameworks and guidelines recommend excluding infrastructure endpoints from tracing. The OpenTelemetry community generally advises filtering out health checks at the instrumentation level.
 
-If you need to debug health check issues, HTTP metrics (`thv_reg_srv_http_request_duration_seconds`) still capture latency and error rates for these endpoints.
+If you need to debug health check issues, HTTP metrics (`stacklok_registry_http_request_duration_seconds`) still capture latency and error rates for these endpoints.
 
 #### Service Layer Spans
 

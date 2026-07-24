@@ -35,10 +35,10 @@ func TestDBServiceStartSpan_AddsDBSystemAttribute(t *testing.T) {
 	ctx := context.Background()
 	spanName := "dbService.TestOperation"
 
-	_, span := svc.startSpan(ctx, spanName,
+	_, _, done := svc.startSpan(ctx, spanName,
 		trace.WithAttributes(otel.AttrRegistryName.String("test-registry")),
 	)
-	span.End()
+	done()
 
 	// Verify span was recorded with correct name
 	spans := exporter.GetSpans()
@@ -66,10 +66,10 @@ func TestDBServiceStartSpan_NilTracer(t *testing.T) {
 	svc := &dbService{tracer: nil}
 	ctx := context.Background()
 
-	resultCtx, span := svc.startSpan(ctx, "test.operation")
+	resultCtx, span, done := svc.startSpan(ctx, "test.operation")
 
 	require.NotNil(t, resultCtx)
 	require.NotNil(t, span)
 	assert.False(t, span.SpanContext().IsValid(), "nil tracer should return no-op span")
-	assert.NotPanics(t, func() { span.End() })
+	assert.NotPanics(t, done)
 }
