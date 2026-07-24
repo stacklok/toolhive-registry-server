@@ -53,6 +53,8 @@ service:
   type: ClusterIP
   # -- Service port
   port: 8080
+  # -- Internal service port (health checks, metrics)
+  internalPort: 8081
   # -- Service annotations
   annotations: {}
 

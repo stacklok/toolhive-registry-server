@@ -90,6 +90,7 @@ The command removes all the Kubernetes components associated with the chart and 
 | resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | Resource requests and limits (matching operator defaults) |
 | securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"runAsUser":65535,"seccompProfile":{"type":"RuntimeDefault"}}` | Container security context |
 | service.annotations | object | `{}` | Service annotations |
+| service.internalPort | int | `8081` | Internal service port (health checks, metrics) |
 | service.port | int | `8080` | Service port |
 | service.type | string | `"ClusterIP"` | Service type |
 | serviceAccount.annotations | object | `{}` | Annotations to add to the service account |

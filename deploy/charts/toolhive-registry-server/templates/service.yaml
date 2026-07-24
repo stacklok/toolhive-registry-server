@@ -15,5 +15,9 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    - port: {{ .Values.service.internalPort }}
+      targetPort: internal-http
+      protocol: TCP
+      name: internal-http
   selector:
     {{- include "toolhive-registry-server.selectorLabels" . | nindent 4 }}
