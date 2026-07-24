@@ -30,6 +30,7 @@ const (
 	defaultRegistryCategoryAnnotation        = "toolhive.stacklok.dev/registry-category"
 	defaultRegistryToolDefinitionsAnnotation = "toolhive.stacklok.dev/tool-definitions"
 	defaultRegistryToolsAnnotation           = "toolhive.stacklok.dev/tools"
+	defaultRegistryVersionAnnotation         = "toolhive.stacklok.dev/registry-version"
 	defaultAuthzClaimsAnnotation             = "toolhive.stacklok.dev/authz-claims"
 
 	defaultRequeueAfter = 10 * time.Second
