@@ -98,7 +98,10 @@ func NewMeterProvider(ctx context.Context, opts ...MeterProviderOption) (metric.
 	// Create resource with service information
 	// We use resource.New to avoid schema URL conflicts with resource.Default().
 	// The stacklok.component/stacklok.product ownership attributes (D8) are
-	// merged last so they cannot be spoofed via OTEL_RESOURCE_ATTRIBUTES.
+	// set directly here rather than read from the environment: this resource
+	// builder never calls resource.WithFromEnv(), so OTEL_RESOURCE_ATTRIBUTES
+	// cannot override or spoof them. If WithFromEnv() is added later, these
+	// two attributes must be merged in after it to preserve that guarantee.
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName(cfg.serviceName),

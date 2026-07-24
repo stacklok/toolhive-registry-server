@@ -41,7 +41,7 @@ func (s *dbService) startSpan(
 	spanCtx, span := otel.StartSpan(ctx, s.tracer, name, opts...)
 	start := time.Now()
 	done := func() {
-		s.dbMetrics.RecordQueryDuration(ctx, name, time.Since(start))
+		s.dbMetrics.RecordQueryDuration(spanCtx, name, time.Since(start))
 		span.End()
 	}
 	return spanCtx, span, done

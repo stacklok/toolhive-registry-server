@@ -275,3 +275,147 @@ func TestSyncMetrics_RecordSyncDuration(t *testing.T) {
 		}
 	})
 }
+
+func findInt64Sum(t *testing.T, rm metricdata.ResourceMetrics, name string) metricdata.Sum[int64] {
+	t.Helper()
+
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name == name {
+				sum, ok := m.Data.(metricdata.Sum[int64])
+				require.True(t, ok, "expected int64 sum data type for %s", name)
+				return sum
+			}
+		}
+	}
+
+	require.FailNow(t, "metric not found", name)
+	return metricdata.Sum[int64]{}
+}
+
+func TestSyncMetrics_RecordSyncError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no-op when metrics is nil", func(t *testing.T) {
+		t.Parallel()
+
+		var metrics *SyncMetrics
+		// Should not panic
+		metrics.RecordSyncError(context.Background(), "fetch_failed")
+	})
+
+	t.Run("records error with bounded error_type and fixed area=sync", func(t *testing.T) {
+		t.Parallel()
+
+		reader := sdkmetric.NewManualReader()
+		mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+		defer func() { _ = mp.Shutdown(context.Background()) }()
+
+		metrics, err := NewSyncMetrics(mp)
+		require.NoError(t, err)
+		require.NotNil(t, metrics)
+
+		metrics.RecordSyncError(context.Background(), "fetch_failed")
+
+		var rm metricdata.ResourceMetrics
+		err = reader.Collect(context.Background(), &rm)
+		require.NoError(t, err)
+
+		sum := findInt64Sum(t, rm, "stacklok.registry.errors")
+		require.Len(t, sum.DataPoints, 1)
+
+		expectedAttrs := attribute.NewSet(
+			attribute.String("error_type", "fetch_failed"),
+			attribute.String("area", "sync"),
+		)
+		assert.True(t, sum.DataPoints[0].Attributes.Equals(&expectedAttrs))
+	})
+
+	t.Run("empty error type falls back to unknown", func(t *testing.T) {
+		t.Parallel()
+
+		reader := sdkmetric.NewManualReader()
+		mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+		defer func() { _ = mp.Shutdown(context.Background()) }()
+
+		metrics, err := NewSyncMetrics(mp)
+		require.NoError(t, err)
+		require.NotNil(t, metrics)
+
+		metrics.RecordSyncError(context.Background(), "")
+
+		var rm metricdata.ResourceMetrics
+		err = reader.Collect(context.Background(), &rm)
+		require.NoError(t, err)
+
+		sum := findInt64Sum(t, rm, "stacklok.registry.errors")
+		require.Len(t, sum.DataPoints, 1)
+
+		expectedAttrs := attribute.NewSet(
+			attribute.String("error_type", "unknown"),
+			attribute.String("area", "sync"),
+		)
+		assert.True(t, sum.DataPoints[0].Attributes.Equals(&expectedAttrs))
+	})
+}
+
+func TestNewDBMetrics(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns nil when provider is nil", func(t *testing.T) {
+		t.Parallel()
+
+		metrics, err := NewDBMetrics(nil)
+		require.NoError(t, err)
+		assert.Nil(t, metrics)
+	})
+
+	t.Run("creates metrics with SDK provider", func(t *testing.T) {
+		t.Parallel()
+
+		mp := sdkmetric.NewMeterProvider()
+		defer func() { _ = mp.Shutdown(context.Background()) }()
+
+		metrics, err := NewDBMetrics(mp)
+		require.NoError(t, err)
+		assert.NotNil(t, metrics)
+		assert.NotNil(t, metrics.queryDuration)
+	})
+}
+
+func TestDBMetrics_RecordQueryDuration(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no-op when metrics is nil", func(t *testing.T) {
+		t.Parallel()
+
+		var metrics *DBMetrics
+		// Should not panic
+		metrics.RecordQueryDuration(context.Background(), "dbService.ListServers", 10*time.Millisecond)
+	})
+
+	t.Run("records query duration with operation attribute", func(t *testing.T) {
+		t.Parallel()
+
+		reader := sdkmetric.NewManualReader()
+		mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+		defer func() { _ = mp.Shutdown(context.Background()) }()
+
+		metrics, err := NewDBMetrics(mp)
+		require.NoError(t, err)
+		require.NotNil(t, metrics)
+
+		metrics.RecordQueryDuration(context.Background(), "dbService.ListServers", 25*time.Millisecond)
+
+		var rm metricdata.ResourceMetrics
+		err = reader.Collect(context.Background(), &rm)
+		require.NoError(t, err)
+
+		hist := findFloat64Histogram(t, rm, "stacklok.registry.db.query.duration")
+		require.Len(t, hist.DataPoints, 1)
+
+		expectedAttrs := attribute.NewSet(attribute.String("operation", "dbService.ListServers"))
+		assert.True(t, hist.DataPoints[0].Attributes.Equals(&expectedAttrs))
+		assert.InDelta(t, 0.025, hist.DataPoints[0].Sum, 0.0001)
+	})
+}

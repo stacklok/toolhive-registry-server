@@ -96,13 +96,14 @@ func NewStorageFactory(ctx context.Context, cfg *config.Config, opts ...FactoryO
 		dbOpts = append(dbOpts, WithTracer(tracer))
 	}
 	if options.meterProvider != nil {
+		// options.meterProvider is non-nil here, so NewDBMetrics always
+		// returns a non-nil *DBMetrics on success (nil is only returned for
+		// a nil provider).
 		dbMetrics, err := telemetry.NewDBMetrics(options.meterProvider)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create db metrics: %w", err)
 		}
-		if dbMetrics != nil {
-			dbOpts = append(dbOpts, WithDBMetrics(dbMetrics))
-		}
+		dbOpts = append(dbOpts, WithDBMetrics(dbMetrics))
 	}
 	return NewDatabaseFactory(ctx, cfg, dbOpts...)
 }

@@ -119,16 +119,16 @@ func (m *RegistryMetrics) Unregister() error {
 	return m.registration.Unregister()
 }
 
-// componentSync is the bounded component-label value stamped on
+// areaSync is the bounded area-label value stamped on
 // stacklok.registry.errors for sync-path errors.
-const componentSync = "sync"
+const areaSync = "sync"
 
 // SyncMetrics holds the OpenTelemetry instruments for sync operation metrics
 type SyncMetrics struct {
 	syncDuration metric.Float64Histogram
 	// errorsTotal is the additive error-by-type detail counter (RFC §3.6
 	// coverage gap) for the sync path. error_type carries the structured
-	// sync failure reason (a bounded condition-reason string), component is
+	// sync failure reason (a bounded condition-reason string), area is
 	// the fixed "sync" value. Orthogonal to the outcome label on
 	// syncDuration, which only distinguishes success from failure.
 	errorsTotal metric.Int64Counter
@@ -155,7 +155,7 @@ func NewSyncMetrics(provider metric.MeterProvider) (*SyncMetrics, error) {
 
 	errorsTotal, err := meter.Int64Counter(
 		"stacklok.registry.errors",
-		metric.WithDescription("Errors by type and component (additive error-by-type detail counter)"),
+		metric.WithDescription("Errors by type and area (additive error-by-type detail counter)"),
 		metric.WithUnit("{error}"),
 	)
 	if err != nil {
@@ -182,6 +182,10 @@ func NewDBMetrics(provider metric.MeterProvider) (*DBMetrics, error) {
 
 	meter := provider.Meter(DBMetricsMeterName)
 
+	// toolhive-core has no DB-specific bucket preset; BucketsFastHTTP (5ms-10s)
+	// is reused because these queries are simple indexed reads/writes on a
+	// single Postgres instance, the same sub-10s latency envelope as this
+	// service's HTTP requests.
 	queryDuration, err := meter.Float64Histogram(
 		"stacklok.registry.db.query.duration",
 		metric.WithDescription("Duration of database queries in seconds, by operation"),
@@ -210,7 +214,7 @@ func (m *DBMetrics) RecordQueryDuration(ctx context.Context, operation string, d
 
 // RecordSyncError increments stacklok.registry.errors for a sync failure,
 // tagged with the bounded errorType (the structured sync condition reason) and
-// the fixed component="sync" label. errorType is expected to be a bounded
+// the fixed area="sync" label. errorType is expected to be a bounded
 // condition-reason string; an empty value falls back to "unknown" so the
 // series never carries an empty label. No-op on a nil receiver / instrument.
 func (m *SyncMetrics) RecordSyncError(ctx context.Context, errorType string) {
@@ -222,7 +226,7 @@ func (m *SyncMetrics) RecordSyncError(ctx context.Context, errorType string) {
 	}
 	m.errorsTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String(coremetrics.LabelErrorType, errorType),
-		attribute.String("area", componentSync),
+		attribute.String("area", areaSync),
 	))
 }
 

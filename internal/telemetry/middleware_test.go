@@ -9,10 +9,29 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
+
+// findErrorsCounter returns the stacklok.registry.errors sum data, or a
+// zero-value (no data points) if the metric wasn't recorded at all.
+func findErrorsCounter(rm metricdata.ResourceMetrics) metricdata.Sum[int64] {
+	for _, scope := range rm.ScopeMetrics {
+		if scope.Scope.Name != HTTPMetricsMeterName {
+			continue
+		}
+		for _, m := range scope.Metrics {
+			if m.Name == "stacklok.registry.errors" {
+				if sum, ok := m.Data.(metricdata.Sum[int64]); ok {
+					return sum
+				}
+			}
+		}
+	}
+	return metricdata.Sum[int64]{}
+}
 
 func TestNewHTTPMetrics(t *testing.T) {
 	t.Parallel()
@@ -108,36 +127,63 @@ func TestHTTPMetrics_Middleware(t *testing.T) {
 		assert.True(t, foundScope, "expected to find HTTP metrics scope")
 	})
 
-	t.Run("records metrics for error response", func(t *testing.T) {
+	t.Run("records error-by-type counter for 5xx and 4xx, but not 2xx", func(t *testing.T) {
 		t.Parallel()
 
-		reader := sdkmetric.NewManualReader()
-		mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-		defer func() { _ = mp.Shutdown(context.Background()) }()
+		tests := []struct {
+			name          string
+			status        int
+			expectPoint   bool
+			expectedClass string
+		}{
+			{name: "500 counts as server_error", status: http.StatusInternalServerError, expectPoint: true, expectedClass: errorClassServer},
+			{name: "404 counts as client_error", status: http.StatusNotFound, expectPoint: true, expectedClass: errorClassClient},
+			{name: "200 records nothing", status: http.StatusOK, expectPoint: false},
+		}
 
-		metrics, err := NewHTTPMetrics(mp)
-		require.NoError(t, err)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
 
-		// Create a handler that returns 500
-		handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-		})
+				reader := sdkmetric.NewManualReader()
+				mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+				defer func() { _ = mp.Shutdown(context.Background()) }()
 
-		r := chi.NewRouter()
-		r.Use(metrics.Middleware)
-		r.Get("/error", handler)
+				metrics, err := NewHTTPMetrics(mp)
+				require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodGet, "/error", nil)
-		rr := httptest.NewRecorder()
-		r.ServeHTTP(rr, req)
+				handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(tt.status)
+				})
 
-		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+				r := chi.NewRouter()
+				r.Use(metrics.Middleware)
+				r.Get("/error", handler)
 
-		// Verify metrics were recorded
-		var rm metricdata.ResourceMetrics
-		err = reader.Collect(context.Background(), &rm)
-		require.NoError(t, err)
-		require.NotEmpty(t, rm.ScopeMetrics)
+				req := httptest.NewRequest(http.MethodGet, "/error", nil)
+				rr := httptest.NewRecorder()
+				r.ServeHTTP(rr, req)
+
+				assert.Equal(t, tt.status, rr.Code)
+
+				var rm metricdata.ResourceMetrics
+				err = reader.Collect(context.Background(), &rm)
+				require.NoError(t, err)
+
+				hist := findErrorsCounter(rm)
+				if !tt.expectPoint {
+					assert.Empty(t, hist.DataPoints, "expected no stacklok.registry.errors data point for status %d", tt.status)
+					return
+				}
+				require.Len(t, hist.DataPoints, 1)
+				expectedAttrs := attribute.NewSet(
+					attribute.String("error_type", tt.expectedClass),
+					attribute.String("area", areaHTTP),
+				)
+				assert.True(t, hist.DataPoints[0].Attributes.Equals(&expectedAttrs),
+					"expected error_type=%s, area=%s attributes, got %v", tt.expectedClass, areaHTTP, hist.DataPoints[0].Attributes)
+			})
+		}
 	})
 
 	t.Run("extracts route pattern from chi router", func(t *testing.T) {
@@ -237,6 +283,29 @@ func TestMetricsMiddleware(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rr.Code)
 	})
+}
+
+func TestErrorClassForStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status   int
+		expected string
+	}{
+		{status: http.StatusOK, expected: ""},
+		{status: http.StatusFound, expected: ""},
+		{status: http.StatusBadRequest, expected: errorClassClient},
+		{status: http.StatusNotFound, expected: errorClassClient},
+		{status: http.StatusInternalServerError, expected: errorClassServer},
+		{status: http.StatusServiceUnavailable, expected: errorClassServer},
+	}
+
+	for _, tt := range tests {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.expected, errorClassForStatus(tt.status))
+		})
+	}
 }
 
 func TestGetRoutePattern(t *testing.T) {

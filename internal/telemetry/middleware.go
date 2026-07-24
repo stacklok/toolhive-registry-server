@@ -18,9 +18,9 @@ const (
 	HTTPMetricsMeterName = "github.com/stacklok/toolhive-registry-server/http"
 )
 
-// componentHTTP is the bounded component-label value stamped on
+// areaHTTP is the bounded area-label value stamped on
 // stacklok.registry.errors for HTTP-layer errors.
-const componentHTTP = "http"
+const areaHTTP = "http"
 
 // HTTPMetrics holds the OpenTelemetry instruments for HTTP metrics
 type HTTPMetrics struct {
@@ -29,7 +29,7 @@ type HTTPMetrics struct {
 	activeRequests  metric.Int64UpDownCounter
 	// errorsTotal is the additive error-by-type detail counter (RFC §3.6
 	// coverage gap). It carries the response status class as error_type
-	// alongside the fixed component="http" label. It is orthogonal to the
+	// alongside the fixed area="http" label. It is orthogonal to the
 	// status_code label already on requestsTotal: this series exists so an
 	// error ratio can be split by class without a high-cardinality join.
 	errorsTotal metric.Int64Counter
@@ -74,7 +74,7 @@ func NewHTTPMetrics(provider metric.MeterProvider) (*HTTPMetrics, error) {
 
 	errorsTotal, err := meter.Int64Counter(
 		"stacklok.registry.errors",
-		metric.WithDescription("Errors by type and component (additive error-by-type detail counter)"),
+		metric.WithDescription("Errors by type and area (additive error-by-type detail counter)"),
 		metric.WithUnit("{error}"),
 	)
 	if err != nil {
@@ -89,6 +89,13 @@ func NewHTTPMetrics(provider metric.MeterProvider) (*HTTPMetrics, error) {
 	}, nil
 }
 
+// errorClassServer and errorClassClient are the bounded error_type values
+// errorClassForStatus can return.
+const (
+	errorClassServer = "server_error"
+	errorClassClient = "client_error"
+)
+
 // errorClassForStatus maps an HTTP status code to a bounded error_type value.
 // Only 5xx and 4xx are classified as errors; anything below 400 returns "" and
 // records nothing. Keeping the value to the status class (not the exact code)
@@ -96,9 +103,9 @@ func NewHTTPMetrics(provider metric.MeterProvider) (*HTTPMetrics, error) {
 func errorClassForStatus(status int) string {
 	switch {
 	case status >= 500:
-		return "server_error"
+		return errorClassServer
 	case status >= 400:
-		return "client_error"
+		return errorClassClient
 	default:
 		return ""
 	}
@@ -144,13 +151,14 @@ func (m *HTTPMetrics) Middleware(next http.Handler) http.Handler {
 		m.requestDuration.Record(ctx, duration, metric.WithAttributes(attrs...))
 		m.requestsTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
 
-		// Additive error-by-type detail: increment on 5xx responses. The
-		// status class (not the exact code) is the bounded error_type value;
-		// area distinguishes this from sync/db errors on the same metric.
-		if errType := errorClassForStatus(ww.Status()); errType == "server_error" {
+		// Additive error-by-type detail: increment on 4xx and 5xx responses.
+		// The status class (not the exact code) is the bounded error_type
+		// value; area distinguishes this from sync/db errors on the same
+		// metric.
+		if errType := errorClassForStatus(ww.Status()); errType != "" {
 			m.errorsTotal.Add(ctx, 1, metric.WithAttributes(
 				attribute.String(coremetrics.LabelErrorType, errType),
-				attribute.String("area", componentHTTP),
+				attribute.String("area", areaHTTP),
 			))
 		}
 	})
