@@ -96,7 +96,12 @@ All metrics are prefixed with `stacklok_registry_` to distinguish them from othe
 
 When `metrics.enabled` is `true`, the same metrics are also directly scrapable at
 `/metrics` on the internal server (default port `8081`), independent of the OTLP export
-path described above.
+path described above. That endpoint carries no authentication, consistent with the other
+internal-server routes (`/health`, `/readiness`, `/version`) — keep port `8081` restricted
+to trusted scrapers at the network level.
+
+Every series additionally carries the constant labels `stacklok_component="registry"` and
+`stacklok_product` (the D8 ownership labels), promoted from OTel resource attributes.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
@@ -106,8 +111,9 @@ path described above.
 | `stacklok_registry_servers` | Gauge | `source` | Number of distinct servers in each source |
 | `stacklok_registry_skills` | Gauge | `source` | Number of distinct skills in each source |
 | `stacklok_registry_sync_duration_seconds` | Histogram | `registry`, `outcome` | Duration of sync operations (`outcome` is `success` or `error`) |
-| `stacklok_registry_errors` | Counter | `error_type`, `area` | Errors by type, for the sync (`area="sync"`) and HTTP (`area="http"`) paths |
+| `stacklok_registry_errors_total` | Counter | `error_type`, `area` | Errors by type, for the sync (`area="sync"`) and HTTP (`area="http"`) paths |
 | `stacklok_registry_db_query_duration_seconds` | Histogram | `operation` | Duration of database queries, by operation |
+| `stacklok_build_info` | Gauge | `component`, `version`, `commit` | Always `1`; build identity carried on labels |
 
 ### Histogram Buckets
 
