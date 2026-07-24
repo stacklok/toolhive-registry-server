@@ -488,7 +488,7 @@
               { "color": "green", "value": null }
             ]
           },
-          "unit": "short"
+          "unit": "reqps"
         },
         "overrides": []
       },

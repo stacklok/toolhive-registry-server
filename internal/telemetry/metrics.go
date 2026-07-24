@@ -205,15 +205,17 @@ func NewDBMetrics(provider metric.MeterProvider) (*DBMetrics, error) {
 
 	meter := provider.Meter(DBMetricsMeterName)
 
-	// toolhive-core has no DB-specific bucket preset; BucketsFastHTTP (5ms-10s)
-	// is reused because these queries are simple indexed reads/writes on a
-	// single Postgres instance, the same sub-10s latency envelope as this
-	// service's HTTP requests.
+	// toolhive-core has no DB-specific bucket preset; BucketsMCPProxy (10ms-300s)
+	// is reused instead of BucketsFastHTTP (5ms-10s) because claims filtering
+	// happens via RecordFilter chains in application code, not SQL-level JSONB
+	// ops, so a list/stream path can run well past 10s under heavy filtering.
+	// The 10ms floor still gives fine-grained resolution on the common case of
+	// simple indexed reads/writes.
 	queryDuration, err := meter.Float64Histogram(
 		"stacklok.registry.db.query.duration",
 		metric.WithDescription("Duration of database queries in seconds, by operation"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(coremetrics.BucketsFastHTTP()...),
+		metric.WithExplicitBucketBoundaries(coremetrics.BucketsMCPProxy()...),
 	)
 	if err != nil {
 		return nil, err

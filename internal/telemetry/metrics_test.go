@@ -301,7 +301,7 @@ func TestSyncMetrics_RecordSyncError(t *testing.T) {
 
 		var metrics *SyncMetrics
 		// Should not panic
-		metrics.RecordSyncError(context.Background(), "fetch_failed")
+		metrics.RecordSyncError(context.Background(), "FetchFailed")
 	})
 
 	t.Run("records error with bounded error_type and fixed area=sync", func(t *testing.T) {
@@ -315,7 +315,7 @@ func TestSyncMetrics_RecordSyncError(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, metrics)
 
-		metrics.RecordSyncError(context.Background(), "fetch_failed")
+		metrics.RecordSyncError(context.Background(), "FetchFailed")
 
 		var rm metricdata.ResourceMetrics
 		err = reader.Collect(context.Background(), &rm)
@@ -325,7 +325,7 @@ func TestSyncMetrics_RecordSyncError(t *testing.T) {
 		require.Len(t, sum.DataPoints, 1)
 
 		expectedAttrs := attribute.NewSet(
-			attribute.String("error_type", "fetch_failed"),
+			attribute.String("error_type", "FetchFailed"),
 			attribute.String("area", "sync"),
 		)
 		assert.True(t, sum.DataPoints[0].Attributes.Equals(&expectedAttrs))
