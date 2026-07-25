@@ -53,7 +53,9 @@ service:
   type: ClusterIP
   # -- Service port
   port: 8080
-  # -- Internal service port (health checks, metrics)
+  # -- Internal service port (health checks, metrics). Must match the server's
+  # fixed internal listen port (8081, set via the --internal-address flag) —
+  # changing this value does not reconfigure the container's listen address.
   internalPort: 8081
   # -- Service annotations
   annotations: {}

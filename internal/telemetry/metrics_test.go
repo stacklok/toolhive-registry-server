@@ -194,7 +194,7 @@ func TestSyncMetrics_RecordSyncDuration(t *testing.T) {
 
 		var metrics *SyncMetrics
 		// Should not panic
-		metrics.RecordSyncDuration(context.Background(), "test-registry", 5*time.Second, true)
+		metrics.RecordSyncDuration(context.Background(), "test-source", 5*time.Second, true)
 	})
 
 	t.Run("records sync duration with attributes", func(t *testing.T) {
@@ -209,10 +209,10 @@ func TestSyncMetrics_RecordSyncDuration(t *testing.T) {
 		require.NotNil(t, metrics)
 
 		// Record successful sync
-		metrics.RecordSyncDuration(context.Background(), "prod-registry", 2500*time.Millisecond, true)
+		metrics.RecordSyncDuration(context.Background(), "prod-source", 2500*time.Millisecond, true)
 
 		// Record failed sync
-		metrics.RecordSyncDuration(context.Background(), "dev-registry", 500*time.Millisecond, false)
+		metrics.RecordSyncDuration(context.Background(), "dev-source", 500*time.Millisecond, false)
 
 		// Collect metrics
 		var rm metricdata.ResourceMetrics
@@ -224,15 +224,15 @@ func TestSyncMetrics_RecordSyncDuration(t *testing.T) {
 
 		// Outcome is the canonical string label, never a boolean.
 		successAttrs := attribute.NewSet(
-			attribute.String("registry", "prod-registry"),
+			attribute.String("source", "prod-source"),
 			attribute.String("outcome", "success"),
 		)
 		errorAttrs := attribute.NewSet(
-			attribute.String("registry", "dev-registry"),
+			attribute.String("source", "dev-source"),
 			attribute.String("outcome", "error"),
 		)
-		assert.True(t, hasHistogramPoint(hist, successAttrs), "expected outcome=success data point for prod-registry")
-		assert.True(t, hasHistogramPoint(hist, errorAttrs), "expected outcome=error data point for dev-registry")
+		assert.True(t, hasHistogramPoint(hist, successAttrs), "expected outcome=success data point for prod-source")
+		assert.True(t, hasHistogramPoint(hist, errorAttrs), "expected outcome=error data point for dev-source")
 
 		// A boolean success label must never be emitted.
 		for _, dp := range hist.DataPoints {

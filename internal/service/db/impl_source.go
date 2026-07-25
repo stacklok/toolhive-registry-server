@@ -40,7 +40,7 @@ func (s *dbService) CreateSource(
 	span.SetAttributes(otel.AttrRegistryName.String(name))
 
 	// Validate configuration
-	if err := service.ValidateSourceConfig(req); err != nil {
+	if err := service.ValidateSourceConfig(name, req); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidSourceConfig, err)
 	}
@@ -208,7 +208,7 @@ func (s *dbService) UpdateSource(
 	span.SetAttributes(otel.AttrRegistryName.String(name))
 
 	// Validate configuration
-	if err := service.ValidateSourceConfig(req); err != nil {
+	if err := service.ValidateSourceConfig(name, req); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidSourceConfig, err)
 	}

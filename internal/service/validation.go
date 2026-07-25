@@ -27,8 +27,17 @@ func ValidateRegistryConfig(req *RegistryCreateRequest) error {
 	return nil
 }
 
-// ValidateSourceConfig validates a SourceCreateRequest
-func ValidateSourceConfig(req *SourceCreateRequest) error {
+// ValidateSourceConfig validates a SourceCreateRequest and its name.
+// name must be a valid DNS subdomain (RFC 1123): it is used as a Kubernetes
+// leader-election lease suffix and as a Prometheus label value on the
+// unauthenticated /metrics endpoint, so it is gated at every write path —
+// config load and API — per .claude/rules/data-model.md §6.
+func ValidateSourceConfig(name string, req *SourceCreateRequest) error {
+	if !config.IsValidDNSSubdomain(name) {
+		return fmt.Errorf("name '%s' must be a valid DNS subdomain "+
+			"(lowercase alphanumeric and hyphens, max 63 chars)", name)
+	}
+
 	if req == nil {
 		return fmt.Errorf("config is required")
 	}

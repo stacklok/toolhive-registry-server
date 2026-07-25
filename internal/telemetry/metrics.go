@@ -206,10 +206,11 @@ func (m *SyncMetrics) RecordSyncError(ctx context.Context, errorType string) {
 	))
 }
 
-// RecordSyncDuration records the duration of a sync operation for a registry.
+// RecordSyncDuration records the duration of a sync operation for a source.
 // The outcome is emitted as the canonical string label "outcome" ("success" or
-// "error"), never as a boolean.
-func (m *SyncMetrics) RecordSyncDuration(ctx context.Context, registryName string, duration time.Duration, success bool) {
+// "error"), never as a boolean. sourceName is the bounded "source" label — per
+// the RFC's D6, "source"/"area" are concepts local to the registry component.
+func (m *SyncMetrics) RecordSyncDuration(ctx context.Context, sourceName string, duration time.Duration, success bool) {
 	if m == nil || m.syncDuration == nil {
 		return
 	}
@@ -220,7 +221,7 @@ func (m *SyncMetrics) RecordSyncDuration(ctx context.Context, registryName strin
 	}
 
 	attrs := []attribute.KeyValue{
-		attribute.String("registry", registryName),
+		attribute.String("source", sourceName),
 		attribute.String(coremetrics.LabelOutcome, outcome),
 	}
 

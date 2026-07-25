@@ -49,6 +49,41 @@ helm uninstall <release_name>
 
 The command removes all the Kubernetes components associated with the chart and deletes the release. You will have to delete the namespace manually if you used Helm to create it.
 
+### Internal Port Exposure
+
+The Service exposes `service.internalPort` (default `8081`: `/health`, `/readiness`,
+`/version`, and `/metrics` when telemetry is enabled) alongside the public API port.
+Unlike the public port, the internal port carries no authentication, no audit logging,
+and no rate limiting by design — it is meant for Kubernetes probes and Prometheus
+scrapers only.
+
+This does not expose the internal port outside the cluster (the default Service `type`
+is `ClusterIP`), but with the default Service type any pod elsewhere in the cluster can
+reach it, not just the registry server's own pod. If your cluster does not already treat
+all in-cluster workloads as equally trusted, restrict the internal port to your metrics
+scraper and probe traffic with a NetworkPolicy, e.g.:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: toolhive-registry-server-internal
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: toolhive-registry-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 8081
+          protocol: TCP
+```
+
 ## Values
 
 | Key | Type | Default | Description |
@@ -90,7 +125,7 @@ The command removes all the Kubernetes components associated with the chart and 
 | resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | Resource requests and limits (matching operator defaults) |
 | securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"runAsUser":65535,"seccompProfile":{"type":"RuntimeDefault"}}` | Container security context |
 | service.annotations | object | `{}` | Service annotations |
-| service.internalPort | int | `8081` | Internal service port (health checks, metrics) |
+| service.internalPort | int | `8081` | Internal service port (health checks, metrics). Must match the server's fixed internal listen port (8081, set via the --internal-address flag) — changing this value does not reconfigure the container's listen address. |
 | service.port | int | `8080` | Service port |
 | service.type | string | `"ClusterIP"` | Service type |
 | serviceAccount.annotations | object | `{}` | Annotations to add to the service account |

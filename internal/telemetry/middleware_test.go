@@ -116,15 +116,23 @@ func TestHTTPMetrics_Middleware(t *testing.T) {
 		// Verify metrics were recorded
 		require.NotEmpty(t, rm.ScopeMetrics, "expected scope metrics to be recorded")
 
-		// Find our HTTP metrics scope
+		// Find our HTTP metrics scope and assert the exact registered instrument
+		// names, so a regression (e.g. reverting to thv_reg_srv_*) is caught here
+		// rather than only passing because "some metric" was recorded.
 		var foundScope bool
+		var gotNames []string
 		for _, scope := range rm.ScopeMetrics {
 			if scope.Scope.Name == HTTPMetricsMeterName {
 				foundScope = true
-				assert.NotEmpty(t, scope.Metrics, "expected metrics to be recorded")
+				for _, m := range scope.Metrics {
+					gotNames = append(gotNames, m.Name)
+				}
 			}
 		}
 		assert.True(t, foundScope, "expected to find HTTP metrics scope")
+		assert.Contains(t, gotNames, "stacklok.registry.http.request.duration")
+		assert.Contains(t, gotNames, "stacklok.registry.http.requests")
+		assert.Contains(t, gotNames, "stacklok.registry.http.active_requests")
 	})
 
 	t.Run("records error-by-type counter for 5xx and 4xx, but not 2xx", func(t *testing.T) {

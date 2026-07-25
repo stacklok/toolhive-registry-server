@@ -305,7 +305,7 @@ func TestValidateSourceConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := ValidateSourceConfig(tt.req)
+			err := ValidateSourceConfig("test-source", tt.req)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -317,6 +317,24 @@ func TestValidateSourceConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestValidateSourceConfig_Name checks that ValidateSourceConfig gates the
+// source name on IsValidDNSSubdomain (the regex itself is tested in
+// internal/config); this only proves the wiring is in place on the API path.
+func TestValidateSourceConfig_Name(t *testing.T) {
+	t.Parallel()
+
+	validReq := &SourceCreateRequest{
+		Managed: &config.ManagedConfig{},
+	}
+
+	err := ValidateSourceConfig("my-source-1", validReq)
+	require.NoError(t, err)
+
+	err = ValidateSourceConfig("Not_A_Valid.Name", validReq)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be a valid DNS subdomain")
 }
 
 func TestValidateGitConfig(t *testing.T) {

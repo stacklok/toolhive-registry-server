@@ -163,6 +163,56 @@ func TestPerformRegistrySync_FailureRecordsSyncError(t *testing.T) {
 		"expected error_type=FetchFailed, area=sync; got %v", sum.DataPoints[0].Attributes)
 }
 
+// TestPerformRegistrySync_SuccessDoesNotRecordSyncError is the complementary
+// check to TestPerformRegistrySync_FailureRecordsSyncError: a successful sync
+// must not increment stacklok.registry.errors. Without this, RecordSyncError
+// could be moved outside the failure branch (or called unconditionally) and
+// no coordinator-level test would catch it.
+func TestPerformRegistrySync_SuccessDoesNotRecordSyncError(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockManager := syncmocks.NewMockManager(ctrl)
+	mockStateSvc := statemocks.NewMockRegistryStateService(ctrl)
+
+	regCfg := &config.SourceConfig{Name: "healthy-source"}
+	cfg := &config.Config{Sources: []config.SourceConfig{*regCfg}}
+
+	mockManager.EXPECT().
+		PerformSync(gomock.Any(), regCfg, gomock.Nil()).
+		Return(&pkgsync.Result{Hash: "abc123", ServerCount: 1, SkillCount: 0}, nil)
+	mockStateSvc.EXPECT().
+		UpdateSyncStatus(gomock.Any(), "healthy-source", gomock.Any()).
+		Return(nil)
+
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { _ = mp.Shutdown(context.Background()) })
+
+	syncMetrics, err := telemetry.NewSyncMetrics(mp)
+	require.NoError(t, err)
+	require.NotNil(t, syncMetrics)
+
+	c := New(mockManager, mockStateSvc, cfg, WithSyncMetrics(syncMetrics)).(*defaultCoordinator)
+	c.performRegistrySync(context.Background(), regCfg, nil)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name == "stacklok.registry.errors" {
+				sum, ok := m.Data.(metricdata.Sum[int64])
+				require.True(t, ok, "expected int64 sum data type")
+				assert.Empty(t, sum.DataPoints,
+					"a successful sync must not record any stacklok.registry.errors data point")
+			}
+		}
+	}
+}
+
 // TestProcessNextSyncJob_FailingSourceDoesNotStarveOthers is the higher-level
 // regression test for the same bug: simulate two syncable sources, one of which
 // always fails, against an in-memory state service that mirrors the real DB

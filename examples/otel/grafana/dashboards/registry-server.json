@@ -374,14 +374,14 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.95, sum(rate(stacklok_registry_sync_duration_seconds_bucket[5m])) by (le, registry))",
-          "legendFormat": "p95 {{ registry }}",
+          "expr": "histogram_quantile(0.95, sum(rate(stacklok_registry_sync_duration_seconds_bucket[5m])) by (le, source))",
+          "legendFormat": "p95 {{ source }}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.50, sum(rate(stacklok_registry_sync_duration_seconds_bucket[5m])) by (le, registry))",
-          "legendFormat": "p50 {{ registry }}",
+          "expr": "histogram_quantile(0.50, sum(rate(stacklok_registry_sync_duration_seconds_bucket[5m])) by (le, source))",
+          "legendFormat": "p50 {{ source }}",
           "refId": "B"
         }
       ],
@@ -442,8 +442,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(increase(stacklok_registry_sync_duration_seconds_count[5m])) by (registry, outcome)",
-          "legendFormat": "{{ registry }} (outcome={{ outcome }})",
+          "expr": "sum(increase(stacklok_registry_sync_duration_seconds_count[5m])) by (source, outcome)",
+          "legendFormat": "{{ source }} (outcome={{ outcome }})",
           "refId": "A"
         }
       ],

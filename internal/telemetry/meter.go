@@ -127,6 +127,10 @@ func NewMeterProvider(ctx context.Context, opts ...MeterProviderOption) (metric.
 	// target_info via the allow filter.
 	promReader, promHandler, err := newPrometheusReader()
 	if err != nil {
+		if shutdownErr := exporter.Shutdown(ctx); shutdownErr != nil {
+			slog.Warn("Failed to shut down OTLP metrics exporter after Prometheus reader setup failure",
+				"error", shutdownErr)
+		}
 		return nil, nil, fmt.Errorf("failed to create Prometheus metrics reader: %w", err)
 	}
 
