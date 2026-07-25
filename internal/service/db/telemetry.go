@@ -1,6 +1,10 @@
 // Package database provides a database-backed implementation of the RegistryService interface
 package database
 
+// Tracing and metrics share this seam (see startSpan) rather than separate
+// files, matching how ToolHive itself combines them (pkg/telemetry/middleware.go,
+// pkg/vmcp/server/telemetry.go).
+
 import (
 	"context"
 	"time"
