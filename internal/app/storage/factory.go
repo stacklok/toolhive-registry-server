@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
@@ -15,7 +14,6 @@ import (
 	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
-	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
 //go:generate mockgen -destination=mocks/mock_factory.go -package=mocks -source=factory.go Factory
@@ -51,7 +49,6 @@ type FactoryOption func(*storageFactoryOptions)
 // storageFactoryOptions holds configuration options for the storage factory
 type storageFactoryOptions struct {
 	tracerProvider trace.TracerProvider
-	meterProvider  metric.MeterProvider
 }
 
 // WithTracerProvider sets the OpenTelemetry tracer provider for the storage factory.
@@ -60,15 +57,6 @@ type storageFactoryOptions struct {
 func WithTracerProvider(tp trace.TracerProvider) FactoryOption {
 	return func(opts *storageFactoryOptions) {
 		opts.tracerProvider = tp
-	}
-}
-
-// WithMeterProvider sets the OpenTelemetry meter provider for the storage
-// factory. If set, the factory builds DB query metrics and passes them to
-// storage components that support metrics (e.g., database service).
-func WithMeterProvider(mp metric.MeterProvider) FactoryOption {
-	return func(opts *storageFactoryOptions) {
-		opts.meterProvider = mp
 	}
 }
 
@@ -94,16 +82,6 @@ func NewStorageFactory(ctx context.Context, cfg *config.Config, opts ...FactoryO
 	if options.tracerProvider != nil {
 		tracer := options.tracerProvider.Tracer(database.ServiceTracerName)
 		dbOpts = append(dbOpts, WithTracer(tracer))
-	}
-	if options.meterProvider != nil {
-		// options.meterProvider is non-nil here, so NewDBMetrics always
-		// returns a non-nil *DBMetrics on success (nil is only returned for
-		// a nil provider).
-		dbMetrics, err := telemetry.NewDBMetrics(options.meterProvider)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create db metrics: %w", err)
-		}
-		dbOpts = append(dbOpts, WithDBMetrics(dbMetrics))
 	}
 	return NewDatabaseFactory(ctx, cfg, dbOpts...)
 }

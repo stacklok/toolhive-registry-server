@@ -12,7 +12,6 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
 const (
@@ -38,7 +37,6 @@ type serverCursor struct {
 type options struct {
 	pool        *pgxpool.Pool
 	tracer      trace.Tracer
-	dbMetrics   *telemetry.DBMetrics
 	maxMetaSize int
 	skipAuthz   bool
 }
@@ -68,15 +66,6 @@ func WithTracer(tracer trace.Tracer) Option {
 	}
 }
 
-// WithDBMetrics sets the OpenTelemetry database metrics for the service.
-// If not set, query-duration recording is disabled (no-op).
-func WithDBMetrics(m *telemetry.DBMetrics) Option {
-	return func(o *options) error {
-		o.dbMetrics = m
-		return nil
-	}
-}
-
 // WithMaxMetaSize sets the maximum allowed size in bytes for publisher-provided
 // metadata extensions. The value must be greater than zero.
 func WithMaxMetaSize(maxMetaSize int) Option {
@@ -102,7 +91,6 @@ func WithSkipAuthz() Option {
 type dbService struct {
 	pool        *pgxpool.Pool
 	tracer      trace.Tracer
-	dbMetrics   *telemetry.DBMetrics
 	maxMetaSize int
 	skipAuthz   bool
 }
@@ -122,7 +110,6 @@ func New(opts ...Option) (service.RegistryService, error) {
 	return &dbService{
 		pool:        o.pool,
 		tracer:      o.tracer,
-		dbMetrics:   o.dbMetrics,
 		maxMetaSize: o.maxMetaSize,
 		skipAuthz:   o.skipAuthz,
 	}, nil

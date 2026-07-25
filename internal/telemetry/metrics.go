@@ -19,9 +19,6 @@ const (
 	// SyncMetricsMeterName is the name used for the sync metrics meter
 	SyncMetricsMeterName = "github.com/stacklok/toolhive-registry-server/sync"
 
-	// DBMetricsMeterName is the name used for the database metrics meter
-	DBMetricsMeterName = "github.com/stacklok/toolhive-registry-server/db"
-
 	// ComponentRegistry is this service's stacklok.component value (RFC D8).
 	// toolhive-core defines only the AttrStacklokComponent key; each component
 	// supplies its own value.
@@ -189,52 +186,6 @@ func NewSyncMetrics(provider metric.MeterProvider) (*SyncMetrics, error) {
 		syncDuration: syncDuration,
 		errorsTotal:  errorsTotal,
 	}, nil
-}
-
-// DBMetrics holds the OpenTelemetry instruments for database query metrics.
-type DBMetrics struct {
-	queryDuration metric.Float64Histogram
-}
-
-// NewDBMetrics creates a new DBMetrics instance with the given meter provider.
-// If provider is nil, it returns nil (no-op metrics).
-func NewDBMetrics(provider metric.MeterProvider) (*DBMetrics, error) {
-	if provider == nil {
-		return nil, nil
-	}
-
-	meter := provider.Meter(DBMetricsMeterName)
-
-	// toolhive-core has no DB-specific bucket preset; BucketsMCPProxy (10ms-300s)
-	// is reused instead of BucketsFastHTTP (5ms-10s) because claims filtering
-	// happens via RecordFilter chains in application code, not SQL-level JSONB
-	// ops, so a list/stream path can run well past 10s under heavy filtering.
-	// The 10ms floor still gives fine-grained resolution on the common case of
-	// simple indexed reads/writes.
-	queryDuration, err := meter.Float64Histogram(
-		"stacklok.registry.db.query.duration",
-		metric.WithDescription("Duration of database queries in seconds, by operation"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(coremetrics.BucketsMCPProxy()...),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &DBMetrics{queryDuration: queryDuration}, nil
-}
-
-// RecordQueryDuration records one database query duration observation labeled
-// with the bounded operation name. operation must be a fixed query-name string
-// (never raw SQL) to keep cardinality bounded. No-op on a nil receiver /
-// instrument.
-func (m *DBMetrics) RecordQueryDuration(ctx context.Context, operation string, duration time.Duration) {
-	if m == nil || m.queryDuration == nil {
-		return
-	}
-	m.queryDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(
-		attribute.String("operation", operation),
-	))
 }
 
 // RecordSyncError increments stacklok.registry.errors for a sync failure,

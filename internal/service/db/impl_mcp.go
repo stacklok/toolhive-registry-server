@@ -30,8 +30,8 @@ func (s *dbService) ListServers(
 	ctx context.Context,
 	opts ...service.Option,
 ) (*service.ListServersResult, error) {
-	ctx, span, done := s.startSpan(ctx, "dbService.ListServers")
-	defer done()
+	ctx, span := s.startSpan(ctx, "dbService.ListServers")
+	defer span.End()
 
 	options := &service.ListServersOptions{
 		Limit: service.DefaultPageSize, // default limit
@@ -160,8 +160,8 @@ func (s *dbService) ListServerVersions(
 	ctx context.Context,
 	opts ...service.Option,
 ) ([]*upstreamv0.ServerJSON, error) {
-	ctx, span, done := s.startSpan(ctx, "dbService.ListServerVersions")
-	defer done()
+	ctx, span := s.startSpan(ctx, "dbService.ListServerVersions")
+	defer span.End()
 	start := time.Now()
 
 	options := &service.ListServerVersionsOptions{
@@ -254,8 +254,8 @@ func (s *dbService) GetServerVersion(
 	ctx context.Context,
 	opts ...service.Option,
 ) (*upstreamv0.ServerJSON, error) {
-	ctx, span, done := s.startSpan(ctx, "dbService.GetServerVersion")
-	defer done()
+	ctx, span := s.startSpan(ctx, "dbService.GetServerVersion")
+	defer span.End()
 	start := time.Now()
 
 	options := &service.GetServerVersionOptions{}
@@ -592,8 +592,8 @@ func (s *dbService) PublishServerVersion(
 	ctx context.Context,
 	opts ...service.Option,
 ) (*upstreamv0.ServerJSON, error) {
-	ctx, span, done := s.startSpan(ctx, "dbService.PublishServerVersion")
-	defer done()
+	ctx, span := s.startSpan(ctx, "dbService.PublishServerVersion")
+	defer span.End()
 	start := time.Now()
 
 	// Parse options
@@ -819,8 +819,8 @@ func (s *dbService) DeleteServerVersion(
 	ctx context.Context,
 	opts ...service.Option,
 ) error {
-	ctx, span, done := s.startSpan(ctx, "dbService.DeleteServerVersion")
-	defer done()
+	ctx, span := s.startSpan(ctx, "dbService.DeleteServerVersion")
+	defer span.End()
 	start := time.Now()
 
 	options := &service.DeleteServerVersionOptions{}
