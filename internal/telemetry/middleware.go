@@ -3,7 +3,6 @@ package telemetry
 
 import (
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -11,6 +10,7 @@ import (
 	coremetrics "github.com/stacklok/toolhive-core/telemetry/metrics"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
 const (
@@ -30,8 +30,9 @@ type HTTPMetrics struct {
 	// errorsTotal is the additive error-by-type detail counter (RFC §3.6
 	// coverage gap). It carries the response status class as error_type
 	// alongside the fixed area="http" label. It is orthogonal to the
-	// status_code label already on requestsTotal: this series exists so an
-	// error ratio can be split by class without a high-cardinality join.
+	// http.response.status_code attribute already on requestsTotal: this
+	// series exists so an error ratio can be split by class without a
+	// high-cardinality join.
 	errorsTotal metric.Int64Counter
 }
 
@@ -44,16 +45,21 @@ func NewHTTPMetrics(provider metric.MeterProvider) (*HTTPMetrics, error) {
 
 	meter := provider.Meter(HTTPMetricsMeterName)
 
+	// requestDuration and activeRequests carry the OTel HTTP server semconv
+	// names and units verbatim (RFC D2: semconv-covered metrics are never
+	// prefixed), so they stay cross-vendor comparable.
 	requestDuration, err := meter.Float64Histogram(
-		"stacklok.registry.http.request.duration",
-		metric.WithDescription("Duration of HTTP requests in seconds"),
-		metric.WithUnit("s"),
+		semconv.HTTPServerRequestDurationName,
+		metric.WithDescription(semconv.HTTPServerRequestDurationDescription),
+		metric.WithUnit(semconv.HTTPServerRequestDurationUnit),
 		metric.WithExplicitBucketBoundaries(coremetrics.BucketsFastHTTP()...),
 	)
 	if err != nil {
 		return nil, err
 	}
 
+	// requestsTotal has no semconv equivalent (semconv derives rate from the
+	// duration histogram's count), so it keeps the stacklok.* prefix.
 	requestsTotal, err := meter.Int64Counter(
 		"stacklok.registry.http.requests",
 		metric.WithDescription("Total number of HTTP requests"),
@@ -64,9 +70,9 @@ func NewHTTPMetrics(provider metric.MeterProvider) (*HTTPMetrics, error) {
 	}
 
 	activeRequests, err := meter.Int64UpDownCounter(
-		"stacklok.registry.http.active_requests",
-		metric.WithDescription("Number of currently in-flight HTTP requests"),
-		metric.WithUnit("{request}"),
+		semconv.HTTPServerActiveRequestsName,
+		metric.WithDescription(semconv.HTTPServerActiveRequestsDescription),
+		metric.WithUnit(semconv.HTTPServerActiveRequestsUnit),
 	)
 	if err != nil {
 		return nil, err
@@ -136,11 +142,13 @@ func (m *HTTPMetrics) Middleware(next http.Handler) http.Handler {
 		// rather than the actual URL like "/registry/v0.1/servers/my-server"
 		routePattern := getRoutePattern(r)
 
-		// Record metrics
+		// Record metrics using semconv HTTP attribute keys, so a
+		// http.server.request.duration series stays joinable with the same
+		// metric emitted by any other semconv-instrumented service.
 		attrs := []attribute.KeyValue{
-			attribute.String("method", r.Method),
-			attribute.String("route", routePattern),
-			attribute.String("status_code", strconv.Itoa(ww.Status())),
+			semconv.HTTPRequestMethodKey.String(r.Method),
+			semconv.HTTPRoute(routePattern),
+			semconv.HTTPResponseStatusCode(ww.Status()),
 		}
 
 		duration := time.Since(start).Seconds()

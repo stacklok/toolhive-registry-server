@@ -59,8 +59,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(stacklok_registry_http_requests_total[5m])) by (route)",
-          "legendFormat": "{{ route }}",
+          "expr": "sum(rate(stacklok_registry_http_requests_total[5m])) by (http_route)",
+          "legendFormat": "{{ http_route }}",
           "refId": "A"
         }
       ],
@@ -112,14 +112,14 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.95, sum(rate(stacklok_registry_http_request_duration_seconds_bucket[5m])) by (le, route))",
-          "legendFormat": "p95 {{ route }}",
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, http_route))",
+          "legendFormat": "p95 {{ http_route }}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.50, sum(rate(stacklok_registry_http_request_duration_seconds_bucket[5m])) by (le, route))",
-          "legendFormat": "p50 {{ route }}",
+          "expr": "histogram_quantile(0.50, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, http_route))",
+          "legendFormat": "p50 {{ http_route }}",
           "refId": "B"
         }
       ],
@@ -157,7 +157,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(stacklok_registry_http_active_requests)",
+          "expr": "sum(http_server_active_requests)",
           "legendFormat": "Active Requests",
           "refId": "A"
         }
@@ -219,8 +219,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(stacklok_registry_http_requests_total[5m])) by (status_code)",
-          "legendFormat": "{{ status_code }}",
+          "expr": "sum(rate(stacklok_registry_http_requests_total[5m])) by (http_response_status_code)",
+          "legendFormat": "{{ http_response_status_code }}",
           "refId": "A"
         }
       ],

@@ -130,9 +130,9 @@ func TestHTTPMetrics_Middleware(t *testing.T) {
 			}
 		}
 		assert.True(t, foundScope, "expected to find HTTP metrics scope")
-		assert.Contains(t, gotNames, "stacklok.registry.http.request.duration")
+		assert.Contains(t, gotNames, "http.server.request.duration")
 		assert.Contains(t, gotNames, "stacklok.registry.http.requests")
-		assert.Contains(t, gotNames, "stacklok.registry.http.active_requests")
+		assert.Contains(t, gotNames, "http.server.active_requests")
 	})
 
 	t.Run("records error-by-type counter for 5xx and 4xx, but not 2xx", func(t *testing.T) {
