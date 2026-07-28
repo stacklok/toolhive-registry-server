@@ -66,7 +66,7 @@ scraper and probe traffic with a NetworkPolicy, e.g.:
 **Non-default `service.type`**: the internal port has no per-port guard, so changing
 `service.type` to anything that publishes the Service externally (e.g. `LoadBalancer`,
 or `NodePort` reachable from outside the cluster) publishes the unauthenticated internal
-port externally too — there is no Ingress in this chart to pre-empt it. Set
+port externally too — there is no Ingress in this chart to preempt it. Set
 `service.exposeInternalPort: false` if you change `service.type` and don't want that;
 Kubernetes probes are unaffected, since kubelet reaches the container's port directly
 rather than through the Service.
