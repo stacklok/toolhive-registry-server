@@ -112,13 +112,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, http_route))",
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{stacklok_component=\"registry\"}[5m])) by (le, http_route))",
           "legendFormat": "p95 {{ http_route }}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.50, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, http_route))",
+          "expr": "histogram_quantile(0.50, sum(rate(http_server_request_duration_seconds_bucket{stacklok_component=\"registry\"}[5m])) by (le, http_route))",
           "legendFormat": "p50 {{ http_route }}",
           "refId": "B"
         }
@@ -157,7 +157,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(http_server_active_requests)",
+          "expr": "sum(http_server_active_requests{stacklok_component=\"registry\"})",
           "legendFormat": "Active Requests",
           "refId": "A"
         }

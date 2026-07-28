@@ -133,6 +133,29 @@ func TestHTTPMetrics_Middleware(t *testing.T) {
 		assert.Contains(t, gotNames, "http.server.request.duration")
 		assert.Contains(t, gotNames, "stacklok.registry.http.requests")
 		assert.Contains(t, gotNames, "http.server.active_requests")
+
+		// Pin the semconv attribute keys/values on the duration histogram,
+		// and confirm the pre-rename keys are gone: a revert to
+		// attribute.String("route", ...) / strconv.Itoa(status) would
+		// otherwise leave this suite green while every dashboard panel
+		// grouping by (http_route) or (http_response_status_code) goes
+		// empty in production.
+		hist := findFloat64Histogram(t, rm, "http.server.request.duration")
+		require.Len(t, hist.DataPoints, 1)
+		dp := hist.DataPoints[0]
+
+		expectedAttrs := attribute.NewSet(
+			attribute.String("http.request.method", http.MethodGet),
+			attribute.String("http.route", "/test/{id}"),
+			attribute.Int("http.response.status_code", http.StatusOK),
+		)
+		assert.True(t, dp.Attributes.Equals(&expectedAttrs),
+			"expected semconv HTTP attributes, got %v", dp.Attributes)
+
+		for _, oldKey := range []attribute.Key{"method", "route", "status_code"} {
+			_, present := dp.Attributes.Value(oldKey)
+			assert.False(t, present, "pre-rename attribute key %q must not be emitted", oldKey)
+		}
 	})
 
 	t.Run("records error-by-type counter for 5xx and 4xx, but not 2xx", func(t *testing.T) {
@@ -219,11 +242,18 @@ func TestHTTPMetrics_Middleware(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rr.Code)
 
-		// Verify metrics were recorded (route pattern should be used, not actual URL)
+		// Verify the http.route attribute carries the route pattern, not the
+		// actual request URL.
 		var rm metricdata.ResourceMetrics
 		err = reader.Collect(context.Background(), &rm)
 		require.NoError(t, err)
-		require.NotEmpty(t, rm.ScopeMetrics)
+
+		hist := findFloat64Histogram(t, rm, "http.server.request.duration")
+		require.Len(t, hist.DataPoints, 1)
+
+		route, present := hist.DataPoints[0].Attributes.Value(attribute.Key("http.route"))
+		require.True(t, present, "expected http.route attribute to be set")
+		assert.Equal(t, "/users/{userID}/posts/{postID}", route.AsString())
 	})
 }
 
