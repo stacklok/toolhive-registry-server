@@ -174,8 +174,14 @@ func newPrometheusReader() (sdkmetric.Reader, http.Handler, error) {
 		return nil, nil, err
 	}
 
+	// MaxRequestsInFlight rejects pile-up with 503 instead of letting scrape
+	// requests queue unbounded behind pipeline.produce's per-collection lock:
+	// with a stalled DB, HandlerOpts.Timeout can't help here (the Prometheus
+	// exporter's Collect uses its own context.TODO(), not the request's), so
+	// this cap is the only backpressure the handler itself can apply.
 	handler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{
-		ErrorHandling: promhttp.ContinueOnError,
+		ErrorHandling:       promhttp.ContinueOnError,
+		MaxRequestsInFlight: 2,
 	})
 
 	return promExp, handler, nil

@@ -3,6 +3,7 @@ package telemetry
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	coremetrics "github.com/stacklok/toolhive-core/telemetry/metrics"
@@ -44,6 +45,52 @@ type RegistryMetricReader interface {
 	RegistryMetricCounts(ctx context.Context) ([]RegistryMetricCount, error)
 }
 
+// registryMetricCountsCacheTTL bounds how often the observable-gauge callback
+// re-runs RegistryMetricCounts' underlying DB aggregate. Before the
+// Prometheus reader was added, the periodic OTLP reader was the only caller,
+// so the query ran once every DefaultMetricsInterval (60s); a Prometheus
+// scrape interval shorter than that (commonly 15s, and unauthenticated on the
+// internal port) would otherwise re-run the aggregate on every scrape. This
+// TTL restores roughly that cadence regardless of how many readers are
+// attached or how often they're polled.
+const registryMetricCountsCacheTTL = 60 * time.Second
+
+// cachingRegistryMetricReader memoizes RegistryMetricCounts behind a TTL so
+// concurrent or frequent callers (multiple readers, a fast scrape interval)
+// share one query result instead of one query per caller. now is overridable
+// in tests; it defaults to time.Now.
+type cachingRegistryMetricReader struct {
+	reader RegistryMetricReader
+	ttl    time.Duration
+	now    func() time.Time
+
+	mu        sync.Mutex
+	expiresAt time.Time
+	counts    []RegistryMetricCount
+	err       error
+}
+
+func newCachingRegistryMetricReader(reader RegistryMetricReader) *cachingRegistryMetricReader {
+	return &cachingRegistryMetricReader{reader: reader, ttl: registryMetricCountsCacheTTL, now: time.Now}
+}
+
+// RegistryMetricCounts returns the cached result if it's still within the
+// TTL, otherwise queries the underlying reader and caches the result
+// (including an error result, so a persistently failing DB doesn't get
+// hammered once per scrape either).
+func (c *cachingRegistryMetricReader) RegistryMetricCounts(ctx context.Context) ([]RegistryMetricCount, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if now := c.now(); now.Before(c.expiresAt) {
+		return c.counts, c.err
+	}
+
+	c.counts, c.err = c.reader.RegistryMetricCounts(ctx)
+	c.expiresAt = c.now().Add(c.ttl)
+	return c.counts, c.err
+}
+
 // NewRegistryMetrics creates a new RegistryMetrics instance with the given meter provider.
 // If provider is nil, it returns nil (no-op metrics).
 func NewRegistryMetrics(provider metric.MeterProvider, reader RegistryMetricReader) (*RegistryMetrics, error) {
@@ -78,9 +125,10 @@ func NewRegistryMetrics(provider metric.MeterProvider, reader RegistryMetricRead
 
 	var registration metric.Registration
 	if reader != nil {
+		cachedReader := newCachingRegistryMetricReader(reader)
 		registration, err = meter.RegisterCallback(
 			func(ctx context.Context, observer metric.Observer) error {
-				counts, err := reader.RegistryMetricCounts(ctx)
+				counts, err := cachedReader.RegistryMetricCounts(ctx)
 				if err != nil {
 					return err
 				}

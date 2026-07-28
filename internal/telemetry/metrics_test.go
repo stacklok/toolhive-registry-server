@@ -25,6 +25,19 @@ func (r *staticRegistryMetricReader) RegistryMetricCounts(_ context.Context) ([]
 	return r.counts, nil
 }
 
+// countingRegistryMetricReader wraps another reader and counts how many
+// times its RegistryMetricCounts was actually invoked, so cache-hit/miss
+// behavior can be asserted directly.
+type countingRegistryMetricReader struct {
+	inner RegistryMetricReader
+	calls int
+}
+
+func (r *countingRegistryMetricReader) RegistryMetricCounts(ctx context.Context) ([]RegistryMetricCount, error) {
+	r.calls++
+	return r.inner.RegistryMetricCounts(ctx)
+}
+
 func TestNewRegistryMetrics(t *testing.T) {
 	t.Parallel()
 
@@ -160,6 +173,66 @@ func hasHistogramPoint(hist metricdata.Histogram[float64], attrs attribute.Set) 
 		}
 	}
 	return false
+}
+
+func TestCachingRegistryMetricReader(t *testing.T) {
+	t.Parallel()
+
+	t.Run("second call within TTL reuses the cached result", func(t *testing.T) {
+		t.Parallel()
+
+		inner := &countingRegistryMetricReader{
+			inner: &staticRegistryMetricReader{counts: []RegistryMetricCount{{SourceName: "s", ServerCount: 1}}},
+		}
+		now := time.Now()
+		cache := newCachingRegistryMetricReader(inner)
+		cache.now = func() time.Time { return now }
+
+		_, err := cache.RegistryMetricCounts(context.Background())
+		require.NoError(t, err)
+		_, err = cache.RegistryMetricCounts(context.Background())
+		require.NoError(t, err)
+
+		assert.Equal(t, 1, inner.calls, "expected the underlying reader to be queried once for two calls within the TTL")
+	})
+
+	t.Run("call after TTL expiry re-queries the underlying reader", func(t *testing.T) {
+		t.Parallel()
+
+		inner := &countingRegistryMetricReader{
+			inner: &staticRegistryMetricReader{counts: []RegistryMetricCount{{SourceName: "s", ServerCount: 1}}},
+		}
+		now := time.Now()
+		cache := newCachingRegistryMetricReader(inner)
+		cache.now = func() time.Time { return now }
+
+		_, err := cache.RegistryMetricCounts(context.Background())
+		require.NoError(t, err)
+
+		now = now.Add(61 * time.Second)
+		_, err = cache.RegistryMetricCounts(context.Background())
+		require.NoError(t, err)
+
+		assert.Equal(t, 2, inner.calls, "expected a fresh query once the TTL has elapsed")
+	})
+
+	t.Run("caches an error result instead of re-querying on every call", func(t *testing.T) {
+		t.Parallel()
+
+		inner := &countingRegistryMetricReader{
+			inner: &staticRegistryMetricReader{err: errors.New("db unavailable")},
+		}
+		now := time.Now()
+		cache := newCachingRegistryMetricReader(inner)
+		cache.now = func() time.Time { return now }
+
+		_, err1 := cache.RegistryMetricCounts(context.Background())
+		_, err2 := cache.RegistryMetricCounts(context.Background())
+
+		require.Error(t, err1)
+		require.Error(t, err2)
+		assert.Equal(t, 1, inner.calls, "a failing reader should still be memoized within the TTL, not retried on every call")
+	})
 }
 
 func TestNewSyncMetrics(t *testing.T) {
