@@ -1893,6 +1893,59 @@ func TestUpdateSource(t *testing.T) {
 
 			},
 		},
+		{
+			// A source created before source-name DNS-subdomain validation
+			// shipped can have a name that fails the rule today. There is no
+			// rename endpoint, so UpdateSource must not re-gate the name —
+			// doing so would permanently strand this row: every future PUT
+			// would 400 on the name before ever reaching the point where an
+			// update would otherwise apply.
+			name: "success - update source whose stored name predates DNS-subdomain validation",
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) string {
+				t.Helper()
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+
+				sourceType := string(config.SourceTypeGit)
+
+				now := time.Now()
+				sourceConfig := []byte(`{"repository":"https://github.com/example/repo.git","branch":"main"}`)
+
+				_, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
+					Name:         "Legacy_Source.Name",
+					CreationType: sqlc.CreationTypeAPI,
+					SourceType:   sourceType,
+
+					SourceConfig: sourceConfig,
+					Syncable:     true,
+					CreatedAt:    &now,
+					UpdatedAt:    &now,
+				})
+				require.NoError(t, err)
+
+				return "Legacy_Source.Name"
+			},
+			updateReq: &service.SourceCreateRequest{
+
+				Git: &config.GitConfig{
+					Repository: "https://github.com/example/updated-repo.git",
+					Branch:     "develop",
+				},
+				SyncPolicy: &config.SyncPolicyConfig{
+					Interval: "30m",
+				},
+			},
+			validateFunc: func(t *testing.T, result *service.SourceInfo, err error) {
+				t.Helper()
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "Legacy_Source.Name", result.Name)
+
+				gitConfig, ok := result.SourceConfig.(*config.GitConfig)
+				require.True(t, ok)
+				require.Equal(t, "https://github.com/example/updated-repo.git", gitConfig.Repository)
+			},
+		},
 	}
 
 	for _, tt := range tests {

@@ -39,8 +39,9 @@ func (s *dbService) CreateSource(
 	// Add tracing attributes
 	span.SetAttributes(otel.AttrRegistryName.String(name))
 
-	// Validate configuration
-	if err := service.ValidateSourceConfig(name, req); err != nil {
+	// Validate configuration, including the name: this is where the name is
+	// actually chosen.
+	if err := service.ValidateSourceConfig(name, req, true); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidSourceConfig, err)
 	}
@@ -207,8 +208,12 @@ func (s *dbService) UpdateSource(
 	// Add tracing attributes
 	span.SetAttributes(otel.AttrRegistryName.String(name))
 
-	// Validate configuration
-	if err := service.ValidateSourceConfig(name, req); err != nil {
+	// Validate configuration. The name itself is not re-validated here: it
+	// was already chosen (and gated, if the source postdates this rule) at
+	// creation time, and there is no rename endpoint to correct a
+	// pre-existing name — re-gating it here would permanently strand any
+	// source created before this validation shipped.
+	if err := service.ValidateSourceConfig(name, req, false); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidSourceConfig, err)
 	}
