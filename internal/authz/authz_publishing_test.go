@@ -169,6 +169,107 @@ func TestAuthzIntegration_SkillLifecycle(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Test 14: Plugin lifecycle (publish, visibility, delete)
+// ---------------------------------------------------------------------------
+
+//nolint:paralleltest,tparallel // subtests must run sequentially — publish, visibility, delete depend on ordering
+func TestAuthzIntegration_PluginLifecycle(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	env := setupEnv(t, &config.AuthConfig{
+		Mode:  config.AuthModeOAuth,
+		Authz: authzRolesConfig(),
+	})
+
+	platformWriter := env.oidc.token(t, map[string]any{"org": "acme", "team": "platform", "role": "writer"})
+	dataWriter := env.oidc.token(t, map[string]any{"org": "acme", "team": "data", "role": "writer"})
+	superAdmin := env.oidc.token(t, map[string]any{"org": "acme", "role": "super-admin"})
+
+	waitForSync(t, env, superAdmin)
+
+	t.Run("publish platform plugin", func(t *testing.T) {
+		resp := doRequest(t, "POST", env.baseURL+"/v1/entries", platformWriter, publishPluginReq{
+			Claims: map[string]any{"org": "acme", "team": "platform"},
+			Plugin: map[string]any{
+				"namespace":   "io.test",
+				"name":        "plat-plugin",
+				"version":     "1.0.0",
+				"title":       "Platform Plugin",
+				"description": "test",
+			},
+		})
+		assertStatus(t, resp, 201)
+	})
+
+	t.Run("publish data plugin", func(t *testing.T) {
+		resp := doRequest(t, "POST", env.baseURL+"/v1/entries", dataWriter, publishPluginReq{
+			Claims: map[string]any{"org": "acme", "team": "data"},
+			Plugin: map[string]any{
+				"namespace":   "io.test",
+				"name":        "data-plugin",
+				"version":     "1.0.0",
+				"title":       "Data Plugin",
+				"description": "test",
+			},
+		})
+		assertStatus(t, resp, 201)
+	})
+
+	t.Run("data-writer sees data plugin", func(t *testing.T) {
+		url := fmt.Sprintf("%s/registry/acme-all/v0.1/x/dev.toolhive/plugins?search=data-plugin", env.baseURL)
+		resp := doRequest(t, "GET", url, dataWriter, nil)
+		body := assertStatus(t, resp, 200)
+		assert.Contains(t, body, "data-plugin")
+	})
+
+	t.Run("data-writer no platform plugin", func(t *testing.T) {
+		url := fmt.Sprintf("%s/registry/acme-all/v0.1/x/dev.toolhive/plugins?search=plat-plugin", env.baseURL)
+		resp := doRequest(t, "GET", url, dataWriter, nil)
+		body := assertStatus(t, resp, 200)
+		var result struct {
+			Metadata struct {
+				Count int `json:"count"`
+			} `json:"metadata"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(body), &result))
+		assert.Equal(t, 0, result.Metadata.Count, "expected 0 plugins for plat-plugin")
+	})
+
+	t.Run("platform-writer sees platform plugin", func(t *testing.T) {
+		url := fmt.Sprintf("%s/registry/acme-all/v0.1/x/dev.toolhive/plugins?search=plat-plugin", env.baseURL)
+		resp := doRequest(t, "GET", url, platformWriter, nil)
+		body := assertStatus(t, resp, 200)
+		assert.Contains(t, body, "plat-plugin")
+	})
+
+	t.Run("super-admin sees both", func(t *testing.T) {
+		url := fmt.Sprintf("%s/registry/acme-all/v0.1/x/dev.toolhive/plugins", env.baseURL)
+		resp := doRequest(t, "GET", url, superAdmin, nil)
+		body := assertStatus(t, resp, 200)
+		assert.Contains(t, body, "plat-plugin")
+		assert.Contains(t, body, "data-plugin")
+	})
+
+	t.Run("wrong owner cannot delete", func(t *testing.T) {
+		resp := doRequest(t, "DELETE", env.baseURL+"/v1/entries/plugin/plat-plugin/versions/1.0.0", dataWriter, nil)
+		assertStatus(t, resp, 403)
+	})
+
+	t.Run("owner deletes plugin", func(t *testing.T) {
+		resp := doRequest(t, "DELETE", env.baseURL+"/v1/entries/plugin/plat-plugin/versions/1.0.0", platformWriter, nil)
+		assertStatus(t, resp, 204)
+	})
+
+	t.Run("delete again 404", func(t *testing.T) {
+		resp := doRequest(t, "DELETE", env.baseURL+"/v1/entries/plugin/plat-plugin/versions/1.0.0", platformWriter, nil)
+		assertStatus(t, resp, 404)
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Test 13: Multi-version consumer queries
 // ---------------------------------------------------------------------------
 

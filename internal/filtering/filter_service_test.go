@@ -499,3 +499,81 @@ func TestDefaultFilterService_ApplyFilters_SkillsPassWithNoFilter(t *testing.T) 
 	require.Len(t, result.Data.Skills, 1)
 	assert.Equal(t, "pdf-processor", result.Data.Skills[0].Name)
 }
+
+func TestDefaultFilterService_ApplyFilters_FiltersPluginsByName(t *testing.T) {
+	t.Parallel()
+
+	service := NewDefaultFilterService()
+	ctx := context.Background()
+
+	originalRegistry := registry.NewTestUpstreamRegistry(
+		registry.WithServers(
+			registry.NewTestServer("test-server",
+				registry.WithNamespace("io.test/"),
+				registry.WithTags("test"),
+				registry.WithOCIPackage("test:latest"),
+			),
+		),
+	)
+	// Add plugins directly since there's no builder option for them
+	originalRegistry.Data.Plugins = []toolhivetypes.Plugin{
+		{
+			Namespace:   "io.github.test",
+			Name:        "pdf-generator",
+			Version:     "1.0.0",
+			Description: "Test plugin",
+		},
+		{
+			Namespace:   "io.github.test",
+			Name:        "lint-runner",
+			Version:     "2.0.0",
+			Description: "Another plugin",
+		},
+		{
+			Namespace:   "io.github.other",
+			Name:        "data-migrator",
+			Version:     "1.0.0",
+			Description: "Other namespace plugin",
+		},
+	}
+
+	// Exclude server namespace and one plugin namespace — keep only io.github.other
+	filter := &config.FilterConfig{
+		Names: &config.NameFilterConfig{
+			Exclude: []string{"io.test/*", "io.github.test/*"},
+		},
+	}
+
+	result, err := service.ApplyFilters(ctx, originalRegistry, filter)
+
+	require.NoError(t, err)
+	// Server should be excluded
+	assert.Empty(t, result.Data.Servers)
+	// Only the io.github.other plugin should remain
+	require.Len(t, result.Data.Plugins, 1)
+	assert.Equal(t, "data-migrator", result.Data.Plugins[0].Name)
+	assert.Equal(t, "io.github.other", result.Data.Plugins[0].Namespace)
+}
+
+func TestDefaultFilterService_ApplyFilters_PluginsPassWithNoFilter(t *testing.T) {
+	t.Parallel()
+
+	service := NewDefaultFilterService()
+	ctx := context.Background()
+
+	originalRegistry := registry.NewTestUpstreamRegistry()
+	originalRegistry.Data.Plugins = []toolhivetypes.Plugin{
+		{
+			Namespace:   "io.github.test",
+			Name:        "pdf-generator",
+			Version:     "1.0.0",
+			Description: "Test plugin",
+		},
+	}
+
+	result, err := service.ApplyFilters(ctx, originalRegistry, nil)
+
+	require.NoError(t, err)
+	require.Len(t, result.Data.Plugins, 1)
+	assert.Equal(t, "pdf-generator", result.Data.Plugins[0].Name)
+}
