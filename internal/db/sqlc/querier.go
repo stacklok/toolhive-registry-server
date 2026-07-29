@@ -42,6 +42,9 @@ type Querier interface {
 	DeleteOrphanedIcons(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedPackages(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedRemotes(ctx context.Context, serverIds []uuid.UUID) error
+	DeletePluginGitPackagesByPluginId(ctx context.Context, pluginID uuid.UUID) error
+	DeletePluginOciPackagesByPluginId(ctx context.Context, pluginID uuid.UUID) error
+	DeletePluginsByRegistry(ctx context.Context, sourceID uuid.UUID) error
 	// Delete a registry by name. Go callers guard against deleting wrong creation_type.
 	DeleteRegistry(ctx context.Context, name string) (int64, error)
 	DeleteRegistryEntry(ctx context.Context, arg DeleteRegistryEntryParams) (int64, error)
@@ -60,6 +63,15 @@ type Querier interface {
 	GetAPISourcesByNames(ctx context.Context, names []string) ([]GetAPISourcesByNamesRow, error)
 	GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error)
 	GetManagedSources(ctx context.Context) ([]GetManagedSourcesRow, error)
+	// Despite the name, this query returns multiple rows. The actual number of
+	// records is bounded by the number of sources that provide the same name and
+	// version, which we currently don't expect to be more than a few.
+	// Cursor-based pagination using (position, source_id) compound cursor.
+	// position is the sort key but may not be unique; source_id is the tiebreaker.
+	GetPluginVersion(ctx context.Context, arg GetPluginVersionParams) ([]GetPluginVersionRow, error)
+	// Source-scoped variant of GetPluginVersion used by the publish fetch-back path.
+	// source_name and version are required; registry filtering is not applied.
+	GetPluginVersionBySourceName(ctx context.Context, arg GetPluginVersionBySourceNameParams) (GetPluginVersionBySourceNameRow, error)
 	GetRegistryByName(ctx context.Context, name string) (Registry, error)
 	GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (GetRegistryEntryByNameRow, error)
 	GetServerIDsByRegistryNameVersion(ctx context.Context, sourceID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error)
@@ -87,6 +99,10 @@ type Querier interface {
 	GetSourceSyncByName(ctx context.Context, name string) (RegistrySync, error)
 	InitializeSourceSync(ctx context.Context, arg InitializeSourceSyncParams) error
 	InsertEntryVersion(ctx context.Context, arg InsertEntryVersionParams) (uuid.UUID, error)
+	InsertPluginGitPackage(ctx context.Context, arg InsertPluginGitPackageParams) error
+	InsertPluginOciPackage(ctx context.Context, arg InsertPluginOciPackageParams) error
+	InsertPluginVersion(ctx context.Context, arg InsertPluginVersionParams) (uuid.UUID, error)
+	InsertPluginVersionForSync(ctx context.Context, arg InsertPluginVersionForSyncParams) (uuid.UUID, error)
 	InsertRegistryEntry(ctx context.Context, arg InsertRegistryEntryParams) (uuid.UUID, error)
 	InsertServerIcon(ctx context.Context, arg InsertServerIconParams) error
 	// TODO: this seems unused
@@ -109,6 +125,13 @@ type Querier interface {
 	ListEntriesByRegistry(ctx context.Context, registryID uuid.UUID) ([]ListEntriesByRegistryRow, error)
 	ListEntriesBySource(ctx context.Context, sourceID uuid.UUID) ([]ListEntriesBySourceRow, error)
 	ListEntryVersions(ctx context.Context, entryID uuid.UUID) ([]ListEntryVersionsRow, error)
+	ListPluginGitPackages(ctx context.Context, versionIds []uuid.UUID) ([]PluginGitPackage, error)
+	ListPluginOciPackages(ctx context.Context, versionIds []uuid.UUID) ([]PluginOciPackage, error)
+	// Cursor-based pagination using (name, version) compound cursor.
+	// The cursor_name and cursor_version parameters define the starting point.
+	// When cursor is provided, results start AFTER the specified (name, version) tuple.
+	// Returns position from registry_source for source priority ordering.
+	ListPlugins(ctx context.Context, arg ListPluginsParams) ([]ListPluginsRow, error)
 	// Queries for the new lightweight registry table and registry_source junction.
 	ListRegistries(ctx context.Context, arg ListRegistriesParams) ([]Registry, error)
 	ListRegistrySources(ctx context.Context, registryID uuid.UUID) ([]ListRegistrySourcesRow, error)
@@ -142,9 +165,11 @@ type Querier interface {
 	UpdateSourceSyncStatusByName(ctx context.Context, arg UpdateSourceSyncStatusByNameParams) error
 	UpsertEntryVersionsFromTemp(ctx context.Context) ([]UpsertEntryVersionsFromTempRow, error)
 	UpsertIconsFromTemp(ctx context.Context) error
+	UpsertLatestPluginVersion(ctx context.Context, arg UpsertLatestPluginVersionParams) (uuid.UUID, error)
 	UpsertLatestServerVersion(ctx context.Context, arg UpsertLatestServerVersionParams) (uuid.UUID, error)
 	UpsertLatestSkillVersion(ctx context.Context, arg UpsertLatestSkillVersionParams) (uuid.UUID, error)
 	UpsertPackagesFromTemp(ctx context.Context) error
+	UpsertPluginVersionForSync(ctx context.Context, arg UpsertPluginVersionForSyncParams) (uuid.UUID, error)
 	// Insert or update a registry. The creation_type is passed as a parameter.
 	// Business logic in Go guards against cross-type overwrites.
 	UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (Registry, error)
