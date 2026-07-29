@@ -59,7 +59,7 @@ Every source has a sync status that reflects the outcome of the most recent sync
 The sync record also includes:
 - The start time of the last sync attempt and the finish time of the last completed sync attempt
 - The number of consecutive failures since the last success
-- The server count from the last successful sync
+- The entry counts (servers, skills, plugins) from the last successful sync
 - A hash of the last synced data, used for change detection
 
 ## Sync Scheduling
@@ -88,7 +88,7 @@ When a source is selected for sync:
 1. **Fetch**: Data is retrieved from the upstream source (git repository, API endpoint, or file).
 2. **Filter**: If the source has a filter configuration, it is applied to the fetched data.
 3. **Store**: The processed data is written to the database in a single atomic transaction. Existing entries are updated, and entries no longer present in the source are removed.
-4. **Update status**: The sync record is updated with the outcome — success or failure, along with the new data hash and server count.
+4. **Update status**: The sync record is updated with the outcome — success or failure, along with the new data hash and entry counts (servers, skills, plugins).
 
 If the sync fails at any stage, the source is marked as `Failed` and will be retried on the next coordinator cycle. There is no permanent error state; every failed source is eligible for retry.
 
