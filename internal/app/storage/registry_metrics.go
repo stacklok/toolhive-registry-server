@@ -12,7 +12,8 @@ import (
 const registryMetricCountsQuery = `
 SELECT src.name,
        COUNT(re.id) FILTER (WHERE re.entry_type = 'MCP')::bigint AS server_count,
-       COUNT(re.id) FILTER (WHERE re.entry_type = 'SKILL')::bigint AS skill_count
+       COUNT(re.id) FILTER (WHERE re.entry_type = 'SKILL')::bigint AS skill_count,
+       COUNT(re.id) FILTER (WHERE re.entry_type = 'PLUGIN')::bigint AS plugin_count
   FROM source src
   LEFT JOIN registry_entry re ON re.source_id = src.id
  GROUP BY src.name
@@ -45,7 +46,7 @@ func (r *registryMetricsReader) RegistryMetricCounts(
 	var counts []telemetry.RegistryMetricCount
 	for rows.Next() {
 		var count telemetry.RegistryMetricCount
-		if err := rows.Scan(&count.SourceName, &count.ServerCount, &count.SkillCount); err != nil {
+		if err := rows.Scan(&count.SourceName, &count.ServerCount, &count.SkillCount, &count.PluginCount); err != nil {
 			return nil, fmt.Errorf("scan registry metric count: %w", err)
 		}
 		counts = append(counts, count)
