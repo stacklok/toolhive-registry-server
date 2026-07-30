@@ -186,3 +186,32 @@ func AuditedSkill(eventType string, h http.HandlerFunc) http.HandlerFunc {
 		h(w, r)
 	}
 }
+
+// AuditedPlugin wraps handlers on .../plugins/... paths.
+// Reads "registryName", "namespace", "name", and optionally "version" params.
+func AuditedPlugin(eventType string, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		target := map[string]string{
+			targetFieldMethod:       r.Method,
+			targetFieldPath:         r.URL.Path,
+			targetFieldResourceType: ResourceTypePlugin,
+		}
+		if registryName := chi.URLParam(r, "registryName"); registryName != "" {
+			target[targetFieldRegistryName] = registryName
+		}
+		if namespace := chi.URLParam(r, "namespace"); namespace != "" {
+			target[targetFieldNamespace] = namespace
+		}
+		if name := chi.URLParam(r, "name"); name != "" {
+			target[targetFieldResourceName] = name
+		}
+		if version := chi.URLParam(r, "version"); version != "" {
+			target[targetFieldVersion] = version
+		}
+		setRouteInfo(r.Context(), &RouteInfo{
+			EventType: eventType,
+			Target:    target,
+		})
+		h(w, r)
+	}
+}

@@ -134,19 +134,19 @@ func baseSourceConfigs(t *testing.T) []config.SourceConfig {
 
 	return []config.SourceConfig{
 		{
-			Name: "shared-catalog",
+			Name:       "shared-catalog",
 			File:       &config.FileConfig{Path: writeFixture("shared-catalog", sharedData)},
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme"},
 		},
 		{
-			Name: "platform-tools",
+			Name:       "platform-tools",
 			File:       &config.FileConfig{Path: writeFixture("platform-tools", platformData)},
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme", "team": "platform"},
 		},
 		{
-			Name: "data-tools",
+			Name:       "data-tools",
 			File:       &config.FileConfig{Path: writeFixture("data-tools", dataToolsData)},
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme", "team": "data"},
@@ -484,6 +484,11 @@ type publishReq struct {
 type publishSkillReq struct {
 	Claims map[string]any `json:"claims,omitempty"`
 	Skill  map[string]any `json:"skill,omitempty"`
+}
+
+type publishPluginReq struct {
+	Claims map[string]any `json:"claims,omitempty"`
+	Plugin map[string]any `json:"plugin,omitempty"`
 }
 
 func parseRegistryNames(t *testing.T, body string) []string {

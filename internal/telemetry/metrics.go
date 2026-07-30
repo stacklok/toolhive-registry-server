@@ -30,6 +30,7 @@ const (
 type RegistryMetrics struct {
 	serversTotal metric.Int64ObservableGauge
 	skillsTotal  metric.Int64ObservableGauge
+	pluginsTotal metric.Int64ObservableGauge
 	registration metric.Registration
 }
 
@@ -38,6 +39,7 @@ type RegistryMetricCount struct {
 	SourceName  string
 	ServerCount int64
 	SkillCount  int64
+	PluginCount int64
 }
 
 // RegistryMetricReader reads registry metric values at collection time.
@@ -118,6 +120,15 @@ func NewRegistryMetrics(provider metric.MeterProvider, reader RegistryMetricRead
 		return nil, err
 	}
 
+	pluginsTotal, err := meter.Int64ObservableGauge(
+		"stacklok.registry.plugins",
+		metric.WithDescription("Number of distinct plugins in each source"),
+		metric.WithUnit("{plugin}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	info := versions.GetVersionInfo()
 	if err := coremetrics.RegisterBuildInfo(meter, ComponentRegistry, info.Version, info.Commit); err != nil {
 		return nil, err
@@ -137,11 +148,14 @@ func NewRegistryMetrics(provider metric.MeterProvider, reader RegistryMetricRead
 					attrs := metric.WithAttributes(attribute.String("source", count.SourceName))
 					observer.ObserveInt64(serversTotal, count.ServerCount, attrs)
 					observer.ObserveInt64(skillsTotal, count.SkillCount, attrs)
+					observer.ObserveInt64(pluginsTotal, count.PluginCount, attrs)
 				}
 
 				return nil
 			},
-			serversTotal, skillsTotal,
+			serversTotal,
+			skillsTotal,
+			pluginsTotal,
 		)
 		if err != nil {
 			return nil, err
@@ -151,6 +165,7 @@ func NewRegistryMetrics(provider metric.MeterProvider, reader RegistryMetricRead
 	return &RegistryMetrics{
 		serversTotal: serversTotal,
 		skillsTotal:  skillsTotal,
+		pluginsTotal: pluginsTotal,
 		registration: registration,
 	}, nil
 }

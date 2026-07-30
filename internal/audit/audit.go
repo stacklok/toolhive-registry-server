@@ -21,6 +21,7 @@ const (
 	ResourceTypeUser     = "user"
 	ResourceTypeServer   = "server"
 	ResourceTypeSkill    = "skill"
+	ResourceTypePlugin   = "plugin"
 )
 
 // Target field keys.
@@ -48,6 +49,14 @@ const (
 	EventSkillRead         = "skill.read"
 	EventSkillVersionsList = "skill.versions.list"
 	EventSkillVersionRead  = "skill.version.read"
+)
+
+// Event types for the plugins extension API.
+const (
+	EventPluginList         = "plugin.list"
+	EventPluginRead         = "plugin.read"
+	EventPluginVersionsList = "plugin.versions.list"
+	EventPluginVersionRead  = "plugin.version.read"
 )
 
 // Event types for audit logging — write operations.

@@ -51,11 +51,33 @@ func TestPublishEntry(t *testing.T) {
 			wantError:  "invalid request body:",
 		},
 		{
-			name:       "neither server nor skill provided",
+			name:       "neither server nor skill nor plugin provided",
 			body:       mustMarshal(publishEntryRequest{}),
 			setupMock:  func(_ *mocks.MockRegistryService) {},
 			wantStatus: http.StatusBadRequest,
-			wantError:  "exactly one of 'server' or 'skill' must be provided",
+			wantError:  "exactly one of 'server', 'skill', or 'plugin' must be provided",
+		},
+		{
+			name: "server and plugin together",
+			body: mustMarshal(publishEntryRequest{
+				Server: &upstreamv0.ServerJSON{Name: "test/server", Version: "1.0.0"},
+				Plugin: &service.Plugin{Namespace: "io.test", Name: "my-plugin", Version: "1.0.0"},
+			}),
+			setupMock:  func(_ *mocks.MockRegistryService) {},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "exactly one of 'server', 'skill', or 'plugin' must be provided",
+		},
+		{
+			name: "success - plugin-only body",
+			body: mustMarshal(publishEntryRequest{
+				Plugin: &service.Plugin{Namespace: "io.test", Name: "my-plugin", Version: "1.0.0", Title: "My Plugin"},
+			}),
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().PublishPlugin(gomock.Any(), gomock.Any()).
+					Return(&service.Plugin{Namespace: "io.test", Name: "my-plugin", Version: "1.0.0", Title: "My Plugin"}, nil)
+			},
+			wantStatus:     http.StatusCreated,
+			wantServerName: "my-plugin",
 		},
 		{
 			name: "version already exists",
@@ -295,6 +317,14 @@ func TestDeletePublishedEntry(t *testing.T) {
 			path: "/entries/skill/test%2Fskill/versions/1.0.0",
 			setupMock: func(m *mocks.MockRegistryService) {
 				m.EXPECT().DeleteSkillVersion(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			},
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name: "success - plugin type",
+			path: "/entries/plugin/test%2Fplugin/versions/1.0.0",
+			setupMock: func(m *mocks.MockRegistryService) {
+				m.EXPECT().DeletePluginVersion(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			},
 			wantStatus: http.StatusNoContent,
 		},

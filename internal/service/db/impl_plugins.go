@@ -1,4 +1,5 @@
-// Package database provides the database-backed implementation of the SkillService interface.
+// Package database provides the database-backed implementation of the plugin
+// catalog operations on the RegistryService interface.
 package database
 
 import (
@@ -20,17 +21,17 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/versions"
 )
 
-// ListSkills returns skills in the registry with cursor-based pagination.
+// ListPlugins returns plugins in the registry with cursor-based pagination.
 //
 //nolint:gocyclo
-func (s *dbService) ListSkills(
+func (s *dbService) ListPlugins(
 	ctx context.Context,
 	opts ...service.Option,
-) (*service.ListSkillsResult, error) {
-	ctx, span := s.startSpan(ctx, "dbService.ListSkills")
+) (*service.ListPluginsResult, error) {
+	ctx, span := s.startSpan(ctx, "dbService.ListPlugins")
 	defer span.End()
 
-	options := &service.ListSkillsOptions{
+	options := &service.ListPluginsOptions{
 		Limit: service.DefaultPageSize,
 	}
 	for _, opt := range opts {
@@ -62,7 +63,7 @@ func (s *dbService) ListSkills(
 
 	querier := sqlc.New(s.pool)
 
-	params := sqlc.ListSkillsParams{
+	params := sqlc.ListPluginsParams{
 		RegistryID: registryID,
 		Size:       int64(options.Limit + 1),
 	}
@@ -88,81 +89,81 @@ func (s *dbService) ListSkills(
 	claimsFilter := newClaimsFilterWith(
 		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
-			r, ok := record.(sqlc.ListSkillsRow)
+			r, ok := record.(sqlc.ListPluginsRow)
 			return r.Claims, ok
 		},
 	)
 	if s.skipAuthz {
 		claimsFilter = nil
 	}
-	listRows, nextCursor, err := streamSkillRows(ctx, querier, params, claimsFilter, options.Limit)
+	listRows, nextCursor, err := streamPluginRows(ctx, querier, params, claimsFilter, options.Limit)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
-	packages, err := fetchSkillPackages(ctx, querier, listRows)
+	packages, err := fetchPluginPackages(ctx, querier, listRows)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
-	skills := make([]*service.Skill, len(listRows))
+	plugins := make([]*service.Plugin, len(listRows))
 	for i, row := range listRows {
-		skill := service.ListSkillsRowToSkill(row)
-		skill.Packages = packages[row.VersionID]
-		skills[i] = skill
+		plugin := service.ListPluginsRowToPlugin(row)
+		plugin.Packages = packages[row.VersionID]
+		plugins[i] = plugin
 	}
 
-	return &service.ListSkillsResult{
-		Skills:     skills,
+	return &service.ListPluginsResult{
+		Plugins:    plugins,
 		NextCursor: nextCursor,
 	}, nil
 }
 
-// fetchSkillPackages fetches OCI and Git packages for the given skill rows and
-// returns them keyed by skill version ID.
-func fetchSkillPackages(
+// fetchPluginPackages fetches OCI and Git packages for the given plugin rows and
+// returns them keyed by plugin version ID.
+func fetchPluginPackages(
 	ctx context.Context,
 	querier *sqlc.Queries,
-	rows []sqlc.ListSkillsRow,
-) (map[uuid.UUID][]service.SkillPackage, error) {
+	rows []sqlc.ListPluginsRow,
+) (map[uuid.UUID][]service.PluginPackage, error) {
 	ids := make([]uuid.UUID, len(rows))
 	for i, row := range rows {
 		ids[i] = row.VersionID
 	}
 
-	ociPackages, err := querier.ListSkillOciPackages(ctx, ids)
+	ociPackages, err := querier.ListPluginOciPackages(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
-	gitPackages, err := querier.ListSkillGitPackages(ctx, ids)
+	gitPackages, err := querier.ListPluginGitPackages(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
 
-	packages := make(map[uuid.UUID][]service.SkillPackage)
+	packages := make(map[uuid.UUID][]service.PluginPackage)
 	for _, pkg := range ociPackages {
-		packages[pkg.SkillID] = append(packages[pkg.SkillID], toServiceSkillOciPackage(pkg))
+		packages[pkg.PluginID] = append(packages[pkg.PluginID], toServicePluginOciPackage(pkg))
 	}
 	for _, pkg := range gitPackages {
-		packages[pkg.SkillID] = append(packages[pkg.SkillID], toServiceSkillGitPackage(pkg))
+		packages[pkg.PluginID] = append(packages[pkg.PluginID], toServicePluginGitPackage(pkg))
 	}
 
 	return packages, nil
 }
 
-// GetSkillVersion returns a specific skill version by name and version.
+// GetPluginVersion returns a specific plugin version by name and version.
 //
 //nolint:gocyclo
-func (s *dbService) GetSkillVersion(
+func (s *dbService) GetPluginVersion(
 	ctx context.Context,
 	opts ...service.Option,
-) (*service.Skill, error) {
-	ctx, span := s.startSpan(ctx, "dbService.GetSkillVersion")
+) (*service.Plugin, error) {
+	ctx, span := s.startSpan(ctx, "dbService.GetPluginVersion")
 	defer span.End()
 
-	options := &service.GetSkillVersionOptions{}
+	options := &service.GetPluginVersionOptions{}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
 			otel.RecordError(span, err)
@@ -194,7 +195,7 @@ func (s *dbService) GetSkillVersion(
 
 	querier := sqlc.New(s.pool)
 
-	params := sqlc.GetSkillVersionParams{
+	params := sqlc.GetPluginVersionParams{
 		Name:       options.Name,
 		Version:    options.Version,
 		Namespace:  &options.Namespace,
@@ -205,7 +206,7 @@ func (s *dbService) GetSkillVersion(
 		params.SourceName = &options.SourceName
 	}
 
-	rows, err := querier.GetSkillVersion(ctx, params)
+	rows, err := querier.GetPluginVersion(ctx, params)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
@@ -222,14 +223,14 @@ func (s *dbService) GetSkillVersion(
 	claimsFilter := newClaimsFilterWith(
 		ctx, options.Claims,
 		func(record any) ([]byte, bool) {
-			r, ok := record.(sqlc.GetSkillVersionRow)
+			r, ok := record.(sqlc.GetPluginVersionRow)
 			return r.Claims, ok
 		},
 	)
 	if s.skipAuthz {
 		claimsFilter = nil
 	}
-	var row sqlc.GetSkillVersionRow
+	var row sqlc.GetPluginVersionRow
 	found := false
 	for _, r := range rows {
 		if claimsFilter == nil {
@@ -252,30 +253,30 @@ func (s *dbService) GetSkillVersion(
 		return nil, fmt.Errorf("%w: %s %s", service.ErrNotFound, options.Name, options.Version)
 	}
 
-	ociPackages, err := querier.ListSkillOciPackages(ctx, []uuid.UUID{row.SkillVersionID})
+	ociPackages, err := querier.ListPluginOciPackages(ctx, []uuid.UUID{row.PluginVersionID})
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
-	gitPackages, err := querier.ListSkillGitPackages(ctx, []uuid.UUID{row.SkillVersionID})
+	gitPackages, err := querier.ListPluginGitPackages(ctx, []uuid.UUID{row.PluginVersionID})
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
-	packages := make([]service.SkillPackage, 0)
+	packages := make([]service.PluginPackage, 0)
 	for _, pkg := range ociPackages {
-		packages = append(packages, toServiceSkillOciPackage(pkg))
+		packages = append(packages, toServicePluginOciPackage(pkg))
 	}
 	for _, pkg := range gitPackages {
-		packages = append(packages, toServiceSkillGitPackage(pkg))
+		packages = append(packages, toServicePluginGitPackage(pkg))
 	}
 
-	res := service.GetSkillVersionRowToSkill(row)
+	res := service.GetPluginVersionRowToPlugin(row)
 	res.Packages = packages
 	return res, nil
 }
 
-func toServiceSkillOciPackage(pkg sqlc.SkillOciPackage) service.SkillPackage {
+func toServicePluginOciPackage(pkg sqlc.PluginOciPackage) service.PluginPackage {
 	digest := ""
 	mediaType := ""
 	if pkg.Digest != nil {
@@ -284,15 +285,15 @@ func toServiceSkillOciPackage(pkg sqlc.SkillOciPackage) service.SkillPackage {
 	if pkg.MediaType != nil {
 		mediaType = *pkg.MediaType
 	}
-	return service.SkillPackage{
-		RegistryType: service.SkillPackageTypeOCI,
+	return service.PluginPackage{
+		RegistryType: service.PluginPackageTypeOCI,
 		Identifier:   pkg.Identifier,
 		Digest:       digest,
 		MediaType:    mediaType,
 	}
 }
 
-func toServiceSkillGitPackage(pkg sqlc.SkillGitPackage) service.SkillPackage {
+func toServicePluginGitPackage(pkg sqlc.PluginGitPackage) service.PluginPackage {
 	ref := ""
 	commit := ""
 	subfolder := ""
@@ -305,8 +306,8 @@ func toServiceSkillGitPackage(pkg sqlc.SkillGitPackage) service.SkillPackage {
 	if pkg.Subfolder != nil {
 		subfolder = *pkg.Subfolder
 	}
-	return service.SkillPackage{
-		RegistryType: service.SkillPackageTypeGit,
+	return service.PluginPackage{
+		RegistryType: service.PluginPackageTypeGit,
 		URL:          pkg.Url,
 		Ref:          ref,
 		Commit:       commit,
@@ -314,23 +315,23 @@ func toServiceSkillGitPackage(pkg sqlc.SkillGitPackage) service.SkillPackage {
 	}
 }
 
-// PublishSkill inserts a new skill version into a managed registry.
-func (s *dbService) PublishSkill(
+// PublishPlugin inserts a new plugin version into a managed registry.
+func (s *dbService) PublishPlugin(
 	ctx context.Context,
-	skill *service.Skill,
+	plugin *service.Plugin,
 	opts ...service.Option,
-) (*service.Skill, error) {
-	ctx, span := s.startSpan(ctx, "dbService.PublishSkill")
+) (*service.Plugin, error) {
+	ctx, span := s.startSpan(ctx, "dbService.PublishPlugin")
 	defer span.End()
 
-	options := &service.PublishSkillOptions{}
+	options := &service.PublishPluginOptions{}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
 			otel.RecordError(span, err)
 			return nil, err
 		}
 	}
-	if skill.Namespace == "" || skill.Name == "" || skill.Version == "" {
+	if plugin.Namespace == "" || plugin.Name == "" || plugin.Version == "" {
 		return nil, fmt.Errorf("namespace, name, and version are required")
 	}
 
@@ -355,28 +356,28 @@ func (s *dbService) PublishSkill(
 		}
 	}
 
-	sourceName, err := s.executePublishSkillTransaction(ctx, skill, claimsJSON, gateClaims)
+	sourceName, err := s.executePublishPluginTransaction(ctx, plugin, claimsJSON, gateClaims)
 	if err != nil {
 		otel.RecordError(span, err)
 		return nil, err
 	}
 
-	result, err := s.fetchSkillVersionBySource(ctx, skill.Name, skill.Version, sourceName)
+	result, err := s.fetchPluginVersionBySource(ctx, plugin.Name, plugin.Version, sourceName)
 	if err != nil {
 		otel.RecordError(span, err)
-		return nil, fmt.Errorf("failed to fetch published skill: %w", err)
+		return nil, fmt.Errorf("failed to fetch published plugin: %w", err)
 	}
 	return result, nil
 }
 
-// fetchSkillVersionBySource retrieves a skill version using the source name directly,
+// fetchPluginVersionBySource retrieves a plugin version using the source name directly,
 // bypassing registry filtering. Used by the publish fetch-back path.
-func (s *dbService) fetchSkillVersionBySource(
+func (s *dbService) fetchPluginVersionBySource(
 	ctx context.Context,
 	name, version, sourceName string,
-) (*service.Skill, error) {
+) (*service.Plugin, error) {
 	querier := sqlc.New(s.pool)
-	row, err := querier.GetSkillVersionBySourceName(ctx, sqlc.GetSkillVersionBySourceNameParams{
+	row, err := querier.GetPluginVersionBySourceName(ctx, sqlc.GetPluginVersionBySourceNameParams{
 		Name:       name,
 		Version:    version,
 		SourceName: sourceName,
@@ -388,57 +389,55 @@ func (s *dbService) fetchSkillVersionBySource(
 		return nil, err
 	}
 
-	ociPackages, err := querier.ListSkillOciPackages(ctx, []uuid.UUID{row.SkillVersionID})
+	ociPackages, err := querier.ListPluginOciPackages(ctx, []uuid.UUID{row.PluginVersionID})
 	if err != nil {
 		return nil, err
 	}
-	gitPackages, err := querier.ListSkillGitPackages(ctx, []uuid.UUID{row.SkillVersionID})
+	gitPackages, err := querier.ListPluginGitPackages(ctx, []uuid.UUID{row.PluginVersionID})
 	if err != nil {
 		return nil, err
 	}
 
-	packages := make([]service.SkillPackage, 0, len(ociPackages)+len(gitPackages))
+	packages := make([]service.PluginPackage, 0, len(ociPackages)+len(gitPackages))
 	for _, pkg := range ociPackages {
-		packages = append(packages, toServiceSkillOciPackage(pkg))
+		packages = append(packages, toServicePluginOciPackage(pkg))
 	}
 	for _, pkg := range gitPackages {
-		packages = append(packages, toServiceSkillGitPackage(pkg))
+		packages = append(packages, toServicePluginGitPackage(pkg))
 	}
 
-	result := service.GetSkillVersionRowToSkill(sqlc.GetSkillVersionRow{
-		RegistryType:   row.RegistryType,
-		ID:             row.ID,
-		Name:           row.Name,
-		Version:        row.Version,
-		IsLatest:       row.IsLatest,
-		CreatedAt:      row.CreatedAt,
-		UpdatedAt:      row.UpdatedAt,
-		Description:    row.Description,
-		Title:          row.Title,
-		SkillVersionID: row.SkillVersionID,
-		Namespace:      row.Namespace,
-		Status:         row.Status,
-		License:        row.License,
-		Compatibility:  row.Compatibility,
-		AllowedTools:   row.AllowedTools,
-		Repository:     row.Repository,
-		Icons:          row.Icons,
-		Metadata:       row.Metadata,
-		ExtensionMeta:  row.ExtensionMeta,
-		Claims:         row.Claims,
-		Position:       row.Position,
+	result := service.GetPluginVersionRowToPlugin(sqlc.GetPluginVersionRow{
+		RegistryType:    row.RegistryType,
+		ID:              row.ID,
+		Name:            row.Name,
+		Version:         row.Version,
+		IsLatest:        row.IsLatest,
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
+		Description:     row.Description,
+		Title:           row.Title,
+		PluginVersionID: row.PluginVersionID,
+		Namespace:       row.Namespace,
+		Status:          row.Status,
+		License:         row.License,
+		Repository:      row.Repository,
+		Icons:           row.Icons,
+		Metadata:        row.Metadata,
+		ExtensionMeta:   row.ExtensionMeta,
+		Claims:          row.Claims,
+		Position:        row.Position,
 	})
 	result.Packages = packages
 	return result, nil
 }
 
-// executePublishSkillTransaction executes the skill publish operation within a transaction.
+// executePublishPluginTransaction executes the plugin publish operation within a transaction.
 // Returns the managed source name for fetch-back, or an error.
 //
 //nolint:gocyclo
-func (s *dbService) executePublishSkillTransaction(
+func (s *dbService) executePublishPluginTransaction(
 	ctx context.Context,
-	skill *service.Skill,
+	plugin *service.Plugin,
 	claimsJSON []byte,
 	gateClaims map[string]any,
 ) (string, error) {
@@ -477,14 +476,14 @@ func (s *dbService) executePublishSkillTransaction(
 	var entryID uuid.UUID
 	existing, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
 		SourceID:  managedSource.ID,
-		EntryType: sqlc.EntryTypeSKILL,
-		Name:      skill.Name,
+		EntryType: sqlc.EntryTypePLUGIN,
+		Name:      plugin.Name,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		entryID, err = querier.InsertRegistryEntry(ctx, sqlc.InsertRegistryEntryParams{
 			SourceID:  managedSource.ID,
-			EntryType: sqlc.EntryTypeSKILL,
-			Name:      skill.Name,
+			EntryType: sqlc.EntryTypePLUGIN,
+			Name:      plugin.Name,
 			Claims:    claimsJSON,
 			CreatedAt: &now,
 			UpdatedAt: &now,
@@ -502,50 +501,50 @@ func (s *dbService) executePublishSkillTransaction(
 	// Insert the entry version (one per name+version)
 	versionParams := sqlc.InsertEntryVersionParams{
 		EntryID:   entryID,
-		Name:      skill.Name,
-		Version:   skill.Version,
+		Name:      plugin.Name,
+		Version:   plugin.Version,
 		CreatedAt: &now,
 		UpdatedAt: &now,
 	}
-	if skill.Title != "" {
-		versionParams.Title = &skill.Title
+	if plugin.Title != "" {
+		versionParams.Title = &plugin.Title
 	}
-	if skill.Description != "" {
-		versionParams.Description = &skill.Description
+	if plugin.Description != "" {
+		versionParams.Description = &plugin.Description
 	}
 
 	versionID, err := querier.InsertEntryVersion(ctx, versionParams)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return "", fmt.Errorf("%w: %s %s", service.ErrVersionAlreadyExists, skill.Name, skill.Version)
+			return "", fmt.Errorf("%w: %s %s", service.ErrVersionAlreadyExists, plugin.Name, plugin.Version)
 		}
 		return "", err
 	}
 
-	skillParams, err := makeInsertSkillVersionParams(versionID, skill)
+	pluginParams, err := makeInsertPluginVersionParams(versionID, plugin)
 	if err != nil {
 		return "", err
 	}
 
-	_, err = querier.InsertSkillVersion(ctx, *skillParams)
+	_, err = querier.InsertPluginVersion(ctx, *pluginParams)
 	if err != nil {
 		return "", err
 	}
 
-	for _, pkg := range skill.Packages {
+	for _, pkg := range plugin.Packages {
 		var err error
 		switch pkg.RegistryType {
-		case service.SkillPackageTypeOCI:
-			err = querier.InsertSkillOciPackage(ctx, sqlc.InsertSkillOciPackageParams{
-				SkillID:    versionID,
+		case service.PluginPackageTypeOCI:
+			err = querier.InsertPluginOciPackage(ctx, sqlc.InsertPluginOciPackageParams{
+				PluginID:   versionID,
 				Identifier: pkg.Identifier,
 				Digest:     &pkg.Digest,
 				MediaType:  &pkg.MediaType,
 			})
-		case service.SkillPackageTypeGit:
-			err = querier.InsertSkillGitPackage(ctx, sqlc.InsertSkillGitPackageParams{
-				SkillID:   versionID,
+		case service.PluginPackageTypeGit:
+			err = querier.InsertPluginGitPackage(ctx, sqlc.InsertPluginGitPackageParams{
+				PluginID:  versionID,
 				Url:       pkg.URL,
 				Ref:       &pkg.Ref,
 				CommitSha: &pkg.Commit,
@@ -560,24 +559,24 @@ func (s *dbService) executePublishSkillTransaction(
 	// Compare with current latest before upserting — avoid regressing the pointer
 	shouldUpdateLatest := true
 	currentLatest, err := querier.GetLatestEntryVersion(ctx, sqlc.GetLatestEntryVersionParams{
-		Name:     skill.Name,
+		Name:     plugin.Name,
 		SourceID: managedSource.ID,
 	})
 	if err == nil {
-		shouldUpdateLatest = versions.IsNewerVersion(skill.Version, currentLatest)
+		shouldUpdateLatest = versions.IsNewerVersion(plugin.Version, currentLatest)
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return "", fmt.Errorf("failed to get current latest version: %w", err)
 	}
 
 	if shouldUpdateLatest {
-		_, err = querier.UpsertLatestSkillVersion(ctx, sqlc.UpsertLatestSkillVersionParams{
+		_, err = querier.UpsertLatestPluginVersion(ctx, sqlc.UpsertLatestPluginVersionParams{
 			SourceID:  managedSource.ID,
-			Name:      skill.Name,
-			Version:   skill.Version,
+			Name:      plugin.Name,
+			Version:   plugin.Version,
 			VersionID: versionID,
 		})
 		if err != nil {
-			return "", fmt.Errorf("failed to upsert latest skill version: %w", err)
+			return "", fmt.Errorf("failed to upsert latest plugin version: %w", err)
 		}
 	}
 
@@ -588,65 +587,61 @@ func (s *dbService) executePublishSkillTransaction(
 	return sourceName, nil
 }
 
-func makeInsertSkillVersionParams(
+func makeInsertPluginVersionParams(
 	versionID uuid.UUID,
-	skill *service.Skill,
-) (*sqlc.InsertSkillVersionParams, error) {
+	plugin *service.Plugin,
+) (*sqlc.InsertPluginVersionParams, error) {
 
-	status := sqlc.NullSkillStatus{}
-	if skill.Status != "" {
-		status = sqlc.NullSkillStatus{
-			SkillStatus: sqlc.SkillStatus(strings.ToUpper(skill.Status)),
-			Valid:       true,
+	status := sqlc.NullPluginStatus{}
+	if plugin.Status != "" {
+		status = sqlc.NullPluginStatus{
+			PluginStatus: sqlc.PluginStatus(strings.ToUpper(plugin.Status)),
+			Valid:        true,
 		}
 	}
 
-	repository, err := json.Marshal(skill.Repository)
+	repository, err := json.Marshal(plugin.Repository)
 	if err != nil {
 		return nil, err
 	}
-	icons, err := json.Marshal(skill.Icons)
+	icons, err := json.Marshal(plugin.Icons)
 	if err != nil {
 		return nil, err
 	}
-	metadata, err := json.Marshal(skill.Metadata)
+	metadata, err := json.Marshal(plugin.Metadata)
 	if err != nil {
 		return nil, err
 	}
-	extensionMeta, err := json.Marshal(skill.Meta)
+	extensionMeta, err := json.Marshal(plugin.Meta)
 	if err != nil {
 		return nil, err
 	}
 
-	skillParams := sqlc.InsertSkillVersionParams{
+	pluginParams := sqlc.InsertPluginVersionParams{
 		VersionID:     versionID,
-		Namespace:     skill.Namespace,
+		Namespace:     plugin.Namespace,
 		Status:        status,
-		AllowedTools:  skill.AllowedTools,
 		Repository:    repository,
 		Icons:         icons,
 		Metadata:      metadata,
 		ExtensionMeta: extensionMeta,
 	}
-	if skill.License != "" {
-		skillParams.License = &skill.License
-	}
-	if skill.Compatibility != "" {
-		skillParams.Compatibility = &skill.Compatibility
+	if plugin.License != "" {
+		pluginParams.License = &plugin.License
 	}
 
-	return &skillParams, nil
+	return &pluginParams, nil
 }
 
-// DeleteSkillVersion removes a skill version from a managed registry.
-func (s *dbService) DeleteSkillVersion(
+// DeletePluginVersion removes a plugin version from a managed registry.
+func (s *dbService) DeletePluginVersion(
 	ctx context.Context,
 	opts ...service.Option,
 ) error {
-	ctx, span := s.startSpan(ctx, "dbService.DeleteSkillVersion")
+	ctx, span := s.startSpan(ctx, "dbService.DeletePluginVersion")
 	defer span.End()
 
-	options := &service.DeleteSkillVersionOptions{}
+	options := &service.DeletePluginVersionOptions{}
 	for _, opt := range opts {
 		if err := opt(options); err != nil {
 			otel.RecordError(span, err)
@@ -654,7 +649,7 @@ func (s *dbService) DeleteSkillVersion(
 		}
 	}
 
-	if err := s.executeDeleteSkillTransaction(ctx, options); err != nil {
+	if err := s.executeDeletePluginTransaction(ctx, options); err != nil {
 		otel.RecordError(span, err)
 		return err
 	}
@@ -662,10 +657,10 @@ func (s *dbService) DeleteSkillVersion(
 	return nil
 }
 
-// executeDeleteSkillTransaction runs the skill version deletion within a serializable transaction.
-func (s *dbService) executeDeleteSkillTransaction(
+// executeDeletePluginTransaction runs the plugin version deletion within a serializable transaction.
+func (s *dbService) executeDeletePluginTransaction(
 	ctx context.Context,
-	options *service.DeleteSkillVersionOptions,
+	options *service.DeletePluginVersionOptions,
 ) error {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel:   pgx.Serializable,
@@ -692,7 +687,7 @@ func (s *dbService) executeDeleteSkillTransaction(
 	if options.JWTClaims != nil {
 		existing, err := querier.GetRegistryEntryByName(ctx, sqlc.GetRegistryEntryByNameParams{
 			SourceID:  registry.ID,
-			EntryType: sqlc.EntryTypeSKILL,
+			EntryType: sqlc.EntryTypePLUGIN,
 			Name:      options.Name,
 		})
 		if err != nil {
@@ -714,7 +709,7 @@ func (s *dbService) executeDeleteSkillTransaction(
 		ctx,
 		querier,
 		registry.ID,
-		sqlc.EntryTypeSKILL,
+		sqlc.EntryTypePLUGIN,
 		options.Name,
 		options.Version,
 	)
@@ -731,7 +726,7 @@ func (s *dbService) executeDeleteSkillTransaction(
 			version string,
 			versionID uuid.UUID,
 		) error {
-			_, err := querier.UpsertLatestSkillVersion(ctx, sqlc.UpsertLatestSkillVersionParams{
+			_, err := querier.UpsertLatestPluginVersion(ctx, sqlc.UpsertLatestPluginVersionParams{
 				SourceID:  sourceID,
 				Name:      name,
 				Version:   version,
@@ -753,23 +748,23 @@ func (s *dbService) executeDeleteSkillTransaction(
 	return nil
 }
 
-// streamSkillRows fetches skill rows in batches, applying the auth filter then the
+// streamPluginRows fetches plugin rows in batches, applying the auth filter then the
 // dedup filter to each record, until limit+1 rows are accumulated or the DB is
 // exhausted. It returns the trimmed slice (≤ limit) and the encoded cursor for the
 // next page, if any.
-func streamSkillRows(
+func streamPluginRows(
 	ctx context.Context,
 	querier *sqlc.Queries,
-	params sqlc.ListSkillsParams,
+	params sqlc.ListPluginsParams,
 	filter service.RecordFilter,
 	limit int,
-) ([]sqlc.ListSkillsRow, string, error) {
-	dedupFilter := newDeduplicatingSkillFilter()
-	var accumulated []sqlc.ListSkillsRow
+) ([]sqlc.ListPluginsRow, string, error) {
+	dedupFilter := newDeduplicatingPluginFilter()
+	var accumulated []sqlc.ListPluginsRow
 	batchParams := params
 
 	for {
-		batch, err := querier.ListSkills(ctx, batchParams)
+		batch, err := querier.ListPlugins(ctx, batchParams)
 		if err != nil {
 			return nil, "", err
 		}
@@ -813,13 +808,13 @@ func streamSkillRows(
 	return accumulated, nextCursor, nil
 }
 
-// newDeduplicatingSkillFilter returns a stateful RecordFilter that deduplicates
-// skill rows by entry name, keeping only records from the highest-priority source
+// newDeduplicatingPluginFilter returns a stateful RecordFilter that deduplicates
+// plugin rows by entry name, keeping only records from the highest-priority source
 // (lowest position). SQL must return records in position-ascending order per name.
-func newDeduplicatingSkillFilter() service.RecordFilter {
+func newDeduplicatingPluginFilter() service.RecordFilter {
 	return newDeduplicatingFilterWith(
 		func(record any) (string, int32, bool) {
-			r, ok := record.(sqlc.ListSkillsRow)
+			r, ok := record.(sqlc.ListPluginsRow)
 			return r.Name, r.Position, ok
 		},
 	)

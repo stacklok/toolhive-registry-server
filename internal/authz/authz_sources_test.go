@@ -173,13 +173,13 @@ func TestAuthzIntegration_SourceShadowing(t *testing.T) {
 
 	sources := []config.SourceConfig{
 		{
-			Name: "high-prio-src",
+			Name:       "high-prio-src",
 			File:       &config.FileConfig{Path: writeFixture("high-prio", highPrioData)},
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme"},
 		},
 		{
-			Name: "low-prio-src",
+			Name:       "low-prio-src",
 			File:       &config.FileConfig{Path: writeFixture("low-prio", lowPrioData)},
 			SyncPolicy: &config.SyncPolicyConfig{Interval: "10s"},
 			Claims:     map[string]any{"org": "acme"},

@@ -62,6 +62,9 @@ type SyncStatus struct {
 	// SkillCount is the total number of skills in the registry
 	SkillCount int `yaml:"skillCount,omitempty"`
 
+	// PluginCount is the total number of plugins in the registry
+	PluginCount int `yaml:"pluginCount,omitempty"`
+
 	// CreationType indicates how this registry was created (API or CONFIG)
 	// This prevents config-based sync from overwriting API-created registries
 	CreationType CreationType `yaml:"creationType,omitempty"`

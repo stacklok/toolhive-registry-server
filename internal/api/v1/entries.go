@@ -14,26 +14,29 @@ import (
 )
 
 // publishEntryRequest is the request body for publishing an entry.
-// Exactly one of Server or Skill must be provided.
+// Exactly one of Server, Skill, or Plugin must be provided.
 type publishEntryRequest struct {
 	Claims map[string]any         `json:"claims,omitempty"`
 	Server *upstreamv0.ServerJSON `json:"server,omitempty"`
 	Skill  *service.Skill         `json:"skill,omitempty"`
+	Plugin *service.Plugin        `json:"plugin,omitempty"`
 }
 
 // publishEntry handles POST /v1/entries
 //
 // @Summary		Publish entry
-// @Description	Publish a new server or skill entry. Exactly one of 'server' or 'skill' must be provided.
+// @Description	Publish a new server, skill, or plugin entry. Exactly one of 'server', 'skill', or 'plugin' must be provided.
 // @Tags		v1
 // @Accept		json
 // @Produce		json
-// @Param		request	body		publishEntryRequest	true	"Entry to publish (server or skill)"
+// @Param		request	body		publishEntryRequest	true	"Entry to publish (server, skill, or plugin)"
 // @Success		201	{object}	interface{}	"Published entry (server or skill)"
 // @Failure		400	{object}	map[string]string	"Bad request"
 // @Failure		409	{object}	map[string]string	"Conflict"
 // @Failure		500	{object}	map[string]string	"Internal server error"
 // @Router		/v1/entries [post]
+//
+//nolint:gocyclo // complexity driven by three-way entry type dispatch
 func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 	var req publishEntryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -43,8 +46,14 @@ func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 
 	hasServer := req.Server != nil
 	hasSkill := req.Skill != nil
-	if hasServer == hasSkill {
-		common.WriteErrorResponse(w, "exactly one of 'server' or 'skill' must be provided", http.StatusBadRequest)
+	hasPlugin := req.Plugin != nil
+	if !hasServer && !hasSkill && !hasPlugin {
+		common.WriteErrorResponse(w, "exactly one of 'server', 'skill', or 'plugin' must be provided", http.StatusBadRequest)
+		return
+	}
+	// Check that at most one is provided
+	if (hasServer && hasSkill) || (hasServer && hasPlugin) || (hasSkill && hasPlugin) {
+		common.WriteErrorResponse(w, "exactly one of 'server', 'skill', or 'plugin' must be provided", http.StatusBadRequest)
 		return
 	}
 
@@ -86,6 +95,20 @@ func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 		common.WriteJSONResponse(w, published, http.StatusCreated)
 		return
 	}
+
+	if req.Plugin != nil {
+		opts := append([]service.Option{}, jwtOpts...)
+		if req.Claims != nil {
+			opts = append(opts, service.WithClaims(req.Claims))
+		}
+		published, err := routes.service.PublishPlugin(r.Context(), req.Plugin, opts...)
+		if err != nil {
+			writePublishError(w, r, err)
+			return
+		}
+		common.WriteJSONResponse(w, published, http.StatusCreated)
+		return
+	}
 }
 
 // writePublishError maps service-layer publish errors to HTTP responses.
@@ -120,7 +143,7 @@ func writePublishError(w http.ResponseWriter, r *http.Request, err error) {
 // @Description	Delete a published entry version
 // @Tags		v1
 // @Produce		json
-// @Param		type	path	string	true	"Entry Type (server or skill)"
+// @Param		type	path	string	true	"Entry Type (server, skill, or plugin)"
 // @Param		name	path	string	true	"Entry Name"
 // @Param		version	path	string	true	"Version"
 // @Success		204	"No Content"
@@ -158,8 +181,10 @@ func (routes *Routes) deletePublishedEntry(w http.ResponseWriter, r *http.Reques
 		err = routes.service.DeleteServerVersion(r.Context(), opts...)
 	case "skill":
 		err = routes.service.DeleteSkillVersion(r.Context(), opts...)
+	case "plugin":
+		err = routes.service.DeletePluginVersion(r.Context(), opts...)
 	default:
-		common.WriteErrorResponse(w, "unsupported entry type: must be 'server' or 'skill'", http.StatusBadRequest)
+		common.WriteErrorResponse(w, "unsupported entry type: must be 'server', 'skill', or 'plugin'", http.StatusBadRequest)
 		return
 	}
 
