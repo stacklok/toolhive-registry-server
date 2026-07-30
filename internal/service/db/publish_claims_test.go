@@ -820,3 +820,53 @@ func TestDeletePluginVersion_ClaimsAuthorization(t *testing.T) {
 		})
 	}
 }
+
+// TestPublishSkill_LowercaseStatus verifies that a valid lowercase status
+// (active/deprecated/archived, per the toolhive-core schema) is accepted on
+// publish and stored as the uppercase enum value, instead of failing the
+// enum cast with a 500. Regression for the status-case bug.
+func TestPublishSkill_LowercaseStatus(t *testing.T) {
+	t.Parallel()
+
+	svc, cleanup := setupTestService(t)
+	defer cleanup()
+
+	createManagedSourceWithRegistry(t, svc, "skill-status-src")
+
+	ctx := context.Background()
+	skill := &service.Skill{
+		Namespace: "com.test",
+		Name:      "skill-lowercase-status",
+		Version:   "1.0.0",
+		Status:    "active",
+	}
+
+	result, err := svc.PublishSkill(ctx, skill)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "ACTIVE", result.Status)
+}
+
+// TestPublishPlugin_LowercaseStatus is the plugin counterpart of
+// TestPublishSkill_LowercaseStatus.
+func TestPublishPlugin_LowercaseStatus(t *testing.T) {
+	t.Parallel()
+
+	svc, cleanup := setupTestService(t)
+	defer cleanup()
+
+	createManagedSourceWithRegistry(t, svc, "plugin-status-src")
+
+	ctx := context.Background()
+	plugin := &service.Plugin{
+		Namespace: "com.test",
+		Name:      "plugin-lowercase-status",
+		Version:   "1.0.0",
+		Status:    "deprecated",
+	}
+
+	result, err := svc.PublishPlugin(ctx, plugin)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "DEPRECATED", result.Status)
+}

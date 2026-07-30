@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -594,7 +595,7 @@ func makeInsertPluginVersionParams(
 	status := sqlc.NullPluginStatus{}
 	if plugin.Status != "" {
 		status = sqlc.NullPluginStatus{
-			PluginStatus: sqlc.PluginStatus(plugin.Status),
+			PluginStatus: sqlc.PluginStatus(strings.ToUpper(plugin.Status)),
 			Valid:        true,
 		}
 	}

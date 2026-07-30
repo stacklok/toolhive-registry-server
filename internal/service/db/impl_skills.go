@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -595,7 +596,7 @@ func makeInsertSkillVersionParams(
 	status := sqlc.NullSkillStatus{}
 	if skill.Status != "" {
 		status = sqlc.NullSkillStatus{
-			SkillStatus: sqlc.SkillStatus(skill.Status),
+			SkillStatus: sqlc.SkillStatus(strings.ToUpper(skill.Status)),
 			Valid:       true,
 		}
 	}
