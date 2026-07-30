@@ -21,6 +21,7 @@ type Result struct {
 	Hash        string
 	ServerCount int
 	SkillCount  int
+	PluginCount int
 }
 
 // Reason represents the decision and reason for whether a sync should occur
@@ -356,6 +357,7 @@ func (s *defaultSyncManager) PerformSync(
 		Hash:        fetchResult.Hash,
 		ServerCount: fetchResult.ServerCount,
 		SkillCount:  fetchResult.SkillCount,
+		PluginCount: fetchResult.PluginCount,
 	}
 
 	return syncResult, nil
@@ -452,6 +454,7 @@ func (s *defaultSyncManager) applyFilteringIfConfigured(
 		fetchResult.Registry = filteredServerReg
 		fetchResult.ServerCount = len(filteredServerReg.Data.Servers)
 		fetchResult.SkillCount = len(filteredServerReg.Data.Skills)
+		fetchResult.PluginCount = len(filteredServerReg.Data.Plugins)
 
 		slog.Info("Registry filtering completed",
 			"originalServerCount", originalServerCount,

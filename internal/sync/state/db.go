@@ -380,6 +380,7 @@ func (d *dbStatusService) UpdateSyncStatus(ctx context.Context, registryName str
 		LastAppliedFilterHash: lastAppliedFilterHash,
 		ServerCount:           int64(syncStatus.ServerCount),
 		SkillCount:            int64(syncStatus.SkillCount),
+		PluginCount:           int64(syncStatus.PluginCount),
 	})
 
 	return err
@@ -394,6 +395,7 @@ func dbSyncToStatus(dbSync sqlc.RegistrySync) *status.SyncStatus {
 		AttemptCount: int(dbSync.AttemptCount),
 		ServerCount:  int(dbSync.ServerCount),
 		SkillCount:   int(dbSync.SkillCount),
+		PluginCount:  int(dbSync.PluginCount),
 	}
 
 	// Set message from error_msg if present
@@ -421,6 +423,7 @@ func dbSyncRowToStatus(row sqlc.ListSourceSyncsRow) *status.SyncStatus {
 		AttemptCount: int(row.AttemptCount),
 		ServerCount:  int(row.ServerCount),
 		SkillCount:   int(row.SkillCount),
+		PluginCount:  int(row.PluginCount),
 		SyncSchedule: intervalToString(row.SyncSchedule),
 	}
 
@@ -449,6 +452,7 @@ func dbSyncRowByLastUpdateToStatus(row sqlc.ListSourceSyncsByLastUpdateRow) *sta
 		AttemptCount: int(row.AttemptCount),
 		ServerCount:  int(row.ServerCount),
 		SkillCount:   int(row.SkillCount),
+		PluginCount:  int(row.PluginCount),
 		SyncSchedule: intervalToString(row.SyncSchedule),
 	}
 

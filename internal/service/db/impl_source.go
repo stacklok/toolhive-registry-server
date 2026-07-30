@@ -910,6 +910,7 @@ func fetchSyncStatus(ctx context.Context, querier *sqlc.Queries, sourceName stri
 		AttemptCount: int(syncRecord.AttemptCount),
 		ServerCount:  int(syncRecord.ServerCount),
 		SkillCount:   int(syncRecord.SkillCount),
+		PluginCount:  int(syncRecord.PluginCount),
 		Message:      getStatusMessage(syncRecord.ErrorMsg),
 	}
 }

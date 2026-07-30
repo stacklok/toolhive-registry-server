@@ -150,6 +150,8 @@ func mapEntryType(entryType string) (sqlc.EntryType, error) {
 		return sqlc.EntryTypeMCP, nil
 	case service.EntryTypeSkill:
 		return sqlc.EntryTypeSKILL, nil
+	case service.EntryTypePlugin:
+		return sqlc.EntryTypePLUGIN, nil
 	default:
 		return "", fmt.Errorf("%w: %s", service.ErrInvalidEntryType, entryType)
 	}

@@ -58,8 +58,9 @@ func (ns NullCreationType) Value() (driver.Value, error) {
 type EntryType string
 
 const (
-	EntryTypeMCP   EntryType = "MCP"
-	EntryTypeSKILL EntryType = "SKILL"
+	EntryTypeMCP    EntryType = "MCP"
+	EntryTypeSKILL  EntryType = "SKILL"
+	EntryTypePLUGIN EntryType = "PLUGIN"
 )
 
 func (e *EntryType) Scan(src interface{}) error {
@@ -137,6 +138,49 @@ func (ns NullIconTheme) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.IconTheme), nil
+}
+
+type PluginStatus string
+
+const (
+	PluginStatusACTIVE     PluginStatus = "ACTIVE"
+	PluginStatusDEPRECATED PluginStatus = "DEPRECATED"
+	PluginStatusARCHIVED   PluginStatus = "ARCHIVED"
+)
+
+func (e *PluginStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PluginStatus(s)
+	case string:
+		*e = PluginStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PluginStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPluginStatus struct {
+	PluginStatus PluginStatus `json:"plugin_status"`
+	Valid        bool         `json:"valid"` // Valid is true if PluginStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPluginStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PluginStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PluginStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPluginStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PluginStatus), nil
 }
 
 type SkillStatus string
@@ -284,6 +328,34 @@ type McpServerRemote struct {
 	TransportHeaders []byte    `json:"transport_headers"`
 }
 
+type Plugin struct {
+	VersionID     uuid.UUID    `json:"version_id"`
+	Namespace     string       `json:"namespace"`
+	Status        PluginStatus `json:"status"`
+	License       *string      `json:"license"`
+	Repository    []byte       `json:"repository"`
+	Icons         []byte       `json:"icons"`
+	Metadata      []byte       `json:"metadata"`
+	ExtensionMeta []byte       `json:"extension_meta"`
+}
+
+type PluginGitPackage struct {
+	ID        uuid.UUID `json:"id"`
+	PluginID  uuid.UUID `json:"plugin_id"`
+	Url       string    `json:"url"`
+	Ref       *string   `json:"ref"`
+	CommitSha *string   `json:"commit_sha"`
+	Subfolder *string   `json:"subfolder"`
+}
+
+type PluginOciPackage struct {
+	ID         uuid.UUID `json:"id"`
+	PluginID   uuid.UUID `json:"plugin_id"`
+	Identifier string    `json:"identifier"`
+	Digest     *string   `json:"digest"`
+	MediaType  *string   `json:"media_type"`
+}
+
 type Registry struct {
 	ID           uuid.UUID    `json:"id"`
 	Name         string       `json:"name"`
@@ -322,6 +394,7 @@ type RegistrySync struct {
 	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
 	ServerCount           int64      `json:"server_count"`
 	SkillCount            int64      `json:"skill_count"`
+	PluginCount           int64      `json:"plugin_count"`
 }
 
 type Skill struct {

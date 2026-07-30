@@ -4,7 +4,7 @@ import "fmt"
 
 // UpdateEntryClaimsOptions is the options for the UpdateEntryClaims operation.
 type UpdateEntryClaimsOptions struct {
-	EntryType string // EntryTypeServer or EntryTypeSkill
+	EntryType string // EntryTypeServer, EntryTypeSkill, or EntryTypePlugin
 	Name      string
 	Claims    map[string]any
 	JWTClaims map[string]any
@@ -12,11 +12,11 @@ type UpdateEntryClaimsOptions struct {
 
 func (o *UpdateEntryClaimsOptions) setEntryType(entryType string) error {
 	switch entryType {
-	case EntryTypeServer, EntryTypeSkill:
+	case EntryTypeServer, EntryTypeSkill, EntryTypePlugin:
 		o.EntryType = entryType
 		return nil
 	default:
-		return fmt.Errorf("%w: must be %q or %q", ErrInvalidEntryType, EntryTypeServer, EntryTypeSkill)
+		return fmt.Errorf("%w: must be %q, %q, or %q", ErrInvalidEntryType, EntryTypeServer, EntryTypeSkill, EntryTypePlugin)
 	}
 }
 
@@ -40,18 +40,18 @@ func (o *UpdateEntryClaimsOptions) setJWTClaims(claims map[string]any) error {
 
 // GetEntryClaimsOptions is the options for the GetEntryClaims operation.
 type GetEntryClaimsOptions struct {
-	EntryType string // EntryTypeServer or EntryTypeSkill
+	EntryType string // EntryTypeServer, EntryTypeSkill, or EntryTypePlugin
 	Name      string
 	JWTClaims map[string]any
 }
 
 func (o *GetEntryClaimsOptions) setEntryType(entryType string) error {
 	switch entryType {
-	case EntryTypeServer, EntryTypeSkill:
+	case EntryTypeServer, EntryTypeSkill, EntryTypePlugin:
 		o.EntryType = entryType
 		return nil
 	default:
-		return fmt.Errorf("%w: must be %q or %q", ErrInvalidEntryType, EntryTypeServer, EntryTypeSkill)
+		return fmt.Errorf("%w: must be %q, %q, or %q", ErrInvalidEntryType, EntryTypeServer, EntryTypeSkill, EntryTypePlugin)
 	}
 }
 

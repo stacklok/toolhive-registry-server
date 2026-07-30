@@ -4,4 +4,5 @@ package service
 const (
 	EntryTypeServer = "server"
 	EntryTypeSkill  = "skill"
+	EntryTypePlugin = "plugin"
 )

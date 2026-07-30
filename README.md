@@ -12,9 +12,9 @@
 
 # ToolHive Registry Server
 
-**Discover, govern, and control access to MCP servers and skills across your organization**
+**Discover, govern, and control access to MCP servers, skills, and plugins across your organization**
 
-The ToolHive Registry Server aggregates MCP servers and skills from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs that your teams and AI clients can query. Each catalog has its own access control and audit trail, so you decide which entries are visible to which users -- and have a record of who accessed what.
+The ToolHive Registry Server aggregates MCP servers, skills, and plugins from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs that your teams and AI clients can query. Each catalog has its own access control and audit trail, so you decide which entries are visible to which users -- and have a record of who accessed what.
 
 It implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). If you're not familiar with MCP: it's an open protocol that lets AI assistants connect to external tools and data sources. This server is the governance layer that sits between your MCP infrastructure and the teams consuming it.
 
@@ -39,7 +39,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 
 ### Governance and access control
 
-- **JWT claim-based visibility**: Control which MCP servers and skills each user or team can see, per registry. A "production" registry can expose only vetted entries while a "dev-team" registry shows everything.
+- **JWT claim-based visibility**: Control which MCP servers, skills, and plugins each user or team can see, per registry. A "production" registry can expose only vetted entries while a "dev-team" registry shows everything.
 - **OAuth 2.0/OIDC authentication**: Plug in your existing identity provider (Okta, Auth0, Azure AD). OAuth is the default; anonymous mode is available for development.
 - **Role-based administration**: Separate roles for managing sources, registries, and entries. Scope each role to specific JWT claims so teams manage their own resources.
 - **SIEM-compliant audit logging**: Structured log covering all API operations with NIST SP 800-53 AU-3 compliant fields, dedicated file output, and configurable event filtering.
@@ -102,9 +102,9 @@ task docker-down
 
 ### Sources and registries
 
-Most organizations have MCP servers and skills in more than one place -- a public catalog, an internal Git repo, a Kubernetes cluster running live instances. The Registry Server models this with two primitives: **sources** (where entries come from) and **registries** (what consumers query).
+Most organizations have MCP servers, skills, and plugins in more than one place -- a public catalog, an internal Git repo, a Kubernetes cluster running live instances. The Registry Server models this with two primitives: **sources** (where entries come from) and **registries** (what consumers query).
 
-A **source** is a connection to where MCP server and skill entries live. It tells the server "go look here for entries." Sources come in five types:
+A **source** is a connection to where MCP server, skill, and plugin entries live. It tells the server "go look here for entries." Sources come in five types:
 
 | Type           | What it does                        | Example                                                      | Sync         |
 | -------------- | ----------------------------------- | ------------------------------------------------------------ | ------------ |
@@ -193,7 +193,7 @@ ToolHive-specific endpoints for managing sources, registries, and entries:
 
 **Entry management** (requires `manageEntries` role):
 
-- `POST /v1/entries` - Publish a server or skill entry
+- `POST /v1/entries` - Publish a server, skill, or plugin entry
 - `DELETE /v1/entries/{type}/{name}/versions/{version}` - Delete a published entry
 - `PUT /v1/entries/{type}/{name}/claims` - Update entry claims
 
@@ -205,6 +205,15 @@ Read-only endpoints for discovering skills within a registry:
 - `GET /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}` - Get latest version of a skill
 - `GET /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions` - List all versions of a skill
 - `GET /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions/{version}` - Get a specific skill version
+
+### Plugins extension API (ToolHive-specific)
+
+Read-only endpoints for discovering plugins within a registry:
+
+- `GET /registry/{registryName}/v0.1/x/dev.toolhive/plugins` - List plugins (paginated)
+- `GET /registry/{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}` - Get latest version of a plugin
+- `GET /registry/{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}/versions` - List all versions of a plugin
+- `GET /registry/{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}/versions/{version}` - Get a specific plugin version
 
 ### Operational endpoints
 
@@ -259,7 +268,7 @@ database:
 
 The Registry Server can be deployed standalone or as part of the full [ToolHive](https://github.com/stacklok/toolhive) platform. Together, the platform components cover the full MCP lifecycle:
 
-- **Registry** (this project) -- Discovery and governance. Knows what MCP servers and skills exist, who can access them, and tracks all operations.
+- **Registry** (this project) -- Discovery and governance. Knows what MCP servers, skills, and plugins exist, who can access them, and tracks all operations.
 - **[Runtime](https://github.com/stacklok/toolhive)** -- Deployment and management. Deploys MCP servers on Kubernetes using registry metadata to drive lifecycle decisions. Servers deployed by the Runtime automatically appear in the Registry.
 - **Gateway** -- Aggregation and access. Unifies multiple MCP servers into a single endpoint with centralized authentication, Cedar-based authorization, tool conflict resolution, and composite workflows.
 - **Portal** -- Management UI. Catalog browsing, search, and administration backed by the Registry API.

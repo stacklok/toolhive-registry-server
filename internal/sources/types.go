@@ -40,6 +40,9 @@ type FetchResult struct {
 
 	// SkillCount is the number of skills found in the registry data
 	SkillCount int
+
+	// PluginCount is the number of plugins found in the registry data
+	PluginCount int
 }
 
 // NewFetchResult creates a new FetchResult from a UpstreamRegistry instance and pre-calculated hash
@@ -47,9 +50,11 @@ type FetchResult struct {
 func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string) *FetchResult {
 	serverCount := 0
 	skillCount := 0
+	pluginCount := 0
 	if reg != nil {
 		serverCount = len(reg.Data.Servers)
 		skillCount = len(reg.Data.Skills)
+		pluginCount = len(reg.Data.Plugins)
 	}
 
 	return &FetchResult{
@@ -57,6 +62,7 @@ func NewFetchResult(reg *toolhivetypes.UpstreamRegistry, hash string) *FetchResu
 		Hash:        hash,
 		ServerCount: serverCount,
 		SkillCount:  skillCount,
+		PluginCount: pluginCount,
 	}
 }
 

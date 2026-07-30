@@ -24,6 +24,11 @@ const (
 	SkillPackageTypeOCI = "oci"
 	// SkillPackageTypeGit is the type for Git packages
 	SkillPackageTypeGit = "git"
+
+	// PluginPackageTypeOCI is the type for OCI packages (plugins)
+	PluginPackageTypeOCI = "oci"
+	// PluginPackageTypeGit is the type for Git packages (plugins)
+	PluginPackageTypeGit = "git"
 )
 
 var (
@@ -152,6 +157,21 @@ type RegistryService interface {
 	// DeleteSkillVersion deletes a skill version
 	DeleteSkillVersion(ctx context.Context, opts ...Option) error
 
+	// ********** PLUGIN OPERATIONS **********
+
+	// ListPlugins lists plugins in a registry with cursor-based pagination
+	ListPlugins(ctx context.Context, opts ...Option) (*ListPluginsResult, error)
+
+	// GetPluginVersion gets a specific plugin version. If the version is
+	// "latest", the latest version will be returned.
+	GetPluginVersion(ctx context.Context, opts ...Option) (*Plugin, error)
+
+	// PublishPlugin publishes a plugin
+	PublishPlugin(ctx context.Context, plugin *Plugin, opts ...Option) (*Plugin, error)
+
+	// DeletePluginVersion deletes a plugin version
+	DeletePluginVersion(ctx context.Context, opts ...Option) error
+
 	// UpdateEntryClaims updates the claims on a published entry within the managed source.
 	UpdateEntryClaims(ctx context.Context, opts ...Option) error
 
@@ -195,6 +215,7 @@ type SourceSyncStatus struct {
 	AttemptCount int        `json:"attemptCount"`           // Number of sync attempts
 	ServerCount  int        `json:"serverCount"`            // Number of servers in registry
 	SkillCount   int        `json:"skillCount"`             // Number of skills in registry
+	PluginCount  int        `json:"pluginCount"`            // Number of plugins in registry
 	Message      string     `json:"message,omitempty"`      // Status or error message
 }
 
