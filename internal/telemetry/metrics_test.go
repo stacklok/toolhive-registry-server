@@ -1,8 +1,10 @@
 package telemetry
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -36,6 +38,22 @@ type countingRegistryMetricReader struct {
 func (r *countingRegistryMetricReader) RegistryMetricCounts(ctx context.Context) ([]RegistryMetricCount, error) {
 	r.calls++
 	return r.inner.RegistryMetricCounts(ctx)
+}
+
+// clockAdvancingFailingReader fails only after consuming dur of simulated
+// wall-clock, modelling how this read actually fails in production: by
+// exhausting registryMetricCountsQueryTimeout against a stalled or saturated
+// database, rather than by an instant connection refusal.
+type clockAdvancingFailingReader struct {
+	clock *time.Time
+	dur   time.Duration
+	calls int
+}
+
+func (r *clockAdvancingFailingReader) RegistryMetricCounts(_ context.Context) ([]RegistryMetricCount, error) {
+	r.calls++
+	*r.clock = r.clock.Add(r.dur)
+	return nil, errors.New("query timeout")
 }
 
 func TestNewRegistryMetrics(t *testing.T) {
@@ -316,6 +334,74 @@ func TestCachingRegistryMetricReader(t *testing.T) {
 
 		assert.Less(t, registryMetricCountsErrorCacheTTL, registryMetricCountsCacheTTL,
 			"holding a failure for the full success TTL prolongs an export blackout past the DB's recovery")
+	})
+
+	// The sibling case above uses a reader that fails instantly, so it only
+	// exercises the half of the negative TTL that holds regardless of how the
+	// expiry is stamped. A read that fails by exhausting its query timeout
+	// takes longer than the negative TTL itself, which is the case that
+	// actually decides whether a struggling database gets left alone.
+	t.Run("negative TTL holds when the read fails slowly, not just instantly", func(t *testing.T) {
+		t.Parallel()
+
+		clock := time.Now()
+		inner := &clockAdvancingFailingReader{clock: &clock, dur: registryMetricCountsErrorCacheTTL * 4}
+		cache := newCachingRegistryMetricReader(inner)
+		cache.now = func() time.Time { return clock }
+
+		_, err := cache.RegistryMetricCounts(context.Background())
+		require.Error(t, err)
+
+		// Immediately afterwards, with no idle time at all. Stamping the
+		// negative TTL from before the query would have written an entry that
+		// already expired while the query was running, letting this call
+		// straight through to the database.
+		_, err = cache.RegistryMetricCounts(context.Background())
+		require.Error(t, err)
+
+		assert.Equal(t, 1, inner.calls,
+			"a slow failure must still be memoized: re-querying immediately turns an unreachable "+
+				"database into a back-to-back stream of full-table aggregates")
+	})
+
+	t.Run("reports entering and leaving the degraded state", func(t *testing.T) {
+		t.Parallel()
+
+		var buf bytes.Buffer
+		static := &staticRegistryMetricReader{counts: []RegistryMetricCount{{SourceName: "s", ServerCount: 1}}}
+		now := time.Now()
+		cache := newCachingRegistryMetricReader(static)
+		cache.now = func() time.Time { return now }
+		cache.logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+		_, err := cache.RegistryMetricCounts(context.Background())
+		require.NoError(t, err)
+		require.Empty(t, buf.String(), "a healthy refresh should say nothing")
+
+		// Fail, so the reader starts serving stale counts. Without a log line
+		// this is entirely invisible: the error is swallowed, and the gauges
+		// keep reporting their last value with a fresh timestamp.
+		static.err = errors.New("db unavailable")
+		now = now.Add(registryMetricCountsCacheTTL + time.Second)
+		counts, err := cache.RegistryMetricCounts(context.Background())
+		require.NoError(t, err, "stale counts should still be served")
+		require.Len(t, counts, 1)
+		assert.Contains(t, buf.String(), "Registry metric counts refresh failed")
+		assert.Contains(t, buf.String(), "serving_stale_counts=true")
+
+		// Still failing: no second line, or a lengthy outage would emit one
+		// per retry for as long as it lasts.
+		buf.Reset()
+		now = now.Add(registryMetricCountsErrorCacheTTL + time.Second)
+		_, err = cache.RegistryMetricCounts(context.Background())
+		require.NoError(t, err)
+		assert.Empty(t, buf.String(), "the degraded state should be reported on transition, not per retry")
+
+		static.err = nil
+		now = now.Add(registryMetricCountsErrorCacheTTL + time.Second)
+		_, err = cache.RegistryMetricCounts(context.Background())
+		require.NoError(t, err)
+		assert.Contains(t, buf.String(), "Registry metric counts refresh recovered")
 	})
 }
 
