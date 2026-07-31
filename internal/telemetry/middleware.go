@@ -3,6 +3,7 @@ package telemetry
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,6 +22,12 @@ const (
 // areaHTTP is the bounded area-label value stamped on
 // stacklok.registry.errors for HTTP-layer errors.
 const areaHTTP = "http"
+
+// schemeHTTP and schemeHTTPS are the only url.scheme values this server emits.
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
+)
 
 // HTTPMetrics holds the OpenTelemetry instruments for HTTP metrics
 type HTTPMetrics struct {
@@ -129,14 +136,23 @@ func (m *HTTPMetrics) Middleware(next http.Handler) http.Handler {
 		// We need to wrap the response writer to capture the status code
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 
+		// semconv v1.26 marks http.request.method and url.scheme Required on
+		// http.server.active_requests. Both are resolved before serving and
+		// reused on the decrement, so every series returns to zero — an
+		// unlabeled +1 paired with a labeled -1 would leak in-flight counts.
+		activeAttrs := metric.WithAttributes(
+			semconv.HTTPRequestMethodKey.String(r.Method),
+			semconv.URLScheme(requestScheme(r)),
+		)
+
 		// Increment active requests
-		m.activeRequests.Add(ctx, 1)
+		m.activeRequests.Add(ctx, 1, activeAttrs)
 
 		// Serve the request
 		next.ServeHTTP(ww, r)
 
 		// Decrement active requests after request completes
-		m.activeRequests.Add(ctx, -1)
+		m.activeRequests.Add(ctx, -1, activeAttrs)
 
 		// Get the route pattern from chi - this gives us the pattern like "/registry/v0.1/servers/{name}"
 		// rather than the actual URL like "/registry/v0.1/servers/my-server"
@@ -144,9 +160,11 @@ func (m *HTTPMetrics) Middleware(next http.Handler) http.Handler {
 
 		// Record metrics using semconv HTTP attribute keys, so a
 		// http.server.request.duration series stays joinable with the same
-		// metric emitted by any other semconv-instrumented service.
+		// metric emitted by any other semconv-instrumented service. url.scheme
+		// is Required on that metric alongside http.request.method.
 		attrs := []attribute.KeyValue{
 			semconv.HTTPRequestMethodKey.String(r.Method),
+			semconv.URLScheme(requestScheme(r)),
 			semconv.HTTPRoute(routePattern),
 			semconv.HTTPResponseStatusCode(ww.Status()),
 		}
@@ -166,6 +184,32 @@ func (m *HTTPMetrics) Middleware(next http.Handler) http.Handler {
 			))
 		}
 	})
+}
+
+// requestScheme returns the url.scheme value for a request. semconv v1.26
+// marks url.scheme Required on both http.server.request.duration and
+// http.server.active_requests, and the value is bounded to http/https.
+//
+// r.URL.Scheme is empty on server-side requests, and r.TLS reflects the hop
+// into this process — which is plaintext when a TLS-terminating proxy sits in
+// front — so X-Forwarded-Proto takes precedence when present.
+func requestScheme(r *http.Request) string {
+	if forwarded := r.Header.Get("X-Forwarded-Proto"); forwarded != "" {
+		// A comma-separated list means multiple proxies; the first entry is
+		// the original client-facing scheme.
+		if comma := strings.IndexByte(forwarded, ','); comma >= 0 {
+			forwarded = forwarded[:comma]
+		}
+		switch scheme := strings.ToLower(strings.TrimSpace(forwarded)); scheme {
+		case schemeHTTP, schemeHTTPS:
+			return scheme
+		}
+	}
+
+	if r.TLS != nil {
+		return schemeHTTPS
+	}
+	return schemeHTTP
 }
 
 // getRoutePattern extracts the route pattern from a chi request context.

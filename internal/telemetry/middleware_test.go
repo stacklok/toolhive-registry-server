@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -146,6 +147,7 @@ func TestHTTPMetrics_Middleware(t *testing.T) {
 
 		expectedAttrs := attribute.NewSet(
 			attribute.String("http.request.method", http.MethodGet),
+			attribute.String("url.scheme", schemeHTTP),
 			attribute.String("http.route", "/test/{id}"),
 			attribute.Int("http.response.status_code", http.StatusOK),
 		)
@@ -156,6 +158,46 @@ func TestHTTPMetrics_Middleware(t *testing.T) {
 			_, present := dp.Attributes.Value(oldKey)
 			assert.False(t, present, "pre-rename attribute key %q must not be emitted", oldKey)
 		}
+	})
+
+	// semconv v1.26 marks http.request.method and url.scheme Required on
+	// http.server.active_requests. Emitting it unlabeled would land as a single
+	// anonymous series beside per-method series from every other
+	// semconv-instrumented service in the same Prometheus.
+	t.Run("records required semconv attributes on active_requests", func(t *testing.T) {
+		t.Parallel()
+
+		reader := sdkmetric.NewManualReader()
+		mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+		defer func() { _ = mp.Shutdown(context.Background()) }()
+
+		metrics, err := NewHTTPMetrics(mp)
+		require.NoError(t, err)
+
+		r := chi.NewRouter()
+		r.Use(metrics.Middleware)
+		r.Post("/things", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusCreated) })
+
+		req := httptest.NewRequest(http.MethodPost, "/things", nil)
+		r.ServeHTTP(httptest.NewRecorder(), req)
+
+		var rm metricdata.ResourceMetrics
+		require.NoError(t, reader.Collect(context.Background(), &rm))
+
+		sum := findInt64Sum(t, rm, "http.server.active_requests")
+		require.Len(t, sum.DataPoints, 1)
+
+		expectedAttrs := attribute.NewSet(
+			attribute.String("http.request.method", http.MethodPost),
+			attribute.String("url.scheme", schemeHTTP),
+		)
+		assert.True(t, sum.DataPoints[0].Attributes.Equals(&expectedAttrs),
+			"expected method and scheme on active_requests, got %v", sum.DataPoints[0].Attributes)
+
+		// The +1 and -1 must carry identical attributes, or the series never
+		// returns to zero and reads as a permanent in-flight leak.
+		assert.Equal(t, int64(0), sum.DataPoints[0].Value,
+			"active_requests must return to zero after the request completes")
 	})
 
 	t.Run("records error-by-type counter for 5xx and 4xx, but not 2xx", func(t *testing.T) {
@@ -342,6 +384,62 @@ func TestErrorClassForStatus(t *testing.T) {
 		t.Run(http.StatusText(tt.status), func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tt.expected, errorClassForStatus(tt.status))
+		})
+	}
+}
+
+func TestRequestScheme(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		tls       bool
+		forwarded string
+		expected  string
+	}{
+		{name: "plaintext request", expected: schemeHTTP},
+		{name: "TLS request", tls: true, expected: schemeHTTPS},
+		{
+			name:      "X-Forwarded-Proto wins over the plaintext proxy hop",
+			forwarded: "https",
+			expected:  schemeHTTPS,
+		},
+		{
+			name:      "first entry wins through a proxy chain",
+			forwarded: "https, http",
+			expected:  schemeHTTPS,
+		},
+		{
+			name:      "mixed case is normalised",
+			forwarded: "HTTPS",
+			expected:  schemeHTTPS,
+		},
+		{
+			name:      "unrecognised value falls back rather than emitting it",
+			forwarded: "gopher",
+			expected:  schemeHTTP,
+		},
+		{
+			name:      "unrecognised value falls back to the TLS hop",
+			forwarded: "gopher",
+			tls:       true,
+			expected:  schemeHTTPS,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			if tt.tls {
+				req.TLS = &tls.ConnectionState{}
+			}
+			if tt.forwarded != "" {
+				req.Header.Set("X-Forwarded-Proto", tt.forwarded)
+			}
+
+			assert.Equal(t, tt.expected, requestScheme(req))
 		})
 	}
 }
