@@ -111,11 +111,12 @@ Every series additionally carries the constant labels `stacklok_component="regis
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `http_server_request_duration_seconds` | Histogram | `http_request_method`, `http_route`, `http_response_status_code` | Duration of HTTP requests (OTel semconv `http.server.request.duration`) |
-| `stacklok_registry_http_requests_total` | Counter | `http_request_method`, `http_route`, `http_response_status_code` | Total number of HTTP requests |
-| `http_server_active_requests` | UpDownCounter | - | Number of in-flight requests (OTel semconv `http.server.active_requests`) |
+| `http_server_request_duration_seconds` | Histogram | `http_request_method`, `url_scheme`, `http_route`, `http_response_status_code` | Duration of HTTP requests (OTel semconv `http.server.request.duration`) |
+| `stacklok_registry_http_requests_total` | Counter | `http_request_method`, `url_scheme`, `http_route`, `http_response_status_code` | Total number of HTTP requests |
+| `http_server_active_requests` | UpDownCounter | `http_request_method`, `url_scheme` | Number of in-flight requests (OTel semconv `http.server.active_requests`) |
 | `stacklok_registry_servers` | Gauge | `source` | Number of distinct servers in each source |
 | `stacklok_registry_skills` | Gauge | `source` | Number of distinct skills in each source |
+| `stacklok_registry_plugins` | Gauge | `source` | Number of distinct plugins in each source |
 | `stacklok_registry_sync_duration_seconds` | Histogram | `source`, `outcome` | Duration of sync operations (`outcome` is `success` or `error`) |
 | `stacklok_registry_errors_total` | Counter | `error_type`, `area` | Additive error-by-type classification for the sync (`area="sync"`) and HTTP (`area="http"`) paths — supplementary detail, not a replacement for the `outcome` label on `stacklok_registry_sync_duration_seconds` or `http_response_status_code` on `stacklok_registry_http_requests_total` |
 | `stacklok_build_info_ratio` | Gauge | `component`, `version`, `commit` | Always `1`; build identity carried on labels. The OTel Prometheus exporter appends `_ratio` to gauges with unit `1`. Registered once per process and never unregistered — `RegistryMetrics.Unregister()` does not tear this gauge down, so it keeps observing for the life of the meter provider |
