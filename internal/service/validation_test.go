@@ -305,7 +305,7 @@ func TestValidateSourceConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := ValidateSourceConfig("test-source", tt.req, true)
+			err := ValidateSourceConfig(tt.req)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -319,40 +319,20 @@ func TestValidateSourceConfig(t *testing.T) {
 	}
 }
 
-// TestValidateSourceConfig_Name checks that ValidateSourceConfig gates the
-// source name on IsValidDNSSubdomain (the regex itself is tested in
-// internal/config) when validateName is true — this only proves the wiring
-// is in place on the create path.
-func TestValidateSourceConfig_Name(t *testing.T) {
+// TestValidateSourceConfig_IgnoresName proves this validator is name-agnostic.
+// The DNS-subdomain gate lives in config.ValidateSourceName and is applied only
+// where a name is chosen — config load, and the insert path in CreateSource.
+// Keeping it out of here is what lets a source whose stored name predates the
+// rule still be updated: there is no rename endpoint, so an update-time gate
+// could only ever strand an existing row.
+func TestValidateSourceConfig_IgnoresName(t *testing.T) {
 	t.Parallel()
 
 	validReq := &SourceCreateRequest{
 		Managed: &config.ManagedConfig{},
 	}
 
-	err := ValidateSourceConfig("my-source-1", validReq, true)
-	require.NoError(t, err)
-
-	err = ValidateSourceConfig("Not_A_Valid.Name", validReq, true)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be a valid DNS subdomain")
-}
-
-// TestValidateSourceConfig_Name_SkippedOnUpdate proves that a source created
-// before this rule existed — whose stored name would fail IsValidDNSSubdomain
-// today — can still be updated. There is no rename endpoint, so re-gating the
-// name on every update would permanently strand such a source: every future
-// PUT would 400 before ever reaching the existence check that would otherwise
-// route it to the update path.
-func TestValidateSourceConfig_Name_SkippedOnUpdate(t *testing.T) {
-	t.Parallel()
-
-	validReq := &SourceCreateRequest{
-		Managed: &config.ManagedConfig{},
-	}
-
-	err := ValidateSourceConfig("Not_A_Valid.Name", validReq, false)
-	require.NoError(t, err)
+	require.NoError(t, ValidateSourceConfig(validReq))
 }
 
 func TestValidateGitConfig(t *testing.T) {

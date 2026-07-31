@@ -27,26 +27,16 @@ func ValidateRegistryConfig(req *RegistryCreateRequest) error {
 	return nil
 }
 
-// ValidateSourceConfig validates a SourceCreateRequest and, when validateName
-// is true, the name itself. name must be a valid DNS subdomain (RFC 1123): it
-// is used as a Kubernetes leader-election lease suffix and as a Prometheus
-// label value on the unauthenticated /metrics endpoint, so it is gated at
-// every path where a name can be *chosen* — config load and source creation —
-// per .claude/rules/data-model.md §6.
+// ValidateSourceConfig validates the body of a SourceCreateRequest. The name
+// is not checked here: it is gated by config.ValidateSourceName at the two
+// paths where a name can be *chosen* — config load, and the insert path in
+// CreateSource — per .claude/rules/data-model.md §6.
 //
-// validateName is false on the update path: the name was already chosen (and
-// gated, if created after this rule existed) at creation time, and re-gating
-// it on every update would permanently strand any source created before this
-// validation shipped — its name can never be changed, since there is no
-// rename endpoint, so a stricter update-time check would only ever break
-// existing rows, never catch a new one.
-func ValidateSourceConfig(name string, req *SourceCreateRequest, validateName bool) error {
-	if validateName {
-		if err := config.ValidateSourceName(name); err != nil {
-			return err
-		}
-	}
-
+// Keeping the name out of this function is what lets the update path accept a
+// source whose stored name predates the DNS-subdomain rule. There is no rename
+// endpoint, so re-gating the name on update could only ever break an existing
+// row, never catch a new one.
+func ValidateSourceConfig(req *SourceCreateRequest) error {
 	if req == nil {
 		return fmt.Errorf("config is required")
 	}

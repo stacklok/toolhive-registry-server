@@ -1970,6 +1970,63 @@ func TestUpdateSource(t *testing.T) {
 	}
 }
 
+// TestCreateSource_LegacyNameFallsThroughToUpdate covers the create-then-update
+// flow that PUT /v1/sources/{name} actually takes: upsertSource calls
+// CreateSource first and only reaches UpdateSource when it gets back
+// ErrSourceAlreadyExists.
+//
+// A source whose stored name predates DNS-subdomain validation must therefore
+// get ErrSourceAlreadyExists out of CreateSource, not ErrInvalidSourceConfig.
+// If the name gate sits above the existence check, the handler sees a 400 and
+// the row becomes permanently un-updatable — there is no rename endpoint.
+func TestCreateSource_LegacyNameFallsThroughToUpdate(t *testing.T) {
+	t.Parallel()
+
+	const legacyName = "Legacy_Source.Name"
+
+	svc, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now()
+
+	_, err := sqlc.New(svc.pool).InsertSource(ctx, sqlc.InsertSourceParams{
+		Name:         legacyName,
+		CreationType: sqlc.CreationTypeAPI,
+		SourceType:   string(config.SourceTypeGit),
+		SourceConfig: []byte(`{"repository":"https://github.com/example/repo.git","branch":"main"}`),
+		Syncable:     true,
+		CreatedAt:    &now,
+		UpdatedAt:    &now,
+	})
+	require.NoError(t, err)
+
+	req := &service.SourceCreateRequest{
+		Git: &config.GitConfig{
+			Repository: "https://github.com/example/updated-repo.git",
+			Branch:     "develop",
+		},
+		SyncPolicy: &config.SyncPolicyConfig{Interval: "30m"},
+	}
+
+	_, err = svc.CreateSource(ctx, legacyName, req)
+	require.Error(t, err)
+	require.ErrorIs(t, err, service.ErrSourceAlreadyExists,
+		"CreateSource must surface ErrSourceAlreadyExists so upsertSource falls through to UpdateSource")
+	require.NotErrorIs(t, err, service.ErrInvalidSourceConfig,
+		"the name gate must not fire before the existence check, or the handler writes 400 instead of updating")
+
+	// The fall-through the handler would then take must succeed.
+	result, err := svc.UpdateSource(ctx, legacyName, req)
+	require.NoError(t, err)
+	require.Equal(t, legacyName, result.Name)
+
+	// A genuinely new source with an invalid name is still rejected.
+	_, err = svc.CreateSource(ctx, "Another_Invalid.Name", req)
+	require.ErrorIs(t, err, service.ErrInvalidSourceConfig)
+	require.Contains(t, err.Error(), "must be a valid DNS subdomain")
+}
+
 func TestListSources(t *testing.T) {
 	t.Parallel()
 
