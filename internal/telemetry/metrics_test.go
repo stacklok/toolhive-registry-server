@@ -209,14 +209,65 @@ func TestCachingRegistryMetricReader(t *testing.T) {
 		_, err := cache.RegistryMetricCounts(context.Background())
 		require.NoError(t, err)
 
-		now = now.Add(61 * time.Second)
+		now = now.Add(registryMetricCountsCacheTTL + time.Second)
 		_, err = cache.RegistryMetricCounts(context.Background())
 		require.NoError(t, err)
 
 		assert.Equal(t, 2, inner.calls, "expected a fresh query once the TTL has elapsed")
 	})
 
-	t.Run("caches an error result instead of re-querying on every call", func(t *testing.T) {
+	// The success TTL must stay strictly below the export interval. At exactly
+	// DefaultMetricsInterval the periodic reader's tick would alternate
+	// hit/miss and the gauges would only refresh every other cycle.
+	t.Run("success TTL is below the metrics export interval", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Less(t, registryMetricCountsCacheTTL, DefaultMetricsInterval,
+			"a TTL at or above the export interval halves the gauges' effective refresh rate")
+	})
+
+	t.Run("TTL is measured from before the query, not after it", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Now()
+		inner := &countingRegistryMetricReader{
+			inner: &staticRegistryMetricReader{counts: []RegistryMetricCount{{SourceName: "s", ServerCount: 1}}},
+		}
+		cache := newCachingRegistryMetricReader(inner)
+		cache.now = func() time.Time { return now }
+
+		_, err := cache.RegistryMetricCounts(context.Background())
+		require.NoError(t, err)
+
+		assert.Equal(t, now.Add(registryMetricCountsCacheTTL), cache.expiresAt,
+			"expiry stamped after the query would drift the refresh cadence by the query's duration")
+	})
+
+	t.Run("serves the last known-good counts when a refresh fails", func(t *testing.T) {
+		t.Parallel()
+
+		static := &staticRegistryMetricReader{counts: []RegistryMetricCount{{SourceName: "s", ServerCount: 7}}}
+		inner := &countingRegistryMetricReader{inner: static}
+		now := time.Now()
+		cache := newCachingRegistryMetricReader(inner)
+		cache.now = func() time.Time { return now }
+
+		counts, err := cache.RegistryMetricCounts(context.Background())
+		require.NoError(t, err)
+		require.Len(t, counts, 1)
+
+		// DB goes away; the next refresh fails.
+		static.counts, static.err = nil, errors.New("db unavailable")
+		now = now.Add(registryMetricCountsCacheTTL + time.Second)
+
+		counts, err = cache.RegistryMetricCounts(context.Background())
+		require.NoError(t, err,
+			"an error from an observable callback drops the entire export, so stale counts are preferable")
+		require.Len(t, counts, 1)
+		assert.Equal(t, int64(7), counts[0].ServerCount)
+	})
+
+	t.Run("propagates the error when there has never been a successful read", func(t *testing.T) {
 		t.Parallel()
 
 		inner := &countingRegistryMetricReader{
@@ -226,12 +277,45 @@ func TestCachingRegistryMetricReader(t *testing.T) {
 		cache := newCachingRegistryMetricReader(inner)
 		cache.now = func() time.Time { return now }
 
-		_, err1 := cache.RegistryMetricCounts(context.Background())
-		_, err2 := cache.RegistryMetricCounts(context.Background())
+		_, err := cache.RegistryMetricCounts(context.Background())
+		require.Error(t, err)
+	})
 
-		require.Error(t, err1)
-		require.Error(t, err2)
-		assert.Equal(t, 1, inner.calls, "a failing reader should still be memoized within the TTL, not retried on every call")
+	t.Run("caches a failure only for the short negative TTL", func(t *testing.T) {
+		t.Parallel()
+
+		static := &staticRegistryMetricReader{err: errors.New("db unavailable")}
+		inner := &countingRegistryMetricReader{inner: static}
+		now := time.Now()
+		cache := newCachingRegistryMetricReader(inner)
+		cache.now = func() time.Time { return now }
+
+		_, err := cache.RegistryMetricCounts(context.Background())
+		require.Error(t, err)
+
+		// Within the negative TTL the failure is memoized, so a fast scrape
+		// interval doesn't hammer an already-failing DB.
+		_, err = cache.RegistryMetricCounts(context.Background())
+		require.Error(t, err)
+		assert.Equal(t, 1, inner.calls)
+
+		// Once it lapses, a recovered DB is picked up immediately rather than
+		// being held out for the full success TTL.
+		static.err = nil
+		static.counts = []RegistryMetricCount{{SourceName: "s", ServerCount: 1}}
+		now = now.Add(registryMetricCountsErrorCacheTTL + time.Second)
+
+		counts, err := cache.RegistryMetricCounts(context.Background())
+		require.NoError(t, err)
+		require.Len(t, counts, 1)
+		assert.Equal(t, 2, inner.calls)
+	})
+
+	t.Run("negative TTL is shorter than the success TTL", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Less(t, registryMetricCountsErrorCacheTTL, registryMetricCountsCacheTTL,
+			"holding a failure for the full success TTL prolongs an export blackout past the DB's recovery")
 	})
 }
 

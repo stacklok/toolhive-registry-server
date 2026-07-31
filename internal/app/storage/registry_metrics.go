@@ -25,7 +25,18 @@ SELECT src.name,
 // reach this query — the OTel Prometheus exporter builds its own
 // context.TODO() rather than propagating the request context — so this is
 // the only place that can actually cancel a stalled query.
-const registryMetricCountsQueryTimeout = 5 * time.Second
+//
+// It sits above the caching reader's negative TTL but well below
+// PeriodicReader's 30s collect timeout, so a stalled query fails on this
+// deadline rather than taking the whole export down with it.
+const registryMetricCountsQueryTimeout = 20 * time.Second
+
+// registryMetricCountsContext caps ctx at registryMetricCountsQueryTimeout. It
+// is an upper bound only: a caller that already has a tighter deadline keeps
+// it. The cancel func is returned for the caller to defer.
+func registryMetricCountsContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, registryMetricCountsQueryTimeout)
+}
 
 type registryMetricsReader struct {
 	pool *pgxpool.Pool
@@ -45,7 +56,7 @@ func (d *DatabaseFactory) CreateRegistryMetricsReader(_ context.Context) (teleme
 func (r *registryMetricsReader) RegistryMetricCounts(
 	ctx context.Context,
 ) ([]telemetry.RegistryMetricCount, error) {
-	ctx, cancel := context.WithTimeout(ctx, registryMetricCountsQueryTimeout)
+	ctx, cancel := registryMetricCountsContext(ctx)
 	defer cancel()
 
 	rows, err := r.pool.Query(ctx, registryMetricCountsQuery)
