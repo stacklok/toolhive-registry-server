@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -198,6 +199,46 @@ func TestHTTPMetrics_Middleware(t *testing.T) {
 		// returns to zero and reads as a permanent in-flight leak.
 		assert.Equal(t, int64(0), sum.DataPoints[0].Value,
 			"active_requests must return to zero after the request completes")
+	})
+
+	t.Run("arbitrary request methods collapse to a single _OTHER series", func(t *testing.T) {
+		t.Parallel()
+
+		reader := sdkmetric.NewManualReader()
+		mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+		defer func() { _ = mp.Shutdown(context.Background()) }()
+
+		metrics, err := NewHTTPMetrics(mp)
+		require.NoError(t, err)
+
+		r := chi.NewRouter()
+		r.Use(metrics.Middleware)
+		r.Get("/things", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+
+		// net/http accepts any RFC 9110 token as a method, and this middleware
+		// runs ahead of authentication, so these are reachable unauthenticated.
+		// Without _OTHER normalization each one mints its own series on three
+		// cumulative instruments, all exposed on the unauthenticated /metrics.
+		const junkMethods = 25
+		for i := range junkMethods {
+			req := httptest.NewRequest(fmt.Sprintf("SCAN%04d", i), "/things", nil)
+			r.ServeHTTP(httptest.NewRecorder(), req)
+		}
+
+		var rm metricdata.ResourceMetrics
+		require.NoError(t, reader.Collect(context.Background(), &rm))
+
+		hist := findFloat64Histogram(t, rm, "http.server.request.duration")
+		assert.Len(t, hist.DataPoints, 1,
+			"every unknown method must fold into one _OTHER series, got %d", len(hist.DataPoints))
+
+		active := findInt64Sum(t, rm, "http.server.active_requests")
+		assert.Len(t, active.DataPoints, 1,
+			"active_requests had no attributes before url.scheme was added; it must not become unbounded now")
+
+		method, present := hist.DataPoints[0].Attributes.Value(attribute.Key("http.request.method"))
+		require.True(t, present)
+		assert.Equal(t, "_OTHER", method.AsString())
 	})
 
 	t.Run("records error-by-type counter for 5xx and 4xx, but not 2xx", func(t *testing.T) {
@@ -471,4 +512,30 @@ func TestGetRoutePattern(t *testing.T) {
 		rr := httptest.NewRecorder()
 		r.ServeHTTP(rr, req)
 	})
+}
+
+func TestHTTPMethodAttr(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		method   string
+		expected string
+	}{
+		{"known method passes through verbatim", http.MethodGet, http.MethodGet},
+		{"every standard method is known", http.MethodDelete, http.MethodDelete},
+		{"unknown token collapses to _OTHER", "SCAN0001", "_OTHER"},
+		{"lowercase is not a known method", "get", "_OTHER"},
+		{"empty method", "", "_OTHER"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			attr := httpMethodAttr(tt.method)
+			assert.Equal(t, "http.request.method", string(attr.Key))
+			assert.Equal(t, tt.expected, attr.Value.AsString())
+		})
+	}
 }

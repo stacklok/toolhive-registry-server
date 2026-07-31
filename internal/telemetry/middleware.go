@@ -141,7 +141,7 @@ func (m *HTTPMetrics) Middleware(next http.Handler) http.Handler {
 		// reused on the decrement, so every series returns to zero — an
 		// unlabeled +1 paired with a labeled -1 would leak in-flight counts.
 		activeAttrs := metric.WithAttributes(
-			semconv.HTTPRequestMethodKey.String(r.Method),
+			httpMethodAttr(r.Method),
 			semconv.URLScheme(requestScheme(r)),
 		)
 
@@ -163,7 +163,7 @@ func (m *HTTPMetrics) Middleware(next http.Handler) http.Handler {
 		// metric emitted by any other semconv-instrumented service. url.scheme
 		// is Required on that metric alongside http.request.method.
 		attrs := []attribute.KeyValue{
-			semconv.HTTPRequestMethodKey.String(r.Method),
+			httpMethodAttr(r.Method),
 			semconv.URLScheme(requestScheme(r)),
 			semconv.HTTPRoute(routePattern),
 			semconv.HTTPResponseStatusCode(ww.Status()),
@@ -184,6 +184,42 @@ func (m *HTTPMetrics) Middleware(next http.Handler) http.Handler {
 			))
 		}
 	})
+}
+
+// knownHTTPMethods is the set of methods semconv v1.26 treats as known. Any
+// other value is reported as _OTHER, which the spec requires and which also
+// bounds the label: net/http accepts any RFC 9110 token as a method, and the
+// metrics middleware is deliberately mounted ahead of authentication, so an
+// unauthenticated client could otherwise mint an unbounded number of series on
+// three cumulative instruments — and they are exposed on an unauthenticated
+// /metrics endpoint.
+//
+// Matching is case-sensitive, per the spec: "get" is not GET, and normalizing
+// it would hide a misbehaving client rather than report it as _OTHER.
+var knownHTTPMethods = map[string]struct{}{
+	http.MethodConnect: {},
+	http.MethodDelete:  {},
+	http.MethodGet:     {},
+	http.MethodHead:    {},
+	http.MethodOptions: {},
+	http.MethodPatch:   {},
+	http.MethodPost:    {},
+	http.MethodPut:     {},
+	http.MethodTrace:   {},
+}
+
+// httpMethodAttr returns the bounded semconv http.request.method attribute for
+// a request method.
+//
+// The spec's companion attribute http.request.method_original, which carries
+// the unrecognised value verbatim, is deliberately not recorded: it is exactly
+// the unbounded value this normalization exists to keep off a metric. It
+// belongs on a span, where cardinality is not cumulative.
+func httpMethodAttr(method string) attribute.KeyValue {
+	if _, ok := knownHTTPMethods[method]; ok {
+		return semconv.HTTPRequestMethodKey.String(method)
+	}
+	return semconv.HTTPRequestMethodOther
 }
 
 // requestScheme returns the url.scheme value for a request. semconv v1.26
