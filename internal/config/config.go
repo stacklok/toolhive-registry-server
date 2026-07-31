@@ -96,6 +96,9 @@ const (
 	// MaxAuditDataSize is the hard upper bound (1 MB) for captured request
 	// bodies to prevent memory exhaustion from misconfiguration.
 	MaxAuditDataSize = 1 << 20
+
+	// schemeHTTPS is the canonical HTTPS URL scheme literal.
+	schemeHTTPS = "https"
 )
 
 // AuditConfig defines audit logging configuration.
@@ -333,6 +336,64 @@ type KubernetesConfig struct {
 	// Namespaces is a list of Kubernetes namespaces to watch for MCP servers
 	// If empty, watches the namespace configured via WatchNamespace environment variable
 	Namespaces []string `yaml:"namespaces,omitempty"`
+	// DiscoverTimeout is the maximum duration for lazy tool discovery connections.
+	// Must be a valid Go duration string (e.g. "10s", "30s", "1m").
+	// Defaults to 10s if unset.
+	DiscoverTimeout string `yaml:"discoverTimeout,omitempty"`
+	// DiscoverOAuth2 configures the OAuth2 client_credentials grant used to obtain
+	// bearer tokens for MCP `tools/list` calls issued by the reconciler. When unset,
+	// discovery calls are made without an Authorization header (anonymous).
+	DiscoverOAuth2 *DiscoverOAuth2Yaml `yaml:"discoverOAuth2,omitempty"`
+}
+
+// DiscoverOAuth2Yaml configures the OAuth2 client_credentials grant used by
+// the Kubernetes reconciler when fetching tool metadata from MCP proxies.
+//
+// The client secret is read from ClientSecretFile using readSecretFromFile
+// (absolute path + EvalSymlinks). Secrets are never accepted inline.
+type DiscoverOAuth2Yaml struct {
+	// TokenURL is the OAuth2 token endpoint (must be absolute; HTTPS unless
+	// THV_REGISTRY_INSECURE_URL=true or a loopback host).
+	TokenURL string `yaml:"tokenUrl"`
+	// ClientID identifies the confidential client registered at the IdP.
+	ClientID string `yaml:"clientId"`
+	// ClientSecretFile is an absolute path to a file whose contents are the
+	// OAuth2 client secret. Symlinks are resolved before reading.
+	ClientSecretFile string `yaml:"clientSecretFile"`
+	// Scopes is the optional list of OAuth2 scopes to request.
+	Scopes []string `yaml:"scopes,omitempty"`
+	// Audience is an optional `audience` parameter sent alongside the token request.
+	// Some IdPs (e.g. Auth0) require it; for Keycloak it can be left empty.
+	Audience string `yaml:"audience,omitempty"`
+	// EndpointParams are additional URL-encoded parameters passed to the token
+	// endpoint (e.g. resource-specific hints). Values are opaque strings.
+	EndpointParams map[string]string `yaml:"endpointParams,omitempty"`
+}
+
+// GetClientSecret returns the client secret by reading from the file specified in ClientSecretFile.
+// Returns empty string if ClientSecretFile is not configured.
+// Returns an error if the file cannot be read.
+func (d *DiscoverOAuth2Yaml) GetClientSecret() (string, error) {
+	secret, err := readSecretFromFile(d.ClientSecretFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to read discover oauth2 client secret: %w", err)
+	}
+	return secret, nil
+}
+
+// LogValue implements slog.LogValuer to prevent accidental secret leakage.
+// Only presence-indicators and non-sensitive fields are emitted.
+func (d *DiscoverOAuth2Yaml) LogValue() slog.Value {
+	if d == nil {
+		return slog.StringValue("<nil>")
+	}
+	return slog.GroupValue(
+		slog.String("tokenUrl", d.TokenURL),
+		slog.String("clientId", d.ClientID),
+		slog.Bool("hasClientSecretFile", d.ClientSecretFile != ""),
+		slog.Any("scopes", d.Scopes),
+		slog.String("audience", d.Audience),
+	)
 }
 
 // SyncPolicyConfig defines synchronization settings
@@ -506,7 +567,7 @@ func (p *OAuthProviderConfig) validateProvider(index int, insecureAllowHTTP bool
 	}
 
 	// Enforce HTTPS unless THV_REGISTRY_INSECURE_URL=true or localhost
-	if issuerURL.Scheme != "https" && !insecureAllowHTTP {
+	if issuerURL.Scheme != schemeHTTPS && !insecureAllowHTTP {
 		host := issuerURL.Hostname()
 		if !isLoopbackHost(host) {
 			const msg = "must use HTTPS (set THV_REGISTRY_INSECURE_URL=true to allow HTTP)"
@@ -936,7 +997,7 @@ func (c *Config) validate() error {
 }
 
 // validateSourceConfig validates a single source configuration
-func (*Config) validateSourceConfig(src *SourceConfig, index int) error {
+func (c *Config) validateSourceConfig(src *SourceConfig, index int) error {
 	prefix := fmt.Sprintf("source[%d] (%s)", index, src.Name)
 
 	// Validate exactly one source type is configured
@@ -945,8 +1006,13 @@ func (*Config) validateSourceConfig(src *SourceConfig, index int) error {
 	}
 
 	// Non-synced sources (managed and kubernetes) don't require sync policy or filter
-	// If syncPolicy or filter are set for these sources, they will be silently ignored
+	// If syncPolicy or filter are set for these sources, they will be silently ignored.
+	// Kubernetes sources still need their type-specific block validated
+	// (discoverTimeout, discoverOAuth2), so fall through to validateSourceSpecificConfig.
 	if src.IsNonSyncedSource() {
+		if src.Kubernetes != nil {
+			return validateSourceSpecificConfig(src, prefix, c.insecureAllowHTTP)
+		}
 		return nil
 	}
 
@@ -956,7 +1022,7 @@ func (*Config) validateSourceConfig(src *SourceConfig, index int) error {
 	}
 
 	// Validate type-specific settings
-	return validateSourceSpecificConfig(src, prefix)
+	return validateSourceSpecificConfig(src, prefix, c.insecureAllowHTTP)
 }
 
 // validateRegistries validates the registries section of the configuration
@@ -1046,7 +1112,7 @@ func validateSourceTypeCount(src *SourceConfig, prefix string) error {
 }
 
 // validateSourceSpecificConfig validates the configuration for each source type
-func validateSourceSpecificConfig(src *SourceConfig, prefix string) error {
+func validateSourceSpecificConfig(src *SourceConfig, prefix string, insecureAllowHTTP bool) error {
 	if src.Git != nil {
 		return validateGitConfig(src.Git, prefix)
 	}
@@ -1059,6 +1125,57 @@ func validateSourceSpecificConfig(src *SourceConfig, prefix string) error {
 		return validateFileConfig(src.File, prefix)
 	}
 
+	if src.Kubernetes != nil {
+		return validateKubernetesConfig(src.Kubernetes, prefix, insecureAllowHTTP)
+	}
+
+	return nil
+}
+
+// validateKubernetesConfig validates Kubernetes-specific configuration
+func validateKubernetesConfig(k *KubernetesConfig, prefix string, insecureAllowHTTP bool) error {
+	if k.DiscoverTimeout != "" {
+		if _, err := time.ParseDuration(k.DiscoverTimeout); err != nil {
+			return fmt.Errorf("%s: kubernetes.discoverTimeout must be a valid duration (e.g., '10s', '1m'): %w", prefix, err)
+		}
+	}
+	if k.DiscoverOAuth2 != nil {
+		if err := validateDiscoverOAuth2(k.DiscoverOAuth2, prefix, insecureAllowHTTP); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateDiscoverOAuth2 validates the OAuth2 client_credentials configuration
+// used by the K8s reconciler to fetch tool metadata.
+func validateDiscoverOAuth2(d *DiscoverOAuth2Yaml, prefix string, insecureAllowHTTP bool) error {
+	if d.TokenURL == "" {
+		return fmt.Errorf("%s: kubernetes.discoverOAuth2.tokenUrl is required", prefix)
+	}
+	if d.ClientID == "" {
+		return fmt.Errorf("%s: kubernetes.discoverOAuth2.clientId is required", prefix)
+	}
+	if d.ClientSecretFile == "" {
+		return fmt.Errorf("%s: kubernetes.discoverOAuth2.clientSecretFile is required", prefix)
+	}
+	if !filepath.IsAbs(d.ClientSecretFile) {
+		return fmt.Errorf("%s: kubernetes.discoverOAuth2.clientSecretFile must be an absolute path", prefix)
+	}
+
+	tokenURL, err := url.Parse(d.TokenURL)
+	if err != nil {
+		return fmt.Errorf("%s: kubernetes.discoverOAuth2.tokenUrl is invalid: %w", prefix, err)
+	}
+	if !tokenURL.IsAbs() || tokenURL.Host == "" {
+		return fmt.Errorf("%s: kubernetes.discoverOAuth2.tokenUrl must be an absolute URL with host", prefix)
+	}
+	if tokenURL.Scheme != schemeHTTPS && !insecureAllowHTTP {
+		if !isLoopbackHost(tokenURL.Hostname()) {
+			return fmt.Errorf("%s: kubernetes.discoverOAuth2.tokenUrl must use HTTPS "+
+				"(set THV_REGISTRY_INSECURE_URL=true to allow HTTP)", prefix)
+		}
+	}
 	return nil
 }
 
@@ -1166,7 +1283,7 @@ func validateFileURL(rawURL string, prefix string) error {
 	}
 
 	// Only allow HTTP and HTTPS schemes
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != schemeHTTPS {
 		return fmt.Errorf("%s: file.url must use http or https scheme", prefix)
 	}
 

@@ -206,6 +206,19 @@ config:
 #     # - name: k8s-mcp
 #     #   kubernetes:
 #     #     namespaces: ["mcp-prod"]
+#     #     discoverTimeout: "10s"
+#     #     # Optional: OAuth2 client_credentials grant for lazy tools/list discovery.
+#     #     # Registry-server obtains Bearer tokens from this IdP and attaches them to
+#     #     # MCP tools/list calls, which lets it query proxies that enforce Cedar auth.
+#     #     # The client secret is mounted as a file — never embedded inline.
+#     #     # discoverOAuth2:
+#     #     #   tokenUrl: https://keycloak.example.com/realms/toolhive/protocol/openid-connect/token
+#     #     #   clientId: registry-server-discovery
+#     #     #   clientSecretFile: /var/run/secrets/toolhive/discover-oauth2/client-secret
+#     #     #   scopes: ["mcp.discover"]
+#     #     #   # audience: registry-server              # optional (Auth0-style)
+#     #     #   # endpointParams:                       # optional extra token endpoint params
+#     #     #   #   resource: https://mcp.example
 #     #   # Per-entry claims set via toolhive.stacklok.dev/authz-claims JSON annotation on CRDs
 #
 #   registries:

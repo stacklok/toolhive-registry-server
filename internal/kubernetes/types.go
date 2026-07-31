@@ -1,16 +1,19 @@
 package kubernetes
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	model "github.com/modelcontextprotocol/registry/pkg/model"
 	mcp "github.com/stacklok/toolhive-core/mcpcompat/mcp"
 	registry "github.com/stacklok/toolhive-core/registry/types"
 	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -28,7 +31,12 @@ const (
 // extractServer converts an MCPServer to a ServerJSON object
 //
 //nolint:unparam
-func extractServer(mcpServer *mcpv1beta1.MCPServer) (*upstreamv0.ServerJSON, error) {
+func extractServer(
+	ctx context.Context,
+	mcpServer *mcpv1beta1.MCPServer,
+	discoverTimeout time.Duration,
+	ts oauth2.TokenSource,
+) (*upstreamv0.ServerJSON, error) {
 	// Generate reverse-DNS formatted server name
 	serverName, err := GenerateServerName(mcpServer.Namespace, mcpServer.Name)
 	if err != nil {
@@ -96,9 +104,14 @@ func extractServer(mcpServer *mcpv1beta1.MCPServer) (*upstreamv0.ServerJSON, err
 		},
 	}
 
-	// Add tool definitions if present
+	// Add tool definitions if present; otherwise attempt lazy discovery via the proxy URL.
+	// The proxy's ListToolsMappingMiddleware already applies toolsFilter, so the discovered
+	// list equals the set of tools that are actually callable — solving both sync and
+	// consistency problems in one step.
 	if toolDefs := extractToolDefinitions(annotations, mcpServer.Name, mcpServer.Namespace); toolDefs != nil {
 		extensions.ToolDefinitions = toolDefs
+	} else {
+		extensions.ToolDefinitions = discoverTools(ctx, transportURL, mcpServer.Name, mcpServer.Namespace, discoverTimeout, ts)
 	}
 
 	// Add tools if present
@@ -124,7 +137,12 @@ func extractServer(mcpServer *mcpv1beta1.MCPServer) (*upstreamv0.ServerJSON, err
 // extractVirtualMCPServer converts a VirtualMCPServer to a ServerJSON object
 //
 //nolint:unparam
-func extractVirtualMCPServer(virtualMCPServer *mcpv1beta1.VirtualMCPServer) (*upstreamv0.ServerJSON, error) {
+func extractVirtualMCPServer(
+	ctx context.Context,
+	virtualMCPServer *mcpv1beta1.VirtualMCPServer,
+	discoverTimeout time.Duration,
+	ts oauth2.TokenSource,
+) (*upstreamv0.ServerJSON, error) {
 	// Generate reverse-DNS formatted server name
 	serverName, err := GenerateServerName(virtualMCPServer.Namespace, virtualMCPServer.Name)
 	if err != nil {
@@ -186,9 +204,11 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1beta1.VirtualMCPServer) (*up
 		},
 	}
 
-	// Add tool definitions if present
 	if toolDefs := extractToolDefinitions(annotations, virtualMCPServer.Name, virtualMCPServer.Namespace); toolDefs != nil {
 		extensions.ToolDefinitions = toolDefs
+	} else {
+		extensions.ToolDefinitions = discoverTools(
+			ctx, transportURL, virtualMCPServer.Name, virtualMCPServer.Namespace, discoverTimeout, ts)
 	}
 
 	// Add tools if present
@@ -214,7 +234,12 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1beta1.VirtualMCPServer) (*up
 // extractMCPRemoteProxy converts a MCPRemoteProxy to a ServerJSON object
 //
 //nolint:unparam
-func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1beta1.MCPRemoteProxy) (*upstreamv0.ServerJSON, error) {
+func extractMCPRemoteProxy(
+	ctx context.Context,
+	mcpRemoteProxy *mcpv1beta1.MCPRemoteProxy,
+	discoverTimeout time.Duration,
+	ts oauth2.TokenSource,
+) (*upstreamv0.ServerJSON, error) {
 	// Generate reverse-DNS formatted server name
 	serverName, err := GenerateServerName(mcpRemoteProxy.Namespace, mcpRemoteProxy.Name)
 	if err != nil {
@@ -276,9 +301,11 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1beta1.MCPRemoteProxy) (*upstream
 		},
 	}
 
-	// Add tool definitions if present
 	if toolDefs := extractToolDefinitions(annotations, mcpRemoteProxy.Name, mcpRemoteProxy.Namespace); toolDefs != nil {
 		extensions.ToolDefinitions = toolDefs
+	} else {
+		extensions.ToolDefinitions = discoverTools(
+			ctx, transportURL, mcpRemoteProxy.Name, mcpRemoteProxy.Namespace, discoverTimeout, ts)
 	}
 
 	// Add tools if present
