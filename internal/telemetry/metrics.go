@@ -3,6 +3,7 @@ package telemetry
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -84,12 +85,17 @@ type cachingRegistryMetricReader struct {
 	ttl      time.Duration
 	errorTTL time.Duration
 	now      func() time.Time
+	// logger is nil in production, which resolves to slog.Default() at call
+	// time. Tests set it so they can assert on the transition without swapping
+	// the process-wide default logger out from under parallel siblings.
+	logger *slog.Logger
 
 	mu        sync.Mutex
 	expiresAt time.Time
 	counts    []RegistryMetricCount
 	haveCount bool
 	err       error
+	degraded  bool
 }
 
 func newCachingRegistryMetricReader(reader RegistryMetricReader) *cachingRegistryMetricReader {
@@ -107,9 +113,11 @@ func (c *cachingRegistryMetricReader) RegistryMetricCounts(ctx context.Context) 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Stamp the deadline from before the query, not after: measuring the TTL
-	// from completion would push each expiry out by the query's own duration
-	// and drift the refresh cadence past the export interval.
+	// Stamp the success deadline from before the query, not after: measuring
+	// the TTL from completion would push each expiry out by the query's own
+	// duration and drift the refresh cadence past the export interval. This
+	// relies on the reader's own query timeout being shorter than ttl, which
+	// registryMetricCountsQueryTimeout is.
 	started := c.now()
 	if started.Before(c.expiresAt) {
 		return c.counts, c.err
@@ -117,21 +125,67 @@ func (c *cachingRegistryMetricReader) RegistryMetricCounts(ctx context.Context) 
 
 	counts, err := c.reader.RegistryMetricCounts(ctx)
 	if err != nil {
+		// The negative TTL is stamped from after the query, unlike the success
+		// TTL above. A failing read most often fails by exhausting the
+		// reader's query timeout, which is longer than errorTTL, so stamping
+		// from `started` would write an entry that is already expired and let
+		// the very next caller re-run the full-table aggregate — turning an
+		// unreachable or saturated database into a back-to-back stream of
+		// them, which is exactly what this cache exists to prevent.
+		c.expiresAt = c.now().Add(c.errorTTL)
+		c.noteDegraded(err)
+
 		// Fall back to the last known-good counts if we have any, so one
 		// failed read doesn't black out the whole export.
 		if c.haveCount {
 			c.err = nil
-			c.expiresAt = started.Add(c.errorTTL)
 			return c.counts, nil
 		}
 		c.err = err
-		c.expiresAt = started.Add(c.errorTTL)
 		return nil, err
 	}
 
+	c.noteRecovered()
 	c.counts, c.haveCount, c.err = counts, true, nil
 	c.expiresAt = started.Add(c.ttl)
 	return c.counts, nil
+}
+
+// noteDegraded records that a refresh failed. It logs only on the transition
+// into the degraded state: the negative TTL means a persistently unreachable
+// database retries every few seconds, so logging every failure would emit a
+// line per retry for the length of the outage. Callers must hold c.mu.
+func (c *cachingRegistryMetricReader) noteDegraded(err error) {
+	if c.degraded {
+		return
+	}
+	c.degraded = true
+
+	// Without this the fallback below is invisible: the error is swallowed,
+	// the gauges keep reporting their last value with a fresh timestamp, and
+	// nothing distinguishes "counts are steady" from "counts are frozen".
+	c.log().Warn("Registry metric counts refresh failed",
+		"error", err,
+		"serving_stale_counts", c.haveCount)
+}
+
+// log returns the logger to report state transitions on, defaulting to the
+// process logger at call time so a later slog.SetDefault still applies.
+func (c *cachingRegistryMetricReader) log() *slog.Logger {
+	if c.logger != nil {
+		return c.logger
+	}
+	return slog.Default()
+}
+
+// noteRecovered records that a refresh succeeded after a failure. Callers must
+// hold c.mu.
+func (c *cachingRegistryMetricReader) noteRecovered() {
+	if !c.degraded {
+		return
+	}
+	c.degraded = false
+	c.log().Info("Registry metric counts refresh recovered")
 }
 
 // NewRegistryMetrics creates a new RegistryMetrics instance with the given meter provider.
