@@ -313,6 +313,80 @@ func TestWithMeterProvider(t *testing.T) {
 	}
 }
 
+func TestWithMetricsHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("sets a non-nil handler", func(t *testing.T) {
+		t.Parallel()
+		cfg := &registryAppConfig{}
+		const body = "handler-identity-marker"
+		handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(body))
+		})
+
+		err := WithMetricsHandler(handler)(cfg)
+		require.NoError(t, err)
+		require.NotNil(t, cfg.metricsHandler)
+
+		rr := httptest.NewRecorder()
+		cfg.metricsHandler.ServeHTTP(rr, httptest.NewRequest("GET", "/metrics", nil))
+		assert.Equal(t, body, rr.Body.String(), "cfg.metricsHandler should be the exact handler passed in")
+	})
+
+	t.Run("sets nil handler", func(t *testing.T) {
+		t.Parallel()
+		cfg := &registryAppConfig{}
+
+		err := WithMetricsHandler(nil)(cfg)
+
+		require.NoError(t, err)
+		assert.Nil(t, cfg.metricsHandler)
+	})
+}
+
+func TestBuildInternalHTTPServer(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	mockSvc := mocksvc.NewMockRegistryService(ctrl)
+
+	t.Run("mounts the configured metrics handler at /metrics", func(t *testing.T) {
+		t.Parallel()
+
+		const body = "# fake metrics\n"
+		cfg := &registryAppConfig{
+			internalAddress: ":8081",
+			metricsHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(body))
+			}),
+		}
+
+		server := buildInternalHTTPServer(cfg, mockSvc)
+
+		req := httptest.NewRequest("GET", "/metrics", nil)
+		rr := httptest.NewRecorder()
+		server.Handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, body, rr.Body.String())
+	})
+
+	t.Run("omits /metrics when no handler is configured", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &registryAppConfig{internalAddress: ":8081"}
+
+		server := buildInternalHTTPServer(cfg, mockSvc)
+
+		req := httptest.NewRequest("GET", "/metrics", nil)
+		rr := httptest.NewRecorder()
+		server.Handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
+}
+
 func TestBuildHTTPServer(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

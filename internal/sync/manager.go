@@ -121,9 +121,12 @@ const (
 
 // Error represents a structured error with condition information for operator components
 type Error struct {
-	Err             error
-	Message         string
-	ConditionType   string
+	Err           error
+	Message       string
+	ConditionType string
+	// ConditionReason must be one of the conditionReason* constants above. It
+	// is also used as the bounded error_type label on the errors_total metric,
+	// so it must never carry unbounded or dynamic values.
 	ConditionReason string
 }
 

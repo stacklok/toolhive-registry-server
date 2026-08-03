@@ -39,7 +39,11 @@ func (s *dbService) CreateSource(
 	// Add tracing attributes
 	span.SetAttributes(otel.AttrRegistryName.String(name))
 
-	// Validate configuration
+	// Validate the config body. The name is validated further down, after the
+	// existence check: PUT /v1/sources/{name} calls CreateSource first and only
+	// falls back to UpdateSource on ErrSourceAlreadyExists, so rejecting the
+	// name here would shadow that error and strand every existing source whose
+	// name predates this rule.
 	if err := service.ValidateSourceConfig(req); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidSourceConfig, err)
@@ -86,6 +90,13 @@ func (s *dbService) CreateSource(
 	if !errors.Is(err, pgx.ErrNoRows) {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to check source existence: %w", err)
+	}
+
+	// The name is only gated once we know we're inserting a new row — this is
+	// the point at which the name is actually being chosen.
+	if err := config.ValidateSourceName(name); err != nil {
+		otel.RecordError(span, err)
+		return nil, fmt.Errorf("%w: %v", service.ErrInvalidSourceConfig, err)
 	}
 
 	// Enforce at most one managed source globally
@@ -207,7 +218,11 @@ func (s *dbService) UpdateSource(
 	// Add tracing attributes
 	span.SetAttributes(otel.AttrRegistryName.String(name))
 
-	// Validate configuration
+	// Validate configuration. The name is not validated here: it was already
+	// chosen (and gated, if the source postdates this rule) at creation time,
+	// and there is no rename endpoint to correct a pre-existing name —
+	// re-gating it here would permanently strand any source created before
+	// this validation shipped.
 	if err := service.ValidateSourceConfig(req); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidSourceConfig, err)
