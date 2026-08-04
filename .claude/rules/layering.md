@@ -44,8 +44,8 @@ traffic run on the public port with full middleware.
 **What must hold:**
 - Public server (default `:8080`): all `/v1/`, `/registry/`, `/openapi.json`,
   `/.well-known/...` routes. Carries auth and audit middleware.
-- Internal server (default `:8081`): `/health`, `/readiness`, `/version` only. No auth, no
-  audit, no rate limiting.
+- Internal server (default `:8081`): `/health`, `/readiness`, `/version`, and (when metrics
+  are enabled) `/metrics`. No auth, no audit, no rate limiting.
 - Internal endpoints are never reachable from the public port.
 
 **Breaks if violated:** Kubernetes probes fail when auth is required; operational endpoints

@@ -27,7 +27,15 @@ func ValidateRegistryConfig(req *RegistryCreateRequest) error {
 	return nil
 }
 
-// ValidateSourceConfig validates a SourceCreateRequest
+// ValidateSourceConfig validates the body of a SourceCreateRequest. The name
+// is not checked here: it is gated by config.ValidateSourceName at the two
+// paths where a name can be *chosen* — config load, and the insert path in
+// CreateSource — per .claude/rules/data-model.md §6.
+//
+// Keeping the name out of this function is what lets the update path accept a
+// source whose stored name predates the DNS-subdomain rule. There is no rename
+// endpoint, so re-gating the name on update could only ever break an existing
+// row, never catch a new one.
 func ValidateSourceConfig(req *SourceCreateRequest) error {
 	if req == nil {
 		return fmt.Errorf("config is required")

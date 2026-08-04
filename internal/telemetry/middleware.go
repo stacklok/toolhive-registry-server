@@ -3,13 +3,15 @@ package telemetry
 
 import (
 	"net/http"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	coremetrics "github.com/stacklok/toolhive-core/telemetry/metrics"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
 const (
@@ -17,11 +19,28 @@ const (
 	HTTPMetricsMeterName = "github.com/stacklok/toolhive-registry-server/http"
 )
 
+// areaHTTP is the bounded area-label value stamped on
+// stacklok.registry.errors for HTTP-layer errors.
+const areaHTTP = "http"
+
+// schemeHTTP and schemeHTTPS are the only url.scheme values this server emits.
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
+)
+
 // HTTPMetrics holds the OpenTelemetry instruments for HTTP metrics
 type HTTPMetrics struct {
 	requestDuration metric.Float64Histogram
 	requestsTotal   metric.Int64Counter
 	activeRequests  metric.Int64UpDownCounter
+	// errorsTotal is the additive error-by-type detail counter (RFC §3.6
+	// coverage gap). It carries the response status class as error_type
+	// alongside the fixed area="http" label. It is orthogonal to the
+	// http.response.status_code attribute already on requestsTotal: this
+	// series exists so an error ratio can be split by class without a
+	// high-cardinality join.
+	errorsTotal metric.Int64Counter
 }
 
 // NewHTTPMetrics creates a new HTTPMetrics instance with the given meter provider.
@@ -33,18 +52,23 @@ func NewHTTPMetrics(provider metric.MeterProvider) (*HTTPMetrics, error) {
 
 	meter := provider.Meter(HTTPMetricsMeterName)
 
+	// requestDuration and activeRequests carry the OTel HTTP server semconv
+	// names and units verbatim (RFC D2: semconv-covered metrics are never
+	// prefixed), so they stay cross-vendor comparable.
 	requestDuration, err := meter.Float64Histogram(
-		"thv_reg_srv_http_request_duration_seconds",
-		metric.WithDescription("Duration of HTTP requests in seconds"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
+		semconv.HTTPServerRequestDurationName,
+		metric.WithDescription(semconv.HTTPServerRequestDurationDescription),
+		metric.WithUnit(semconv.HTTPServerRequestDurationUnit),
+		metric.WithExplicitBucketBoundaries(coremetrics.BucketsFastHTTP()...),
 	)
 	if err != nil {
 		return nil, err
 	}
 
+	// requestsTotal has no semconv equivalent (semconv derives rate from the
+	// duration histogram's count), so it keeps the stacklok.* prefix.
 	requestsTotal, err := meter.Int64Counter(
-		"thv_reg_srv_http_requests_total",
+		"stacklok.registry.http.requests",
 		metric.WithDescription("Total number of HTTP requests"),
 		metric.WithUnit("{request}"),
 	)
@@ -53,10 +77,15 @@ func NewHTTPMetrics(provider metric.MeterProvider) (*HTTPMetrics, error) {
 	}
 
 	activeRequests, err := meter.Int64UpDownCounter(
-		"thv_reg_srv_http_active_requests",
-		metric.WithDescription("Number of currently in-flight HTTP requests"),
-		metric.WithUnit("{request}"),
+		semconv.HTTPServerActiveRequestsName,
+		metric.WithDescription(semconv.HTTPServerActiveRequestsDescription),
+		metric.WithUnit(semconv.HTTPServerActiveRequestsUnit),
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	errorsTotal, err := newErrorsCounter(meter)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +94,30 @@ func NewHTTPMetrics(provider metric.MeterProvider) (*HTTPMetrics, error) {
 		requestDuration: requestDuration,
 		requestsTotal:   requestsTotal,
 		activeRequests:  activeRequests,
+		errorsTotal:     errorsTotal,
 	}, nil
+}
+
+// errorClassServer and errorClassClient are the bounded error_type values
+// errorClassForStatus can return.
+const (
+	errorClassServer = "server_error"
+	errorClassClient = "client_error"
+)
+
+// errorClassForStatus maps an HTTP status code to a bounded error_type value.
+// Only 5xx and 4xx are classified as errors; anything below 400 returns "" and
+// records nothing. Keeping the value to the status class (not the exact code)
+// bounds cardinality on the error_type label.
+func errorClassForStatus(status int) string {
+	switch {
+	case status >= 500:
+		return errorClassServer
+	case status >= 400:
+		return errorClassClient
+	default:
+		return ""
+	}
 }
 
 // Middleware returns an HTTP middleware that records metrics for each request.
@@ -84,30 +136,116 @@ func (m *HTTPMetrics) Middleware(next http.Handler) http.Handler {
 		// We need to wrap the response writer to capture the status code
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 
+		// semconv v1.26 marks http.request.method and url.scheme Required on
+		// http.server.active_requests. Both are resolved before serving and
+		// reused on the decrement, so every series returns to zero — an
+		// unlabeled +1 paired with a labeled -1 would leak in-flight counts.
+		activeAttrs := metric.WithAttributes(
+			httpMethodAttr(r.Method),
+			semconv.URLScheme(requestScheme(r)),
+		)
+
 		// Increment active requests
-		m.activeRequests.Add(ctx, 1)
+		m.activeRequests.Add(ctx, 1, activeAttrs)
 
 		// Serve the request
 		next.ServeHTTP(ww, r)
 
 		// Decrement active requests after request completes
-		m.activeRequests.Add(ctx, -1)
+		m.activeRequests.Add(ctx, -1, activeAttrs)
 
 		// Get the route pattern from chi - this gives us the pattern like "/registry/v0.1/servers/{name}"
 		// rather than the actual URL like "/registry/v0.1/servers/my-server"
 		routePattern := getRoutePattern(r)
 
-		// Record metrics
+		// Record metrics using semconv HTTP attribute keys, so a
+		// http.server.request.duration series stays joinable with the same
+		// metric emitted by any other semconv-instrumented service. url.scheme
+		// is Required on that metric alongside http.request.method.
 		attrs := []attribute.KeyValue{
-			attribute.String("method", r.Method),
-			attribute.String("route", routePattern),
-			attribute.String("status_code", strconv.Itoa(ww.Status())),
+			httpMethodAttr(r.Method),
+			semconv.URLScheme(requestScheme(r)),
+			semconv.HTTPRoute(routePattern),
+			semconv.HTTPResponseStatusCode(ww.Status()),
 		}
 
 		duration := time.Since(start).Seconds()
 		m.requestDuration.Record(ctx, duration, metric.WithAttributes(attrs...))
 		m.requestsTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
+
+		// Additive error-by-type detail: increment on 4xx and 5xx responses.
+		// The status class (not the exact code) is the bounded error_type
+		// value; area distinguishes this from sync/db errors on the same
+		// metric.
+		if errType := errorClassForStatus(ww.Status()); errType != "" {
+			m.errorsTotal.Add(ctx, 1, metric.WithAttributes(
+				attribute.String(coremetrics.LabelErrorType, errType),
+				attribute.String("area", areaHTTP),
+			))
+		}
 	})
+}
+
+// knownHTTPMethods is the set of methods semconv v1.26 treats as known. Any
+// other value is reported as _OTHER, which the spec requires and which also
+// bounds the label: net/http accepts any RFC 9110 token as a method, and the
+// metrics middleware is deliberately mounted ahead of authentication, so an
+// unauthenticated client could otherwise mint an unbounded number of series on
+// three cumulative instruments — and they are exposed on an unauthenticated
+// /metrics endpoint.
+//
+// Matching is case-sensitive, per the spec: "get" is not GET, and normalizing
+// it would hide a misbehaving client rather than report it as _OTHER.
+var knownHTTPMethods = map[string]struct{}{
+	http.MethodConnect: {},
+	http.MethodDelete:  {},
+	http.MethodGet:     {},
+	http.MethodHead:    {},
+	http.MethodOptions: {},
+	http.MethodPatch:   {},
+	http.MethodPost:    {},
+	http.MethodPut:     {},
+	http.MethodTrace:   {},
+}
+
+// httpMethodAttr returns the bounded semconv http.request.method attribute for
+// a request method.
+//
+// The spec's companion attribute http.request.method_original, which carries
+// the unrecognised value verbatim, is deliberately not recorded: it is exactly
+// the unbounded value this normalization exists to keep off a metric. It
+// belongs on a span, where cardinality is not cumulative.
+func httpMethodAttr(method string) attribute.KeyValue {
+	if _, ok := knownHTTPMethods[method]; ok {
+		return semconv.HTTPRequestMethodKey.String(method)
+	}
+	return semconv.HTTPRequestMethodOther
+}
+
+// requestScheme returns the url.scheme value for a request. semconv v1.26
+// marks url.scheme Required on both http.server.request.duration and
+// http.server.active_requests, and the value is bounded to http/https.
+//
+// r.URL.Scheme is empty on server-side requests, and r.TLS reflects the hop
+// into this process — which is plaintext when a TLS-terminating proxy sits in
+// front — so X-Forwarded-Proto takes precedence when present.
+func requestScheme(r *http.Request) string {
+	if forwarded := r.Header.Get("X-Forwarded-Proto"); forwarded != "" {
+		// A comma-separated list means multiple proxies; the first entry is
+		// the original client-facing scheme.
+		if comma := strings.IndexByte(forwarded, ','); comma >= 0 {
+			forwarded = forwarded[:comma]
+		}
+		switch scheme := strings.ToLower(strings.TrimSpace(forwarded)); scheme {
+		case schemeHTTP, schemeHTTPS:
+			return scheme
+		}
+	}
+
+	if r.TLS != nil {
+		return schemeHTTPS
+	}
+	return schemeHTTP
 }
 
 // getRoutePattern extracts the route pattern from a chi request context.

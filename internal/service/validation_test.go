@@ -319,6 +319,22 @@ func TestValidateSourceConfig(t *testing.T) {
 	}
 }
 
+// TestValidateSourceConfig_IgnoresName proves this validator is name-agnostic.
+// The DNS-subdomain gate lives in config.ValidateSourceName and is applied only
+// where a name is chosen — config load, and the insert path in CreateSource.
+// Keeping it out of here is what lets a source whose stored name predates the
+// rule still be updated: there is no rename endpoint, so an update-time gate
+// could only ever strand an existing row.
+func TestValidateSourceConfig_IgnoresName(t *testing.T) {
+	t.Parallel()
+
+	validReq := &SourceCreateRequest{
+		Managed: &config.ManagedConfig{},
+	}
+
+	require.NoError(t, ValidateSourceConfig(validReq))
+}
+
 func TestValidateGitConfig(t *testing.T) {
 	t.Parallel()
 

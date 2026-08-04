@@ -49,6 +49,49 @@ helm uninstall <release_name>
 
 The command removes all the Kubernetes components associated with the chart and deletes the release. You will have to delete the namespace manually if you used Helm to create it.
 
+### Internal Port Exposure
+
+The Service exposes `service.internalPort` (default `8081`: `/health`, `/readiness`,
+`/version`, and `/metrics` when telemetry is enabled) alongside the public API port.
+Unlike the public port, the internal port carries no authentication, no audit logging,
+and no rate limiting by design — it is meant for Kubernetes probes and Prometheus
+scrapers only.
+
+This does not expose the internal port outside the cluster (the default Service `type`
+is `ClusterIP`), but with the default Service type any pod elsewhere in the cluster can
+reach it, not just the registry server's own pod. If your cluster does not already treat
+all in-cluster workloads as equally trusted, restrict the internal port to your metrics
+scraper and probe traffic with a NetworkPolicy, e.g.:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: toolhive-registry-server-internal
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: toolhive-registry-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 8081
+          protocol: TCP
+```
+
+**Non-default `service.type`**: the internal port has no per-port guard, so changing
+`service.type` to anything that publishes the Service externally (e.g. `LoadBalancer`,
+or `NodePort` reachable from outside the cluster) publishes the unauthenticated internal
+port externally too — there is no Ingress in this chart to preempt it. Set
+`service.exposeInternalPort: false` if you change `service.type` and don't want that;
+Kubernetes probes are unaffected, since kubelet reaches the container's port directly
+rather than through the Service.
+
 ## Values
 
 | Key | Type | Default | Description |
@@ -90,6 +133,8 @@ The command removes all the Kubernetes components associated with the chart and 
 | resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | Resource requests and limits (matching operator defaults) |
 | securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"runAsUser":65535,"seccompProfile":{"type":"RuntimeDefault"}}` | Container security context |
 | service.annotations | object | `{}` | Service annotations |
+| service.exposeInternalPort | bool | `true` | Whether the Service publishes service.internalPort at all. The internal port carries no authentication, audit logging, or rate limiting by design (see "Internal Port Exposure" below); if service.type is set to anything other than the default ClusterIP, that Service publishes the internal port externally too, since there is no per-port guard. Set this to false to keep the internal port pod-local (reachable only via port-forward) if you change service.type and don't want that. |
+| service.internalPort | int | `8081` | Internal service port (health checks, metrics). The container always listens on 8081 regardless of this value — this only changes the port the Service publishes that listener on, the same as service.port above. Only takes effect when service.exposeInternalPort is true. |
 | service.port | int | `8080` | Service port |
 | service.type | string | `"ClusterIP"` | Service type |
 | serviceAccount.annotations | object | `{}` | Annotations to add to the service account |

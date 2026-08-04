@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -17,6 +18,7 @@ import (
 type Telemetry struct {
 	tracerProvider trace.TracerProvider
 	meterProvider  metric.MeterProvider
+	metricsHandler http.Handler
 }
 
 // Option is a function that configures the telemetry setup
@@ -73,7 +75,7 @@ func New(ctx context.Context, opts ...Option) (*Telemetry, error) {
 	}
 
 	// Create meter provider
-	meterProvider, err := NewMeterProvider(ctx,
+	meterProvider, metricsHandler, err := NewMeterProvider(ctx,
 		WithMeterServiceName(cfg.config.GetServiceName()),
 		WithMeterServiceVersion(cfg.config.GetServiceVersion()),
 		WithMetricsConfig(cfg.config.Metrics),
@@ -93,6 +95,7 @@ func New(ctx context.Context, opts ...Option) (*Telemetry, error) {
 	return &Telemetry{
 		tracerProvider: tracerProvider,
 		meterProvider:  meterProvider,
+		metricsHandler: metricsHandler,
 	}, nil
 }
 
@@ -103,7 +106,7 @@ func newNoOpTelemetry(ctx context.Context) (*Telemetry, error) {
 		return nil, fmt.Errorf("failed to create no-op tracer provider: %w", err)
 	}
 
-	meterProvider, err := NewMeterProvider(ctx)
+	meterProvider, _, err := NewMeterProvider(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create no-op meter provider: %w", err)
 	}
@@ -122,6 +125,12 @@ func (t *Telemetry) TracerProvider() trace.TracerProvider {
 // MeterProvider returns the configured meter provider
 func (t *Telemetry) MeterProvider() metric.MeterProvider {
 	return t.meterProvider
+}
+
+// MetricsHandler returns the Prometheus /metrics HTTP handler, or nil when
+// metrics are disabled.
+func (t *Telemetry) MetricsHandler() http.Handler {
+	return t.metricsHandler
 }
 
 // Tracer returns a named tracer from the tracer provider

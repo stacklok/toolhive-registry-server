@@ -59,8 +59,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(thv_reg_srv_http_requests_total[5m])) by (route)",
-          "legendFormat": "{{ route }}",
+          "expr": "sum(rate(stacklok_registry_http_requests_total[5m])) by (http_route)",
+          "legendFormat": "{{ http_route }}",
           "refId": "A"
         }
       ],
@@ -112,14 +112,14 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.95, sum(rate(thv_reg_srv_http_request_duration_seconds_bucket[5m])) by (le, route))",
-          "legendFormat": "p95 {{ route }}",
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{stacklok_component=\"registry\"}[5m])) by (le, http_route))",
+          "legendFormat": "p95 {{ http_route }}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.50, sum(rate(thv_reg_srv_http_request_duration_seconds_bucket[5m])) by (le, route))",
-          "legendFormat": "p50 {{ route }}",
+          "expr": "histogram_quantile(0.50, sum(rate(http_server_request_duration_seconds_bucket{stacklok_component=\"registry\"}[5m])) by (le, http_route))",
+          "legendFormat": "p50 {{ http_route }}",
           "refId": "B"
         }
       ],
@@ -157,7 +157,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(thv_reg_srv_http_active_requests)",
+          "expr": "sum(http_server_active_requests{stacklok_component=\"registry\"})",
           "legendFormat": "Active Requests",
           "refId": "A"
         }
@@ -219,8 +219,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(thv_reg_srv_http_requests_total[5m])) by (status_code)",
-          "legendFormat": "{{ status_code }}",
+          "expr": "sum(rate(stacklok_registry_http_requests_total[5m])) by (http_response_status_code)",
+          "legendFormat": "{{ http_response_status_code }}",
           "refId": "A"
         }
       ],
@@ -262,7 +262,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "thv_reg_srv_servers_total",
+          "expr": "sum(stacklok_registry_servers) by (source)",
           "legendFormat": "{{ source }}",
           "refId": "A"
         }
@@ -315,7 +315,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "thv_reg_srv_servers_total",
+          "expr": "sum(stacklok_registry_servers) by (source)",
           "legendFormat": "{{ source }}",
           "refId": "A"
         }
@@ -374,14 +374,14 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.95, sum(rate(thv_reg_srv_sync_duration_seconds_bucket[5m])) by (le, registry))",
-          "legendFormat": "p95 {{ registry }}",
+          "expr": "histogram_quantile(0.95, sum(rate(stacklok_registry_sync_duration_seconds_bucket[5m])) by (le, source))",
+          "legendFormat": "p95 {{ source }}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.50, sum(rate(thv_reg_srv_sync_duration_seconds_bucket[5m])) by (le, registry))",
-          "legendFormat": "p50 {{ registry }}",
+          "expr": "histogram_quantile(0.50, sum(rate(stacklok_registry_sync_duration_seconds_bucket[5m])) by (le, source))",
+          "legendFormat": "p50 {{ source }}",
           "refId": "B"
         }
       ],
@@ -424,11 +424,11 @@
         },
         "overrides": [
           {
-            "matcher": { "id": "byRegexp", "options": ".*false.*" },
+            "matcher": { "id": "byRegexp", "options": ".*error.*" },
             "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
           },
           {
-            "matcher": { "id": "byRegexp", "options": ".*true.*" },
+            "matcher": { "id": "byRegexp", "options": ".*success.*" },
             "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
           }
         ]
@@ -442,12 +442,71 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(increase(thv_reg_srv_sync_duration_seconds_count[5m])) by (registry, success)",
-          "legendFormat": "{{ registry }} (success={{ success }})",
+          "expr": "sum(increase(stacklok_registry_sync_duration_seconds_count[5m])) by (source, outcome)",
+          "legendFormat": "{{ source }} (outcome={{ outcome }})",
           "refId": "A"
         }
       ],
       "title": "Sync Operations (success/failure)",
+      "type": "timeseries"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 },
+      "id": 12,
+      "title": "Errors",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 30 },
+      "id": 13,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(rate(stacklok_registry_errors_total[5m])) by (area, error_type)",
+          "legendFormat": "{{ area }}/{{ error_type }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Error Rate by Area and Type",
       "type": "timeseries"
     }
   ],

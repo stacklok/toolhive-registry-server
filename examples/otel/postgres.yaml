@@ -1,0 +1,62 @@
+# Minimal single-user Postgres for the registry server, used by the
+# deploy-registry-server-with-otel skill for local telemetry testing.
+#
+# No persistence or HA guarantees. Use examples/cnpg/postgres.yaml instead
+# for a production-like database setup.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-credentials
+  namespace: toolhive-system
+type: Opaque
+stringData:
+  password: registry_password
+  migration-password: registry_password
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: toolhive-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          env:
+            - name: POSTGRES_USER
+              value: thv_user
+            - name: POSTGRES_PASSWORD
+              value: registry_password
+            - name: POSTGRES_DB
+              value: toolhive_registry
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "thv_user"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: toolhive-system
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
