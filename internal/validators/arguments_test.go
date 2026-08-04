@@ -169,7 +169,7 @@ func TestDeserializeArgumentsMalformed(t *testing.T) {
 			t.Parallel()
 
 			// Malformed rows must degrade to an empty slice rather than panic,
-			// matching how toKeyValueInputs handles unparseable env_vars.
+			// matching how toKeyValueInputs handles env_vars it cannot parse.
 			assert.Empty(t, validators.DeserializeArguments(tt.data))
 		})
 	}

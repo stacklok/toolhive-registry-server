@@ -28,7 +28,7 @@ func SerializeArguments(arguments []model.Argument) ([]byte, error) {
 
 // DeserializeArguments reconstructs a slice of model.Argument from JSONB bytes.
 //
-// Unparseable or absent data degrades to an empty slice rather than an error: a
+// Malformed or absent data degrades to an empty slice rather than an error: a
 // single malformed row must not fail a whole listing. This mirrors how
 // environment variables and transport headers are read back.
 func DeserializeArguments(data []byte) []model.Argument {
