@@ -53,6 +53,19 @@ service:
   type: ClusterIP
   # -- Service port
   port: 8080
+  # -- Whether the Service publishes service.internalPort at all. The
+  # internal port carries no authentication, audit logging, or rate limiting
+  # by design (see "Internal Port Exposure" below); if service.type is set to
+  # anything other than the default ClusterIP, that Service publishes the
+  # internal port externally too, since there is no per-port guard. Set this
+  # to false to keep the internal port pod-local (reachable only via
+  # port-forward) if you change service.type and don't want that.
+  exposeInternalPort: true
+  # -- Internal service port (health checks, metrics). The container always
+  # listens on 8081 regardless of this value — this only changes the port the
+  # Service publishes that listener on, the same as service.port above. Only
+  # takes effect when service.exposeInternalPort is true.
+  internalPort: 8081
   # -- Service annotations
   annotations: {}
 

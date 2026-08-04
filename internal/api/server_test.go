@@ -25,7 +25,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	// No expectations needed - health check doesn't call service
-	server := api.NewInternalServer(mockSvc)
+	server := api.NewInternalServer(mockSvc, nil)
 
 	req, err := http.NewRequest("GET", "/health", nil)
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestReadinessEndpoint(t *testing.T) {
 			mockSvc := mocks.NewMockRegistryService(ctrl)
 			tt.setupMock(mockSvc)
 
-			server := api.NewInternalServer(mockSvc)
+			server := api.NewInternalServer(mockSvc, nil)
 
 			req, err := http.NewRequest("GET", "/readiness", nil)
 			require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestVersionEndpoint(t *testing.T) {
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
 	// No expectations needed - version check doesn't call service
-	server := api.NewInternalServer(mockSvc)
+	server := api.NewInternalServer(mockSvc, nil)
 
 	req, err := http.NewRequest("GET", "/version", nil)
 	require.NoError(t, err)
@@ -130,6 +130,47 @@ func TestVersionEndpoint(t *testing.T) {
 	assert.Contains(t, response, "build_date")
 	assert.Contains(t, response, "go_version")
 	assert.Contains(t, response, "platform")
+}
+
+func TestInternalServer_MetricsEndpoint(t *testing.T) {
+	t.Parallel()
+
+	t.Run("mounted when handler is provided", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		const body = "# metrics\n"
+		handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(body))
+		})
+		server := api.NewInternalServer(mocks.NewMockRegistryService(ctrl), handler)
+
+		req, err := http.NewRequest("GET", "/metrics", nil)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, body, rr.Body.String())
+	})
+
+	t.Run("absent when handler is nil", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		server := api.NewInternalServer(mocks.NewMockRegistryService(ctrl), nil)
+
+		req, err := http.NewRequest("GET", "/metrics", nil)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
 }
 
 func TestOpenAPIEndpoint(t *testing.T) {
