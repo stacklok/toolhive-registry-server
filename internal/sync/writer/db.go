@@ -352,6 +352,16 @@ func bulkInsertPackages(
 		serverIDs[serverID] = true
 
 		for _, pkg := range server.Packages {
+			runtimeArgsJSON, err := validators.SerializeArguments(pkg.RuntimeArguments)
+			if err != nil {
+				return fmt.Errorf("failed to serialize runtime arguments for %s: %w", pkg.Identifier, err)
+			}
+
+			packageArgsJSON, err := validators.SerializeArguments(pkg.PackageArguments)
+			if err != nil {
+				return fmt.Errorf("failed to serialize package arguments for %s: %w", pkg.Identifier, err)
+			}
+
 			packageRows = append(packageRows, []any{
 				serverID,
 				pkg.RegistryType,
@@ -359,8 +369,8 @@ func bulkInsertPackages(
 				pkg.Identifier,
 				pkg.Version,
 				nilIfEmpty(pkg.RunTimeHint),
-				extractArgumentValues(pkg.RuntimeArguments),
-				extractArgumentValues(pkg.PackageArguments),
+				runtimeArgsJSON,
+				packageArgsJSON,
 				serializeKeyValueInputs(pkg.EnvironmentVariables),
 				nilIfEmpty(pkg.FileSHA256),
 				pkg.Transport.Type,
@@ -616,15 +626,6 @@ func deleteOrphansWithEmptyTemp(ctx context.Context, tx pgx.Tx, serverIDs map[uu
 // maxMetaSize specifies the maximum allowed size in bytes and must be greater than zero.
 func serializeServerMeta(meta *upstreamv0.ServerMeta, maxMetaSize int) ([]byte, error) {
 	return validators.SerializeServerMeta(meta, maxMetaSize)
-}
-
-// extractArgumentValues extracts argument names from a slice of model.Argument
-func extractArgumentValues(arguments []model.Argument) []string {
-	result := make([]string, len(arguments))
-	for i, arg := range arguments {
-		result[i] = arg.Name
-	}
-	return result
 }
 
 // serializeKeyValueInputs serializes KeyValueInput slice to JSON bytes for database storage

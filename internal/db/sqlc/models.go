@@ -312,8 +312,8 @@ type McpServerPackage struct {
 	PkgIdentifier    string    `json:"pkg_identifier"`
 	PkgVersion       string    `json:"pkg_version"`
 	RuntimeHint      *string   `json:"runtime_hint"`
-	RuntimeArguments []string  `json:"runtime_arguments"`
-	PackageArguments []string  `json:"package_arguments"`
+	RuntimeArguments []byte    `json:"runtime_arguments"`
+	PackageArguments []byte    `json:"package_arguments"`
 	Sha256Hash       *string   `json:"sha256_hash"`
 	Transport        string    `json:"transport"`
 	TransportUrl     *string   `json:"transport_url"`
@@ -477,8 +477,8 @@ type TempMcpServerPackage struct {
 	PkgIdentifier    string    `json:"pkg_identifier"`
 	PkgVersion       string    `json:"pkg_version"`
 	RuntimeHint      *string   `json:"runtime_hint"`
-	RuntimeArguments []string  `json:"runtime_arguments"`
-	PackageArguments []string  `json:"package_arguments"`
+	RuntimeArguments []byte    `json:"runtime_arguments"`
+	PackageArguments []byte    `json:"package_arguments"`
 	EnvVars          []string  `json:"env_vars"`
 	Sha256Hash       *string   `json:"sha256_hash"`
 	Transport        string    `json:"transport"`

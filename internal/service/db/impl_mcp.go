@@ -469,6 +469,16 @@ func insertServerPackages(
 			return fmt.Errorf("failed to serialize transport headers: %w", err)
 		}
 
+		runtimeArgsJSON, err := validators.SerializeArguments(pkg.RuntimeArguments)
+		if err != nil {
+			return fmt.Errorf("failed to serialize runtime arguments: %w", err)
+		}
+
+		packageArgsJSON, err := validators.SerializeArguments(pkg.PackageArguments)
+		if err != nil {
+			return fmt.Errorf("failed to serialize package arguments: %w", err)
+		}
+
 		err = querier.InsertServerPackage(ctx, sqlc.InsertServerPackageParams{
 			ServerID:         entryID,
 			RegistryType:     pkg.RegistryType,
@@ -476,8 +486,8 @@ func insertServerPackages(
 			PkgIdentifier:    pkg.Identifier,
 			PkgVersion:       pkg.Version,
 			RuntimeHint:      &pkg.RunTimeHint,
-			RuntimeArguments: extractArgumentValues(pkg.RuntimeArguments),
-			PackageArguments: extractArgumentValues(pkg.PackageArguments),
+			RuntimeArguments: runtimeArgsJSON,
+			PackageArguments: packageArgsJSON,
 			EnvVars:          envVarsJSON,
 			Sha256Hash:       &pkg.FileSHA256,
 			Transport:        pkg.Transport.Type,
