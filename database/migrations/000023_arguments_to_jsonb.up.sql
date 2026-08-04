@@ -20,7 +20,33 @@
 -- on the next sync cycle, which restores complete argument metadata.
 --
 -- Entries published through the API into a managed source have no upstream to
--- re-read and must be re-published to regain argument values.
+-- re-read. Recovering those requires deleting the affected version and publishing
+-- it again, because re-publishing the same name@version returns
+-- `ErrVersionAlreadyExists` (HTTP 409):
+--
+--   DELETE /v1/entries/server/<url-encoded-name>/versions/<version>   -> 204
+--   POST   /v1/entries                                                -> 201
+--
+-- The version is absent from the registry between those two calls.
+--
+-- !! THIS UPGRADE IS NOT SAFE UNDER A ROLLING DEPLOYMENT !!
+--
+-- Changing the column type in place is incompatible with binaries built before
+-- this migration, which expect `[]string` for these columns. During any window
+-- where old and new replicas run together against the migrated schema:
+--
+--   * An old replica reading a migrated row fails to scan JSONB objects into
+--     []string, so its package-list queries error out.
+--   * An old replica writing arguments stores a bare JSON string array. Newer
+--     readers salvage the flag names (see DeserializeArguments) but the values are
+--     gone, and if that write also restores `last_sync_hash` the source will look
+--     unchanged and stay degraded until its upstream content changes.
+--
+-- Scale the deployment to zero (or set `strategy: Recreate`) before upgrading, then
+-- scale back up. See "Upgrading across migration 000023" in
+-- docs/deployment-kubernetes.md. Note that the HA example in that document
+-- specifies `maxUnavailable: 0`, which guarantees the unsafe overlap, so it must
+-- not be used for this one upgrade.
 
 -- Helper function: ALTER COLUMN ... USING does not permit subqueries, so the
 -- reshaping logic is wrapped in an IMMUTABLE function and dropped afterwards.

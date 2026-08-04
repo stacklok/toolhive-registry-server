@@ -151,6 +151,52 @@ func TestSerializeArgumentsEmpty(t *testing.T) {
 	}
 }
 
+// TestDeserializeArgumentsLegacyStringArray covers rows written by a pre-000023
+// binary. Those binaries stored arguments as a flat array of flag names, and if one
+// writes to the migrated JSONB column during an upgrade the value lands as
+// ["--url","--timeout",""]. Recovering the names is strictly better than the empty
+// slice a plain object-array unmarshal would produce.
+func TestDeserializeArgumentsLegacyStringArray(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		data     []byte
+		expected []model.Argument
+	}{
+		{
+			name:     "flag names recovered",
+			data:     []byte(`["--url","--timeout"]`),
+			expected: []model.Argument{{Name: "--url"}, {Name: "--timeout"}},
+		},
+		{
+			name: "empty positional placeholders dropped",
+			data: []byte(`["--url","","--timeout",""]`),
+			expected: []model.Argument{
+				{Name: "--url"}, {Name: "--timeout"},
+			},
+		},
+		{
+			name:     "empty legacy array",
+			data:     []byte(`[]`),
+			expected: []model.Argument{},
+		},
+		{
+			name:     "all placeholders yields no arguments",
+			data:     []byte(`["",""]`),
+			expected: []model.Argument{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.expected, validators.DeserializeArguments(tt.data))
+		})
+	}
+}
+
 func TestDeserializeArgumentsMalformed(t *testing.T) {
 	t.Parallel()
 

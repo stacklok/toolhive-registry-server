@@ -414,6 +414,53 @@ spec:
       maxUnavailable: 0
 ```
 
+> **Note:** `maxUnavailable: 0` keeps old pods serving until a new pod is ready, which
+> is what makes upgrades zero-downtime. One migration is incompatible with that — see
+> [Upgrading across migration 000023](#upgrading-across-migration-000023).
+
+### Upgrading across migration 000023
+
+Migration `000023` changes `mcp_server_package.runtime_arguments` and
+`.package_arguments` from `TEXT[]` to `JSONB` in place, so that argument values are no
+longer discarded on ingest. Migrations run automatically when the server starts, before
+it serves traffic.
+
+**This one upgrade requires downtime.** Binaries older than `000023` expect `[]string`
+for these columns, so old and new replicas cannot both run against the migrated schema:
+
+- An old replica **reading** a migrated row cannot scan JSONB objects into `[]string`.
+  Its package-list queries fail.
+- An old replica **writing** arguments stores a bare JSON string array. Newer readers
+  salvage the flag names, but the values are lost. If that write also restores
+  `last_sync_hash`, the source then looks unchanged and stays degraded until its
+  upstream content changes.
+
+Scale to zero before upgrading, then scale back up:
+
+```bash
+kubectl scale deployment/registry-api --replicas=0 -n toolhive
+# deploy the new version, then:
+kubectl scale deployment/registry-api --replicas=3 -n toolhive
+```
+
+Setting `strategy: {type: Recreate}` for the upgrade works too. Either way, do not use
+`maxUnavailable: 0` for this upgrade — it guarantees the unsafe overlap.
+
+Two things to know afterwards:
+
+- Existing rows keep only their flag names; values were never stored and cannot be
+  recovered by the migration. Synced sources re-ingest complete arguments on the next
+  sync cycle, which the migration triggers by clearing `last_sync_hash`.
+- Servers published through the API into a managed source have no upstream to re-read.
+  Recover each affected version by deleting and re-publishing it — publishing the same
+  `name@version` returns HTTP 409, so the delete is required. The version is absent
+  from the registry between the two calls:
+
+  ```bash
+  curl -X DELETE "$REGISTRY/v1/entries/server/$(printf %s "$NAME" | jq -sRr @uri)/versions/$VERSION"
+  curl -X POST "$REGISTRY/v1/entries" -H 'Content-Type: application/json' --data @server.json
+  ```
+
 ### Pod Disruption Budget
 
 ```yaml
