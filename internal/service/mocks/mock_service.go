@@ -86,6 +86,25 @@ func (mr *MockRegistryServiceMockRecorder) CreateSource(ctx, name, req any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSource", reflect.TypeOf((*MockRegistryService)(nil).CreateSource), ctx, name, req)
 }
 
+// DeletePluginVersion mocks base method.
+func (m *MockRegistryService) DeletePluginVersion(ctx context.Context, opts ...service.Option) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DeletePluginVersion", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeletePluginVersion indicates an expected call of DeletePluginVersion.
+func (mr *MockRegistryServiceMockRecorder) DeletePluginVersion(ctx any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePluginVersion", reflect.TypeOf((*MockRegistryService)(nil).DeletePluginVersion), varargs...)
+}
+
 // DeleteRegistry mocks base method.
 func (m *MockRegistryService) DeleteRegistry(ctx context.Context, name string) error {
 	m.ctrl.T.Helper()
@@ -172,6 +191,26 @@ func (mr *MockRegistryServiceMockRecorder) GetEntryClaims(ctx any, opts ...any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEntryClaims", reflect.TypeOf((*MockRegistryService)(nil).GetEntryClaims), varargs...)
 }
 
+// GetPluginVersion mocks base method.
+func (m *MockRegistryService) GetPluginVersion(ctx context.Context, opts ...service.Option) (*service.Plugin, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "GetPluginVersion", varargs...)
+	ret0, _ := ret[0].(*service.Plugin)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPluginVersion indicates an expected call of GetPluginVersion.
+func (mr *MockRegistryServiceMockRecorder) GetPluginVersion(ctx any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPluginVersion", reflect.TypeOf((*MockRegistryService)(nil).GetPluginVersion), varargs...)
+}
+
 // GetRegistryByName mocks base method.
 func (m *MockRegistryService) GetRegistryByName(ctx context.Context, name string) (*service.RegistryInfo, error) {
 	m.ctrl.T.Helper()
@@ -240,6 +279,26 @@ func (m *MockRegistryService) GetSourceByName(ctx context.Context, name string) 
 func (mr *MockRegistryServiceMockRecorder) GetSourceByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSourceByName", reflect.TypeOf((*MockRegistryService)(nil).GetSourceByName), ctx, name)
+}
+
+// ListPlugins mocks base method.
+func (m *MockRegistryService) ListPlugins(ctx context.Context, opts ...service.Option) (*service.ListPluginsResult, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ListPlugins", varargs...)
+	ret0, _ := ret[0].(*service.ListPluginsResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPlugins indicates an expected call of ListPlugins.
+func (mr *MockRegistryServiceMockRecorder) ListPlugins(ctx any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPlugins", reflect.TypeOf((*MockRegistryService)(nil).ListPlugins), varargs...)
 }
 
 // ListRegistries mocks base method.
@@ -374,6 +433,26 @@ func (m *MockRegistryService) ProcessInlineSourceData(ctx context.Context, name,
 func (mr *MockRegistryServiceMockRecorder) ProcessInlineSourceData(ctx, name, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessInlineSourceData", reflect.TypeOf((*MockRegistryService)(nil).ProcessInlineSourceData), ctx, name, data)
+}
+
+// PublishPlugin mocks base method.
+func (m *MockRegistryService) PublishPlugin(ctx context.Context, plugin *service.Plugin, opts ...service.Option) (*service.Plugin, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, plugin}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "PublishPlugin", varargs...)
+	ret0, _ := ret[0].(*service.Plugin)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PublishPlugin indicates an expected call of PublishPlugin.
+func (mr *MockRegistryServiceMockRecorder) PublishPlugin(ctx, plugin any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, plugin}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishPlugin", reflect.TypeOf((*MockRegistryService)(nil).PublishPlugin), varargs...)
 }
 
 // PublishServerVersion mocks base method.

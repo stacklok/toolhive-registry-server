@@ -8,6 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
@@ -17,6 +20,7 @@ import (
 	syncmocks "github.com/stacklok/toolhive-registry-server/internal/sync/mocks"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
 	statemocks "github.com/stacklok/toolhive-registry-server/internal/sync/state/mocks"
+	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
 func TestCoordinator_New(t *testing.T) {
@@ -98,6 +102,115 @@ func TestPerformRegistrySync_FailureAdvancesEndedAt(t *testing.T) {
 	require.NotNil(t, captured.LastSyncTime,
 		"LastSyncTime must be set on failure so registry_sync.ended_at advances "+
 			"and the failing source does not starve other syncable sources")
+}
+
+// TestPerformRegistrySync_FailureRecordsSyncError verifies that a sync
+// failure actually increments stacklok.registry.errors through the
+// coordinator, not just in isolation (telemetry.SyncMetrics is unit-tested
+// separately, but nothing previously exercised the coordinator's call site).
+func TestPerformRegistrySync_FailureRecordsSyncError(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockManager := syncmocks.NewMockManager(ctrl)
+	mockStateSvc := statemocks.NewMockRegistryStateService(ctrl)
+
+	regCfg := &config.SourceConfig{Name: "broken-source"}
+	cfg := &config.Config{Sources: []config.SourceConfig{*regCfg}}
+
+	syncErr := &pkgsync.Error{Message: "fetch failed", ConditionReason: "FetchFailed"}
+	mockManager.EXPECT().
+		PerformSync(gomock.Any(), regCfg, gomock.Nil()).
+		Return(nil, syncErr)
+	mockStateSvc.EXPECT().
+		UpdateSyncStatus(gomock.Any(), "broken-source", gomock.Any()).
+		Return(nil)
+
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { _ = mp.Shutdown(context.Background()) })
+
+	syncMetrics, err := telemetry.NewSyncMetrics(mp)
+	require.NoError(t, err)
+	require.NotNil(t, syncMetrics)
+
+	c := New(mockManager, mockStateSvc, cfg, WithSyncMetrics(syncMetrics)).(*defaultCoordinator)
+	c.performRegistrySync(context.Background(), regCfg, nil)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+
+	var sum metricdata.Sum[int64]
+	var found bool
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name == "stacklok.registry.errors" {
+				sum, found = m.Data.(metricdata.Sum[int64])
+				require.True(t, found, "expected int64 sum data type")
+			}
+		}
+	}
+	require.True(t, found, "coordinator failure path must record stacklok.registry.errors")
+	require.Len(t, sum.DataPoints, 1)
+
+	expectedAttrs := attribute.NewSet(
+		attribute.String("error_type", "FetchFailed"),
+		attribute.String("area", "sync"),
+	)
+	assert.True(t, sum.DataPoints[0].Attributes.Equals(&expectedAttrs),
+		"expected error_type=FetchFailed, area=sync; got %v", sum.DataPoints[0].Attributes)
+}
+
+// TestPerformRegistrySync_SuccessDoesNotRecordSyncError is the complementary
+// check to TestPerformRegistrySync_FailureRecordsSyncError: a successful sync
+// must not increment stacklok.registry.errors. Without this, RecordSyncError
+// could be moved outside the failure branch (or called unconditionally) and
+// no coordinator-level test would catch it.
+func TestPerformRegistrySync_SuccessDoesNotRecordSyncError(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockManager := syncmocks.NewMockManager(ctrl)
+	mockStateSvc := statemocks.NewMockRegistryStateService(ctrl)
+
+	regCfg := &config.SourceConfig{Name: "healthy-source"}
+	cfg := &config.Config{Sources: []config.SourceConfig{*regCfg}}
+
+	mockManager.EXPECT().
+		PerformSync(gomock.Any(), regCfg, gomock.Nil()).
+		Return(&pkgsync.Result{Hash: "abc123", ServerCount: 1, SkillCount: 0}, nil)
+	mockStateSvc.EXPECT().
+		UpdateSyncStatus(gomock.Any(), "healthy-source", gomock.Any()).
+		Return(nil)
+
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { _ = mp.Shutdown(context.Background()) })
+
+	syncMetrics, err := telemetry.NewSyncMetrics(mp)
+	require.NoError(t, err)
+	require.NotNil(t, syncMetrics)
+
+	c := New(mockManager, mockStateSvc, cfg, WithSyncMetrics(syncMetrics)).(*defaultCoordinator)
+	c.performRegistrySync(context.Background(), regCfg, nil)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name == "stacklok.registry.errors" {
+				sum, ok := m.Data.(metricdata.Sum[int64])
+				require.True(t, ok, "expected int64 sum data type")
+				assert.Empty(t, sum.DataPoints,
+					"a successful sync must not record any stacklok.registry.errors data point")
+			}
+		}
+	}
 }
 
 // TestProcessNextSyncJob_FailingSourceDoesNotStarveOthers is the higher-level

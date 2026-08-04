@@ -879,9 +879,8 @@ func (c *Config) validate() error {
 		if src.Name == "" {
 			return fmt.Errorf("source[%d]: name is required", i)
 		}
-		if !IsValidDNSSubdomain(src.Name) {
-			return fmt.Errorf("source[%d]: name '%s' must be a valid DNS subdomain "+
-				"(lowercase alphanumeric and hyphens, max 63 chars)", i, src.Name)
+		if err := ValidateSourceName(src.Name); err != nil {
+			return fmt.Errorf("source[%d]: %w", i, err)
 		}
 
 		// Check for duplicate source names
@@ -1000,6 +999,17 @@ var dnsSubdomainRegex = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
 // Used for source names (K8s lease name suffixes) and K8s namespace validation.
 func IsValidDNSSubdomain(s string) bool {
 	return dnsSubdomainRegex.MatchString(s)
+}
+
+// ValidateSourceName checks that name is a valid DNS subdomain, returning the
+// canonical error message shared by every source-name enforcement point
+// (config load and API source creation).
+func ValidateSourceName(name string) error {
+	if !IsValidDNSSubdomain(name) {
+		return fmt.Errorf("name '%s' must be a valid DNS subdomain "+
+			"(lowercase alphanumeric and hyphens, max 63 chars)", name)
+	}
+	return nil
 }
 
 // validateSyncPolicy validates the sync policy configuration

@@ -92,21 +92,39 @@ telemetry:
 
 ## Metrics Reference
 
-All metrics are prefixed with `thv_reg_srv_` to distinguish them from other metrics in the system.
+Registry-specific metrics are prefixed with `stacklok_registry_` to distinguish them from
+other metrics in the system. The two HTTP server metrics that have a direct OpenTelemetry
+semantic-convention equivalent (`http.server.request.duration`, `http.server.active_requests`)
+keep their unprefixed spec names instead, so they stay joinable with the same metric emitted
+by any other semconv-instrumented service — see the metrics-standardization RFC's decision
+rule: a metric whose name comes from an external semantic convention keeps the spec name
+verbatim, with no `stacklok.*` prefix.
+
+When `metrics.enabled` is `true`, the same metrics are also directly scrapable at
+`/metrics` on the internal server (default port `8081`), independent of the OTLP export
+path described above. That endpoint carries no authentication, consistent with the other
+internal-server routes (`/health`, `/readiness`, `/version`) — keep port `8081` restricted
+to trusted scrapers at the network level.
+
+Every series additionally carries the constant labels `stacklok_component="registry"` and
+`stacklok_product` (the D8 ownership labels), promoted from OTel resource attributes.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `thv_reg_srv_http_request_duration_seconds` | Histogram | `method`, `route`, `status_code` | Duration of HTTP requests |
-| `thv_reg_srv_http_requests_total` | Counter | `method`, `route`, `status_code` | Total number of HTTP requests |
-| `thv_reg_srv_http_active_requests` | UpDownCounter | - | Number of in-flight requests |
-| `thv_reg_srv_servers_total` | Gauge | `source` | Number of distinct servers in each source |
-| `thv_reg_srv_skills_total` | Gauge | `source` | Number of distinct skills in each source |
-| `thv_reg_srv_sync_duration_seconds` | Histogram | `registry`, `success` | Duration of sync operations |
+| `http_server_request_duration_seconds` | Histogram | `http_request_method`, `url_scheme`, `http_route`, `http_response_status_code` | Duration of HTTP requests (OTel semconv `http.server.request.duration`) |
+| `stacklok_registry_http_requests_total` | Counter | `http_request_method`, `url_scheme`, `http_route`, `http_response_status_code` | Total number of HTTP requests |
+| `http_server_active_requests` | UpDownCounter | `http_request_method`, `url_scheme` | Number of in-flight requests (OTel semconv `http.server.active_requests`) |
+| `stacklok_registry_servers` | Gauge | `source` | Number of distinct servers in each source |
+| `stacklok_registry_skills` | Gauge | `source` | Number of distinct skills in each source |
+| `stacklok_registry_plugins` | Gauge | `source` | Number of distinct plugins in each source |
+| `stacklok_registry_sync_duration_seconds` | Histogram | `source`, `outcome` | Duration of sync operations (`outcome` is `success` or `error`) |
+| `stacklok_registry_errors_total` | Counter | `error_type`, `area` | Additive error-by-type classification for the sync (`area="sync"`) and HTTP (`area="http"`) paths — supplementary detail, not a replacement for the `outcome` label on `stacklok_registry_sync_duration_seconds` or `http_response_status_code` on `stacklok_registry_http_requests_total` |
+| `stacklok_build_info_ratio` | Gauge | `component`, `version`, `commit` | Always `1`; build identity carried on labels. The OTel Prometheus exporter appends `_ratio` to gauges with unit `1`. Registered once per process and never unregistered — `RegistryMetrics.Unregister()` does not tear this gauge down, so it keeps observing for the life of the meter provider |
 
 ### Histogram Buckets
 
 - **HTTP metrics:** 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10 seconds
-- **Sync metrics:** 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300 seconds
+- **Sync metrics:** 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 180, 300 seconds
 
 ## Distributed Tracing
 
@@ -171,7 +189,7 @@ The following endpoints are intentionally excluded from tracing:
 
 5. **Industry best practice**: Most observability frameworks and guidelines recommend excluding infrastructure endpoints from tracing. The OpenTelemetry community generally advises filtering out health checks at the instrumentation level.
 
-If you need to debug health check issues, HTTP metrics (`thv_reg_srv_http_request_duration_seconds`) still capture latency and error rates for these endpoints.
+If you need to debug health check issues, HTTP metrics (`http_server_request_duration_seconds`) still capture latency and error rates for these endpoints.
 
 #### Service Layer Spans
 

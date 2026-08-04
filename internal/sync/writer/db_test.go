@@ -926,53 +926,6 @@ func strPtr(s string) *string {
 	return &s
 }
 
-// TestExtractArgumentValues tests the extractArgumentValues helper function
-func TestExtractArgumentValues(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		arguments []model.Argument
-		expected  []string
-	}{
-		{
-			name:      "empty arguments",
-			arguments: []model.Argument{},
-			expected:  []string{},
-		},
-		{
-			name: "single argument",
-			arguments: []model.Argument{
-				{Name: "--verbose"},
-			},
-			expected: []string{"--verbose"},
-		},
-		{
-			name: "multiple arguments",
-			arguments: []model.Argument{
-				{Name: "--verbose"},
-				{Name: "--output"},
-				{Name: "-f"},
-			},
-			expected: []string{"--verbose", "--output", "-f"},
-		},
-		{
-			name:      "nil arguments",
-			arguments: nil,
-			expected:  []string{},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			result := extractArgumentValues(tt.arguments)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 // TestSerializeKeyValueInputs tests the serializeKeyValueInputs helper function
 func TestSerializeKeyValueInputs(t *testing.T) {
 	t.Parallel()
@@ -3450,4 +3403,572 @@ func TestDbSyncWriter_Store_PerEntryClaims(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --- Plugin sync test helpers ---
+
+// createTestPlugin creates a test Plugin (no Compatibility/AllowedTools — plugin-only fields).
+func createTestPlugin(namespace, name, version string) toolhivetypes.Plugin {
+	return toolhivetypes.Plugin{
+		Namespace:   namespace,
+		Name:        name,
+		Version:     version,
+		Description: "Test plugin description",
+		Title:       "Test Plugin",
+		Status:      "active",
+		License:     "MIT",
+	}
+}
+
+// createTestPluginWithPackages creates a test Plugin with OCI and Git packages.
+func createTestPluginWithPackages(namespace, name, version string) toolhivetypes.Plugin {
+	plugin := createTestPlugin(namespace, name, version)
+	plugin.Packages = []toolhivetypes.SkillPackage{
+		{
+			RegistryType: "oci",
+			Identifier:   "ghcr.io/test/plugins/" + name + ":" + version,
+			Digest:       "sha256:abc123",
+			MediaType:    "application/vnd.test.plugin.v1",
+		},
+		{
+			RegistryType: "git",
+			URL:          "https://github.com/test/plugins.git",
+			Ref:          "v" + version,
+			Commit:       "abc123def456",
+			Subfolder:    "plugins/" + name,
+		},
+	}
+	return plugin
+}
+
+// createTestUpstreamRegistryWithPlugins creates a test UpstreamRegistry with both servers and plugins.
+func createTestUpstreamRegistryWithPlugins(servers []upstreamv0.ServerJSON, plugins []toolhivetypes.Plugin) *toolhivetypes.UpstreamRegistry {
+	return &toolhivetypes.UpstreamRegistry{
+		Schema:  "https://example.com/schema.json",
+		Version: "1.0.0",
+		Data: toolhivetypes.UpstreamData{
+			Servers: servers,
+			Plugins: plugins,
+		},
+	}
+}
+
+// Plugin count query constants for test validation
+const (
+	testPluginCountQuery = `
+		SELECT COUNT(p.*) FROM plugin p
+		  JOIN entry_version v ON p.version_id = v.id
+		  JOIN registry_entry e ON v.entry_id = e.id
+		 WHERE e.source_id = $1
+		   AND e.entry_type = 'PLUGIN'
+		`
+	testPluginDetailQuery = `
+		SELECT p.namespace, p.status, p.license, v.version, v.title, v.description
+		  FROM plugin p
+		  JOIN entry_version v ON p.version_id = v.id
+		  JOIN registry_entry e ON v.entry_id = e.id
+		 WHERE e.source_id = $1
+		   AND e.entry_type = 'PLUGIN'
+		   AND e.name = $2
+		`
+	testPluginOCIPkgCountQuery = `
+		SELECT COUNT(*) FROM plugin_oci_package p
+		  JOIN plugin pl ON p.plugin_id = pl.version_id
+		  JOIN entry_version v ON pl.version_id = v.id
+		  JOIN registry_entry e ON v.entry_id = e.id
+		 WHERE e.source_id = $1
+		   AND e.name = $2
+		`
+	testPluginGitPkgCountQuery = `
+		SELECT COUNT(*) FROM plugin_git_package p
+		  JOIN plugin pl ON p.plugin_id = pl.version_id
+		  JOIN entry_version v ON pl.version_id = v.id
+		  JOIN registry_entry e ON v.entry_id = e.id
+		 WHERE e.source_id = $1
+		   AND e.name = $2
+		`
+)
+
+// TestDbSyncWriter_Store_Plugins tests plugin storage through the Store method.
+func TestDbSyncWriter_Store_Plugins(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		registryName string
+		setupFunc    func(t *testing.T, pool *pgxpool.Pool)
+		registry     *toolhivetypes.UpstreamRegistry
+		expectError  bool
+		validateFunc func(t *testing.T, pool *pgxpool.Pool, registryName string)
+	}{
+		{
+			name:         "successful sync with single plugin",
+			registryName: "test-registry",
+			//nolint:thelper
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				createTestRegistry(t, pool, "test-registry")
+			},
+			registry: createTestUpstreamRegistryWithPlugins(
+				nil,
+				[]toolhivetypes.Plugin{
+					createTestPlugin("io.github.test", "my-plugin", "1.0.0"),
+				},
+			),
+			expectError: false,
+			//nolint:thelper
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				source, err := queries.GetSourceByName(ctx, registryName)
+				require.NoError(t, err)
+
+				var count int
+				err = pool.QueryRow(ctx, testPluginCountQuery, source.ID).Scan(&count)
+				require.NoError(t, err)
+				assert.Equal(t, 1, count, "Should have 1 plugin")
+
+				var namespace, status string
+				var license, version, title, description *string
+				err = pool.QueryRow(ctx, testPluginDetailQuery, source.ID, "my-plugin").
+					Scan(&namespace, &status, &license, &version, &title, &description)
+				require.NoError(t, err)
+				assert.Equal(t, "io.github.test", namespace)
+				assert.Equal(t, "ACTIVE", status)
+				require.NotNil(t, license)
+				assert.Equal(t, "MIT", *license)
+				require.NotNil(t, version)
+				assert.Equal(t, "1.0.0", *version)
+				require.NotNil(t, title)
+				assert.Equal(t, "Test Plugin", *title)
+				require.NotNil(t, description)
+				assert.Equal(t, "Test plugin description", *description)
+			},
+		},
+		{
+			name:         "successful sync with plugin packages",
+			registryName: "test-registry",
+			//nolint:thelper
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				createTestRegistry(t, pool, "test-registry")
+			},
+			registry: createTestUpstreamRegistryWithPlugins(
+				nil,
+				[]toolhivetypes.Plugin{
+					createTestPluginWithPackages("io.github.test", "pkg-plugin", "1.0.0"),
+				},
+			),
+			expectError: false,
+			//nolint:thelper
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				source, err := queries.GetSourceByName(ctx, registryName)
+				require.NoError(t, err)
+
+				// Verify the plugin itself exists
+				var count int
+				err = pool.QueryRow(ctx, testPluginCountQuery, source.ID).Scan(&count)
+				require.NoError(t, err)
+				assert.Equal(t, 1, count, "Should have 1 plugin")
+
+				// Verify OCI package
+				var ociCount int
+				err = pool.QueryRow(ctx, testPluginOCIPkgCountQuery, source.ID, "pkg-plugin").Scan(&ociCount)
+				require.NoError(t, err)
+				assert.Equal(t, 1, ociCount, "Should have 1 OCI package")
+
+				// Verify Git package
+				var gitCount int
+				err = pool.QueryRow(ctx, testPluginGitPkgCountQuery, source.ID, "pkg-plugin").Scan(&gitCount)
+				require.NoError(t, err)
+				assert.Equal(t, 1, gitCount, "Should have 1 Git package")
+			},
+		},
+		{
+			name:         "plugin orphan cleanup",
+			registryName: "test-registry",
+			//nolint:thelper
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				ids := createTestRegistry(t, pool, "test-registry")
+
+				// Pre-populate with 2 plugins via an initial Store call
+				w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+				require.NoError(t, err)
+				initialRegistry := createTestUpstreamRegistryWithPlugins(
+					nil,
+					[]toolhivetypes.Plugin{
+						createTestPlugin("io.github.test", "plugin-keep", "1.0.0"),
+						createTestPlugin("io.github.test", "plugin-remove", "1.0.0"),
+					},
+				)
+				err = w.Store(context.Background(), "test-registry", initialRegistry)
+				require.NoError(t, err)
+
+				// Verify both plugins exist before the test's Store call
+				var count int
+				err = pool.QueryRow(context.Background(), testPluginCountQuery, ids.sourceID).Scan(&count)
+				require.NoError(t, err)
+				require.Equal(t, 2, count, "Setup should have created 2 plugins")
+			},
+			// Now store with only 1 plugin -- the other should be orphaned and cleaned up
+			registry: createTestUpstreamRegistryWithPlugins(
+				nil,
+				[]toolhivetypes.Plugin{
+					createTestPlugin("io.github.test", "plugin-keep", "1.0.0"),
+				},
+			),
+			expectError: false,
+			//nolint:thelper
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				source, err := queries.GetSourceByName(ctx, registryName)
+				require.NoError(t, err)
+
+				var count int
+				err = pool.QueryRow(ctx, testPluginCountQuery, source.ID).Scan(&count)
+				require.NoError(t, err)
+				assert.Equal(t, 1, count, "Should have 1 plugin after orphan cleanup")
+
+				// Verify the kept plugin is the correct one
+				var namespace string
+				var version *string
+				err = pool.QueryRow(ctx, testPluginDetailQuery, source.ID, "plugin-keep").
+					Scan(&namespace, new(string), new(*string), &version, new(*string), new(*string))
+				require.NoError(t, err)
+				assert.Equal(t, "io.github.test", namespace)
+				require.NotNil(t, version)
+				assert.Equal(t, "1.0.0", *version)
+			},
+		},
+		{
+			name:         "plugin update preserves and updates data",
+			registryName: "test-registry",
+			//nolint:thelper
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				createTestRegistry(t, pool, "test-registry")
+
+				// Pre-populate with original plugin
+				w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+				require.NoError(t, err)
+
+				originalPlugin := createTestPlugin("io.github.test", "update-plugin", "1.0.0")
+				originalPlugin.Title = "Old Title"
+				originalPlugin.Description = "Old description"
+				originalPlugin.License = "Apache-2.0"
+
+				initialRegistry := createTestUpstreamRegistryWithPlugins(
+					nil,
+					[]toolhivetypes.Plugin{originalPlugin},
+				)
+				err = w.Store(context.Background(), "test-registry", initialRegistry)
+				require.NoError(t, err)
+			},
+			// Store again with updated fields
+			registry: func() *toolhivetypes.UpstreamRegistry {
+				updatedPlugin := createTestPlugin("io.github.test", "update-plugin", "1.0.0")
+				updatedPlugin.Title = "New Title"
+				updatedPlugin.Description = "New description"
+				updatedPlugin.License = "MIT"
+				return createTestUpstreamRegistryWithPlugins(nil, []toolhivetypes.Plugin{updatedPlugin})
+			}(),
+			expectError: false,
+			//nolint:thelper
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				source, err := queries.GetSourceByName(ctx, registryName)
+				require.NoError(t, err)
+
+				var namespace, status string
+				var license, version, title, description *string
+				err = pool.QueryRow(ctx, testPluginDetailQuery, source.ID, "update-plugin").
+					Scan(&namespace, &status, &license, &version, &title, &description)
+				require.NoError(t, err)
+
+				assert.Equal(t, "io.github.test", namespace)
+				require.NotNil(t, title)
+				assert.Equal(t, "New Title", *title, "Title should be updated")
+				require.NotNil(t, description)
+				assert.Equal(t, "New description", *description, "Description should be updated")
+				require.NotNil(t, license)
+				assert.Equal(t, "MIT", *license, "License should be updated")
+			},
+		},
+		{
+			name:         "mixed servers and plugins",
+			registryName: "test-registry",
+			//nolint:thelper
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				createTestRegistry(t, pool, "test-registry")
+			},
+			registry: createTestUpstreamRegistryWithPlugins(
+				[]upstreamv0.ServerJSON{
+					createTestServer("test.org/server", "1.0.0"),
+					createTestServer("test.org/server2", "2.0.0"),
+				},
+				[]toolhivetypes.Plugin{
+					createTestPlugin("io.github.test", "mixed-plugin-a", "1.0.0"),
+					createTestPluginWithPackages("io.github.test", "mixed-plugin-b", "2.0.0"),
+				},
+			),
+			expectError: false,
+			//nolint:thelper
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				source, err := queries.GetSourceByName(ctx, registryName)
+				require.NoError(t, err)
+				regID := getTestRegistryID(t, pool, registryName)
+
+				// Verify servers
+				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
+				require.NoError(t, err)
+				assert.Len(t, servers, 2, "Should have 2 servers")
+
+				// Verify plugins
+				var pluginCount int
+				err = pool.QueryRow(ctx, testPluginCountQuery, source.ID).Scan(&pluginCount)
+				require.NoError(t, err)
+				assert.Equal(t, 2, pluginCount, "Should have 2 plugins")
+
+				// Verify plugin-b has OCI and Git packages
+				var ociCount, gitCount int
+				err = pool.QueryRow(ctx, testPluginOCIPkgCountQuery, source.ID, "mixed-plugin-b").Scan(&ociCount)
+				require.NoError(t, err)
+				assert.Equal(t, 1, ociCount, "Plugin B should have 1 OCI package")
+
+				err = pool.QueryRow(ctx, testPluginGitPkgCountQuery, source.ID, "mixed-plugin-b").Scan(&gitCount)
+				require.NoError(t, err)
+				assert.Equal(t, 1, gitCount, "Plugin B should have 1 Git package")
+			},
+		},
+		{
+			name:         "empty plugins does not affect servers",
+			registryName: "test-registry",
+			//nolint:thelper
+			setupFunc: func(t *testing.T, pool *pgxpool.Pool) {
+				createTestRegistry(t, pool, "test-registry")
+			},
+			registry: createTestUpstreamRegistryWithPlugins(
+				[]upstreamv0.ServerJSON{
+					createTestServer("test.org/server-x", "1.0.0"),
+					createTestServer("test.org/server-y", "2.0.0"),
+				},
+				nil, // no plugins
+			),
+			expectError: false,
+			//nolint:thelper
+			validateFunc: func(t *testing.T, pool *pgxpool.Pool, registryName string) {
+				ctx := context.Background()
+				queries := sqlc.New(pool)
+				source, err := queries.GetSourceByName(ctx, registryName)
+				require.NoError(t, err)
+				regID := getTestRegistryID(t, pool, registryName)
+
+				// Verify servers are stored correctly
+				servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
+				require.NoError(t, err)
+				assert.Len(t, servers, 2, "Should have 2 servers")
+
+				// Verify no plugins exist
+				var pluginCount int
+				err = pool.QueryRow(ctx, testPluginCountQuery, source.ID).Scan(&pluginCount)
+				require.NoError(t, err)
+				assert.Equal(t, 0, pluginCount, "Should have 0 plugins")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			pool, cleanup := setupTestDB(t)
+			defer cleanup()
+
+			if tt.setupFunc != nil {
+				tt.setupFunc(t, pool)
+			}
+
+			w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+			require.NoError(t, err)
+
+			err = w.Store(context.Background(), tt.registryName, tt.registry)
+
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				if tt.validateFunc != nil {
+					tt.validateFunc(t, pool, tt.registryName)
+				}
+			}
+		})
+	}
+}
+
+// TestDbSyncWriter_Store_RepeatedMixedSync_Plugins verifies that a second Store call
+// with both servers and plugins does not corrupt data. Mirror of the skills regression test.
+func TestDbSyncWriter_Store_RepeatedMixedSync_Plugins(t *testing.T) {
+	t.Parallel()
+
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestRegistry(t, pool, "test-registry")
+
+	w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	require.NoError(t, err)
+
+	queries := sqlc.New(pool)
+	regID := getTestRegistryID(t, pool, "test-registry")
+	source, err := queries.GetSourceByName(ctx, "test-registry")
+	require.NoError(t, err)
+
+	// ── First sync: 2 servers + 2 plugins ──────────────────────────────────
+	firstRegistry := createTestUpstreamRegistryWithPlugins(
+		[]upstreamv0.ServerJSON{
+			createTestServer("test.org/server-a", "1.0.0"),
+			createTestServer("test.org/server-b", "1.0.0"),
+		},
+		[]toolhivetypes.Plugin{
+			createTestPlugin("io.github.test", "plugin-x", "1.0.0"),
+			createTestPluginWithPackages("io.github.test", "plugin-y", "1.0.0"),
+		},
+	)
+
+	err = w.Store(ctx, "test-registry", firstRegistry)
+	require.NoError(t, err)
+
+	// Validate first sync: 2 servers
+	servers, err := queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
+	require.NoError(t, err)
+	require.Len(t, servers, 2, "Should have 2 servers after first sync")
+
+	// Validate first sync: 2 plugins
+	var pluginCount int
+	err = pool.QueryRow(ctx, testPluginCountQuery, source.ID).Scan(&pluginCount)
+	require.NoError(t, err)
+	assert.Equal(t, 2, pluginCount, "Should have 2 plugins after first sync")
+
+	// Validate first sync: plugin-y has OCI and Git packages
+	var ociCount, gitCount int
+	err = pool.QueryRow(ctx, testPluginOCIPkgCountQuery, source.ID, "plugin-y").Scan(&ociCount)
+	require.NoError(t, err)
+	assert.Equal(t, 1, ociCount, "plugin-y should have 1 OCI package after first sync")
+
+	err = pool.QueryRow(ctx, testPluginGitPkgCountQuery, source.ID, "plugin-y").Scan(&gitCount)
+	require.NoError(t, err)
+	assert.Equal(t, 1, gitCount, "plugin-y should have 1 Git package after first sync")
+
+	// ── Second sync: changed content ──────────────────────────────────────
+	// Servers: server-a kept, server-b removed, server-c added
+	// Plugins: plugin-x updated to v2.0.0, plugin-y removed, plugin-z added
+	secondRegistry := createTestUpstreamRegistryWithPlugins(
+		[]upstreamv0.ServerJSON{
+			createTestServer("test.org/server-a", "1.0.0"),
+			createTestServer("test.org/server-c", "1.0.0"),
+		},
+		[]toolhivetypes.Plugin{
+			createTestPlugin("io.github.test", "plugin-x", "2.0.0"),
+			createTestPlugin("io.github.test", "plugin-z", "1.0.0"),
+		},
+	)
+
+	err = w.Store(ctx, "test-registry", secondRegistry)
+	require.NoError(t, err)
+
+	// Validate second sync: 2 servers (server-a, server-c; server-b orphaned)
+	servers, err = queries.ListServers(ctx, sqlc.ListServersParams{RegistryID: regID, Size: 100})
+	require.NoError(t, err)
+	require.Len(t, servers, 2, "Should have 2 servers after second sync")
+
+	serverNames := make(map[string]bool, len(servers))
+	for _, s := range servers {
+		serverNames[s.Name] = true
+	}
+	assert.True(t, serverNames["test.org/server-a"], "server-a should still exist")
+	assert.True(t, serverNames["test.org/server-c"], "server-c should exist")
+	assert.False(t, serverNames["test.org/server-b"], "server-b should be orphaned")
+
+	// Validate second sync: 2 plugins (plugin-x updated, plugin-z new; plugin-y orphaned)
+	err = pool.QueryRow(ctx, testPluginCountQuery, source.ID).Scan(&pluginCount)
+	require.NoError(t, err)
+	assert.Equal(t, 2, pluginCount, "Should have 2 plugins after second sync")
+
+	// plugin-x should show version "2.0.0"
+	var namespace, status string
+	var license, version, title, description *string
+	err = pool.QueryRow(ctx, testPluginDetailQuery, source.ID, "plugin-x").
+		Scan(&namespace, &status, &license, &version, &title, &description)
+	require.NoError(t, err)
+	assert.Equal(t, "io.github.test", namespace)
+	require.NotNil(t, version)
+	assert.Equal(t, "2.0.0", *version, "plugin-x should be updated to v2.0.0")
+
+	// plugin-z should exist
+	err = pool.QueryRow(ctx, testPluginDetailQuery, source.ID, "plugin-z").
+		Scan(&namespace, &status, &license, &version, &title, &description)
+	require.NoError(t, err)
+	assert.Equal(t, "io.github.test", namespace)
+	require.NotNil(t, version)
+	assert.Equal(t, "1.0.0", *version, "plugin-z should be at v1.0.0")
+
+	// plugin-y should be gone (orphan cleanup); querying it should return no rows
+	err = pool.QueryRow(ctx, testPluginDetailQuery, source.ID, "plugin-y").
+		Scan(new(string), new(string), new(*string), new(*string), new(*string), new(*string))
+	assert.Error(t, err, "plugin-y should have been removed by orphan cleanup")
+}
+
+// TestDbSyncWriter_Store_PluginMultiVersionLatest verifies that when multiple
+// versions of the same plugin are synced, the latest_entry_version table
+// correctly points to the highest semantic version.
+func TestDbSyncWriter_Store_PluginMultiVersionLatest(t *testing.T) {
+	t.Parallel()
+
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestRegistry(t, pool, "test-registry")
+
+	w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	require.NoError(t, err)
+
+	queries := sqlc.New(pool)
+	source, err := queries.GetSourceByName(ctx, "test-registry")
+	require.NoError(t, err)
+
+	// Store 3 versions of the same plugin
+	registry := createTestUpstreamRegistryWithPlugins(
+		nil,
+		[]toolhivetypes.Plugin{
+			createTestPlugin("io.github.test", "my-plugin", "1.0.0"),
+			createTestPlugin("io.github.test", "my-plugin", "2.0.0"),
+			createTestPlugin("io.github.test", "my-plugin", "3.0.0"),
+		},
+	)
+
+	err = w.Store(ctx, "test-registry", registry)
+	require.NoError(t, err)
+
+	// Validate: 3 plugin rows exist (one per version)
+	var pluginCount int
+	err = pool.QueryRow(ctx, testPluginCountQuery, source.ID).Scan(&pluginCount)
+	require.NoError(t, err)
+	assert.Equal(t, 3, pluginCount, "Should have 3 plugin rows (one per version)")
+
+	// Query latest_entry_version to verify it points to v3.0.0
+	const latestVersionQuery = `
+		SELECT lev.version FROM latest_entry_version lev
+		  JOIN source s ON lev.source_id = s.id
+		 WHERE s.name = $1
+		   AND lev.name = $2
+		`
+	var latestVersion string
+	err = pool.QueryRow(ctx, latestVersionQuery, "test-registry", "my-plugin").Scan(&latestVersion)
+	require.NoError(t, err)
+	assert.Equal(t, "3.0.0", latestVersion, "latest_entry_version should point to v3.0.0")
 }

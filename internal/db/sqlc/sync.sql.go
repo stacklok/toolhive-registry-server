@@ -48,7 +48,8 @@ SELECT id,
        last_sync_hash,
        last_applied_filter_hash,
        server_count,
-       skill_count
+       skill_count,
+       plugin_count
 FROM registry_sync
 WHERE id = $1
 `
@@ -68,6 +69,7 @@ func (q *Queries) GetSourceSync(ctx context.Context, id uuid.UUID) (RegistrySync
 		&i.LastAppliedFilterHash,
 		&i.ServerCount,
 		&i.SkillCount,
+		&i.PluginCount,
 	)
 	return i, err
 }
@@ -83,7 +85,8 @@ SELECT rs.id,
        rs.last_sync_hash,
        rs.last_applied_filter_hash,
        rs.server_count,
-       rs.skill_count
+       rs.skill_count,
+       rs.plugin_count
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id
 WHERE s.name = $1
@@ -104,6 +107,7 @@ func (q *Queries) GetSourceSyncByName(ctx context.Context, name string) (Registr
 		&i.LastAppliedFilterHash,
 		&i.ServerCount,
 		&i.SkillCount,
+		&i.PluginCount,
 	)
 	return i, err
 }
@@ -178,6 +182,7 @@ SELECT s.name,
        rs.last_applied_filter_hash,
        rs.server_count,
        rs.skill_count,
+       rs.plugin_count,
        s.sync_schedule::interval AS sync_schedule
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id
@@ -197,6 +202,7 @@ type ListSourceSyncsRow struct {
 	LastAppliedFilterHash *string          `json:"last_applied_filter_hash"`
 	ServerCount           int64            `json:"server_count"`
 	SkillCount            int64            `json:"skill_count"`
+	PluginCount           int64            `json:"plugin_count"`
 	SyncSchedule          pgtypes.Interval `json:"sync_schedule"`
 }
 
@@ -222,6 +228,7 @@ func (q *Queries) ListSourceSyncs(ctx context.Context) ([]ListSourceSyncsRow, er
 			&i.LastAppliedFilterHash,
 			&i.ServerCount,
 			&i.SkillCount,
+			&i.PluginCount,
 			&i.SyncSchedule,
 		); err != nil {
 			return nil, err
@@ -247,6 +254,7 @@ SELECT s.name,
        rs.last_applied_filter_hash,
        rs.server_count,
        rs.skill_count,
+       rs.plugin_count,
        s.sync_schedule::interval AS sync_schedule
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id
@@ -271,6 +279,7 @@ type ListSourceSyncsByLastUpdateRow struct {
 	LastAppliedFilterHash *string          `json:"last_applied_filter_hash"`
 	ServerCount           int64            `json:"server_count"`
 	SkillCount            int64            `json:"skill_count"`
+	PluginCount           int64            `json:"plugin_count"`
 	SyncSchedule          pgtypes.Interval `json:"sync_schedule"`
 }
 
@@ -296,6 +305,7 @@ func (q *Queries) ListSourceSyncsByLastUpdate(ctx context.Context) ([]ListSource
 			&i.LastAppliedFilterHash,
 			&i.ServerCount,
 			&i.SkillCount,
+			&i.PluginCount,
 			&i.SyncSchedule,
 		); err != nil {
 			return nil, err
@@ -362,7 +372,8 @@ INSERT INTO registry_sync (
     last_sync_hash,
     last_applied_filter_hash,
     server_count,
-    skill_count
+    skill_count,
+    plugin_count
 ) VALUES (
     (SELECT id FROM source WHERE name = $1),
     $2,
@@ -373,7 +384,8 @@ INSERT INTO registry_sync (
     $7,
     $8,
     $9,
-    $10
+    $10,
+    $11
 )
 ON CONFLICT (source_id) DO UPDATE SET
     sync_status = EXCLUDED.sync_status,
@@ -384,7 +396,8 @@ ON CONFLICT (source_id) DO UPDATE SET
     last_sync_hash = EXCLUDED.last_sync_hash,
     last_applied_filter_hash = EXCLUDED.last_applied_filter_hash,
     server_count = EXCLUDED.server_count,
-    skill_count = EXCLUDED.skill_count
+    skill_count = EXCLUDED.skill_count,
+    plugin_count = EXCLUDED.plugin_count
 `
 
 type UpsertSourceSyncByNameParams struct {
@@ -398,6 +411,7 @@ type UpsertSourceSyncByNameParams struct {
 	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
 	ServerCount           int64      `json:"server_count"`
 	SkillCount            int64      `json:"skill_count"`
+	PluginCount           int64      `json:"plugin_count"`
 }
 
 func (q *Queries) UpsertSourceSyncByName(ctx context.Context, arg UpsertSourceSyncByNameParams) error {
@@ -412,6 +426,7 @@ func (q *Queries) UpsertSourceSyncByName(ctx context.Context, arg UpsertSourceSy
 		arg.LastAppliedFilterHash,
 		arg.ServerCount,
 		arg.SkillCount,
+		arg.PluginCount,
 	)
 	return err
 }

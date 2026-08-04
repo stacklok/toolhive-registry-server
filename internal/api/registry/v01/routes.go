@@ -13,6 +13,7 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api/common"
+	"github.com/stacklok/toolhive-registry-server/internal/api/x/plugins"
 	"github.com/stacklok/toolhive-registry-server/internal/api/x/skills"
 	auditmw "github.com/stacklok/toolhive-registry-server/internal/audit"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
@@ -38,6 +39,7 @@ func Router(svc service.RegistryService) http.Handler {
 
 	r.Mount("/{registryName}/v0.1", registryRouter(routes))
 	r.Mount("/{registryName}/v0.1/x/dev.toolhive/skills", skills.Router(svc))
+	r.Mount("/{registryName}/v0.1/x/dev.toolhive/plugins", plugins.Router(svc))
 
 	return r
 }

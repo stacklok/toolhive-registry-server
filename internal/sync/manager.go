@@ -21,6 +21,7 @@ type Result struct {
 	Hash        string
 	ServerCount int
 	SkillCount  int
+	PluginCount int
 }
 
 // Reason represents the decision and reason for whether a sync should occur
@@ -120,9 +121,12 @@ const (
 
 // Error represents a structured error with condition information for operator components
 type Error struct {
-	Err             error
-	Message         string
-	ConditionType   string
+	Err           error
+	Message       string
+	ConditionType string
+	// ConditionReason must be one of the conditionReason* constants above. It
+	// is also used as the bounded error_type label on the errors_total metric,
+	// so it must never carry unbounded or dynamic values.
 	ConditionReason string
 }
 
@@ -356,6 +360,7 @@ func (s *defaultSyncManager) PerformSync(
 		Hash:        fetchResult.Hash,
 		ServerCount: fetchResult.ServerCount,
 		SkillCount:  fetchResult.SkillCount,
+		PluginCount: fetchResult.PluginCount,
 	}
 
 	return syncResult, nil
@@ -452,6 +457,7 @@ func (s *defaultSyncManager) applyFilteringIfConfigured(
 		fetchResult.Registry = filteredServerReg
 		fetchResult.ServerCount = len(filteredServerReg.Data.Servers)
 		fetchResult.SkillCount = len(filteredServerReg.Data.Skills)
+		fetchResult.PluginCount = len(filteredServerReg.Data.Plugins)
 
 		slog.Info("Registry filtering completed",
 			"originalServerCount", originalServerCount,

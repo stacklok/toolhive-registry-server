@@ -67,6 +67,8 @@ func NewDBSyncWriter(pool *pgxpool.Pool, maxMetaSize int) (SyncWriter, error) {
 //
 // The operation is performed within a serializable transaction to ensure consistency.
 // Temp tables are automatically dropped at transaction end (ON COMMIT DROP).
+//
+//nolint:gocyclo
 func (d *dbSyncWriter) Store(
 	ctx context.Context,
 	registryName string,
@@ -137,6 +139,11 @@ func (d *dbSyncWriter) Store(
 	// Step 6: Store skills
 	if err := d.storeSkills(ctx, tx, registry.ID, reg.Data.Skills, registry.Claims); err != nil {
 		return fmt.Errorf("failed to store skills: %w", err)
+	}
+
+	// Step 7: Store plugins
+	if err := d.storePlugins(ctx, tx, registry.ID, reg.Data.Plugins, registry.Claims); err != nil {
+		return fmt.Errorf("failed to store plugins: %w", err)
 	}
 
 	// Commit transaction
@@ -228,6 +235,8 @@ func (*dbSyncWriter) deleteOrphanedEntries(
 			return querier.DeleteServersByRegistry(ctx, registryID)
 		case sqlc.EntryTypeSKILL:
 			return querier.DeleteSkillsByRegistry(ctx, registryID)
+		case sqlc.EntryTypePLUGIN:
+			return querier.DeletePluginsByRegistry(ctx, registryID)
 		default:
 			return fmt.Errorf("unknown entry type: %s", entryType)
 		}
@@ -343,6 +352,16 @@ func bulkInsertPackages(
 		serverIDs[serverID] = true
 
 		for _, pkg := range server.Packages {
+			runtimeArgsJSON, err := validators.SerializeArguments(pkg.RuntimeArguments)
+			if err != nil {
+				return fmt.Errorf("failed to serialize runtime arguments for %s: %w", pkg.Identifier, err)
+			}
+
+			packageArgsJSON, err := validators.SerializeArguments(pkg.PackageArguments)
+			if err != nil {
+				return fmt.Errorf("failed to serialize package arguments for %s: %w", pkg.Identifier, err)
+			}
+
 			packageRows = append(packageRows, []any{
 				serverID,
 				pkg.RegistryType,
@@ -350,8 +369,8 @@ func bulkInsertPackages(
 				pkg.Identifier,
 				pkg.Version,
 				nilIfEmpty(pkg.RunTimeHint),
-				extractArgumentValues(pkg.RuntimeArguments),
-				extractArgumentValues(pkg.PackageArguments),
+				runtimeArgsJSON,
+				packageArgsJSON,
 				serializeKeyValueInputs(pkg.EnvironmentVariables),
 				nilIfEmpty(pkg.FileSHA256),
 				pkg.Transport.Type,
@@ -607,15 +626,6 @@ func deleteOrphansWithEmptyTemp(ctx context.Context, tx pgx.Tx, serverIDs map[uu
 // maxMetaSize specifies the maximum allowed size in bytes and must be greater than zero.
 func serializeServerMeta(meta *upstreamv0.ServerMeta, maxMetaSize int) ([]byte, error) {
 	return validators.SerializeServerMeta(meta, maxMetaSize)
-}
-
-// extractArgumentValues extracts argument names from a slice of model.Argument
-func extractArgumentValues(arguments []model.Argument) []string {
-	result := make([]string, len(arguments))
-	for i, arg := range arguments {
-		result[i] = arg.Name
-	}
-	return result
 }
 
 // serializeKeyValueInputs serializes KeyValueInput slice to JSON bytes for database storage
@@ -1187,6 +1197,306 @@ func updateLatestSkillVersions(
 		})
 		if err != nil {
 			return fmt.Errorf("failed to upsert latest version for skill %s: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+// pluginKey creates a unique key for a plugin based on namespace, name and version
+func pluginKey(namespace, name, version string) string {
+	return namespace + "/" + name + "@" + version
+}
+
+// storePlugins persists plugins from an upstream registry into the database.
+// It follows the same bulk-sync pattern as skill storage: temp tables with COPY,
+// followed by upserts and orphan cleanup. Reuses the shared copyAndUpsertEntries
+// and copyAndUpsertEntryVersions functions.
+func (d *dbSyncWriter) storePlugins(
+	ctx context.Context,
+	tx pgx.Tx,
+	registryID uuid.UUID,
+	plugins []toolhivetypes.Plugin,
+	claims []byte,
+) error {
+	querier := sqlc.New(tx)
+
+	// If no plugins, clean up any previously synced plugins and return
+	if len(plugins) == 0 {
+		return querier.DeletePluginsByRegistry(ctx, registryID)
+	}
+
+	// 1. Upsert registry entries for plugins (one per unique name)
+	// Build entry rows from plugins, then use the shared copyAndUpsertEntries
+	seen := make(map[string]bool, len(plugins))
+	var entryRows [][]any
+	for _, plugin := range plugins {
+		if seen[plugin.Name] {
+			continue
+		}
+		seen[plugin.Name] = true
+
+		now := time.Now()
+		entryID, err := uuid.NewV7()
+		if err != nil {
+			return fmt.Errorf("failed to generate entry ID: %w", err)
+		}
+
+		entryRows = append(entryRows, []any{
+			entryID,
+			registryID,
+			sqlc.EntryTypePLUGIN,
+			plugin.Name,
+			claims,
+			&now,
+			&now,
+		})
+	}
+
+	entryMap, err := copyAndUpsertEntries(ctx, tx, entryRows)
+	if err != nil {
+		return fmt.Errorf("failed to copy plugin entries: %w", err)
+	}
+
+	// 2. Upsert entry versions for plugins (one per name+version)
+	// Build version rows from plugins, then use the shared copyAndUpsertEntryVersions
+	versionRows := make([][]any, 0, len(plugins))
+	for _, plugin := range plugins {
+		entryID, ok := entryMap[plugin.Name]
+		if !ok {
+			return fmt.Errorf("entry ID not found for plugin %s", plugin.Name)
+		}
+
+		now := time.Now()
+		versionID, err := uuid.NewV7()
+		if err != nil {
+			return fmt.Errorf("failed to generate version ID: %w", err)
+		}
+
+		versionRows = append(versionRows, []any{
+			versionID,
+			entryID,
+			plugin.Name,
+			plugin.Version,
+			nilIfEmpty(plugin.Title),
+			nilIfEmpty(plugin.Description),
+			&now,
+			&now,
+		})
+	}
+
+	copiedRows, err := copyAndUpsertEntryVersions(ctx, tx, versionRows)
+	if err != nil {
+		return fmt.Errorf("failed to copy plugin entry versions: %w", err)
+	}
+
+	// Build reverse lookup: entry_id → name
+	entryIDToName := make(map[uuid.UUID]string, len(entryMap))
+	for name, id := range entryMap {
+		entryIDToName[id] = name
+	}
+
+	// Build a lookup from name+version to namespace
+	type nameVersion struct {
+		name    string
+		version string
+	}
+	nvToNamespace := make(map[nameVersion]string, len(plugins))
+	for _, plugin := range plugins {
+		nvToNamespace[nameVersion{name: plugin.Name, version: plugin.Version}] = plugin.Namespace
+	}
+
+	// Build version map keyed by namespace/name@version
+	versionMap := make(map[string]uuid.UUID, len(copiedRows))
+	for _, row := range copiedRows {
+		name := entryIDToName[row.EntryID]
+		ns := nvToNamespace[nameVersion{name: name, version: row.Version}]
+		versionMap[pluginKey(ns, name, row.Version)] = row.ID
+	}
+
+	// 3. Upsert plugin-specific data and packages for each plugin
+	keepIDs, err := upsertPluginVersionsAndPackages(ctx, querier, plugins, versionMap)
+	if err != nil {
+		return err
+	}
+
+	// 4. Delete orphaned plugins that no longer exist in upstream
+	if err := d.deleteOrphanedEntries(ctx, tx, registryID, sqlc.EntryTypePLUGIN, keepIDs); err != nil {
+		return fmt.Errorf("failed to delete orphaned plugins: %w", err)
+	}
+
+	// 5. Update latest plugin versions
+	return updateLatestPluginVersions(ctx, querier, registryID, plugins, versionMap)
+}
+
+// upsertPluginVersionsAndPackages upserts each plugin's version data and replaces its packages.
+// Returns the list of version IDs to keep (for orphan cleanup).
+func upsertPluginVersionsAndPackages(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	plugins []toolhivetypes.Plugin,
+	versionMap map[string]uuid.UUID,
+) ([]uuid.UUID, error) {
+	keepIDs := make([]uuid.UUID, 0, len(plugins))
+
+	for _, plugin := range plugins {
+		key := pluginKey(plugin.Namespace, plugin.Name, plugin.Version)
+		versionID, ok := versionMap[key]
+		if !ok {
+			return nil, fmt.Errorf("version ID not found for plugin %s", key)
+		}
+
+		pluginVersionID, err := upsertSinglePluginVersion(ctx, querier, plugin, versionID)
+		if err != nil {
+			return nil, err
+		}
+
+		keepIDs = append(keepIDs, pluginVersionID)
+
+		if err := replacePluginPackages(ctx, querier, plugin, pluginVersionID); err != nil {
+			return nil, err
+		}
+	}
+
+	return keepIDs, nil
+}
+
+// upsertSinglePluginVersion upserts the plugin row for a single plugin version.
+func upsertSinglePluginVersion(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	plugin toolhivetypes.Plugin,
+	versionID uuid.UUID,
+) (uuid.UUID, error) {
+	key := pluginKey(plugin.Namespace, plugin.Name, plugin.Version)
+
+	repoJSON, err := marshalJSONOrNil(plugin.Repository)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal repository for plugin %s: %w", key, err)
+	}
+	iconsJSON, err := marshalJSONOrNil(plugin.Icons)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal icons for plugin %s: %w", key, err)
+	}
+	metadataJSON, err := marshalJSONOrNil(plugin.Metadata)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal metadata for plugin %s: %w", key, err)
+	}
+	extMetaJSON, err := marshalJSONOrNil(plugin.Meta)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal extension meta for plugin %s: %w", key, err)
+	}
+
+	status := sqlc.NullPluginStatus{}
+	if plugin.Status != "" {
+		status = sqlc.NullPluginStatus{
+			PluginStatus: sqlc.PluginStatus(strings.ToUpper(plugin.Status)),
+			Valid:        true,
+		}
+	}
+
+	pluginVersionID, err := querier.UpsertPluginVersionForSync(ctx, sqlc.UpsertPluginVersionForSyncParams{
+		VersionID:     versionID,
+		Namespace:     plugin.Namespace,
+		Status:        status,
+		License:       nilIfEmpty(plugin.License),
+		Repository:    repoJSON,
+		Icons:         iconsJSON,
+		Metadata:      metadataJSON,
+		ExtensionMeta: extMetaJSON,
+	})
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to upsert plugin version for %s: %w", key, err)
+	}
+
+	return pluginVersionID, nil
+}
+
+// replacePluginPackages deletes existing packages for a plugin and inserts new ones.
+func replacePluginPackages(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	plugin toolhivetypes.Plugin,
+	pluginVersionID uuid.UUID,
+) error {
+	key := pluginKey(plugin.Namespace, plugin.Name, plugin.Version)
+
+	if err := querier.DeletePluginOciPackagesByPluginId(ctx, pluginVersionID); err != nil {
+		return fmt.Errorf("failed to delete OCI packages for plugin %s: %w", key, err)
+	}
+	if err := querier.DeletePluginGitPackagesByPluginId(ctx, pluginVersionID); err != nil {
+		return fmt.Errorf("failed to delete Git packages for plugin %s: %w", key, err)
+	}
+
+	for _, pkg := range plugin.Packages {
+		switch pkg.RegistryType {
+		case skillRegistryTypeOCI:
+			if err := querier.InsertPluginOciPackage(ctx, sqlc.InsertPluginOciPackageParams{
+				PluginID:   pluginVersionID,
+				Identifier: pkg.Identifier,
+				Digest:     nilIfEmpty(pkg.Digest),
+				MediaType:  nilIfEmpty(pkg.MediaType),
+			}); err != nil {
+				return fmt.Errorf("failed to insert OCI package for plugin %s: %w", key, err)
+			}
+		case skillRegistryTypeGit:
+			if err := querier.InsertPluginGitPackage(ctx, sqlc.InsertPluginGitPackageParams{
+				PluginID:  pluginVersionID,
+				Url:       pkg.URL,
+				Ref:       nilIfEmpty(pkg.Ref),
+				CommitSha: nilIfEmpty(pkg.Commit),
+				Subfolder: nilIfEmpty(pkg.Subfolder),
+			}); err != nil {
+				return fmt.Errorf("failed to insert Git package for plugin %s: %w", key, err)
+			}
+		default:
+			slog.Warn("Skipping unknown plugin package type",
+				"plugin", key,
+				"registryType", pkg.RegistryType)
+		}
+	}
+
+	return nil
+}
+
+// updateLatestPluginVersions determines and upserts the latest version for each unique plugin name.
+func updateLatestPluginVersions(
+	ctx context.Context,
+	querier *sqlc.Queries,
+	registryID uuid.UUID,
+	plugins []toolhivetypes.Plugin,
+	versionMap map[string]uuid.UUID,
+) error {
+	latestVersions := make(map[string]struct {
+		version   string
+		versionID uuid.UUID
+	})
+
+	for _, plugin := range plugins {
+		key := pluginKey(plugin.Namespace, plugin.Name, plugin.Version)
+		versionID := versionMap[key]
+
+		existing, exists := latestVersions[plugin.Name]
+		if !exists || versions.IsNewerVersion(plugin.Version, existing.version) {
+			latestVersions[plugin.Name] = struct {
+				version   string
+				versionID uuid.UUID
+			}{
+				version:   plugin.Version,
+				versionID: versionID,
+			}
+		}
+	}
+
+	for name, latest := range latestVersions {
+		_, err := querier.UpsertLatestPluginVersion(ctx, sqlc.UpsertLatestPluginVersionParams{
+			SourceID:  registryID,
+			Name:      name,
+			Version:   latest.version,
+			VersionID: latest.versionID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to upsert latest version for plugin %s: %w", name, err)
 		}
 	}
 

@@ -293,6 +293,9 @@ func (c *defaultCoordinator) performRegistrySync(
 		// Record sync failure metric
 		if c.syncMetrics != nil {
 			c.syncMetrics.RecordSyncDuration(ctx, registryName, syncDuration, false)
+			// Additive error-by-type detail: classify by the structured sync
+			// condition reason (a bounded set), never the free-text message.
+			c.syncMetrics.RecordSyncError(ctx, syncErr.ConditionReason)
 		}
 	} else {
 		syncStatus.Phase = status.SyncPhaseComplete
@@ -300,6 +303,7 @@ func (c *defaultCoordinator) performRegistrySync(
 		syncStatus.LastSyncHash = result.Hash
 		syncStatus.ServerCount = result.ServerCount
 		syncStatus.SkillCount = result.SkillCount
+		syncStatus.PluginCount = result.PluginCount
 		syncStatus.AttemptCount = 0
 		hashPreview := result.Hash
 		if len(hashPreview) > 8 {
@@ -309,12 +313,14 @@ func (c *defaultCoordinator) performRegistrySync(
 			"registry", registryName,
 			"server_count", result.ServerCount,
 			"skill_count", result.SkillCount,
+			"plugin_count", result.PluginCount,
 			"hash", hashPreview)
 
 		// Add counts to span on success
 		span.SetAttributes(
 			attribute.Int("sync.server_count", result.ServerCount),
 			attribute.Int("sync.skill_count", result.SkillCount),
+			attribute.Int("sync.plugin_count", result.PluginCount),
 		)
 
 		// Record sync success metric
