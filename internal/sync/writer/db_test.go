@@ -926,53 +926,6 @@ func strPtr(s string) *string {
 	return &s
 }
 
-// TestExtractArgumentValues tests the extractArgumentValues helper function
-func TestExtractArgumentValues(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		arguments []model.Argument
-		expected  []string
-	}{
-		{
-			name:      "empty arguments",
-			arguments: []model.Argument{},
-			expected:  []string{},
-		},
-		{
-			name: "single argument",
-			arguments: []model.Argument{
-				{Name: "--verbose"},
-			},
-			expected: []string{"--verbose"},
-		},
-		{
-			name: "multiple arguments",
-			arguments: []model.Argument{
-				{Name: "--verbose"},
-				{Name: "--output"},
-				{Name: "-f"},
-			},
-			expected: []string{"--verbose", "--output", "-f"},
-		},
-		{
-			name:      "nil arguments",
-			arguments: nil,
-			expected:  []string{},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			result := extractArgumentValues(tt.arguments)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 // TestSerializeKeyValueInputs tests the serializeKeyValueInputs helper function
 func TestSerializeKeyValueInputs(t *testing.T) {
 	t.Parallel()

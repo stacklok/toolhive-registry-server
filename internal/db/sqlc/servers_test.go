@@ -1153,8 +1153,10 @@ func TestInsertServerPackage(t *testing.T) {
 						PkgIdentifier:    "@test/package",
 						PkgVersion:       "1.0.0",
 						RuntimeHint:      ptr.String("npx"),
-						RuntimeArguments: []string{"--yes"},
-						PackageArguments: []string{"--arg", "value"},
+						RuntimeArguments: []byte(`[{"type":"named","name":"--yes"}]`),
+						PackageArguments: []byte(
+							`[{"type":"named","name":"--url","value":"https://example.com/mcp"},` +
+								`{"type":"positional","valueHint":"config_file","value":"/etc/config.yaml"}]`),
 						EnvVars:          []byte(`[{"name":"NODE_ENV"},{"name":"API_KEY"}]`),
 						Sha256Hash:       ptr.String("abc123"),
 						Transport:        "stdio",
@@ -1163,6 +1165,19 @@ func TestInsertServerPackage(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
+
+				// Regression test for #851: argument values must survive the
+				// round-trip through Postgres, not just the flag names.
+				pkgs, err := queries.ListServerPackages(context.Background(), []uuid.UUID{entryID})
+				require.NoError(t, err)
+				require.Len(t, pkgs, 1)
+
+				assert.JSONEq(t, `[{"type":"named","name":"--yes"}]`,
+					string(pkgs[0].RuntimeArguments))
+				assert.JSONEq(t,
+					`[{"type":"named","name":"--url","value":"https://example.com/mcp"},`+
+						`{"type":"positional","valueHint":"config_file","value":"/etc/config.yaml"}]`,
+					string(pkgs[0].PackageArguments))
 			},
 		},
 		{

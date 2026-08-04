@@ -174,8 +174,8 @@ func toPackages(
 				URL:     ptr.ToString(dbPackage.TransportUrl),
 				Headers: toKeyValueInputs(dbPackage.TransportHeaders),
 			},
-			RuntimeArguments:     toArguments(dbPackage.RuntimeArguments),
-			PackageArguments:     toArguments(dbPackage.PackageArguments),
+			RuntimeArguments:     validators.DeserializeArguments(dbPackage.RuntimeArguments),
+			PackageArguments:     validators.DeserializeArguments(dbPackage.PackageArguments),
 			EnvironmentVariables: toKeyValueInputs(dbPackage.EnvVars),
 		}
 	}
@@ -212,27 +212,7 @@ func toKeyValueInputs(
 	return result
 }
 
-func toArguments(
-	strings []string,
-) []model.Argument {
-	result := make([]model.Argument, len(strings))
-	for i, str := range strings {
-		result[i] = model.Argument{
-			Name: str,
-		}
-	}
-	return result
-}
-
 // Reverse conversion helpers (API -> Database)
-
-func extractArgumentValues(arguments []model.Argument) []string {
-	result := make([]string, len(arguments))
-	for i, arg := range arguments {
-		result[i] = arg.Name
-	}
-	return result
-}
 
 // serializeKeyValueInputs serializes KeyValueInput slice to JSON bytes for database storage
 func serializeKeyValueInputs(kvInputs []model.KeyValueInput) ([]byte, error) {
