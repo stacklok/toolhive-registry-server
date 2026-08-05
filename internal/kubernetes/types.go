@@ -11,12 +11,14 @@ import (
 	mcp "github.com/stacklok/toolhive-core/mcpcompat/mcp"
 	registry "github.com/stacklok/toolhive-core/registry/types"
 	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
+
+	"github.com/stacklok/toolhive-registry-server/internal/versions"
 )
 
 const (
-	// defaultServerVersion is the fallback entry version when the resource
-	// carries neither a registry-version annotation nor a versioned
-	// container image.
+	// defaultServerVersion is the fallback entry version when the resource carries
+	// neither a usable registry-version annotation nor a semantically versioned
+	// container image tag.
 	defaultServerVersion = "1.0.0"
 	// defaultServerStatus is the registry.ServerExtensions.Status value used
 	// for entries derived from running Kubernetes resources.
@@ -400,18 +402,34 @@ func extractPackages(mcpServer *mcpv1beta1.MCPServer) []model.Package {
 	return packages
 }
 
-// resolveServerVersion determines the version of a registry entry derived
-// from a Kubernetes resource. Precedence: the registry-version annotation,
-// then the container image tag or digest (for resources that run an image),
-// then defaultServerVersion. An image version equal to defaultImageVersion
-// ("latest") is not a meaningful version and is treated as absent.
+// resolveServerVersion determines the version of a registry entry derived from a
+// Kubernetes resource. Precedence: the registry-version annotation, then the
+// container image tag (for resources that run an image), then defaultServerVersion.
+//
+// Both candidates are attacker-controlled free-form strings — annotation values are
+// unconstrained, and MCPServerSpec.Image has no format validation — and nothing
+// downstream validates an entry version, so a candidate that versions.IsPublishable
+// rejects is skipped rather than published. That also removes the need to special-case
+// image references with no usable version: "latest", bare digests, and the
+// "5000/my-image" that parseImageTagOrDigest yields for an untagged image on a ported
+// registry all fail the check and fall through to the default.
 func resolveServerVersion(annotations map[string]string, imageVersion string) string {
-	if version, ok := annotations[defaultRegistryVersionAnnotation]; ok && version != "" {
-		return version
+	// A rejected annotation is always an operator mistake, so it is worth a warning.
+	// A rejected image tag is routine ("latest", "stable", a digest) and is not.
+	if annotated := strings.TrimSpace(annotations[defaultRegistryVersionAnnotation]); annotated != "" {
+		if versions.IsPublishable(annotated) {
+			return annotated
+		}
+		slog.Warn("ignoring unusable registry entry version annotation",
+			"annotation", defaultRegistryVersionAnnotation,
+			"value", annotated,
+			"fallback", defaultServerVersion)
 	}
-	if imageVersion != "" && imageVersion != defaultImageVersion {
-		return imageVersion
+
+	if tag := strings.TrimSpace(imageVersion); versions.IsPublishable(tag) {
+		return tag
 	}
+
 	return defaultServerVersion
 }
 

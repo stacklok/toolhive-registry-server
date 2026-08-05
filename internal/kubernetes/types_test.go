@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -231,7 +232,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.custom-ns/full-server",
-			wantVersion: "tag",
+			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -277,7 +278,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-with-tools",
-			wantVersion: "v1",
+			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -320,7 +321,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-invalid-json",
-			wantVersion: "v1",
+			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -348,7 +349,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-empty-tools",
-			wantVersion: "v1",
+			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -376,7 +377,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-multi-tools",
-			wantVersion: "v1",
+			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -421,7 +422,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-with-tools-list",
-			wantVersion: "v1",
+			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -455,7 +456,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-invalid-tools",
-			wantVersion: "v1",
+			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -483,7 +484,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-empty-tools-list",
-			wantVersion: "v1",
+			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -511,7 +512,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/titled-server",
-			wantVersion: "v1",
+			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -539,7 +540,7 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/server-with-both",
-			wantVersion: "v1",
+			wantVersion: "1.0.0",
 			wantErr:     false,
 			//nolint:thelper // We want to see these lines in the test output
 			checkMeta: func(t *testing.T, sj *upstreamv0.ServerJSON) {
@@ -582,7 +583,45 @@ func TestExtractServer(t *testing.T) {
 			wantErr:     false,
 		},
 		{
-			name: "digest-pinned image uses the digest as version",
+			name: "semver image tag becomes the entry version",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "registry.example.com/image:1.4.2",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "1.4.2",
+			wantErr:     false,
+		},
+		{
+			name: "v-prefixed image tag is kept as written",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "registry.example.com/image:v2.1.0-rc.1",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "v2.1.0-rc.1",
+			wantErr:     false,
+		},
+		{
+			name: "digest-pinned image falls back to the default version",
 			mcpServer: createTestMCPServer(
 				"test-server",
 				"default",
@@ -597,7 +636,48 @@ func TestExtractServer(t *testing.T) {
 			),
 			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 			wantName:    "com.toolhive.k8s.default/test-server",
-			wantVersion: "sha256:abc123def4567890abcdef1234567890abcdef1234567890abcdef1234567890",
+			wantVersion: defaultServerVersion,
+			wantErr:     false,
+		},
+		{
+			name: "untagged image on a ported registry falls back to the default version",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+				},
+				mcpv1beta1.MCPServerSpec{
+					// parseImageTagOrDigest yields "5000/image" here, which must not
+					// reach the entry version.
+					Image:     "registry.example.com:5000/image",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: defaultServerVersion,
+			wantErr:     false,
+		},
+		{
+			name: "unusable annotation falls back to the semver image tag",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+					defaultRegistryVersionAnnotation:     "REL-2024-06",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "registry.example.com/image:1.4.2",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "1.4.2",
 			wantErr:     false,
 		},
 	}
@@ -1459,40 +1539,108 @@ func TestResolveServerVersion(t *testing.T) {
 		want         string
 	}{
 		{
-			name:         "annotation wins over image version",
+			name:         "annotation wins over image tag",
 			annotations:  map[string]string{defaultRegistryVersionAnnotation: "2.5.0"},
-			imageVersion: "v1.2.3",
+			imageVersion: "1.2.3",
 			want:         "2.5.0",
 		},
 		{
 			name:         "image tag used when no annotation",
 			annotations:  map[string]string{},
+			imageVersion: "1.2.3",
+			want:         "1.2.3",
+		},
+		{
+			name:         "v prefix is preserved, not normalized",
+			annotations:  map[string]string{},
 			imageVersion: "v1.2.3",
 			want:         "v1.2.3",
 		},
 		{
-			name:         "image digest used when no annotation",
-			annotations:  map[string]string{},
-			imageVersion: "sha256:abc123",
-			want:         "sha256:abc123",
+			name:         "surrounding whitespace is trimmed from the annotation",
+			annotations:  map[string]string{defaultRegistryVersionAnnotation: "  2.5.0\n"},
+			imageVersion: "",
+			want:         "2.5.0",
 		},
 		{
-			name:         "latest image version falls back to default",
-			annotations:  map[string]string{},
-			imageVersion: "latest",
-			want:         "1.0.0",
+			name:         "nil annotations falls back to the image tag",
+			annotations:  nil,
+			imageVersion: "1.2.3",
+			want:         "1.2.3",
 		},
 		{
 			name:         "no annotation and no image falls back to default",
 			annotations:  map[string]string{},
 			imageVersion: "",
-			want:         "1.0.0",
+			want:         defaultServerVersion,
 		},
 		{
 			name:         "empty annotation value is ignored",
 			annotations:  map[string]string{defaultRegistryVersionAnnotation: ""},
-			imageVersion: "v1.2.3",
-			want:         "v1.2.3",
+			imageVersion: "1.2.3",
+			want:         "1.2.3",
+		},
+		{
+			name:         "whitespace-only annotation value is ignored",
+			annotations:  map[string]string{defaultRegistryVersionAnnotation: "   "},
+			imageVersion: "1.2.3",
+			want:         "1.2.3",
+		},
+		// Unusable candidates fall through instead of being published. Each of these
+		// would otherwise reach the API as an entry version and a URL path segment.
+		{
+			name:         "reserved latest annotation falls back to the image tag",
+			annotations:  map[string]string{defaultRegistryVersionAnnotation: "latest"},
+			imageVersion: "1.2.3",
+			want:         "1.2.3",
+		},
+		{
+			name:         "non-semver annotation falls back to the image tag",
+			annotations:  map[string]string{defaultRegistryVersionAnnotation: "REL-2024-06"},
+			imageVersion: "1.2.3",
+			want:         "1.2.3",
+		},
+		{
+			name:         "over-length annotation falls back to the image tag",
+			annotations:  map[string]string{defaultRegistryVersionAnnotation: "1.0.0-" + strings.Repeat("a", 250)},
+			imageVersion: "1.2.3",
+			want:         "1.2.3",
+		},
+		{
+			name:         "unusable annotation and unusable tag falls back to default",
+			annotations:  map[string]string{defaultRegistryVersionAnnotation: "1.x"},
+			imageVersion: "stable",
+			want:         defaultServerVersion,
+		},
+		{
+			name:         "latest image tag falls back to default",
+			annotations:  map[string]string{},
+			imageVersion: "latest",
+			want:         defaultServerVersion,
+		},
+		{
+			name:         "image digest falls back to default",
+			annotations:  map[string]string{},
+			imageVersion: "sha256:abc123",
+			want:         defaultServerVersion,
+		},
+		{
+			name:         "ported-registry parser fallout falls back to default",
+			annotations:  map[string]string{},
+			imageVersion: "5000/my-image",
+			want:         defaultServerVersion,
+		},
+		{
+			name:         "two-part image tag falls back to default",
+			annotations:  map[string]string{},
+			imageVersion: "1.2",
+			want:         defaultServerVersion,
+		},
+		{
+			name:         "build metadata falls back to default",
+			annotations:  map[string]string{defaultRegistryVersionAnnotation: "1.2.3+build.5"},
+			imageVersion: "",
+			want:         defaultServerVersion,
 		},
 	}
 

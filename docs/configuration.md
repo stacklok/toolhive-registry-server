@@ -259,6 +259,32 @@ metadata:
     toolhive.stacklok.dev/authz-claims: '{"team": "platform"}'
 ```
 
+**Per-entry version:** the entry version is resolved in this order:
+
+1. the `toolhive.stacklok.dev/registry-version` annotation, when it holds a usable version
+2. the container image tag, when it holds a usable version (`MCPServer` only —
+   `VirtualMCPServer` and `MCPRemoteProxy` run no image, so the annotation is the only route)
+3. `1.0.0`
+
+A version is usable when it is a three-part semantic version — `MAJOR.MINOR.PATCH` with an
+optional prerelease, optionally `v`-prefixed — matching what the upstream MCP registry
+treats as semantic. Anything else falls through to the next option, because the entry
+version is part of an entry's identity, appears as a URL path segment
+(`GET .../versions/{version}`), and decides which version is served as `latest`.
+
+Values that fall through include `latest`, image digests, channel tags such as `stable` or
+`main`, two-part tags such as `1.2` or `20`, version ranges such as `1.x`, versions carrying
+`+build` metadata, and anything longer than 255 characters. An unusable *annotation* is
+logged as a warning; an unusable image tag is not, since untagged and `latest` images are
+routine.
+
+```yaml
+# Example CRD annotation pinning the entry version:
+metadata:
+  annotations:
+    toolhive.stacklok.dev/registry-version: '2.5.0'
+```
+
 **Features:**
 - Queries running Kubernetes resources
 - No background synchronization (on-demand only)
