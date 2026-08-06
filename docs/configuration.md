@@ -272,11 +272,16 @@ treats as semantic. Anything else falls through to the next option, because the 
 version is part of an entry's identity, appears as a URL path segment
 (`GET .../versions/{version}`), and decides which version is served as `latest`.
 
-Values that fall through include `latest`, image digests, channel tags such as `stable` or
-`main`, two-part tags such as `1.2` or `20`, version ranges such as `1.x`, versions carrying
-`+build` metadata, and anything longer than 255 characters. An unusable *annotation* is
-logged as a warning; an unusable image tag is not, since untagged and `latest` images are
-routine.
+Values that fall through include `latest`, channel tags such as `stable` or `main`, two-part
+tags such as `1.2` or `20`, version ranges such as `1.x`, versions carrying `+build`
+metadata, and anything longer than 255 characters. An unusable *annotation* is logged as a
+warning naming the resource; an unusable image tag is not, since untagged and `latest`
+images are routine.
+
+Only the tag is read, never the digest — a digest does not order and changes on every
+rebuild. An image pinned as `db:1.4.2@sha256:...` therefore resolves to `1.4.2`, while an
+image pinned by digest alone resolves to `1.0.0`. A colon in a registry host is not
+mistaken for a tag, so `registry.internal:5000/db` is treated as untagged.
 
 ```yaml
 # Example CRD annotation pinning the entry version:

@@ -26,6 +26,10 @@ const (
 	// defaultImageVersion is returned by parseImageTagOrDigest when no tag or
 	// digest can be extracted from the container image reference.
 	defaultImageVersion = "latest"
+	// maxLoggedValueLength bounds how much of an untrusted annotation value is
+	// written to the logs. A publishable version is at most 255 characters, so this
+	// is enough to identify the mistake in a rejected one.
+	maxLoggedValueLength = 64
 )
 
 // extractServer converts an MCPServer to a ServerJSON object
@@ -55,7 +59,7 @@ func extractServer(mcpServer *mcpv1beta1.MCPServer) (*upstreamv0.ServerJSON, err
 		return nil, fmt.Errorf("annotations not found")
 	}
 
-	serverJSON.Version = resolveServerVersion(annotations, parseImageTagOrDigest(mcpServer.Spec.Image))
+	serverJSON.Version = resolveServerVersion(annotations, mcpServer.Spec.Image, mcpServer.Name, mcpServer.Namespace)
 
 	desc, ok := annotations[defaultRegistryDescriptionAnnotation]
 	if !ok {
@@ -149,7 +153,7 @@ func extractVirtualMCPServer(virtualMCPServer *mcpv1beta1.VirtualMCPServer) (*up
 	}
 
 	// VirtualMCPServer has no container image to derive a version from.
-	serverJSON.Version = resolveServerVersion(annotations, "")
+	serverJSON.Version = resolveServerVersion(annotations, "", virtualMCPServer.Name, virtualMCPServer.Namespace)
 
 	desc, ok := annotations[defaultRegistryDescriptionAnnotation]
 	if !ok {
@@ -241,7 +245,7 @@ func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1beta1.MCPRemoteProxy) (*upstream
 	}
 
 	// MCPRemoteProxy has no container image to derive a version from.
-	serverJSON.Version = resolveServerVersion(annotations, "")
+	serverJSON.Version = resolveServerVersion(annotations, "", mcpRemoteProxy.Name, mcpRemoteProxy.Namespace)
 
 	desc, ok := annotations[defaultRegistryDescriptionAnnotation]
 	if !ok {
@@ -404,33 +408,76 @@ func extractPackages(mcpServer *mcpv1beta1.MCPServer) []model.Package {
 
 // resolveServerVersion determines the version of a registry entry derived from a
 // Kubernetes resource. Precedence: the registry-version annotation, then the
-// container image tag (for resources that run an image), then defaultServerVersion.
+// container image tag, then defaultServerVersion. Resources that run no image pass
+// an empty image reference.
 //
 // Both candidates are attacker-controlled free-form strings — annotation values are
 // unconstrained, and MCPServerSpec.Image has no format validation — and nothing
 // downstream validates an entry version, so a candidate that versions.IsPublishable
-// rejects is skipped rather than published. That also removes the need to special-case
-// image references with no usable version: "latest", bare digests, and the
-// "5000/my-image" that parseImageTagOrDigest yields for an untagged image on a ported
-// registry all fail the check and fall through to the default.
-func resolveServerVersion(annotations map[string]string, imageVersion string) string {
+// rejects is skipped rather than published. That removes the need to special-case
+// image references carrying no usable version: "latest", channel tags, and bare
+// digests all fail the check and fall through to the default.
+func resolveServerVersion(annotations map[string]string, image, name, namespace string) string {
+	annotated := strings.TrimSpace(annotations[defaultRegistryVersionAnnotation])
+	if annotated != "" && versions.IsPublishable(annotated) {
+		return annotated
+	}
+
+	resolved := defaultServerVersion
+	if tag := strings.TrimSpace(parseImageTag(image)); versions.IsPublishable(tag) {
+		resolved = tag
+	}
+
 	// A rejected annotation is always an operator mistake, so it is worth a warning.
-	// A rejected image tag is routine ("latest", "stable", a digest) and is not.
-	if annotated := strings.TrimSpace(annotations[defaultRegistryVersionAnnotation]); annotated != "" {
-		if versions.IsPublishable(annotated) {
-			return annotated
-		}
-		slog.Warn("ignoring unusable registry entry version annotation",
+	// A rejected image tag is routine ("latest", "stable", a digest) and is not. The
+	// value is truncated because it is unbounded and this runs on every reconcile.
+	if annotated != "" {
+		slog.Warn("ignoring unusable registry entry version annotation, using resolved version instead",
 			"annotation", defaultRegistryVersionAnnotation,
-			"value", annotated,
-			"fallback", defaultServerVersion)
+			"value", truncateForLog(annotated),
+			"value_length", len(annotated),
+			"resolved_version", resolved,
+			"server", name,
+			"namespace", namespace)
 	}
 
-	if tag := strings.TrimSpace(imageVersion); versions.IsPublishable(tag) {
-		return tag
+	return resolved
+}
+
+// truncateForLog bounds an untrusted annotation value on its way to the logs.
+// Kubernetes allows roughly 256KiB of annotations per object and the reconciler runs
+// on every update, so echoing a value verbatim would let one oversized annotation
+// amplify into the log volume that the publishing length limit exists to prevent.
+// Truncation is trimmed back to a rune boundary so the log line stays valid UTF-8.
+func truncateForLog(value string) string {
+	if len(value) <= maxLoggedValueLength {
+		return value
+	}
+	return strings.ToValidUTF8(value[:maxLoggedValueLength], "") + "…"
+}
+
+// parseImageTag returns the tag from a container image reference, or an empty string
+// when the reference carries none.
+//
+// Unlike parseImageTagOrDigest it never returns a digest, because a digest is not a
+// version: it does not order, and it changes on every image rebuild. A reference may
+// carry both ("db:1.4.2@sha256:..." is the canonical way to pin an image while keeping
+// the tag readable), and in that case the tag is the version the operator means.
+//
+// It also declines to mistake a registry port for a tag. A colon that appears before
+// the last "/" belongs to a host:port, so "registry.internal:5000/db" has no tag.
+func parseImageTag(image string) string {
+	// A digest suffix is not a tag; drop it before looking for one.
+	if at := strings.Index(image, "@"); at != -1 {
+		image = image[:at]
 	}
 
-	return defaultServerVersion
+	colon := strings.LastIndex(image, ":")
+	if colon == -1 || strings.LastIndex(image, "/") > colon {
+		return ""
+	}
+
+	return image[colon+1:]
 }
 
 // parseImageTagOrDigest is a rudimentary parser that parses the tag or digest
