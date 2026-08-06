@@ -2,7 +2,9 @@ package kubernetes
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
@@ -561,6 +563,145 @@ func TestExtractServer(t *testing.T) {
 				assert.Equal(t, "get_forecast", tools[1])
 			},
 		},
+		{
+			name: "version annotation overrides the image tag",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+					defaultRegistryVersionAnnotation:     "2.5.0",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "test/image:v1.2.3",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "2.5.0",
+			wantErr:     false,
+		},
+		{
+			name: "semver image tag becomes the entry version",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "registry.example.com/image:1.4.2",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "1.4.2",
+			wantErr:     false,
+		},
+		{
+			name: "v-prefixed image tag is kept as written",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "registry.example.com/image:v2.1.0-rc.1",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "v2.1.0-rc.1",
+			wantErr:     false,
+		},
+		{
+			name: "tagged and digest-pinned image uses the tag",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+				},
+				mcpv1beta1.MCPServerSpec{
+					// The canonical way to pin an image while keeping the tag readable.
+					// The package version keeps the digest; the entry version takes the tag.
+					Image:     "registry.example.com/image:1.4.2@sha256:abc123def4567890abcdef1234567890abcdef1234567890abcdef1234567890",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "1.4.2",
+			wantErr:     false,
+		},
+		{
+			name: "digest-only image falls back to the default version",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "registry.example.com/image@sha256:abc123def4567890abcdef1234567890abcdef1234567890abcdef1234567890",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: defaultServerVersion,
+			wantErr:     false,
+		},
+		{
+			name: "untagged image on a ported registry falls back to the default version",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+				},
+				mcpv1beta1.MCPServerSpec{
+					// parseImageTagOrDigest yields "5000/image" here, which must not
+					// reach the entry version.
+					Image:     "registry.example.com:5000/image",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: defaultServerVersion,
+			wantErr:     false,
+		},
+		{
+			name: "unusable annotation falls back to the semver image tag",
+			mcpServer: createTestMCPServer(
+				"test-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/mcp",
+					defaultRegistryVersionAnnotation:     "REL-2024-06",
+				},
+				mcpv1beta1.MCPServerSpec{
+					Image:     "registry.example.com/image:1.4.2",
+					Transport: "streamable-http",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-server",
+			wantVersion: "1.4.2",
+			wantErr:     false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -809,6 +950,22 @@ func TestExtractVirtualMCPServer(t *testing.T) {
 				assert.Equal(t, model.TransportTypeStreamableHTTP, sj.Remotes[0].Type)
 				assert.Equal(t, "https://example.com/vmcp", sj.Remotes[0].URL)
 			},
+		},
+		{
+			name: "VirtualMCPServer with version annotation",
+			vmcpServer: createTestVirtualMCPServer(
+				"test-vmcp-server",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test Virtual MCP server",
+					defaultRegistryURLAnnotation:         "https://example.com/vmcp",
+					defaultRegistryVersionAnnotation:     "3.1.4",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-vmcp-server",
+			wantVersion: "3.1.4",
+			wantErr:     false,
 		},
 		{
 			name: "VirtualMCPServer with nil annotations",
@@ -1125,6 +1282,22 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 			},
 		},
 		{
+			name: "MCPRemoteProxy with version annotation",
+			mcpRemoteProxy: createTestMCPRemoteProxy(
+				"test-proxy",
+				"default",
+				map[string]string{
+					defaultRegistryDescriptionAnnotation: "A test MCP Remote Proxy",
+					defaultRegistryURLAnnotation:         "https://example.com/proxy",
+					defaultRegistryVersionAnnotation:     "0.9.1",
+				},
+			),
+			wantSchema:  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			wantName:    "com.toolhive.k8s.default/test-proxy",
+			wantVersion: "0.9.1",
+			wantErr:     false,
+		},
+		{
 			name: "MCPRemoteProxy with nil annotations",
 			mcpRemoteProxy: createTestMCPRemoteProxy(
 				"test-proxy",
@@ -1376,4 +1549,205 @@ func TestExtractMCPRemoteProxy(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveServerVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		image       string
+		want        string
+	}{
+		{
+			name:        "annotation wins over image tag",
+			annotations: map[string]string{defaultRegistryVersionAnnotation: "2.5.0"},
+			image:       "ghcr.io/acme/db:1.2.3",
+			want:        "2.5.0",
+		},
+		{
+			name:        "image tag used when no annotation",
+			annotations: map[string]string{},
+			image:       "ghcr.io/acme/db:1.2.3",
+			want:        "1.2.3",
+		},
+		{
+			name:        "v prefix is preserved, not normalized",
+			annotations: map[string]string{},
+			image:       "ghcr.io/acme/db:v1.2.3",
+			want:        "v1.2.3",
+		},
+		{
+			name:        "tagged and digest-pinned image uses the tag",
+			annotations: map[string]string{},
+			image:       "ghcr.io/acme/db:1.4.2@sha256:abc123",
+			want:        "1.4.2",
+		},
+		{
+			name:        "tagged and pinned on a ported registry uses the tag",
+			annotations: map[string]string{},
+			image:       "registry.internal:5000/db:1.4.2@sha256:abc123",
+			want:        "1.4.2",
+		},
+		{
+			name:        "tagged image on a ported registry uses the tag",
+			annotations: map[string]string{},
+			image:       "registry.internal:5000/db:2.0.0",
+			want:        "2.0.0",
+		},
+		{
+			name:        "surrounding whitespace is trimmed from the annotation",
+			annotations: map[string]string{defaultRegistryVersionAnnotation: "  2.5.0\n"},
+			image:       "",
+			want:        "2.5.0",
+		},
+		{
+			name:        "nil annotations falls back to the image tag",
+			annotations: nil,
+			image:       "ghcr.io/acme/db:1.2.3",
+			want:        "1.2.3",
+		},
+		{
+			name:        "no annotation and no image falls back to default",
+			annotations: map[string]string{},
+			image:       "",
+			want:        defaultServerVersion,
+		},
+		{
+			name:        "empty annotation value is ignored",
+			annotations: map[string]string{defaultRegistryVersionAnnotation: ""},
+			image:       "ghcr.io/acme/db:1.2.3",
+			want:        "1.2.3",
+		},
+		{
+			name:        "whitespace-only annotation value is ignored",
+			annotations: map[string]string{defaultRegistryVersionAnnotation: "   "},
+			image:       "ghcr.io/acme/db:1.2.3",
+			want:        "1.2.3",
+		},
+		// Unusable candidates fall through instead of being published. Each of these
+		// would otherwise reach the API as an entry version and a URL path segment.
+		{
+			name:        "reserved latest annotation falls back to the image tag",
+			annotations: map[string]string{defaultRegistryVersionAnnotation: "latest"},
+			image:       "ghcr.io/acme/db:1.2.3",
+			want:        "1.2.3",
+		},
+		{
+			name:        "non-semver annotation falls back to the image tag",
+			annotations: map[string]string{defaultRegistryVersionAnnotation: "REL-2024-06"},
+			image:       "ghcr.io/acme/db:1.2.3",
+			want:        "1.2.3",
+		},
+		{
+			name:        "over-length annotation falls back to the image tag",
+			annotations: map[string]string{defaultRegistryVersionAnnotation: "1.0.0-" + strings.Repeat("a", 250)},
+			image:       "ghcr.io/acme/db:1.2.3",
+			want:        "1.2.3",
+		},
+		{
+			name:        "oversized annotation falls back to the image tag",
+			annotations: map[string]string{defaultRegistryVersionAnnotation: strings.Repeat("a", 100_000)},
+			image:       "ghcr.io/acme/db:1.2.3",
+			want:        "1.2.3",
+		},
+		{
+			name:        "unusable annotation and unusable tag falls back to default",
+			annotations: map[string]string{defaultRegistryVersionAnnotation: "1.x"},
+			image:       "ghcr.io/acme/db:stable",
+			want:        defaultServerVersion,
+		},
+		{
+			name:        "latest image tag falls back to default",
+			annotations: map[string]string{},
+			image:       "ghcr.io/acme/db:latest",
+			want:        defaultServerVersion,
+		},
+		{
+			name:        "digest-only image falls back to default",
+			annotations: map[string]string{},
+			image:       "ghcr.io/acme/db@sha256:abc123",
+			want:        defaultServerVersion,
+		},
+		{
+			name:        "untagged image on a ported registry falls back to default",
+			annotations: map[string]string{},
+			image:       "registry.internal:5000/db",
+			want:        defaultServerVersion,
+		},
+		{
+			name:        "two-part image tag falls back to default",
+			annotations: map[string]string{},
+			image:       "ghcr.io/acme/db:1.2",
+			want:        defaultServerVersion,
+		},
+		{
+			name:        "build metadata falls back to default",
+			annotations: map[string]string{defaultRegistryVersionAnnotation: "1.2.3+build.5"},
+			image:       "",
+			want:        defaultServerVersion,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, resolveServerVersion(tt.annotations, tt.image, "test-server", "default"))
+		})
+	}
+}
+
+func TestParseImageTag(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		image string
+		want  string
+	}{
+		{name: "plain tag", image: "ghcr.io/acme/db:1.4.2", want: "1.4.2"},
+		{name: "no registry host", image: "db:1.4.2", want: "1.4.2"},
+		{name: "tagged and digest-pinned", image: "ghcr.io/acme/db:1.4.2@sha256:abc", want: "1.4.2"},
+		{name: "ported registry with tag", image: "registry.internal:5000/db:2.0.0", want: "2.0.0"},
+		{name: "ported registry, tagged and pinned", image: "registry.internal:5000/db:2.0.0@sha256:abc", want: "2.0.0"},
+		{name: "digest only", image: "ghcr.io/acme/db@sha256:abc", want: ""},
+		{name: "ported registry, untagged", image: "registry.internal:5000/db", want: ""},
+		{name: "untagged", image: "ghcr.io/acme/db", want: ""},
+		{name: "empty", image: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, parseImageTag(tt.image))
+		})
+	}
+}
+
+func TestTruncateForLog(t *testing.T) {
+	t.Parallel()
+
+	t.Run("short values pass through unchanged", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Equal(t, "1.0.0", truncateForLog("1.0.0"))
+	})
+
+	t.Run("oversized values are bounded", func(t *testing.T) {
+		t.Parallel()
+
+		got := truncateForLog(strings.Repeat("a", 100_000))
+		assert.Len(t, got, maxLoggedValueLength+len("…"))
+	})
+
+	t.Run("truncation stays valid UTF-8", func(t *testing.T) {
+		t.Parallel()
+
+		// "€" is three bytes, so a 64-byte cut lands mid-rune.
+		got := truncateForLog(strings.Repeat("€", 100))
+		assert.True(t, utf8.ValidString(got))
+	})
 }
