@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/stacklok/toolhive/pkg/versions"
 	"github.com/swaggo/swag/v2"
 
 	// Import generated docs package to register OpenAPI spec via init()
@@ -19,6 +18,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/internal/versions"
 )
 
 // ServerOption configures the registry API server
