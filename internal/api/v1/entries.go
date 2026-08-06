@@ -246,7 +246,6 @@ type entryClaimsResponse struct {
 // @Failure		403	{object}	map[string]string	"Forbidden"
 // @Failure		404	{object}	map[string]string	"Not found"
 // @Failure		500	{object}	map[string]string	"Internal server error"
-// @Failure		503	{object}	map[string]string	"No managed source available"
 // @Router		/v1/entries/{type}/{name}/claims [get]
 func (routes *Routes) getEntryClaims(w http.ResponseWriter, r *http.Request) {
 	entryType, err := common.GetAndValidateURLParam(r, "type")
@@ -284,7 +283,7 @@ func (routes *Routes) getEntryClaims(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, service.ErrNoManagedSource) {
-			common.WriteErrorResponse(w, "no managed source available", http.StatusServiceUnavailable)
+			common.WriteErrorResponse(w, "no managed source available", http.StatusInternalServerError)
 			return
 		}
 		slog.ErrorContext(r.Context(), "failed to get entry claims", "error", err, "type", entryType)
@@ -315,7 +314,6 @@ type updateEntryClaimsRequest struct {
 // @Failure		403	{object}	map[string]string	"Forbidden"
 // @Failure		404	{object}	map[string]string	"Not found"
 // @Failure		500	{object}	map[string]string	"Internal server error"
-// @Failure		503	{object}	map[string]string	"No managed source available"
 // @Router		/v1/entries/{type}/{name}/claims [put]
 func (routes *Routes) updateEntryClaims(w http.ResponseWriter, r *http.Request) {
 	entryType, err := common.GetAndValidateURLParam(r, "type")
@@ -361,7 +359,7 @@ func (routes *Routes) updateEntryClaims(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		if errors.Is(err, service.ErrNoManagedSource) {
-			common.WriteErrorResponse(w, "no managed source available for updating claims", http.StatusServiceUnavailable)
+			common.WriteErrorResponse(w, "no managed source available for updating claims", http.StatusInternalServerError)
 			return
 		}
 		slog.ErrorContext(r.Context(), "failed to update entry claims", "error", err, "type", entryType)
