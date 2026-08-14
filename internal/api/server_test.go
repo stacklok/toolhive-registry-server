@@ -16,6 +16,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
+	registryversions "github.com/stacklok/toolhive-registry-server/internal/versions"
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -130,6 +131,41 @@ func TestVersionEndpoint(t *testing.T) {
 	assert.Contains(t, response, "build_date")
 	assert.Contains(t, response, "go_version")
 	assert.Contains(t, response, "platform")
+}
+
+// TestVersionEndpointUsesRegistryServerBuildInfo mutates package-level build
+// information, so it must not run in parallel with other tests in this package.
+//
+//nolint:paralleltest,tparallel // mutates internal/versions package globals
+func TestVersionEndpointUsesRegistryServerBuildInfo(t *testing.T) {
+	previousVersion := registryversions.Version
+	previousCommit := registryversions.Commit
+	previousBuildDate := registryversions.BuildDate
+	t.Cleanup(func() {
+		registryversions.Version = previousVersion
+		registryversions.Commit = previousCommit
+		registryversions.BuildDate = previousBuildDate
+	})
+
+	registryversions.Version = "registry-server-test-version"
+	registryversions.Commit = "registry-server-test-commit"
+	registryversions.BuildDate = "registry-server-test-build-date"
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	server := api.NewInternalServer(mocks.NewMockRegistryService(ctrl), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/version", nil)
+	rr := httptest.NewRecorder()
+	server.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var response api.VersionResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+	assert.Equal(t, registryversions.Version, response.Version)
+	assert.Equal(t, registryversions.Commit, response.Commit)
+	assert.Equal(t, registryversions.BuildDate, response.BuildDate)
 }
 
 func TestInternalServer_MetricsEndpoint(t *testing.T) {
