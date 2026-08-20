@@ -62,10 +62,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if err := r.syncWriter.Store(ctx, r.registryName, result.Registry, opts...); err != nil {
 		slog.Error("Failed to store MCPServer list", "error", err)
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: r.requeueAfter,
-		}, err
+		return ctrl.Result{RequeueAfter: r.requeueAfter}, err
 	}
 
 	slog.Info("MCP servers stored successfully",
