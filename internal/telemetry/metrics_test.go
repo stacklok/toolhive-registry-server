@@ -227,7 +227,7 @@ func TestCachingRegistryMetricReader(t *testing.T) {
 		_, err := cache.RegistryMetricCounts(context.Background())
 		require.NoError(t, err)
 
-		now = now.Add(registryMetricCountsCacheTTL + time.Second)
+		now = now.Add(RegistryMetricCountsCacheTTL + time.Second)
 		_, err = cache.RegistryMetricCounts(context.Background())
 		require.NoError(t, err)
 
@@ -240,7 +240,7 @@ func TestCachingRegistryMetricReader(t *testing.T) {
 	t.Run("success TTL is below the metrics export interval", func(t *testing.T) {
 		t.Parallel()
 
-		assert.Less(t, registryMetricCountsCacheTTL, DefaultMetricsInterval,
+		assert.Less(t, RegistryMetricCountsCacheTTL, DefaultMetricsInterval,
 			"a TTL at or above the export interval halves the gauges' effective refresh rate")
 	})
 
@@ -257,7 +257,7 @@ func TestCachingRegistryMetricReader(t *testing.T) {
 		_, err := cache.RegistryMetricCounts(context.Background())
 		require.NoError(t, err)
 
-		assert.Equal(t, now.Add(registryMetricCountsCacheTTL), cache.expiresAt,
+		assert.Equal(t, now.Add(RegistryMetricCountsCacheTTL), cache.expiresAt,
 			"expiry stamped after the query would drift the refresh cadence by the query's duration")
 	})
 
@@ -276,7 +276,7 @@ func TestCachingRegistryMetricReader(t *testing.T) {
 
 		// DB goes away; the next refresh fails.
 		static.counts, static.err = nil, errors.New("db unavailable")
-		now = now.Add(registryMetricCountsCacheTTL + time.Second)
+		now = now.Add(RegistryMetricCountsCacheTTL + time.Second)
 
 		counts, err = cache.RegistryMetricCounts(context.Background())
 		require.NoError(t, err,
@@ -321,7 +321,7 @@ func TestCachingRegistryMetricReader(t *testing.T) {
 		// being held out for the full success TTL.
 		static.err = nil
 		static.counts = []RegistryMetricCount{{SourceName: "s", ServerCount: 1}}
-		now = now.Add(registryMetricCountsErrorCacheTTL + time.Second)
+		now = now.Add(RegistryMetricCountsErrorCacheTTL + time.Second)
 
 		counts, err := cache.RegistryMetricCounts(context.Background())
 		require.NoError(t, err)
@@ -332,7 +332,7 @@ func TestCachingRegistryMetricReader(t *testing.T) {
 	t.Run("negative TTL is shorter than the success TTL", func(t *testing.T) {
 		t.Parallel()
 
-		assert.Less(t, registryMetricCountsErrorCacheTTL, registryMetricCountsCacheTTL,
+		assert.Less(t, RegistryMetricCountsErrorCacheTTL, RegistryMetricCountsCacheTTL,
 			"holding a failure for the full success TTL prolongs an export blackout past the DB's recovery")
 	})
 
@@ -345,7 +345,7 @@ func TestCachingRegistryMetricReader(t *testing.T) {
 		t.Parallel()
 
 		clock := time.Now()
-		inner := &clockAdvancingFailingReader{clock: &clock, dur: registryMetricCountsErrorCacheTTL * 4}
+		inner := &clockAdvancingFailingReader{clock: &clock, dur: RegistryMetricCountsErrorCacheTTL * 4}
 		cache := newCachingRegistryMetricReader(inner)
 		cache.now = func() time.Time { return clock }
 
@@ -382,7 +382,7 @@ func TestCachingRegistryMetricReader(t *testing.T) {
 		// this is entirely invisible: the error is swallowed, and the gauges
 		// keep reporting their last value with a fresh timestamp.
 		static.err = errors.New("db unavailable")
-		now = now.Add(registryMetricCountsCacheTTL + time.Second)
+		now = now.Add(RegistryMetricCountsCacheTTL + time.Second)
 		counts, err := cache.RegistryMetricCounts(context.Background())
 		require.NoError(t, err, "stale counts should still be served")
 		require.Len(t, counts, 1)
@@ -392,13 +392,13 @@ func TestCachingRegistryMetricReader(t *testing.T) {
 		// Still failing: no second line, or a lengthy outage would emit one
 		// per retry for as long as it lasts.
 		buf.Reset()
-		now = now.Add(registryMetricCountsErrorCacheTTL + time.Second)
+		now = now.Add(RegistryMetricCountsErrorCacheTTL + time.Second)
 		_, err = cache.RegistryMetricCounts(context.Background())
 		require.NoError(t, err)
 		assert.Empty(t, buf.String(), "the degraded state should be reported on transition, not per retry")
 
 		static.err = nil
-		now = now.Add(registryMetricCountsErrorCacheTTL + time.Second)
+		now = now.Add(RegistryMetricCountsErrorCacheTTL + time.Second)
 		_, err = cache.RegistryMetricCounts(context.Background())
 		require.NoError(t, err)
 		assert.Contains(t, buf.String(), "Registry metric counts refresh recovered")

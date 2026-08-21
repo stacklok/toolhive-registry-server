@@ -48,7 +48,7 @@ type RegistryMetricReader interface {
 	RegistryMetricCounts(ctx context.Context) ([]RegistryMetricCount, error)
 }
 
-// registryMetricCountsCacheTTL bounds how often the observable-gauge callback
+// RegistryMetricCountsCacheTTL bounds how often the observable-gauge callback
 // re-runs RegistryMetricCounts' underlying DB aggregate. Before the Prometheus
 // reader was added, the periodic OTLP reader was the only caller, so the query
 // ran once every DefaultMetricsInterval (60s); a Prometheus scrape interval
@@ -60,15 +60,26 @@ type RegistryMetricReader interface {
 // It is deliberately strictly below DefaultMetricsInterval: at exactly 60s the
 // periodic reader's every-60s tick would alternate hit/miss, halving the
 // gauges' effective refresh rate to 120s in an OTLP-only deployment.
-const registryMetricCountsCacheTTL = 30 * time.Second
+//
+// It is exported only so that the reader implementations supplying the
+// underlying query — which import this package, not the other way round — can
+// assert their own query timeout stays below it. RegistryMetricCounts stamps a
+// successful entry's expiry from *before* the query runs, so a query timeout at
+// or above this TTL would write entries that had already expired and silently
+// disable the cache.
+const RegistryMetricCountsCacheTTL = 30 * time.Second
 
-// registryMetricCountsErrorCacheTTL is the negative TTL applied when the
+// RegistryMetricCountsErrorCacheTTL is the negative TTL applied when the
 // underlying read fails and there is no previous result to fall back on. It is
 // much shorter than the success TTL: a failed collection costs the SDK *every*
 // metric in the export (PeriodicReader.collectAndExport only exports when
 // Collect returns nil, so sync, HTTP and build_info are dropped alongside the
 // registry gauges), so a transient blip must not be held past its recovery.
-const registryMetricCountsErrorCacheTTL = 5 * time.Second
+//
+// It is exported for the same reason as RegistryMetricCountsCacheTTL: the
+// reader's query timeout has to stay above it, and only the reader's own
+// package can see both values.
+const RegistryMetricCountsErrorCacheTTL = 5 * time.Second
 
 // cachingRegistryMetricReader memoizes RegistryMetricCounts behind a TTL so
 // concurrent or frequent callers (multiple readers, a fast scrape interval)
@@ -101,8 +112,8 @@ type cachingRegistryMetricReader struct {
 func newCachingRegistryMetricReader(reader RegistryMetricReader) *cachingRegistryMetricReader {
 	return &cachingRegistryMetricReader{
 		reader:   reader,
-		ttl:      registryMetricCountsCacheTTL,
-		errorTTL: registryMetricCountsErrorCacheTTL,
+		ttl:      RegistryMetricCountsCacheTTL,
+		errorTTL: RegistryMetricCountsErrorCacheTTL,
 		now:      time.Now,
 	}
 }
@@ -116,8 +127,10 @@ func (c *cachingRegistryMetricReader) RegistryMetricCounts(ctx context.Context) 
 	// Stamp the success deadline from before the query, not after: measuring
 	// the TTL from completion would push each expiry out by the query's own
 	// duration and drift the refresh cadence past the export interval. This
-	// relies on the reader's own query timeout being shorter than ttl, which
-	// registryMetricCountsQueryTimeout is.
+	// relies on the reader's own query timeout being comfortably shorter than
+	// ttl, which registryMetricCountsQueryTimeout is — enforced by
+	// TestRegistryMetricCountsTimeoutInvariants in internal/app/storage, which
+	// is why the two TTLs above are exported.
 	started := c.now()
 	if started.Before(c.expiresAt) {
 		return c.counts, c.err
