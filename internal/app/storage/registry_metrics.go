@@ -29,6 +29,13 @@ SELECT src.name,
 // It sits above the caching reader's negative TTL but well below
 // PeriodicReader's 30s collect timeout, so a stalled query fails on this
 // deadline rather than taking the whole export down with it.
+//
+// It must also stay comfortably below telemetry.RegistryMetricCountsCacheTTL:
+// the caching reader stamps a successful entry's expiry from before the query
+// runs, so a timeout at or above the TTL produces entries that are already
+// expired. Both bounds are enforced by
+// TestRegistryMetricCountsTimeoutInvariants — raise this value and that test
+// tells you which TTL has to move with it.
 const registryMetricCountsQueryTimeout = 20 * time.Second
 
 // registryMetricCountsContext caps ctx at registryMetricCountsQueryTimeout. It
