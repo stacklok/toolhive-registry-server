@@ -9,7 +9,6 @@ const docTemplate = `{
     "components": {
         "schemas": {
             "github_com_stacklok_toolhive-registry-server_internal_config.APIConfig": {
-                "description": "API endpoint source",
                 "properties": {
                     "endpoint": {
                         "description": "Endpoint is the base API URL (without path)\nThe registry handler will append the appropriate paths for the MCP Registry API v0.1:\n  - /v0.1/servers - List all servers\n  - /v0.1/servers/{name}/versions - List server versions\n  - /v0.1/servers/{name}/versions/{version} - Get specific version\nExample: \"http://my-registry-api.default.svc.cluster.local/registry\"",
@@ -23,7 +22,6 @@ const docTemplate = `{
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.FileConfig": {
-                "description": "Local file or URL source",
                 "properties": {
                     "data": {
                         "description": "Data is the inline registry data as a JSON string\nMutually exclusive with Path and URL - exactly one must be specified\nUseful for API-created registries where the data is provided directly",
@@ -45,7 +43,6 @@ const docTemplate = `{
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig": {
-                "description": "Filtering rules",
                 "properties": {
                     "names": {
                         "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig"
@@ -57,7 +54,6 @@ const docTemplate = `{
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig": {
-                "description": "Auth contains optional authentication for private repositories",
                 "properties": {
                     "passwordFile": {
                         "description": "PasswordFile is the path to a file containing the Git password/token\nMust be an absolute path; whitespace is trimmed from the content",
@@ -71,10 +67,10 @@ const docTemplate = `{
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.GitConfig": {
-                "description": "Git repository source",
                 "properties": {
                     "auth": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig",
+                        "description": "Auth contains optional authentication for private repositories"
                     },
                     "branch": {
                         "description": "Branch is the Git branch to use (mutually exclusive with Tag and Commit)",
@@ -100,11 +96,9 @@ const docTemplate = `{
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig": {
-                "description": "Kubernetes discovery source",
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig": {
-                "description": "Managed registry (no sync)",
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig": {
@@ -127,7 +121,6 @@ const docTemplate = `{
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.SourceType": {
-                "description": "git, api, file, managed, kubernetes",
                 "enum": [
                     "git",
                     "api",
@@ -145,7 +138,6 @@ const docTemplate = `{
                 ]
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig": {
-                "description": "Sync schedule configuration",
                 "properties": {
                     "interval": {
                         "type": "string"
@@ -173,7 +165,6 @@ const docTemplate = `{
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_service.CreationType": {
-                "description": "API or CONFIG",
                 "enum": [
                     "API",
                     "CONFIG"
@@ -547,7 +538,8 @@ const docTemplate = `{
             "github_com_stacklok_toolhive-registry-server_internal_service.SourceCreateRequest": {
                 "properties": {
                     "api": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.APIConfig"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.APIConfig",
+                        "description": "API endpoint source"
                     },
                     "claims": {
                         "additionalProperties": {},
@@ -555,22 +547,28 @@ const docTemplate = `{
                         "type": "object"
                     },
                     "file": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FileConfig"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FileConfig",
+                        "description": "Local file or URL source"
                     },
                     "filter": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig",
+                        "description": "Name/tag filtering rules"
                     },
                     "git": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitConfig"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitConfig",
+                        "description": "Git repository source"
                     },
                     "kubernetes": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig",
+                        "description": "Kubernetes discovery source"
                     },
                     "managed": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig",
+                        "description": "Managed registry (no sync)"
                     },
                     "syncPolicy": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig",
+                        "description": "Sync schedule configuration"
                     }
                 },
                 "type": "object"
@@ -620,10 +618,12 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "creationType": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.CreationType"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.CreationType",
+                        "description": "API or CONFIG"
                     },
                     "filterConfig": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig",
+                        "description": "Filtering rules"
                     },
                     "name": {
                         "type": "string"
@@ -632,7 +632,8 @@ const docTemplate = `{
                         "description": "Type-specific source configuration"
                     },
                     "sourceType": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SourceType"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SourceType",
+                        "description": "git, api, file, managed, kubernetes"
                     },
                     "syncSchedule": {
                         "description": "Sync interval string",
@@ -850,7 +851,8 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "type": {
-                        "$ref": "#/components/schemas/model.ArgumentType"
+                        "$ref": "#/components/schemas/model.ArgumentType",
+                        "example": "positional"
                     },
                     "value": {
                         "type": "string"
@@ -873,7 +875,6 @@ const docTemplate = `{
                     "positional",
                     "named"
                 ],
-                "example": "positional",
                 "type": "string",
                 "x-enum-varnames": [
                     "ArgumentTypePositional",
@@ -1052,7 +1053,8 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "transport": {
-                        "$ref": "#/components/schemas/model.Transport"
+                        "$ref": "#/components/schemas/model.Transport",
+                        "description": "Transport is required and specifies the transport protocol configuration"
                     },
                     "version": {
                         "description": "Version is the package version (required for npm, pypi, nuget; optional for mcpb; not used by oci where version is in the identifier)",
@@ -1100,7 +1102,6 @@ const docTemplate = `{
                 ]
             },
             "model.Transport": {
-                "description": "Transport is required and specifies the transport protocol configuration",
                 "properties": {
                     "headers": {
                         "items": {
@@ -1171,7 +1172,8 @@ const docTemplate = `{
                         "uniqueItems": false
                     },
                     "repository": {
-                        "$ref": "#/components/schemas/registry.SkillRepository"
+                        "$ref": "#/components/schemas/registry.SkillRepository",
+                        "description": "Repository is the source repository of the plugin."
                     },
                     "status": {
                         "description": "Status is the status of the plugin.\nCan be one of \"active\", \"deprecated\", or \"archived\".",
@@ -1189,7 +1191,6 @@ const docTemplate = `{
                 "type": "object"
             },
             "registry.Provenance": {
-                "description": "Provenance is the expected signer identity for this skill, checked on\nfirst install instead of trust-on-first-use. Absent means unconstrained\n— most catalog entries won't have this for a while, and that must not\nbreak installs; it's an opt-in tightening per entry, not a requirement.\n\nEach field constrains independently, and an empty string leaves that\ndimension unconstrained. Attestation is the exception: setting it at\nall, even to an empty struct, requires the artifact to be attested, so\nverification fails against a signature carrying no statement. Its own\nPredicateType and Predicate then follow the usual rule and constrain\nonly when set. Predicate must be a JSON object; anything else can never\nmatch, and Validate rejects it rather than letting it through as a\nconstraint that silently fails every artifact.",
                 "properties": {
                     "attestation": {
                         "$ref": "#/components/schemas/registry.VerifiedAttestation"
@@ -1272,10 +1273,12 @@ const docTemplate = `{
                         "uniqueItems": false
                     },
                     "provenance": {
-                        "$ref": "#/components/schemas/registry.Provenance"
+                        "$ref": "#/components/schemas/registry.Provenance",
+                        "description": "Provenance is the expected signer identity for this skill, checked on\nfirst install instead of trust-on-first-use. Absent means unconstrained\n— most catalog entries won't have this for a while, and that must not\nbreak installs; it's an opt-in tightening per entry, not a requirement.\n\nEach field constrains independently, and an empty string leaves that\ndimension unconstrained. Attestation is the exception: setting it at\nall, even to an empty struct, requires the artifact to be attested, so\nverification fails against a signature carrying no statement. Its own\nPredicateType and Predicate then follow the usual rule and constrain\nonly when set. Predicate must be a JSON object; anything else can never\nmatch, and Validate rejects it rather than letting it through as a\nconstraint that silently fails every artifact."
                     },
                     "repository": {
-                        "$ref": "#/components/schemas/registry.SkillRepository"
+                        "$ref": "#/components/schemas/registry.SkillRepository",
+                        "description": "Repository is the source repository of the skill."
                     },
                     "status": {
                         "description": "Status is the status of the skill.\nCan be one of \"active\", \"deprecated\", or \"archived\".",
@@ -1351,7 +1354,6 @@ const docTemplate = `{
                 "type": "object"
             },
             "registry.SkillRepository": {
-                "description": "Repository is the source repository of the skill.",
                 "properties": {
                     "type": {
                         "description": "Type is the type of the repository.",
@@ -2648,16 +2650,9 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/internal_api_v1.publishEntryRequest",
-                                        "summary": "request",
-                                        "description": "Entry to publish (server, skill, or plugin)"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/internal_api_v1.publishEntryRequest",
+                                "summary": "request",
+                                "description": "Entry to publish (server, skill, or plugin)"
                             }
                         }
                     },
@@ -2839,16 +2834,9 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/internal_api_v1.updateEntryClaimsRequest",
-                                        "summary": "request",
-                                        "description": "Claims to set"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/internal_api_v1.updateEntryClaimsRequest",
+                                "summary": "request",
+                                "description": "Claims to set"
                             }
                         }
                     },
@@ -3230,16 +3218,9 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest",
-                                        "summary": "request",
-                                        "description": "Registry configuration"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest",
+                                "summary": "request",
+                                "description": "Registry configuration"
                             }
                         }
                     },
@@ -3593,16 +3574,9 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceCreateRequest",
-                                        "summary": "request",
-                                        "description": "Source configuration"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceCreateRequest",
+                                "summary": "request",
+                                "description": "Source configuration"
                             }
                         }
                     },
