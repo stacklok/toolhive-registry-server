@@ -1,7 +1,6 @@
 components:
   schemas:
     github_com_stacklok_toolhive-registry-server_internal_config.APIConfig:
-      description: API endpoint source
       properties:
         endpoint:
           description: |-
@@ -21,7 +20,6 @@ components:
           type: string
       type: object
     github_com_stacklok_toolhive-registry-server_internal_config.FileConfig:
-      description: Local file or URL source
       properties:
         data:
           description: |-
@@ -49,7 +47,6 @@ components:
           type: string
       type: object
     github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig:
-      description: Filtering rules
       properties:
         names:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig'
@@ -57,7 +54,6 @@ components:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig'
       type: object
     github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig:
-      description: Auth contains optional authentication for private repositories
       properties:
         passwordFile:
           description: |-
@@ -69,10 +65,10 @@ components:
           type: string
       type: object
     github_com_stacklok_toolhive-registry-server_internal_config.GitConfig:
-      description: Git repository source
       properties:
         auth:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig'
+          description: Auth contains optional authentication for private repositories
         branch:
           description: Branch is the Git branch to use (mutually exclusive with Tag
             and Commit)
@@ -93,10 +89,8 @@ components:
           type: string
       type: object
     github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig:
-      description: Kubernetes discovery source
       type: object
     github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig:
-      description: Managed registry (no sync)
       type: object
     github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig:
       properties:
@@ -112,7 +106,6 @@ components:
           uniqueItems: false
       type: object
     github_com_stacklok_toolhive-registry-server_internal_config.SourceType:
-      description: git, api, file, managed, kubernetes
       enum:
       - git
       - api
@@ -127,7 +120,6 @@ components:
       - SourceTypeManaged
       - SourceTypeKubernetes
     github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig:
-      description: Sync schedule configuration
       properties:
         interval:
           type: string
@@ -146,7 +138,6 @@ components:
           uniqueItems: false
       type: object
     github_com_stacklok_toolhive-registry-server_internal_service.CreationType:
-      description: API or CONFIG
       enum:
       - API
       - CONFIG
@@ -399,22 +390,29 @@ components:
       properties:
         api:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.APIConfig'
+          description: API endpoint source
         claims:
           additionalProperties: {}
           description: Authorization claims
           type: object
         file:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FileConfig'
+          description: Local file or URL source
         filter:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig'
+          description: Name/tag filtering rules
         git:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitConfig'
+          description: Git repository source
         kubernetes:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig'
+          description: Kubernetes discovery source
         managed:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig'
+          description: Managed registry (no sync)
         syncPolicy:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig'
+          description: Sync schedule configuration
       type: object
     github_com_stacklok_toolhive-registry-server_internal_service.SourceEntriesResponse:
       properties:
@@ -449,14 +447,17 @@ components:
           type: string
         creationType:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.CreationType'
+          description: API or CONFIG
         filterConfig:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig'
+          description: Filtering rules
         name:
           type: string
         sourceConfig:
           description: Type-specific source configuration
         sourceType:
           $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SourceType'
+          description: git, api, file, managed, kubernetes
         syncSchedule:
           description: Sync interval string
           type: string
@@ -605,6 +606,7 @@ components:
           type: string
         type:
           $ref: '#/components/schemas/model.ArgumentType'
+          example: positional
         value:
           type: string
         valueHint:
@@ -619,7 +621,6 @@ components:
       enum:
       - positional
       - named
-      example: positional
       type: string
       x-enum-varnames:
       - ArgumentTypePositional
@@ -759,6 +760,8 @@ components:
           type: string
         transport:
           $ref: '#/components/schemas/model.Transport'
+          description: Transport is required and specifies the transport protocol
+            configuration
         version:
           description: Version is the package version (required for npm, pypi, nuget;
             optional for mcpb; not used by oci where version is in the identifier)
@@ -794,7 +797,6 @@ components:
       - StatusDeprecated
       - StatusDeleted
     model.Transport:
-      description: Transport is required and specifies the transport protocol configuration
       properties:
         headers:
           items:
@@ -855,6 +857,7 @@ components:
           uniqueItems: false
         repository:
           $ref: '#/components/schemas/registry.SkillRepository'
+          description: Repository is the source repository of the plugin.
         status:
           description: |-
             Status is the status of the plugin.
@@ -873,20 +876,6 @@ components:
           type: string
       type: object
     registry.Provenance:
-      description: |-
-        Provenance is the expected signer identity for this skill, checked on
-        first install instead of trust-on-first-use. Absent means unconstrained
-        — most catalog entries won't have this for a while, and that must not
-        break installs; it's an opt-in tightening per entry, not a requirement.
-
-        Each field constrains independently, and an empty string leaves that
-        dimension unconstrained. Attestation is the exception: setting it at
-        all, even to an empty struct, requires the artifact to be attested, so
-        verification fails against a signature carrying no statement. Its own
-        PredicateType and Predicate then follow the usual rule and constrain
-        only when set. Predicate must be a JSON object; anything else can never
-        match, and Validate rejects it rather than letting it through as a
-        constraint that silently fails every artifact.
       properties:
         attestation:
           $ref: '#/components/schemas/registry.VerifiedAttestation'
@@ -957,8 +946,23 @@ components:
           uniqueItems: false
         provenance:
           $ref: '#/components/schemas/registry.Provenance'
+          description: |-
+            Provenance is the expected signer identity for this skill, checked on
+            first install instead of trust-on-first-use. Absent means unconstrained
+            — most catalog entries won't have this for a while, and that must not
+            break installs; it's an opt-in tightening per entry, not a requirement.
+
+            Each field constrains independently, and an empty string leaves that
+            dimension unconstrained. Attestation is the exception: setting it at
+            all, even to an empty struct, requires the artifact to be attested, so
+            verification fails against a signature carrying no statement. Its own
+            PredicateType and Predicate then follow the usual rule and constrain
+            only when set. Predicate must be a JSON object; anything else can never
+            match, and Validate rejects it rather than letting it through as a
+            constraint that silently fails every artifact.
         repository:
           $ref: '#/components/schemas/registry.SkillRepository'
+          description: Repository is the source repository of the skill.
         status:
           description: |-
             Status is the status of the skill.
@@ -1021,7 +1025,6 @@ components:
           type: string
       type: object
     registry.SkillRepository:
-      description: Repository is the source repository of the skill.
       properties:
         type:
           description: Type is the type of the repository.
@@ -1854,11 +1857,9 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/internal_api_v1.publishEntryRequest'
-                description: Entry to publish (server, skill, or plugin)
-                summary: request
+              $ref: '#/components/schemas/internal_api_v1.publishEntryRequest'
+              description: Entry to publish (server, skill, or plugin)
+              summary: request
         description: Entry to publish (server, skill, or plugin)
         required: true
       responses:
@@ -1977,11 +1978,9 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/internal_api_v1.updateEntryClaimsRequest'
-                description: Claims to set
-                summary: request
+              $ref: '#/components/schemas/internal_api_v1.updateEntryClaimsRequest'
+              description: Claims to set
+              summary: request
         description: Claims to set
         required: true
       responses:
@@ -2220,11 +2219,9 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest'
-                description: Registry configuration
-                summary: request
+              $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest'
+              description: Registry configuration
+              summary: request
         description: Registry configuration
         required: true
       responses:
@@ -2444,11 +2441,9 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceCreateRequest'
-                description: Source configuration
-                summary: request
+              $ref: '#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceCreateRequest'
+              description: Source configuration
+              summary: request
         description: Source configuration
         required: true
       responses:
