@@ -50,6 +50,9 @@ jobs:
           version: 3.44.1
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare PostgreSQL test binaries
+        run: task prepare-test-postgres
+
       - name: Run database tests with coverage
         run: task test-coverage PACKAGES="${{ matrix.packages }}" COVERPROFILE="coverage-${{ matrix.name }}.out"
 

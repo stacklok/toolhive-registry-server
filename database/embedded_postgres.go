@@ -7,11 +7,14 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
+	"github.com/gofrs/flock"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
@@ -91,6 +94,12 @@ func testCleanupContext(t *testing.T) context.Context {
 }
 
 func startTestPostgres(runtimePath string) (*embeddedpostgres.EmbeddedPostgres, embeddedpostgres.Config, error) {
+	binariesPath, err := testPostgresBinariesPath()
+	if err != nil {
+		return nil, embeddedpostgres.Config{}, err
+	}
+	binaryLock := flock.New(binariesPath + ".lock")
+
 	const maxPortAttempts = 3
 	var lastErr error
 	for range maxPortAttempts {
@@ -106,18 +115,27 @@ func startTestPostgres(runtimePath string) (*embeddedpostgres.EmbeddedPostgres, 
 			Password(DBPass).
 			Port(port).
 			RuntimePath(runtimePath).
+			BinariesPath(binariesPath).
 			Logger(io.Discard).
 			StartParameters(map[string]string{
 				"fsync":         "off",
 				"log_statement": "all",
 			})
 		postgres := embeddedpostgres.NewDatabase(cfg)
-		err = postgres.Start()
-		if err == nil {
+		if err := binaryLock.Lock(); err != nil {
+			return nil, embeddedpostgres.Config{}, fmt.Errorf("lock embedded PostgreSQL binaries: %w", err)
+		}
+		startErr := postgres.Start()
+		unlockErr := binaryLock.Unlock()
+		if startErr == nil && unlockErr == nil {
 			return postgres, cfg, nil
 		}
-		lastErr = err
-		if !isPortConflict(err) {
+		if startErr == nil {
+			_ = postgres.Stop()
+			return nil, embeddedpostgres.Config{}, fmt.Errorf("unlock embedded PostgreSQL binaries: %w", unlockErr)
+		}
+		lastErr = startErr
+		if !isPortConflict(startErr) {
 			break
 		}
 	}
@@ -256,6 +274,21 @@ func releaseSharedTestDB(
 
 	sharedTestDB.instance = nil
 	return errors.Join(closeErr, dropErr, instance.postgres.Stop(), os.RemoveAll(instance.runtimePath))
+}
+
+func testPostgresBinariesPath() (string, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("locate user cache directory: %w", err)
+	}
+	parent := filepath.Join(cacheDir, "toolhive-registry-server", "embedded-postgres")
+	if err := os.MkdirAll(parent, 0o750); err != nil {
+		return "", fmt.Errorf("create embedded PostgreSQL cache directory: %w", err)
+	}
+	return filepath.Join(
+		parent,
+		string(embeddedpostgres.V16)+"-"+runtime.GOOS+"-"+runtime.GOARCH,
+	), nil
 }
 
 func testConnectionURL(cfg embeddedpostgres.Config) string {
