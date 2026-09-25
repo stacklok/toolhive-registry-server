@@ -178,6 +178,14 @@ tasks:
         --label vendor="Stacklok" \
         --label maintainer="Stacklok" .
 
+  prepare-test-postgres:
+    desc: Download and extract PostgreSQL test binaries outside the race detector
+    deps:
+      - task: install-gotestfmt
+        silent: true
+    cmds:
+      - go test -count 1 -json ./database -run '^TestSetupTestDBContainer$' | gotestfmt -hide "all"
+
   test:
     desc: Run registry API tests
     vars:

@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  # Packages that use testcontainers (Docker) — split into balanced groups
+  # Packages that start embedded PostgreSQL processes — split into balanced groups
   # and run in parallel via a matrix so no single job takes 8+ minutes.
   db-tests:
     name: "DB Tests (${{ matrix.name }})"
@@ -50,6 +50,9 @@ jobs:
           version: 3.44.1
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare PostgreSQL test binaries
+        run: task prepare-test-postgres
+
       - name: Run database tests with coverage
         run: task test-coverage PACKAGES="${{ matrix.packages }}" COVERPROFILE="coverage-${{ matrix.name }}.out"
 
@@ -62,7 +65,7 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # All remaining packages — pure unit tests that don't need Docker.
+  # All remaining packages — pure unit tests that don't start PostgreSQL.
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest

@@ -146,7 +146,7 @@ The app is assembled with a builder + functional options pattern (`app.NewRegist
 - **Git**: `go-git` (public repos over HTTPS)
 - **K8s**: `controller-runtime` + `client-go`, scoped to `internal/kubernetes/**`
 - **Auth**: `go-jose` / OIDC JWKS for JWT validation
-- **Testing**: `go.uber.org/mock`, `testcontainers-go` (real Postgres in integration tests)
+- **Testing**: `go.uber.org/mock`, `embedded-postgres` (real PostgreSQL 16 child processes in integration tests; the first run downloads and caches the PostgreSQL binaries)
 - **Docs**: swaggo/swag generates OpenAPI from code annotations
 
 ## Commit Message Style
