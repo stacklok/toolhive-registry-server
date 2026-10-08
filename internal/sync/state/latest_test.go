@@ -34,8 +34,8 @@ func TestInitializeReconcilesExistingLatest(t *testing.T) {
 			VALUES ($1, $2, '1.0.0') RETURNING id`, entry, tc.name).Scan(&oldID))
 		require.NoError(t, pool.QueryRow(ctx, `INSERT INTO entry_version (entry_id, name, version)
 			VALUES ($1, $2, 'v1.0.0') RETURNING id`, entry, tc.name).Scan(&newID))
-		_, err = pool.Exec(ctx, `INSERT INTO latest_entry_version (source_id, name, version, latest_version_id)
-			VALUES ($1, $2, '1.0.0', $3)`, source, tc.name, oldID)
+		_, err = pool.Exec(ctx, `INSERT INTO latest_entry_version (source_id, entry_type, name, version, latest_version_id)
+			VALUES ($1, $2, $3, '1.0.0', $4)`, source, tc.kind, tc.name, oldID)
 		require.NoError(t, err)
 		latestIDs[tc.name] = newID
 	}

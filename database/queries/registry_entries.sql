@@ -70,6 +70,7 @@ SELECT id, version
 SELECT l.version
   FROM latest_entry_version l
  WHERE l.name = sqlc.arg(name)
+   AND l.entry_type = sqlc.arg(entry_type)
    AND l.source_id = sqlc.arg(source_id);
 
 -- name: PropagateSourceClaimsToEntries :exec

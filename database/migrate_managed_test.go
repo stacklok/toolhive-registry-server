@@ -10,7 +10,7 @@ func TestManagedSingletonMigrationRejectsExistingDuplicates(t *testing.T) {
 	t.Parallel()
 	db, _ := SetupTestDB(t)
 	ctx := t.Context()
-	require.NoError(t, MigrateDown(ctx, db, 1))
+	require.NoError(t, MigrateDown(ctx, db, 2))
 	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable,creation_type) VALUES
  ('managed-one','managed','{}',false,'CONFIG'),('managed-two','managed','{}',false,'API'),
  ('legal','file','{"data":"{}"}',false,'API')`)

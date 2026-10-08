@@ -71,7 +71,7 @@ func TestRepairLegacyKindCollisions(t *testing.T) {
 		require.NoError(t, pool.QueryRow(ctx, `INSERT INTO entry_version (entry_id,name,version) VALUES ($1,$2,'v1.0.0') RETURNING id`, entry, tc.name).Scan(&newer))
 		_ = repairTestEntry(t, pool, source, "SKILL", tc.name, "9.0.0")
 		if tc.pointed {
-			_, err := pool.Exec(ctx, `INSERT INTO latest_entry_version (source_id,name,version,latest_version_id) VALUES ($1,$2,'1.0.0',$3)`, source, tc.name, old)
+			_, err := pool.Exec(ctx, `INSERT INTO latest_entry_version (source_id,entry_type,name,version,latest_version_id) VALUES ($1,'MCP',$2,'1.0.0',$3)`, source, tc.name, old)
 			require.NoError(t, err)
 		}
 	}
@@ -79,21 +79,24 @@ func TestRepairLegacyKindCollisions(t *testing.T) {
 	for range 2 {
 		require.NoError(t, ReconcileLatestVersions(ctx, pool))
 		var got uuid.UUID
-		require.NoError(t, pool.QueryRow(ctx, `SELECT latest_version_id FROM latest_entry_version WHERE source_id=$1 AND name='pointed'`, source).Scan(&got))
+		require.NoError(t, pool.QueryRow(ctx, `SELECT latest_version_id FROM latest_entry_version WHERE source_id=$1 AND entry_type='MCP' AND name='pointed'`, source).Scan(&got))
 		var want uuid.UUID
 		require.NoError(t, pool.QueryRow(ctx, `SELECT v.id FROM entry_version v JOIN registry_entry e ON e.id=v.entry_id WHERE e.source_id=$1 AND e.entry_type='MCP' AND e.name='pointed' AND v.version='v1.0.0'`, source).Scan(&want))
 		require.Equal(t, want, got)
 		var storedVersion string
-		require.NoError(t, pool.QueryRow(ctx, `SELECT version FROM latest_entry_version WHERE source_id=$1 AND name='pointed'`, source).Scan(&storedVersion))
+		require.NoError(t, pool.QueryRow(ctx, `SELECT version FROM latest_entry_version WHERE source_id=$1 AND entry_type='MCP' AND name='pointed'`, source).Scan(&storedVersion))
 		require.Equal(t, "v1.0.0", storedVersion)
-		require.ErrorIs(t, pool.QueryRow(ctx, `SELECT latest_version_id FROM latest_entry_version WHERE source_id=$1 AND name='unpointed'`, source).Scan(&got), pgx.ErrNoRows)
-		require.NoError(t, pool.QueryRow(ctx, `SELECT latest_version_id FROM latest_entry_version WHERE source_id=$1 AND name='unambiguous'`, source).Scan(&got))
+		var unpointedMCP, unpointedSkill uuid.UUID
+		require.NoError(t, pool.QueryRow(ctx, `SELECT latest_version_id FROM latest_entry_version WHERE source_id=$1 AND entry_type='MCP' AND name='unpointed'`, source).Scan(&unpointedMCP))
+		require.NoError(t, pool.QueryRow(ctx, `SELECT latest_version_id FROM latest_entry_version WHERE source_id=$1 AND entry_type='SKILL' AND name='unpointed'`, source).Scan(&unpointedSkill))
+		require.NotEqual(t, unpointedMCP, unpointedSkill)
+		require.NoError(t, pool.QueryRow(ctx, `SELECT latest_version_id FROM latest_entry_version WHERE source_id=$1 AND entry_type='PLUGIN' AND name='unambiguous'`, source).Scan(&got))
 	}
-	_, err := pool.Exec(ctx, `UPDATE latest_entry_version SET version='stale' WHERE source_id=$1 AND name='pointed'`, source)
+	_, err := pool.Exec(ctx, `UPDATE latest_entry_version SET version='stale' WHERE source_id=$1 AND entry_type='MCP' AND name='pointed'`, source)
 	require.NoError(t, err)
 	require.NoError(t, ReconcileLatestVersions(ctx, pool))
 	var storedVersion string
-	require.NoError(t, pool.QueryRow(ctx, `SELECT version FROM latest_entry_version WHERE source_id=$1 AND name='pointed'`, source).Scan(&storedVersion))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT version FROM latest_entry_version WHERE source_id=$1 AND entry_type='MCP' AND name='pointed'`, source).Scan(&storedVersion))
 	require.Equal(t, "v1.0.0", storedVersion)
 }
 
@@ -108,7 +111,7 @@ func TestRepairSerializesConcurrentVersionWrites(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx, `SELECT entry_id FROM entry_version WHERE id=$1`, old).Scan(&entry))
 	var tied uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO entry_version (entry_id,name,version) VALUES ($1,'shared','v1.0.0') RETURNING id`, entry).Scan(&tied))
-	_, err := pool.Exec(ctx, `INSERT INTO latest_entry_version (source_id,name,version,latest_version_id) VALUES ($1,'shared','1.0.0',$2)`, source, old)
+	_, err := pool.Exec(ctx, `INSERT INTO latest_entry_version (source_id,entry_type,name,version,latest_version_id) VALUES ($1,'MCP','shared','1.0.0',$2)`, source, old)
 	require.NoError(t, err)
 
 	// A publish already in progress owns a write lock; repair must wait for its
@@ -176,7 +179,7 @@ func TestRepairCancellationRollsBack(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx, `SELECT entry_id FROM entry_version WHERE id=$1`, old).Scan(&entry))
 	_, err := pool.Exec(ctx, `INSERT INTO entry_version (entry_id,name,version) VALUES ($1,'blocked','v1.0.0')`, entry)
 	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `INSERT INTO latest_entry_version (source_id,name,version,latest_version_id) VALUES ($1,'blocked','1.0.0',$2)`, source, old)
+	_, err = pool.Exec(ctx, `INSERT INTO latest_entry_version (source_id,entry_type,name,version,latest_version_id) VALUES ($1,'MCP','blocked','1.0.0',$2)`, source, old)
 	require.NoError(t, err)
 	blocker, err := pool.Begin(ctx)
 	require.NoError(t, err)

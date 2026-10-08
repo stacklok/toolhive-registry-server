@@ -113,6 +113,38 @@ func TestUnsupportedLegacyFields(t *testing.T) {
 	}
 }
 
+func TestDefinitionDeletePreservesClaimedEntries(t *testing.T) {
+	t.Parallel()
+	d, pool := newBackend(t)
+	ctx := t.Context()
+	source, e := d.CreateSource(ctx, persistence.SourceDefinition{Name: "claimed-entries", API: &persistence.APISpec{Endpoint: "https://example.org"}, Schedule: "1h"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = pool.Exec(ctx, `INSERT INTO registry_entry(source_id,entry_type,name,claims) VALUES($1,'SKILL','owned','{"team":"a"}')`, source.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = d.DeleteSource(ctx, source.Name); !errors.Is(e, persistence.ErrConflict) {
+		t.Fatalf("delete claimed entries: %v", e)
+	}
+	if _, e = d.GetSource(ctx, source.Name); e != nil {
+		t.Fatalf("source removed: %v", e)
+	}
+	_, e = pool.Exec(ctx, `UPDATE source SET creation_type='CONFIG' WHERE id=$1`, source.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = d.Reconcile(ctx, nil, nil); !errors.Is(e, persistence.ErrConflict) {
+		t.Fatalf("prune claimed entries: %v", e)
+	}
+	var claims string
+	e = pool.QueryRow(ctx, `SELECT claims::text FROM registry_entry WHERE source_id=$1`, source.ID).Scan(&claims)
+	if e != nil || !strings.Contains(claims, "team") {
+		t.Fatalf("entries changed: %q / %v", claims, e)
+	}
+}
+
 func TestReconcilePreservesLegacyClaims(t *testing.T) {
 	t.Parallel()
 	d, pool := newBackend(t)

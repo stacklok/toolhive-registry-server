@@ -413,6 +413,9 @@ const docTemplate = `{
                         "type": "array",
                         "uniqueItems": false
                     },
+                    "provenance": {
+                        "$ref": "#/components/schemas/registry.Provenance"
+                    },
                     "repository": {
                         "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillRepository"
                     },

@@ -91,6 +91,16 @@ type Querier interface {
 	DeleteSource(ctx context.Context, name string) (int64, error)
 	DropTempEntryVersionTable(ctx context.Context) error
 	DropTempRegistryEntryTable(ctx context.Context) error
+	EntryDeleteEmptyNames(ctx context.Context, sourceID uuid.UUID) error
+	EntryDeleteVersion(ctx context.Context, arg EntryDeleteVersionParams) (int64, error)
+	EntryDropLatest(ctx context.Context, arg EntryDropLatestParams) error
+	EntryHasClaims(ctx context.Context, sourceID uuid.UUID) (bool, error)
+	EntryList(ctx context.Context, arg EntryListParams) ([]EntryListRow, error)
+	EntryManagedSource(ctx context.Context) (uuid.UUID, error)
+	EntrySource(ctx context.Context, sourceID uuid.UUID) (EntrySourceRow, error)
+	EntrySourceExists(ctx context.Context, sourceID uuid.UUID) (bool, error)
+	EntryVersionExists(ctx context.Context, arg EntryVersionExistsParams) (bool, error)
+	EntryVersionsForName(ctx context.Context, arg EntryVersionsForNameParams) ([]EntryVersionsForNameRow, error)
 	GetAPIRegistriesByNames(ctx context.Context, names []string) ([]Registry, error)
 	GetAPISourcesByNames(ctx context.Context, names []string) ([]GetAPISourcesByNamesRow, error)
 	GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error)
@@ -188,6 +198,9 @@ type Querier interface {
 	// Update all registry entries for a source to match the source's current claims.
 	// Used during initialization to fix drift when source claims change without data change.
 	PropagateSourceClaimsToEntries(ctx context.Context, arg PropagateSourceClaimsToEntriesParams) error
+	RepairListVersions(ctx context.Context) ([]RepairListVersionsRow, error)
+	RepairPruneLatest(ctx context.Context) error
+	RepairSetLatest(ctx context.Context, arg RepairSetLatestParams) error
 	UnlinkAllRegistrySources(ctx context.Context, registryID uuid.UUID) error
 	UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySourceParams) error
 	UpdateRegistryEntryClaims(ctx context.Context, arg UpdateRegistryEntryClaimsParams) (int64, error)
