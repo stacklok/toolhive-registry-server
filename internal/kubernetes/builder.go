@@ -243,6 +243,7 @@ func NewMCPServerReconciler(
 		requeueAfter: o.requeueAfter,
 		syncWriter:   o.syncWriter,
 		registryName: o.registryName,
+		namespaces:   o.namespaces,
 	}
 
 	if err := controller.SetupWithManager(mgr); err != nil {

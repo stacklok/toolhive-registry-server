@@ -17,8 +17,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
@@ -38,15 +40,34 @@ type MCPServerReconciler struct {
 	requeueAfter time.Duration
 	syncWriter   writer.SyncWriter
 	registryName string
+	namespaces   []string
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// Fetch the MCPServer instance
-	result, err := getMCPServerList(ctx, r.client, req.Namespace)
-	if err != nil {
-		slog.Error("Failed to get MCPServer list", "error", err)
+func (r *MCPServerReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
+	// Store replaces the entire source, so each reconcile must list the complete
+	// configured watch scope, not just the namespace that triggered the event.
+	namespaces := r.namespaces
+	if len(namespaces) == 0 {
+		namespaces = []string{""} // an unscoped cache watches all namespaces
+	}
+	result := &reconcileResult{
+		Registry:       &toolhivetypes.UpstreamRegistry{},
+		PerEntryClaims: make(map[string][]byte),
+	}
+	for _, namespace := range namespaces {
+		part, err := getMCPServerList(ctx, r.client, namespace)
+		if err != nil {
+			slog.Error("Failed to get MCPServer list", "error", err)
+			return ctrl.Result{}, err
+		}
+		result.Registry.Data.Servers = append(result.Registry.Data.Servers, part.Registry.Data.Servers...)
+		for name, claims := range part.PerEntryClaims {
+			result.PerEntryClaims[name] = claims
+		}
+	}
+	if err := ctx.Err(); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -161,12 +182,37 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.client = mgr.GetClient()
 	r.scheme = mgr.GetScheme()
 
-	return ctrl.NewControllerManagedBy(mgr).
+	startup := make(chan event.GenericEvent)
+	if err := ctrl.NewControllerManagedBy(mgr).
 		Named(r.registryName).
 		For(&mcpv1beta1.MCPServer{}, builder.WithPredicates(annotationPredicate)).
 		Watches(&mcpv1beta1.VirtualMCPServer{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
 		Watches(&mcpv1beta1.MCPRemoteProxy{}, enqueueMCPServerRequests(), builder.WithPredicates(annotationPredicate)).
-		Complete(r)
+		WatchesRawSource(source.Channel(startup, &handler.EnqueueRequestForObject{})).
+		Complete(r); err != nil {
+		return err
+	}
+	// A synthetic request refreshes even an empty source on startup, after the
+	// watch cache has synced. Queueing through the controller keeps it serialized
+	// with ordinary resource events and lets controller-runtime retry list errors.
+	return mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+		return enqueueStartupRefresh(ctx, mgr.GetCache().WaitForCacheSync, startup)
+	}))
+}
+
+func enqueueStartupRefresh(
+	ctx context.Context, waitForCacheSync func(context.Context) bool, startup chan<- event.GenericEvent,
+) error {
+	if !waitForCacheSync(ctx) {
+		return fmt.Errorf("operator cache did not sync")
+	}
+	select {
+	case startup <- event.GenericEvent{Object: &mcpv1beta1.MCPServer{}}:
+	case <-ctx.Done():
+		return nil
+	}
+	<-ctx.Done()
+	return nil
 }
 
 // extractorFunc converts a K8s resource into a ServerJSON.
@@ -184,7 +230,8 @@ func processResources(
 	perEntryClaims map[string][]byte,
 ) []upstreamv0.ServerJSON {
 	for _, obj := range items {
-		if !hasRequiredRegistryAnnotations(obj.GetAnnotations()) {
+		if !checkAnnotation(obj.GetAnnotations(), defaultRegistryExportAnnotation) ||
+			!hasRequiredRegistryAnnotations(obj.GetAnnotations()) {
 			continue
 		}
 		serverJSON, err := extractor(obj)
