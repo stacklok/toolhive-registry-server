@@ -7,9 +7,9 @@ import (
 )
 
 // CompareVersions defines a total order over exact stored version strings.
-// Versions accepted by Masterminds semver rank above unparseable strings;
+// Versions accepted by Masterminds semver rank above unparsable strings;
 // semantic precedence wins within that group, with raw spelling breaking ties.
-// Unparseable strings compare lexically. No version is normalized or rejected.
+// Unparsable strings compare lexically. No version is normalized or rejected.
 // The result is negative for a < b, zero only for identical strings, and
 // positive for a > b.
 func CompareVersions(a, b string) int {
