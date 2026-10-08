@@ -98,8 +98,11 @@ func (d *DatabaseFactory) CreateSyncWriter(_ context.Context) (writer.SyncWriter
 
 // CreateRegistryService creates a database-backed registry service.
 // The service reads and writes registry data directly to PostgreSQL.
-func (d *DatabaseFactory) CreateRegistryService(_ context.Context) (service.RegistryService, error) {
+func (d *DatabaseFactory) CreateRegistryService(ctx context.Context) (service.RegistryService, error) {
 	slog.Debug("Creating database-backed registry service")
+	if err := state.ReconcileLatestVersions(ctx, d.pool); err != nil {
+		return nil, fmt.Errorf("repair persisted latest versions before serving: %w", err)
+	}
 
 	// Build database service options
 	opts := []database.Option{

@@ -8,6 +8,8 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 	"github.com/stretchr/testify/require"
+
+	statepkg "github.com/stacklok/toolhive-registry-server/internal/sync/state"
 )
 
 // TestStoreContractAllKindsAtomicity exercises a failure in the last kind, after
@@ -56,6 +58,9 @@ func TestStoreContractAllKindsAtomicity(t *testing.T) {
 		return got
 	}
 	beforeFirst, beforeSecond := state(first.sourceID), state(second.sourceID)
+	require.NoError(t, statepkg.ReconcileLatestVersions(ctx, pool))
+	require.Equal(t, beforeFirst, state(first.sourceID), "repair must not alter payloads or packages")
+	require.Equal(t, beforeSecond, state(second.sourceID))
 	// The trigger is test-local and fires only in the final plugin stage.
 	_, err = pool.Exec(ctx, `CREATE FUNCTION fail_plugin_contract() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late plugin failure'; END $$`)
 	require.NoError(t, err)

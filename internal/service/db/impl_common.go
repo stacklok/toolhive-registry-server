@@ -104,10 +104,8 @@ func rePointLatestVersionIfNeeded(
 	return upsertLatest(ctx, querier, sourceID, name, newVersion, newVersionID)
 }
 
-// findHighestVersion scans a slice of ListEntryVersionsRow and returns the ID
-// and version string of the entry with the highest version as determined by
-// versions.IsNewerVersion (semantic comparison when both are valid semver,
-// otherwise lexicographic string comparison). Returns uuid.Nil, "" if rows is empty.
+// findHighestVersion scans rows under the shared total version order.
+// Returns uuid.Nil, "" if rows is empty.
 func findHighestVersion(rows []sqlc.ListEntryVersionsRow) (uuid.UUID, string) {
 	if len(rows) == 0 {
 		return uuid.Nil, ""

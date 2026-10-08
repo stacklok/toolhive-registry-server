@@ -1,18 +1,9 @@
 package versions
 
-import "github.com/Masterminds/semver/v3"
+import "github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 
-// IsNewerVersion reports whether newVersion is strictly greater than oldVersion.
-// It uses semantic versioning for comparison when both strings are valid semver,
-// and falls back to lexicographic string comparison otherwise.
+// IsNewerVersion reports whether newVersion ranks strictly above oldVersion
+// under the shared total order used by all persistence implementations.
 func IsNewerVersion(newVersion, oldVersion string) bool {
-	newSemver, errNew := semver.NewVersion(newVersion)
-	oldSemver, errOld := semver.NewVersion(oldVersion)
-
-	if errNew != nil || errOld != nil {
-		// Fallback to string comparison if semver parsing fails
-		return newVersion > oldVersion
-	}
-
-	return newSemver.GreaterThan(oldSemver)
+	return model.CompareVersions(newVersion, oldVersion) > 0
 }

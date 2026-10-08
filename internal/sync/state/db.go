@@ -116,7 +116,6 @@ func (d *dbStatusService) Initialize(ctx context.Context, cfg *config.Config) er
 		return err
 	}
 
-	// Commit the transaction
 	return tx.Commit(ctx)
 }
 

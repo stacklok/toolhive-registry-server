@@ -949,7 +949,7 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 			verifyCleanup:  true,
 		},
 		{
-			name: "error when service component build fails",
+			name: "startup repair failure prevents server construction",
 			setupMocks: func(ctrl *gomock.Controller) *mocks.MockFactory {
 				mockFactory := mocks.NewMockFactory(ctrl)
 				mockFactory.EXPECT().
@@ -960,7 +960,7 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 					Return(nil, nil)
 				mockFactory.EXPECT().
 					CreateRegistryService(gomock.Any()).
-					Return(nil, fmt.Errorf("registry service creation failed"))
+					Return(nil, fmt.Errorf("repair persisted latest versions before serving: lock timeout"))
 				mockFactory.EXPECT().
 					Cleanup()
 				return mockFactory

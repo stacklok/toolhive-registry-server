@@ -6,8 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -390,6 +392,7 @@ func TestDatabaseFactory_CreateRegistryService(t *testing.T) {
 						Host:     db.Config().Host,
 						Port:     int(db.Config().Port),
 						User:     db.Config().User,
+						Password: database.DBPass,
 						Database: db.Config().Database,
 						SSLMode:  "disable",
 					},
@@ -420,6 +423,29 @@ func TestDatabaseFactory_CreateRegistryService(t *testing.T) {
 			require.NotNil(t, registryService)
 		})
 	}
+}
+
+func TestCreateRegistryServiceRepairFailureBeforeServing(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db, cleanup := database.SetupTestDB(t)
+	defer cleanup()
+	pool, err := pgxpool.New(ctx, db.Config().ConnString())
+	require.NoError(t, err)
+	defer pool.Close()
+	factory := &DatabaseFactory{pool: pool, config: &config.Config{Database: &config.DatabaseConfig{}}}
+	blocker, err := pool.Begin(ctx)
+	require.NoError(t, err)
+	defer func() { _ = blocker.Rollback(ctx) }()
+	_, err = blocker.Exec(ctx, `LOCK TABLE source IN SHARE ROW EXCLUSIVE MODE`)
+	require.NoError(t, err)
+	waitCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	svc, err := factory.CreateRegistryService(waitCtx)
+	require.Nil(t, svc)
+	require.ErrorContains(t, err, "repair persisted latest versions before serving")
+	require.NoError(t, blocker.Commit(ctx))
+	require.NoError(t, pool.Ping(ctx), "the host pool remains usable after a failed repair")
 }
 
 func TestDatabaseFactory_Cleanup(t *testing.T) {
