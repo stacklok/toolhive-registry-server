@@ -9,10 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCurrentLimitationLatestSpellingOrder records the writer's input-order
-// tie behavior; neither this tie rule nor mixed-version ordering is a public
-// catalog contract.
-func TestCurrentLimitationLatestSpellingOrder(t *testing.T) {
+// TestLatestSpellingOrder verifies latest is independent of snapshot ordering
+// for all three entry kinds.
+func TestLatestSpellingOrder(t *testing.T) {
 	t.Parallel()
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -31,10 +30,10 @@ func TestCurrentLimitationLatestSpellingOrder(t *testing.T) {
 		versions []string
 		want     string
 	}{
-		{"semver equal plain first", []string{"1.0.0", "v1.0.0"}, "1.0.0"},
+		{"semver equal plain first", []string{"1.0.0", "v1.0.0"}, "v1.0.0"},
 		{"semver equal prefixed first", []string{"v1.0.0", "1.0.0"}, "v1.0.0"},
-		{"mixed parseability plain first", []string{"1.0.0", "custom"}, "custom"},
-		{"mixed parseability custom first", []string{"custom", "1.0.0"}, "custom"},
+		{"mixed parseability plain first", []string{"1.0.0", "custom"}, "1.0.0"},
+		{"mixed parseability custom first", []string{"custom", "1.0.0"}, "1.0.0"},
 	} {
 		reg := createTestUpstreamRegistry(nil)
 		for _, version := range tc.versions {
