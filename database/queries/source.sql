@@ -125,6 +125,11 @@ ON CONFLICT (name) DO UPDATE SET
 WHERE source.creation_type = 'CONFIG'
 RETURNING id, name;
 
+-- name: DeleteObsoleteConfigManagedSources :exec
+DELETE FROM source
+WHERE creation_type = 'CONFIG' AND source_type = 'managed'
+  AND name != ALL(sqlc.arg(keep_names)::text[]);
+
 -- name: DeleteConfigSourcesNotInList :exec
 -- Delete CONFIG sources not in the provided list (for config file sync)
 DELETE FROM source
