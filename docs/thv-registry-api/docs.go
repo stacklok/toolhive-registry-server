@@ -96,6 +96,16 @@ const docTemplate = `{
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig": {
+                "properties": {
+                    "namespaces": {
+                        "description": "Namespaces is a list of Kubernetes namespaces to watch for MCP servers\nIf empty, watches the namespace configured via WatchNamespace environment variable",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
                 "type": "object"
             },
             "github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig": {
@@ -209,7 +219,7 @@ const docTemplate = `{
                     },
                     "icons": {
                         "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.PluginIcon"
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.PluginIcon"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -235,13 +245,13 @@ const docTemplate = `{
                     },
                     "packages": {
                         "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.PluginPackage"
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.PluginPackage"
                         },
                         "type": "array",
                         "uniqueItems": false
                     },
                     "repository": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.PluginRepository"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.PluginRepository"
                     },
                     "status": {
                         "type": "string"
@@ -253,63 +263,6 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "version": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.PluginIcon": {
-                "properties": {
-                    "label": {
-                        "type": "string"
-                    },
-                    "size": {
-                        "type": "string"
-                    },
-                    "src": {
-                        "type": "string"
-                    },
-                    "type": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.PluginPackage": {
-                "properties": {
-                    "commit": {
-                        "type": "string"
-                    },
-                    "digest": {
-                        "type": "string"
-                    },
-                    "identifier": {
-                        "type": "string"
-                    },
-                    "mediaType": {
-                        "type": "string"
-                    },
-                    "ref": {
-                        "type": "string"
-                    },
-                    "registryType": {
-                        "type": "string"
-                    },
-                    "subfolder": {
-                        "type": "string"
-                    },
-                    "url": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.PluginRepository": {
-                "properties": {
-                    "type": {
-                        "type": "string"
-                    },
-                    "url": {
                         "type": "string"
                     }
                 },
@@ -429,7 +382,7 @@ const docTemplate = `{
                     },
                     "icons": {
                         "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SkillIcon"
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillIcon"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -455,13 +408,13 @@ const docTemplate = `{
                     },
                     "packages": {
                         "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SkillPackage"
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillPackage"
                         },
                         "type": "array",
                         "uniqueItems": false
                     },
                     "repository": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SkillRepository"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillRepository"
                     },
                     "status": {
                         "type": "string"
@@ -473,63 +426,6 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "version": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.SkillIcon": {
-                "properties": {
-                    "label": {
-                        "type": "string"
-                    },
-                    "size": {
-                        "type": "string"
-                    },
-                    "src": {
-                        "type": "string"
-                    },
-                    "type": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.SkillPackage": {
-                "properties": {
-                    "commit": {
-                        "type": "string"
-                    },
-                    "digest": {
-                        "type": "string"
-                    },
-                    "identifier": {
-                        "type": "string"
-                    },
-                    "mediaType": {
-                        "type": "string"
-                    },
-                    "ref": {
-                        "type": "string"
-                    },
-                    "registryType": {
-                        "type": "string"
-                    },
-                    "subfolder": {
-                        "type": "string"
-                    },
-                    "url": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.SkillRepository": {
-                "properties": {
-                    "type": {
-                        "type": "string"
-                    },
-                    "url": {
                         "type": "string"
                     }
                 },
@@ -701,6 +597,131 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "github_com_stacklok_toolhive-registry-server_pkg_registry_formats.ExtensionMetadata": {
+                "properties": {
+                    "count": {
+                        "type": "integer"
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_pkg_registry_model.PluginIcon": {
+                "properties": {
+                    "label": {
+                        "type": "string"
+                    },
+                    "size": {
+                        "type": "string"
+                    },
+                    "src": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_pkg_registry_model.PluginPackage": {
+                "properties": {
+                    "commit": {
+                        "type": "string"
+                    },
+                    "digest": {
+                        "type": "string"
+                    },
+                    "identifier": {
+                        "type": "string"
+                    },
+                    "mediaType": {
+                        "type": "string"
+                    },
+                    "ref": {
+                        "type": "string"
+                    },
+                    "registryType": {
+                        "type": "string"
+                    },
+                    "subfolder": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_pkg_registry_model.PluginRepository": {
+                "properties": {
+                    "type": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillIcon": {
+                "properties": {
+                    "label": {
+                        "type": "string"
+                    },
+                    "size": {
+                        "type": "string"
+                    },
+                    "src": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillPackage": {
+                "properties": {
+                    "commit": {
+                        "type": "string"
+                    },
+                    "digest": {
+                        "type": "string"
+                    },
+                    "identifier": {
+                        "type": "string"
+                    },
+                    "mediaType": {
+                        "type": "string"
+                    },
+                    "ref": {
+                        "type": "string"
+                    },
+                    "registryType": {
+                        "type": "string"
+                    },
+                    "subfolder": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillRepository": {
+                "properties": {
+                    "type": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "internal_api_v1.entryClaimsResponse": {
                 "properties": {
                     "claims": {
@@ -764,21 +785,10 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "internal_api_x_plugins.PluginListMetadata": {
-                "properties": {
-                    "count": {
-                        "type": "integer"
-                    },
-                    "nextCursor": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
             "internal_api_x_plugins.PluginListResponse": {
                 "properties": {
                     "metadata": {
-                        "$ref": "#/components/schemas/internal_api_x_plugins.PluginListMetadata"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_formats.ExtensionMetadata"
                     },
                     "plugins": {
                         "items": {
@@ -790,21 +800,10 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "internal_api_x_skills.SkillListMetadata": {
-                "properties": {
-                    "count": {
-                        "type": "integer"
-                    },
-                    "nextCursor": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
             "internal_api_x_skills.SkillListResponse": {
                 "properties": {
                     "metadata": {
-                        "$ref": "#/components/schemas/internal_api_x_skills.SkillListMetadata"
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_formats.ExtensionMetadata"
                     },
                     "skills": {
                         "items": {
