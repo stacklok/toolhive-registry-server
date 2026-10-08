@@ -18,6 +18,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/otel"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/versions"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 )
 
 // ListSkills returns skills in the registry with cursor-based pagination.
@@ -109,7 +110,7 @@ func (s *dbService) ListSkills(
 
 	skills := make([]*service.Skill, len(listRows))
 	for i, row := range listRows {
-		skill := service.ListSkillsRowToSkill(row)
+		skill := listSkillsRowToSkill(row)
 		skill.Packages = packages[row.VersionID]
 		skills[i] = skill
 	}
@@ -270,7 +271,7 @@ func (s *dbService) GetSkillVersion(
 		packages = append(packages, toServiceSkillGitPackage(pkg))
 	}
 
-	res := service.GetSkillVersionRowToSkill(row)
+	res := getSkillVersionRowToSkill(row)
 	res.Packages = packages
 	return res, nil
 }
@@ -330,8 +331,8 @@ func (s *dbService) PublishSkill(
 			return nil, err
 		}
 	}
-	if skill.Namespace == "" || skill.Name == "" || skill.Version == "" {
-		return nil, fmt.Errorf("namespace, name, and version are required")
+	if err := formats.ValidatePublishedSkill(skill); err != nil {
+		return nil, err
 	}
 
 	// Validate published claims are a subset of the publisher's JWT claims
@@ -405,7 +406,7 @@ func (s *dbService) fetchSkillVersionBySource(
 		packages = append(packages, toServiceSkillGitPackage(pkg))
 	}
 
-	result := service.GetSkillVersionRowToSkill(sqlc.GetSkillVersionRow{
+	result := getSkillVersionRowToSkill(sqlc.GetSkillVersionRow{
 		RegistryType:   row.RegistryType,
 		ID:             row.ID,
 		Name:           row.Name,

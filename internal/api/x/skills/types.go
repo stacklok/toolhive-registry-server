@@ -2,7 +2,7 @@
 // extension endpoints (THV-0029).
 package skills
 
-import thvregistry "github.com/stacklok/toolhive-core/registry/types"
+import "github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 
 // ListSkillsQuery holds parsed query parameters for GET /skills (list).
 type ListSkillsQuery struct {
@@ -13,13 +13,7 @@ type ListSkillsQuery struct {
 }
 
 // SkillListMetadata is the metadata object in list responses.
-type SkillListMetadata struct {
-	Count      int    `json:"count"`
-	NextCursor string `json:"nextCursor,omitempty"`
-}
+type SkillListMetadata = formats.ExtensionMetadata
 
 // SkillListResponse is the response for GET /skills (list).
-type SkillListResponse struct {
-	Skills   []thvregistry.Skill `json:"skills"`
-	Metadata SkillListMetadata   `json:"metadata"`
-}
+type SkillListResponse = formats.SkillListResponse
