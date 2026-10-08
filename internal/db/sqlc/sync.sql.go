@@ -21,15 +21,15 @@ INSERT INTO registry_sync (
 )
 SELECT
     unnest($1::uuid[]),
-    unnest($2::sync_status[]),
+    unnest($2::text[])::sync_status,
     unnest($3::text[])
 ON CONFLICT (source_id) DO NOTHING
 `
 
 type BulkInitializeSourceSyncsParams struct {
-	SourceIds    []uuid.UUID  `json:"source_ids"`
-	SyncStatuses []SyncStatus `json:"sync_statuses"`
-	ErrorMsgs    []string     `json:"error_msgs"`
+	SourceIds    []uuid.UUID `json:"source_ids"`
+	SyncStatuses []string    `json:"sync_statuses"`
+	ErrorMsgs    []string    `json:"error_msgs"`
 }
 
 func (q *Queries) BulkInitializeSourceSyncs(ctx context.Context, arg BulkInitializeSourceSyncsParams) error {

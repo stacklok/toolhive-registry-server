@@ -24,6 +24,21 @@ func (q *Queries) CountRegistriesBySourceID(ctx context.Context, sourceID uuid.U
 	return count, err
 }
 
+const deleteConfigLinksToObsoleteManagedSources = `-- name: DeleteConfigLinksToObsoleteManagedSources :exec
+DELETE FROM registry_source rs
+USING registry r, source s
+WHERE rs.registry_id = r.id AND rs.source_id = s.id
+  AND r.creation_type = 'CONFIG' AND s.creation_type = 'CONFIG'
+  AND s.source_type = 'managed' AND s.name != ALL($1::text[])
+`
+
+// Unlink only CONFIG views before removing obsolete managed CONFIG sources.
+// API view links remain, so the source FK rejects their removal.
+func (q *Queries) DeleteConfigLinksToObsoleteManagedSources(ctx context.Context, keepNames []string) error {
+	_, err := q.db.Exec(ctx, deleteConfigLinksToObsoleteManagedSources, keepNames)
+	return err
+}
+
 const deleteConfigRegistriesNotInList = `-- name: DeleteConfigRegistriesNotInList :exec
 DELETE FROM registry
 WHERE creation_type = 'CONFIG'
@@ -48,6 +63,40 @@ func (q *Queries) DeleteRegistry(ctx context.Context, name string) (int64, error
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getAPIRegistriesByNames = `-- name: GetAPIRegistriesByNames :many
+SELECT id, name, claims, creation_type, created_at, updated_at
+FROM registry
+WHERE name = ANY($1::text[])
+  AND creation_type = 'API'
+`
+
+func (q *Queries) GetAPIRegistriesByNames(ctx context.Context, names []string) ([]Registry, error) {
+	rows, err := q.db.Query(ctx, getAPIRegistriesByNames, names)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Registry{}
+	for rows.Next() {
+		var i Registry
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Claims,
+			&i.CreationType,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getRegistryByName = `-- name: GetRegistryByName :one
@@ -183,6 +232,41 @@ type UnlinkRegistrySourceParams struct {
 func (q *Queries) UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySourceParams) error {
 	_, err := q.db.Exec(ctx, unlinkRegistrySource, arg.RegistryID, arg.SourceID)
 	return err
+}
+
+const upsertConfigRegistry = `-- name: UpsertConfigRegistry :one
+INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
+VALUES ($1, $2, 'CONFIG', $3, $4)
+ON CONFLICT (name) DO UPDATE SET claims = EXCLUDED.claims, updated_at = EXCLUDED.updated_at
+WHERE registry.creation_type = 'CONFIG'
+RETURNING id, name, claims, creation_type, created_at, updated_at
+`
+
+type UpsertConfigRegistryParams struct {
+	Name      string     `json:"name"`
+	Claims    []byte     `json:"claims"`
+	CreatedAt *time.Time `json:"created_at"`
+	UpdatedAt *time.Time `json:"updated_at"`
+}
+
+// Insert or update a CONFIG registry without overwriting API-owned rows.
+func (q *Queries) UpsertConfigRegistry(ctx context.Context, arg UpsertConfigRegistryParams) (Registry, error) {
+	row := q.db.QueryRow(ctx, upsertConfigRegistry,
+		arg.Name,
+		arg.Claims,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Registry
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Claims,
+		&i.CreationType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const upsertRegistry = `-- name: UpsertRegistry :one
