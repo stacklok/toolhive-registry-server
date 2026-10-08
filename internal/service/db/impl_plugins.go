@@ -19,6 +19,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/otel"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/versions"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 )
 
 // ListPlugins returns plugins in the registry with cursor-based pagination.
@@ -110,7 +111,7 @@ func (s *dbService) ListPlugins(
 
 	plugins := make([]*service.Plugin, len(listRows))
 	for i, row := range listRows {
-		plugin := service.ListPluginsRowToPlugin(row)
+		plugin := listPluginsRowToPlugin(row)
 		plugin.Packages = packages[row.VersionID]
 		plugins[i] = plugin
 	}
@@ -271,7 +272,7 @@ func (s *dbService) GetPluginVersion(
 		packages = append(packages, toServicePluginGitPackage(pkg))
 	}
 
-	res := service.GetPluginVersionRowToPlugin(row)
+	res := getPluginVersionRowToPlugin(row)
 	res.Packages = packages
 	return res, nil
 }
@@ -331,8 +332,8 @@ func (s *dbService) PublishPlugin(
 			return nil, err
 		}
 	}
-	if plugin.Namespace == "" || plugin.Name == "" || plugin.Version == "" {
-		return nil, fmt.Errorf("namespace, name, and version are required")
+	if err := formats.ValidatePublishedPlugin(plugin); err != nil {
+		return nil, err
 	}
 
 	// Validate published claims are a subset of the publisher's JWT claims
@@ -406,7 +407,7 @@ func (s *dbService) fetchPluginVersionBySource(
 		packages = append(packages, toServicePluginGitPackage(pkg))
 	}
 
-	result := service.GetPluginVersionRowToPlugin(sqlc.GetPluginVersionRow{
+	result := getPluginVersionRowToPlugin(sqlc.GetPluginVersionRow{
 		RegistryType:    row.RegistryType,
 		ID:              row.ID,
 		Name:            row.Name,

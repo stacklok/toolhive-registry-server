@@ -17,6 +17,7 @@ import (
 	auditmw "github.com/stacklok/toolhive-registry-server/internal/audit"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 )
 
 const (
@@ -91,15 +92,7 @@ func (routes *Routes) listPlugins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := PluginListResponse{
-		Plugins: servicePluginsToResponse(result.Plugins),
-		Metadata: PluginListMetadata{
-			Count:      len(result.Plugins),
-			NextCursor: result.NextCursor,
-		},
-	}
-
-	common.WriteJSONResponse(w, resp, http.StatusOK)
+	common.WriteJSONResponse(w, formats.PluginPage(result.Plugins, result.NextCursor), http.StatusOK)
 }
 
 // getLatestVersion handles GET /registry/{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}
@@ -150,7 +143,7 @@ func (routes *Routes) getLatestVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	common.WriteJSONResponse(w, servicePluginToResponse(plugin), http.StatusOK)
+	writePluginResponse(w, formats.PluginPayload(plugin))
 }
 
 // listVersions handles GET /registry/{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}/versions
@@ -200,15 +193,7 @@ func (routes *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := PluginListResponse{
-		Plugins: servicePluginsToResponse(result.Plugins),
-		Metadata: PluginListMetadata{
-			Count:      len(result.Plugins),
-			NextCursor: result.NextCursor,
-		},
-	}
-
-	common.WriteJSONResponse(w, resp, http.StatusOK)
+	common.WriteJSONResponse(w, formats.PluginPage(result.Plugins, result.NextCursor), http.StatusOK)
 }
 
 // getVersion handles GET /registry/{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}/versions/{version}
@@ -265,7 +250,11 @@ func (routes *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	common.WriteJSONResponse(w, servicePluginToResponse(plugin), http.StatusOK)
+	writePluginResponse(w, formats.PluginPayload(plugin))
+}
+
+func writePluginResponse(w http.ResponseWriter, response thvregistry.Plugin) {
+	common.WriteJSONResponse(w, response, http.StatusOK)
 }
 
 // parseListPluginsQuery parses and validates list plugins query parameters.
@@ -305,55 +294,4 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 		slog.ErrorContext(r.Context(), "unexpected error", "error", err)
 		common.WriteErrorResponse(w, "internal server error", http.StatusInternalServerError)
 	}
-}
-
-// servicePluginToResponse maps a service.Plugin to a thvregistry.Plugin response.
-func servicePluginToResponse(p *service.Plugin) thvregistry.Plugin {
-	resp := thvregistry.Plugin{
-		Namespace:   p.Namespace,
-		Name:        p.Name,
-		Description: p.Description,
-		Version:     p.Version,
-		Status:      p.Status,
-		Title:       p.Title,
-		License:     p.License,
-		Metadata:    p.Metadata,
-		Meta:        p.Meta,
-	}
-	if p.Repository != nil {
-		resp.Repository = &thvregistry.SkillRepository{
-			URL:  p.Repository.URL,
-			Type: p.Repository.Type,
-		}
-	}
-	for _, icon := range p.Icons {
-		resp.Icons = append(resp.Icons, thvregistry.SkillIcon{
-			Src:   icon.Src,
-			Size:  icon.Size,
-			Type:  icon.Type,
-			Label: icon.Label,
-		})
-	}
-	for _, pkg := range p.Packages {
-		resp.Packages = append(resp.Packages, thvregistry.SkillPackage{
-			RegistryType: pkg.RegistryType,
-			Identifier:   pkg.Identifier,
-			Digest:       pkg.Digest,
-			MediaType:    pkg.MediaType,
-			URL:          pkg.URL,
-			Ref:          pkg.Ref,
-			Commit:       pkg.Commit,
-			Subfolder:    pkg.Subfolder,
-		})
-	}
-	return resp
-}
-
-// servicePluginsToResponse maps a slice of service.Plugin to thvregistry.Plugin responses.
-func servicePluginsToResponse(plugins []*service.Plugin) []thvregistry.Plugin {
-	result := make([]thvregistry.Plugin, len(plugins))
-	for i, p := range plugins {
-		result[i] = servicePluginToResponse(p)
-	}
-	return result
 }

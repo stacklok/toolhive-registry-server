@@ -9,6 +9,7 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 )
 
 // Pagination constants used by all RegistryService implementations.
@@ -20,15 +21,15 @@ const (
 	// MaxPageSize is the maximum allowed items per page to prevent potential DoS.
 	MaxPageSize = 1000
 
-	// SkillPackageTypeOCI is the type for OCI packages
-	SkillPackageTypeOCI = "oci"
-	// SkillPackageTypeGit is the type for Git packages
-	SkillPackageTypeGit = "git"
+	// SkillPackageTypeOCI is the type for OCI packages.
+	SkillPackageTypeOCI = model.PackageFormatOCI
+	// SkillPackageTypeGit is the type for Git packages.
+	SkillPackageTypeGit = model.PackageFormatGit
 
-	// PluginPackageTypeOCI is the type for OCI packages (plugins)
-	PluginPackageTypeOCI = "oci"
-	// PluginPackageTypeGit is the type for Git packages (plugins)
-	PluginPackageTypeGit = "git"
+	// PluginPackageTypeOCI is the type for OCI packages (plugins).
+	PluginPackageTypeOCI = model.PackageFormatOCI
+	// PluginPackageTypeGit is the type for Git packages (plugins).
+	PluginPackageTypeGit = model.PackageFormatGit
 )
 
 var (
