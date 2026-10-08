@@ -40,7 +40,7 @@ tasks:
   install-swagger:
     desc: Install the swag tool for OpenAPI/Swagger generation
     cmds:
-      - go install github.com/swaggo/swag/v2/cmd/swag@latest
+      - go install github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc6.0.20260930063839-a709527da209
 
   install-mock:
     desc: Install the mockgen tool for mock generation
