@@ -1,12 +1,15 @@
 package v01
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	registryclient "github.com/stacklok/toolhive/pkg/registry/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -14,6 +17,27 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 )
+
+func TestToolHiveClientCompatibility(t *testing.T) {
+	t.Parallel()
+	mockSvc := mocks.NewMockRegistryService(gomock.NewController(t))
+	mockSvc.EXPECT().ListServers(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&service.ListServersResult{
+		Servers: []*upstreamv0.ServerJSON{{Name: "example.com/server", Version: "1.0.0"}},
+	}, nil)
+	mockSvc.EXPECT().GetServerVersion(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(
+		&upstreamv0.ServerJSON{Name: "example.com/server", Version: "1.0.0"}, nil)
+	server := httptest.NewServer(Router(mockSvc))
+	defer server.Close()
+	client, err := registryclient.NewClient(server.URL+"/foo", true, nil)
+	require.NoError(t, err)
+	servers, err := client.ListServers(context.Background(), &registryclient.ListOptions{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, servers, 1)
+	require.Equal(t, "example.com/server", servers[0].Name)
+	version, err := client.GetServer(context.Background(), "example.com/server")
+	require.NoError(t, err)
+	require.Equal(t, "1.0.0", version.Version)
+}
 
 func TestListServers(t *testing.T) {
 	t.Parallel()
@@ -177,6 +201,37 @@ func TestListServers(t *testing.T) {
 				assert.NotNil(t, response.Servers)
 				assert.NotNil(t, response.Metadata)
 			}
+		})
+	}
+}
+
+func TestVersionRouteContract(t *testing.T) {
+	t.Parallel()
+	for _, n := range []int{999, 1000} {
+		t.Run(fmt.Sprint(n), func(t *testing.T) {
+			t.Parallel()
+			mockSvc := mocks.NewMockRegistryService(gomock.NewController(t))
+			versions := make([]*upstreamv0.ServerJSON, n)
+			for i := range versions {
+				versions[i] = &upstreamv0.ServerJSON{Name: "example.com/server", Version: fmt.Sprint(i)}
+			}
+			mockSvc.EXPECT().ListServerVersions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ any, opts ...service.Option) ([]*upstreamv0.ServerJSON, error) {
+					resolved := &service.ListServerVersionsOptions{}
+					for _, opt := range opts {
+						require.NoError(t, opt(resolved))
+					}
+					require.Equal(t, 1000, resolved.Limit)
+					require.Equal(t, "example.com/server", resolved.Name)
+					return versions, nil
+				})
+			rr := httptest.NewRecorder()
+			Router(mockSvc).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/foo/v0.1/servers/example.com%2Fserver/versions?cursor=ignored&limit=1", nil))
+			require.Equal(t, http.StatusOK, rr.Code)
+			var response upstreamv0.ServerListResponse
+			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+			require.Equal(t, n, response.Metadata.Count)
+			require.Empty(t, response.Metadata.NextCursor)
 		})
 	}
 }

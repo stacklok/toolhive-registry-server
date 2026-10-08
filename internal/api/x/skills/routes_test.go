@@ -296,6 +296,29 @@ func TestGetLatestVersion(t *testing.T) {
 	}
 }
 
+func TestVersionRouteContract(t *testing.T) {
+	t.Parallel()
+	mockSvc := mocks.NewMockRegistryService(gomock.NewController(t))
+	mockSvc.EXPECT().ListSkills(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ any, opts ...service.Option) (*service.ListSkillsResult, error) {
+			resolved := applyListSkillsOptions(t, opts)
+			require.Equal(t, "myreg", resolved.RegistryName)
+			require.Equal(t, "io.github.stacklok", resolved.Namespace)
+			require.NotNil(t, resolved.Name)
+			require.Equal(t, "pdf-processor", *resolved.Name)
+			require.Nil(t, resolved.Cursor)
+			require.Zero(t, resolved.Limit)
+			return &service.ListSkillsResult{Skills: []*service.Skill{{Namespace: resolved.Namespace, Name: *resolved.Name, Version: "1.0.0"}}, NextCursor: "more"}, nil
+		})
+	rr := httptest.NewRecorder()
+	skillsRouterWithRegistryMount(mockSvc).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/myreg/v0.1/x/dev.toolhive/skills/io.github.stacklok/pdf-processor/versions?cursor=ignored&limit=1", nil))
+	require.Equal(t, http.StatusOK, rr.Code)
+	var response SkillListResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+	require.Equal(t, 1, response.Metadata.Count)
+	require.Equal(t, "more", response.Metadata.NextCursor)
+}
+
 func TestListVersions(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)

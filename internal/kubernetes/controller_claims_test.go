@@ -219,9 +219,10 @@ func createMCPServerObject(name string, annotations map[string]string) client.Ob
 	}
 }
 
-// requiredAnnotations returns the minimum annotations needed for hasRequiredRegistryAnnotations to pass.
+// requiredAnnotations returns the minimum annotations needed for registry export.
 func requiredAnnotations() map[string]string {
 	return map[string]string{
+		defaultRegistryExportAnnotation:      "true",
 		defaultRegistryDescriptionAnnotation: "A test server",
 		defaultRegistryURLAnnotation:         "https://example.com/mcp",
 	}
