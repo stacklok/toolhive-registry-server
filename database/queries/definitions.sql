@@ -81,7 +81,8 @@ DELETE FROM registry_source WHERE registry_id IN (SELECT id FROM registry WHERE 
 DELETE FROM source WHERE creation_type='CONFIG' AND NOT (name=ANY($1::text[])) AND claims IS NULL;
 
 -- name: DefBlockedSources :one
-SELECT EXISTS(SELECT 1 FROM source WHERE creation_type='CONFIG' AND NOT (name=ANY($1::text[])) AND claims IS NOT NULL);
+SELECT EXISTS(SELECT 1 FROM source s WHERE s.creation_type='CONFIG' AND NOT (s.name=ANY($1::text[]))
+AND (s.claims IS NOT NULL OR EXISTS(SELECT 1 FROM registry_entry e WHERE e.source_id=s.id AND e.claims IS NOT NULL)));
 
 -- name: DefUpsertConfigSource :execrows
 INSERT INTO source(name,creation_type,source_type,source_config,filter_config,sync_schedule,syncable)

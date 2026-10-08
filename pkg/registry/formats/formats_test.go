@@ -68,6 +68,41 @@ func TestDecodeUpstream(t *testing.T) {
 	}
 }
 
+func TestPersistenceExternalModule(t *testing.T) {
+	t.Parallel()
+	fixtureDir := "../persistence/testdata/external"
+	compileExternalFixture(t, fixtureDir)
+	output := runExternalGo(t, fixtureDir, "list", "-mod=readonly", "-deps", "-f", "{{.ImportPath}}",
+		"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence",
+		"github.com/stacklok/toolhive-registry-server/pkg/registry/model",
+		"github.com/stacklok/toolhive-registry-server/pkg/registry/formats")
+	paths := make(map[string]bool)
+	for _, path := range strings.Fields(string(output)) {
+		paths[path] = true
+	}
+	for _, expected := range []string{
+		"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence",
+		"github.com/stacklok/toolhive-registry-server/pkg/registry/model",
+		"github.com/stacklok/toolhive-registry-server/pkg/registry/formats",
+	} {
+		if !paths[expected] {
+			t.Fatalf("neutral package missing from import graph: %s", expected)
+		}
+	}
+	for path := range paths {
+		for _, forbidden := range []string{
+			"github.com/stacklok/toolhive-registry-server/internal",
+			"github.com/stacklok/toolhive-registry-server/database",
+			"github.com/jackc/pgx",
+			"sigs.k8s.io/controller-runtime", "k8s.io",
+		} {
+			if isPackageOrChild(path, forbidden) {
+				t.Fatalf("neutral package imports %s", path)
+			}
+		}
+	}
+}
+
 func TestFormatOnlyExternalModule(t *testing.T) {
 	t.Parallel()
 	// testdata/external is a separate module; a same-module _test package

@@ -50,6 +50,7 @@ func SkillPayload(s *model.Skill) thvregistry.Skill {
 		Version: s.Version, Status: s.Status, Title: s.Title,
 		License: s.License, Compatibility: s.Compatibility,
 		AllowedTools: s.AllowedTools, Metadata: s.Metadata, Meta: s.Meta,
+		Provenance: s.Provenance,
 	}
 	if s.Repository != nil {
 		resp.Repository = &thvregistry.SkillRepository{URL: s.Repository.URL, Type: s.Repository.Type}

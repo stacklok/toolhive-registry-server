@@ -81,16 +81,18 @@ const getLatestEntryVersion = `-- name: GetLatestEntryVersion :one
 SELECT l.version
   FROM latest_entry_version l
  WHERE l.name = $1
-   AND l.source_id = $2
+   AND l.entry_type = $2
+   AND l.source_id = $3
 `
 
 type GetLatestEntryVersionParams struct {
-	Name     string    `json:"name"`
-	SourceID uuid.UUID `json:"source_id"`
+	Name      string    `json:"name"`
+	EntryType EntryType `json:"entry_type"`
+	SourceID  uuid.UUID `json:"source_id"`
 }
 
 func (q *Queries) GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error) {
-	row := q.db.QueryRow(ctx, getLatestEntryVersion, arg.Name, arg.SourceID)
+	row := q.db.QueryRow(ctx, getLatestEntryVersion, arg.Name, arg.EntryType, arg.SourceID)
 	var version string
 	err := row.Scan(&version)
 	return version, err

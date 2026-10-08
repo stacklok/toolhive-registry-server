@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 )
 
@@ -285,6 +286,7 @@ type LatestEntryVersion struct {
 	Name            string    `json:"name"`
 	Version         string    `json:"version"`
 	LatestVersionID uuid.UUID `json:"latest_version_id"`
+	EntryType       EntryType `json:"entry_type"`
 }
 
 type McpServer struct {
@@ -296,36 +298,41 @@ type McpServer struct {
 	RepositorySubfolder *string   `json:"repository_subfolder"`
 	RepositoryType      *string   `json:"repository_type"`
 	VersionID           uuid.UUID `json:"version_id"`
+	SchemaUrl           *string   `json:"schema_url"`
 }
 
 type McpServerIcon struct {
-	ServerID  uuid.UUID `json:"server_id"`
-	SourceUri string    `json:"source_uri"`
-	MimeType  string    `json:"mime_type"`
-	Theme     IconTheme `json:"theme"`
+	ServerID     uuid.UUID   `json:"server_id"`
+	SourceUri    string      `json:"source_uri"`
+	MimeType     string      `json:"mime_type"`
+	Theme        IconTheme   `json:"theme"`
+	Sizes        []string    `json:"sizes"`
+	ThemePresent pgtype.Bool `json:"theme_present"`
 }
 
 type McpServerPackage struct {
-	ServerID         uuid.UUID `json:"server_id"`
-	RegistryType     string    `json:"registry_type"`
-	PkgRegistryUrl   string    `json:"pkg_registry_url"`
-	PkgIdentifier    string    `json:"pkg_identifier"`
-	PkgVersion       string    `json:"pkg_version"`
-	RuntimeHint      *string   `json:"runtime_hint"`
-	RuntimeArguments []byte    `json:"runtime_arguments"`
-	PackageArguments []byte    `json:"package_arguments"`
-	Sha256Hash       *string   `json:"sha256_hash"`
-	Transport        string    `json:"transport"`
-	TransportUrl     *string   `json:"transport_url"`
-	EnvVars          []byte    `json:"env_vars"`
-	TransportHeaders []byte    `json:"transport_headers"`
+	ServerID           uuid.UUID `json:"server_id"`
+	RegistryType       string    `json:"registry_type"`
+	PkgRegistryUrl     string    `json:"pkg_registry_url"`
+	PkgIdentifier      string    `json:"pkg_identifier"`
+	PkgVersion         string    `json:"pkg_version"`
+	RuntimeHint        *string   `json:"runtime_hint"`
+	RuntimeArguments   []byte    `json:"runtime_arguments"`
+	PackageArguments   []byte    `json:"package_arguments"`
+	Sha256Hash         *string   `json:"sha256_hash"`
+	Transport          string    `json:"transport"`
+	TransportUrl       *string   `json:"transport_url"`
+	EnvVars            []byte    `json:"env_vars"`
+	TransportHeaders   []byte    `json:"transport_headers"`
+	TransportVariables []byte    `json:"transport_variables"`
 }
 
 type McpServerRemote struct {
-	ServerID         uuid.UUID `json:"server_id"`
-	Transport        string    `json:"transport"`
-	TransportUrl     string    `json:"transport_url"`
-	TransportHeaders []byte    `json:"transport_headers"`
+	ServerID           uuid.UUID `json:"server_id"`
+	Transport          string    `json:"transport"`
+	TransportUrl       string    `json:"transport_url"`
+	TransportHeaders   []byte    `json:"transport_headers"`
+	TransportVariables []byte    `json:"transport_variables"`
 }
 
 type Plugin struct {
@@ -408,6 +415,7 @@ type Skill struct {
 	Icons         []byte      `json:"icons"`
 	Metadata      []byte      `json:"metadata"`
 	ExtensionMeta []byte      `json:"extension_meta"`
+	Provenance    []byte      `json:"provenance"`
 }
 
 type SkillGitPackage struct {
