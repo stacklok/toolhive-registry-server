@@ -109,6 +109,17 @@ func (q *Queries) DeleteConfigSourcesNotInList(ctx context.Context, ids []uuid.U
 	return err
 }
 
+const deleteObsoleteConfigManagedSources = `-- name: DeleteObsoleteConfigManagedSources :exec
+DELETE FROM source
+WHERE creation_type = 'CONFIG' AND source_type = 'managed'
+  AND name != ALL($1::text[])
+`
+
+func (q *Queries) DeleteObsoleteConfigManagedSources(ctx context.Context, keepNames []string) error {
+	_, err := q.db.Exec(ctx, deleteObsoleteConfigManagedSources, keepNames)
+	return err
+}
+
 const deleteSource = `-- name: DeleteSource :execrows
 DELETE FROM source
 WHERE name = $1

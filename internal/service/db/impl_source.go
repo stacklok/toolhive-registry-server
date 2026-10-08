@@ -172,7 +172,7 @@ func (s *dbService) CreateSource(
 	initialSyncStatus, initialErrorMsg := getAPISourceInitialSyncStatus(req, sourceType)
 	err = querier.BulkInitializeSourceSyncs(ctx, sqlc.BulkInitializeSourceSyncsParams{
 		SourceIds:    []uuid.UUID{source.ID},
-		SyncStatuses: []sqlc.SyncStatus{initialSyncStatus},
+		SyncStatuses: []string{string(initialSyncStatus)},
 		ErrorMsgs:    []string{initialErrorMsg},
 	})
 	if err != nil {

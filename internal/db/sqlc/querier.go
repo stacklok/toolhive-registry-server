@@ -32,12 +32,43 @@ type Querier interface {
 	CreateTempRemoteTable(ctx context.Context) error
 	// Temp Server Table Operations
 	CreateTempServerTable(ctx context.Context) error
+	DefBlockedSources(ctx context.Context, dollar_1 []string) (bool, error)
+	DefBlockedViews(ctx context.Context, dollar_1 []string) (bool, error)
+	DefDeleteAPISource(ctx context.Context, dollar_1 uuid.UUID) error
+	DefDeleteAPIView(ctx context.Context, name string) error
+	DefDeleteConfigLinks(ctx context.Context) error
+	DefDeleteViewLinks(ctx context.Context, dollar_1 uuid.UUID) error
+	DefGetSource(ctx context.Context, name string) (DefGetSourceRow, error)
+	DefGetView(ctx context.Context, name string) (DefGetViewRow, error)
+	DefInsertAPIView(ctx context.Context, name string) (string, error)
+	DefInsertSource(ctx context.Context, arg DefInsertSourceParams) (string, error)
+	DefLink(ctx context.Context, arg DefLinkParams) (int64, error)
+	DefListSources(ctx context.Context) ([]DefListSourcesRow, error)
+	DefListViewNames(ctx context.Context) ([]string, error)
+	DefLockSource(ctx context.Context, name string) (DefLockSourceRow, error)
+	DefLockView(ctx context.Context, name string) (DefLockViewRow, error)
+	DefPruneSources(ctx context.Context, dollar_1 []string) error
+	DefPruneViews(ctx context.Context, dollar_1 []string) error
+	DefSourceClaims(ctx context.Context, name string) (bool, error)
+	DefSourceRaw(ctx context.Context, name string) (DefSourceRawRow, error)
+	DefSourceUsed(ctx context.Context, dollar_1 uuid.UUID) (bool, error)
+	DefTouchAPIView(ctx context.Context, dollar_1 uuid.UUID) error
+	DefUpdateSource(ctx context.Context, arg DefUpdateSourceParams) error
+	DefUpsertConfigSource(ctx context.Context, arg DefUpsertConfigSourceParams) (int64, error)
+	DefUpsertConfigView(ctx context.Context, name string) (string, error)
+	DefViewClaims(ctx context.Context, name string) (bool, error)
+	DefViewID(ctx context.Context, name string) (string, error)
+	DefViewSources(ctx context.Context, name string) ([]string, error)
+	// Unlink only CONFIG views before removing obsolete managed CONFIG sources.
+	// API view links remain, so the source FK rejects their removal.
+	DeleteConfigLinksToObsoleteManagedSources(ctx context.Context, keepNames []string) error
 	// Delete CONFIG registry rows whose names are not in the provided list.
 	// Used during config sync to clean up registry/junction rows before deleting orphaned sources.
 	DeleteConfigRegistriesNotInList(ctx context.Context, keepNames []string) error
 	// Delete CONFIG sources not in the provided list (for config file sync)
 	DeleteConfigSourcesNotInList(ctx context.Context, ids []uuid.UUID) error
 	DeleteEntryVersion(ctx context.Context, arg DeleteEntryVersionParams) (int64, error)
+	DeleteObsoleteConfigManagedSources(ctx context.Context, keepNames []string) error
 	DeleteOrphanedEntryVersions(ctx context.Context, arg DeleteOrphanedEntryVersionsParams) error
 	DeleteOrphanedIcons(ctx context.Context, serverIds []uuid.UUID) error
 	DeleteOrphanedPackages(ctx context.Context, serverIds []uuid.UUID) error
@@ -60,6 +91,7 @@ type Querier interface {
 	DeleteSource(ctx context.Context, name string) (int64, error)
 	DropTempEntryVersionTable(ctx context.Context) error
 	DropTempRegistryEntryTable(ctx context.Context) error
+	GetAPIRegistriesByNames(ctx context.Context, names []string) ([]Registry, error)
 	GetAPISourcesByNames(ctx context.Context, names []string) ([]GetAPISourcesByNamesRow, error)
 	GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error)
 	GetManagedSources(ctx context.Context) ([]GetManagedSourcesRow, error)
@@ -163,6 +195,8 @@ type Querier interface {
 	UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error)
 	UpdateSourceSync(ctx context.Context, arg UpdateSourceSyncParams) error
 	UpdateSourceSyncStatusByName(ctx context.Context, arg UpdateSourceSyncStatusByNameParams) error
+	// Insert or update a CONFIG registry without overwriting API-owned rows.
+	UpsertConfigRegistry(ctx context.Context, arg UpsertConfigRegistryParams) (Registry, error)
 	UpsertEntryVersionsFromTemp(ctx context.Context) ([]UpsertEntryVersionsFromTempRow, error)
 	UpsertIconsFromTemp(ctx context.Context) error
 	UpsertLatestPluginVersion(ctx context.Context, arg UpsertLatestPluginVersionParams) (uuid.UUID, error)

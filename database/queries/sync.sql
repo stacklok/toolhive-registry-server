@@ -128,7 +128,7 @@ INSERT INTO registry_sync (
 )
 SELECT
     unnest(sqlc.arg(source_ids)::uuid[]),
-    unnest(sqlc.arg(sync_statuses)::sync_status[]),
+    unnest(sqlc.arg(sync_statuses)::text[])::sync_status,
     unnest(sqlc.arg(error_msgs)::text[])
 ON CONFLICT (source_id) DO NOTHING;
 
