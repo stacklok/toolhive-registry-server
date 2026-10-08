@@ -324,6 +324,59 @@ func TestManagedExternalOwnershipAllKinds(t *testing.T) {
 	}
 }
 
+func TestManagedMixedAndTieLatestAllKinds(t *testing.T) {
+	t.Parallel()
+	svc, cleanup := setupTestService(t)
+	defer cleanup()
+	const registry = "managed-order"
+	const namespace = "com.example"
+	createManagedSourceWithRegistry(t, svc, registry)
+	ctx := context.Background()
+	for _, tc := range []struct {
+		kind, name string
+		publish    func(string) error
+		delete     func(string) error
+	}{
+		{"MCP", "com.example/order", func(v string) error {
+			_, err := svc.PublishServerVersion(ctx, service.WithServerData(&upstreamv0.ServerJSON{Name: "com.example/order", Version: v}))
+			return err
+		}, func(v string) error {
+			return svc.DeleteServerVersion(ctx, service.WithName("com.example/order"), service.WithVersion(v))
+		}},
+		{"SKILL", "order-skill", func(v string) error {
+			_, err := svc.PublishSkill(ctx, &service.Skill{Namespace: namespace, Name: "order-skill", Version: v, Title: "Skill"})
+			return err
+		}, func(v string) error {
+			return svc.DeleteSkillVersion(ctx, service.WithNamespace(namespace), service.WithName("order-skill"), service.WithVersion(v))
+		}},
+		{"PLUGIN", "order-plugin", func(v string) error {
+			_, err := svc.PublishPlugin(ctx, &service.Plugin{Namespace: namespace, Name: "order-plugin", Version: v, Title: "Plugin"})
+			return err
+		}, func(v string) error {
+			return svc.DeletePluginVersion(ctx, service.WithNamespace(namespace), service.WithName("order-plugin"), service.WithVersion(v))
+		}},
+	} {
+		for _, v := range []string{"v1.0.0", "custom", "1.0.0", "1.0.0+z"} {
+			require.NoError(t, tc.publish(v), tc.kind+" "+v)
+		}
+		latest := func(want string) {
+			t.Helper()
+			var got string
+			require.NoError(t, svc.pool.QueryRow(ctx, `SELECT l.version FROM latest_entry_version l JOIN source s ON s.id=l.source_id WHERE s.name=$1 AND l.name=$2`, registry, tc.name).Scan(&got))
+			require.Equal(t, want, got, tc.kind)
+		}
+		latest("v1.0.0")
+		for _, step := range []struct{ remove, want string }{
+			{"custom", "v1.0.0"},
+			{"v1.0.0", "1.0.0+z"},
+			{"1.0.0+z", "1.0.0"},
+		} {
+			require.NoError(t, tc.delete(step.remove), tc.kind+" "+step.remove)
+			latest(step.want)
+		}
+	}
+}
+
 func TestPluginManagedLatestAfterDelete(t *testing.T) {
 	t.Parallel()
 	svc, cleanup := setupTestService(t)
