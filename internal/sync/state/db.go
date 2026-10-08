@@ -34,6 +34,7 @@ func NewDBStateService(pool *pgxpool.Pool) RegistryStateService {
 	}
 }
 
+//nolint:gocyclo // Transactional config initialization has distinct ownership, sync, and cleanup stages.
 func (d *dbStatusService) Initialize(ctx context.Context, cfg *config.Config) error {
 	sourceConfigs := cfg.Sources
 
@@ -64,11 +65,14 @@ func (d *dbStatusService) Initialize(ctx context.Context, cfg *config.Config) er
 		return tx.Commit(ctx)
 	}
 
-	// Prepare bulk upsert parameters
-	names, upsertParams := buildBulkUpsertParams(sourceConfigs, now)
+	// Collect source names for the ownership check and early managed-source cleanup.
+	names := make([]string, len(sourceConfigs))
+	for i := range names {
+		names[i] = sourceConfigs[i].Name
+	}
 
 	// Check for API sources that would be overwritten
-	if err := checkForAPIRegistryConflicts(ctx, queries, names); err != nil {
+	if err := checkForAPISourceConflicts(ctx, queries, names); err != nil {
 		return err
 	}
 
@@ -77,8 +81,11 @@ func (d *dbStatusService) Initialize(ctx context.Context, cfg *config.Config) er
 		return err
 	}
 
-	// Bulk upsert all CONFIG sources - returns IDs and names
-	upsertedSources, err := queries.BulkUpsertConfigSources(ctx, upsertParams)
+	if err := checkForAPIRegistryConflicts(ctx, queries, cfg.Registries); err != nil {
+		return err
+	}
+
+	upsertedSources, err := upsertConfigSourcesOrdered(ctx, queries, sourceConfigs, names, now)
 	if err != nil {
 		return err
 	}
@@ -119,6 +126,43 @@ func (d *dbStatusService) Initialize(ctx context.Context, cfg *config.Config) er
 	return tx.Commit(ctx)
 }
 
+func upsertConfigSourcesOrdered(
+	ctx context.Context, queries *sqlc.Queries, sourceConfigs []config.SourceConfig, names []string, now time.Time,
+) ([]sqlc.BulkUpsertConfigSourcesRow, error) {
+	// The singleton index is immediate. Remove obsolete managed CONFIG sources
+	// first, unlinking only CONFIG views. API links make the delete fail and roll back.
+	if err := queries.DeleteConfigLinksToObsoleteManagedSources(ctx, names); err != nil {
+		return nil, err
+	}
+	if err := queries.DeleteObsoleteConfigManagedSources(ctx, names); err != nil {
+		return nil, err
+	}
+
+	// Demote retained managed sources before inserting a new managed source.
+	// Their IDs, entries and sync statuses survive the ordinary upsert.
+	var nonManaged, managed []config.SourceConfig
+	for _, src := range sourceConfigs {
+		if src.GetType() == config.SourceTypeManaged {
+			managed = append(managed, src)
+		} else {
+			nonManaged = append(nonManaged, src)
+		}
+	}
+	upsertedSources := make([]sqlc.BulkUpsertConfigSourcesRow, 0, len(names))
+	for _, group := range [][]config.SourceConfig{nonManaged, managed} {
+		if len(group) == 0 {
+			continue
+		}
+		_, params := buildBulkUpsertParams(group, now)
+		rows, err := queries.BulkUpsertConfigSources(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+		upsertedSources = append(upsertedSources, rows...)
+	}
+	return upsertedSources, nil
+}
+
 // initializeSyncStatuses initializes sync status rows for all sources.
 func initializeSyncStatuses(
 	ctx context.Context,
@@ -127,13 +171,14 @@ func initializeSyncStatuses(
 	sourceNameToID map[string]uuid.UUID,
 ) error {
 	srcIDs := make([]uuid.UUID, len(sourceConfigs))
-	syncStatuses := make([]sqlc.SyncStatus, len(sourceConfigs))
+	syncStatuses := make([]string, len(sourceConfigs))
 	errorMsgs := make([]string, len(sourceConfigs))
 
 	for i, src := range sourceConfigs {
 		srcIDs[i] = sourceNameToID[src.Name]
 		isNonSynced := src.IsNonSyncedSource()
-		syncStatuses[i], errorMsgs[i] = getInitialSyncStatus(isNonSynced, src.GetType())
+		initialStatus, message := getInitialSyncStatus(isNonSynced, src.GetType())
+		syncStatuses[i], errorMsgs[i] = string(initialStatus), message
 	}
 
 	return queries.BulkInitializeSourceSyncs(ctx, sqlc.BulkInitializeSourceSyncsParams{
@@ -206,8 +251,8 @@ func buildBulkUpsertParams(
 	}
 }
 
-// checkForAPIRegistryConflicts verifies that none of the sources being upserted are API-created
-func checkForAPIRegistryConflicts(ctx context.Context, queries *sqlc.Queries, names []string) error {
+// checkForAPISourceConflicts verifies that none of the sources being upserted are API-created
+func checkForAPISourceConflicts(ctx context.Context, queries *sqlc.Queries, names []string) error {
 	apiSources, err := queries.GetAPISourcesByNames(ctx, names)
 	if err != nil {
 		return fmt.Errorf("failed to check for API sources: %w", err)
@@ -220,6 +265,28 @@ func checkForAPIRegistryConflicts(ctx context.Context, queries *sqlc.Queries, na
 		return fmt.Errorf("cannot overwrite API-created sources: %v", conflictNames)
 	}
 	return nil
+}
+
+// checkForAPIRegistryConflicts verifies that config registries do not overwrite API-created registries.
+func checkForAPIRegistryConflicts(
+	ctx context.Context, queries *sqlc.Queries, registries []config.RegistryConfig,
+) error {
+	names := make([]string, len(registries))
+	for i, registry := range registries {
+		names[i] = registry.Name
+	}
+	apiRegistries, err := queries.GetAPIRegistriesByNames(ctx, names)
+	if err != nil {
+		return fmt.Errorf("failed to check for API registries: %w", err)
+	}
+	if len(apiRegistries) == 0 {
+		return nil
+	}
+	conflictNames := make([]string, len(apiRegistries))
+	for i, registry := range apiRegistries {
+		conflictNames[i] = registry.Name
+	}
+	return fmt.Errorf("cannot overwrite API-created registries: %v", conflictNames)
 }
 
 // checkManagedSourceLimit verifies that config sources don't introduce a managed
@@ -260,12 +327,11 @@ func upsertRegistryRowsAndLinks(
 	for _, reg := range registries {
 		claims := db.SerializeClaims(reg.Claims)
 
-		registryRow, err := queries.UpsertRegistry(ctx, sqlc.UpsertRegistryParams{
-			Name:         reg.Name,
-			Claims:       claims,
-			CreationType: sqlc.CreationTypeCONFIG,
-			CreatedAt:    now,
-			UpdatedAt:    now,
+		registryRow, err := queries.UpsertConfigRegistry(ctx, sqlc.UpsertConfigRegistryParams{
+			Name:      reg.Name,
+			Claims:    claims,
+			CreatedAt: now,
+			UpdatedAt: now,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to upsert registry %s: %w", reg.Name, err)
@@ -305,6 +371,9 @@ func propagateSourceClaimsToEntries(
 	for _, src := range sourceConfigs {
 		sourceID, ok := sourceNameToID[src.Name]
 		if !ok {
+			continue
+		}
+		if src.IsNonSyncedSource() {
 			continue
 		}
 		if err := queries.PropagateSourceClaimsToEntries(ctx, sqlc.PropagateSourceClaimsToEntriesParams{

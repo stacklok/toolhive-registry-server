@@ -2070,7 +2070,7 @@ func TestListSources(t *testing.T) {
 				_, err = queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "list-src-beta",
 					CreationType: sqlc.CreationTypeAPI,
-					SourceType:   "managed",
+					SourceType:   "kubernetes",
 
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
@@ -2159,7 +2159,7 @@ func TestListRegistries(t *testing.T) {
 				srcB, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "list-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
-					SourceType:   "managed",
+					SourceType:   "kubernetes",
 
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
@@ -2274,7 +2274,7 @@ func TestGetRegistryByName(t *testing.T) {
 				srcB, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "get-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
-					SourceType:   "managed",
+					SourceType:   "kubernetes",
 
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
@@ -2379,7 +2379,7 @@ func TestCreateRegistry(t *testing.T) {
 				_, err = queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "create-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
-					SourceType:   "managed",
+					SourceType:   "kubernetes",
 
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
@@ -2583,7 +2583,7 @@ func TestUpdateRegistry(t *testing.T) {
 				_, err = queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "update-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
-					SourceType:   "managed",
+					SourceType:   "kubernetes",
 
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
@@ -2704,7 +2704,7 @@ func TestUpdateRegistry(t *testing.T) {
 				srcB, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "reorder-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
-					SourceType:   "managed",
+					SourceType:   "kubernetes",
 
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
