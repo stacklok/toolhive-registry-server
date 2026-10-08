@@ -283,6 +283,7 @@ See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for the co
 - **[Authentication](docs/authentication.md)** - OAuth/OIDC security
 - **[Observability](docs/observability.md)** - OpenTelemetry tracing and metrics
 - **[Registry sync](docs/registry-sync.md)** - How background sync works
+- **[Registry component architecture](docs/component-architecture.md)** - Proposed embeddable architecture for #906
 - **[Kubernetes deployment](docs/deployment-kubernetes.md)** - K8s deployment and HA
 - **[Docker deployment](docs/deployment-docker.md)** - Docker Compose setup
 - **[API documentation](docs/thv-registry-api/)** - Auto-generated OpenAPI docs
