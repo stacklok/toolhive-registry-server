@@ -1,0 +1,173 @@
+# Registry component architecture (design for #907)
+
+**Status:** proposal for review under [#906](https://github.com/stacklok/toolhive-registry-server/issues/906); package names and signatures below are illustrative, not released APIs or approvals. The behavioral decisions and gates here are intended to guide #908–#915. Existing documentation describes the **current** server until those changes land.
+
+## Boundary and dependency direction
+
+The OSS registry owns catalog formats, validation, catalog operations, persistence contracts, ingestion/reconciliation, basic publication, and a standalone non-personalized API. It does **not** decide what an individual receives or may change. An embedding application that needs personalized reads, pagination, or authorization owns those decisions and can supply its own application service to HTTP handlers (or just use formats/reconciliation). There is no shared user, tenant, claims, visibility-policy, or authorized-scope contract. Named registries remain **views** of the same entry pool, not tenants.
+
+```text
+standalone composition root ──> httpapi ──> ConsumerPages ──> model
+             │                    │        (default catalog or host service)
+             ├──> catalog ───────┼──> persistence contracts ──> model
+             ├──> reconcile ─────┘             ^
+             │        └──> ingest ──> formats ──> model
+             └──> operator ──────────────────────┤
+                       PostgreSQL adapter ───────┘
+
+host application ──> any selected public component (or just formats)
+```
+
+Arrows mean **imports or consumes contracts**, not that `persistence` imports PostgreSQL. More precisely: model/formats/validation import no app, DB, HTTP, or Kubernetes package; persistence contracts use those models; default catalog services and reconcilers consume persistence interfaces; adapters implement those interfaces or provide fetched data. PostgreSQL imports contracts, never the reverse. HTTP imports response models and the *small application-facing contracts it consumes*, not sqlc, sources, or PostgreSQL. The operator adapter alone imports Kubernetes client libraries. The standalone composition root selects implementations and owns listeners, migration, secrets, telemetry, and shutdown. No general `common` package bridging layers. External-module importability requires packages outside `internal/` and no exported types that transitively require `internal/` or generated DB rows; a public package move alone does not establish isolation.
+
+Proposed placement within the existing Go module: `pkg/registry/model` (server/skill/plugin and source/view types), `pkg/registry/formats` (upstream decode/encode and validation), `pkg/registry/persistence` (backend contracts), `pkg/registry/catalog` (default operations and publication), `pkg/registry/ingest` (git/api/file adapters), `pkg/registry/reconcile` (sync decisions/coordinator), `pkg/registry/operator` (ToolHive CRD adapter), `pkg/registry/httpapi` (routers and serialization), and `pkg/registry/postgres` (default backend). These are **candidate boundaries**, not an instruction to create empty packages or a generic plugin system: implement incrementally, combine packages if the actual public surface stays smaller. Keep standalone YAML/Viper and database pool creation in `internal/`/`cmd/`. Follow existing format dependencies where appropriate instead of inventing a competing MCP schema.
+
+The current [storage factory](../internal/app/storage/factory.go) creates sync state, writer **and** a full `RegistryService` and requires database configuration; it is not a persistence-only seam. The [service interface](../internal/service/service.go) mixes consumer reads, source/view administration, publication, readiness and claims. The [skill](../internal/service/skill_types.go) and [plugin](../internal/service/plugin_types.go) service types import sqlc types. None of these becomes the new public API as-is.
+
+## Responsibility map
+
+| Responsibility | Public contract / data | Reusable default implementation | Standalone-only or removed |
+| --- | --- | --- | --- |
+| Models, formats, validation | Source-scoped server/skill/plugin versions, named views, format encode/decode, name/payload/metadata validators | Existing upstream/ToolHive codecs adapted without DB types; distinguish import-payload rules from publication rules | No app config or auth claims in public models |
+| Catalog reads | Query a named view or unshadowed source; get/list versions and latest; page of results | Default non-personalized catalog over backend read contract | Remove claim filtering/gates; host may replace entire read service |
+| Persistence | Entry/version/related metadata reads, atomic source snapshot replacement, managed publication/deletion, source/view definitions, sync status and job coordination | PostgreSQL, keeping sqlc and transaction mechanics private | No public SQL transaction or storage factory that manufactures a catalog service |
+| Source/view management | CRUD + ordered source links, provenance (CONFIG/API), sync schedule/filter, admin diagnostics | Default catalog admin service using backend | Standalone YAML reconciliation belongs at composition boundary; never overwrite API-created rows |
+| Publishing | Publish/delete a version into the single managed source; update latest, enforce duplicate/conflict rules | Default catalog service + backend atomic write | Remove entry-claims endpoints and claim-stamping; no per-view publication |
+| Ingestion | Fetch/validate a complete source snapshot from Git, upstream API, file | Existing adapters, explicit transport/filesystem/credential dependencies | Standalone secret-file resolution and config loading, not part of adapter contract |
+| Reconciliation | Decide when to fetch; claim a job; filter, replace source snapshot, record result; inspect status | Poller/coordinator and filters over contracts | No listener required; managed/operator sources bypass polling |
+| Operator discovery | Watch and translate `MCPServer`, `VirtualMCPServer`, `MCPRemoteProxy` into server entries; scoped replacement | Kubernetes adapter with supplied client/manager and writer | Kubernetes RBAC/leader election remain; remove per-CRD authz-claims parsing |
+| HTTP | Consumer v0.1 and skills/plugins extension routers; optional admin router, request validation, serializer over supplied application operations/pages | Default non-personalized catalog service supplied as handler dependency | No implicit listener, auth/claim extraction, or global `RegistryService` required |
+| Lifecycle | Construct components with caller-supplied deps; readiness/error/stop contracts for running components | Components are independently constructible | Standalone owns pool/migrations, servers, auth boundary, telemetry, audit, orderly shutdown |
+
+See the current [source handlers](../internal/sources/types.go), [sync manager](../internal/sync/manager.go), [state service](../internal/sync/state/service.go), [writer](../internal/sync/writer/writer.go), [API assembly](../internal/api/server.go), and [app builder](../internal/app/builder.go) for the seams to split. The present [source-state initialization](../internal/sync/state/db.go) also reconciles config sources/views in the database: split those responsibilities without dropping either.
+
+### Illustrative public contracts
+
+Two replacement levels must both work: reuse the default catalog/reconciler/HTTP implementations while substituting their dependencies, **or** replace any of those implementations while keeping their consumers. The standalone binary must use those same construction contracts, not a private shortcut.
+
+These are **sketches**, not one required giant interface, a Go source file, or frozen package paths. Domain structs (`Source`, `View`, `Snapshot`, `EntryVersion`, `SyncStatus`, `Query`, `Page`) contain no sqlc, HTTP, Kubernetes, or identity types. All IDs in this sketch are opaque source/view names; an implementation may use private UUIDs. Define small interfaces at their consuming boundary; share the behavioral contract/conformance suite.
+
+```go
+// formats: decoding produces source-independent value objects; publication
+// validation can be stricter than fetching from an upstream format.
+func DecodeSnapshot(data []byte) (model.Snapshot, error)
+func ValidatePublishedVersion(v model.EntryVersion) error
+
+// persistence: adapter-provided, not an application service factory.
+type Entries interface {
+    ListSourceVersions(ctx context.Context, source string, q model.Query) (model.Page[model.EntryVersion], error)
+    ListViewVersions(ctx context.Context, view string, q model.Query) (model.Page[model.EntryVersion], error)
+    GetViewVersion(ctx context.Context, view string, kind model.Kind, name, version string) (model.EntryVersion, error)
+    ReplaceSource(ctx context.Context, source string, fence model.Fence, snapshot model.Snapshot) error
+    PublishVersion(ctx context.Context, source string, v model.EntryVersion) error
+    DeleteVersion(ctx context.Context, source string, kind model.Kind, name, version string) error
+}
+type Definitions interface {
+    ListSources(ctx context.Context) ([]model.Source, error)
+    GetSource(ctx context.Context, name string) (model.Source, error)
+    PutSource(ctx context.Context, source model.Source) error
+    DeleteSource(ctx context.Context, name string) error
+    ListViews(ctx context.Context) ([]model.View, error)
+    GetView(ctx context.Context, name string) (model.View, error)
+    PutView(ctx context.Context, view model.View) error
+    DeleteView(ctx context.Context, name string) error
+    ReconcileConfig(ctx context.Context, sources []model.Source, views []model.View) error
+}
+type Jobs interface {
+    ClaimNext(ctx context.Context) (model.SyncJob, bool, error)
+    Acquire(ctx context.Context, source string) (model.SyncJob, error) // operator/manual refresh
+    Complete(ctx context.Context, job model.SyncJob, result model.SyncResult) error
+    Fail(ctx context.Context, job model.SyncJob, cause error) error
+    Status(ctx context.Context, source string) (model.SyncStatus, error)
+}
+```
+
+`ReplaceSource` and `Jobs` must share an enforceable generation/fence for an owned source; they may be implemented by one backend with private transactions. A backend can expose one constructor implementing all three, or separate implementations with equivalent coordination; no public `BeginTx` or pgx types. `ReconcileConfig` atomically changes only CONFIG-owned definitions/links and reports a conflict if an API-owned name collides. `PutSource`/`PutView` enforce immutable provenance and source-type rules. Deleting an in-use source returns a typed conflict; deleting its snapshot only after it ceases to be referenced must not touch other sources. `PublishVersion`/`DeleteVersion` atomically maintain version payload, related metadata and latest pointer in the managed source. Domain error categories: invalid input, absent source/view/version, duplicate version, definition conflict, source-in-use, stale fence, unavailable backend; HTTP alone translates to status codes. Do not export raw storage errors or secrets.
+
+```go
+// ingest: source adapters return a validated full snapshot and change token.
+type Fetcher interface {
+    Fetch(ctx context.Context, source model.Source) (model.Snapshot, model.ChangeToken, error)
+}
+// reconcile: construction injects Fetcher, Entries, Definitions and Jobs;
+// Run is optional and never starts an HTTP listener.
+type Runner interface {
+    Run(ctx context.Context) error
+    Ready(ctx context.Context) error
+}
+// catalog: application operations compose backend contracts; do not expose storage.
+type Reader interface {
+    List(ctx context.Context, view string, q model.Query) (model.Page[model.EntryVersion], error)
+    Get(ctx context.Context, view string, kind model.Kind, name, version string) (model.EntryVersion, error)
+    ListVersions(ctx context.Context, view string, kind model.Kind, name string, q model.Query) (model.Page[model.EntryVersion], error)
+}
+type Publisher interface {
+    Publish(ctx context.Context, v model.EntryVersion) error
+    Delete(ctx context.Context, kind model.Kind, name, version string) error
+}
+// httpapi: handlers consume the app's already-selected page, not an identity.
+type ConsumerPages interface {
+    List(ctx context.Context, view string, q model.Query) (model.Page[model.EntryVersion], error)
+    Get(ctx context.Context, view string, kind model.Kind, name, version string) (model.EntryVersion, error)
+    ListVersions(ctx context.Context, view string, kind model.Kind, name string, q model.Query) (model.Page[model.EntryVersion], error)
+}
+func ConsumerRouter(pages ConsumerPages) http.Handler
+func AdminRouter(admin AdminOperations) http.Handler
+```
+
+`AdminOperations` is a set of small source/view management, publication, and diagnostic operations consumed by the admin router (not `ConsumerPages` and not a copy of the old monolith). A host may implement `ConsumerPages` from its own application service: it selects and orders results, returns **only** the bounded selection and any supported next opaque cursor, and determines error mapping for unavailable resources before the router encodes them. Both `List` and `ListVersions` take a `Query` with a finite positive limit and return at most that many entries in a `Page`; cursor input applies only where continuation is supported, while output preserves the route's existing cursor metadata. HTTP validates supported protocol paths/query/limits and supplies the route's fixed bound where there is no wire limit parameter. It serializes the supplied results and route-supported metadata, never truncates or re-selects results, re-queries to fill a page, or calculates a global count. Result selection and cursor generation belong to the host service (the default catalog in standalone). Get, list-versions and latest lookups must be consistent with the same host-selected set; an embedder must provide all these operations coherently, or mount only the format/serialization component it needs. A host owns cache headers appropriate to its responses; standalone results are non-personalized. The API never receives a principal/claim map as a parameter to the shared catalog.
+
+The bounded internal `Page` contract does **not** add wire pagination to version routes. Current behavior to characterize in #909 before freezing the contract:
+
+| Version-list kind | Current selection and response behavior |
+| --- | --- |
+| Server | The [handler](../internal/api/registry/v01/routes.go) requests 1000 records; [the service](../internal/service/db/impl_mcp.go) defaults to 30 and caps the requested limit at `MaxPageSize` (1000). It returns a bounded slice, so larger histories can be truncated without continuation. HTTP returns `ServerListResponse` (`servers`, `metadata.count` for returned results, empty next cursor), with no limit/cursor query handling. |
+| Skill | The [handler](../internal/api/x/skills/routes.go) calls [ListSkills](../internal/service/db/impl_skills.go) with namespace/name but no limit/cursor: the service defaults to 30, caps at 1000, and returns a page plus any next cursor. HTTP returns `SkillListResponse` (`skills`, `metadata.count`, optional `metadata.nextCursor`), but the version route does not consume limit/cursor query parameters, so that route cannot advance the page. |
+| Plugin | The [handler](../internal/api/x/plugins/routes.go) calls [ListPlugins](../internal/service/db/impl_plugins.go) with the same namespace/name selection, default 30 and cap 1000. HTTP returns `PluginListResponse` (`plugins`, `metadata.count`, optional `metadata.nextCursor`); this version route likewise does not consume limit/cursor query parameters. |
+
+Keep these wire shapes and route-specific bounds/continuation behavior unless an intentional compatibility change is documented; do not infer version-route pagination from the top-level list routes or from the presence of a response cursor. For current HTTP adapters, `ListVersions` receives the fixed per-kind bound and no input cursor; the host returns the bounded selection and existing per-kind cursor metadata. An empty cursor on a non-paginated route is not a guarantee of a complete history. #909 must cover below/at/above-limit histories for each kind, actual truncation after filtering/source selection, count/cursor output and ignored query parameters; any decision to enable continuation or change truncation must be explicit before the public contract freezes.
+
+## Data, ownership and ordering invariants
+
+1. **Source ownership.** A source owns its `(kind, name, version)` rows and their related package/remote/icon metadata. A view is an ordered list of source references, not copied entry storage; a managed source is the sole destination for API publication. Keep CONFIG/API provenance exclusive and the at-most-one-managed-source constraint. An operator source owns its own snapshots; no two writers (poller, publisher, controller) may own the same source unless they use a deliberately serialized path. Valid empty snapshots are allowed to remove all entries when a source genuinely has none; a fetch/validation failure must never be interpreted as an empty snapshot. Today's format validator requires at least one server ([source validator](../internal/sources/types.go)); distinguish that import-format rule from valid empty operator/source replacement so removal can work.
+2. **Atomic replacement.** A successful `ReplaceSource` swaps *all* versions of all three entry kinds and related metadata for **one source**, prunes that source's orphans, and updates its latest pointers in one atomic commit; readers see old or new, never partial. Failure/cancellation leaves the last good snapshot visible. PostgreSQL's existing [serializable writer](../internal/sync/writer/db.go) is the implementation baseline, not a demand that every backend expose SQL or use serializable transactions. Record failed attempt/status separately; do not erase good data on failure. A successful status/hash and snapshot must not disagree due to a stale attempt; couple success acknowledgement to the committed generation or make it compare-and-set against that generation.
+3. **Concurrent writers.** Claim jobs with a source-scoped lease/fencing generation; reconfigure/delete/recreate increments the generation. The replace commit checks the current fence, including after fetching; a stale or expired worker fails with a typed stale-write error and cannot change data or record success. Serialize overlapping controller events for the same source; an old namespace event must not delete data contributed by another namespace. For a multi-namespace watch, compute a complete snapshot for **all** configured namespaces then replace once per source, or use per-namespace owned partitions with a fenced merge. Choose the former for the first implementation. On startup and every watch-scope change, require a fenced complete reconciliation of the operator source across **all current** configured namespaces and supported CRD kinds, including a valid empty snapshot; do not wait for later resource events. This removes CRDs deleted during downtime and entries contributed by removed namespaces while retaining other namespaces' entries. A scope change advances the source generation so in-flight snapshots/events from the old scope cannot commit. Only replace after the complete list/cache synchronization and validation succeed; a list/watch/validation/commit failure preserves the existing snapshot and is not an empty result. Keep `toolhive.stacklok.dev/registry-export=true` opt-in and required registry URL/description annotations; do not introduce a per-CRD readiness/status-URL gate without a separately agreed change. Current [reconcile list](../internal/kubernetes/controller.go) uses `req.Namespace` then source-wide `Store`, while [builder namespaces](../internal/kubernetes/builder.go) can include several: do not copy that behavior. Test event reordering, lease expiry, source recreation and conflicting publication.
+4. **Conflicts and latest.** Within a view the earliest configured source wins for the whole `(kind, name)`; all its versions win together. Do not merge histories or silently promote a lower source on a failed ownership match (the old promotion is claims-specific). Source-level admin diagnostics show unshadowed entries. Version strings retain current [comparison rule](../internal/versions/compare.go): if both parse as semver, compare as semver; otherwise compare lexically. Mixed parseable/non-parseable strings do not necessarily induce a transitive order under this pairwise rule; characterize this in #909 and specify a deterministic iteration/tie rule (including equivalent semver spellings) for latest before the public contract freezes. Preserve exact version spelling; on publish, deletion and snapshot replace recompute latest for the *winning source*, never across shadowed sources. Characterize mixed semver/non-semver and ties before committing a comparator migration; a future different total order is a separately documented breaking decision.
+5. **Queries and cursors.** The backend/default catalog exposes deterministic ordering, filter semantics and keyset continuation over the non-personalized *view result* (after source-priority selection, not over raw source rows), with a stable unique tie-breaker. `Page` includes bounded results and an opaque next cursor where supported (see the version-route exceptions above); a cursor is bound to kind, view, filter (including the entry name for list-versions), order and position, and invalid/mismatched cursors are rejected. Avoid freezing the current [base64 name/version cursor](../internal/service/cursor.go) or its pagination edge cases; characterize existing wire behavior and document any cursor invalidation. A changed catalog between requests may change page contents unless snapshot-stable pagination is explicitly implemented; never promise snapshot isolation across pages. Host selection/personalized continuation is the host's responsibility, not a shared cursor-policy hook.
+
+## API, administration and assemblies
+
+Preserve `/registry/{name}/v0.1/servers` and its version routes, plus `/registry/{name}/v0.1/x/dev.toolhive/{skills,plugins}`; a single standalone deployment may still configure multiple named views. Preserve server, skill and plugin payload shapes and extension routes (see [consumer router](../internal/api/registry/v01/routes.go), [skills](../internal/api/x/skills/routes.go), [plugins](../internal/api/x/plugins/routes.go)); keep the upstream schema vs ToolHive extension boundary. The admin surface retains source CRUD, named view CRUD (currently called registries at HTTP/config), status/unshadowed diagnostics, and global managed publish/delete for all three kinds. Retire `/v1/me` and `/v1/entries/{type}/{name}/claims` routes; remove claims from request/response shapes, config, persistence and operator export rather than leave ignored fields. Consumer routes do not implicitly include the admin router.
+
+**Standalone admin decision (proposal):** public consumer listener does **not** mount `/v1` mutation or diagnostic routes. Admin router is disabled by default; enabling it requires an explicit admin credential read from a restricted file, checked in constant time for every admin request (including reads) at the standalone transport boundary, and by default binds only loopback on a separate listener. Remote administration requires an explicitly configured TLS/mTLS trusted ingress to that listener (e.g. a local sidecar), with network policy/port exposure reviewed; no insecure anonymous/OAuth-only all-roles fallback. A missing/invalid credential or unsafe exposure prevents startup or admin mounting, not a silent downgrade. This is coarse **instance-wide admin access**, not per-resource RBAC; no identity type is introduced into shared contracts. Audit admin actions and preserve HTTP input validation, request limits, transport TLS guidance and existing operational/internal probe separation. Kubernetes service-account RBAC for discovery stays; it is not application claims/RBAC. [Current admin routes](../internal/api/v1/routes.go) and [current listener assembly](../internal/api/server.go) do not yet meet this posture; deploy/chart defaults and documentation must change before removing role gates. Operator agreement is required before shipping this proposed administrative access change.
+
+| Assembly | Components it constructs and owns | What it need not construct |
+| --- | --- | --- |
+| Standalone | Config + secret files, PG pool/migrations, default catalog, definitions, jobs, adapters, coordinator, optional operator, consumer listener, opt-in protected admin listener, internal probes/audit/telemetry | Host identity model |
+| Format-only | Model/format validation/encoding | DB, config loader, sync, listeners, Kubernetes |
+| Reconciliation-only | Fetcher(s), backend `Entries`/`Definitions`/`Jobs`, optional coordinator/operator | Catalog HTTP, standalone config or PG |
+| Custom storage | Alternative implementation of **all used** persistence contracts including definitions, atomic writes and jobs/fencing, reused default catalog/reconciler/HTTP | PG pool, sqlc, app-specific persistence adapters for unused features |
+| Custom serving | Selected default catalog components or entirely host-owned application service providing coherent `ConsumerPages`; optionally reusable consumer handlers/formatters | Standalone listeners, admin routes, default database or config |
+
+A host creates its own resources (DB pool/client, HTTP server/listener, K8s client/manager, secrets, logger/telemetry) and injects dependencies through constructors. Constructors validate dependencies and return errors; they do **not** start goroutines, bind ports, migrate a DB, or assume ownership of supplied resources. One `Run(ctx)` per running coordinator/operator component blocks until cancellation or a fatal error. General poller readiness requires definitions/backend checks and its scheduling loop to have started, not every remote source to have synced. Operator export readiness additionally requires watches/cache synchronization and a successful initial fenced complete source snapshot commit, including when that snapshot is empty. Starting watches alone is insufficient. On a watch-scope change, operator readiness becomes false until a complete snapshot for the new scope commits; failed initial/scope-change reconciliation preserves the existing snapshot and readiness remains false until a successful retry. Both components become unready on terminal failure. Transient source fetch failures update status and are retried without crashing the process; infrastructure/watcher failures are returned to the caller. On cancel, stop claiming work, wait for in-flight bounded work to finish or cancel it, release leases, and return; `Stop`/cleanup is idempotent, bounded by caller context, and closes only resources the component created. Standalone assembles the components, propagates fatal errors from **all** workers/listeners, drains HTTP, stops coordinator/operator, flushes audit/telemetry and closes its owned pool exactly once. Current [app lifecycle](../internal/app/app.go) logs some worker failures without returning them; [operator builder](../internal/kubernetes/builder.go) starts a goroutine in construction. Both need deliberate migration.
+
+## Migration, compatibility and gates
+
+This changes the meaning of existing access controls; it must be a **breaking** release, not an unnoticed config default change. Maintain upstream consumer response shapes, named URL prefixes, source precedence and valid payloads where possible; source/admin API removal, changed default admin exposure, retired authz config, and existing cursor tokens are explicit breaking changes. Record an upgrade window, release notes and examples; reject deprecated `auth.authz`, `claims` on source/view/publish requests or YAML, and the operator `toolhive.stacklok.dev/authz-claims` annotation (warn/skip the annotated export until fixed rather than silently expose formerly restricted entries). Keep OAuth/JWT transport integration only where useful for standalone transport compatibility, never as resource scoping in the shared catalog; remove claim filters and role logic. Do not repurpose existing claims-bearing data as public data without an operator decision: inventory old labeled entries/definitions, provide a read-only report/backup and explicit operator opt-in to expose or migrate them, block unsafe automatic startup/exposure, then use **forward** migrations after code stops using old columns. Keep rollback/upgrade notes for older binaries; do not drop columns in the same slice that removes their last reader without a backup plan. Secure admin access must land before eliminating old role checks.
+
+| Slice | Deliverable and acceptance gate |
+| --- | --- |
+| [#908](https://github.com/stacklok/toolhive-registry-server/issues/908) models/formats | Public independent models/validators and round-trip source/server/skill/plugin fixtures; no sqlc, config loader or HTTP import; avoid exporting old claims-bearing types. |
+| [#909](https://github.com/stacklok/toolhive-registry-server/issues/909) characterization/contract tests | Lock source ownership, all-three-kind atomicity, stale-fence rejection, version/latest, ordered-view conflicts, page continuity, publish/delete and admin errors; external-module compile fixtures. Characterize server/skill/plugin version-list bounds, truncation, counts and cursor/query behavior above before freezing contracts; preserve wire shapes unless an intentional change is documented. Run tests before changing behavior where feasible. |
+| [#910](https://github.com/stacklok/toolhive-registry-server/issues/910) persistence | Define small contracts including sync jobs/definitions, implement PostgreSQL conformance, support custom backend without creating a full service or pool. Keep temporary internal adapters where needed. |
+| [#911](https://github.com/stacklok/toolhive-registry-server/issues/911) reconciliation | Fetchers/coordinator and operator adapter use those contracts; fix multi-namespace snapshot ownership and prove cancellation/fencing with tests. Restart gate: delete exported CRDs while stopped, restart without later events, and verify initial complete reconciliation removes stale entries, including deletion of the last CRD via an empty snapshot. Removed-namespace gate: shrink watch scope without resource events, verify removed namespaces' entries disappear and retained namespaces' entries survive; reject old-scope writes. In both gates, injected reconciliation failure preserves the previous snapshot and keeps operator readiness false until successful commit. General poller readiness need not await every remote source. No HTTP prerequisite. |
+| [#912](https://github.com/stacklok/toolhive-registry-server/issues/912) authz removal | Remove resource claims/RBAC only after admin boundary is fail-closed; explicit retired-config/old-data handling, retain export opt-in, K8s RBAC, validation and auditing. |
+| [#913](https://github.com/stacklok/toolhive-registry-server/issues/913) services/HTTP | Default catalog + replaceable admin/consumer operations; supplied page serialization without re-selection, protocol and extension compatibility checks. |
+| [#914](https://github.com/stacklok/toolhive-registry-server/issues/914) standalone | Reassemble using same public constructors as embedders; secure admin ingress, lifecycle and chart/docs defaults; no private assembly path. |
+| [#915](https://github.com/stacklok/toolhive-registry-server/issues/915) final migration | External-module format/reconcile/custom storage/custom serving examples, end-to-end backend conformance, release notes, forward schema cleanup after safe rollout; check actual import graph. |
+
+Temporary internal compatibility wrappers may keep existing handlers/tests compiling within a slice, but are not a second supported API; never publish the monolithic `RegistryService`, `WithClaims` or a claim-bearing `SyncWriter` as the new contract. Each slice has its own tests and can merge independently without a big-bang package relocation. Consider separate Go modules only if an external-module import test still drags DB/Kubernetes/config **runtime** dependencies into formats or if independent versioning is necessary; first establish package and import isolation within this module. Module splitting alone cannot fix import cycles or ownership.
+
+**Intentional rule updates during implementation, not now:** [layering.md](../.claude/rules/layering.md) §§1–2,4 currently require consumer calls through the old service and app factory; keep direction and source/view/entry-pool separation but revise the required seam. [data-model.md](../.claude/rules/data-model.md) §§1,4,7 are claims-specific and §3/§5 remain relevant; update those with claims removal/provenance migration. [auth.md](../.claude/rules/auth.md) §§1–6 define the model being retired; preserve §7 and independent transport-security controls. [api.md](../.claude/rules/api.md) §§2–3 and §5's claim-before-dedup rule conflict; preserve upstream routes, named paths, audit wrappers and path validation (§§1,4,6). [sync.md](../.claude/rules/sync.md) §1 should specify backend-neutral atomicity/fencing while preserving PG serializable implementation; §2 remains, and §3's claims annotation must be retired while retaining export opt-in. [secrets.md](../.claude/rules/secrets.md) applies to new standalone admin credential loading; update when implemented. Do not pre-edit active rules while the code still enforces them.
+
+**Questions for review before contracts freeze:** approve the proposed disabled-by-default, file-credential/loopback admin ingress (and the remote-ingress deployment path); choose the operator-controlled data exposure/backfill procedure and release boundary for formerly claim-protected rows; verify mixed-version comparator and cursor-compatibility expectations in #909 before defining an externally stable ordering. These are proposed decisions, not claims of operator approval.
