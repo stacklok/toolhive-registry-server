@@ -17,6 +17,7 @@ import (
 	auditmw "github.com/stacklok/toolhive-registry-server/internal/audit"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 )
 
 const (
@@ -91,15 +92,7 @@ func (routes *Routes) listSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := SkillListResponse{
-		Skills: serviceSkillsToResponse(result.Skills),
-		Metadata: SkillListMetadata{
-			Count:      len(result.Skills),
-			NextCursor: result.NextCursor,
-		},
-	}
-
-	common.WriteJSONResponse(w, resp, http.StatusOK)
+	common.WriteJSONResponse(w, formats.SkillPage(result.Skills, result.NextCursor), http.StatusOK)
 }
 
 // getLatestVersion handles GET /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}
@@ -150,7 +143,7 @@ func (routes *Routes) getLatestVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	common.WriteJSONResponse(w, serviceSkillToResponse(skill), http.StatusOK)
+	writeSkillResponse(w, formats.SkillPayload(skill))
 }
 
 // listVersions handles GET /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions
@@ -200,15 +193,7 @@ func (routes *Routes) listVersions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := SkillListResponse{
-		Skills: serviceSkillsToResponse(result.Skills),
-		Metadata: SkillListMetadata{
-			Count:      len(result.Skills),
-			NextCursor: result.NextCursor,
-		},
-	}
-
-	common.WriteJSONResponse(w, resp, http.StatusOK)
+	common.WriteJSONResponse(w, formats.SkillPage(result.Skills, result.NextCursor), http.StatusOK)
 }
 
 // getVersion handles GET /registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions/{version}
@@ -265,7 +250,11 @@ func (routes *Routes) getVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	common.WriteJSONResponse(w, serviceSkillToResponse(skill), http.StatusOK)
+	writeSkillResponse(w, formats.SkillPayload(skill))
+}
+
+func writeSkillResponse(w http.ResponseWriter, response thvregistry.Skill) {
+	common.WriteJSONResponse(w, response, http.StatusOK)
 }
 
 // parseListSkillsQuery parses and validates list skills query parameters.
@@ -305,57 +294,4 @@ func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 		slog.ErrorContext(r.Context(), "unexpected error", "error", err)
 		common.WriteErrorResponse(w, "internal server error", http.StatusInternalServerError)
 	}
-}
-
-// serviceSkillToResponse maps a service.Skill to a thvregistry.Skill response.
-func serviceSkillToResponse(s *service.Skill) thvregistry.Skill {
-	resp := thvregistry.Skill{
-		Namespace:     s.Namespace,
-		Name:          s.Name,
-		Description:   s.Description,
-		Version:       s.Version,
-		Status:        s.Status,
-		Title:         s.Title,
-		License:       s.License,
-		Compatibility: s.Compatibility,
-		AllowedTools:  s.AllowedTools,
-		Metadata:      s.Metadata,
-		Meta:          s.Meta,
-	}
-	if s.Repository != nil {
-		resp.Repository = &thvregistry.SkillRepository{
-			URL:  s.Repository.URL,
-			Type: s.Repository.Type,
-		}
-	}
-	for _, icon := range s.Icons {
-		resp.Icons = append(resp.Icons, thvregistry.SkillIcon{
-			Src:   icon.Src,
-			Size:  icon.Size,
-			Type:  icon.Type,
-			Label: icon.Label,
-		})
-	}
-	for _, pkg := range s.Packages {
-		resp.Packages = append(resp.Packages, thvregistry.SkillPackage{
-			RegistryType: pkg.RegistryType,
-			Identifier:   pkg.Identifier,
-			Digest:       pkg.Digest,
-			MediaType:    pkg.MediaType,
-			URL:          pkg.URL,
-			Ref:          pkg.Ref,
-			Commit:       pkg.Commit,
-			Subfolder:    pkg.Subfolder,
-		})
-	}
-	return resp
-}
-
-// serviceSkillsToResponse maps a slice of service.Skill to thvregistry.Skill responses.
-func serviceSkillsToResponse(skills []*service.Skill) []thvregistry.Skill {
-	result := make([]thvregistry.Skill, len(skills))
-	for i, s := range skills {
-		result[i] = serviceSkillToResponse(s)
-	}
-	return result
 }

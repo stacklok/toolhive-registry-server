@@ -2,7 +2,7 @@
 // extension endpoints.
 package plugins
 
-import thvregistry "github.com/stacklok/toolhive-core/registry/types"
+import "github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 
 // ListPluginsQuery holds parsed query parameters for GET /plugins (list).
 type ListPluginsQuery struct {
@@ -13,13 +13,7 @@ type ListPluginsQuery struct {
 }
 
 // PluginListMetadata is the metadata object in list responses.
-type PluginListMetadata struct {
-	Count      int    `json:"count"`
-	NextCursor string `json:"nextCursor,omitempty"`
-}
+type PluginListMetadata = formats.ExtensionMetadata
 
 // PluginListResponse is the response for GET /plugins (list).
-type PluginListResponse struct {
-	Plugins  []thvregistry.Plugin `json:"plugins"`
-	Metadata PluginListMetadata   `json:"metadata"`
-}
+type PluginListResponse = formats.PluginListResponse
