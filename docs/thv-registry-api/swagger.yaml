@@ -855,6 +855,11 @@ components:
             $ref: '#/components/schemas/registry.SkillPackage'
           type: array
           uniqueItems: false
+        provenance:
+          $ref: '#/components/schemas/registry.Provenance'
+          description: |-
+            Provenance contains the expected certificate identity and attestation
+            constraints for the plugin artifact.
         repository:
           $ref: '#/components/schemas/registry.SkillRepository'
           description: Repository is the source repository of the plugin.
