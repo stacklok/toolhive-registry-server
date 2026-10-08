@@ -182,15 +182,17 @@ RETURNING version_id;
 -- name: UpsertLatestSkillVersion :one
 INSERT INTO latest_entry_version (
     source_id,
+    entry_type,
     name,
     version,
     latest_version_id
 ) VALUES (
     sqlc.arg(source_id),
+    'SKILL',
     sqlc.arg(name),
     sqlc.arg(version),
     sqlc.arg(version_id)
-) ON CONFLICT (source_id, name)
+) ON CONFLICT (source_id, entry_type, name)
   DO UPDATE SET
     version = sqlc.arg(version),
     latest_version_id = sqlc.arg(version_id)
@@ -272,7 +274,8 @@ INSERT INTO skill (
     repository,
     icons,
     metadata,
-    extension_meta
+    extension_meta,
+    provenance
 ) VALUES (
     sqlc.arg(version_id),
     sqlc.arg(namespace),
@@ -283,18 +286,21 @@ INSERT INTO skill (
     sqlc.narg(repository),
     sqlc.narg(icons),
     sqlc.narg(metadata),
-    sqlc.narg(extension_meta)
+    sqlc.narg(extension_meta),
+    sqlc.narg(provenance)
 )
 ON CONFLICT (version_id)
 DO UPDATE SET
-    status = COALESCE(sqlc.narg(status)::skill_status, skill.status),
+    namespace = EXCLUDED.namespace,
+    status = EXCLUDED.status,
     license = sqlc.narg(license),
     compatibility = sqlc.narg(compatibility),
     allowed_tools = sqlc.narg(allowed_tools),
     repository = sqlc.narg(repository),
     icons = sqlc.narg(icons),
     metadata = sqlc.narg(metadata),
-    extension_meta = sqlc.narg(extension_meta)
+    extension_meta = sqlc.narg(extension_meta),
+    provenance = sqlc.narg(provenance)
 RETURNING version_id;
 
 -- name: DeleteSkillOciPackagesBySkillId :exec

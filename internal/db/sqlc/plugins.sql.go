@@ -643,15 +643,17 @@ func (q *Queries) ListPlugins(ctx context.Context, arg ListPluginsParams) ([]Lis
 const upsertLatestPluginVersion = `-- name: UpsertLatestPluginVersion :one
 INSERT INTO latest_entry_version (
     source_id,
+    entry_type,
     name,
     version,
     latest_version_id
 ) VALUES (
     $1,
+    'PLUGIN',
     $2,
     $3,
     $4
-) ON CONFLICT (source_id, name)
+) ON CONFLICT (source_id, entry_type, name)
   DO UPDATE SET
     version = $3,
     latest_version_id = $4
@@ -699,7 +701,8 @@ INSERT INTO plugin (
 )
 ON CONFLICT (version_id)
 DO UPDATE SET
-    status = COALESCE($3::plugin_status, plugin.status),
+    namespace = EXCLUDED.namespace,
+    status = EXCLUDED.status,
     license = $4,
     repository = $5,
     icons = $6,

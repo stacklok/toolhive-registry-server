@@ -560,8 +560,9 @@ func (s *dbService) executePublishPluginTransaction(
 	// Compare with current latest before upserting — avoid regressing the pointer
 	shouldUpdateLatest := true
 	currentLatest, err := querier.GetLatestEntryVersion(ctx, sqlc.GetLatestEntryVersionParams{
-		Name:     plugin.Name,
-		SourceID: managedSource.ID,
+		Name:      plugin.Name,
+		EntryType: sqlc.EntryTypePLUGIN,
+		SourceID:  managedSource.ID,
 	})
 	if err == nil {
 		shouldUpdateLatest = versions.IsNewerVersion(plugin.Version, currentLatest)
@@ -718,7 +719,7 @@ func (s *dbService) executeDeletePluginTransaction(
 		return err
 	}
 
-	if err := rePointLatestVersionIfNeeded(ctx, querier, registry.ID, options.Name, entryID,
+	if err := rePointLatestVersionIfNeeded(ctx, querier, registry.ID, options.Name, entryID, sqlc.EntryTypePLUGIN,
 		func(
 			ctx context.Context,
 			querier *sqlc.Queries,

@@ -34,6 +34,8 @@ func NewDefinitions(pool *pgxpool.Pool) (*Definitions, error) {
 
 type querier = sqlc.DBTX
 
+const nullJSON = "null"
+
 // CreateSource creates an API-owned source.
 func (d *Definitions) CreateSource(ctx context.Context, s persistence.SourceDefinition) (persistence.SourceDefinition, error) {
 	if s.ID != "" || s.Origin != "" {
@@ -142,6 +144,13 @@ func (d *Definitions) DeleteSource(ctx context.Context, name string) error {
 		}
 		if e = requireNoClaims(ctx, tx, "source", name); e != nil {
 			return e
+		}
+		claimed, e := sqlc.New(tx).EntryHasClaims(ctx, uuid.MustParse(old.ID))
+		if e != nil {
+			return classify(e)
+		}
+		if claimed {
+			return fmt.Errorf("%w: claimed legacy entries", persistence.ErrConflict)
 		}
 		used, e := sqlc.New(tx).DefSourceUsed(ctx, uuid.MustParse(old.ID))
 		if e != nil {
@@ -350,16 +359,16 @@ func (d *Definitions) Reconcile(
 		if err != nil {
 			return classify(err)
 		}
-		err = sqlc.New(tx).DefPruneSources(ctx, keepSources)
-		if err != nil {
-			return classify(err)
-		}
 		blocked, err = sqlc.New(tx).DefBlockedSources(ctx, keepSources)
 		if err != nil {
 			return classify(err)
 		}
 		if blocked {
-			return fmt.Errorf("%w: claimed CONFIG source", persistence.ErrConflict)
+			return fmt.Errorf("%w: claimed CONFIG source or entries", persistence.ErrConflict)
+		}
+		err = sqlc.New(tx).DefPruneSources(ctx, keepSources)
+		if err != nil {
+			return classify(err)
 		}
 		for _, s := range sources {
 			spec, filter, schedule, e := encode(s)
@@ -500,7 +509,7 @@ func decodeSource(id, name, origin, kind string, spec, filter []byte, micros any
 	default:
 		return s, fmt.Errorf("%w: unknown stored source kind", persistence.ErrInvalid)
 	}
-	if e == nil && len(filter) > 0 && string(filter) != "null" {
+	if e == nil && len(filter) > 0 && string(filter) != nullJSON {
 		s.Filter = &persistence.Filter{}
 		e = json.Unmarshal(filter, s.Filter)
 	}
@@ -608,7 +617,7 @@ func requireKnownFields(ctx context.Context, q querier, name string, old persist
 		raw  []byte
 		dest any
 	}{{spec, target}, {filter, &persistence.Filter{}}} {
-		if len(item.raw) == 0 || string(item.raw) == "null" {
+		if len(item.raw) == 0 || string(item.raw) == nullJSON {
 			continue
 		}
 		decoder := json.NewDecoder(strings.NewReader(string(item.raw)))
