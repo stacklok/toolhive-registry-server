@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence/conformance"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/postgres"
@@ -21,6 +22,14 @@ func TestExternalAdapter(t *testing.T) {
 	var _ persistence.Definitions = (*postgres.Definitions)(nil)
 	var _ conformance.Factory = func(*testing.T) persistence.Definitions { return nil }
 	var _ conformance.PairFactory = func(*testing.T) (persistence.Definitions, persistence.Definitions) { return nil, nil }
+	var _ persistence.Entries = (*postgres.Entries)(nil)
+	var _ conformance.EntriesFactory = func(*testing.T) (persistence.Sources, persistence.Entries) { return nil, nil }
+	if _, err := postgres.NewEntries(t.Context(), nil, 100); !errors.Is(err, persistence.ErrInvalid) {
+		t.Fatalf("nil entries pool: %v", err)
+	}
+	if err := persistence.ValidateSnapshot(&model.Snapshot{}); err != nil {
+		t.Fatalf("empty snapshot: %v", err)
+	}
 	if _, err := postgres.NewDefinitions(nil); !errors.Is(err, persistence.ErrInvalid) {
 		t.Fatalf("nil pool: %v", err)
 	}

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
@@ -18,13 +20,14 @@ type memoryState struct {
 	sync.Mutex
 	sources map[string]persistence.SourceDefinition
 	views   map[string]persistence.ViewDefinition
+	records map[string]persistence.Entry
 	seq     int
 }
 
 var _ persistence.Definitions = (*memory)(nil)
 
 func fresh() *memory {
-	return &memory{memoryState: &memoryState{sources: map[string]persistence.SourceDefinition{}, views: map[string]persistence.ViewDefinition{}}}
+	return &memory{memoryState: &memoryState{sources: map[string]persistence.SourceDefinition{}, views: map[string]persistence.ViewDefinition{}, records: map[string]persistence.Entry{}}}
 }
 func clone[T any](v T) T { b, _ := json.Marshal(v); var out T; _ = json.Unmarshal(b, &out); return out }
 func (m *memory) transact(ctx context.Context, f func(*memory) error) error {
@@ -33,14 +36,14 @@ func (m *memory) transact(ctx context.Context, f func(*memory) error) error {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
-	next := &memory{memoryState: &memoryState{sources: clone(m.sources), views: clone(m.views), seq: m.seq}}
+	next := &memory{memoryState: &memoryState{sources: clone(m.sources), views: clone(m.views), records: clone(m.records), seq: m.seq}}
 	if e := f(next); e != nil {
 		return e
 	}
 	if e := ctx.Err(); e != nil {
 		return e
 	}
-	m.sources, m.views, m.seq = next.sources, next.views, next.seq
+	m.sources, m.views, m.records, m.seq = next.sources, next.views, next.records, next.seq
 	return nil
 }
 func (m *memory) CreateSource(ctx context.Context, s persistence.SourceDefinition) (persistence.SourceDefinition, error) {
@@ -64,7 +67,7 @@ func (m *memory) CreateSource(ctx context.Context, s persistence.SourceDefinitio
 			}
 		}
 		n.seq++
-		s.ID = fmt.Sprintf("%d", n.seq)
+		s.ID = uuid.NewString()
 		s.Origin = persistence.OriginAPI
 		n.sources[s.Name] = clone(s)
 		out = clone(s)
@@ -150,6 +153,11 @@ func (m *memory) DeleteSource(ctx context.Context, name string) error {
 			}
 		}
 		delete(n.sources, name)
+		for key, entry := range n.records {
+			if entry.SourceID == old.ID {
+				delete(n.records, key)
+			}
+		}
 		return nil
 	})
 }
@@ -286,7 +294,7 @@ func (m *memory) Reconcile(ctx context.Context, sources []persistence.SourceDefi
 				s.ID = old.ID
 			} else {
 				n.seq++
-				s.ID = fmt.Sprintf("%d", n.seq)
+				s.ID = uuid.NewString()
 			}
 			s.Origin = persistence.OriginConfig
 			n.sources[s.Name] = clone(s)

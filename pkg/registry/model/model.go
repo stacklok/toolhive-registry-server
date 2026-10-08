@@ -50,24 +50,25 @@ type SkillIcon struct {
 // Formats.SkillPayload converts it to the ToolHive consumer schema without
 // exposing the catalog's ID, timestamps, or latest flag.
 type Skill struct {
-	ID            string           `json:"id,omitempty"`
-	Namespace     string           `json:"namespace"`
-	Name          string           `json:"name"`
-	Description   string           `json:"description"`
-	Version       string           `json:"version"`
-	Status        string           `json:"status,omitempty"`
-	Title         string           `json:"title,omitempty"`
-	License       string           `json:"license,omitempty"`
-	Compatibility string           `json:"compatibility,omitempty"`
-	AllowedTools  []string         `json:"allowedTools,omitempty"`
-	Repository    *SkillRepository `json:"repository,omitempty"`
-	Icons         []SkillIcon      `json:"icons,omitempty"`
-	Packages      []SkillPackage   `json:"packages,omitempty"`
-	Metadata      map[string]any   `json:"metadata,omitempty"`
-	Meta          map[string]any   `json:"_meta,omitempty"`
-	IsLatest      bool             `json:"isLatest,omitempty"`
-	CreatedAt     time.Time        `json:"createdAt,omitempty"`
-	UpdatedAt     time.Time        `json:"updatedAt,omitempty"`
+	ID            string                  `json:"id,omitempty"`
+	Namespace     string                  `json:"namespace"`
+	Name          string                  `json:"name"`
+	Description   string                  `json:"description"`
+	Version       string                  `json:"version"`
+	Status        string                  `json:"status,omitempty"`
+	Title         string                  `json:"title,omitempty"`
+	License       string                  `json:"license,omitempty"`
+	Compatibility string                  `json:"compatibility,omitempty"`
+	AllowedTools  []string                `json:"allowedTools,omitempty"`
+	Repository    *SkillRepository        `json:"repository,omitempty"`
+	Icons         []SkillIcon             `json:"icons,omitempty"`
+	Packages      []SkillPackage          `json:"packages,omitempty"`
+	Metadata      map[string]any          `json:"metadata,omitempty"`
+	Provenance    *thvregistry.Provenance `json:"provenance,omitempty"`
+	Meta          map[string]any          `json:"_meta,omitempty"`
+	IsLatest      bool                    `json:"isLatest,omitempty"`
+	CreatedAt     time.Time               `json:"createdAt,omitempty"`
+	UpdatedAt     time.Time               `json:"updatedAt,omitempty"`
 }
 
 // PluginRepository describes a plugin's source repository.

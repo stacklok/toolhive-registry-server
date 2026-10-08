@@ -800,8 +800,9 @@ func (s *dbService) insertServerData(
 	// Compare with current latest before upserting — avoid regressing the pointer
 	shouldUpdateLatest := true
 	currentLatest, err := querier.GetLatestEntryVersion(ctx, sqlc.GetLatestEntryVersionParams{
-		Name:     serverData.Name,
-		SourceID: registryID,
+		Name:      serverData.Name,
+		EntryType: sqlc.EntryTypeMCP,
+		SourceID:  registryID,
 	})
 	if err == nil {
 		shouldUpdateLatest = versions.IsNewerVersion(serverData.Version, currentLatest)
@@ -913,7 +914,7 @@ func (s *dbService) executeDeleteTransaction(
 		return err
 	}
 
-	if err := rePointLatestVersionIfNeeded(ctx, querier, source.ID, options.ServerName, entryID,
+	if err := rePointLatestVersionIfNeeded(ctx, querier, source.ID, options.ServerName, entryID, sqlc.EntryTypeMCP,
 		func(ctx context.Context, querier *sqlc.Queries, sourceID uuid.UUID, name, version string, versionID uuid.UUID) error {
 			_, err := querier.UpsertLatestServerVersion(ctx, sqlc.UpsertLatestServerVersionParams{
 				SourceID:  sourceID,
