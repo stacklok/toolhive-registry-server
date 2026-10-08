@@ -5,6 +5,7 @@ go 1.26.0
 require github.com/stacklok/toolhive-registry-server v0.0.0
 
 require (
+	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/modelcontextprotocol/registry v1.8.1 // indirect
 	github.com/stacklok/toolhive-core v0.0.43 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
