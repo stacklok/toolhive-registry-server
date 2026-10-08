@@ -296,6 +296,29 @@ func TestGetLatestPluginVersion(t *testing.T) {
 	}
 }
 
+func TestVersionRouteContract(t *testing.T) {
+	t.Parallel()
+	mockSvc := mocks.NewMockRegistryService(gomock.NewController(t))
+	mockSvc.EXPECT().ListPlugins(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ any, opts ...service.Option) (*service.ListPluginsResult, error) {
+			resolved := applyListPluginsOptions(t, opts)
+			require.Equal(t, "myreg", resolved.RegistryName)
+			require.Equal(t, "io.github.stacklok", resolved.Namespace)
+			require.NotNil(t, resolved.Name)
+			require.Equal(t, "auth-proxy", *resolved.Name)
+			require.Nil(t, resolved.Cursor)
+			require.Zero(t, resolved.Limit)
+			return &service.ListPluginsResult{Plugins: []*service.Plugin{{Namespace: resolved.Namespace, Name: *resolved.Name, Version: "1.0.0"}}, NextCursor: "more"}, nil
+		})
+	rr := httptest.NewRecorder()
+	pluginsRouterWithRegistryMount(mockSvc).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/myreg/v0.1/x/dev.toolhive/plugins/io.github.stacklok/auth-proxy/versions?cursor=ignored&limit=1", nil))
+	require.Equal(t, http.StatusOK, rr.Code)
+	var response PluginListResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+	require.Equal(t, 1, response.Metadata.Count)
+	require.Equal(t, "more", response.Metadata.NextCursor)
+}
+
 func TestListPluginVersions(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)

@@ -171,3 +171,16 @@ jobs:
 
       - name: Run integration tests
         run: go test -tags integration -v -count=1 ./internal/authz/
+
+      - name: Install pinned envtest tool and assets
+        run: |
+          go install sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.0.0-20260125163108-a19ec76a3c5d
+          # Pin the metadata source: the controller-tools default index follows main.
+          ENVTEST_RELEASES_INDEX="https://raw.githubusercontent.com/kubernetes-sigs/controller-tools/1031496fc98a4f51010c3bdfdeb57b5d67bea7bd/envtest-releases.yaml"
+          assets="$("$(go env GOPATH)/bin/setup-envtest" use 1.33.0 --index "$ENVTEST_RELEASES_INDEX" -p path)"
+          test -x "$assets/kube-apiserver"
+          test -x "$assets/etcd"
+          printf 'KUBEBUILDER_ASSETS=%s\n' "$assets" >> "$GITHUB_ENV"
+
+      - name: Run Kubernetes manager acceptance with race detector
+        run: go test -p 2 -race -tags integration -count=1 ./internal/kubernetes -run '^TestRegisteredStartupRefresh$' -v

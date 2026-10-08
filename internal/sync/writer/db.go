@@ -140,6 +140,9 @@ func (d *dbSyncWriter) Store(
 	if err := d.storeSkills(ctx, tx, registry.ID, reg.Data.Skills, registry.Claims); err != nil {
 		return fmt.Errorf("failed to store skills: %w", err)
 	}
+	if err := dropEntryTempTables(ctx, querier); err != nil {
+		return err
+	}
 
 	// Step 7: Store plugins
 	if err := d.storePlugins(ctx, tx, registry.ID, reg.Data.Plugins, registry.Claims); err != nil {
