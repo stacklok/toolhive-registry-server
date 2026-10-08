@@ -18,6 +18,7 @@ import (
 	auditmw "github.com/stacklok/toolhive-registry-server/internal/audit"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 )
 
 // Routes handles HTTP requests for registry API v0.1 endpoints.
@@ -139,23 +140,9 @@ func (routes *Routes) handleListServers(w http.ResponseWriter, r *http.Request, 
 		"user", user,
 	)
 
-	serverResponses := make([]upstreamv0.ServerResponse, len(listResult.Servers))
-	for i, server := range listResult.Servers {
-		serverResponses[i] = upstreamv0.ServerResponse{
-			Server: *server,
-			Meta:   upstreamv0.ResponseMeta{},
-		}
-	}
+	result := formats.ServerPage(listResult.Servers, listResult.NextCursor)
 
-	result := upstreamv0.ServerListResponse{
-		Servers: serverResponses,
-		Metadata: upstreamv0.Metadata{
-			NextCursor: listResult.NextCursor,
-			Count:      len(listResult.Servers),
-		},
-	}
-
-	common.WriteJSONResponse(w, result, http.StatusOK)
+	writeServerListResponse(w, result)
 }
 
 // listServersWithRegistryName handles GET /{registryName}/v0.1/servers
@@ -227,23 +214,9 @@ func (routes *Routes) handleListVersions(w http.ResponseWriter, r *http.Request,
 		"user", user,
 	)
 
-	serverResponses := make([]upstreamv0.ServerResponse, len(versions))
-	for i, version := range versions {
-		serverResponses[i] = upstreamv0.ServerResponse{
-			Server: *version,
-			Meta:   upstreamv0.ResponseMeta{},
-		}
-	}
+	result := formats.ServerPage(versions, "")
 
-	result := upstreamv0.ServerListResponse{
-		Servers: serverResponses,
-		Metadata: upstreamv0.Metadata{
-			NextCursor: "",
-			Count:      len(versions),
-		},
-	}
-
-	common.WriteJSONResponse(w, result, http.StatusOK)
+	writeServerListResponse(w, result)
 }
 
 // listVersionsWithRegistryName handles GET /{registryName}/v0.1/servers/{serverName}/versions
@@ -309,11 +282,7 @@ func (routes *Routes) handleGetVersion(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
-	serverResponse := upstreamv0.ServerResponse{
-		Server: *server,
-		Meta:   upstreamv0.ResponseMeta{},
-	}
-	common.WriteJSONResponse(w, serverResponse, http.StatusOK)
+	writeServerResponse(w, formats.ServerPayload(server))
 }
 
 // getVersionWithRegistryName handles GET /{registryName}/v0.1/servers/{serverName}/versions/{version}
@@ -340,6 +309,14 @@ func (routes *Routes) getVersionWithRegistryName(w http.ResponseWriter, r *http.
 	}
 
 	routes.handleGetVersion(w, r, registryName)
+}
+
+func writeServerListResponse(w http.ResponseWriter, response upstreamv0.ServerListResponse) {
+	common.WriteJSONResponse(w, response, http.StatusOK)
+}
+
+func writeServerResponse(w http.ResponseWriter, response upstreamv0.ServerResponse) {
+	common.WriteJSONResponse(w, response, http.StatusOK)
 }
 
 // writeServiceError maps service-layer errors to HTTP responses for upstream API handlers.
