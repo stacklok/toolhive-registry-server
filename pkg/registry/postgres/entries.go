@@ -51,7 +51,7 @@ func (d *Entries) ReplaceSnapshot(ctx context.Context, source persistence.Source
 	if err != nil {
 		return err
 	}
-	if kind == "managed" {
+	if kind == managedSourceKind {
 		return fmt.Errorf("%w: managed source cannot be snapshotted", persistence.ErrConflict)
 	}
 	if err := persistence.ValidateSnapshot(&snapshot); err != nil {
@@ -75,7 +75,20 @@ func (d *Entries) ReplaceSnapshot(ctx context.Context, source persistence.Source
 		if e = guardClaims(ctx, q, row); e != nil {
 			return e
 		}
-		return classify(writer.StoreSourceTx(ctx, tx, id, &snapshot, d.maxMetaSize))
+		allowed, e := q.JobSnapshotAllowed(ctx, id)
+		if e != nil {
+			return classify(e)
+		}
+		if !allowed {
+			return persistence.ErrBusy
+		}
+		if e = writer.StoreSourceTx(ctx, tx, id, &snapshot, d.maxMetaSize); e != nil {
+			return classify(e)
+		}
+		if e = q.JobInvalidateSnapshot(ctx, id); e != nil {
+			return classify(e)
+		}
+		return classify(q.JobClearSnapshotBaseline(ctx, id))
 	})
 }
 

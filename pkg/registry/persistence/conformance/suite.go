@@ -50,8 +50,8 @@ func Run(t *testing.T, newStore Factory) {
 					Schedule: "1h", Filter: &persistence.Filter{Names: &persistence.NameFilter{Include: []string{"a"}}}},
 				{Name: apiName, API: &persistence.APISpec{Endpoint: "https://example.org", Timeout: "30s"}, Schedule: "1m"},
 				{Name: fileName, File: &persistence.FileSpec{Path: "/tmp/registry.json"}, Schedule: "1s"},
-				{Name: "inline", File: &persistence.FileSpec{Data: "{}"}},
-				{Name: "kubernetes", Kubernetes: &persistence.KubernetesSpec{Namespaces: []string{oneName}}}, mk("managed"),
+				{Name: testInlineName, File: &persistence.FileSpec{Data: "{}"}},
+				{Name: "kubernetes", Kubernetes: &persistence.KubernetesSpec{Namespaces: []string{oneName}}}, mk(testManagedKind),
 			}
 			for _, s := range specs {
 				made, e := d.CreateSource(ctx, s)
@@ -102,7 +102,7 @@ func Run(t *testing.T, newStore Factory) {
 			if len(all) != len(specs) {
 				t.Fatalf("sources: %+v", all)
 			}
-			for i, n := range []string{apiName, fileName, gitName, "inline", "kubernetes", "managed"} {
+			for i, n := range []string{apiName, fileName, gitName, testInlineName, "kubernetes", testManagedKind} {
 				if all[i].Name != n {
 					t.Fatalf("list order: %+v", all)
 				}

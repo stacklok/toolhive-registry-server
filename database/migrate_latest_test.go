@@ -25,14 +25,14 @@ func TestLatestKindDownRejectsUnpointedCollision(t *testing.T) {
  SELECT e.source_id,e.entry_type,e.name,v.version,v.id FROM registry_entry e JOIN entry_version v ON v.entry_id=e.id
  JOIN source s ON s.id=e.source_id WHERE s.name='unpointed' AND e.entry_type='MCP'`)
 	require.NoError(t, err)
-	require.Error(t, MigrateDown(ctx, db, 1))
+	require.Error(t, MigrateDown(ctx, db, 2))
 }
 
 func TestLatestKindRoundTripAndPayloadGuard(t *testing.T) {
 	t.Parallel()
 	db, _ := SetupTestDB(t)
 	ctx := t.Context()
-	require.NoError(t, MigrateDown(ctx, db, 1))
+	require.NoError(t, MigrateDown(ctx, db, 2))
 	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable) VALUES('roundtrip','managed','{}',false)`)
 	require.NoError(t, err)
 	_, err = db.Exec(ctx, `INSERT INTO registry_entry(source_id,entry_type,name)
@@ -52,7 +52,7 @@ func TestLatestKindRoundTripAndPayloadGuard(t *testing.T) {
  JOIN entry_version v ON v.id=l.latest_version_id WHERE l.name='server'`).Scan(&kind, &description))
 	require.Equal(t, "MCP", kind)
 	require.Equal(t, "retained", description)
-	require.NoError(t, MigrateDown(ctx, db, 1))
+	require.NoError(t, MigrateDown(ctx, db, 2))
 	require.NoError(t, db.QueryRow(ctx, `SELECT v.description FROM latest_entry_version l JOIN entry_version v
  ON v.id=l.latest_version_id WHERE l.name='server'`).Scan(&description))
 	require.Equal(t, "retained", description)
@@ -73,14 +73,14 @@ func TestLatestKindDownRejectsNewPayload(t *testing.T) {
 	require.NoError(t, err)
 	_, err = db.Exec(ctx, `INSERT INTO mcp_server(version_id,schema_url) SELECT id,'https://example.org/schema' FROM entry_version WHERE name='server'`)
 	require.NoError(t, err)
-	require.Error(t, MigrateDown(ctx, db, 1), "nonempty new payload cannot be discarded")
+	require.Error(t, MigrateDown(ctx, db, 2), "nonempty new payload cannot be discarded")
 }
 
 func TestLatestKindMigrationAndRepair(t *testing.T) {
 	t.Parallel()
 	db, _ := SetupTestDB(t)
 	ctx := t.Context()
-	require.NoError(t, MigrateDown(ctx, db, 1))
+	require.NoError(t, MigrateDown(ctx, db, 2))
 	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable) VALUES('mixed','managed','{}',false)`)
 	require.NoError(t, err)
 	_, err = db.Exec(ctx, `INSERT INTO registry_entry(source_id,entry_type,name)
@@ -116,5 +116,5 @@ func TestLatestKindMigrationAndRepair(t *testing.T) {
 	_, err = db.Exec(ctx, `UPDATE latest_entry_version SET latest_version_id=$1 WHERE entry_type='SKILL' AND name='same'`, wrongID)
 	require.Error(t, err, "pointer cannot cross kinds")
 	// Rollback with multiple kinds sharing a name must refuse to lose pointers.
-	require.Error(t, MigrateDown(ctx, db, 1))
+	require.Error(t, MigrateDown(ctx, db, 2))
 }
