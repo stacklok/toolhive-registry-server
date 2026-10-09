@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -137,7 +138,7 @@ type Querier interface {
 	GetSkillVersionBySourceName(ctx context.Context, arg GetSkillVersionBySourceNameParams) (GetSkillVersionBySourceNameRow, error)
 	GetSource(ctx context.Context, id uuid.UUID) (GetSourceRow, error)
 	GetSourceByName(ctx context.Context, name string) (GetSourceByNameRow, error)
-	GetSourceSync(ctx context.Context, id uuid.UUID) (RegistrySync, error)
+	GetSourceSync(ctx context.Context, id uuid.UUID) (GetSourceSyncRow, error)
 	GetSourceSyncByName(ctx context.Context, name string) (RegistrySync, error)
 	InitializeSourceSync(ctx context.Context, arg InitializeSourceSyncParams) error
 	InsertEntryVersion(ctx context.Context, arg InsertEntryVersionParams) (uuid.UUID, error)
@@ -162,6 +163,18 @@ type Querier interface {
 	// Insert a new source with full configuration. creation_type is passed as a parameter.
 	InsertSource(ctx context.Context, arg InsertSourceParams) (Source, error)
 	InsertSourceSync(ctx context.Context, arg InsertSourceSyncParams) (uuid.UUID, error)
+	JobAcquire(ctx context.Context, arg JobAcquireParams) (JobAcquireRow, error)
+	JobClearSnapshotBaseline(ctx context.Context, dollar_1 uuid.UUID) error
+	JobFail(ctx context.Context, arg JobFailParams) (int64, error)
+	JobFence(ctx context.Context, arg JobFenceParams) (*uuid.UUID, error)
+	JobFinish(ctx context.Context, arg JobFinishParams) (int64, error)
+	JobFinishUnchanged(ctx context.Context, arg JobFinishUnchangedParams) (int64, error)
+	JobInvalidateSnapshot(ctx context.Context, dollar_1 uuid.UUID) error
+	JobLockSource(ctx context.Context, name string) (JobLockSourceRow, error)
+	JobNext(ctx context.Context, dollar_1 []string) (string, error)
+	JobRenew(ctx context.Context, arg JobRenewParams) (pgtype.Timestamptz, error)
+	JobSnapshotAllowed(ctx context.Context, dollar_1 uuid.UUID) (bool, error)
+	JobStatus(ctx context.Context, name string) (JobStatusRow, error)
 	LinkRegistrySource(ctx context.Context, arg LinkRegistrySourceParams) error
 	ListAllSourceNames(ctx context.Context) ([]string, error)
 	ListEntriesByRegistry(ctx context.Context, registryID uuid.UUID) ([]ListEntriesByRegistryRow, error)
