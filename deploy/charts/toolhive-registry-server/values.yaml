@@ -1,42 +1,47 @@
 # Default values for toolhive-registry-server.
 # This is a YAML-formatted file.
 
-# -- Number of replicas
+# -- Number of Registry Server pod replicas.
 replicaCount: 1
 
 image:
-  # -- URL of the registry server image
+  # -- Registry Server container image reference, including the tag or digest.
   registryServerUrl: "ghcr.io/stacklok/thv-registry-api:v1.5.2"
 
-  # -- Image pull policy
+  # -- Image pull policy for the Registry Server container.
   pullPolicy: IfNotPresent
 
-# -- Image pull secrets for private registries
+# -- References to Secrets in the release namespace used to pull private
+# container images.
 imagePullSecrets: []
-# -- Override the name of the chart
+# -- Override the chart name used in resource labels and generated names.
 nameOverride: ""
-# -- Override the full name of the chart
+# -- Override the generated name of the Deployment, Service, and related
+# resources.
 fullnameOverride: ""
 
 serviceAccount:
-  # -- Specifies whether a service account should be created
+  # -- Create the ServiceAccount named by `serviceAccount.name`. Set to false to
+  # use an existing ServiceAccount.
   create: true
-  # -- Annotations to add to the service account
+  # -- Annotations on the ServiceAccount created by this chart.
   annotations: {}
-  # -- The name of the service account to use
+  # -- ServiceAccount name used by the pods and RBAC bindings. When
+  # `serviceAccount.create` is false, this account must already exist in the
+  # release namespace.
   name: "toolhive-registry-server"
 
-# -- Annotations to add to the pod
+# -- Additional annotations on Registry Server pods.
 podAnnotations: {}
 
-# -- Labels to add to the pod
+# -- Additional labels on Registry Server pods.
 podLabels: {}
 
-# -- Pod security context
+# -- Kubernetes security context applied to Registry Server pods.
 podSecurityContext: {}
   # fsGroup: 2000
 
-# -- Container security context
+# -- Kubernetes security context applied to the Registry Server container.
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
@@ -49,27 +54,26 @@ securityContext:
     type: RuntimeDefault
 
 service:
-  # -- Service type
+  # -- Kubernetes Service type. External Service types also expose the internal
+  # port when `service.exposeInternalPort` is true.
   type: ClusterIP
-  # -- Service port
+  # -- Service port for the Registry Server API, forwarding to container port
+  # 8080.
   port: 8080
-  # -- Whether the Service publishes service.internalPort at all. The
-  # internal port carries no authentication, audit logging, or rate limiting
-  # by design (see "Internal Port Exposure" below); if service.type is set to
-  # anything other than the default ClusterIP, that Service publishes the
-  # internal port externally too, since there is no per-port guard. Set this
-  # to false to keep the internal port pod-local (reachable only via
-  # port-forward) if you change service.type and don't want that.
+  # -- Publish the internal listener through the Service. This listener serves
+  # health checks and metrics without authentication, audit logging, or rate
+  # limiting. Set to false to omit it from the Service; Kubernetes probes still
+  # reach the container directly. With an externally accessible Service type,
+  # enabling this setting also exposes the internal listener externally.
   exposeInternalPort: true
-  # -- Internal service port (health checks, metrics). The container always
-  # listens on 8081 regardless of this value — this only changes the port the
-  # Service publishes that listener on, the same as service.port above. Only
-  # takes effect when service.exposeInternalPort is true.
+  # -- Service port forwarding to the internal listener on container port 8081.
+  # Applies when `service.exposeInternalPort` is true. Changing this value changes
+  # the Service port; the container port stays at 8081 with the default listener settings.
   internalPort: 8081
-  # -- Service annotations
+  # -- Annotations on the Registry Server Service.
   annotations: {}
 
-# -- Resource requests and limits (matching operator defaults)
+# -- CPU and memory requests and limits for the Registry Server container.
 resources:
   limits:
     cpu: 500m
@@ -78,7 +82,7 @@ resources:
     cpu: 100m
     memory: 128Mi
 
-# -- Liveness probe configuration
+# -- Kubernetes liveness probe for the Registry Server container.
 livenessProbe:
   httpGet:
     path: /health
@@ -86,7 +90,7 @@ livenessProbe:
   initialDelaySeconds: 30
   periodSeconds: 10
 
-# -- Readiness probe configuration
+# -- Kubernetes readiness probe for the Registry Server container.
 readinessProbe:
   httpGet:
     path: /readiness
@@ -94,18 +98,19 @@ readinessProbe:
   initialDelaySeconds: 5
   periodSeconds: 5
 
-# -- Node selector for pod scheduling
+# -- Node labels that Registry Server pods require for scheduling.
 nodeSelector: {}
 
-# -- Tolerations for pod scheduling
+# -- Tolerations that allow Registry Server pods to be scheduled on tainted
+# nodes.
 tolerations: []
 
-# -- Affinity rules for pod scheduling
+# -- Node and pod affinity rules for scheduling Registry Server pods.
 affinity: {}
 
-# -- Init containers to run before the main container
-# Use this for setup tasks like preparing pgpass files, waiting for dependencies, etc.
-# Init containers share the same volumes as the main container (extraVolumes)
+# -- Init container specifications run before the Registry Server container.
+# Each init container defines its own volume mounts and can mount volumes declared
+# in `extraVolumes`, for example to prepare a PostgreSQL password file.
 initContainers: []
   # Example: pgpass init container for PostgreSQL authentication
   # - name: pgpass-init
@@ -134,12 +139,11 @@ initContainers: []
 # ==============================================================================
 # Registry Server Configuration
 # ==============================================================================
-# This section is rendered directly as the config.yaml file for the registry server.
-# Any valid registry server configuration can be added here.
-# See: https://github.com/stacklok/toolhive-registry-server/blob/main/docs/configuration.md
-#
-# The entire config block is rendered as YAML into the ConfigMap, so you can add
-# any new fields without modifying the chart templates.
+# -- Registry Server application configuration rendered as `config.yaml` in a
+# Kubernetes ConfigMap. Accepts any valid Registry Server configuration field.
+# See [Configuration](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/configuration.md).
+# Supply database passwords through Secret-backed environment variables in
+# `extraEnv`, a PostgreSQL password file, or dynamic authentication.
 
 config:
   # Sources configuration - at least one source must be configured
@@ -162,10 +166,9 @@ config:
     mode: anonymous
 
   # PostgreSQL database configuration (required)
-  # WARNING: Do NOT set password or migrationPassword here — this config block is
-  # rendered into a Kubernetes ConfigMap, which is not encrypted at rest.
-  # Instead, provide passwords via environment variables using extraEnv with
-  # secretKeyRef (see the extraEnv section below for examples).
+  # Supply password and migrationPassword through Secret-backed environment
+  # variables in extraEnv. This block is stored in a ConfigMap, which is intended
+  # for nonconfidential configuration.
   # Supported password methods:
   #   1. Environment variables: THV_REGISTRY_DATABASE_PASSWORD (see extraEnv below)
   #   2. PostgreSQL's pgpass file (~/.pgpass or $PGPASSFILE)
@@ -297,8 +300,8 @@ config:
 # Additional Environment Variables
 # ==============================================================================
 
-# -- Additional environment variables to add to the container
-# Use this for secrets, feature flags, or runtime configuration
+# -- Additional environment variables for the Registry Server container. Use
+# `valueFrom.secretKeyRef` to supply passwords from Kubernetes Secrets.
 extraEnv: []
   # Example: Database password from a Kubernetes Secret
   # - name: THV_REGISTRY_DATABASE_PASSWORD
@@ -318,7 +321,8 @@ extraEnv: []
   # - name: THV_REGISTRY_INSECURE_URL
   #   value: "true"
 
-# -- Additional environment variables from ConfigMap or Secret references
+# -- ConfigMap or Secret references whose keys become environment variables in
+# the Registry Server container.
 extraEnvFrom: []
   # - configMapRef:
   #     name: my-config
@@ -329,7 +333,8 @@ extraEnvFrom: []
 # Additional Volume Mounts
 # ==============================================================================
 
-# -- Additional volumes to add to the pod
+# -- Additional Kubernetes volumes available to the Registry Server pod. Mount
+# them with `extraVolumeMounts` or an init container's `volumeMounts`.
 extraVolumes: []
   # - name: pgpass
   #   secret:
@@ -342,7 +347,8 @@ extraVolumes: []
   #   persistentVolumeClaim:
   #     claimName: registry-data-pvc
 
-# -- Additional volume mounts to add to the container
+# -- Additional volume mounts for the Registry Server container, referencing
+# volumes declared in `extraVolumes`.
 extraVolumeMounts: []
   # - name: pgpass
   #   mountPath: /secrets/pgpass
@@ -358,14 +364,15 @@ extraVolumeMounts: []
 # RBAC Configuration
 # ==============================================================================
 
-# -- RBAC configuration for the registry server
+# -- Kubernetes role-based access control (RBAC) settings for watching ToolHive
+# resources and Services.
 rbac:
-  # -- Scope of the RBAC configuration.
-  # - cluster: The registry server will have cluster-wide permissions via ClusterRole and ClusterRoleBinding.
-  # - namespace: The registry server will have permissions to watch resources in the namespaces specified in `allowedNamespaces`.
-  #   The registry server will have a ClusterRole and RoleBinding for each namespace in `allowedNamespaces`.
+  # -- Scope of permissions to watch ToolHive resources and Services. `cluster`
+  # creates a ClusterRoleBinding for all namespaces. `namespace` creates a
+  # RoleBinding in each namespace listed in `rbac.allowedNamespaces` and restricts
+  # the server's watches to those namespaces.
   scope: cluster
 
-  # -- List of namespaces that the registry server is allowed to watch.
-  # Only used if scope is set to "namespace".
+  # -- Namespaces to watch when `rbac.scope` is `namespace`. This list must be
+  # nonempty for namespace scope and empty for cluster scope.
   allowedNamespaces: []
