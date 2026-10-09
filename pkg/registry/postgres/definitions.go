@@ -35,6 +35,7 @@ func NewDefinitions(pool *pgxpool.Pool) (*Definitions, error) {
 type querier = sqlc.DBTX
 
 const nullJSON = "null"
+const managedSourceKind = "managed"
 
 // CreateSource creates an API-owned source.
 func (d *Definitions) CreateSource(ctx context.Context, s persistence.SourceDefinition) (persistence.SourceDefinition, error) {
@@ -403,17 +404,23 @@ func (d *Definitions) Reconcile(
 }
 
 func (d *Definitions) write(ctx context.Context, fn func(pgx.Tx) error) error {
-	// All writes in this adapter serialize on one transaction-scoped lock, before
-	// reading any definitions. The FK and unique indexes also guard external writers.
+	return writeTx(ctx, d.pool, true, fn)
+}
+
+func writeTx(ctx context.Context, pool *pgxpool.Pool, lock bool, fn func(pgx.Tx) error) error {
+	// Definition/entry writes retain the adapter-wide lock; jobs lock only
+	// their source rows, so a long COPY does not block another source's job.
 	for attempt := 0; attempt < 5; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		tx, err := d.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+		tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 		if err != nil {
 			return classify(err)
 		}
-		_, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(910,1)`)
+		if lock {
+			_, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(910,1)`)
+		}
 		if err == nil {
 			err = fn(tx)
 		}
@@ -501,7 +508,7 @@ func decodeSource(id, name, origin, kind string, spec, filter []byte, micros any
 	case "file":
 		s.File = &persistence.FileSpec{}
 		e = json.Unmarshal(spec, s.File)
-	case "managed":
+	case managedSourceKind:
 		s.Managed = &persistence.ManagedSpec{}
 	case "kubernetes":
 		s.Kubernetes = &persistence.KubernetesSpec{}
@@ -664,7 +671,8 @@ func classify(err error) error {
 		return context.DeadlineExceeded
 	}
 	if errors.Is(err, persistence.ErrInvalid) || errors.Is(err, persistence.ErrNotFound) ||
-		errors.Is(err, persistence.ErrConflict) || errors.Is(err, persistence.ErrInUse) {
+		errors.Is(err, persistence.ErrConflict) || errors.Is(err, persistence.ErrInUse) ||
+		errors.Is(err, persistence.ErrBusy) || errors.Is(err, persistence.ErrStale) {
 		return err
 	}
 	var pg *pgconn.PgError

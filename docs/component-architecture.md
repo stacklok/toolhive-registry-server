@@ -73,13 +73,13 @@ type Definitions interface {
     DeleteView(ctx context.Context, name string) error
     ReconcileConfig(ctx context.Context, sources []model.Source, views []model.View) error
 }
-type Jobs interface {
-    ClaimNext(ctx context.Context) (model.SyncJob, bool, error)
-    Acquire(ctx context.Context, source string) (model.SyncJob, error) // operator/manual refresh
-    Complete(ctx context.Context, job model.SyncJob, result model.SyncResult) error
-    Fail(ctx context.Context, job model.SyncJob, cause error) error
-    Status(ctx context.Context, source string) (model.SyncStatus, error)
-}
+// Persistence jobs are now implemented by persistence.Jobs (#910 slice).
+// See docs/registry-persistence-jobs.md for the actual contract: ClaimNext
+// and Acquire require a bounded lease duration, Renew extends a live token,
+// CommitSnapshot atomically applies the snapshot and acknowledgement, Complete
+// acknowledges no change, Fail accepts only a sanitized failure category,
+// and Status reports prior success separately from the latest attempt.
+// The other contract sketches in this section remain illustrative.
 ```
 
 `ReplaceSource` and `Jobs` must share an enforceable generation/fence for an owned source; they may be implemented by one backend with private transactions. A backend can expose one constructor implementing all three, or separate implementations with equivalent coordination; no public `BeginTx` or pgx types. `ReconcileConfig` atomically changes only CONFIG-owned definitions/links and reports a conflict if an API-owned name collides. `PutSource`/`PutView` enforce immutable provenance and source-type rules. Deleting an in-use source returns a typed conflict; deleting its snapshot only after it ceases to be referenced must not touch other sources. `PublishVersion`/`DeleteVersion` atomically maintain version payload, related metadata and latest pointer in the managed source. Domain error categories: invalid input, absent source/view/version, duplicate version, definition conflict, source-in-use, stale fence, unavailable backend; HTTP alone translates to status codes. Do not export raw storage errors or secrets.

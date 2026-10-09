@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
@@ -22,6 +23,14 @@ func TestExternalAdapter(t *testing.T) {
 	var _ persistence.Definitions = (*postgres.Definitions)(nil)
 	var _ conformance.Factory = func(*testing.T) persistence.Definitions { return nil }
 	var _ conformance.PairFactory = func(*testing.T) (persistence.Definitions, persistence.Definitions) { return nil, nil }
+	var _ persistence.Jobs = (*postgres.Jobs)(nil)
+	var _ conformance.JobsFactory = func(*testing.T) (persistence.Sources, persistence.Entries, persistence.Jobs) { return nil, nil, nil }
+	if _, err := postgres.NewJobs(nil, 100); !errors.Is(err, persistence.ErrInvalid) {
+		t.Fatalf("nil jobs pool: %v", err)
+	}
+	if err := persistence.ValidateLeaseDuration(time.Minute); err != nil {
+		t.Fatal(err)
+	}
 	var _ persistence.Entries = (*postgres.Entries)(nil)
 	var _ conformance.EntriesFactory = func(*testing.T) (persistence.Sources, persistence.Entries) { return nil, nil }
 	if _, err := postgres.NewEntries(t.Context(), nil, 100); !errors.Is(err, persistence.ErrInvalid) {

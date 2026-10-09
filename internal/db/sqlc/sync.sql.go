@@ -54,9 +54,24 @@ FROM registry_sync
 WHERE id = $1
 `
 
-func (q *Queries) GetSourceSync(ctx context.Context, id uuid.UUID) (RegistrySync, error) {
+type GetSourceSyncRow struct {
+	ID                    uuid.UUID  `json:"id"`
+	SourceID              *uuid.UUID `json:"source_id"`
+	SyncStatus            SyncStatus `json:"sync_status"`
+	ErrorMsg              *string    `json:"error_msg"`
+	StartedAt             *time.Time `json:"started_at"`
+	EndedAt               *time.Time `json:"ended_at"`
+	AttemptCount          int64      `json:"attempt_count"`
+	LastSyncHash          *string    `json:"last_sync_hash"`
+	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
+	ServerCount           int64      `json:"server_count"`
+	SkillCount            int64      `json:"skill_count"`
+	PluginCount           int64      `json:"plugin_count"`
+}
+
+func (q *Queries) GetSourceSync(ctx context.Context, id uuid.UUID) (GetSourceSyncRow, error) {
 	row := q.db.QueryRow(ctx, getSourceSync, id)
-	var i RegistrySync
+	var i GetSourceSyncRow
 	err := row.Scan(
 		&i.ID,
 		&i.SourceID,
@@ -75,18 +90,7 @@ func (q *Queries) GetSourceSync(ctx context.Context, id uuid.UUID) (RegistrySync
 }
 
 const getSourceSyncByName = `-- name: GetSourceSyncByName :one
-SELECT rs.id,
-       rs.source_id,
-       rs.sync_status,
-       rs.error_msg,
-       rs.started_at,
-       rs.ended_at,
-       rs.attempt_count,
-       rs.last_sync_hash,
-       rs.last_applied_filter_hash,
-       rs.server_count,
-       rs.skill_count,
-       rs.plugin_count
+SELECT rs.id, rs.source_id, rs.sync_status, rs.error_msg, rs.started_at, rs.ended_at, rs.attempt_count, rs.last_sync_hash, rs.last_applied_filter_hash, rs.server_count, rs.skill_count, rs.plugin_count, rs.lease_id, rs.lease_expires_at, rs.lease_generation, rs.observed_generation, rs.applied_generation
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id
 WHERE s.name = $1
@@ -108,6 +112,11 @@ func (q *Queries) GetSourceSyncByName(ctx context.Context, name string) (Registr
 		&i.ServerCount,
 		&i.SkillCount,
 		&i.PluginCount,
+		&i.LeaseID,
+		&i.LeaseExpiresAt,
+		&i.LeaseGeneration,
+		&i.ObservedGeneration,
+		&i.AppliedGeneration,
 	)
 	return i, err
 }

@@ -1,4 +1,4 @@
-# Registry persistence (definitions and entries)
+# Registry persistence (definitions, entries, jobs)
 
 ## Definitions (first slice)
 
@@ -176,13 +176,14 @@ Writes fail `ErrConflict` when either the source or any of its existing entry
 names contains non-null legacy claims (including `{}`); no legacy claims are
 erased. The host must not concurrently let the legacy and new adapter **own**
 the same source. Source replacement serializes source writes and rolls back
-all three kinds on failure/cancellation. This is **not** stale-fetch fencing:
-concurrent snapshots of one source can commit in either order, and an older
-fetch can win if it commits later. A private internal writer transaction seam
-allows the upcoming jobs slice to compose a fenced snapshot and job ack in a
-single transaction without exporting a driver `Tx` through public interfaces.
-There are no job, lease, cursor-position, or claim-aware view APIs yet;
-#910 is not completed by this slice. The snapshot envelope (`$schema`,
+all three kinds on failure/cancellation. This unleased method is **not**
+stale-fetch fencing: it returns `ErrBusy` while a live job lease owns that
+source, and after its own successful replacement it invalidates previously
+issued tokens for the source. Do not co-own a source with the legacy writer:
+the old coordinator is an **exclusive alternative owner** and does not enforce
+these leases. A private internal writer transaction seam composes the fenced
+snapshot and job acknowledgement without exporting a driver `Tx` through public
+interfaces. The snapshot envelope (`$schema`,
 registry `version`, `meta.last_updated`) is validated but not cataloged as an
 entry: only the contained entry payloads are persisted. This is not a
 round-trip API for the source's original registry-file envelope.
@@ -190,3 +191,20 @@ round-trip API for the source's original registry-file envelope.
 Backend implementers can run `conformance.RunEntries` and
 `conformance.RunEntriesMulti` against a fresh source/entry backend. They run
 against PostgreSQL and an independent copy-on-write test-only memory backend.
+
+## Leased synchronization jobs (third slice)
+
+`persistence.Jobs` and `postgres.NewJobs(pool, maxMetaSize)` add the storage-neutral
+job/status/lease capability. The pool remains host-owned; no constructor starts
+a poller or runs global latest repair. `ClaimNext` atomically claims a due,
+pollable source; `Acquire` explicitly claims any non-managed source (including
+Kubernetes operator/manual ingestion); `Renew` extends
+an active lease; `CommitSnapshot` atomically writes snapshot and success metadata;
+`Complete` acknowledges no change; `Fail` stores only a safe failure category;
+`Status` inspects the last attempt and last successful counts/hashes. Durations
+are positive microseconds up to 24h; DB time is authoritative. Definition
+changes and source reincarnations invalidate fetched jobs. Active leases block
+unfenced `ReplaceSnapshot`. The old standalone coordinator is **not** safe to
+co-own a source with jobs. See [jobs and lifecycle](registry-persistence-jobs.md)
+for migration, retry/error semantics, full example and conformance. Consumer-view
+query portability and app wiring remain for #913/#914; no auth is removed here.

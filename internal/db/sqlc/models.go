@@ -390,18 +390,23 @@ type RegistrySource struct {
 }
 
 type RegistrySync struct {
-	ID                    uuid.UUID  `json:"id"`
-	SourceID              *uuid.UUID `json:"source_id"`
-	SyncStatus            SyncStatus `json:"sync_status"`
-	ErrorMsg              *string    `json:"error_msg"`
-	StartedAt             *time.Time `json:"started_at"`
-	EndedAt               *time.Time `json:"ended_at"`
-	AttemptCount          int64      `json:"attempt_count"`
-	LastSyncHash          *string    `json:"last_sync_hash"`
-	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
-	ServerCount           int64      `json:"server_count"`
-	SkillCount            int64      `json:"skill_count"`
-	PluginCount           int64      `json:"plugin_count"`
+	ID                    uuid.UUID          `json:"id"`
+	SourceID              *uuid.UUID         `json:"source_id"`
+	SyncStatus            SyncStatus         `json:"sync_status"`
+	ErrorMsg              *string            `json:"error_msg"`
+	StartedAt             *time.Time         `json:"started_at"`
+	EndedAt               *time.Time         `json:"ended_at"`
+	AttemptCount          int64              `json:"attempt_count"`
+	LastSyncHash          *string            `json:"last_sync_hash"`
+	LastAppliedFilterHash *string            `json:"last_applied_filter_hash"`
+	ServerCount           int64              `json:"server_count"`
+	SkillCount            int64              `json:"skill_count"`
+	PluginCount           int64              `json:"plugin_count"`
+	LeaseID               *uuid.UUID         `json:"lease_id"`
+	LeaseExpiresAt        pgtype.Timestamptz `json:"lease_expires_at"`
+	LeaseGeneration       pgtype.Int8        `json:"lease_generation"`
+	ObservedGeneration    pgtype.Int8        `json:"observed_generation"`
+	AppliedGeneration     pgtype.Int8        `json:"applied_generation"`
 }
 
 type Skill struct {
@@ -436,17 +441,18 @@ type SkillOciPackage struct {
 }
 
 type Source struct {
-	ID           uuid.UUID        `json:"id"`
-	Name         string           `json:"name"`
-	CreatedAt    *time.Time       `json:"created_at"`
-	UpdatedAt    *time.Time       `json:"updated_at"`
-	CreationType CreationType     `json:"creation_type"`
-	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
-	SourceType   string           `json:"source_type"`
-	SourceConfig []byte           `json:"source_config"`
-	FilterConfig []byte           `json:"filter_config"`
-	Syncable     bool             `json:"syncable"`
-	Claims       []byte           `json:"claims"`
+	ID                   uuid.UUID        `json:"id"`
+	Name                 string           `json:"name"`
+	CreatedAt            *time.Time       `json:"created_at"`
+	UpdatedAt            *time.Time       `json:"updated_at"`
+	CreationType         CreationType     `json:"creation_type"`
+	SyncSchedule         pgtypes.Interval `json:"sync_schedule"`
+	SourceType           string           `json:"source_type"`
+	SourceConfig         []byte           `json:"source_config"`
+	FilterConfig         []byte           `json:"filter_config"`
+	Syncable             bool             `json:"syncable"`
+	Claims               []byte           `json:"claims"`
+	DefinitionGeneration int64            `json:"definition_generation"`
 }
 
 type TempEntryVersion struct {

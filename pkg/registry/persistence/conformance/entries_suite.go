@@ -36,6 +36,8 @@ const (
 	testDefaultSkillName  = "default-skill"
 	testDefaultPluginName = "default-plugin"
 	testServerName        = "com.example/item"
+	testManagedKind       = "managed"
+	testInlineName        = "inline"
 )
 
 // EntriesFactory constructs a fresh definitions and entries backend per case.
@@ -62,7 +64,7 @@ func RunEntries(t *testing.T, factory EntriesFactory) {
 		skill.Status = testStatusDeprecated
 		skill.Metadata = map[string]any{"old": testPayloadData}
 		original.Data.Skills = []thvregistry.Skill{skill}
-		plugin := conformancePlugin(testSkillName, "1")
+		plugin := conformancePlugin("1")
 		plugin.Status = testStatusDeprecated
 		original.Data.Plugins = []thvregistry.Plugin{plugin}
 		if err := entries.ReplaceSnapshot(ctx, source, original); err != nil {
@@ -191,7 +193,7 @@ func RunEntries(t *testing.T, factory EntriesFactory) {
 		for _, version := range []string{testCustomVersion, testVersion, testSemverTie} {
 			reg.Data.Servers = append(reg.Data.Servers, conformanceServer(version))
 			reg.Data.Skills = append(reg.Data.Skills, conformanceSkill(version))
-			reg.Data.Plugins = append(reg.Data.Plugins, conformancePlugin(testSkillName, version))
+			reg.Data.Plugins = append(reg.Data.Plugins, conformancePlugin(version))
 		}
 		if err := entries.ReplaceSnapshot(ctx, a, reg); err != nil {
 			t.Fatal(err)
@@ -313,7 +315,7 @@ func RunEntries(t *testing.T, factory EntriesFactory) {
 			for _, version := range versions {
 				snapshot.Data.Servers = append(snapshot.Data.Servers, conformanceServer(version))
 				snapshot.Data.Skills = append(snapshot.Data.Skills, conformanceSkill(version))
-				snapshot.Data.Plugins = append(snapshot.Data.Plugins, conformancePlugin(testSkillName, version))
+				snapshot.Data.Plugins = append(snapshot.Data.Plugins, conformancePlugin(version))
 			}
 			if err := entries.ReplaceSnapshot(ctx, source, snapshot); err != nil {
 				t.Fatal(err)
@@ -384,7 +386,7 @@ func RunEntries(t *testing.T, factory EntriesFactory) {
 		sources, entries := factory(t)
 		ctx := t.Context()
 		external := newEntrySource(t, sources, "external")
-		managed, e := sources.CreateSource(ctx, persistence.SourceDefinition{Name: "managed", Managed: &persistence.ManagedSpec{}})
+		managed, e := sources.CreateSource(ctx, persistence.SourceDefinition{Name: testManagedKind, Managed: &persistence.ManagedSpec{}})
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -586,6 +588,6 @@ func conformanceServer(version string) upstream.ServerJSON {
 func conformanceSkill(version string) thvregistry.Skill {
 	return thvregistry.Skill{Namespace: testNamespace, Name: testSkillName, Version: version, Description: testSkillDescription}
 }
-func conformancePlugin(name, version string) thvregistry.Plugin {
-	return thvregistry.Plugin{Namespace: testNamespace, Name: name, Version: version, Description: testPluginDescription}
+func conformancePlugin(version string) thvregistry.Plugin {
+	return thvregistry.Plugin{Namespace: testNamespace, Name: testSkillName, Version: version, Description: testPluginDescription}
 }
