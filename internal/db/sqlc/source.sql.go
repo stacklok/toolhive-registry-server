@@ -353,7 +353,7 @@ INSERT INTO source (
     $8,
     $9,
     $10
-) RETURNING id, name, created_at, updated_at, creation_type, sync_schedule, source_type, source_config, filter_config, syncable, claims
+) RETURNING id, name, created_at, updated_at, creation_type, sync_schedule, source_type, source_config, filter_config, syncable, claims, definition_generation
 `
 
 type InsertSourceParams struct {
@@ -399,6 +399,7 @@ func (q *Queries) InsertSource(ctx context.Context, arg InsertSourceParams) (Sou
 		&i.FilterConfig,
 		&i.Syncable,
 		&i.Claims,
+		&i.DefinitionGeneration,
 	)
 	return i, err
 }
@@ -511,7 +512,7 @@ UPDATE source SET
     claims = $6,
     updated_at = $7
 WHERE name = $8
-RETURNING id, name, created_at, updated_at, creation_type, sync_schedule, source_type, source_config, filter_config, syncable, claims
+RETURNING id, name, created_at, updated_at, creation_type, sync_schedule, source_type, source_config, filter_config, syncable, claims, definition_generation
 `
 
 type UpdateSourceParams struct {
@@ -550,6 +551,7 @@ func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Sou
 		&i.FilterConfig,
 		&i.Syncable,
 		&i.Claims,
+		&i.DefinitionGeneration,
 	)
 	return i, err
 }

@@ -68,8 +68,9 @@ type EntryReader interface {
 }
 
 // SnapshotWriter atomically replaces one non-managed source's complete catalog.
-// The source ID prevents delete/recreate from retargeting an old fetch. It does
-// not fence older fetches of the SAME incarnation; jobs/leases add that next.
+// The source ID prevents delete/recreate from retargeting an old fetch. This
+// unleased path rejects an active job lease and invalidates previously issued
+// tokens on success; use Jobs.CommitSnapshot for fenced writes and atomic ack.
 type SnapshotWriter interface {
 	ReplaceSnapshot(context.Context, SourceDefinition, model.Snapshot) error
 }

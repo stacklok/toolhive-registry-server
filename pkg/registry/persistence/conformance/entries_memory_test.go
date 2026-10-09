@@ -30,7 +30,7 @@ func (m *memory) ReplaceSnapshot(ctx context.Context, source persistence.SourceD
 	if err != nil {
 		return err
 	}
-	if kind == "managed" {
+	if kind == testManagedKind {
 		return persistence.ErrConflict
 	}
 	return m.transact(ctx, func(n *memory) error {
@@ -41,70 +41,95 @@ func (m *memory) ReplaceSnapshot(ctx context.Context, source persistence.SourceD
 		if s.ID != source.ID {
 			return persistence.ErrConflict
 		}
-		k, _ := s.Kind()
-		if k != kind {
-			return persistence.ErrConflict
+		if active := n.jobs[s.ID]; active.Lease != "" && active.Expiry.After(n.clock()) && active.Generation == n.generations[s.ID] {
+			return persistence.ErrBusy
 		}
-		oldIDs := make(map[string]string)
-		for key, v := range n.records {
-			if v.SourceID == s.ID {
-				oldIDs[key] = v.ID
-				delete(n.records, key)
-			}
+		if err := n.applySnapshot(source, snapshot); err != nil {
+			return err
 		}
-		for _, v := range snapshot.Data.Servers {
-			n.add(persistence.Entry{SourceID: s.ID, Kind: persistence.ServerKind, Name: v.Name, Version: v.Version, Server: clone(&v)})
-		}
-		for _, v := range snapshot.Data.Skills {
-			p := model.Skill{Namespace: v.Namespace, Name: v.Name, Version: v.Version, Description: v.Description, Status: v.Status, Title: v.Title, License: v.License,
-				Compatibility: v.Compatibility, AllowedTools: v.AllowedTools, Metadata: v.Metadata, Meta: v.Meta, Provenance: v.Provenance}
-			if v.Repository != nil {
-				p.Repository = &model.SkillRepository{URL: v.Repository.URL, Type: v.Repository.Type}
-			}
-			for _, i := range v.Icons {
-				p.Icons = append(p.Icons, model.SkillIcon{Src: i.Src, Size: i.Size, Type: i.Type, Label: i.Label})
-			}
-			for _, pkg := range v.Packages {
-				p.Packages = append(p.Packages, model.SkillPackage{RegistryType: pkg.RegistryType, Identifier: pkg.Identifier, Digest: pkg.Digest,
-					MediaType: pkg.MediaType, URL: pkg.URL, Ref: pkg.Ref, Commit: pkg.Commit, Subfolder: pkg.Subfolder})
-			}
-			if v.Status == "" {
-				p.Status = "active"
-			}
-			n.add(persistence.Entry{SourceID: s.ID, Kind: persistence.SkillKind, Name: v.Name, Version: v.Version, Skill: clone(&p)})
-		}
-		for _, v := range snapshot.Data.Plugins {
-			p := model.Plugin{Namespace: v.Namespace, Name: v.Name, Version: v.Version, Description: v.Description, Status: v.Status, Title: v.Title, License: v.License,
-				Metadata: v.Metadata, Meta: v.Meta}
-			if v.Repository != nil {
-				p.Repository = &model.PluginRepository{URL: v.Repository.URL, Type: v.Repository.Type}
-			}
-			for _, i := range v.Icons {
-				p.Icons = append(p.Icons, model.PluginIcon{Src: i.Src, Size: i.Size, Type: i.Type, Label: i.Label})
-			}
-			for _, pkg := range v.Packages {
-				p.Packages = append(p.Packages, model.PluginPackage{RegistryType: pkg.RegistryType, Identifier: pkg.Identifier, Digest: pkg.Digest,
-					MediaType: pkg.MediaType, URL: pkg.URL, Ref: pkg.Ref, Commit: pkg.Commit, Subfolder: pkg.Subfolder})
-			}
-			if v.Status == "" {
-				p.Status = "active"
-			}
-			n.add(persistence.Entry{SourceID: s.ID, Kind: persistence.PluginKind, Name: v.Name, Version: v.Version, Plugin: clone(&p)})
-		}
-		for key, v := range n.records {
-			if old, ok := oldIDs[key]; ok {
-				v.ID = old
-				if v.Skill != nil {
-					v.Skill.ID = old
-				}
-				if v.Plugin != nil {
-					v.Plugin.ID = old
-				}
-				n.records[key] = v
-			}
-		}
+		n.generations[s.ID]++
+		state := n.jobs[s.ID]
+		state.Applied = 0
+		state.Status.LastHash, state.Status.LastFilterHash = "", ""
+		state.Status.ServerCount, state.Status.SkillCount, state.Status.PluginCount = 0, 0, 0
+		state.Status.BaselineValid = false
+		n.jobs[s.ID] = state
 		return nil
 	})
+}
+
+func (n *memory) applySnapshot(source persistence.SourceDefinition, snapshot model.Snapshot) error {
+	kind, _ := source.Kind()
+	s, ok := n.sources[source.Name]
+	if !ok {
+		return persistence.ErrNotFound
+	}
+	if s.ID != source.ID {
+		return persistence.ErrConflict
+	}
+	k, _ := s.Kind()
+	if k != kind {
+		return persistence.ErrConflict
+	}
+	oldIDs := make(map[string]string)
+	for key, v := range n.records {
+		if v.SourceID == s.ID {
+			oldIDs[key] = v.ID
+			delete(n.records, key)
+		}
+	}
+	for _, v := range snapshot.Data.Servers {
+		n.add(persistence.Entry{SourceID: s.ID, Kind: persistence.ServerKind, Name: v.Name, Version: v.Version, Server: clone(&v)})
+	}
+	for _, v := range snapshot.Data.Skills {
+		p := model.Skill{Namespace: v.Namespace, Name: v.Name, Version: v.Version, Description: v.Description, Status: v.Status, Title: v.Title, License: v.License,
+			Compatibility: v.Compatibility, AllowedTools: v.AllowedTools, Metadata: v.Metadata, Meta: v.Meta, Provenance: v.Provenance}
+		if v.Repository != nil {
+			p.Repository = &model.SkillRepository{URL: v.Repository.URL, Type: v.Repository.Type}
+		}
+		for _, i := range v.Icons {
+			p.Icons = append(p.Icons, model.SkillIcon{Src: i.Src, Size: i.Size, Type: i.Type, Label: i.Label})
+		}
+		for _, pkg := range v.Packages {
+			p.Packages = append(p.Packages, model.SkillPackage{RegistryType: pkg.RegistryType, Identifier: pkg.Identifier, Digest: pkg.Digest,
+				MediaType: pkg.MediaType, URL: pkg.URL, Ref: pkg.Ref, Commit: pkg.Commit, Subfolder: pkg.Subfolder})
+		}
+		if v.Status == "" {
+			p.Status = "active"
+		}
+		n.add(persistence.Entry{SourceID: s.ID, Kind: persistence.SkillKind, Name: v.Name, Version: v.Version, Skill: clone(&p)})
+	}
+	for _, v := range snapshot.Data.Plugins {
+		p := model.Plugin{Namespace: v.Namespace, Name: v.Name, Version: v.Version, Description: v.Description, Status: v.Status, Title: v.Title, License: v.License,
+			Metadata: v.Metadata, Meta: v.Meta}
+		if v.Repository != nil {
+			p.Repository = &model.PluginRepository{URL: v.Repository.URL, Type: v.Repository.Type}
+		}
+		for _, i := range v.Icons {
+			p.Icons = append(p.Icons, model.PluginIcon{Src: i.Src, Size: i.Size, Type: i.Type, Label: i.Label})
+		}
+		for _, pkg := range v.Packages {
+			p.Packages = append(p.Packages, model.PluginPackage{RegistryType: pkg.RegistryType, Identifier: pkg.Identifier, Digest: pkg.Digest,
+				MediaType: pkg.MediaType, URL: pkg.URL, Ref: pkg.Ref, Commit: pkg.Commit, Subfolder: pkg.Subfolder})
+		}
+		if v.Status == "" {
+			p.Status = "active"
+		}
+		n.add(persistence.Entry{SourceID: s.ID, Kind: persistence.PluginKind, Name: v.Name, Version: v.Version, Plugin: clone(&p)})
+	}
+	for key, v := range n.records {
+		if old, ok := oldIDs[key]; ok {
+			v.ID = old
+			if v.Skill != nil {
+				v.Skill.ID = old
+			}
+			if v.Plugin != nil {
+				v.Plugin.ID = old
+			}
+			n.records[key] = v
+		}
+	}
+	return nil
 }
 
 func (m *memory) Publish(ctx context.Context, v persistence.Entry) (persistence.Entry, error) {
