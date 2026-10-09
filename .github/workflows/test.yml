@@ -14,7 +14,7 @@ jobs:
   # and run in parallel via a matrix so no single job takes 8+ minutes.
   db-tests:
     name: "DB Tests (${{ matrix.name }})"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -68,7 +68,7 @@ jobs:
   # All remaining packages — pure unit tests that don't start PostgreSQL.
   unit-tests:
     name: Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       # Packages handled by db-tests matrix above.
       DB_TEST_PACKAGES: >-
@@ -122,7 +122,7 @@ jobs:
   # Merge coverage reports and upload to Codecov.
   upload-coverage:
     name: Upload Coverage
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [db-tests, unit-tests]
     if: ${{ !cancelled() }}
     steps:
@@ -159,7 +159,7 @@ jobs:
 
   integration-tests:
     name: Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

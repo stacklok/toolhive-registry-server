@@ -11,7 +11,7 @@ env:
 jobs:
   publish-helm:
     name: Publish Helm Chart
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
