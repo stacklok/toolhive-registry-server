@@ -18,6 +18,9 @@ var (
 	ErrInvalid = errors.New("invalid definition")
 	// ErrNotFound means the requested definition or reference does not exist.
 	ErrNotFound = errors.New("definition not found")
+	// ErrReferenceNotFound refines ErrNotFound for a view's missing source reference,
+	// distinct from an absent view. Adapters preserve this category without pre-reads.
+	ErrReferenceNotFound = fmt.Errorf("%w: referenced source not found", ErrNotFound)
 	// ErrNoManagedSource refines ErrNotFound when the publication destination is absent.
 	ErrNoManagedSource = fmt.Errorf("%w: no managed source", ErrNotFound)
 	// ErrConflict means an immutable property or ownership constraint was violated.
@@ -141,6 +144,8 @@ type Sources interface {
 
 // Views exposes reads for both API- and CONFIG-owned named views (with Origin
 // identifying the owner). Create, Update, and Delete mutate API-owned views only.
+// Missing source references return ErrReferenceNotFound; an absent view itself
+// returns ErrNotFound. Both remain errors.Is-compatible with ErrNotFound.
 type Views interface {
 	CreateView(context.Context, ViewDefinition) (ViewDefinition, error)
 	GetView(context.Context, string) (ViewDefinition, error)

@@ -581,7 +581,7 @@ func link(ctx context.Context, q querier, id string, names []string) error {
 			return classify(e)
 		}
 		if rows != 1 {
-			return fmt.Errorf("%w: referenced source %q", persistence.ErrNotFound, name)
+			return fmt.Errorf("%w: referenced source %q", persistence.ErrReferenceNotFound, name)
 		}
 	}
 	return nil
