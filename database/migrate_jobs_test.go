@@ -3,6 +3,8 @@ package database
 import (
 	"testing"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -10,7 +12,7 @@ func TestJobsMigrationLegacyRowsHaveNoAppliedBaseline(t *testing.T) {
 	t.Parallel()
 	db, _ := SetupTestDB(t)
 	ctx := t.Context()
-	require.NoError(t, MigrateDown(ctx, db, 1))
+	require.NoError(t, migrateTestTo(t, db, 25))
 	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable) VALUES('legacy-jobs','api','{}',true)`)
 	require.NoError(t, err)
 	_, err = db.Exec(ctx, `INSERT INTO registry_sync(source_id,sync_status,last_sync_hash,last_applied_filter_hash,server_count)
@@ -35,5 +37,18 @@ func TestJobsMigrationDownRefusesActiveLease(t *testing.T) {
  SELECT id,'IN_PROGRESS',gen_random_uuid(),clock_timestamp()+interval '1 hour',definition_generation
  FROM source WHERE name='leased'`)
 	require.NoError(t, err)
-	require.ErrorContains(t, MigrateDown(ctx, db, 1), "drain active sync jobs")
+	require.ErrorContains(t, migrateTestTo(t, db, 25), "drain active sync jobs")
+}
+
+func migrateTestTo(t *testing.T, db *pgx.Conn, version uint) error {
+	t.Helper()
+	m, err := GetMigrate(db.Config().ConnString())
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+	if err := m.Migrate(version); err != nil && err != migrate.ErrNoChange {
+		return err
+	}
+	return nil
 }

@@ -6,9 +6,11 @@ This reference preserves the original investigation below as background.
 The user authorized a first admission-only runtime slice using a plain Cedar
 file and the pinned experimental validator. Plain Cedar supersedes the earlier
 JSON-bundle recommendation. See the [main document](registry-cedar-authorization.md)
-for the implemented configuration and transitional restrictions. The final
-non-personalized behavior, offline acknowledged exposure migration and claims/RBAC
-removal below remain proposals, not approved or completed migration functionality.
+for the implemented configuration and transitional restrictions. Offline inventory
+and dormant revision-bound acknowledgement tooling are now implemented; see the
+[migration guide](registry-exposure-migration.md). The final non-personalized
+behavior, marker consumption, cutover and claims/RBAC removal below remain
+proposals, not approved or completed migration functionality.
 Existing service, claims, role and PostgreSQL protection remains in force.
 
 ## Recommendation and boundary

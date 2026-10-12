@@ -23,4 +23,5 @@ func init() {
 	// Add subcommands
 	migrateCmd.AddCommand(migrateUpCmd)
 	migrateCmd.AddCommand(migrateDownCmd)
+	migrateCmd.AddCommand(newMigrateExposureCmd())
 }

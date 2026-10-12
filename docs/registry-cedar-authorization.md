@@ -19,8 +19,10 @@ additional restriction, not a replacement for legacy authorization yet. Existing
 `auth.authz`, role resolution, source/view/entry claims, personalized filtering,
 service checks and PostgreSQL mutation guards remain in force. A Cedar permit
 cannot bypass them, including the legacy super-admin rules. No data or claims
-are automatically removed or exposed. The offline acknowledged migration and
-claims/RBAC removal are the next slice; #912 is not complete. Services/HTTP
+are automatically removed or exposed. Offline inventory and a dormant,
+revision-bound acknowledgement are now implemented; see the
+[migration guide](registry-exposure-migration.md). Claims/RBAC retirement and
+marker consumption remain a later slice; #912 is not complete. Services/HTTP
 extraction (#913–#915) is deferred.
 
 The examples below are parsed and strictly typechecked by tests against the
@@ -245,9 +247,10 @@ authentication when enabled, even with anonymous browsing.
 
 ## Migration: a deliberate exposure decision
 
-This section describes the **next, unimplemented slice**, not an approval or
-completion claim for exposure migration. The current slice retains all old
-claims/RBAC/storage protection and does not strip or expose catalog data.
+Offline inventory and pending acknowledgement tooling are implemented in the
+[migration guide](registry-exposure-migration.md). This is **not** approval or
+completion of a cutover: claims/RBAC/storage protection remains unchanged, and
+nothing strips or exposes catalog data.
 
 This is a breaking upgrade, not a policy-file swap. Before upgrading, back up and
 inventory ALL old catalogs: sources, views, entries, retained snapshots and operator
@@ -259,13 +262,14 @@ population, or whether to move data to host-owned personalization or separate
 instances. Staying on the legacy release remains an option. There is no automatic
 translation from old resource claims to equivalent whole-instance permissions.
 
-Stop/drain old readers and writers. The proposed offline migration requires an
-explicit acknowledgement tied to the inventoried database/config revision before
-new behavior starts, even if old claims are empty. Only that deliberate migration
-may archive/remove obsolete claims; startup never silently strips them. Resolve
-retired config/API claims and operator annotations before cutover. Reopen traffic
-after migration and access checks, keeping the backup for an offline rollback.
-The migration command and acknowledgement interface still need design.
+Stop/drain old readers and writers. The offline tooling records an explicit
+acknowledgement tied to the inventoried database/config revision, even if old
+claims are empty. The marker is dormant: a later slice must consume/revalidate it
+before any guard retirement. No cutover is approved or executed here. Only a
+separate deliberate migration may archive/remove obsolete claims; startup never
+silently strips them. Resolve retired config/API claims and operator annotations
+before cutover. Reopen traffic only after that future migration and access checks,
+keeping the backup for an offline rollback.
 
 ## Product questions
 

@@ -281,6 +281,18 @@ type EntryVersion struct {
 	Name        string     `json:"name"`
 }
 
+type ExposureAcknowledgement struct {
+	Singleton           bool               `json:"singleton"`
+	DatabaseID          uuid.UUID          `json:"database_id"`
+	InventoryVersion    int32              `json:"inventory_version"`
+	AcknowledgementID   *uuid.UUID         `json:"acknowledgement_id"`
+	AcknowledgementMode *string            `json:"acknowledgement_mode"`
+	ReviewedDigest      *string            `json:"reviewed_digest"`
+	PostFenceDigest     *string            `json:"post_fence_digest"`
+	ConfigRevision      *string            `json:"config_revision"`
+	AcknowledgedAt      pgtype.Timestamptz `json:"acknowledged_at"`
+}
+
 type LatestEntryVersion struct {
 	SourceID        uuid.UUID `json:"source_id"`
 	Name            string    `json:"name"`
