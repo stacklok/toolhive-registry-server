@@ -11,6 +11,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
 const (
@@ -207,10 +208,11 @@ info:
 			defer mockServer.Close()
 
 			httpClient := httpclient.NewDefaultClient(0)
-			handler := NewUpstreamAPIHandler(httpClient)
+			handler, err := NewUpstreamAPIHandler(httpClient)
+			require.NoError(t, err)
 			ctx := context.Background()
 
-			err := handler.Validate(ctx, mockServer.URL)
+			err = handler.Validate(ctx, mockServer.URL)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -300,7 +302,8 @@ func TestUpstreamAPIHandler_FetchRegistry(t *testing.T) {
 			defer mockServer.Close()
 
 			httpClient := httpclient.NewDefaultClient(0)
-			handler := NewUpstreamAPIHandler(httpClient)
+			handler, err := NewUpstreamAPIHandler(httpClient)
+			require.NoError(t, err)
 			ctx := context.Background()
 
 			registryConfig := &config.SourceConfig{
@@ -390,7 +393,8 @@ func TestUpstreamAPIHandler_FetchRegistry_Pagination(t *testing.T) {
 	defer mockServer.Close()
 
 	httpClient := httpclient.NewDefaultClient(0)
-	handler := NewUpstreamAPIHandler(httpClient)
+	handler, err := NewUpstreamAPIHandler(httpClient)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	registryConfig := &config.SourceConfig{
@@ -435,7 +439,8 @@ func TestUpstreamAPIHandler_EmptyServers(t *testing.T) {
 	defer mockServer.Close()
 
 	httpClient := httpclient.NewDefaultClient(0)
-	handler := NewUpstreamAPIHandler(httpClient)
+	handler, err := NewUpstreamAPIHandler(httpClient)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	registryConfig := &config.SourceConfig{
@@ -494,7 +499,8 @@ func TestUpstreamAPIHandler_MultiplePages(t *testing.T) {
 	defer mockServer.Close()
 
 	httpClient := httpclient.NewDefaultClient(0)
-	handler := NewUpstreamAPIHandler(httpClient)
+	handler, err := NewUpstreamAPIHandler(httpClient)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	registryConfig := &config.SourceConfig{
@@ -521,9 +527,14 @@ func TestNewUpstreamAPIHandler(t *testing.T) {
 	t.Parallel()
 
 	httpClient := httpclient.NewDefaultClient(0)
-	handler := NewUpstreamAPIHandler(httpClient)
+	handler, err := NewUpstreamAPIHandler(httpClient)
+	require.NoError(t, err)
 
 	require.NotNil(t, handler, "NewUpstreamAPIHandler should return a non-nil handler")
+
+	handler, err = NewUpstreamAPIHandler(nil)
+	require.ErrorIs(t, err, persistence.ErrInvalid)
+	require.Nil(t, handler)
 }
 
 func TestUpstreamAPIHandler_HTTPErrorCodes(t *testing.T) {
@@ -552,7 +563,8 @@ func TestUpstreamAPIHandler_HTTPErrorCodes(t *testing.T) {
 			defer mockServer.Close()
 
 			httpClient := httpclient.NewDefaultClient(0)
-			handler := NewUpstreamAPIHandler(httpClient)
+			handler, err := NewUpstreamAPIHandler(httpClient)
+			require.NoError(t, err)
 			ctx := context.Background()
 
 			registryConfig := &config.SourceConfig{
@@ -562,7 +574,7 @@ func TestUpstreamAPIHandler_HTTPErrorCodes(t *testing.T) {
 				},
 			}
 
-			_, err := handler.FetchRegistry(ctx, registryConfig)
+			_, err = handler.FetchRegistry(ctx, registryConfig)
 
 			require.Error(t, err)
 		})

@@ -13,6 +13,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
 // Helper to assert servers contain expected names
@@ -154,7 +155,7 @@ func TestDefaultFilterService_ApplyFilters_NameFiltering(t *testing.T) {
 				),
 			)
 
-			filter := &config.FilterConfig{
+			filter := &persistence.Filter{
 				Names: &config.NameFilterConfig{
 					Include: tt.nameInclude,
 					Exclude: tt.nameExclude,
@@ -240,7 +241,7 @@ func TestDefaultFilterService_ApplyFilters_TagFiltering(t *testing.T) {
 				),
 			)
 
-			filter := &config.FilterConfig{
+			filter := &persistence.Filter{
 				Tags: &config.TagFilterConfig{
 					Include: tt.tagInclude,
 					Exclude: tt.tagExclude,
@@ -289,7 +290,7 @@ func TestDefaultFilterService_ApplyFilters_CombinedFiltering(t *testing.T) {
 		),
 	)
 
-	filter := &config.FilterConfig{
+	filter := &persistence.Filter{
 		Names: &config.NameFilterConfig{
 			Include: []string{"*/postgres-*", "*/*-api"},
 			Exclude: []string{"*/*-experimental"},
@@ -322,7 +323,7 @@ func TestDefaultFilterService_ApplyFilters_EmptyRegistry(t *testing.T) {
 	// Create empty registry
 	originalRegistry := registry.NewTestUpstreamRegistry()
 
-	filter := &config.FilterConfig{
+	filter := &persistence.Filter{
 		Names: &config.NameFilterConfig{
 			Include: []string{"*/postgres-*"},
 		},
@@ -355,7 +356,7 @@ func TestDefaultFilterService_ApplyFilters_PreservesMetadata(t *testing.T) {
 		),
 	)
 
-	filter := &config.FilterConfig{
+	filter := &persistence.Filter{
 		Names: &config.NameFilterConfig{
 			Include: []string{"*/*"},
 		},
@@ -408,7 +409,7 @@ func TestDefaultFilterService_ApplyFilters_UpstreamFormatWithStringMetadata(t *t
 	)
 
 	// Apply a name filter (even without tag filter, ExtractTags is called)
-	filter := &config.FilterConfig{
+	filter := &persistence.Filter{
 		Names: &config.NameFilterConfig{
 			Exclude: []string{"ai.smithery/*"},
 		},
@@ -460,7 +461,7 @@ func TestDefaultFilterService_ApplyFilters_FiltersSkillsByName(t *testing.T) {
 	}
 
 	// Exclude server namespace and one skill namespace — keep only io.github.other
-	filter := &config.FilterConfig{
+	filter := &persistence.Filter{
 		Names: &config.NameFilterConfig{
 			Exclude: []string{"io.test/*", "io.github.test/*"},
 		},
@@ -538,7 +539,7 @@ func TestDefaultFilterService_ApplyFilters_FiltersPluginsByName(t *testing.T) {
 	}
 
 	// Exclude server namespace and one plugin namespace — keep only io.github.other
-	filter := &config.FilterConfig{
+	filter := &persistence.Filter{
 		Names: &config.NameFilterConfig{
 			Exclude: []string{"io.test/*", "io.github.test/*"},
 		},

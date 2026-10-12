@@ -1,4 +1,4 @@
-package kubernetes
+package operator
 
 import (
 	"encoding/json"

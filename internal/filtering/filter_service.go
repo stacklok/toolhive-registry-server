@@ -9,8 +9,8 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 
-	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
 // FilterService coordinates name and tag filtering to apply registry filters
@@ -19,7 +19,7 @@ type FilterService interface {
 	ApplyFilters(
 		ctx context.Context,
 		reg *toolhivetypes.UpstreamRegistry,
-		filter *config.FilterConfig,
+		filter *persistence.Filter,
 	) (*toolhivetypes.UpstreamRegistry, error)
 }
 
@@ -56,7 +56,7 @@ func NewFilterService(nameFilter NameFilter, tagFilter TagFilter) FilterService 
 func (s *defaultFilterService) ApplyFilters(
 	_ context.Context,
 	reg *toolhivetypes.UpstreamRegistry,
-	filter *config.FilterConfig) (*toolhivetypes.UpstreamRegistry, error) {
+	filter *persistence.Filter) (*toolhivetypes.UpstreamRegistry, error) {
 	// If no filter is specified, return original registry
 	if filter == nil {
 		slog.Info("No filter specified, returning original registry")
