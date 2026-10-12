@@ -245,6 +245,8 @@ type Querier interface {
 	// Business logic in Go guards against cross-type overwrites.
 	UpsertSource(ctx context.Context, arg UpsertSourceParams) (uuid.UUID, error)
 	UpsertSourceSyncByName(ctx context.Context, arg UpsertSourceSyncByNameParams) error
+	ViewEntryList(ctx context.Context, arg ViewEntryListParams) ([]ViewEntryListRow, error)
+	ViewEntrySources(ctx context.Context, viewID uuid.UUID) ([]string, error)
 }
 
 var _ Querier = (*Queries)(nil)

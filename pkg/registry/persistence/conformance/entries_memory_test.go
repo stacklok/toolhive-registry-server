@@ -360,6 +360,7 @@ func (m *memory) add(v persistence.Entry) {
 		v.Plugin.ID = v.ID
 	}
 	m.records[memKey(v)] = v
+	m.updated[memKey(v)] = m.clock()
 }
 func memKey(v persistence.Entry) string {
 	return v.SourceID + "\x00" + string(v.Kind) + "\x00" + v.Name + "\x00" + v.Version
