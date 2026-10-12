@@ -1,4 +1,4 @@
-// Package httpapi provides consumer HTTP adapters over host-selected catalog pages.
+// Package httpapi provides consumer and optional admin HTTP adapters over host-selected capabilities.
 // Hosts own admission, middleware, listeners and lifecycle; construction performs no IO.
 package httpapi
 
@@ -37,7 +37,7 @@ const (
 )
 
 // RouteDescriptor describes one actual registration. Template is relative to the
-// host's /registry mount. ResourceParam is the legacy audit name parameter;
+// host's /registry (consumer) or /v1 (admin) mount. ResourceParam is the legacy audit name parameter;
 // RegistryParam and NamespaceParam let hosts resolve scoped resource metadata.
 type RouteDescriptor struct {
 	Method         string
@@ -49,6 +49,12 @@ type RouteDescriptor struct {
 	ResourceParam  string
 	RegistryParam  string
 	NamespaceParam string
+	// AuditCreateEvent/AuditUpdateEvent discriminate an admin PUT. Hosts must
+	// observe MutationResult, not infer committed mutations solely from status.
+	AuditCreateEvent string
+	AuditUpdateEvent string
+	// KindParam identifies the server/skill/plugin discriminator on admin deletion.
+	KindParam string
 }
 
 // ConsumerOptions supplies ordinary host middleware and optional per-route
@@ -91,7 +97,7 @@ func ConsumerRoutes() []RouteDescriptor {
 			operation Operation
 			event     string
 		}{
-			{"", List, ".list"}, {"/", List, ".list"},
+			{"", List, listAuditSuffix}, {"/", List, listAuditSuffix},
 			{"/{namespace}/{name}", GetLatest, ".read"},
 			{"/{namespace}/{name}/versions", ListVersions, ".versions.list"},
 			{"/{namespace}/{name}/versions/{version}", Get, ".version.read"},
@@ -99,7 +105,7 @@ func ConsumerRoutes() []RouteDescriptor {
 			routes = append(routes, RouteDescriptor{Method: http.MethodGet,
 				Template: prefix + "/x/dev.toolhive/" + family.path + route.suffix,
 				Kind:     family.kind, Operation: route.operation, AuditEvent: family.resource + route.event,
-				ResourceType: family.resource, ResourceParam: "name", RegistryParam: registryNameParam, NamespaceParam: "namespace"})
+				ResourceType: family.resource, ResourceParam: nameParam, RegistryParam: registryNameParam, NamespaceParam: "namespace"})
 		}
 	}
 	return routes

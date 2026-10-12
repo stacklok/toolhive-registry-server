@@ -166,6 +166,7 @@ func Run(t *testing.T, newStore Factory) {
 			want(t, e, persistence.ErrInvalid)
 			_, e = d.CreateView(ctx, persistence.ViewDefinition{Name: "v", Sources: []string{"missing"}})
 			want(t, e, persistence.ErrNotFound)
+			want(t, e, persistence.ErrReferenceNotFound)
 			if !strings.Contains(e.Error(), "missing") {
 				t.Fatalf("missing reference name: %v", e)
 			}
