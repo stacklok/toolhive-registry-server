@@ -118,7 +118,11 @@ replacement using the old ID cannot retarget the new source. An empty snapshot
 atomically removes its owned entries. `Publish` inserts one managed version
 (conflicts on an existing exact kind/name/version), and `DeleteManaged` removes
 only that version and recomputes its kind/name latest; neither operation
-replaces the managed source's history or touches external sources.
+replaces the managed source's history or touches external sources. Missing
+managed-singleton lookup returns `ErrNoManagedSource`, refining `ErrNotFound`;
+a missing exact version with an existing singleton remains ordinary `ErrNotFound`.
+The public [publication/diagnostics operations](registry-publication-diagnostics.md)
+reuse these atomic writes without changing standalone assembly.
 
 ```go
 entries, err := postgres.NewEntries(ctx, pool, 65536)
@@ -142,9 +146,9 @@ boundary**. The host must apply its own policy before allowing callers to
 read or mutate entries; no claims, tenant, user, JWT, or visibility policy is
 in the public contract. They are not mounted on the standalone HTTP server;
 legacy claim enforcement and wire selection remain unchanged (including known
-legacy version-row-first view shadowing). There is deliberately **no view-entry
-reader** yet: selecting the whole-name winning source ahead of search/version/
-latest/paging belongs to the future consumer-view slice. `GetEntry` takes
+legacy version-row-first view shadowing). The separate [consumer-view reader](registry-consumer-reads.md)
+now implements whole-name winning-source selection before search/version/latest/paging;
+[unshadowed diagnostics](registry-publication-diagnostics.md) deliberately include all sources' versions. `GetEntry` takes
 `VersionSelector{Exact: "latest"}` for the literal stored version, and
 `VersionSelector{Latest: true}` for the highest under `model.CompareVersions`.
 Lists use a source- and filter-bound opaque cursor with C/byte-lexical

@@ -4,9 +4,46 @@ import (
 	"fmt"
 	"time"
 
+	thvregistry "github.com/stacklok/toolhive-core/registry/types"
+
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 )
+
+// Validate checks a publication input, including its discriminated payload and
+// matching name/version. Storage-assigned IDs, latest flags and timestamps must
+// be absent. Backends still validate before writing; callers cannot bypass it.
+//
+//nolint:gocyclo // Three payload unions have independent identity and storage-metadata checks.
+func (e Entry) Validate() error {
+	if err := e.Kind.Validate(); err != nil {
+		return err
+	}
+	if e.ID != "" || e.SourceID != "" || e.IsLatest || e.Name == "" || e.Version == "" {
+		return ErrInvalid
+	}
+	var snapshot model.Snapshot
+	switch e.Kind {
+	case ServerKind:
+		if e.Server == nil || e.Skill != nil || e.Plugin != nil || e.Server.Name != e.Name || e.Server.Version != e.Version {
+			return ErrInvalid
+		}
+		snapshot.Data.Servers = []model.Server{*e.Server}
+	case SkillKind:
+		if e.Skill == nil || e.Server != nil || e.Plugin != nil || e.Skill.Name != e.Name || e.Skill.Version != e.Version ||
+			e.Skill.ID != "" || e.Skill.IsLatest || !e.Skill.CreatedAt.IsZero() || !e.Skill.UpdatedAt.IsZero() {
+			return ErrInvalid
+		}
+		snapshot.Data.Skills = []thvregistry.Skill{formats.SkillPayload(e.Skill)}
+	case PluginKind:
+		if e.Plugin == nil || e.Server != nil || e.Skill != nil || e.Plugin.Name != e.Name || e.Plugin.Version != e.Version ||
+			e.Plugin.ID != "" || e.Plugin.IsLatest || !e.Plugin.CreatedAt.IsZero() || !e.Plugin.UpdatedAt.IsZero() {
+			return ErrInvalid
+		}
+		snapshot.Data.Plugins = []thvregistry.Plugin{formats.PluginPayload(e.Plugin)}
+	}
+	return ValidateSnapshot(&snapshot)
+}
 
 // ValidateSnapshot validates every version before any write. An empty snapshot
 // is a valid deletion of a source's catalog.

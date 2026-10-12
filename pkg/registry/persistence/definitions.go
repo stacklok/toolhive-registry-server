@@ -18,6 +18,8 @@ var (
 	ErrInvalid = errors.New("invalid definition")
 	// ErrNotFound means the requested definition or reference does not exist.
 	ErrNotFound = errors.New("definition not found")
+	// ErrNoManagedSource refines ErrNotFound when the publication destination is absent.
+	ErrNoManagedSource = fmt.Errorf("%w: no managed source", ErrNotFound)
 	// ErrConflict means an immutable property or ownership constraint was violated.
 	ErrConflict = errors.New("definition conflict")
 	// ErrAlreadyExists refines ErrConflict only for an existing source or view name.
