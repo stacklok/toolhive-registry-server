@@ -282,15 +282,32 @@ type EntryVersion struct {
 }
 
 type ExposureAcknowledgement struct {
-	Singleton           bool               `json:"singleton"`
-	DatabaseID          uuid.UUID          `json:"database_id"`
-	InventoryVersion    int32              `json:"inventory_version"`
-	AcknowledgementID   *uuid.UUID         `json:"acknowledgement_id"`
-	AcknowledgementMode *string            `json:"acknowledgement_mode"`
-	ReviewedDigest      *string            `json:"reviewed_digest"`
-	PostFenceDigest     *string            `json:"post_fence_digest"`
-	ConfigRevision      *string            `json:"config_revision"`
-	AcknowledgedAt      pgtype.Timestamptz `json:"acknowledged_at"`
+	Singleton            bool               `json:"singleton"`
+	DatabaseID           uuid.UUID          `json:"database_id"`
+	InventoryVersion     int32              `json:"inventory_version"`
+	AcknowledgementID    *uuid.UUID         `json:"acknowledgement_id"`
+	AcknowledgementMode  *string            `json:"acknowledgement_mode"`
+	ReviewedDigest       *string            `json:"reviewed_digest"`
+	PostFenceDigest      *string            `json:"post_fence_digest"`
+	ConfigRevision       *string            `json:"config_revision"`
+	AcknowledgedAt       pgtype.Timestamptz `json:"acknowledged_at"`
+	RetirementID         *uuid.UUID         `json:"retirement_id"`
+	PostRetirementDigest *string            `json:"post_retirement_digest"`
+	RetiredAt            pgtype.Timestamptz `json:"retired_at"`
+	ConsumedAt           pgtype.Timestamptz `json:"consumed_at"`
+}
+
+type ExposureClaimsArchive struct {
+	RetirementID  uuid.UUID  `json:"retirement_id"`
+	RowTable      string     `json:"row_table"`
+	RowID         uuid.UUID  `json:"row_id"`
+	Name          string     `json:"name"`
+	SourceID      *uuid.UUID `json:"source_id"`
+	SourceName    *string    `json:"source_name"`
+	Kind          *string    `json:"kind"`
+	Ownership     *string    `json:"ownership"`
+	ClaimsSqlNull bool       `json:"claims_sql_null"`
+	Claims        []byte     `json:"claims"`
 }
 
 type LatestEntryVersion struct {

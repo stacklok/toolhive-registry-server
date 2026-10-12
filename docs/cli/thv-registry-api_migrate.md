@@ -40,6 +40,6 @@ thv-registry-api migrate [flags]
 
 * [thv-registry-api](thv-registry-api.md)	 - ToolHive Registry API server
 * [thv-registry-api migrate down](thv-registry-api_migrate_down.md)	 - Revert database migrations
-* [thv-registry-api migrate exposure](thv-registry-api_migrate_exposure.md)	 - Offline catalog exposure review (legacy protections unchanged)
+* [thv-registry-api migrate exposure](thv-registry-api_migrate_exposure.md)	 - Offline catalog exposure review and explicit metadata retirement
 * [thv-registry-api migrate up](thv-registry-api_migrate_up.md)	 - Apply pending database migrations
 

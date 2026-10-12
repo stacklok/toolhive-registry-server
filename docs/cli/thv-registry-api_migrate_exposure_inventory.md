@@ -34,5 +34,5 @@ thv-registry-api migrate exposure inventory [flags]
 
 ### SEE ALSO
 
-* [thv-registry-api migrate exposure](thv-registry-api_migrate_exposure.md)	 - Offline catalog exposure review (legacy protections unchanged)
+* [thv-registry-api migrate exposure](thv-registry-api_migrate_exposure.md)	 - Offline catalog exposure review and explicit metadata retirement
 

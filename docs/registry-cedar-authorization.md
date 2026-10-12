@@ -19,10 +19,12 @@ additional restriction, not a replacement for legacy authorization yet. Existing
 `auth.authz`, role resolution, source/view/entry claims, personalized filtering,
 service checks and PostgreSQL mutation guards remain in force. A Cedar permit
 cannot bypass them, including the legacy super-admin rules. No data or claims
-are automatically removed or exposed. Offline inventory and a dormant,
-revision-bound acknowledgement are now implemented; see the
-[migration guide](registry-exposure-migration.md). Claims/RBAC retirement and
-marker consumption remain a later slice; #912 is not complete. Services/HTTP
+are automatically removed or exposed. Offline inventory, dormant revision-bound
+acknowledgement and explicit offline archive-and-clear are implemented; see the
+[migration guide](registry-exposure-migration.md). Metadata retirement is **not**
+runtime activation: remain offline afterward until a runtime cutover release or
+an offline backup restore. Runtime claims/RBAC retirement and marker consumption
+remain a later slice; #912 is not complete. Services/HTTP
 extraction (#913–#915) is deferred.
 
 The examples below are parsed and strictly typechecked by tests against the
@@ -247,10 +249,11 @@ authentication when enabled, even with anonymous browsing.
 
 ## Migration: a deliberate exposure decision
 
-Offline inventory and pending acknowledgement tooling are implemented in the
-[migration guide](registry-exposure-migration.md). This is **not** approval or
-completion of a cutover: claims/RBAC/storage protection remains unchanged, and
-nothing strips or exposes catalog data.
+Offline inventory, pending acknowledgement and explicit metadata archive-and-clear
+are implemented in the [migration guide](registry-exposure-migration.md). This is
+**not** completion of a runtime cutover: claims/RBAC/storage guard code remains
+unchanged. Only the explicit `retire-claims` command clears historical metadata;
+afterward stay offline. Ordinary migrations/startup/reconciliation never do this.
 
 This is a breaking upgrade, not a policy-file swap. Before upgrading, back up and
 inventory ALL old catalogs: sources, views, entries, retained snapshots and operator
@@ -262,14 +265,16 @@ population, or whether to move data to host-owned personalization or separate
 instances. Staying on the legacy release remains an option. There is no automatic
 translation from old resource claims to equivalent whole-instance permissions.
 
-Stop/drain old readers and writers. The offline tooling records an explicit
-acknowledgement tied to the inventoried database/config revision, even if old
-claims are empty. The marker is dormant: a later slice must consume/revalidate it
-before any guard retirement. No cutover is approved or executed here. Only a
-separate deliberate migration may archive/remove obsolete claims; startup never
-silently strips them. Resolve retired config/API claims and operator annotations
-before cutover. Reopen traffic only after that future migration and access checks,
-keeping the backup for an offline rollback.
+Stop/drain old readers and writers. Prepare the **final** config/policy without
+retired fields before inventorying the historical database and acknowledging its
+whole-catalog exposure decision. Changing config invalidates an old acknowledgement;
+re-inventory and acknowledge, never silently rebind it. Then explicit offline
+`retire-claims` may archive/clear metadata against the pending post-fence digest.
+Fresh `initialize-empty` evidence needs no archive. Both markers remain dormant:
+a later slice must consume/revalidate them before guard retirement. Startup never
+silently clears metadata. Resolve retired config/API claims and operator annotations
+before eventual cutover. Do not restart this slice after clearing; stay offline
+until the runtime cutover release or restore the verified backup offline.
 
 ## Product questions
 

@@ -11,7 +11,7 @@ mdx:
 
 ## thv-registry-api migrate exposure
 
-Offline catalog exposure review (legacy protections unchanged)
+Offline catalog exposure review and explicit metadata retirement
 
 ### Synopsis
 
@@ -20,7 +20,9 @@ Stop and drain all registry readers, writers and controllers before acknowledgin
 These commands connect to an already migrated database; they never migrate,
 initialize sources, repair latest pointers, fetch sources or start controllers.
 An acknowledgement is NOT a cutover or proof that old processes are offline.
---yes does not imply exposure consent. Legacy claims/RBAC remain unchanged.
+Only retire-claims explicitly archives and clears claims. After retirement remain
+OFFLINE until a runtime cutover release or an offline backup restore.
+--yes does not imply exposure consent. Runtime claims/RBAC guards are unchanged.
 
 ### Options
 
@@ -43,4 +45,5 @@ An acknowledgement is NOT a cutover or proof that old processes are offline.
 * [thv-registry-api migrate exposure acknowledge](thv-registry-api_migrate_exposure_acknowledge.md)	 - Record whole-catalog approval; legacy protections unchanged
 * [thv-registry-api migrate exposure initialize-empty](thv-registry-api_migrate_exposure_initialize-empty.md)	 - Record an explicit empty-install marker before reconciliation
 * [thv-registry-api migrate exposure inventory](thv-registry-api_migrate_exposure_inventory.md)	 - Emit safe JSON inventory and review digest without writing
+* [thv-registry-api migrate exposure retire-claims](thv-registry-api_migrate_exposure_retire-claims.md)	 - Archive and clear claims OFFLINE; runtime cutover not yet available
 
