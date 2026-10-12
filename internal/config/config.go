@@ -60,7 +60,8 @@ type Option func(*loaderConfig) error
 
 // loaderConfig defines the configuration for loading a configuration
 type loaderConfig struct {
-	path string
+	path         string
+	exposureData *[]byte
 }
 
 // WithConfigPath loads configuration from a YAML file
@@ -855,8 +856,15 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	// This is not loaded from YAML - environment variable only
 	config.LeaderElectionID = v.GetString("leader_election_id")
 
-	// Validate the config
-	if err := config.validate(); err != nil {
+	// Offline exposure inspection validates connection settings only. Retired
+	// security fields must remain inspectable without starting the application.
+	validate := config.validate
+	if loaderCfg.exposureData != nil {
+		*loaderCfg.exposureData = data
+		validate = config.validateStorageConfig
+	}
+
+	if err := validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
