@@ -20,6 +20,8 @@ type memory struct{ *memoryState }
 
 type memoryState struct {
 	sync.Mutex
+	viewIDs     map[string]string
+	updated     map[string]time.Time
 	sources     map[string]persistence.SourceDefinition
 	views       map[string]persistence.ViewDefinition
 	records     map[string]persistence.Entry
@@ -32,7 +34,7 @@ type memoryState struct {
 var _ persistence.Definitions = (*memory)(nil)
 
 func fresh() *memory {
-	return &memory{memoryState: &memoryState{sources: map[string]persistence.SourceDefinition{}, views: map[string]persistence.ViewDefinition{}, records: map[string]persistence.Entry{}, generations: map[string]int64{}, jobs: map[string]memJob{}, clock: time.Now}}
+	return &memory{memoryState: &memoryState{viewIDs: map[string]string{}, updated: map[string]time.Time{}, sources: map[string]persistence.SourceDefinition{}, views: map[string]persistence.ViewDefinition{}, records: map[string]persistence.Entry{}, generations: map[string]int64{}, jobs: map[string]memJob{}, clock: time.Now}}
 }
 func clone[T any](v T) T { b, _ := json.Marshal(v); var out T; _ = json.Unmarshal(b, &out); return out }
 func (m *memory) transact(ctx context.Context, f func(*memory) error) error {
@@ -41,13 +43,14 @@ func (m *memory) transact(ctx context.Context, f func(*memory) error) error {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
-	next := &memory{memoryState: &memoryState{sources: clone(m.sources), views: clone(m.views), records: clone(m.records), generations: clone(m.generations), jobs: clone(m.jobs), clock: m.clock, seq: m.seq}}
+	next := &memory{memoryState: &memoryState{viewIDs: clone(m.viewIDs), updated: clone(m.updated), sources: clone(m.sources), views: clone(m.views), records: clone(m.records), generations: clone(m.generations), jobs: clone(m.jobs), clock: m.clock, seq: m.seq}}
 	if e := f(next); e != nil {
 		return e
 	}
 	if e := ctx.Err(); e != nil {
 		return e
 	}
+	m.viewIDs, m.updated = next.viewIDs, next.updated
 	m.sources, m.views, m.records, m.generations, m.jobs, m.seq = next.sources, next.views, next.records, next.generations, next.jobs, next.seq
 	return nil
 }
@@ -190,6 +193,7 @@ func (m *memory) CreateView(ctx context.Context, v persistence.ViewDefinition) (
 			}
 		}
 		v.Origin = persistence.OriginAPI
+		n.viewIDs[v.Name] = uuid.NewString()
 		n.views[v.Name] = clone(v)
 		out = clone(v)
 		return nil
@@ -319,6 +323,9 @@ func (m *memory) Reconcile(ctx context.Context, sources []persistence.SourceDefi
 		for _, v := range views {
 			keepV[v.Name] = true
 			v.Origin = persistence.OriginConfig
+			if _, exists := n.views[v.Name]; !exists {
+				n.viewIDs[v.Name] = uuid.NewString()
+			}
 			n.views[v.Name] = clone(v)
 		}
 		for name, v := range n.views {
