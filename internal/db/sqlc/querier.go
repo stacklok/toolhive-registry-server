@@ -90,6 +90,10 @@ type Querier interface {
 	DeleteSkillsByRegistry(ctx context.Context, sourceID uuid.UUID) error
 	// Delete a source by name. Go callers guard against deleting wrong creation_type.
 	DeleteSource(ctx context.Context, name string) (int64, error)
+	// Lightweight admin projections deliberately omit claims, payloads and winner selection.
+	DiagnosticSourceID(ctx context.Context, name string) (uuid.UUID, error)
+	DiagnosticSourceVersions(ctx context.Context, sourceID uuid.UUID) ([]DiagnosticSourceVersionsRow, error)
+	DiagnosticViewVersions(ctx context.Context, registryID uuid.UUID) ([]DiagnosticViewVersionsRow, error)
 	DropTempEntryVersionTable(ctx context.Context) error
 	DropTempRegistryEntryTable(ctx context.Context) error
 	EntryDeleteEmptyNames(ctx context.Context, sourceID uuid.UUID) error

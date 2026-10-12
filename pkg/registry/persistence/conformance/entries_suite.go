@@ -51,6 +51,7 @@ type EntriesPairFactory func(*testing.T) (persistence.Sources, persistence.Entri
 //nolint:gocyclo,lll // Each independent subtest checks full multi-kind state transitions and call sites.
 func RunEntries(t *testing.T, factory EntriesFactory) {
 	t.Helper()
+	RunPublication(t, factory)
 	t.Run("retained payload replacement", func(t *testing.T) {
 		t.Parallel()
 		sources, entries := factory(t)

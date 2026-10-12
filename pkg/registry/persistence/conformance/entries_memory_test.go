@@ -13,9 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	thvregistry "github.com/stacklok/toolhive-core/registry/types"
-
-	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
@@ -129,48 +126,30 @@ func (n *memory) applySnapshot(source persistence.SourceDefinition, snapshot mod
 			n.records[key] = v
 		}
 	}
+	for key := range oldIDs {
+		if _, retained := n.records[key]; !retained {
+			delete(n.created, key)
+			delete(n.updated, key)
+		}
+	}
 	return nil
 }
 
 func (m *memory) Publish(ctx context.Context, v persistence.Entry) (persistence.Entry, error) {
-	if err := v.Kind.Validate(); err != nil {
+	if err := v.Validate(); err != nil {
 		return persistence.Entry{}, err
 	}
-	if v.ID != "" || v.SourceID != "" || v.IsLatest || v.Name == "" || v.Version == "" {
-		return persistence.Entry{}, persistence.ErrInvalid
-	}
-	snap := model.Snapshot{}
-	switch v.Kind {
-	case persistence.ServerKind:
-		if v.Server == nil || v.Skill != nil || v.Plugin != nil || v.Server.Name != v.Name || v.Server.Version != v.Version {
-			return persistence.Entry{}, persistence.ErrInvalid
-		}
-		snap.Data.Servers = []model.Server{*v.Server}
-	case persistence.SkillKind:
-		if v.Skill == nil || v.Server != nil || v.Plugin != nil || v.Skill.Name != v.Name ||
-			v.Skill.Version != v.Version || v.Skill.ID != "" || v.Skill.IsLatest ||
-			!v.Skill.CreatedAt.IsZero() || !v.Skill.UpdatedAt.IsZero() {
-			return persistence.Entry{}, persistence.ErrInvalid
-		}
+	if v.Skill != nil {
 		v.Skill = clone(v.Skill)
 		if v.Skill.Status == "" {
 			v.Skill.Status = "active"
 		}
-		snap.Data.Skills = []thvregistry.Skill{formats.SkillPayload(v.Skill)}
-	case persistence.PluginKind:
-		if v.Plugin == nil || v.Server != nil || v.Skill != nil || v.Plugin.Name != v.Name ||
-			v.Plugin.Version != v.Version || v.Plugin.ID != "" || v.Plugin.IsLatest ||
-			!v.Plugin.CreatedAt.IsZero() || !v.Plugin.UpdatedAt.IsZero() {
-			return persistence.Entry{}, persistence.ErrInvalid
-		}
+	}
+	if v.Plugin != nil {
 		v.Plugin = clone(v.Plugin)
 		if v.Plugin.Status == "" {
 			v.Plugin.Status = "active"
 		}
-		snap.Data.Plugins = []thvregistry.Plugin{formats.PluginPayload(v.Plugin)}
-	}
-	if err := persistence.ValidateSnapshot(&snap); err != nil {
-		return persistence.Entry{}, err
 	}
 	var out persistence.Entry
 	err := m.transact(ctx, func(n *memory) error {
@@ -182,7 +161,7 @@ func (m *memory) Publish(ctx context.Context, v persistence.Entry) (persistence.
 			}
 		}
 		if id == "" {
-			return persistence.ErrNotFound
+			return persistence.ErrNoManagedSource
 		}
 		v.SourceID = id
 		key := memKey(v)
@@ -211,10 +190,12 @@ func (m *memory) DeleteManaged(ctx context.Context, kind persistence.EntryKind, 
 					return persistence.ErrNotFound
 				}
 				delete(n.records, key)
+				delete(n.created, key)
+				delete(n.updated, key)
 				return nil
 			}
 		}
-		return persistence.ErrNotFound
+		return persistence.ErrNoManagedSource
 	})
 }
 
@@ -360,7 +341,10 @@ func (m *memory) add(v persistence.Entry) {
 		v.Plugin.ID = v.ID
 	}
 	m.records[memKey(v)] = v
-	m.updated[memKey(v)] = m.clock()
+	if _, exists := m.created[memKey(v)]; !exists {
+		m.created[memKey(v)] = m.clock().UTC()
+	}
+	m.updated[memKey(v)] = m.clock().UTC()
 }
 func memKey(v persistence.Entry) string {
 	return v.SourceID + "\x00" + string(v.Kind) + "\x00" + v.Name + "\x00" + v.Version

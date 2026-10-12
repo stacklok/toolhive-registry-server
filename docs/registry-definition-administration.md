@@ -12,7 +12,8 @@ Typed nil implementations are outside the caller contract.
 services, claims and writers. The complete guarded assembly swap belongs to #914.
 There is no HTTP extraction, authorization change, migration or cutover here.
 Hosts must authorize calls themselves. Config reconciliation remains the separate
-`persistence.Reconciler` capability; publication and diagnostics are later slices.
+`persistence.Reconciler` capability; [publication and diagnostics](registry-publication-diagnostics.md)
+are separate production-unwired operations, not part of `DefinitionAdmin`.
 Never co-own a source with the old unfenced writer or strip legacy claims.
 
 ```go

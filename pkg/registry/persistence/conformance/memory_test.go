@@ -21,12 +21,14 @@ type memory struct{ *memoryState }
 type memoryState struct {
 	sync.Mutex
 	viewIDs     map[string]string
+	created     map[string]time.Time
 	updated     map[string]time.Time
 	sources     map[string]persistence.SourceDefinition
 	views       map[string]persistence.ViewDefinition
 	records     map[string]persistence.Entry
 	generations map[string]int64
 	jobs        map[string]memJob
+	positions   map[string]map[string]int32
 	clock       func() time.Time
 	seq         int
 }
@@ -34,7 +36,7 @@ type memoryState struct {
 var _ persistence.Definitions = (*memory)(nil)
 
 func fresh() *memory {
-	return &memory{memoryState: &memoryState{viewIDs: map[string]string{}, updated: map[string]time.Time{}, sources: map[string]persistence.SourceDefinition{}, views: map[string]persistence.ViewDefinition{}, records: map[string]persistence.Entry{}, generations: map[string]int64{}, jobs: map[string]memJob{}, clock: time.Now}}
+	return &memory{memoryState: &memoryState{viewIDs: map[string]string{}, created: map[string]time.Time{}, updated: map[string]time.Time{}, sources: map[string]persistence.SourceDefinition{}, views: map[string]persistence.ViewDefinition{}, records: map[string]persistence.Entry{}, generations: map[string]int64{}, jobs: map[string]memJob{}, positions: map[string]map[string]int32{}, clock: time.Now}}
 }
 func clone[T any](v T) T { b, _ := json.Marshal(v); var out T; _ = json.Unmarshal(b, &out); return out }
 func (m *memory) transact(ctx context.Context, f func(*memory) error) error {
@@ -43,15 +45,15 @@ func (m *memory) transact(ctx context.Context, f func(*memory) error) error {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
-	next := &memory{memoryState: &memoryState{viewIDs: clone(m.viewIDs), updated: clone(m.updated), sources: clone(m.sources), views: clone(m.views), records: clone(m.records), generations: clone(m.generations), jobs: clone(m.jobs), clock: m.clock, seq: m.seq}}
+	next := &memory{memoryState: &memoryState{viewIDs: clone(m.viewIDs), created: clone(m.created), updated: clone(m.updated), sources: clone(m.sources), views: clone(m.views), records: clone(m.records), generations: clone(m.generations), jobs: clone(m.jobs), positions: clone(m.positions), clock: m.clock, seq: m.seq}}
 	if e := f(next); e != nil {
 		return e
 	}
 	if e := ctx.Err(); e != nil {
 		return e
 	}
-	m.viewIDs, m.updated = next.viewIDs, next.updated
-	m.sources, m.views, m.records, m.generations, m.jobs, m.seq = next.sources, next.views, next.records, next.generations, next.jobs, next.seq
+	m.viewIDs, m.created, m.updated = next.viewIDs, next.created, next.updated
+	m.sources, m.views, m.records, m.generations, m.jobs, m.positions, m.seq = next.sources, next.views, next.records, next.generations, next.jobs, next.positions, next.seq
 	return nil
 }
 func (m *memory) CreateSource(ctx context.Context, s persistence.SourceDefinition) (persistence.SourceDefinition, error) {
