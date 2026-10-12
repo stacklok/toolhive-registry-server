@@ -189,6 +189,73 @@ Real manager/envtest acceptance is included in CI with the existing pinned 1.33.
 assets; fake-client tests cover complete scope, opt-in/out, metadata, listing and
 watch failures, incarnation/scope mismatch, and startup readiness.
 
+## Available but unwired standalone lifecycle
+
+`internal/sync/standalone.New` now constructs a dormant supervisor over the public
+coordinator and injected operator factory. It performs no database access, source
+listing, fetch, lease, watch, initialization or manager startup. `Preflight` reads
+**all persisted sources**, CONFIG/API and linked/unlinked alike, validates public
+definitions, and invokes the supplied read-only compatibility check. `Run` repeats
+that startup barrier before starting scheduled polling and per-source workers.
+Nothing in the production builder, service, sync selection or exposure-marker
+consumption selects this adapter yet.
+
+Scheduled Git/API/file ingestion stays with `Coordinator.Run` and `Jobs.ClaimNext`;
+there is no second source scheduler, hash implementation or CRUD path. Inline files
+use the persisted `File.Data` captured by `Coordinator.Sync` **after acquisition**.
+Startup and bounded baseline checks recover missed notifications/invalidated
+generations; a current valid baseline is not repeatedly fetched or replaced.
+`SyncInline(name)` accepts no raw payload and has no direct writer/status shortcut.
+Managed sources are never leased. Supply `ingest.New` with the host's existing HTTP,
+Git, file and secret-loader dependencies; authenticated Git still needs an explicit
+validated file-reference loader, and scheduled filters use the public coordinator.
+
+`Refresh` serializes ownership changes while `Run` is active. Discovery errors are
+not deletion: an explicit failed refresh leaves existing workers intact; a failed
+periodic backend query terminates the supervisor without writing an empty snapshot.
+Source deletion, incarnation replacement and canonical namespace-scope changes
+cancel and **join** old workers before starting replacements. Readiness is false
+during replacement and until the new worker's startup succeeds. Terminal worker or
+scheduled backend failures cancel and join siblings. Shutdown closes neither borrowed
+clients nor pools. The host supplies restart/backoff and bounded compatibility alerts.
+
+`internal/kubernetes.NewStandaloneOperator` wraps an authoritative `client.WithWatch`
+and constructs the **existing public runner**, never a Kubernetes manager. Its List
+wrapper checks the actual returned CRD objects before metadata validation/conversion:
+only exact `toolhive.stacklok.dev/registry-export=true` opts in; presence of
+`toolhive.stacklok.dev/authz-claims`, including empty or malformed values, rejects the
+**entire** snapshot. Missing URL/description cannot hide that annotation. Non-exported
+resources with the annotation do **not** block ingestion. No annotation is parsed,
+stripped, propagated, or converted into a policy callback in a public package.
+
+`PreflightStandaloneOperator` performs read-only authoritative lists for every kind
+in every persisted namespace; empty scope means all namespaces. Startup, event and
+periodic snapshots all pass through that same checked List wrapper, not a separate
+unchecked fetch after preflight. Incomplete/error lists fail safely. Later annotation
+introduction emits only the fixed remediation diagnostic through the host callback,
+records a categorized fetch failure and preserves the last good snapshot. The public
+converter still owns explicit export URL/description handling and valid empty startup.
+
+### Remaining cutover blockers
+
+- Stop/drain legacy unfenced writers/controllers before selecting this owner. No
+  constructor that starts a manager can participate in the cutover preflight barrier.
+- Revalidate/consume the acknowledged offline exposure transition, final configuration
+  and Cedar policy before any initialization, lease, fetch, watch or serving. Neither
+  this adapter nor its tests run claims retirement or consume the dormant marker.
+- Validate/remediate legacy definitions before initialization. Public `Kind` rejects
+  schedules/filters on inline, managed and Kubernetes sources. Legacy configuration
+  accepts some such fields (and applies inline filters); **never silently drop those
+  filters** or assume equivalent selection. Provide an explicit operator-facing
+  remediation plan and repeat exposure review when effective configuration changes.
+- Persist the final effective Kubernetes namespace scope consistently. Empty public
+  scope means all namespaces; any later global watch-namespace fallback must be
+  resolved into the stored definition used by both fence and runner. Do not narrow
+  only the wrapper while leaving stored scope broader. Namespace ordering alone does
+  not change ownership; duplicates/invalid namespaces remain rejected by the runner.
+- Complete standalone service/HTTP selection and runtime claims/RBAC retirement in
+  later slices. Current production guards and legacy ingestion remain unchanged.
+
 ## Temporary standalone compatibility boundary
 
 The standalone app is **not rewired** to these unrestricted components. Its
