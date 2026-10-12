@@ -39,7 +39,7 @@ const managedSourceKind = "managed"
 
 // CreateSource creates an API-owned source.
 func (d *Definitions) CreateSource(ctx context.Context, s persistence.SourceDefinition) (persistence.SourceDefinition, error) {
-	if s.ID != "" || s.Origin != "" {
+	if s.ID != "" || s.Origin != "" || !s.CreatedAt.IsZero() || !s.UpdatedAt.IsZero() {
 		return s, fmt.Errorf("%w: identity/origin is assigned by storage", persistence.ErrInvalid)
 	}
 	if _, err := s.Kind(); err != nil {
@@ -67,7 +67,8 @@ func (d *Definitions) ListSources(ctx context.Context) ([]persistence.SourceDefi
 	}
 	out := make([]persistence.SourceDefinition, 0, len(rows))
 	for _, row := range rows {
-		v, e := decodeSource(row.ID, row.Name, row.Origin, row.SourceType, row.SourceConfig, row.FilterConfig, row.Micros)
+		v, e := decodeSource(row.ID, row.Name, row.Origin, row.SourceType,
+			row.SourceConfig, row.FilterConfig, row.Micros, row.CreatedAt, row.UpdatedAt)
 		if e != nil {
 			return nil, e
 		}
@@ -82,7 +83,7 @@ func (d *Definitions) ListSources(ctx context.Context) ([]persistence.SourceDefi
 func (d *Definitions) UpdateSource(
 	ctx context.Context, name string, s persistence.SourceDefinition,
 ) (persistence.SourceDefinition, error) {
-	if s.Name != name || (s.Origin != "" && s.Origin != persistence.OriginAPI) {
+	if s.Name != name {
 		return s, fmt.Errorf("%w: immutable source identity/origin", persistence.ErrInvalid)
 	}
 	kind, err := s.Kind()
@@ -96,7 +97,10 @@ func (d *Definitions) UpdateSource(
 			return e
 		}
 		if old.Origin != persistence.OriginAPI {
-			return fmt.Errorf("%w: CONFIG source", persistence.ErrConflict)
+			return fmt.Errorf("%w: CONFIG source", persistence.ErrConfigOwned)
+		}
+		if s.Origin != "" && s.Origin != persistence.OriginAPI {
+			return fmt.Errorf("%w: immutable source origin", persistence.ErrInvalid)
 		}
 		if s.ID != "" && s.ID != old.ID {
 			return fmt.Errorf("%w: source ID", persistence.ErrConflict)
@@ -106,10 +110,10 @@ func (d *Definitions) UpdateSource(
 			return fmt.Errorf("%w: unsupported legacy source definition", persistence.ErrConflict)
 		}
 		if oldKind != kind {
-			return fmt.Errorf("%w: source kind immutable", persistence.ErrConflict)
+			return fmt.Errorf("%w: source kind immutable", persistence.ErrKindChange)
 		}
 		if old.File != nil && fileKind(old.File) != fileKind(s.File) {
-			return fmt.Errorf("%w: file location kind immutable", persistence.ErrConflict)
+			return fmt.Errorf("%w: file location kind immutable", persistence.ErrKindChange)
 		}
 		if e = requireNoClaims(ctx, tx, "source", name); e != nil {
 			return e
@@ -141,7 +145,7 @@ func (d *Definitions) DeleteSource(ctx context.Context, name string) error {
 			return e
 		}
 		if old.Origin != persistence.OriginAPI {
-			return fmt.Errorf("%w: CONFIG source", persistence.ErrConflict)
+			return fmt.Errorf("%w: CONFIG source", persistence.ErrConfigOwned)
 		}
 		if e = requireNoClaims(ctx, tx, "source", name); e != nil {
 			return e
@@ -166,7 +170,7 @@ func (d *Definitions) DeleteSource(ctx context.Context, name string) error {
 
 // CreateView creates an API-owned view and its ordered source links.
 func (d *Definitions) CreateView(ctx context.Context, v persistence.ViewDefinition) (persistence.ViewDefinition, error) {
-	if v.Origin != "" {
+	if v.Origin != "" || !v.CreatedAt.IsZero() || !v.UpdatedAt.IsZero() {
 		return v, fmt.Errorf("%w: origin is assigned by storage", persistence.ErrInvalid)
 	}
 	if err := persistence.ValidateView(v); err != nil {
@@ -175,14 +179,17 @@ func (d *Definitions) CreateView(ctx context.Context, v persistence.ViewDefiniti
 	var out persistence.ViewDefinition
 	err := d.write(ctx, func(tx pgx.Tx) error {
 		id, e := sqlc.New(tx).DefInsertAPIView(ctx, v.Name)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return persistence.ErrAlreadyExists
+		}
 		if e != nil {
 			return classify(e)
 		}
 		if e = link(ctx, tx, id, v.Sources); e != nil {
 			return e
 		}
-		out = persistence.ViewDefinition{Name: v.Name, Origin: persistence.OriginAPI, Sources: append([]string(nil), v.Sources...)}
-		return nil
+		out, e = getView(ctx, tx, v.Name, false)
+		return e
 	})
 	return out, err
 }
@@ -228,7 +235,7 @@ func (d *Definitions) ListViews(ctx context.Context) ([]persistence.ViewDefiniti
 func (d *Definitions) UpdateView(
 	ctx context.Context, name string, v persistence.ViewDefinition,
 ) (persistence.ViewDefinition, error) {
-	if v.Name != name || (v.Origin != "" && v.Origin != persistence.OriginAPI) {
+	if v.Name != name {
 		return v, fmt.Errorf("%w: immutable view name/origin", persistence.ErrInvalid)
 	}
 	if e := persistence.ValidateView(v); e != nil {
@@ -241,7 +248,10 @@ func (d *Definitions) UpdateView(
 			return e
 		}
 		if old.Origin != persistence.OriginAPI {
-			return fmt.Errorf("%w: CONFIG view", persistence.ErrConflict)
+			return fmt.Errorf("%w: CONFIG view", persistence.ErrConfigOwned)
+		}
+		if v.Origin != "" && v.Origin != persistence.OriginAPI {
+			return fmt.Errorf("%w: immutable view origin", persistence.ErrInvalid)
 		}
 		if e = requireNoClaims(ctx, tx, "registry", name); e != nil {
 			return e
@@ -260,8 +270,8 @@ func (d *Definitions) UpdateView(
 		if e != nil {
 			return classify(e)
 		}
-		out = persistence.ViewDefinition{Name: name, Origin: persistence.OriginAPI, Sources: append([]string(nil), v.Sources...)}
-		return nil
+		out, e = getView(ctx, tx, name, false)
+		return e
 	})
 	return out, err
 }
@@ -274,7 +284,7 @@ func (d *Definitions) DeleteView(ctx context.Context, name string) error {
 			return e
 		}
 		if old.Origin != persistence.OriginAPI {
-			return fmt.Errorf("%w: CONFIG view", persistence.ErrConflict)
+			return fmt.Errorf("%w: CONFIG view", persistence.ErrConfigOwned)
 		}
 		if e = requireNoClaims(ctx, tx, "registry", name); e != nil {
 			return e
@@ -309,13 +319,13 @@ func (d *Definitions) Reconcile(
 				a, _ := old.Kind()
 				b, _ := s.Kind()
 				if a != b {
-					return fmt.Errorf("%w: source kind immutable", persistence.ErrConflict)
+					return fmt.Errorf("%w: source kind immutable", persistence.ErrKindChange)
 				}
 				if e = requireKnownFields(ctx, tx, s.Name, old); e != nil {
 					return e
 				}
 				if old.File != nil && fileKind(old.File) != fileKind(s.File) {
-					return fmt.Errorf("%w: file location kind immutable", persistence.ErrConflict)
+					return fmt.Errorf("%w: file location kind immutable", persistence.ErrKindChange)
 				}
 			}
 		}
@@ -455,6 +465,9 @@ func insertSource(ctx context.Context, q querier, s persistence.SourceDefinition
 	_, e = sqlc.New(q).DefInsertSource(ctx, sqlc.DefInsertSourceParams{
 		Name: s.Name, SourceType: kind, Column3: spec, Column4: filter, Column5: schedule, Syncable: synced(s),
 	})
+	if errors.Is(e, pgx.ErrNoRows) {
+		return s, persistence.ErrAlreadyExists
+	}
 	if e != nil {
 		return s, classify(e)
 	}
@@ -466,16 +479,17 @@ func getSource(ctx context.Context, q querier, name string, lock bool) (persiste
 		id, origin, kind string
 		spec, filter     []byte
 		micros           any
+		created, updated *time.Time
 		e                error
 	)
 	if lock {
 		row, err := sqlc.New(q).DefLockSource(ctx, name)
-		id, origin, kind, spec, filter, micros, e = row.ID, row.Origin, row.SourceType,
-			row.SourceConfig, row.FilterConfig, row.Micros, err
+		id, origin, kind, spec, filter, micros, created, updated, e = row.ID, row.Origin, row.SourceType,
+			row.SourceConfig, row.FilterConfig, row.Micros, row.CreatedAt, row.UpdatedAt, err
 	} else {
 		row, err := sqlc.New(q).DefGetSource(ctx, name)
-		id, origin, kind, spec, filter, micros, e = row.ID, row.Origin, row.SourceType,
-			row.SourceConfig, row.FilterConfig, row.Micros, err
+		id, origin, kind, spec, filter, micros, created, updated, e = row.ID, row.Origin, row.SourceType,
+			row.SourceConfig, row.FilterConfig, row.Micros, row.CreatedAt, row.UpdatedAt, err
 	}
 	if errors.Is(e, pgx.ErrNoRows) {
 		return persistence.SourceDefinition{}, persistence.ErrNotFound
@@ -483,11 +497,15 @@ func getSource(ctx context.Context, q querier, name string, lock bool) (persiste
 	if e != nil {
 		return persistence.SourceDefinition{}, classify(e)
 	}
-	return decodeSource(id, name, origin, kind, spec, filter, micros)
+	return decodeSource(id, name, origin, kind, spec, filter, micros, created, updated)
 }
 
-func decodeSource(id, name, origin, kind string, spec, filter []byte, micros any) (persistence.SourceDefinition, error) {
-	s := persistence.SourceDefinition{ID: id, Name: name, Origin: persistence.Origin(origin)}
+func decodeSource(
+	id, name, origin, kind string, spec, filter []byte, micros any, created, updated *time.Time,
+) (persistence.SourceDefinition, error) {
+	s := persistence.SourceDefinition{
+		ID: id, Name: name, Origin: persistence.Origin(origin), CreatedAt: definitionTime(created), UpdatedAt: definitionTime(updated),
+	}
 	var e error
 	if micros != nil {
 		value, ok := micros.(int64)
@@ -532,9 +550,11 @@ func getView(ctx context.Context, q querier, name string, lock bool) (persistenc
 	if lock {
 		row, err := sqlc.New(q).DefLockView(ctx, name)
 		v.Name, v.Origin, e = row.Name, persistence.Origin(row.Origin), err
+		v.CreatedAt, v.UpdatedAt = definitionTime(row.CreatedAt), definitionTime(row.UpdatedAt)
 	} else {
 		row, err := sqlc.New(q).DefGetView(ctx, name)
 		v.Name, v.Origin, e = row.Name, persistence.Origin(row.Origin), err
+		v.CreatedAt, v.UpdatedAt = definitionTime(row.CreatedAt), definitionTime(row.UpdatedAt)
 	}
 	if errors.Is(e, pgx.ErrNoRows) {
 		return v, persistence.ErrNotFound
@@ -544,6 +564,13 @@ func getView(ctx context.Context, q querier, name string, lock bool) (persistenc
 	}
 	v.Sources, e = sqlc.New(q).DefViewSources(ctx, name)
 	return v, classify(e)
+}
+
+func definitionTime(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return value.UTC()
 }
 
 func link(ctx context.Context, q querier, id string, names []string) error {

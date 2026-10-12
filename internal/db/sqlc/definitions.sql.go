@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
@@ -73,7 +74,7 @@ func (q *Queries) DefDeleteViewLinks(ctx context.Context, dollar_1 uuid.UUID) er
 
 const defGetSource = `-- name: DefGetSource :one
 SELECT id::text AS id, name, creation_type::text AS origin, source_type, source_config, filter_config,
- COALESCE((extract(epoch from sync_schedule)*1000000)::bigint,0) AS micros
+ COALESCE((extract(epoch from sync_schedule)*1000000)::bigint,0) AS micros, created_at, updated_at
 FROM source WHERE name=$1
 `
 
@@ -85,6 +86,8 @@ type DefGetSourceRow struct {
 	SourceConfig []byte      `json:"source_config"`
 	FilterConfig []byte      `json:"filter_config"`
 	Micros       interface{} `json:"micros"`
+	CreatedAt    *time.Time  `json:"created_at"`
+	UpdatedAt    *time.Time  `json:"updated_at"`
 }
 
 func (q *Queries) DefGetSource(ctx context.Context, name string) (DefGetSourceRow, error) {
@@ -98,28 +101,38 @@ func (q *Queries) DefGetSource(ctx context.Context, name string) (DefGetSourceRo
 		&i.SourceConfig,
 		&i.FilterConfig,
 		&i.Micros,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const defGetView = `-- name: DefGetView :one
-SELECT name, creation_type::text AS origin FROM registry WHERE name=$1
+SELECT name, creation_type::text AS origin, created_at, updated_at FROM registry WHERE name=$1
 `
 
 type DefGetViewRow struct {
-	Name   string `json:"name"`
-	Origin string `json:"origin"`
+	Name      string     `json:"name"`
+	Origin    string     `json:"origin"`
+	CreatedAt *time.Time `json:"created_at"`
+	UpdatedAt *time.Time `json:"updated_at"`
 }
 
 func (q *Queries) DefGetView(ctx context.Context, name string) (DefGetViewRow, error) {
 	row := q.db.QueryRow(ctx, defGetView, name)
 	var i DefGetViewRow
-	err := row.Scan(&i.Name, &i.Origin)
+	err := row.Scan(
+		&i.Name,
+		&i.Origin,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }
 
 const defInsertAPIView = `-- name: DefInsertAPIView :one
-INSERT INTO registry(name,creation_type) VALUES($1,'API') RETURNING id::text
+INSERT INTO registry(name,creation_type) VALUES($1,'API')
+ON CONFLICT ON CONSTRAINT registry_name_key DO NOTHING RETURNING id::text
 `
 
 func (q *Queries) DefInsertAPIView(ctx context.Context, name string) (string, error) {
@@ -131,7 +144,8 @@ func (q *Queries) DefInsertAPIView(ctx context.Context, name string) (string, er
 
 const defInsertSource = `-- name: DefInsertSource :one
 INSERT INTO source(name,creation_type,source_type,source_config,filter_config,sync_schedule,syncable)
-VALUES($1,'API',$2,$3::jsonb,$4::jsonb,$5::interval,$6) RETURNING id::text
+VALUES($1,'API',$2,$3::jsonb,$4::jsonb,$5::interval,$6)
+ON CONFLICT ON CONSTRAINT source_name_key DO NOTHING RETURNING id::text
 `
 
 type DefInsertSourceParams struct {
@@ -178,7 +192,7 @@ func (q *Queries) DefLink(ctx context.Context, arg DefLinkParams) (int64, error)
 
 const defListSources = `-- name: DefListSources :many
 SELECT id::text AS id, name, creation_type::text AS origin, source_type, source_config, filter_config,
- COALESCE((extract(epoch from sync_schedule)*1000000)::bigint,0) AS micros
+ COALESCE((extract(epoch from sync_schedule)*1000000)::bigint,0) AS micros, created_at, updated_at
 FROM source ORDER BY name COLLATE "C"
 `
 
@@ -190,6 +204,8 @@ type DefListSourcesRow struct {
 	SourceConfig []byte      `json:"source_config"`
 	FilterConfig []byte      `json:"filter_config"`
 	Micros       interface{} `json:"micros"`
+	CreatedAt    *time.Time  `json:"created_at"`
+	UpdatedAt    *time.Time  `json:"updated_at"`
 }
 
 func (q *Queries) DefListSources(ctx context.Context) ([]DefListSourcesRow, error) {
@@ -209,6 +225,8 @@ func (q *Queries) DefListSources(ctx context.Context) ([]DefListSourcesRow, erro
 			&i.SourceConfig,
 			&i.FilterConfig,
 			&i.Micros,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -246,7 +264,7 @@ func (q *Queries) DefListViewNames(ctx context.Context) ([]string, error) {
 
 const defLockSource = `-- name: DefLockSource :one
 SELECT id::text AS id, name, creation_type::text AS origin, source_type, source_config, filter_config,
- COALESCE((extract(epoch from sync_schedule)*1000000)::bigint,0) AS micros
+ COALESCE((extract(epoch from sync_schedule)*1000000)::bigint,0) AS micros, created_at, updated_at
 FROM source WHERE name=$1 FOR UPDATE
 `
 
@@ -258,6 +276,8 @@ type DefLockSourceRow struct {
 	SourceConfig []byte      `json:"source_config"`
 	FilterConfig []byte      `json:"filter_config"`
 	Micros       interface{} `json:"micros"`
+	CreatedAt    *time.Time  `json:"created_at"`
+	UpdatedAt    *time.Time  `json:"updated_at"`
 }
 
 func (q *Queries) DefLockSource(ctx context.Context, name string) (DefLockSourceRow, error) {
@@ -271,23 +291,32 @@ func (q *Queries) DefLockSource(ctx context.Context, name string) (DefLockSource
 		&i.SourceConfig,
 		&i.FilterConfig,
 		&i.Micros,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const defLockView = `-- name: DefLockView :one
-SELECT name, creation_type::text AS origin FROM registry WHERE name=$1 FOR UPDATE
+SELECT name, creation_type::text AS origin, created_at, updated_at FROM registry WHERE name=$1 FOR UPDATE
 `
 
 type DefLockViewRow struct {
-	Name   string `json:"name"`
-	Origin string `json:"origin"`
+	Name      string     `json:"name"`
+	Origin    string     `json:"origin"`
+	CreatedAt *time.Time `json:"created_at"`
+	UpdatedAt *time.Time `json:"updated_at"`
 }
 
 func (q *Queries) DefLockView(ctx context.Context, name string) (DefLockViewRow, error) {
 	row := q.db.QueryRow(ctx, defLockView, name)
 	var i DefLockViewRow
-	err := row.Scan(&i.Name, &i.Origin)
+	err := row.Scan(
+		&i.Name,
+		&i.Origin,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }
 
