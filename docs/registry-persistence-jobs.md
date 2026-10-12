@@ -1,5 +1,8 @@
 # Leased registry synchronization jobs
 
+Before embedding ingestion, see [reusable adapters and lifecycle](registry-ingestion.md).
+The standalone compatibility boundary described there remains in force.
+
 `persistence.Jobs` is independent of `RegistryService`, HTTP, secrets and
 identity. `postgres.NewJobs(pool, maxMetaSize)` borrows the same migrated,
 caller-owned PostgreSQL pool. It neither migrates, repairs latest pointers,

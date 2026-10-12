@@ -44,12 +44,12 @@
 // # Usage Example
 //
 //	service := NewDefaultFilterService()
-//	filter := &config.FilterConfig{
-//		Names: &config.NameFilterConfig{
+//	filter := &persistence.Filter{
+//		Names: &persistence.NameFilter{
 //			Include: []string{"postgres-*", "mysql-*"},
 //			Exclude: []string{"*-experimental"},
 //		},
-//		Tags: &config.TagFilterConfig{
+//		Tags: &persistence.NameFilter{
 //			Include: []string{"database", "sql"},
 //			Exclude: []string{"deprecated"},
 //		},

@@ -1,4 +1,4 @@
-package kubernetes
+package operator
 
 import (
 	"strings"
@@ -118,7 +118,7 @@ func TestGenerateServerName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := GenerateServerName(tt.k8sNamespace, tt.k8sName)
+			result, err := generateServerName(tt.k8sNamespace, tt.k8sName)
 
 			if tt.expectError {
 				if err == nil {

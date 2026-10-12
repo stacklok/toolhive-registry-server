@@ -1,4 +1,4 @@
-package kubernetes
+package operator
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ const (
 	maxServerNameLength = 200
 )
 
-// GenerateServerName generates a reverse-DNS formatted server name from K8s resource information.
+// generateServerName generates a reverse-DNS formatted server name from K8s resource information.
 // The format is: com.toolhive.k8s.<namespace>/<service-name>
 //
 // Note: Kubernetes already enforces DNS label name rules (RFC 1123) for namespaces and names:
@@ -28,9 +28,9 @@ const (
 //   - the generated name exceeds 200 characters (database/spec limit)
 //
 // Examples:
-//   - GenerateServerName("default", "weather-service") -> "com.toolhive.k8s.default/weather-service"
-//   - GenerateServerName("production", "api-gateway") -> "com.toolhive.k8s.production/api-gateway"
-func GenerateServerName(k8sNamespace, k8sName string) (string, error) {
+//   - generateServerName("default", "weather-service") -> "com.toolhive.k8s.default/weather-service"
+//   - generateServerName("production", "api-gateway") -> "com.toolhive.k8s.production/api-gateway"
+func generateServerName(k8sNamespace, k8sName string) (string, error) {
 	if k8sNamespace == "" {
 		return "", fmt.Errorf("kubernetes namespace cannot be empty")
 	}

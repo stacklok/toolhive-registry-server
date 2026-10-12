@@ -19,6 +19,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
 // SourceType represents the type of registry data source
@@ -346,17 +347,11 @@ type FilterConfig struct {
 	Tags  *TagFilterConfig  `yaml:"tags,omitempty" json:"tags,omitempty"`
 }
 
-// NameFilterConfig defines name-based filtering
-type NameFilterConfig struct {
-	Include []string `yaml:"include,omitempty" json:"include,omitempty"`
-	Exclude []string `yaml:"exclude,omitempty" json:"exclude,omitempty"`
-}
+// NameFilterConfig defines name-based filtering.
+type NameFilterConfig = persistence.NameFilter
 
-// TagFilterConfig defines tag-based filtering
-type TagFilterConfig struct {
-	Include []string `yaml:"include,omitempty" json:"include,omitempty"`
-	Exclude []string `yaml:"exclude,omitempty" json:"exclude,omitempty"`
-}
+// TagFilterConfig defines tag-based filtering.
+type TagFilterConfig = persistence.NameFilter
 
 // AuthMode represents the authentication mode
 type AuthMode string

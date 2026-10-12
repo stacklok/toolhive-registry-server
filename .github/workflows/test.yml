@@ -183,4 +183,4 @@ jobs:
           printf 'KUBEBUILDER_ASSETS=%s\n' "$assets" >> "$GITHUB_ENV"
 
       - name: Run Kubernetes manager acceptance with race detector
-        run: go test -p 2 -race -tags integration -count=1 ./internal/kubernetes -run '^TestRegisteredStartupRefresh$' -v
+        run: go test -p 2 -race -tags integration -count=1 ./internal/kubernetes ./pkg/registry/operator -run '^(TestRegisteredStartupRefresh|TestRegisteredOperator)$' -v

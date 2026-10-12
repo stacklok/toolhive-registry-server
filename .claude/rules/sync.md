@@ -3,6 +3,9 @@ paths:
   - "internal/sync/**/*.go"
   - "internal/sources/**/*.go"
   - "internal/kubernetes/**/*.go"
+  - "pkg/registry/ingest/**/*.go"
+  - "pkg/registry/reconcile/**/*.go"
+  - "pkg/registry/operator/**/*.go"
 ---
 
 # Sync Pipeline
@@ -15,7 +18,9 @@ non-synced source behavior.
 
 Sync writes use `pgx.Serializable` isolation. Temp tables + `COPY` feed a single
 transaction that commits or rolls back as a unit. A half-applied sync is worse than a
-stale registry.
+stale registry. Reusable coordinators consume `persistence.Jobs` atomicity and
+fencing rather than importing SQL transactions; the PostgreSQL implementation
+retains these serializable transaction rules.
 
 **What must hold:**
 - Bulk insert/upsert uses temp tables populated via `COPY`, merged into target tables
@@ -54,7 +59,17 @@ handler registered through `sources.RegistryHandlerFactory`.
 handlers. K8s sources are populated by the reconciler using the same `SyncWriter` interface
 the coordinator uses, so they share the transactional guarantees of §1.
 
-## 3. K8s Source Claims Don't Inherit; Entries Get Claims From an Annotation
+The reusable path uses `Jobs.ClaimNext` for scheduled Git/API/file sources only
+(inline files are also excluded). Operator/manual refresh explicitly uses `Acquire`
+through the shared leased coordinator, never the scheduled polling loop. A public
+operator runner owns only its watches; the host owns its client and manager.
+
+## 3. Legacy K8s Source Claims Don't Inherit; Entries Get Claims From an Annotation
+
+This section applies only to `internal/kubernetes` until #912. The reusable
+`pkg/registry/operator` path must never parse or propagate identity annotations.
+Shared conversion remains policy-free; legacy parsing stays in the legacy controller.
+Never co-own one source with legacy and leased writers.
 
 A single K8s source typically covers a namespace containing CRDs owned by different teams
 with different visibility. Inheriting source claims would force one source per team.

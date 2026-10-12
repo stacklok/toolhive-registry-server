@@ -76,14 +76,14 @@ type KubernetesSpec struct {
 
 // NameFilter includes or excludes entry names or tags.
 type NameFilter struct {
-	Include []string `json:"include,omitempty"`
-	Exclude []string `json:"exclude,omitempty"`
+	Include []string `yaml:"include,omitempty" json:"include,omitempty"`
+	Exclude []string `yaml:"exclude,omitempty" json:"exclude,omitempty"`
 }
 
 // Filter retains the existing name/tag filter shape.
 type Filter struct {
-	Names *NameFilter `json:"names,omitempty"`
-	Tags  *NameFilter `json:"tags,omitempty"`
+	Names *NameFilter `yaml:"names,omitempty" json:"names,omitempty"`
+	Tags  *NameFilter `yaml:"tags,omitempty" json:"tags,omitempty"`
 }
 
 // SourceDefinition is a claims-free definition; ID and Origin are assigned at creation.

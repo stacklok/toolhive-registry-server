@@ -29,12 +29,14 @@ K8s stay out of the service layer.
 
 **Detect**: `internal/api/**` files importing `internal/service/db/**`, `database/**`, or
 concrete `sources.*` types; `internal/service/**` importing `net/http`, `client-go`, or
-controller-runtime; `client-go` imports anywhere outside `internal/kubernetes/**` and the
-K8s sync path.
+controller-runtime; `client-go` imports anywhere outside `internal/kubernetes/**`,
+`pkg/registry/operator/**`, and the K8s sync path.
 
 **Instead**: API handlers call `service.RegistryService`. Service depends on storage
 interfaces (`storage.Factory`), not concrete drivers. Kubernetes code lives in
-`internal/kubernetes/**` and is invoked from sync orchestration.
+`internal/kubernetes/**` or optional `pkg/registry/operator/**` and is invoked from sync orchestration.
+The public operator borrows clients/managers and contains no claims policy;
+core public ingestion/reconciliation must not import Kubernetes.
 
 ## 3. Two HTTP Servers: Public and Internal
 

@@ -14,6 +14,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
 // Result contains the result of a successful sync operation
@@ -441,7 +442,7 @@ func (s *defaultSyncManager) applyFilteringIfConfigured(
 			"hasTagFilters", regCfg.Filter.Tags != nil)
 
 		// Apply filtering to UpstreamRegistry
-		filteredServerReg, err := s.filterService.ApplyFilters(ctx, fetchResult.Registry, regCfg.Filter)
+		filteredServerReg, err := s.filterService.ApplyFilters(ctx, fetchResult.Registry, (*persistence.Filter)(regCfg.Filter))
 		if err != nil {
 			slog.Error("Registry filtering failed", "error", err)
 			return &Error{

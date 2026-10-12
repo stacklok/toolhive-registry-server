@@ -79,7 +79,7 @@ func (*apiRegistryHandler) newUpstreamHandler(regCfg *config.SourceConfig) (*ups
 		timeout = parsed
 	}
 
-	return NewUpstreamAPIHandler(httpclient.NewDefaultClient(timeout)), nil
+	return NewUpstreamAPIHandler(httpclient.NewDefaultClient(timeout))
 }
 
 // validateUpstreamFormat validates the endpoint speaks the upstream MCP Registry v0.1 API
