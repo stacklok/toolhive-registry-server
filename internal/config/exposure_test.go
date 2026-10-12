@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -118,6 +119,63 @@ func TestExposureConfigSafeFailures(t *testing.T) {
 	_, _, err := LoadExposureConfig("/private-secret-sentinel/nonexistent")
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "private-secret-sentinel")
+}
+
+func TestExposureReviewUsesLoadedSnapshotsAndFinalOverrides(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	policy := filepath.Join(dir, "policy.cedar")
+	policyBytes := []byte("loaded-policy")
+	require.NoError(t, os.WriteFile(policy, policyBytes, 0600))
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(exposureConfigFixture(policy)), 0600))
+	cfg, offline, err := LoadExposureConfig(path)
+	require.NoError(t, err)
+	loadedRevision := fmt.Sprintf("sha256:%x", sha256.Sum256(policyBytes))
+	loaded, err := cfg.ExposureReview(loadedRevision)
+	require.NoError(t, err)
+	require.Equal(t, offline, loaded, "offline and loaded-policy fingerprints use the same encoding")
+
+	require.NoError(t, os.WriteFile(policy, []byte("different-policy"), 0600))
+	require.NoError(t, os.WriteFile(path, []byte("invalid: ["), 0600))
+	stillLoaded, err := cfg.ExposureReview(loadedRevision)
+	require.NoError(t, err)
+	require.Equal(t, offline, stillLoaded, "never reread either file to bind startup evidence")
+
+	cfg.Admin.Enabled = true
+	cfg.WatchNamespace = "final-cli-override"
+	changed, err := cfg.ExposureReview(loadedRevision)
+	require.NoError(t, err)
+	require.NotEqual(t, offline.Revision, changed.Revision)
+	require.Equal(t, offline.RetiredFields, changed.RetiredFields)
+	cfg.Database.Password = "changed-credential"
+	same, err := cfg.ExposureReview(loadedRevision)
+	require.NoError(t, err)
+	require.Equal(t, changed, same)
+	for _, revision := range []string{"", "absent", "sha256:short", "sha256:" + strings.Repeat("A", 64),
+		"sha256:" + strings.Repeat("z", 64)} {
+		_, err := cfg.ExposureReview(revision)
+		require.Error(t, err)
+	}
+	_, err = (*Config)(nil).ExposureReview(loadedRevision)
+	require.Error(t, err)
+}
+
+//nolint:paralleltest // Environment overrides are process-global.
+func TestExposureReviewKeepsLoadedEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	policy := filepath.Join(dir, "policy.cedar")
+	require.NoError(t, os.WriteFile(policy, []byte("policy"), 0600))
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(exposureConfigFixture(policy)), 0600))
+	t.Setenv("THV_REGISTRY_ADMIN_ENABLED", "true")
+	cfg, offline, err := LoadExposureConfig(path)
+	require.NoError(t, err)
+	t.Setenv("THV_REGISTRY_ADMIN_ENABLED", "false")
+	loaded, err := cfg.ExposureReview(fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("policy"))))
+	require.NoError(t, err)
+	require.Equal(t, offline, loaded)
+	require.True(t, cfg.Admin.Enabled)
 }
 
 func exposureConfigFixture(policy string) string {

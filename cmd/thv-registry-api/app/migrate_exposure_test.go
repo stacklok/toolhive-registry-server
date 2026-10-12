@@ -179,7 +179,7 @@ VALUES('persisted','file','{}','{"team":"private-claims-sentinel"}')`)
 func TestMigrateExposureInventoryDoesNotAutoMigrate(t *testing.T) {
 	t.Parallel()
 	conn, _ := database.SetupTestDB(t)
-	require.NoError(t, database.MigrateDown(t.Context(), conn, 2))
+	require.NoError(t, database.MigrateDown(t.Context(), conn, 3))
 	command := newMigrateExposureCmd()
 	command.PersistentFlags().String("config", exposureCLIConfig(t, conn), "")
 	command.SetArgs([]string{"inventory"})

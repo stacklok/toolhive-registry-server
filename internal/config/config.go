@@ -147,6 +147,8 @@ type Config struct {
 	Authorization      *AuthorizationConfig `yaml:"authorization"`
 	Admin              AdminConfig          `yaml:"admin"`
 	publicPathsPresent bool
+	exposureRetired    map[string]any
+	exposureEnv        map[string]string
 
 	// insecureAllowHTTP allows HTTP URLs for OAuth issuer URLs (development only)
 	// Can be set via THV_REGISTRY_INSECURE_URL environment variable
@@ -813,7 +815,7 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
-	publicPathsPresent, err := hasPublicPaths(data)
+	retired, err := retiredExposureFields(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
@@ -827,10 +829,14 @@ func LoadConfig(opts ...Option) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	config.exposureRetired = retired
+	config.exposureEnv = exposureEnvironment()
+
 	if config.Auth != nil && config.Auth.Mode == "" {
 		config.Auth.Mode = DefaultAuthMode
 	}
 
+	_, publicPathsPresent := retired["auth.publicpaths"]
 	_, publicPathsEnvPresent := os.LookupEnv(EnvPrefix + "_AUTH_PUBLICPATHS")
 	config.publicPathsPresent = publicPathsPresent || publicPathsEnvPresent || v.InConfig("auth.publicPaths")
 

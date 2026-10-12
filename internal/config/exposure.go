@@ -2,6 +2,7 @@ package config
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,20 +33,51 @@ func LoadExposureConfig(path string) (*Config, ExposureConfig, error) {
 	if err != nil {
 		return nil, ExposureConfig{}, errors.New("exposure configuration unavailable or invalid")
 	}
-	var raw map[string]any
-	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return nil, ExposureConfig{}, errors.New("exposure configuration invalid")
+	policyRevision := "absent"
+	if cfg.Authorization != nil && cfg.Authorization.PolicyFile != "" {
+		policyRevision, err = exposurePolicyRevision(cfg.Authorization.PolicyFile)
+		if err != nil {
+			return nil, ExposureConfig{}, err
+		}
 	}
-	retired := map[string]any{}
-	collectRetiredFields(raw, "", retired)
+	review, err := cfg.fingerprintExposure(policyRevision)
+	return cfg, review, err
+}
+
+// ExposureReview fingerprints the final effective configuration (including CLI
+// overrides) against the revision of the actual loaded policy, without rereading
+// either file or the environment. It does not validate configuration or authorize
+// startup. Raw retired-field presence comes from the same YAML snapshot as decoding.
+func (c *Config) ExposureReview(loadedPolicyRevision string) (ExposureConfig, error) {
+	if len(loadedPolicyRevision) != len("sha256:")+64 || !strings.HasPrefix(loadedPolicyRevision, "sha256:") ||
+		strings.ToLower(loadedPolicyRevision) != loadedPolicyRevision {
+		return ExposureConfig{}, errors.New("invalid loaded exposure policy revision")
+	}
+	if _, err := hex.DecodeString(strings.TrimPrefix(loadedPolicyRevision, "sha256:")); err != nil {
+		return ExposureConfig{}, errors.New("invalid loaded exposure policy revision")
+	}
+	return c.fingerprintExposure(loadedPolicyRevision)
+}
+
+func (c *Config) fingerprintExposure(policyRevision string) (ExposureConfig, error) {
+	if c == nil {
+		return ExposureConfig{}, errors.New("exposure configuration unavailable")
+	}
+	retired := c.exposureRetired
+	if retired == nil {
+		retired = map[string]any{}
+	}
+	env := c.exposureEnv
+	if env == nil {
+		env = map[string]string{}
+	}
 	fields := make([]string, 0, len(retired))
 	for field := range retired {
 		fields = append(fields, field)
 	}
-	sort.Strings(fields)
 
 	// Copy before omitting credentials; never change the effective connection.
-	sources := append([]SourceConfig(nil), cfg.Sources...)
+	sources := append([]SourceConfig(nil), c.Sources...)
 	for i := range sources {
 		if sources[i].Git != nil {
 			git := *sources[i].Git
@@ -54,10 +86,10 @@ func LoadExposureConfig(path string) (*Config, ExposureConfig, error) {
 		}
 	}
 	var auth *AuthConfig
-	if cfg.Auth != nil {
-		copyAuth := *cfg.Auth
-		if cfg.Auth.OAuth != nil {
-			oauth := *cfg.Auth.OAuth
+	if c.Auth != nil {
+		copyAuth := *c.Auth
+		if c.Auth.OAuth != nil {
+			oauth := *c.Auth.OAuth
 			oauth.Providers = append([]OAuthProviderConfig(nil), oauth.Providers...)
 			for i := range oauth.Providers {
 				oauth.Providers[i].ClientSecretFile = ""
@@ -67,14 +99,6 @@ func LoadExposureConfig(path string) (*Config, ExposureConfig, error) {
 		}
 		auth = &copyAuth
 	}
-	policyRevision := "absent"
-	if cfg.Authorization != nil && cfg.Authorization.PolicyFile != "" {
-		policyRevision, err = exposurePolicyRevision(cfg.Authorization.PolicyFile)
-		if err != nil {
-			return nil, ExposureConfig{}, err
-		}
-	}
-	env := exposureEnvironment()
 	for key, field := range map[string]string{
 		"AUTH_AUTHZ": "env.auth.authz", "AUTH_ROLES": "env.auth.roles", "AUTH_PUBLICPATHS": "env.auth.publicpaths",
 	} {
@@ -94,12 +118,25 @@ func LoadExposureConfig(path string) (*Config, ExposureConfig, error) {
 		Retired       map[string]any
 		Environment   map[string]string
 		Policy        string
-	}{1, sources, cfg.Registries, auth, cfg.Authorization, cfg.Admin, cfg.WatchNamespace, retired, env, policyRevision}
+	}{1, sources, c.Registries, auth, c.Authorization, c.Admin, c.WatchNamespace, retired, env, policyRevision}
 	encoded, err := json.Marshal(projection)
 	if err != nil {
-		return nil, ExposureConfig{}, errors.New("exposure configuration cannot be fingerprinted")
+		return ExposureConfig{}, errors.New("exposure configuration cannot be fingerprinted")
 	}
-	return cfg, ExposureConfig{Revision: fmt.Sprintf("sha256:%x", sha256.Sum256(encoded)), RetiredFields: fields}, nil
+	return ExposureConfig{Revision: fmt.Sprintf("sha256:%x", sha256.Sum256(encoded)), RetiredFields: fields}, nil
+}
+
+func retiredExposureFields(data []byte) (map[string]any, error) {
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, errors.New("invalid YAML configuration")
+	}
+	retired := map[string]any{}
+	collectRetiredFields(raw, "", retired)
+	if len(retired) == 0 {
+		return nil, nil
+	}
+	return retired, nil
 }
 
 func exposureEnvironment() map[string]string {
@@ -117,6 +154,9 @@ func exposureEnvironment() map[string]string {
 				env[key] = value
 			}
 		}
+	}
+	if len(env) == 0 {
+		return nil
 	}
 	return env
 }

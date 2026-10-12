@@ -27,6 +27,12 @@ in the standalone surface. Prepare entry retagging on the legacy release before
 upgrading; there is no new undocumented Cedar retag action. Source/view and
 publication claims remain enforced. See `docs/registry-cedar-authorization.md`.
 Claims/RBAC removal and acknowledged offline exposure migration are separate work.
+Schema 29 and `internal/db.ConsumeExposure` provide dormant target-bound transition
+machinery only; no serving path calls it. Do not remove legacy protections or treat
+that primitive as startup authorization before the mandatory preparation barrier,
+nonpersonalized service cutover and exclusive leased-ingestion ownership are wired
+and tested together. `Engine.Revision()` identifies the actual frozen policy bytes;
+startup fingerprints must not reread the policy file.
 
 ## 1. Authentication and Authorization Are Separate Concerns
 

@@ -10,8 +10,10 @@ for the implemented configuration and transitional restrictions. Offline invento
 dormant revision-bound acknowledgement and explicit offline archive-and-clear are
 implemented; see the [migration guide](registry-exposure-migration.md). After metadata
 retirement remain offline until a runtime cutover release or an offline backup
-restore. Final non-personalized serving, marker consumption, cutover and runtime
-claims/RBAC removal below remain future work, not completed migration functionality.
+restore. Schema 29 and a dormant internal target-bound consumption primitive now
+exist; no serving path selects it. Final non-personalized serving, startup marker
+consumption, cutover and runtime claims/RBAC removal below remain future work,
+not completed migration functionality.
 Existing service, claims, role and PostgreSQL guard code remains in force.
 
 ## Recommendation and boundary

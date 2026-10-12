@@ -18,6 +18,7 @@ const ExposureInventoryVersion = 1
 
 const exposureSourceTable = "source"
 const exposureVersionID = "version_id"
+const exposureEmptyMode = "empty"
 
 const exposureCatalogLock = `LOCK TABLE public.source, public.registry_sync, public.registry,
  public.registry_source, public.registry_entry, public.entry_version,
@@ -110,7 +111,7 @@ func AcknowledgeExposure(ctx context.Context, conn *pgx.Conn, configRevision, di
 	// UPDATE job fences; ordinary readers can continue. No runtime is started.
 	if _, err = tx.Exec(ctx, exposureCatalogLock); err != nil {
 		return ExposureAcknowledgement{}, errors.New(
-			"cannot lock exposure catalog; require clean schema version 27 or 28 and offline drain")
+			"cannot lock exposure catalog; require clean schema version 27, 28 or 29 and offline drain")
 	}
 	inventory, err := inventoryExposureTx(ctx, tx, configRevision)
 	if err != nil {
@@ -120,7 +121,7 @@ func AcknowledgeExposure(ctx context.Context, conn *pgx.Conn, configRevision, di
 	if err = tx.QueryRow(ctx, `SELECT version FROM public.schema_migrations`).Scan(&schemaVersion); err != nil {
 		return ExposureAcknowledgement{}, errors.New("cannot inspect exposure schema")
 	}
-	if schemaVersion == 28 {
+	if schemaVersion >= 28 {
 		var transitioned bool
 		if err = tx.QueryRow(ctx, `SELECT retirement_id IS NOT NULL OR consumed_at IS NOT NULL
  FROM public.exposure_acknowledgement WHERE singleton`).Scan(&transitioned); err != nil {
@@ -159,7 +160,7 @@ func AcknowledgeExposure(ctx context.Context, conn *pgx.Conn, configRevision, di
 	}
 	mode := "whole-catalog"
 	if initializeEmpty {
-		mode = "empty"
+		mode = exposureEmptyMode
 	}
 	ack := ExposureAcknowledgement{Mode: mode, ReviewedDigest: digest, PostFenceDigest: postFence.Digest,
 		Message: "acknowledgement recorded; legacy protections unchanged"}
@@ -214,8 +215,9 @@ func inventoryExposureTx(ctx context.Context, tx pgx.Tx, revision string) (Expos
 	var version int
 	var dirty bool
 	err := tx.QueryRow(ctx, `SELECT version,dirty FROM public.schema_migrations`).Scan(&version, &dirty)
-	if err != nil || (version != 27 && version != 28) || dirty {
-		return ExposureInventory{}, errors.New("exposure inventory requires clean schema version 27 or 28; run migrate up separately")
+	if err != nil || (version != 27 && version != 28 && version != 29) || dirty {
+		return ExposureInventory{}, errors.New(
+			"exposure inventory requires clean schema version 27, 28 or 29; run migrate up separately")
 	}
 	inventory := ExposureInventory{Version: ExposureInventoryVersion, ConfigRevision: revision,
 		Counts: map[string]int64{}, Records: []ExposureRecord{}, Links: []ExposureLink{}}

@@ -55,6 +55,12 @@ type Engine struct {
 	revision string
 }
 
+// Revision identifies the exact bytes loaded into this immutable engine.
+// It never rereads the policy file; use it when binding startup review evidence.
+func (e *Engine) Revision() string {
+	return "sha256:" + e.revision
+}
+
 // Load rejects missing, empty, oversized, unparsable and ill-typed policy files.
 // Parser/validator errors deliberately do not escape: they may contain policy text.
 func Load(path string) (*Engine, error) {
