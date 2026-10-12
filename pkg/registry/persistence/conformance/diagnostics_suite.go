@@ -25,7 +25,12 @@ type DiagnosticsFactory func(*testing.T) (persistence.Definitions, persistence.E
 
 // TiedDiagnosticPositionFactory also supplies a test-only fixture hook for
 // historical view links whose positions are equal.
-type TiedDiagnosticPositionFactory func(*testing.T) (persistence.Definitions, persistence.Entries, persistence.EntryDiagnostics, func(context.Context, string) error)
+type TiedDiagnosticPositionFactory func(*testing.T) (
+	persistence.Definitions,
+	persistence.Entries,
+	persistence.EntryDiagnostics,
+	func(context.Context, string) error,
+)
 
 // RunDiagnostics checks complete, unshadowed diagnostic projections independently
 // of consumer dedup. Backends must use one snapshot for definitions/links/rows.
