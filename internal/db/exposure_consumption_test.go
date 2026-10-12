@@ -55,7 +55,7 @@ func TestExposureConsumptionPreservesEvidenceAndCatalog(t *testing.T) {
 	require.Equal(t, fmt.Sprintf("sha256:%x", sha256.Sum256(encoded)), target)
 	consumed := retirementState(t, conn)
 	require.NoError(t, registrydb.ConsumeExposure(t.Context(), conn, exposureRevision))
-	require.Equal(t, consumed, retirementState(t, conn), "restart must not refence or rewrite the receipt")
+	require.Equal(t, consumed, retirementState(t, conn), "restart must not fence or rewrite the receipt")
 	_, err = registrydb.AcknowledgeExposure(t.Context(), conn, exposureRevision, exposureInventory(t, conn).Digest, true, true, false)
 	require.ErrorContains(t, err, "evidence cannot be replaced")
 }
