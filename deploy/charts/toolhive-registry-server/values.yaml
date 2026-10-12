@@ -176,7 +176,7 @@ config:
   auth:
     mode: oauth
     oauth:
-      providers: [] # Configure trusted issuers/audiences before starting.
+      providers: []  # Configure trusted issuers/audiences before starting.
 
   # PostgreSQL database configuration (required)
   # Supply password and migrationPassword through Secret-backed environment
