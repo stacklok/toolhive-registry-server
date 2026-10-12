@@ -71,7 +71,7 @@ func TestMultiProviderMiddleware_Middleware(t *testing.T) {
 			authHeader: "Bearer valid-token",
 			setupMock: func(m *mocks.MocktokenValidatorInterface) {
 				m.EXPECT().ValidateToken(gomock.Any(), "valid-token").
-					Return(map[string]any{"sub": "user"}, nil)
+					Return(map[string]any{"iss": "https://issuer.example.com", "sub": "user"}, nil)
 			},
 			wantStatus: http.StatusOK,
 			wantCalled: true,
@@ -149,7 +149,7 @@ func TestMultiProviderMiddleware_SequentialFallback(t *testing.T) {
 		keycloakMock.EXPECT().ValidateToken(gomock.Any(), "token").
 			Return(nil, errors.New("invalid issuer")),
 		googleMock.EXPECT().ValidateToken(gomock.Any(), "token").
-			Return(map[string]any{"sub": "user@google.com"}, nil),
+			Return(map[string]any{"iss": "https://accounts.google.com", "sub": "user@google.com"}, nil),
 	)
 
 	providers := []providerConfig{
@@ -372,6 +372,7 @@ func TestMultiProviderMiddleware_LogsIdentity(t *testing.T) {
 	mockValidator := mocks.NewMocktokenValidatorInterface(ctrl)
 	mockValidator.EXPECT().ValidateToken(gomock.Any(), "valid-token").
 		Return(map[string]any{
+			"iss":                "https://issuer.example.com",
 			"sub":                "f1c2d3e4-5678-90ab-cdef-1234567890ab",
 			"name":               "Alice Example",
 			"preferred_username": "alice",
@@ -454,6 +455,7 @@ func TestMultiProviderMiddleware_LogsIdentity_PreferredUsernameFallback(t *testi
 	mockValidator := mocks.NewMocktokenValidatorInterface(ctrl)
 	mockValidator.EXPECT().ValidateToken(gomock.Any(), "tok").
 		Return(map[string]any{
+			"iss":                "https://issuer.example.com",
 			"sub":                "u-1",
 			"preferred_username": "alice",
 		}, nil)

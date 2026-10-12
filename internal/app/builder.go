@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -18,6 +19,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/app/storage"
 	auditmw "github.com/stacklok/toolhive-registry-server/internal/audit"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
+	"github.com/stacklok/toolhive-registry-server/internal/authorization"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -37,16 +39,14 @@ const (
 	defaultIdleTimeout         = 60 * time.Second
 )
 
-// defaultPublicPaths are paths that never require authentication
-var defaultPublicPaths = []string{"/openapi.json", "/.well-known"}
-
 // RegistryAppOptions is a function that configures the registry app builder
 type RegistryAppOptions func(*registryAppConfig) error
 
 // registryAppBuilder builds a RegistryApp using the builder pattern
 // It supports dependency injection for testing while providing sensible defaults for production
 type registryAppConfig struct {
-	config *config.Config
+	config          *config.Config
+	admissionEngine *authorization.Engine
 
 	// Optional component overrides (primarily for testing)
 	registryHandlerFactory sources.RegistryHandlerFactory
@@ -109,6 +109,10 @@ func NewRegistryApp(
 		return nil, fmt.Errorf("failed to build base configuration: %w", err)
 	}
 
+	if err := preflightAdmission(cfg); err != nil {
+		return nil, err
+	}
+
 	// Create storage factory for all storage-dependent components
 	if err := ensureStorageFactory(ctx, cfg); err != nil {
 		return nil, err
@@ -137,7 +141,8 @@ func NewRegistryApp(
 	// Build auth middleware (if not injected)
 	if cfg.authMiddleware == nil {
 		var authErr error
-		cfg.authMiddleware, cfg.authInfoHandler, authErr = auth.NewAuthMiddleware(ctx, cfg.config.Auth, auth.DefaultValidatorFactory)
+		cfg.authMiddleware, cfg.authInfoHandler, authErr = auth.NewAdmissionAuthMiddleware(
+			ctx, cfg.config.Auth, cfg.config.Authorization.AllowAnonymousCatalog, auth.DefaultValidatorFactory)
 		if authErr != nil {
 			return nil, fmt.Errorf("failed to build auth middleware: %w", authErr)
 		}
@@ -188,6 +193,17 @@ func NewRegistryApp(
 		ctx:                appCtx,
 		cancelFunc:         cancelFunc,
 	}, nil
+}
+
+// WithAdmissionEngine reuses the immutable policy preflight performed before CLI migrations.
+func WithAdmissionEngine(engine *authorization.Engine) RegistryAppOptions {
+	return func(cfg *registryAppConfig) error {
+		if engine == nil {
+			return authorization.ErrEvaluation
+		}
+		cfg.admissionEngine = engine
+		return nil
+	}
 }
 
 // WithConfig sets the configuration
@@ -464,12 +480,6 @@ func buildHTTPServer(
 		return nil, err
 	}
 
-	// Create auth middleware that bypasses public paths
-	publicPaths := defaultPublicPaths
-	if b.config != nil && b.config.Auth != nil && len(b.config.Auth.PublicPaths) > 0 {
-		publicPaths = append(publicPaths, b.config.Auth.PublicPaths...)
-	}
-
 	var auditCfg *config.AuditConfig
 	if b.config != nil {
 		auditCfg = b.config.Audit
@@ -479,9 +489,6 @@ func buildHTTPServer(
 	// rejections that never reach the post-auth audit middleware. This is
 	// critical for SIEM visibility into failed authentication attempts.
 	b.middlewares = append(b.middlewares, auditmw.AuthFailureMiddleware(auditCfg, auditLogger))
-
-	authMw := auth.WrapWithPublicPaths(b.authMiddleware, publicPaths)
-	b.middlewares = append(b.middlewares, authMw)
 
 	// Extract authentication config if available; the v1 router derives both
 	// role checks (Authz) and publish-time claim enforcement (Mode) from it.
@@ -496,11 +503,11 @@ func buildHTTPServer(
 
 	// Resolve roles for all authenticated requests so that downstream code
 	// (e.g., super-admin bypass in claim validation) can use IsSuperAdmin(ctx).
-	b.middlewares = append(b.middlewares, auth.ResolveRolesMiddleware(authzCfg))
+	postAuth := chi.Chain(auth.ResolveRolesMiddleware(authzCfg), auditmw.Middleware(auditCfg, auditLogger))
+	authenticate := func(next http.Handler) http.Handler { return b.authMiddleware(postAuth.Handler(next)) }
 
 	// Add audit middleware after auth and roles are resolved so that JWT
 	// claims and roles are available for the audit event subjects.
-	b.middlewares = append(b.middlewares, auditmw.Middleware(auditCfg, auditLogger))
 	if auditCfg != nil && auditCfg.Enabled {
 		slog.Info("Audit logging middleware enabled")
 	}
@@ -511,7 +518,14 @@ func buildHTTPServer(
 		api.WithAuthConfig(authCfg),
 	}
 	// Create router with middlewares
-	router := api.NewServer(svc, serverOpts...)
+	registrar, err := authorization.NewRegistrar(b.admissionEngine, b.config.Authorization.IdentityMappings, auditLogger)
+	if err != nil {
+		return nil, err
+	}
+	router, err := api.NewAdmissionServer(svc, registrar, b.config.Admin.Enabled, authenticate, serverOpts...)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create HTTP server
 	server := &http.Server{
@@ -536,6 +550,21 @@ func buildInternalHTTPServer(b *registryAppConfig, svc service.RegistryService) 
 		WriteTimeout: b.writeTimeout,
 		IdleTimeout:  b.idleTimeout,
 	}
+}
+
+func preflightAdmission(cfg *registryAppConfig) error {
+	if err := cfg.config.ValidateAdmission(); err != nil {
+		return err
+	}
+	if cfg.admissionEngine != nil {
+		return nil
+	}
+	engine, err := authorization.Load(cfg.config.Authorization.PolicyFile)
+	if err != nil {
+		return err
+	}
+	cfg.admissionEngine = engine
+	return nil
 }
 
 // addObservabilityMiddlewares prepends metrics, tracing, and compression

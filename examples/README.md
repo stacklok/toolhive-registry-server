@@ -2,6 +2,76 @@
 
 This directory contains sample configuration files demonstrating automatic registry synchronization from different data sources.
 
+## Standalone admission setup (required)
+
+All YAML examples now default to private OAuth access and `admin.enabled: false`.
+Before starting, customize the trusted issuer/audience, explicitly map its groups
+or scopes, and create/mount an operator-owned plain Cedar file at the absolute
+`authorization.policyFile`. Nothing installs an allow-all policy. The
+[Cedar guide](../docs/registry-cedar-authorization.md) has typechecked policies,
+policy size/type constraints and opaque-token compatibility notes. Keep legacy
+`auth.authz` and resource claims where used: Cedar is an additional restriction,
+not a completed migration to non-personalized catalogs.
+
+For containers, mount the chosen policy read-only at `/etc/registry/policies.cedar`.
+For Helm, create a ConfigMap containing `policies.cedar`, set
+`policy.existingConfigMap` to its name, and configure `config.auth.oauth.providers`
+and `config.authorization.identityMappings`. The chart mounts policy read-only
+at `/etc/registry-policies/policies.cedar`. Changing an external ConfigMap does not
+change a running evaluator: explicitly restart/roll out every replica, and drain
+old replicas when revoking access. Admin requires explicit opt-in and OAuth.
+
+Legacy anonymous Docker invocations are no longer a runnable security default.
+Explicit anonymous catalog use requires both the config opt-in and an authored
+Cedar permit; it never enables admin or accepts invalid bearer tokens. The static
+entry-claims/me tombstones and remaining legacy role/claim requirements are
+explained in the Cedar transition guide.
+
+## Docker Compose: explicit operator mount
+
+The root `docker-compose.yaml` does not supply a Cedar policy volume. It will not
+start the API as-is. Before running it, prepare an operator-owned directory outside
+the repository containing:
+
+- `config.yaml`, based on `examples/config-docker.yaml`, with your trusted OAuth
+  issuer/audience and matching identity mappings. Keep the Compose database host
+  `postgres`, database users and `/examples` source paths. Keep existing legacy
+  authorization/claims if upgrading an existing database.
+- `policies.cedar`, authored for those identities using the
+  [Cedar guide](../docs/registry-cedar-authorization.md#what-does-the-policy-look-like).
+  Set `authorization.policyFile: /etc/registry/policies.cedar` in `config.yaml`.
+
+Restrict writes to deployment administrators and make both files readable by the
+container's application user. Save this override as `compose.admission.yaml` in
+the repository root (local setup only; do not commit credentials):
+
+```yaml
+services:
+  registry-api:
+    command: ["serve", "--config", "/etc/registry/config.yaml", "--address", ":8080"]
+    volumes:
+      - type: bind
+        source: ${REGISTRY_CONFIG_DIR:?Set an absolute directory containing config.yaml and policies.cedar}
+        target: /etc/registry
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - "127.0.0.1:8081:8081" # Internal probes, loopback only
+```
+
+After setting `REGISTRY_CONFIG_DIR` to that directory's absolute path, run:
+
+```bash
+docker compose -f docker-compose.yaml -f compose.admission.yaml config --quiet
+docker compose -f docker-compose.yaml -f compose.admission.yaml up --build
+```
+
+This retains the base Compose source/database mounts and supplies no implicit
+policy grants. It is a local-development setup, not production TLS or database
+credential guidance. Do not start against an existing database until its claims
+and upgrade requirements have been reviewed. Restart the API after policy edits.
+
 ## Quick Start
 
 **Choose your data source:**
@@ -27,12 +97,22 @@ thv-registry-api serve --config examples/config-file.yaml
 
 **Verify sync is working:**
 
-```bash
-# Query the API
-curl http://localhost:8080/registry/v0.1/servers | jq
+Obtain an access token from your configured IdP with the expected audience and
+reader grants (plus legacy claims when enabled). Store the header line
+`Authorization: Bearer <access-token>` in a private file outside the repository,
+readable only by you. Do not paste tokens into shell history or commit them.
+Set `AUTH_HEADER_FILE` to that file's absolute path. These examples use the
+`default` view from the YAML files; substitute your configured view name if different.
+Use HTTPS outside loopback development.
 
-# Check health
-curl http://localhost:8080/health
+```bash
+# Query the API; curl reads credentials from the private header file.
+curl --fail-with-body --header "@${AUTH_HEADER_FILE:?Set the private header file path}" \
+  http://localhost:8080/registry/default/v0.1/servers | jq
+
+# Check the separate internal listener (no token required).
+curl --fail http://localhost:8081/health
+curl --fail http://localhost:8081/readiness
 ```
 
 ---
@@ -395,17 +475,17 @@ Run multiple instances and aggregate at the application level:
 # Instance 1: Official ToolHive (port 8081)
 thv-registry-api serve \
   --config examples/config-git.yaml \
-  --address :8081 &
+  --address :8081 --internal-address 127.0.0.1:9081 &
 
 # Instance 2: Upstream MCP (port 8082)
 thv-registry-api serve \
   --config examples/config-api.yaml \
-  --address :8082 &
+  --address :8082 --internal-address 127.0.0.1:9082 &
 
 # Instance 3: Local file (port 8083)
 thv-registry-api serve \
   --config examples/config-file.yaml \
-  --address :8083 &
+  --address :8083 --internal-address 127.0.0.1:9083 &
 ```
 
 **Note:** Each instance should be configured with its own database or registry name to avoid conflicts.
@@ -427,11 +507,12 @@ thv-registry-api serve --config examples/config-file.yaml
 # Start with custom address
 thv-registry-api serve --config examples/config-git.yaml --address :9090
 
-# Test API endpoint
-curl http://localhost:8080/registry/v0.1/servers | jq
+# Test API endpoint (AUTH_HEADER_FILE setup described in Quick Start)
+curl --fail-with-body --header "@${AUTH_HEADER_FILE:?Set the private header file path}" \
+  http://localhost:8080/registry/default/v0.1/servers | jq
 
-# Check health
-curl http://localhost:8080/health
+# Check health on the internal listener
+curl --fail http://localhost:8081/health
 
 # Watch logs
 tail -f /var/log/thv-registry-api.log | grep -i sync

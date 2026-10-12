@@ -94,8 +94,21 @@ registries:
   - name: all-servers
     sources: ["all-servers"]
 
+admin:
+  enabled: false
+authorization:
+  policyFile: /etc/registry/policies.cedar # Author and mount explicitly; no implicit grants.
+  allowAnonymousCatalog: false
+  identityMappings:
+    - issuer: https://id.example.org
+      groups: {claim: groups, format: string-array}
 auth:
-  mode: anonymous
+  mode: oauth
+  oauth:
+    providers:
+      - name: company
+        issuerUrl: https://id.example.org
+        audience: registry-api
 
 # PostgreSQL database configuration for Docker Compose
 database:

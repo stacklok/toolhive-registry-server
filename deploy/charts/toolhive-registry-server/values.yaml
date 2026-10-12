@@ -145,7 +145,18 @@ initContainers: []
 # Supply database passwords through Secret-backed environment variables in
 # `extraEnv`, a PostgreSQL password file, or dynamic authentication.
 
+policy:
+  # -- Existing ConfigMap containing an operator-authored policies.cedar key.
+  # Required for serving; no sample policy or implicit grant is installed.
+  existingConfigMap: ""
+
 config:
+  admin:
+    enabled: false
+  authorization:
+    policyFile: /etc/registry-policies/policies.cedar
+    allowAnonymousCatalog: false
+    identityMappings: []
   # Sources configuration - at least one source must be configured
   sources:
     - name: toolhive
@@ -163,7 +174,9 @@ config:
 
   # Authentication configuration
   auth:
-    mode: anonymous
+    mode: oauth
+    oauth:
+      providers: [] # Configure trusted issuers/audiences before starting.
 
   # PostgreSQL database configuration (required)
   # Supply password and migrationPassword through Secret-backed environment
@@ -248,8 +261,7 @@ config:
 #
 #   auth:
 #     mode: oauth
-#     # publicPaths:
-#     #   - /metrics
+#     # publicPaths is rejected; metrics/probes remain on the operational port.
 #     oauth:
 #       resourceUrl: https://registry.example.com
 #       realm: "mcp-registry"

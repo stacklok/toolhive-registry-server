@@ -2,16 +2,14 @@
 
 [Back to the product proposal](registry-cedar-authorization.md).
 
-This technical reference preserves the original investigation below intact.
-The product proposal now illustrates a plain `policies.cedar` file; the original
-versioned JSON bundle recommendation below remains background, not a settled
-file-format contract. Both documents describe unimplemented proposals.
-
-**Status: active design proposal, not approved or implemented.** This is the next
-security decision for [#912](https://github.com/stacklok/toolhive-registry-server/issues/912).
-It replaces the earlier loopback-listener/file-credential idea as the proposal
-under review, not as an approved deployment change. Existing claims/RBAC remain
-in force until an approved replacement and migration are ready.
+This reference preserves the original investigation below as background.
+The user authorized a first admission-only runtime slice using a plain Cedar
+file and the pinned experimental validator. Plain Cedar supersedes the earlier
+JSON-bundle recommendation. See the [main document](registry-cedar-authorization.md)
+for the implemented configuration and transitional restrictions. The final
+non-personalized behavior, offline acknowledged exposure migration and claims/RBAC
+removal below remain proposals, not approved or completed migration functionality.
+Existing service, claims, role and PostgreSQL protection remains in force.
 
 ## Recommendation and boundary
 
@@ -420,7 +418,11 @@ rejected request is still attributable; keep existing operation wrappers for
 success/failure outcomes. Record a request correlation ID, issuer-qualified actor
 identifier (or explicit anonymous), action, decision/error category, policy
 revision and bounded policy IDs. Actor identifiers require controlled access and
-retention. Do not log JWTs, raw claims, policy text, diagnostic values or secrets.
+retention. Do not log JWTs, raw claims, policy text, diagnostic values or secrets
+in Cedar admission events. The implemented slice does not sanitize all existing
+logs: opt-in `audit.includeRequestData` still captures request bodies (including
+resource claims) on operation events, even when Cedar denies the request. Keep
+that option disabled unless its data exposure and sink access/retention are accepted.
 
 Trusted background ingestion records its source/job and process attribution,
 not the last HTTP caller. Reconciliation and persistence receive no identity or

@@ -2,6 +2,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -136,12 +137,15 @@ func (a *AuditConfig) GetMaxDataSize() int {
 
 // Config represents the root configuration structure
 type Config struct {
-	Sources    []SourceConfig    `yaml:"sources"`
-	Registries []RegistryConfig  `yaml:"registries,omitempty"`
-	Database   *DatabaseConfig   `yaml:"database,omitempty"`
-	Auth       *AuthConfig       `yaml:"auth,omitempty"`
-	Telemetry  *telemetry.Config `yaml:"telemetry,omitempty"`
-	Audit      *AuditConfig      `yaml:"audit,omitempty"`
+	Sources            []SourceConfig       `yaml:"sources"`
+	Registries         []RegistryConfig     `yaml:"registries,omitempty"`
+	Database           *DatabaseConfig      `yaml:"database,omitempty"`
+	Auth               *AuthConfig          `yaml:"auth,omitempty"`
+	Telemetry          *telemetry.Config    `yaml:"telemetry,omitempty"`
+	Audit              *AuditConfig         `yaml:"audit,omitempty"`
+	Authorization      *AuthorizationConfig `yaml:"authorization"`
+	Admin              AdminConfig          `yaml:"admin"`
+	publicPathsPresent bool
 
 	// insecureAllowHTTP allows HTTP URLs for OAuth issuer URLs (development only)
 	// Can be set via THV_REGISTRY_INSECURE_URL environment variable
@@ -803,8 +807,16 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	v.SetDefault("database.password", "")
 	v.SetDefault("database.migrationPassword", "")
 
-	// Read config file
-	if err := v.ReadInConfig(); err != nil {
+	// Use one file snapshot for Viper and presence checks: Viper discards nulls.
+	data, err := os.ReadFile(loaderCfg.path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+	publicPathsPresent, err := hasPublicPaths(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+	if err := v.ReadConfig(bytes.NewReader(data)); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
@@ -813,6 +825,13 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	if err := v.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+
+	if config.Auth != nil && config.Auth.Mode == "" {
+		config.Auth.Mode = DefaultAuthMode
+	}
+
+	_, publicPathsEnvPresent := os.LookupEnv(EnvPrefix + "_AUTH_PUBLICPATHS")
+	config.publicPathsPresent = publicPathsPresent || publicPathsEnvPresent || v.InConfig("auth.publicPaths")
 
 	// Set insecureAllowHTTP from environment variable (THV_REGISTRY_INSECURE_URL)
 	// This is not loaded from YAML - environment variable only for security

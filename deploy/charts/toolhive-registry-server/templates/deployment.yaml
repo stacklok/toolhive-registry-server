@@ -84,6 +84,11 @@ spec:
             - name: config
               mountPath: /etc/registry-server
               readOnly: true
+            {{- if .Values.policy.existingConfigMap }}
+            - name: cedar-policy
+              mountPath: /etc/registry-policies
+              readOnly: true
+            {{- end }}
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -91,6 +96,14 @@ spec:
         - name: config
           configMap:
             name: {{ include "toolhive-registry-server.configMapName" . }}
+        {{- if .Values.policy.existingConfigMap }}
+        - name: cedar-policy
+          configMap:
+            name: {{ .Values.policy.existingConfigMap | quote }}
+            items:
+              - key: policies.cedar
+                path: policies.cedar
+        {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

@@ -1,0 +1,14 @@
+namespace Registry {
+ entity Principal = {
+  authenticated: Bool,
+  issuer: String,
+  subject: String,
+  groups?: Set<String>,
+  scopes?: Set<String>
+ };
+ entity Instance;
+ action "catalog.read", "metadata.read", "sources.read", "sources.write",
+  "sources.delete", "views.read", "views.write", "views.delete",
+  "entries.publish", "entries.delete"
+ appliesTo { principal: Principal, resource: Instance, context: {} };
+}

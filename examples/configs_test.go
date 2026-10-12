@@ -55,6 +55,10 @@ func TestConfigFiles(t *testing.T) {
 				t.Fatalf("Failed to load configuration: %v", err)
 			}
 
+			if err := cfg.ValidateAdmission(); err != nil {
+				t.Fatalf("Invalid standalone admission configuration: %v", err)
+			}
+
 			// Ensure config is not nil (LoadConfig validates internally)
 			if cfg == nil {
 				t.Fatal("LoadConfig returned nil config")

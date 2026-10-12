@@ -231,21 +231,15 @@ type entryClaimsResponse struct {
 // for everyone else per §4) or by callers in `skipAuthz=true` deployments.
 // Either way the response shape stays stable.
 //
-// @Summary		Get entry claims
-// @Description	Get the claims for an API-published entry name within the managed source.
-// @Description	Claims are stored at the entry-name level and are shared by every version of that name.
-// @Description	Synced-source entries (git/api/file/kubernetes) are out of scope: their claims come from
-// @Description	upstream (the source manifest or the `toolhive.stacklok.dev/authz-claims` annotation) and
-// @Description	are surfaced through the `/v1/sources/{name}/entries` and `/v1/registries/{name}/entries` lists.
+// @Summary		Retired entry claims endpoint
+// @Description	Static authenticated tombstone in standalone when admin is enabled; prepare retagging before upgrade.
+// @Deprecated
 // @Tags		v1
-// @Produce		json
-// @Param		type	path		string	true	"Entry Type (server or skill)"
+// @Produce		plain
+// @Param		type	path		string	true	"Entry Type"
 // @Param		name	path		string	true	"Entry Name"
-// @Success		200	{object}	entryClaimsResponse	"Entry claims"
-// @Failure		400	{object}	map[string]string	"Bad request"
-// @Failure		403	{object}	map[string]string	"Forbidden"
-// @Failure		404	{object}	map[string]string	"Not found"
-// @Failure		500	{object}	map[string]string	"Internal server error"
+// @Failure		410	{string}	string	"Retired endpoint"
+// @Failure		401	{string}	string	"Unauthorized"
 // @Router		/v1/entries/{type}/{name}/claims [get]
 func (routes *Routes) getEntryClaims(w http.ResponseWriter, r *http.Request) {
 	entryType, err := common.GetAndValidateURLParam(r, "type")
@@ -301,19 +295,15 @@ type updateEntryClaimsRequest struct {
 
 // updateEntryClaims handles PUT /v1/entries/{type}/{name}/claims
 //
-// @Summary		Update entry claims
-// @Description	Update claims for a published entry name
+// @Summary		Retired entry claims endpoint
+// @Description	Static authenticated tombstone in standalone when admin is enabled; prepare retagging before upgrade.
+// @Deprecated
 // @Tags		v1
-// @Accept		json
-// @Produce		json
-// @Param		type	path	string	true	"Entry Type (server or skill)"
+// @Produce		plain
+// @Param		type	path	string	true	"Entry Type"
 // @Param		name	path	string	true	"Entry Name"
-// @Param		request	body	updateEntryClaimsRequest	true	"Claims to set"
-// @Success		204	"No Content"
-// @Failure		400	{object}	map[string]string	"Bad request"
-// @Failure		403	{object}	map[string]string	"Forbidden"
-// @Failure		404	{object}	map[string]string	"Not found"
-// @Failure		500	{object}	map[string]string	"Internal server error"
+// @Failure		410	{string}	string	"Retired endpoint"
+// @Failure		401	{string}	string	"Unauthorized"
 // @Router		/v1/entries/{type}/{name}/claims [put]
 func (routes *Routes) updateEntryClaims(w http.ResponseWriter, r *http.Request) {
 	entryType, err := common.GetAndValidateURLParam(r, "type")
