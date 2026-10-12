@@ -20,6 +20,12 @@ var (
 	ErrNotFound = errors.New("definition not found")
 	// ErrConflict means an immutable property or ownership constraint was violated.
 	ErrConflict = errors.New("definition conflict")
+	// ErrAlreadyExists refines ErrConflict only for an existing source or view name.
+	ErrAlreadyExists = fmt.Errorf("%w: name already exists", ErrConflict)
+	// ErrConfigOwned refines ErrConflict for API mutation of a CONFIG-owned definition.
+	ErrConfigOwned = fmt.Errorf("%w: config owned", ErrConflict)
+	// ErrKindChange refines ErrConflict for a source kind or file location kind change.
+	ErrKindChange = fmt.Errorf("%w: kind change", ErrConflict)
 	// ErrInUse means a referenced source cannot be removed.
 	ErrInUse = errors.New("source in use")
 	// ErrUnavailable means storage could not be reached or returned an unclassified backend error.
@@ -90,7 +96,13 @@ type Filter struct {
 // Schedule is required for git/api/file path or URL and absent for managed,
 // kubernetes and inline file data.
 // Filter uses the existing filter_config column; inline file data may be sensitive.
+// CreatedAt/UpdatedAt are storage-assigned UTC metadata, not revisions or CAS inputs.
+// Historical SQL NULL timestamps read as zero. Create and Reconcile reject nonzero
+// timestamps; Update ignores supplied timestamps, preserving creation time and
+// touching update time even for an otherwise unchanged successful write.
 type SourceDefinition struct {
+	CreatedAt  time.Time       `json:"createdAt"`
+	UpdatedAt  time.Time       `json:"updatedAt"`
 	ID         string          `json:"id,omitempty"`
 	Name       string          `json:"name"`
 	Origin     Origin          `json:"origin,omitempty"`
@@ -104,10 +116,13 @@ type SourceDefinition struct {
 }
 
 // ViewDefinition is a named, ordered set of source names. Names and origins are immutable.
+// Timestamps follow the same storage-assigned metadata contract as SourceDefinition.
 type ViewDefinition struct {
-	Name    string   `json:"name"`
-	Origin  Origin   `json:"origin,omitempty"`
-	Sources []string `json:"sources"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	Name      string    `json:"name"`
+	Origin    Origin    `json:"origin,omitempty"`
+	Sources   []string  `json:"sources"`
 }
 
 // Sources exposes reads for both API- and CONFIG-owned definitions (with Origin
@@ -257,11 +272,13 @@ func ValidateView(v ViewDefinition) error {
 }
 
 // ValidateReconcile validates the whole configuration before any database mutation.
+//
+//nolint:gocyclo // Whole-set validation covers identity, timestamp metadata, specs and links.
 func ValidateReconcile(sources []SourceDefinition, views []ViewDefinition) error {
 	names := make(map[string]bool, len(sources))
 	managed := 0
 	for _, s := range sources {
-		if s.ID != "" || s.Origin != "" {
+		if s.ID != "" || s.Origin != "" || !s.CreatedAt.IsZero() || !s.UpdatedAt.IsZero() {
 			return fmt.Errorf("%w: input identity/origin must be empty", ErrInvalid)
 		}
 		kind, e := s.Kind()
@@ -281,7 +298,7 @@ func ValidateReconcile(sources []SourceDefinition, views []ViewDefinition) error
 	}
 	vn := make(map[string]bool, len(views))
 	for _, v := range views {
-		if v.Origin != "" {
+		if v.Origin != "" || !v.CreatedAt.IsZero() || !v.UpdatedAt.IsZero() {
 			return fmt.Errorf("%w: input origin must be empty", ErrInvalid)
 		}
 		if e := ValidateView(v); e != nil {

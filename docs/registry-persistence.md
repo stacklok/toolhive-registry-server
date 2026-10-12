@@ -60,9 +60,18 @@ referenced source returns `ErrInUse` (including references from CONFIG views).
 Deleting a source also cascades its owned catalog/entry and sync state in the
 existing schema; hosts must account for this data loss before deleting.
 Use `errors.Is` with `ErrInvalid`, `ErrNotFound`, `ErrConflict`, `ErrInUse`,
-and `ErrUnavailable` (backend details and connection strings are not exposed);
-context cancellation/deadline errors propagate. This slice has no CAS revisions:
+and `ErrUnavailable` (backend details and connection strings are not exposed).
+`ErrAlreadyExists` (same source/view name), `ErrConfigOwned` (API mutation of
+CONFIG), and `ErrKindChange` (source/file-location kind) refine `ErrConflict`
+without conflating singleton, stale-ID or legacy metadata guards. Context
+cancellation/deadline errors propagate. This slice has no CAS revisions:
 mutations of a given definition are serialized and last committed update wins.
+`CreatedAt`/`UpdatedAt` are storage-assigned UTC metadata from existing columns;
+new rows are nonzero, historical NULLs read as zero, and successful writes touch
+update time without changing creation time. Create/reconcile reject supplied
+nonzero timestamps; updates ignore them as inputs. Timestamp-only touches do not
+invalidate jobs. See [definition administration](registry-definition-administration.md)
+for the public catalog wrapper and explicit committed follow-up failure contract.
 
 **Legacy interoperability boundary:** definitions carrying non-null legacy
 claims cannot be updated, deleted, or pruned by this claims-free adapter; those

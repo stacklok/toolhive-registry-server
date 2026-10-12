@@ -62,16 +62,25 @@ func TestBorrowedPoolAndLegacyClaims(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	before, e := d.GetSource(ctx, "claimed")
+	if e != nil {
+		t.Fatal(e)
+	}
 	_, e = d.UpdateSource(ctx, "claimed", persistence.SourceDefinition{Name: "claimed", Managed: &persistence.ManagedSpec{}})
+	checkUnrefinedConflict(t, e)
 	if !errors.Is(e, persistence.ErrConflict) {
 		t.Fatalf("update claimed source: %v", e)
 	}
 	if e = d.DeleteSource(ctx, "claimed"); !errors.Is(e, persistence.ErrConflict) {
 		t.Fatalf("delete claimed source: %v", e)
 	}
+	checkUnrefinedConflict(t, e)
 	got, e := d.GetSource(ctx, "claimed")
 	if e != nil {
 		t.Fatal(e)
+	}
+	if !reflect.DeepEqual(got, before) {
+		t.Fatal("legacy guard changed definition metadata")
 	}
 	data, e := json.Marshal(got)
 	if e != nil {
@@ -104,6 +113,7 @@ func TestUnsupportedLegacyFields(t *testing.T) {
 	if !errors.Is(err, persistence.ErrConflict) {
 		t.Fatalf("expected legacy field conflict: %v", err)
 	}
+	checkUnrefinedConflict(t, err)
 	var spec string
 	if err = pool.QueryRow(ctx, `SELECT source_config::text FROM source WHERE name='legacy'`).Scan(&spec); err != nil {
 		t.Fatal(err)

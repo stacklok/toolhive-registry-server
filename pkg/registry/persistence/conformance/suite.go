@@ -35,6 +35,7 @@ type Factory func(*testing.T) persistence.Definitions
 //nolint:gocyclo // Table-driven suite deliberately groups the full contract in one entry point.
 func Run(t *testing.T, newStore Factory) {
 	t.Helper()
+	runDefinitionMetadata(t, newStore)
 	mk := func(name string) persistence.SourceDefinition {
 		return persistence.SourceDefinition{Name: name, Managed: &persistence.ManagedSpec{}}
 	}

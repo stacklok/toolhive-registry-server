@@ -55,7 +55,7 @@ func (m *memory) transact(ctx context.Context, f func(*memory) error) error {
 	return nil
 }
 func (m *memory) CreateSource(ctx context.Context, s persistence.SourceDefinition) (persistence.SourceDefinition, error) {
-	if s.ID != "" || s.Origin != "" {
+	if s.ID != "" || s.Origin != "" || !s.CreatedAt.IsZero() || !s.UpdatedAt.IsZero() {
 		return s, persistence.ErrInvalid
 	}
 	kind, e := s.Kind()
@@ -65,7 +65,7 @@ func (m *memory) CreateSource(ctx context.Context, s persistence.SourceDefinitio
 	var out persistence.SourceDefinition
 	e = m.transact(ctx, func(n *memory) error {
 		if _, ok := n.sources[s.Name]; ok {
-			return persistence.ErrConflict
+			return persistence.ErrAlreadyExists
 		}
 		if kind == testManagedKind {
 			for _, v := range n.sources {
@@ -77,6 +77,8 @@ func (m *memory) CreateSource(ctx context.Context, s persistence.SourceDefinitio
 		n.seq++
 		s.ID = uuid.NewString()
 		s.Origin = persistence.OriginAPI
+		s.CreatedAt = n.clock().UTC()
+		s.UpdatedAt = s.CreatedAt
 		n.sources[s.Name] = clone(s)
 		n.generations[s.ID] = 1
 		out = clone(s)
@@ -114,7 +116,7 @@ func (m *memory) ListSources(ctx context.Context) ([]persistence.SourceDefinitio
 	return out, nil
 }
 func (m *memory) UpdateSource(ctx context.Context, name string, s persistence.SourceDefinition) (persistence.SourceDefinition, error) {
-	if s.Name != name || (s.Origin != "" && s.Origin != persistence.OriginAPI) {
+	if s.Name != name {
 		return s, persistence.ErrInvalid
 	}
 	kind, e := s.Kind()
@@ -128,20 +130,26 @@ func (m *memory) UpdateSource(ctx context.Context, name string, s persistence.So
 			return persistence.ErrNotFound
 		}
 		if old.Origin != persistence.OriginAPI {
-			return persistence.ErrConflict
+			return persistence.ErrConfigOwned
+		}
+		if s.Origin != "" && s.Origin != persistence.OriginAPI {
+			return persistence.ErrInvalid
 		}
 		if s.ID != "" && s.ID != old.ID {
 			return persistence.ErrConflict
 		}
 		k, _ := old.Kind()
 		if k != kind || old.File != nil && fileLocation(old.File) != fileLocation(s.File) {
-			return persistence.ErrConflict
+			return persistence.ErrKindChange
 		}
 		s.ID = old.ID
 		s.Origin = old.Origin
+		// Match the DB trigger: timestamp metadata is not ingestion configuration.
+		s.CreatedAt, s.UpdatedAt = old.CreatedAt, old.UpdatedAt
 		if !reflect.DeepEqual(old, s) {
 			n.generations[s.ID]++
 		}
+		s.UpdatedAt = n.clock().UTC()
 		n.sources[name] = clone(s)
 		out = clone(s)
 		return nil
@@ -155,7 +163,7 @@ func (m *memory) DeleteSource(ctx context.Context, name string) error {
 			return persistence.ErrNotFound
 		}
 		if old.Origin != persistence.OriginAPI {
-			return persistence.ErrConflict
+			return persistence.ErrConfigOwned
 		}
 		for _, v := range n.views {
 			for _, ref := range v.Sources {
@@ -176,7 +184,7 @@ func (m *memory) DeleteSource(ctx context.Context, name string) error {
 	})
 }
 func (m *memory) CreateView(ctx context.Context, v persistence.ViewDefinition) (persistence.ViewDefinition, error) {
-	if v.Origin != "" {
+	if v.Origin != "" || !v.CreatedAt.IsZero() || !v.UpdatedAt.IsZero() {
 		return v, persistence.ErrInvalid
 	}
 	if e := persistence.ValidateView(v); e != nil {
@@ -185,7 +193,7 @@ func (m *memory) CreateView(ctx context.Context, v persistence.ViewDefinition) (
 	var out persistence.ViewDefinition
 	e := m.transact(ctx, func(n *memory) error {
 		if _, ok := n.views[v.Name]; ok {
-			return persistence.ErrConflict
+			return persistence.ErrAlreadyExists
 		}
 		for _, ref := range v.Sources {
 			if _, ok := n.sources[ref]; !ok {
@@ -193,6 +201,8 @@ func (m *memory) CreateView(ctx context.Context, v persistence.ViewDefinition) (
 			}
 		}
 		v.Origin = persistence.OriginAPI
+		v.CreatedAt = n.clock().UTC()
+		v.UpdatedAt = v.CreatedAt
 		n.viewIDs[v.Name] = uuid.NewString()
 		n.views[v.Name] = clone(v)
 		out = clone(v)
@@ -230,7 +240,7 @@ func (m *memory) ListViews(ctx context.Context) ([]persistence.ViewDefinition, e
 	return out, nil
 }
 func (m *memory) UpdateView(ctx context.Context, name string, v persistence.ViewDefinition) (persistence.ViewDefinition, error) {
-	if v.Name != name || (v.Origin != "" && v.Origin != persistence.OriginAPI) {
+	if v.Name != name {
 		return v, persistence.ErrInvalid
 	}
 	if e := persistence.ValidateView(v); e != nil {
@@ -243,7 +253,10 @@ func (m *memory) UpdateView(ctx context.Context, name string, v persistence.View
 			return persistence.ErrNotFound
 		}
 		if old.Origin != persistence.OriginAPI {
-			return persistence.ErrConflict
+			return persistence.ErrConfigOwned
+		}
+		if v.Origin != "" && v.Origin != persistence.OriginAPI {
+			return persistence.ErrInvalid
 		}
 		for _, ref := range v.Sources {
 			if _, ok := n.sources[ref]; !ok {
@@ -251,6 +264,7 @@ func (m *memory) UpdateView(ctx context.Context, name string, v persistence.View
 			}
 		}
 		v.Origin = persistence.OriginAPI
+		v.CreatedAt, v.UpdatedAt = old.CreatedAt, n.clock().UTC()
 		n.views[name] = clone(v)
 		out = clone(v)
 		return nil
@@ -264,7 +278,7 @@ func (m *memory) DeleteView(ctx context.Context, name string) error {
 			return persistence.ErrNotFound
 		}
 		if old.Origin != persistence.OriginAPI {
-			return persistence.ErrConflict
+			return persistence.ErrConfigOwned
 		}
 		delete(n.views, name)
 		return nil
@@ -283,7 +297,7 @@ func (m *memory) Reconcile(ctx context.Context, sources []persistence.SourceDefi
 				a, _ := old.Kind()
 				b, _ := s.Kind()
 				if a != b || old.File != nil && fileLocation(old.File) != fileLocation(s.File) {
-					return persistence.ErrConflict
+					return persistence.ErrKindChange
 				}
 			}
 		}
@@ -307,9 +321,11 @@ func (m *memory) Reconcile(ctx context.Context, sources []persistence.SourceDefi
 			old, ok := n.sources[s.Name]
 			if ok {
 				s.ID = old.ID
+				s.CreatedAt, s.UpdatedAt = old.CreatedAt, old.UpdatedAt
 			} else {
 				n.seq++
 				s.ID = uuid.NewString()
+				s.CreatedAt = n.clock().UTC()
 			}
 			s.Origin = persistence.OriginConfig
 			if !ok {
@@ -317,15 +333,20 @@ func (m *memory) Reconcile(ctx context.Context, sources []persistence.SourceDefi
 			} else if !reflect.DeepEqual(old, s) {
 				n.generations[s.ID]++
 			}
+			s.UpdatedAt = n.clock().UTC()
 			n.sources[s.Name] = clone(s)
 		}
 		keepV := map[string]bool{}
 		for _, v := range views {
 			keepV[v.Name] = true
 			v.Origin = persistence.OriginConfig
-			if _, exists := n.views[v.Name]; !exists {
+			if old, exists := n.views[v.Name]; !exists {
 				n.viewIDs[v.Name] = uuid.NewString()
+				v.CreatedAt = n.clock().UTC()
+			} else {
+				v.CreatedAt = old.CreatedAt
 			}
+			v.UpdatedAt = n.clock().UTC()
 			n.views[v.Name] = clone(v)
 		}
 		for name, v := range n.views {
