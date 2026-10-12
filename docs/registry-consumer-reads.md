@@ -34,8 +34,10 @@ constructor's explicit latest-pointer repair remains unchanged. Independent
 memory conformance and an executable external-module fixture demonstrate
 replacement persistence → catalog → public format serializers. The reader returns
 existing `persistence.Entry`/`EntryPage` payloads and cursor metadata unchanged.
-Use `formats.ServerPage`, `SkillPage` or `PluginPage` to serialize their payloads;
-HTTP parsing and route mounting are deliberately not extracted yet.
+Use `formats.ServerPage`, `SkillPage` or `PluginPage` to serialize their payloads,
+or mount the independently reusable [consumer HTTP router](registry-consumer-http.md)
+with the reader or a replacement host application. Both slices remain unwired in
+production.
 
 ## Selection and bounds
 
@@ -84,12 +86,12 @@ token: each page recomputes live winners, so inserts/deletes/source emptying may
 change or skip results before the continuation position. No frozen history is
 promised.
 
-Later HTTP extraction must preserve existing route-specific behavior, not blindly
-expose this library's continuation: server lists default 30 and cap at 1000;
+The production-unwired [consumer HTTP router](registry-consumer-http.md) preserves
+these existing route-specific behaviors, rather than blindly exposing this
+library's continuation: server lists default 30 and cap at 1000;
 extension lists default 50 and reject above 100; server histories request 1000
 with no wire continuation; extension histories request 30 and retain opaque
-response cursor metadata but ignore input limit/cursor query parameters. No HTTP
-behavior changes in this slice. [Definition administration](registry-definition-administration.md)
-is a subsequent production-unwired #913 slice, as are [managed publication and
-unshadowed diagnostics](registry-publication-diagnostics.md). Reusable routers
-remain deferred. #913 is not complete.
+response cursor metadata but ignore input limit/cursor query parameters.
+[Definition administration](registry-definition-administration.md) and [managed
+publication/unshadowed diagnostics](registry-publication-diagnostics.md) are also
+implemented dormant #913 slices. Admin HTTP remains; #913 is not complete.
