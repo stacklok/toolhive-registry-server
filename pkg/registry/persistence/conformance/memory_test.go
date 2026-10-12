@@ -199,7 +199,7 @@ func (m *memory) CreateView(ctx context.Context, v persistence.ViewDefinition) (
 		}
 		for _, ref := range v.Sources {
 			if _, ok := n.sources[ref]; !ok {
-				return fmt.Errorf("%w: referenced source %q", persistence.ErrNotFound, ref)
+				return fmt.Errorf("%w: referenced source %q", persistence.ErrReferenceNotFound, ref)
 			}
 		}
 		v.Origin = persistence.OriginAPI
@@ -262,7 +262,7 @@ func (m *memory) UpdateView(ctx context.Context, name string, v persistence.View
 		}
 		for _, ref := range v.Sources {
 			if _, ok := n.sources[ref]; !ok {
-				return fmt.Errorf("%w: referenced source %q", persistence.ErrNotFound, ref)
+				return fmt.Errorf("%w: referenced source %q", persistence.ErrReferenceNotFound, ref)
 			}
 		}
 		v.Origin = persistence.OriginAPI

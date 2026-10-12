@@ -4,7 +4,8 @@
 Registry v0.1 and ToolHive skills/plugins wire formats. It is intentionally
 **production-unwired**: standalone still uses its old admission, claims guards,
 consumer handlers and writers. No migration, cutover or auth removal is included.
-Admin HTTP remains to complete #913; the guarded standalone swap belongs to #914.
+[Admin HTTP](registry-admin-http.md) now completes the reusable #913 HTTP capability;
+the guarded standalone assembly swap remains #914 work.
 
 ## Host assembly
 
