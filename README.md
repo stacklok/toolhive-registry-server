@@ -285,6 +285,7 @@ See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for the co
 - **[Registry sync](docs/registry-sync.md)** - How background sync works
 - **[Registry component architecture](docs/component-architecture.md)** - Proposed embeddable architecture for #906
 - **[Registry models and formats](docs/registry-formats.md)** - Embed payload validation and response formatting without storage
+- **[Reusable ingestion and operator export](docs/registry-ingestion.md)** - Source adapters, leased coordination, and optional Kubernetes lifecycle
 - **[Definition persistence](docs/registry-persistence.md)** - Embeddable source and named-view definitions
 - **[Kubernetes deployment](docs/deployment-kubernetes.md)** - K8s deployment and HA
 - **[Docker deployment](docs/deployment-docker.md)** - Docker Compose setup
