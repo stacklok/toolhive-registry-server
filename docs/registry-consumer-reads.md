@@ -90,5 +90,6 @@ extension lists default 50 and reject above 100; server histories request 1000
 with no wire continuation; extension histories request 30 and retain opaque
 response cursor metadata but ignore input limit/cursor query parameters. No HTTP
 behavior changes in this slice. [Definition administration](registry-definition-administration.md)
-is a subsequent production-unwired #913 slice; publication, diagnostics and
-reusable routers remain deferred. #913 is not complete.
+is a subsequent production-unwired #913 slice, as are [managed publication and
+unshadowed diagnostics](registry-publication-diagnostics.md). Reusable routers
+remain deferred. #913 is not complete.

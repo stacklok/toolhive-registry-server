@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 	"github.com/stacklok/toolhive-registry-server/internal/validators"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
@@ -107,7 +107,7 @@ func (d *Entries) Publish(ctx context.Context, entry persistence.Entry) (persist
 		q := sqlc.New(tx)
 		id, e := q.EntryManagedSource(ctx)
 		if errors.Is(e, pgx.ErrNoRows) {
-			return persistence.ErrNotFound
+			return persistence.ErrNoManagedSource
 		}
 		if e != nil {
 			return classify(e)
@@ -164,7 +164,7 @@ func (d *Entries) DeleteManaged(ctx context.Context, kind persistence.EntryKind,
 		q := sqlc.New(tx)
 		id, e := q.EntryManagedSource(ctx)
 		if errors.Is(e, pgx.ErrNoRows) {
-			return persistence.ErrNotFound
+			return persistence.ErrNoManagedSource
 		}
 		if e != nil {
 			return classify(e)
@@ -236,67 +236,18 @@ func (d *Entries) validateMetadata(snapshot model.Snapshot) error {
 	return nil
 }
 
-//nolint:gocyclo // Each of the three typed payloads requires independent identity checks.
 func publicationSnapshot(entry persistence.Entry) (model.Snapshot, error) {
+	if err := entry.Validate(); err != nil {
+		return model.Snapshot{}, err
+	}
 	var snapshot model.Snapshot
-	if err := entry.Kind.Validate(); err != nil {
-		return snapshot, err
-	}
-	if entry.ID != "" || entry.SourceID != "" || entry.IsLatest || entry.Name == "" || entry.Version == "" {
-		return snapshot, persistence.ErrInvalid
-	}
-	count := 0
-	if entry.Server != nil {
-		count++
-	}
-	if entry.Skill != nil {
-		count++
-	}
-	if entry.Plugin != nil {
-		count++
-	}
-	if count != 1 {
-		return snapshot, persistence.ErrInvalid
-	}
 	switch entry.Kind {
 	case persistence.ServerKind:
-		if entry.Server == nil || entry.Server.Name != entry.Name || entry.Server.Version != entry.Version {
-			return snapshot, persistence.ErrInvalid
-		}
 		snapshot.Data.Servers = []model.Server{*entry.Server}
 	case persistence.SkillKind:
-		if entry.Skill == nil || entry.Skill.Name != entry.Name || entry.Skill.Version != entry.Version ||
-			entry.Skill.ID != "" || entry.Skill.IsLatest ||
-			!entry.Skill.CreatedAt.IsZero() || !entry.Skill.UpdatedAt.IsZero() {
-			return snapshot, persistence.ErrInvalid
-		}
-		payload, e := json.Marshal(entry.Skill)
-		if e != nil {
-			return snapshot, fmt.Errorf("%w: skill payload", persistence.ErrInvalid)
-		}
-		var skill thvregistry.Skill
-		if e = json.Unmarshal(payload, &skill); e != nil {
-			return snapshot, fmt.Errorf("%w: skill payload", persistence.ErrInvalid)
-		}
-		snapshot.Data.Skills = []thvregistry.Skill{skill}
+		snapshot.Data.Skills = []thvregistry.Skill{formats.SkillPayload(entry.Skill)}
 	case persistence.PluginKind:
-		if entry.Plugin == nil || entry.Plugin.Name != entry.Name || entry.Plugin.Version != entry.Version ||
-			entry.Plugin.ID != "" || entry.Plugin.IsLatest ||
-			!entry.Plugin.CreatedAt.IsZero() || !entry.Plugin.UpdatedAt.IsZero() {
-			return snapshot, persistence.ErrInvalid
-		}
-		payload, e := json.Marshal(entry.Plugin)
-		if e != nil {
-			return snapshot, fmt.Errorf("%w: plugin payload", persistence.ErrInvalid)
-		}
-		var plugin thvregistry.Plugin
-		if e = json.Unmarshal(payload, &plugin); e != nil {
-			return snapshot, fmt.Errorf("%w: plugin payload", persistence.ErrInvalid)
-		}
-		snapshot.Data.Plugins = []thvregistry.Plugin{plugin}
-	}
-	if err := persistence.ValidateSnapshot(&snapshot); err != nil {
-		return snapshot, err
+		snapshot.Data.Plugins = []thvregistry.Plugin{formats.PluginPayload(entry.Plugin)}
 	}
 	return snapshot, nil
 }
