@@ -3,6 +3,8 @@ package authorization
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,6 +49,7 @@ func TestPolicyLoader(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, engine.evaluate(anonymous, CatalogRead))
 			revision := engine.revision
+			require.Equal(t, fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(tc.policy))), engine.Revision())
 			require.NoError(t, os.WriteFile(path, []byte(`forbid(principal, action, resource);`), 0600))
 			require.NoError(t, engine.evaluate(anonymous, CatalogRead))
 			require.Equal(t, revision, engine.revision)

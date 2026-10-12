@@ -64,13 +64,15 @@ func TestExposureRetirementDownRefusesArchiveOrConsumption(t *testing.T) {
 				require.NoError(t, err)
 				_, err = registrydb.AcknowledgeExposure(t.Context(), conn, revision, inventory.Digest, false, true, true)
 				require.NoError(t, err)
-				// Fixture-only future consume state: no runtime path writes this in this slice.
-				_, err = conn.Exec(t.Context(), `UPDATE exposure_acknowledgement SET consumed_at=clock_timestamp()`)
-				require.NoError(t, err)
+				require.NoError(t, registrydb.ConsumeExposure(t.Context(), conn, revision))
 				_, err = registrydb.AcknowledgeExposure(t.Context(), conn, revision, inventory.Digest, false, true, true)
 				require.ErrorContains(t, err, "evidence cannot be replaced")
 			}
-			require.ErrorContains(t, migrateTestTo(t, conn, 27), "refusing to discard exposure retirement")
+			message := "refusing to discard exposure retirement"
+			if state == "consumption" {
+				message = "refusing to discard exposure consumed target evidence"
+			}
+			require.ErrorContains(t, migrateTestTo(t, conn, 27), message)
 		})
 	}
 }
@@ -100,13 +102,13 @@ func TestExposureArchiveNarrowConstraints(t *testing.T) {
 	require.Zero(t, fks)
 	var version int
 	require.NoError(t, conn.QueryRow(t.Context(), `SELECT version FROM schema_migrations`).Scan(&version))
-	require.Equal(t, 28, version)
-	_, err := conn.Exec(t.Context(), `UPDATE schema_migrations SET version=29`)
+	require.Equal(t, 29, version)
+	_, err := conn.Exec(t.Context(), `UPDATE schema_migrations SET version=30`)
 	require.NoError(t, err)
 	_, err = registrydb.InventoryExposure(t.Context(), conn, "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	require.ErrorContains(t, err, "requires clean schema version 27 or 28")
+	require.ErrorContains(t, err, "requires clean schema version 27, 28 or 29")
 	// Restore only the fixture's version so its cleanup can proceed normally.
-	_, err = conn.Exec(t.Context(), `UPDATE schema_migrations SET version=28`)
+	_, err = conn.Exec(t.Context(), `UPDATE schema_migrations SET version=29`)
 	require.NoError(t, err)
 }
 

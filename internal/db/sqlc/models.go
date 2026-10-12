@@ -295,6 +295,7 @@ type ExposureAcknowledgement struct {
 	PostRetirementDigest *string            `json:"post_retirement_digest"`
 	RetiredAt            pgtype.Timestamptz `json:"retired_at"`
 	ConsumedAt           pgtype.Timestamptz `json:"consumed_at"`
+	ConsumedTargetDigest *string            `json:"consumed_target_digest"`
 }
 
 type ExposureClaimsArchive struct {

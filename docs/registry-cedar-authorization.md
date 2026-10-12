@@ -24,7 +24,9 @@ acknowledgement and explicit offline archive-and-clear are implemented; see the
 [migration guide](registry-exposure-migration.md). Metadata retirement is **not**
 runtime activation: remain offline afterward until a runtime cutover release or
 an offline backup restore. Runtime claims/RBAC retirement and marker consumption
-remain a later slice; #912 is not complete. Services/HTTP
+remain a later slice; #912 is not complete. Schema 29 and dormant internal receipt
+consumption now exist, but no serving path selects them; the mandatory preparation
+barrier and owner/authorization cutover remain prerequisites. Services/HTTP
 extraction (#913–#915) is deferred.
 
 The examples below are parsed and strictly typechecked by tests against the

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 )
 
 // AuthorizationConfig configures the standalone, restart-loaded Cedar gate.
@@ -57,31 +55,6 @@ func (c *Config) ValidateAdmission() error {
 		return err
 	}
 	return c.validateIdentityMappings()
-}
-
-func hasPublicPaths(data []byte) (bool, error) {
-	var raw map[string]any
-	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return false, fmt.Errorf("invalid YAML configuration")
-	}
-	for key, value := range raw {
-		if strings.EqualFold(key, "auth.publicPaths") {
-			return true, nil
-		}
-		if !strings.EqualFold(key, "auth") {
-			continue
-		}
-		block, ok := value.(map[string]any)
-		if !ok {
-			continue
-		}
-		for field := range block {
-			if strings.EqualFold(field, "publicPaths") {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
 }
 
 func (c *Config) validateAnonymousAdmission() error {
