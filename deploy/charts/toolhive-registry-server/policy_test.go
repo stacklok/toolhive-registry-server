@@ -31,6 +31,7 @@ func TestCIPolicyMount(t *testing.T) {
 
 	for _, valuesFile := range valuesFiles {
 		t.Run(filepath.Base(valuesFile), func(t *testing.T) {
+			t.Parallel()
 			helm, err := exec.LookPath("helm")
 			if err != nil {
 				t.Skip("helm is required for the CI chart rendering test")

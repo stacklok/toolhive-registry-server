@@ -172,7 +172,7 @@ config:
   auth:
     mode: oauth
     oauth:
-      providers: [] # Configure trusted issuers/audiences before starting.
+      providers: []  # Configure trusted issuers/audiences before starting.
 
   # PostgreSQL database configuration (required)
   # WARNING: Do NOT set password or migrationPassword here — this config block is
