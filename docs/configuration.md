@@ -31,6 +31,42 @@ thv-registry-api serve --config config.yaml
 | `--address` | Server listen address | No | `:8080` |
 | `--auth-mode` | Override auth mode (anonymous or oauth) | No | - |
 
+## Standalone Cedar admission (required)
+
+Every standalone deployment requires `authorization.policyFile`, an absolute path
+to an explicitly mounted, bounded plain Cedar file. The policy is parsed and
+strictly schema-validated with pinned cedar-go v1.8.0 before writers/operator
+construction or serving; `serve` preflights it before migrations. Effective auth
+configuration is validated again after CLI overrides. No policy means no startup,
+not allow-all. Policy changes take effect only after restarting every replica.
+
+```yaml
+admin:
+  enabled: false
+authorization:
+  policyFile: /etc/registry/policies.cedar
+  allowAnonymousCatalog: false
+  identityMappings:
+    - issuer: https://id.example.org
+      groups:
+        claim: groups
+        format: string-array
+```
+
+Configure matching OAuth issuer/audience and retain legacy `auth.authz` and resource
+claims. Cedar is an **additional** restriction; the acknowledged exposure migration,
+claims/RBAC removal and non-personalized catalog are not implemented in this slice.
+Admin is off by default and requires OAuth when enabled. Anonymous admission is
+unavailable while legacy `auth.authz` is configured, rather than letting absent
+caller claims bypass its filters. `auth.publicPaths` is rejected, even empty/null
+or environment-injected values. OpenAPI requires `metadata.read`; only exact GET
+credential-bootstrap metadata is exempt. Internal probes remain on their separate port.
+
+See the [Cedar guide](registry-cedar-authorization.md) for typechecked policies,
+identity mapping/introspection constraints, retirement tombstones and transition
+instructions. Snippets below illustrate particular settings and must include the
+mandatory admission blocks and trusted OAuth configuration to serve traffic.
+
 ## Configuration File Structure
 
 ### Minimal Configuration
@@ -364,8 +400,7 @@ See detailed [Authentication Guide](authentication.md).
 ```yaml
 auth:
   mode: oauth                    # "oauth" (default) or "anonymous"
-  publicPaths:                   # Optional: additional public paths
-    - /metrics
+  # publicPaths is rejected; metrics/probes use the internal listener.
   oauth:
     resourceUrl: https://registry.example.com
     realm: mcp-registry          # Optional

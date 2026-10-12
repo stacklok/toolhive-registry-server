@@ -16,6 +16,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/database"
 	registryapp "github.com/stacklok/toolhive-registry-server/internal/app"
+	"github.com/stacklok/toolhive-registry-server/internal/authorization"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
@@ -87,6 +88,13 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	// Priority: flag > config file > default
 	authModeOverride, _ := cmd.Flags().GetString("auth-mode")
 	resolveAuthMode(cfg, authModeOverride)
+	if err := cfg.ValidateAdmission(); err != nil {
+		return err
+	}
+	engine, err := authorization.Load(cfg.Authorization.PolicyFile)
+	if err != nil {
+		return err
+	}
 
 	slog.Info("Loaded configuration",
 		"config_path", configPath,
@@ -146,6 +154,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	app, err := registryapp.NewRegistryApp(
 		ctx,
 		registryapp.WithConfig(cfg),
+		registryapp.WithAdmissionEngine(engine),
 		registryapp.WithAddress(address),
 		registryapp.WithInternalAddress(internalAddress),
 		registryapp.WithMeterProvider(tel.MeterProvider()),

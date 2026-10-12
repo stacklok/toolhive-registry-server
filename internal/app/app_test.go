@@ -89,6 +89,7 @@ func createTestApp(t *testing.T, ctrl *gomock.Controller, addr string) *Registry
 		authMiddleware:  func(next http.Handler) http.Handler { return next },
 	}
 
+	prepareAdmissionTestServer(t, appCfg)
 	server, err := buildHTTPServer(ctx, appCfg, mockSvc, nil)
 	require.NoError(t, err)
 
@@ -109,22 +110,7 @@ func createTestApp(t *testing.T, ctrl *gomock.Controller, addr string) *Registry
 
 // createTestAppConfig creates a minimal valid config for testing
 func createTestAppConfig() *config.Config {
-	return &config.Config{
-		Sources: []config.SourceConfig{
-			{
-				Name: "test-registry-1",
-				File: &config.FileConfig{
-					Path: "/tmp/test-registry.json",
-				},
-				SyncPolicy: &config.SyncPolicyConfig{
-					Interval: "30m",
-				},
-			},
-		},
-		Auth: &config.AuthConfig{
-			Mode: config.AuthModeAnonymous,
-		},
-	}
+	return createValidTestConfig()
 }
 
 func TestRegistryApp_Start(t *testing.T) {

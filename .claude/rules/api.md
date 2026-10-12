@@ -9,6 +9,17 @@ Applies to all HTTP handlers and routing. These rules protect the distinction be
 admin API and the upstream MCP Registry spec surface, keep publishing coherent, and ensure
 audit trails cover every admin operation.
 
+## Standalone admission staging
+
+Standalone assembly mounts only the guarded service facade through the mandatory
+Cedar route registrar. The closed method/template/action/audit manifest is checked against
+the legacy routers at construction; their stable audit wrappers and underlying
+claims checks remain. Admin is opt-in. `/v1/me` and GET/PUT entry-claims endpoints
+are explicitly classified static authenticated 410 tombstones, not service calls.
+The old router constructors remain internal compatibility seams for existing handler
+tests, not a supported standalone assembly. Consumer responses remain personalized
+under legacy claims where configured; shared HTTP extraction is deferred.
+
 ## 1. Consumer API Is Upstream-Spec-Compliant; Admin API Is Ours
 
 `/registry/{name}/v0.1/...` matches the upstream MCP Registry v0.1 schema exactly. `/v1/...`

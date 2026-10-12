@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -251,7 +252,16 @@ func setupEnvCustom(t *testing.T, authCfg *config.AuthConfig, sources []config.S
 		authCfg.InsecureAllowHTTP = true
 	}
 
+	policyPath := filepath.Join(t.TempDir(), "policy.cedar")
+	// Explicit test-only admission permit: this suite verifies that Cedar Allow
+	// cannot bypass any legacy role, claims or persistence check underneath.
+	require.NoError(t, os.WriteFile(policyPath, []byte(
+		`permit(principal is Registry::Principal, action, resource == Registry::Instance::"catalog");`), 0600))
 	cfg := &config.Config{
+		Authorization: &config.AuthorizationConfig{
+			PolicyFile: policyPath, AllowAnonymousCatalog: authCfg.Mode == config.AuthModeAnonymous,
+		},
+		Admin:      config.AdminConfig{Enabled: authCfg.Mode == config.AuthModeOAuth},
 		Sources:    sources,
 		Registries: registries,
 		Database:   dbCfg,
