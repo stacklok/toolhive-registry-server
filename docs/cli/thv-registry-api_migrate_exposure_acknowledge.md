@@ -22,7 +22,7 @@ thv-registry-api migrate exposure acknowledge [flags]
 ```
       --approve-whole-catalog   Explicitly approve historical whole-catalog exposure
       --confirm-offline         Confirm all readers, writers and controllers are stopped and drained
-      --digest string           Exact sha256: digest from the reviewed inventory
+      --digest string           Exact sha256: reviewed inventory digest (post-fence digest for retire-claims)
   -h, --help                    help for acknowledge
 ```
 
@@ -37,5 +37,5 @@ thv-registry-api migrate exposure acknowledge [flags]
 
 ### SEE ALSO
 
-* [thv-registry-api migrate exposure](thv-registry-api_migrate_exposure.md)	 - Offline catalog exposure review (legacy protections unchanged)
+* [thv-registry-api migrate exposure](thv-registry-api_migrate_exposure.md)	 - Offline catalog exposure review and explicit metadata retirement
 

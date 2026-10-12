@@ -63,7 +63,7 @@ func TestExposureInventoryStableReadOnlyCoverage(t *testing.T) {
 	for rows.Next() {
 		var name string
 		require.NoError(t, rows.Scan(&name))
-		if name != "schema_migrations" && name != "exposure_acknowledgement" {
+		if name != "schema_migrations" && name != "exposure_acknowledgement" && name != "exposure_claims_archive" {
 			actual = append(actual, name)
 		}
 	}
@@ -83,7 +83,7 @@ func TestExposureSQLAndJSONNullPayloadCoverage(t *testing.T) {
 	conn, _ := database.SetupTestDB(t)
 	seedExposure(t, conn)
 	rows, err := conn.Query(t.Context(), `SELECT table_name,column_name FROM information_schema.columns
- WHERE table_schema='public' AND data_type='jsonb' ORDER BY table_name,column_name`)
+ WHERE table_schema='public' AND data_type='jsonb' AND table_name<>'exposure_claims_archive' ORDER BY table_name,column_name`)
 	require.NoError(t, err)
 	var columns [][2]string
 	for rows.Next() {
