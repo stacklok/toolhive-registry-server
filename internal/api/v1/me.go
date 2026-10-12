@@ -15,12 +15,13 @@ type meResponse struct {
 
 // getMe handles GET /v1/me
 //
-// @Summary		Get current user info
-// @Description	Returns the authenticated caller's identity and roles
+// @Summary		Retired identity endpoint
+// @Description	Retired in standalone. Admin must be enabled; authenticated requests receive a static tombstone.
+// @Deprecated
 // @Tags		v1
-// @Produce		json
-// @Success		200	{object}	meResponse		"Caller identity and roles"
-// @Failure		401	{object}	map[string]string	"Unauthorized"
+// @Produce		plain
+// @Failure		410	{string}	string		"Retired endpoint"
+// @Failure		401	{string}	string	"Unauthorized"
 // @Router		/v1/me [get]
 func (*Routes) getMe(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFromContext(r.Context())

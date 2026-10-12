@@ -35,8 +35,8 @@ func TestAuthzIntegration_AnonymousMode(t *testing.T) {
 		{"health", "GET", "/health", 200, true},
 		{"readiness", "GET", "/readiness", 200, true},
 		{"list servers without token", "GET", "/registry/acme-all/v0.1/servers", 200, false},
-		{"list sources without token", "GET", "/v1/sources", 200, false},
-		{"list registries without token", "GET", "/v1/registries", 200, false},
+		{"list sources without token", "GET", "/v1/sources", 404, false},
+		{"list registries without token", "GET", "/v1/registries", 404, false},
 	}
 
 	for _, tt := range tests {

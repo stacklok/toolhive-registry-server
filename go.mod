@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/aws/smithy-go v1.28.1
+	github.com/cedar-policy/cedar-go v1.8.0
 	github.com/fergusstrange/embedded-postgres v1.34.0
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-git/go-billy/v5 v5.9.1

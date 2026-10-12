@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -16,6 +17,8 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/app/storage/mocks"
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
+	"github.com/stacklok/toolhive-registry-server/internal/authorization"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
 	mocksvc "github.com/stacklok/toolhive-registry-server/internal/service/mocks"
@@ -81,7 +84,12 @@ func TestRegistryAppBuilder_WithAddress(t *testing.T) {
 
 // createValidTestConfig creates a minimal valid config for testing
 func createValidTestConfig() *config.Config {
+	path, err := filepath.Abs("testdata/admission.cedar")
+	if err != nil {
+		panic(err)
+	}
 	return &config.Config{
+		Authorization: &config.AuthorizationConfig{PolicyFile: path, AllowAnonymousCatalog: true},
 		Sources: []config.SourceConfig{
 			{
 				Name: "test-registry-1",
@@ -98,6 +106,18 @@ func createValidTestConfig() *config.Config {
 			Mode: config.AuthModeAnonymous,
 		},
 	}
+}
+
+func prepareAdmissionTestServer(t *testing.T, cfg *registryAppConfig) {
+	t.Helper()
+	if cfg.config == nil {
+		cfg.config = createValidTestConfig()
+	}
+	engine, err := authorization.Load(cfg.config.Authorization.PolicyFile)
+	require.NoError(t, err)
+	cfg.admissionEngine = engine
+	cfg.authMiddleware, _, err = auth.NewAdmissionAuthMiddleware(context.Background(), cfg.config.Auth, true, auth.DefaultValidatorFactory)
+	require.NoError(t, err)
 }
 
 func TestWithConfig(t *testing.T) {
@@ -468,6 +488,7 @@ func TestBuildHTTPServer(t *testing.T) {
 			// Set auth middleware in config for tests
 			tt.config.authMiddleware = func(next http.Handler) http.Handler { return next }
 			tt.config.authInfoHandler = nil
+			prepareAdmissionTestServer(t, tt.config)
 			server, err := buildHTTPServer(ctx, tt.config, mockSvc, nil)
 
 			require.NoError(t, err)
@@ -484,7 +505,7 @@ func TestBuildHTTPServer(t *testing.T) {
 				assert.NotNil(t, tt.config.middlewares)
 				assert.Greater(t, len(tt.config.middlewares), 0, "default middlewares should be set")
 			} else {
-				assert.Equal(t, 5, len(tt.config.middlewares), "custom middlewares should be preserved plus auth-failure-audit + auth + role-resolution + audit middlewares")
+				assert.Equal(t, 2, len(tt.config.middlewares), "custom middleware plus outer auth-failure audit; admission is endpoint-bound")
 			}
 		})
 	}
@@ -504,15 +525,15 @@ func TestBuildHTTPServer_WithMeterProvider(t *testing.T) {
 		{
 			name:                    "with meter provider adds metrics middleware",
 			meterProvider:           noop.NewMeterProvider(),
-			initialMiddlewareCount:  0,  // nil triggers defaults (5) + metrics (1) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 10
-			expectedMiddlewareCount: 10, // 5 default + 1 metrics + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit
+			initialMiddlewareCount:  0, // nil triggers defaults (5) + metrics (1) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 10
+			expectedMiddlewareCount: 7, // defaults + metrics + outer auth-failure audit
 			description:             "metrics middleware should be prepended when meter provider is set",
 		},
 		{
 			name:                    "without meter provider no metrics middleware",
 			meterProvider:           nil,
 			initialMiddlewareCount:  0, // nil triggers defaults (5) + auth-failure-audit (1) + auth (1) + roles (1) + audit (1) = 9
-			expectedMiddlewareCount: 9, // 5 default + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit (no metrics)
+			expectedMiddlewareCount: 6, // defaults + outer auth-failure audit
 			description:             "no metrics middleware should be added when meter provider is nil",
 		},
 	}
@@ -536,6 +557,7 @@ func TestBuildHTTPServer_WithMeterProvider(t *testing.T) {
 				authMiddleware: func(next http.Handler) http.Handler { return next },
 			}
 
+			prepareAdmissionTestServer(t, cfg)
 			server, err := buildHTTPServer(ctx, cfg, mockSvc, nil)
 
 			require.NoError(t, err, tt.description)
@@ -560,21 +582,21 @@ func TestBuildHTTPServer_MetricsMiddlewareWithCustomMiddlewares(t *testing.T) {
 			name:                    "meter provider with custom middlewares prepends metrics",
 			meterProvider:           noop.NewMeterProvider(),
 			customMiddlewareCount:   2,
-			expectedMiddlewareCount: 7, // 1 metrics + 2 custom + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit
+			expectedMiddlewareCount: 4, // metrics + custom + outer auth-failure audit
 			description:             "metrics middleware should be prepended to custom middlewares",
 		},
 		{
 			name:                    "no meter provider with custom middlewares",
 			meterProvider:           nil,
 			customMiddlewareCount:   2,
-			expectedMiddlewareCount: 6, // 2 custom + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit (no metrics)
+			expectedMiddlewareCount: 3, // custom + outer auth-failure audit
 			description:             "no metrics middleware with custom middlewares when provider is nil",
 		},
 		{
 			name:                    "meter provider with single custom middleware",
 			meterProvider:           noop.NewMeterProvider(),
 			customMiddlewareCount:   1,
-			expectedMiddlewareCount: 6, // 1 metrics + 1 custom + 1 auth-failure-audit + 1 auth + 1 roles + 1 audit
+			expectedMiddlewareCount: 3, // metrics + custom + outer auth-failure audit
 			description:             "metrics middleware prepended to single custom middleware",
 		},
 	}
@@ -604,6 +626,7 @@ func TestBuildHTTPServer_MetricsMiddlewareWithCustomMiddlewares(t *testing.T) {
 				authMiddleware: func(next http.Handler) http.Handler { return next },
 			}
 
+			prepareAdmissionTestServer(t, cfg)
 			server, err := buildHTTPServer(ctx, cfg, mockSvc, nil)
 
 			require.NoError(t, err, tt.description)
@@ -975,22 +998,9 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 			verifyCleanup:  true,
 		},
 		{
-			name: "error when auth middleware creation fails",
+			name: "missing auth fails before storage construction",
 			setupMocks: func(ctrl *gomock.Controller) *mocks.MockFactory {
-				mockFactory := mocks.NewMockFactory(ctrl)
-				mockSvc := mocksvc.NewMockRegistryService(ctrl)
-				mockFactory.EXPECT().
-					CreateStateService(gomock.Any()).
-					Return(nil, nil)
-				mockFactory.EXPECT().
-					CreateSyncWriter(gomock.Any()).
-					Return(nil, nil)
-				mockFactory.EXPECT().
-					CreateRegistryService(gomock.Any()).
-					Return(mockSvc, nil)
-				mockFactory.EXPECT().
-					Cleanup()
-				return mockFactory
+				return mocks.NewMockFactory(ctrl)
 			},
 			opts: func(mockFactory *mocks.MockFactory, _ string) []RegistryAppOptions {
 				// Config with invalid auth mode to trigger auth middleware error
@@ -1001,26 +1011,13 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 					WithStorageFactory(mockFactory),
 				}
 			},
-			wantErrContain: "failed to build auth middleware",
-			verifyCleanup:  true,
+			wantErrContain: "auth configuration is required",
+			verifyCleanup:  false,
 		},
 		{
-			name: "error when service creation returns nil config error",
+			name: "invalid auth fails before storage construction",
 			setupMocks: func(ctrl *gomock.Controller) *mocks.MockFactory {
-				mockFactory := mocks.NewMockFactory(ctrl)
-				mockSvc := mocksvc.NewMockRegistryService(ctrl)
-				mockFactory.EXPECT().
-					CreateStateService(gomock.Any()).
-					Return(nil, nil)
-				mockFactory.EXPECT().
-					CreateSyncWriter(gomock.Any()).
-					Return(nil, nil)
-				mockFactory.EXPECT().
-					CreateRegistryService(gomock.Any()).
-					Return(mockSvc, nil)
-				mockFactory.EXPECT().
-					Cleanup()
-				return mockFactory
+				return mocks.NewMockFactory(ctrl)
 			},
 			opts: func(mockFactory *mocks.MockFactory, _ string) []RegistryAppOptions {
 				// Config with unsupported auth mode to trigger error
@@ -1033,8 +1030,8 @@ func TestNewRegistryApp_ErrorPaths(t *testing.T) {
 					WithStorageFactory(mockFactory),
 				}
 			},
-			wantErrContain: "failed to build auth middleware",
-			verifyCleanup:  true,
+			wantErrContain: "invalid auth.mode",
+			verifyCleanup:  false,
 		},
 	}
 

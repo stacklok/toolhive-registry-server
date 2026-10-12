@@ -53,6 +53,11 @@ jobs:
       - name: Run chart-testing (lint)
         run: ct lint --config ct.yaml
 
+      - name: Verify CI policy configuration and mount
+        run: |
+          task gen
+          go test ./deploy/charts/toolhive-registry-server -run TestCIPolicyMount -count=1
+
       - name: Create KIND cluster
         uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
 
@@ -74,6 +79,8 @@ jobs:
 
           # Deploy PostgreSQL using raw manifests to the same namespace
           kubectl apply -f .github/postgres-manifests.yaml -n toolhive-test
+          # ct.yaml uses this same fixed namespace for the registry release.
+          kubectl apply -f .github/registry-ci-policy.yaml -n toolhive-test
 
           # Wait for PostgreSQL to be ready
           kubectl wait --for=condition=available deployment/postgres -n toolhive-test --timeout=120s

@@ -37,15 +37,23 @@ registries:
   - name: default
     sources: ["toolhive"]
 
+# Additional standalone admission restriction; author and mount this file explicitly.
+admin:
+  enabled: false
+authorization:
+  policyFile: /etc/registry/policies.cedar
+  allowAnonymousCatalog: false
+  identityMappings:
+    - issuer: https://idp.example.com
+      groups:
+        claim: groups
+        format: string-array
+
 # OAuth/OIDC authentication configuration
 auth:
   mode: oauth
 
-  # Additional paths that bypass authentication (optional)
-  # These extend the default public paths (health, docs, swagger, well-known)
-  # publicPaths:
-  #   - /custom/public
-  #   - /metrics
+  # publicPaths is rejected; only exact credential-bootstrap metadata is exempt.
 
   # OAuth/OIDC specific configuration
   oauth:

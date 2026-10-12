@@ -9,14 +9,24 @@ named catalog views. These are separate grants: publishers and operators who
 need to browse must also belong to `registry-readers`; no role automatically
 inherits consumer-read access.
 
-Cedar applies to both the consumer and admin APIs. In this proposal,
+Cedar applies to both the consumer and admin APIs. In this admission slice,
 `catalog.read` admits a caller to every consumer list, get, version-list and
 latest-version endpoint in every named view. It is an endpoint admission
 decision, not per-view access or per-entry filtering.
 
-This is a product proposal for #912, not implemented or approved functionality.
-All Cedar and new configuration examples below are PROPOSED and have not been
-parsed, typechecked or executable-validated. Today's claims/RBAC still apply.
+**Status: user-authorized first runtime admission slice for #912.** Cedar is an
+additional restriction, not a replacement for legacy authorization yet. Existing
+`auth.authz`, role resolution, source/view/entry claims, personalized filtering,
+service checks and PostgreSQL mutation guards remain in force. A Cedar permit
+cannot bypass them, including the legacy super-admin rules. No data or claims
+are automatically removed or exposed. The offline acknowledged migration and
+claims/RBAC removal are the next slice; #912 is not complete. Services/HTTP
+extraction (#913–#915) is deferred.
+
+The examples below are parsed and strictly typechecked by tests against the
+embedded application schema using cedar-go v1.8.0's experimental validator.
+This verifies the Go implementation, not parity with the Rust reference validator.
+Reference-validator fixtures and independent review remain release gates.
 
 Today, operators configure fixed roles and attach claims to sources, views and
 entries to control access and filter results. We propose replacing those rules
@@ -24,11 +34,13 @@ with an operator-owned Cedar policy file that grants operations on the whole
 instance. Keep OAuth for identity; use Cedar to decide what that identity may do.
 There is no policy editor, policy API or automatic sample allow-all policy.
 
-Crucially, this is not per-entry privacy. Finance and engineering readers querying
-the same view see the same catalog, including both teams' entries. Named views
-organize data, but are not security partitions: read permission covers all views.
-If finance must not see engineering entries, use host-owned personalized catalog
-services or separate instances, not another Cedar group rule on this instance.
+The eventual claims-removal design is not per-entry privacy. After the separate,
+explicitly acknowledged migration, finance and engineering readers querying the
+same view will see the same catalog, including both teams' entries. That is **not**
+the behavior of this admission-only slice: legacy claims still restrict responses.
+Named views organize data, but Cedar does not grant per-view access. If finance
+must not see engineering entries after migration, use host-owned personalized
+catalog services or separate instances, not another Cedar group rule.
 
 ## What would I configure?
 
@@ -41,9 +53,9 @@ services or separate instances, not another Cedar group rule on this instance.
    below. Point your registry config at it and explicitly enable admin endpoints
    for publishing and administration.
 
-This config fragment is PROPOSED, not runnable today. Keep existing database,
-sources, views and operational settings. The `auth` fields exist; blocks marked
-PROPOSED are new, with names/placement not finalized. Map only verified claims.
+Keep existing database, sources, views, operational settings and legacy
+`auth.authz`/resource claims. The new blocks are mandatory standalone admission
+configuration. Map only verified claims.
 
 ```yaml
 # Existing authentication fields
@@ -54,7 +66,7 @@ auth:
       - name: company
         issuerUrl: https://id.example.org
         audience: registry-api
-# PROPOSED new blocks and all their fields
+# Standalone admission blocks
 admin:
   enabled: true                # Default false; no automatic permission grant
 authorization:
@@ -67,8 +79,31 @@ authorization:
         format: string-array
 ```
 
-Plain Cedar is the proposed file format here; the earlier investigation recommends
-a JSON bundle. Packaging is unsettled; neither is supported by today's server.
+Plain Cedar is the file format for this slice and supersedes the earlier JSON
+bundle recommendation. The absolute path must refer to a readable regular file
+of at most 1 MiB. Missing, empty, comment-only, syntax-invalid or schema-invalid
+files fail preflight before migrations in `serve`, and before storage/writer/operator
+construction in the app builder. There is no implicit policy or allow-all fallback.
+
+Authenticated principals use `Registry::Principal` with a deterministic ID derived
+from a JSON tuple of the exact verified provider issuer and subject (SHA-256,
+`authenticated:` prefix). Anonymous uses the disjoint `anonymous` ID. No token
+attribute can overwrite `authenticated`, `issuer` or `subject`; spoofed reserved
+attributes reject authentication. The bounded optional `groups` and `scopes`
+attributes support explicit `string-array` or `space-delimited` mappings, with
+at most 256 values, 4096 bytes per value and 16 KiB total per mapped attribute.
+Missing mapped claims grant nothing; malformed mapped claims return 401.
+
+**Opaque-token compatibility:** ToolHive v0.46.0 validates introspection issuer,
+audience and expiration, but RFC7662 parsing preserves only `iss`, `sub`, `aud`,
+`exp` and `scope`, not arbitrary groups. Use explicitly mapped `scope` with
+`space-delimited` for such tokens, or signed JWTs for arbitrary group claims.
+Introspection must provide the exact configured issuer and a nonempty subject;
+responses without sufficient identity fail closed (401), never acquire a locally
+invented issuer or anonymous fallback. Google tokeninfo uses ToolHive's
+provider-established issuer; it still needs matching issuer and audience.
+Duplicate provider names/issuers and duplicate/unconfigured identity mappings
+are rejected. No provider attributes are inferred from unverified JWT parsing.
 
 ## What does the policy look like?
 
@@ -77,7 +112,7 @@ An action is the requested operation, such as browsing or publishing.
 The resource is the entire registry instance, always `Registry::Instance::"catalog"`,
 not an entry, source or view. These names follow the proposed registry schema.
 
-Put all three blocks in the proposed `policies.cedar`. Replace the issuer and group
+Put all three blocks in `policies.cedar`. Replace the issuer and group
 names with your IdP's exact values. Permits add grants; without a matching permit,
 access is denied. An explicit Cedar `forbid` takes precedence over any permit.
 
@@ -141,9 +176,12 @@ Policy-file write access is security administration, separate from these API gra
 
 Mount `config.yaml` and `policies.cedar` read-only at `/etc/registry/`, with write
 access restricted to deployment administrators. Use TLS or a trusted TLS ingress.
-After implementation, start with the existing invocation
+After mounting policy and config, start with the existing invocation
 `thv-registry-api serve --config /etc/registry/config.yaml`.
-The command exists today, but the proposed config and policy support do not.
+Configure legacy roles and resource claims as before: readers still need the
+view/entry claims; publishers need the legacy `manageEntries` role and covered
+managed-source/entry claims; operators need `manageSources`/`manageRegistries`
+and their resource claims whenever `auth.authz` is enabled.
 
 With admin explicitly enabled and the example policies, the expected results are:
 
@@ -155,16 +193,34 @@ With admin explicitly enabled and the example policies, the expected results are
 | Publisher or operator without `registry-readers` | 403 | Its separate grant, if any | Its separate grant, if any |
 | Anonymous, no token | 401 | 401 | 401 |
 
+The table shows Cedar admission only. "Allowed" still requires all applicable
+legacy roles and claims, normal payload validation, ownership and storage checks.
 A 401 means authentication is missing or invalid; a 403 means a valid caller lacks
-permission. Permitted calls use the existing APIs and return unchanged payloads,
-subject to normal validation and catalog errors, not caller-specific filtering.
+permission. Responses remain unchanged and may still be caller-specific under
+legacy claims filtering. There is no new per-entry or per-view Cedar grant.
+
+With admin enabled, `/v1/me` and both GET/PUT
+`/v1/entries/{type}/{name}/claims` are authenticated static 410 tombstones, with
+no service calls. Retagging via those endpoints is no longer available in this
+slice; inventory/backup and resolve entry claims on the legacy release before
+upgrading. Source/view configuration and their legacy claims remain supported.
+With admin disabled the entire `/v1` surface is absent (404). Operational probes
+stay on the separate internal port. Unknown public URLs return 404, unsupported
+methods (including HEAD/OPTIONS for catalog routes) return 405 without calling
+services. Only exact GET `/.well-known/oauth-protected-resource` is a credential
+bootstrap exemption; OpenAPI requires `metadata.read`. `auth.publicPaths` is
+rejected, including empty and null values, rather than interpreted as a bypass.
 
 A missing, empty or invalid policy prevents startup from serving catalog/admin
 traffic. No matching grant denies the operation without calling the
 catalog service. Server-side evaluation failure returns a safe generic error
 (503 for evaluator unavailability, 500 for wiring faults), never partial data.
-Denials are audited with actor, action, decision and policy revision, not raw tokens,
-claims or policy contents. Permission does not imply that a subsequent write succeeded.
+Cedar admission decision events contain actor, action, decision and policy revision,
+not raw tokens, claims or policy contents. This is not a guarantee about all logs:
+the pre-existing opt-in `audit.includeRequestData` captures request bodies, including
+resource claims and any sensitive payload values, even on Cedar denials. Leave it
+disabled unless that exposure and the audit sink's access/retention are acceptable.
+Permission does not imply that a subsequent write succeeded.
 
 Policy edits require a restart; drain old replicas when revoking access because
 they retain the old policy. A JWT group change requires a fresh token to be visible;
@@ -174,12 +230,24 @@ Anonymous browsing is optional and off by default. It requires both
 `authorization.allowAnonymousCatalog: true` and a Cedar `catalog.read` permit
 for the anonymous principal; the private reader-group policy above does not
 provide one. Invalid supplied tokens still get 401, never anonymous fallback.
+**Transitional constraint:** anonymous catalog admission is rejected at startup
+when legacy `auth.authz` is configured. Those legacy list filters interpret absent
+caller claims as unfiltered; allowing anonymous requests there would bypass the
+protection retained in this slice. Do not disable legacy authorization to make
+restricted catalogs anonymous. Keep those deployments authenticated until the
+separate acknowledged exposure migration/removal is implemented. Anonymous
+admission works for explicitly non-claims-scoped deployments, with the config
+opt-in and a policy permit; it is not a migration shortcut.
 `PublicPaths` or any other authentication bypass must never bypass Cedar: a
 consumer route without verified or explicitly anonymous request evidence is
 denied. Admin endpoints are disabled by default, and always require
 authentication when enabled, even with anonymous browsing.
 
 ## Migration: a deliberate exposure decision
+
+This section describes the **next, unimplemented slice**, not an approval or
+completion claim for exposure migration. The current slice retains all old
+claims/RBAC/storage protection and does not strip or expose catalog data.
 
 This is a breaking upgrade, not a policy-file swap. Before upgrading, back up and
 inventory ALL old catalogs: sources, views, entries, retained snapshots and operator

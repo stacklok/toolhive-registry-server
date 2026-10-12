@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -90,6 +91,8 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 	return r
 }
 
+type readinessChecker interface{ CheckReadiness(context.Context) error }
+
 // NewInternalServer creates a minimal HTTP router for internal operational
 // endpoints (health, readiness, version, metrics). These endpoints are
 // intended to run on a separate port so that Kubernetes probes and metrics
@@ -97,7 +100,7 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 // application middleware. metricsHandler is mounted at /metrics when
 // non-nil; a nil handler means metrics are disabled and the route is
 // omitted entirely.
-func NewInternalServer(svc service.RegistryService, metricsHandler http.Handler) *chi.Mux {
+func NewInternalServer(svc readinessChecker, metricsHandler http.Handler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Get("/health", healthHandler)
 	r.Get("/readiness", readinessHandler(svc))
@@ -194,7 +197,7 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 
 // readinessHandler handles readiness check requests.
 // Served on the internal port only — not part of the public API.
-func readinessHandler(svc service.RegistryService) http.HandlerFunc {
+func readinessHandler(svc readinessChecker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := svc.CheckReadiness(r.Context()); err != nil {
 			slog.WarnContext(r.Context(), "Readiness check failed",

@@ -29,6 +29,24 @@ helm upgrade -i toolhive-registry-server oci://ghcr.io/stacklok/toolhive-registr
 
 ## Usage
 
+### Cedar admission configuration (required)
+
+Configure trusted OAuth issuers/audiences before starting, and explicitly create a
+ConfigMap with an operator-authored `policies.cedar` key. Set
+`policy.existingConfigMap` to its name: the chart mounts it read-only at
+`/etc/registry-policies/policies.cedar`, matching `config.authorization.policyFile`.
+Map verified groups/scopes with `config.authorization.identityMappings`.
+The chart installs no sample policy or implicit grant. Defaults are private OAuth
+and admin disabled; publishing/administration require explicit `config.admin.enabled`
+and authenticated policy permission, plus the retained legacy roles/claims.
+
+Policy edits require a rollout/restart of every replica; an externally supplied
+ConfigMap does not automatically change the running evaluator. Drain old replicas
+when revoking access. Anonymous admission cannot be enabled while legacy
+`auth.authz` is configured in this transitional slice. See the
+[Cedar transition guide](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-cedar-authorization.md)
+before upgrading; no claims removal or exposure migration is performed here.
+
 ### Installing from the Chart
 
 Install one of the available versions:
@@ -97,7 +115,12 @@ rather than through the Service.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | affinity | object | `{}` | Affinity rules for pod scheduling |
-| config.auth.mode | string | `"anonymous"` |  |
+| config.admin.enabled | bool | `false` |  |
+| config.auth.mode | string | `"oauth"` |  |
+| config.auth.oauth.providers | list | `[]` |  |
+| config.authorization.allowAnonymousCatalog | bool | `false` |  |
+| config.authorization.identityMappings | list | `[]` |  |
+| config.authorization.policyFile | string | `"/etc/registry-policies/policies.cedar"` |  |
 | config.database.database | string | `"toolhive_registry"` |  |
 | config.database.host | string | `""` |  |
 | config.database.port | int | `5432` |  |
@@ -125,6 +148,7 @@ rather than through the Service.
 | podAnnotations | object | `{}` | Annotations to add to the pod |
 | podLabels | object | `{}` | Labels to add to the pod |
 | podSecurityContext | object | `{}` | Pod security context |
+| policy.existingConfigMap | string | `""` | Existing ConfigMap containing an operator-authored policies.cedar key. Required for serving; no sample policy or implicit grant is installed. |
 | rbac | object | `{"allowedNamespaces":[],"scope":"cluster"}` | RBAC configuration for the registry server |
 | rbac.allowedNamespaces | list | `[]` | List of namespaces that the registry server is allowed to watch. Only used if scope is set to "namespace". |
 | rbac.scope | string | `"cluster"` | Scope of the RBAC configuration. - cluster: The registry server will have cluster-wide permissions via ClusterRole and ClusterRoleBinding. - namespace: The registry server will have permissions to watch resources in the namespaces specified in `allowedNamespaces`.   The registry server will have a ClusterRole and RoleBinding for each namespace in `allowedNamespaces`. |

@@ -32,6 +32,7 @@ const (
 type validationResult struct {
 	// Provider is the name of the provider that validated the token
 	Provider string
+	Issuer   string
 
 	// Error is set if validation failed
 	Error error
@@ -52,6 +53,7 @@ type providerError struct {
 // namedValidator pairs a validator with its provider metadata
 type namedValidator struct {
 	Name      string
+	Issuer    string
 	Validator tokenValidatorInterface
 }
 
@@ -107,6 +109,7 @@ func newMultiProviderMiddleware(
 
 		nv := namedValidator{
 			Name:      pc.Name,
+			Issuer:    pc.IssuerURL,
 			Validator: validator,
 		}
 		m.validators = append(m.validators, nv)
@@ -124,7 +127,7 @@ func (m *multiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 				"error", err,
 				"remote_addr", r.RemoteAddr,
 				"path", r.URL.Path)
-			m.writeError(w, http.StatusUnauthorized, errorCodeInvalidRequest, "missing or malformed authorization header")
+			m.writeError(w, errorCodeInvalidRequest, "missing or malformed authorization header")
 			return
 		}
 
@@ -134,11 +137,15 @@ func (m *multiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 				"error", result.Error,
 				"remote_addr", r.RemoteAddr,
 				"path", r.URL.Path)
-			m.writeError(w, http.StatusUnauthorized, errorCodeInvalidToken, "token validation failed")
+			m.writeError(w, errorCodeInvalidToken, "token validation failed")
 			return
 		}
 
 		sub, user := IdentityFromClaims(result.Claims)
+		if result.Issuer == "" || sub == "" {
+			m.writeError(w, errorCodeInvalidToken, "verified issuer and subject required")
+			return
+		}
 		slog.Info("Authentication successful",
 			"provider", result.Provider,
 			"sub", sub,
@@ -154,6 +161,9 @@ func (m *multiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 
 		// Store validated claims in request context for downstream authorization
 		ctx := ContextWithClaims(r.Context(), result.Claims)
+		ctx = context.WithValue(ctx, verifiedIdentityKey{}, VerifiedIdentity{
+			Issuer: result.Issuer, Subject: sub, Claims: result.Claims,
+		})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -169,12 +179,18 @@ func (m *multiProviderMiddleware) validateToken(ctx context.Context, token strin
 				Provider: nv.Name,
 				Error:    err,
 			})
-			slog.Debug("Provider failed to validate token", "provider", nv.Name, "error", err)
+			slog.Debug("Provider failed to validate token", "provider", nv.Name)
 			continue
 		}
 
+		// Require the exact issuer validated by this provider. Never invent an
+		// issuer for opaque tokens whose introspection response omits it.
+		if nv.Issuer != "" && claimString(claims, "iss") != nv.Issuer {
+			continue
+		}
 		return validationResult{
 			Provider: nv.Name,
+			Issuer:   nv.Issuer,
 			Claims:   claims,
 			Errors:   providerErrors,
 		}
@@ -203,7 +219,7 @@ func sanitizeHeaderValue(s string) string {
 
 // writeError writes a JSON error response with RFC 6750 compliant WWW-Authenticate header.
 // The errCode parameter should be one of the RFC 6750 error codes (invalid_request, invalid_token).
-func (m *multiProviderMiddleware) writeError(w http.ResponseWriter, status int, errCode, description string) {
+func (m *multiProviderMiddleware) writeError(w http.ResponseWriter, errCode, description string) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Sanitize values to prevent header injection
@@ -220,7 +236,7 @@ func (m *multiProviderMiddleware) writeError(w http.ResponseWriter, status int, 
 			realm, errCode, sanitizedDescription, resourceURL)
 	}
 	w.Header().Set("WWW-Authenticate", wwwAuth)
-	w.WriteHeader(status)
+	w.WriteHeader(http.StatusUnauthorized)
 
 	resp := struct {
 		Error string `json:"error"`

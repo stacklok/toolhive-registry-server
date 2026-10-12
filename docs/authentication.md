@@ -8,12 +8,18 @@ The ToolHive Registry API server supports OAuth 2.0/OIDC authentication to prote
 - [Authentication Modes](#authentication-modes)
 - [Multi-Provider Support](#multi-provider-support)
 - [Configuration](#configuration)
-- [Default Public Paths](#default-public-paths)
+- [Public endpoints](#public-endpoints)
 - [Provider Configuration](#provider-configuration)
 - [RFC 9728 Support](#rfc-9728-protected-resource-metadata)
 - [Examples](#examples)
 
 ## Overview
+
+Standalone serving also requires an operator-authored Cedar policy file. Cedar
+admission is additional to existing roles and resource claims; see the
+[Cedar transition guide](registry-cedar-authorization.md) before upgrading.
+The authentication snippets below are not complete standalone configurations.
+`auth.publicPaths` is retired and rejected (including empty/null values).
 
 The server defaults to **OAuth mode** for security-by-default. For development environments, you can explicitly set `mode: anonymous`.
 
@@ -23,7 +29,7 @@ The server defaults to **OAuth mode** for security-by-default. For development e
 - Multiple provider support with sequential fallback
 - Kubernetes service account integration
 - RFC 9728 Protected Resource Metadata
-- Per-endpoint public path configuration
+- Explicit anonymous-catalog opt-in, subject to Cedar policy
 
 ## Authentication Modes
 
@@ -41,6 +47,11 @@ To disable authentication for local development:
 ```yaml
 auth:
   mode: anonymous
+admin:
+  enabled: false
+authorization:
+  policyFile: /etc/registry/policies.cedar # Author and mount explicitly.
+  allowAnonymousCatalog: true
 ```
 
 ## Multi-Provider Support
@@ -104,12 +115,6 @@ auth:
 auth:
   mode: oauth
 
-  # Additional paths that bypass authentication (optional)
-  # These extend the default public paths listed below
-  publicPaths:
-    - /custom/public
-    - /metrics
-
   # OAuth/OIDC configuration
   oauth:
     # URL identifying this protected resource (RFC 9728)
@@ -132,16 +137,19 @@ auth:
         caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 ```
 
-## Default Public Paths
+## Public endpoints
 
-The following endpoints are always accessible without authentication:
+Operational endpoints are unauthenticated only on the internal listener (default
+`:8081`): `/health`, `/readiness`, `/version`, and `/metrics` when enabled. Do not
+expose that listener publicly.
 
-- `/health` - Health check endpoint
-- `/readiness` - Readiness probe endpoint
-- `/version` - Version information
-- `/.well-known/*` - OAuth discovery endpoints (RFC 9728)
-
-Additional public paths can be configured using the `publicPaths` option.
+On the public listener (default `:8080`), only exact
+`GET /.well-known/oauth-protected-resource` is an OAuth credential-bootstrap
+exemption. `/openapi.json` requires Cedar `metadata.read`; consumer routes require
+`catalog.read`. There is no configurable public-path bypass. Anonymous catalog
+access requires explicit opt-in **and** a matching Cedar permit; enabled admin
+routes always require OAuth authentication. Anonymous admission cannot be combined
+with legacy `auth.authz` in this transition slice.
 
 ## Provider Configuration
 
@@ -229,6 +237,11 @@ This endpoint allows OAuth clients to automatically discover authentication requ
 ```yaml
 auth:
   mode: anonymous
+admin:
+  enabled: false
+authorization:
+  policyFile: /etc/registry/policies.cedar # Author and mount explicitly.
+  allowAnonymousCatalog: true
 ```
 
 ### Production with Single IDP

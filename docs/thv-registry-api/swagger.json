@@ -718,30 +718,6 @@
                 },
                 "type": "object"
             },
-            "internal_api_v1.entryClaimsResponse": {
-                "properties": {
-                    "claims": {
-                        "additionalProperties": {},
-                        "type": "object"
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api_v1.meResponse": {
-                "properties": {
-                    "roles": {
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    },
-                    "subject": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
             "internal_api_v1.publishEntryRequest": {
                 "properties": {
                     "claims": {
@@ -768,15 +744,6 @@
                         },
                         "type": "array",
                         "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api_v1.updateEntryClaimsRequest": {
-                "properties": {
-                    "claims": {
-                        "additionalProperties": {},
-                        "type": "object"
                     }
                 },
                 "type": "object"
@@ -2713,10 +2680,11 @@
         },
         "/v1/entries/{type}/{name}/claims": {
             "get": {
-                "description": "Get the claims for an API-published entry name within the managed source.\nClaims are stored at the entry-name level and are shared by every version of that name.\nSynced-source entries (git/api/file/kubernetes) are out of scope: their claims come from\nupstream (the source manifest or the `toolhive.stacklok.dev/authz-claims` annotation) and\nare surfaced through the `/v1/sources/{name}/entries` and `/v1/registries/{name}/entries` lists.",
+                "deprecated": true,
+                "description": "Static authenticated tombstone in standalone when admin is enabled; prepare retagging before upgrade.",
                 "parameters": [
                     {
-                        "description": "Entry Type (server or skill)",
+                        "description": "Entry Type",
                         "in": "path",
                         "name": "type",
                         "required": true,
@@ -2735,79 +2703,38 @@
                     }
                 ],
                 "responses": {
-                    "200": {
+                    "401": {
                         "content": {
-                            "application/json": {
+                            "text/plain": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/internal_api_v1.entryClaimsResponse"
+                                    "type": "string"
                                 }
                             }
                         },
-                        "description": "Entry claims"
+                        "description": "Unauthorized"
                     },
-                    "400": {
+                    "410": {
                         "content": {
-                            "application/json": {
+                            "text/plain": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "type": "string"
                                 }
                             }
                         },
-                        "description": "Bad request"
-                    },
-                    "403": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Forbidden"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Not found"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
+                        "description": "Retired endpoint"
                     }
                 },
-                "summary": "Get entry claims",
+                "summary": "Retired entry claims endpoint",
                 "tags": [
                     "v1"
                 ]
             },
             "put": {
-                "description": "Update claims for a published entry name",
+                "deprecated": true,
+                "description": "Static authenticated tombstone in standalone when admin is enabled; prepare retagging before upgrade.",
                 "parameters": [
                     {
-                        "description": "Entry Type (server or skill)",
+                        "description": "Entry Type",
                         "in": "path",
                         "name": "type",
                         "required": true,
@@ -2825,77 +2752,29 @@
                         }
                     }
                 ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/internal_api_v1.updateEntryClaimsRequest",
-                                "summary": "request",
-                                "description": "Claims to set"
-                            }
-                        }
-                    },
-                    "description": "Claims to set",
-                    "required": true
-                },
                 "responses": {
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "400": {
+                    "401": {
                         "content": {
-                            "application/json": {
+                            "text/plain": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "type": "string"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Unauthorized"
                     },
-                    "403": {
+                    "410": {
                         "content": {
-                            "application/json": {
+                            "text/plain": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "type": "string"
                                 }
                             }
                         },
-                        "description": "Forbidden"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Not found"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
+                        "description": "Retired endpoint"
                     }
                 },
-                "summary": "Update entry claims",
+                "summary": "Retired entry claims endpoint",
                 "tags": [
                     "v1"
                 ]
@@ -2985,33 +2864,31 @@
         },
         "/v1/me": {
             "get": {
-                "description": "Returns the authenticated caller's identity and roles",
+                "deprecated": true,
+                "description": "Retired in standalone. Admin must be enabled; authenticated requests receive a static tombstone.",
                 "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/internal_api_v1.meResponse"
-                                }
-                            }
-                        },
-                        "description": "Caller identity and roles"
-                    },
                     "401": {
                         "content": {
-                            "application/json": {
+                            "text/plain": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "type": "string"
                                 }
                             }
                         },
                         "description": "Unauthorized"
+                    },
+                    "410": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "Retired endpoint"
                     }
                 },
-                "summary": "Get current user info",
+                "summary": "Retired identity endpoint",
                 "tags": [
                     "v1"
                 ]

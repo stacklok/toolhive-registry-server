@@ -141,7 +141,18 @@ initContainers: []
 # The entire config block is rendered as YAML into the ConfigMap, so you can add
 # any new fields without modifying the chart templates.
 
+policy:
+  # -- Existing ConfigMap containing an operator-authored policies.cedar key.
+  # Required for serving; no sample policy or implicit grant is installed.
+  existingConfigMap: ""
+
 config:
+  admin:
+    enabled: false
+  authorization:
+    policyFile: /etc/registry-policies/policies.cedar
+    allowAnonymousCatalog: false
+    identityMappings: []
   # Sources configuration - at least one source must be configured
   sources:
     - name: toolhive
@@ -159,7 +170,9 @@ config:
 
   # Authentication configuration
   auth:
-    mode: anonymous
+    mode: oauth
+    oauth:
+      providers: [] # Configure trusted issuers/audiences before starting.
 
   # PostgreSQL database configuration (required)
   # WARNING: Do NOT set password or migrationPassword here — this config block is
@@ -245,8 +258,7 @@ config:
 #
 #   auth:
 #     mode: oauth
-#     # publicPaths:
-#     #   - /metrics
+#     # publicPaths is rejected; metrics/probes remain on the operational port.
 #     oauth:
 #       resourceUrl: https://registry.example.com
 #       realm: "mcp-registry"

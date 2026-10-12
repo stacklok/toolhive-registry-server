@@ -1,9 +1,11 @@
 package audit
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -63,6 +65,23 @@ func NewLogger(logFile string) (*Logger, error) {
 // Slog returns the underlying *slog.Logger for use with AuditEvent.LogTo().
 func (l *Logger) Slog() *slog.Logger {
 	return l.logger
+}
+
+// Admission records a policy decision, not the outcome of a later operation.
+func (l *Logger) Admission(ctx context.Context, request *http.Request, actor, action, revision, decision string) {
+	outcome := audit.OutcomeDenied
+	if decision == "allow" {
+		outcome = audit.OutcomeSuccess
+	}
+	if decision == "error" {
+		outcome = audit.OutcomeError
+	}
+	event := audit.NewAuditEvent("authorization.admission",
+		audit.EventSource{Type: audit.SourceTypeNetwork, Value: request.RemoteAddr},
+		outcome, map[string]string{"actor": actor}, ComponentRegistryAPI,
+	).WithTarget(map[string]string{"action": action, "resource": `Registry::Instance::"catalog"`})
+	event.Metadata.Extra = map[string]any{"decision": decision, "policy_revision": revision}
+	event.LogTo(ctx, l.Slog(), audit.LevelAudit)
 }
 
 // Close releases any resources held by the logger (e.g., open file handles).

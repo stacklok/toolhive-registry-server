@@ -13,6 +13,21 @@ Applies to all code that handles JWTs, resolves roles, or compares claims. These
 the authz story coherent: one matching algorithm, subset validation everywhere, default-deny
 when claims don't cover.
 
+## Standalone Cedar admission transition
+
+The standalone app additionally requires a strictly validated, restart-loaded
+Cedar policy on consumer and admin operations. This is admission only: all legacy
+rules below still apply. Cedar Allow does not bypass roles, claims, filtering or
+PostgreSQL guards; legacy super-admin does not bypass Cedar. Missing authentication
+or route evidence fails closed. Administration is disabled by default and, when
+enabled, requires OAuth. Configurable `auth.publicPaths` is rejected.
+
+`/v1/me` and GET/PUT entry-claims routes are static authenticated 410 tombstones
+in the standalone surface. Prepare entry retagging on the legacy release before
+upgrading; there is no new undocumented Cedar retag action. Source/view and
+publication claims remain enforced. See `docs/registry-cedar-authorization.md`.
+Claims/RBAC removal and acknowledged offline exposure migration are separate work.
+
 ## 1. Authentication and Authorization Are Separate Concerns
 
 "Who are you?" (JWT validation) and "what can you do?" (role + claim matching) live in
