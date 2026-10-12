@@ -1,9 +1,15 @@
-# Offline exposure inventory and pending acknowledgement
+# Offline exposure review and explicit claims retirement
 
-Improves on #912. This increment implements review tooling and a **dormant**
-revision-bound marker, not claims/RBAC retirement or a cutover. Cedar admission
-remains additive to all legacy protections. No claims are cleared or archived.
-The public persistence contracts and their legacy mutation guards are unchanged.
+Improves on #912. This increment implements review tooling, a **dormant**
+revision-bound marker, and explicit offline archive-and-clear. It does **not**
+retire runtime claims/RBAC guards or activate a cutover. Cedar admission and all
+legacy runtime protections remain additive. The public persistence contracts and
+their legacy mutation guards are unchanged; after explicit clearing, those raw
+storage guards no longer have claims to protect.
+
+**Do not restart the current runtime after `retire-claims`.** Keep the deployment
+offline until the runtime cutover release, or restore the verified backup offline.
+Neither acknowledgement nor metadata retirement makes this slice safe to serve.
 
 ## Maintenance procedure
 
@@ -18,16 +24,25 @@ The public persistence contracts and their legacy mutation guards are unchanged.
    ```
 
    Migration 000027 creates only a stable logical database UUID and an empty
-   acknowledgement row. It grants no exposure consent and changes no catalog data
-   or source generations. `migrate up` retains its ordinary configuration validation;
-   exposure inspection separately permits inspecting retired security fields.
-3. Use the **effective deployment configuration**, including its environment
-   overrides and mounted policy file, for all exposure commands. Materialize any
-   exposure-relevant `serve` CLI overrides in YAML/environment for this review;
-   these offline commands load `--config` and environment only. The future cutover
-   preflight must also revalidate the final startup overrides. These commands
-   require clean schema version 27 and never auto-migrate, initialize sources,
-   repair latest pointers, fetch sources or start controllers:
+   acknowledgement row. Migration 000028 adds empty internal archive and transition
+   state. Neither grants consent, clears claims or changes catalog data/generations.
+   `migrate up` retains its ordinary configuration validation; exposure inspection
+   separately permits inspecting retired security fields.
+3. Prepare the **FINAL deployment config and policy first**, removing retired fields
+   (`auth.authz`, `auth.roles`, `auth.publicPaths`, and source/view `claims`, including
+   explicit nulls and environment overrides). Do not remove them from the review
+   fingerprint or reinterpret an old acknowledgement. The historical database still
+   has its old claims for inventory. Use this same final effective configuration,
+   including environment overrides and mounted policy contents, for inventory,
+   acknowledgement, retirement and eventual cutover startup. Resolve legacy operator
+   annotations before that future startup; this command does not contact a cluster.
+
+   Materialize any exposure-relevant `serve` CLI overrides in YAML/environment for
+   review; offline commands load `--config` and environment only. Future cutover
+   preflight must revalidate final startup overrides and validate Cedar. Inventory
+   and acknowledgement support clean schemas 27 and 28; retirement requires 28.
+   They never auto-migrate, initialize sources, repair latest pointers, fetch sources
+   or start controllers:
 
    ```sh
    thv-registry-api migrate exposure inventory --config /etc/registry/config.yaml
@@ -72,6 +87,30 @@ The public persistence contracts and their legacy mutation guards are unchanged.
    row is allowed; future sources/views in YAML are allowed. No automatic empty or
    unlabeled approval exists. `--yes` never supplies either exposure or offline consent.
 
+5. For a historical whole-catalog acknowledgement, use its exact
+   `acknowledgement_id` and **`post_fence_digest`**, not its original `reviewed_digest`:
+
+   ```sh
+   thv-registry-api migrate exposure retire-claims \
+     --config /etc/registry/config.yaml \
+     --acknowledgement-id '<pending-acknowledgement-uuid>' \
+     --digest 'sha256:<post-fence-64-hex-digest>' \
+     --approve-whole-catalog --confirm-offline
+   ```
+
+   Both consent flags are mandatory; `--yes` is not consent. The final config must
+   have no retired fields. A changed config/policy requires fresh inventory and
+   acknowledgement **before** clearing; arbitrary rebinding is never accepted.
+   `initialize-empty` already has valid new-install evidence and needs no archive
+   or retirement command. It still cannot activate the future runtime in this slice.
+
+   Successful retirement reports exactly: **"metadata retired; runtime cutover not
+   yet available in this slice"**. Remain offline; do not run `serve`, reconciliation
+   or legacy embedding applications against the cleared database. If JSON receipt
+   delivery fails after the command reports **"claim metadata retirement committed;
+   remain offline; inspect stored receipt"**, the database transaction already
+   committed: remain offline and use the recovery inspection below rather than retrying.
+
 ## What recording does (and does not do)
 
 Acknowledgement runs in a serializable transaction with write-excluding catalog
@@ -98,19 +137,80 @@ need not invalidate a review. Clock ticks, connection IDs and session formatting
 are not revisions; actual catalog/lease writes are.
 
 Any subsequent catalog, target, exposure-relevant config or policy change invalidates
-the pending review. Re-inventory and explicitly acknowledge again while offline. If you resume
-the existing protected runtime, its normal reconciliation/jobs can invalidate the
-marker. This slice does **not** enforce the marker at startup. A later slice must
-consume/revalidate the pending marker before retiring old guards, resolving retired
-config/API fields and operator annotations first. That cutover is neither approved
-nor executed here. After eventual consumption, legitimate future writes must not
-be subject to perpetual historical-digest matching.
+pending review. Re-inventory and explicitly acknowledge again while offline, before
+retirement. Resuming the protected runtime before retirement can invalidate the
+marker. This slice does **not** consume/enforce the marker at startup. Runtime
+consumption/revalidation is deliberately deferred, including a serialized one-time
+transition and durable retry receipt; legitimate writes after eventual consumption
+must not undergo perpetual historical-digest matching.
+
+## Explicit retirement and recovery evidence
+
+Retirement requires the existing pending whole-catalog acknowledgement, unchanged
+config/policy revision and current post-fence database digest. It uses a serializable
+transaction with the same write-excluding catalog locks, also locking the archive.
+Every DB-time unexpired lease (including stale generations) is rejected without
+stealing tokens. All source/view/entry rows are archived, even SQL NULL, JSON null,
+empty-object and malformed claims. The archive retains raw JSONB, its SQL NULL
+discriminator, original row UUID/name, source UUID/name, kind and ownership, keyed
+by a new retirement operation UUID. JSONB preserves stored values, not original
+pre-JSONB whitespace/key order. No catalog payloads are changed or copied to the
+archive; recover the complete catalog from the verified backup.
+
+Then only the three live claims columns are set to **SQL NULL**, every source
+generation advances once, and applied generations are invalidated. IDs, ownership,
+payload extras, kind-specific latest pointers, view order, counts, last-success
+state, hashes and lease tokens remain intact. Archive, clearing, fencing and the
+retirement receipt are atomic within a transaction that commits successfully: any
+pre-commit error rolls all of them back. A lost commit response has an uncertain
+outcome, and a JSON receipt-output failure occurs after a successful commit; neither
+is evidence that rollback occurred. The original reviewed digest, post-fence digest,
+acknowledgement ID/config/time are never changed by retirement. A new post-retirement
+digest and DB-time retirement timestamp are recorded separately. `consumed_at` remains
+NULL; no runtime path writes it here.
+
+The archive is sensitive internal migration evidence, with no live-catalog foreign
+keys/cascades, consumer API, or catalog query path. Restrict database/backup access
+and retain it with the backup. Canonical inventory format 1 continues fingerprinting
+the explicit live-catalog tables; transition bookkeeping and archive contents are
+excluded, never printed. The immutable original reviewed digest fingerprints the
+original decision evidence, including raw claims and SQL NULL distinctions. Schema
+27 → 28 alone therefore does not invalidate an existing review. Application tooling
+never edits archive rows or re-acknowledges retired/consumed state.
+
+**Retries:** repeats, wrong IDs and attempts to use the post-retirement digest as a
+new acknowledgement are rejected without mutation. If the response is lost or the
+command reports an uncertain outcome, remain offline and inspect the stored receipt;
+do not delete state, retry retirement or re-acknowledge it. An authorized database
+operator can run this read-only query, which exposes no raw claims:
+
+```sql
+SELECT acknowledgement_id, retirement_id, acknowledged_at, retired_at,
+       reviewed_digest, post_fence_digest, post_retirement_digest
+FROM public.exposure_acknowledgement
+WHERE singleton;
+```
+
+A pending acknowledgement has a non-NULL `acknowledgement_id` and NULL
+`retirement_id`/`retired_at`; a committed retirement has non-NULL
+`retirement_id`, `retired_at` and `post_retirement_digest`. Treat any other result
+or an unavailable query as unresolved and remain offline while investigating. A
+rolled-back attempt may be retried only when its rollback is independently
+established and the same pending evidence still matches; otherwise inventory and
+acknowledge again before retirement. After retirement, changes invalidate pending
+cutover evidence and cannot be silently rebound; retain downtime and restore the
+backup offline if necessary. There is no restore command or serving activation here.
 
 ## Rollback
 
-Before acknowledgement, migration 000027 can be downgraded without catalog changes;
-reapplying it creates a new identity and requires a fresh inventory. Downgrade
-**refuses** to discard an existing acknowledgement, even one invalidated by later
-changes. Do not delete the marker to bypass that refusal. Preserve backup and
-migration state and plan any rollback offline. This increment does not authorize
-an old binary to co-own a source with leased workers or to bypass legacy guards.
+Before retirement/consumption, 000028 can be downgraded only when its archive is
+empty, preserving pending acknowledgement evidence in 000027. It **refuses** to
+lose any retirement, consumption or archive data. The unchanged 000027 downgrade
+still refuses to discard any acknowledgement, even invalidated state. Before any
+acknowledgement, downgrading/reapplying 000027 creates a new database identity and
+requires fresh review. Do not delete evidence to bypass these refusals.
+
+After clearing, restore a verified complete backup **offline** for rollback; an old
+binary cannot safely recreate the retired metadata. Preserve migration state and
+prevent old and leased workers from co-owning sources. No user database or cluster
+is migrated by the tests; they use disposable PostgreSQL fixtures only.
