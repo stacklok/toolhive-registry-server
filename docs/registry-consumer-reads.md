@@ -89,5 +89,6 @@ expose this library's continuation: server lists default 30 and cap at 1000;
 extension lists default 50 and reject above 100; server histories request 1000
 with no wire continuation; extension histories request 30 and retain opaque
 response cursor metadata but ignore input limit/cursor query parameters. No HTTP
-behavior changes in this slice. Admin/publication services and reusable routers
-remain further #913 slices; #913 is not complete.
+behavior changes in this slice. [Definition administration](registry-definition-administration.md)
+is a subsequent production-unwired #913 slice; publication, diagnostics and
+reusable routers remain deferred. #913 is not complete.

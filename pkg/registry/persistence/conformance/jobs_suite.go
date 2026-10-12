@@ -94,6 +94,52 @@ func RunJobs(t *testing.T, factory JobsFactory) {
 			t.Fatalf("no-change: %+v %v", state, err)
 		}
 	})
+	t.Run("timestamp-only writes retain leases and applied baseline", func(t *testing.T) {
+		t.Parallel()
+		sources, _, jobs := factory(t)
+		ctx := t.Context()
+		s := newEntrySource(t, sources, "metadata-only")
+		first, err := jobs.Acquire(ctx, s.Name, time.Minute)
+		must(t, err)
+		result := persistence.SyncResult{Hash: "hash", FilterHash: "metadata-filter"}
+		must(t, jobs.CommitSnapshot(ctx, first, result, model.Snapshot{}))
+		active, err := jobs.Acquire(ctx, s.Name, time.Minute)
+		must(t, err)
+		for _, replacement := range []persistence.SourceDefinition{s, {
+			Name: s.Name, API: s.API, Schedule: s.Schedule,
+			CreatedAt: time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC), UpdatedAt: time.Now().UTC(),
+		}} {
+			stored, e := sources.UpdateSource(ctx, s.Name, replacement)
+			must(t, e)
+			if !stored.CreatedAt.Equal(s.CreatedAt) || stored.UpdatedAt.Before(s.UpdatedAt) {
+				t.Fatal("timestamp metadata changed creation time")
+			}
+			renewed, e := jobs.Renew(ctx, active, time.Minute)
+			must(t, e)
+			if renewed.Generation != active.Generation {
+				t.Fatal("metadata invalidated generation")
+			}
+			status, e := jobs.Status(ctx, s.Name)
+			must(t, e)
+			if !status.BaselineValid || status.LastHash != result.Hash {
+				t.Fatal("metadata invalidated baseline")
+			}
+		}
+		must(t, jobs.Complete(ctx, active, result))
+		active, err = jobs.Acquire(ctx, s.Name, time.Minute)
+		must(t, err)
+		changed := s
+		changed.API = &persistence.APISpec{Endpoint: "https://changed.example.org"}
+		_, err = sources.UpdateSource(ctx, s.Name, changed)
+		must(t, err)
+		want(t, jobs.Complete(ctx, active, result), persistence.ErrStale)
+		fresh, err := jobs.Acquire(ctx, s.Name, time.Minute)
+		must(t, err)
+		if fresh.Generation <= active.Generation {
+			t.Fatal("genuine definition change retained generation")
+		}
+		want(t, jobs.Complete(ctx, fresh, result), persistence.ErrConflict)
+	})
 	t.Run("reconfiguration and direct writes", func(t *testing.T) {
 		t.Parallel()
 		sources, entries, jobs := factory(t)

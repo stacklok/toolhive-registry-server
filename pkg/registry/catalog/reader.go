@@ -1,5 +1,6 @@
-// Package catalog provides non-personalized consumer reads over host-supplied
-// persistence. It performs no authorization, opens no storage and starts no work.
+// Package catalog provides non-personalized consumer reads and definition
+// administration over host-supplied persistence. It performs no authorization,
+// opens no storage and starts no work.
 package catalog
 
 import (

@@ -1,21 +1,22 @@
 -- name: DefListSources :many
 SELECT id::text AS id, name, creation_type::text AS origin, source_type, source_config, filter_config,
- COALESCE((extract(epoch from sync_schedule)*1000000)::bigint,0) AS micros
+ COALESCE((extract(epoch from sync_schedule)*1000000)::bigint,0) AS micros, created_at, updated_at
 FROM source ORDER BY name COLLATE "C";
 
 -- name: DefGetSource :one
 SELECT id::text AS id, name, creation_type::text AS origin, source_type, source_config, filter_config,
- COALESCE((extract(epoch from sync_schedule)*1000000)::bigint,0) AS micros
+ COALESCE((extract(epoch from sync_schedule)*1000000)::bigint,0) AS micros, created_at, updated_at
 FROM source WHERE name=$1;
 
 -- name: DefLockSource :one
 SELECT id::text AS id, name, creation_type::text AS origin, source_type, source_config, filter_config,
- COALESCE((extract(epoch from sync_schedule)*1000000)::bigint,0) AS micros
+ COALESCE((extract(epoch from sync_schedule)*1000000)::bigint,0) AS micros, created_at, updated_at
 FROM source WHERE name=$1 FOR UPDATE;
 
 -- name: DefInsertSource :one
 INSERT INTO source(name,creation_type,source_type,source_config,filter_config,sync_schedule,syncable)
-VALUES($1,'API',$2,$3::jsonb,$4::jsonb,$5::interval,$6) RETURNING id::text;
+VALUES($1,'API',$2,$3::jsonb,$4::jsonb,$5::interval,$6)
+ON CONFLICT ON CONSTRAINT source_name_key DO NOTHING RETURNING id::text;
 
 -- name: DefUpdateSource :exec
 UPDATE source SET source_config=$2::jsonb,filter_config=$3::jsonb,sync_schedule=$4::interval,syncable=$5,updated_at=now()
@@ -34,13 +35,14 @@ SELECT EXISTS(SELECT 1 FROM registry_source WHERE source_id=$1::uuid);
 DELETE FROM source WHERE id=$1::uuid AND creation_type='API';
 
 -- name: DefInsertAPIView :one
-INSERT INTO registry(name,creation_type) VALUES($1,'API') RETURNING id::text;
+INSERT INTO registry(name,creation_type) VALUES($1,'API')
+ON CONFLICT ON CONSTRAINT registry_name_key DO NOTHING RETURNING id::text;
 
 -- name: DefGetView :one
-SELECT name, creation_type::text AS origin FROM registry WHERE name=$1;
+SELECT name, creation_type::text AS origin, created_at, updated_at FROM registry WHERE name=$1;
 
 -- name: DefLockView :one
-SELECT name, creation_type::text AS origin FROM registry WHERE name=$1 FOR UPDATE;
+SELECT name, creation_type::text AS origin, created_at, updated_at FROM registry WHERE name=$1 FOR UPDATE;
 
 -- name: DefListViewNames :many
 SELECT name FROM registry ORDER BY name COLLATE "C";

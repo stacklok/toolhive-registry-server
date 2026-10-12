@@ -41,13 +41,46 @@ func RunMulti(t *testing.T, factory PairFactory) {
 			if err == nil {
 				successes++
 			} else {
-				want(t, err, persistence.ErrConflict)
+				preciseConflict(t, err, persistence.ErrConflict)
 			}
 		}
 		if successes != 1 {
 			t.Fatalf("created %d managed sources", successes)
 		}
 	})
+	for _, kind := range []string{"source definition", "view definition"} {
+		t.Run("concurrent duplicate "+kind, func(t *testing.T) {
+			a, b := factory(t)
+			_, err := a.CreateSource(t.Context(), persistence.SourceDefinition{Name: targetName, File: &persistence.FileSpec{Data: "{}"}})
+			must(t, err)
+			start := make(chan struct{})
+			results := make(chan error, 2)
+			for _, d := range []persistence.Definitions{a, b} {
+				go func() {
+					<-start
+					var e error
+					if kind == "source definition" {
+						_, e = d.CreateSource(t.Context(), persistence.SourceDefinition{Name: "duplicate", Managed: &persistence.ManagedSpec{}})
+					} else {
+						_, e = d.CreateView(t.Context(), persistence.ViewDefinition{Name: "duplicate", Sources: []string{targetName}})
+					}
+					results <- e
+				}()
+			}
+			close(start)
+			successes := 0
+			for range 2 {
+				if e := <-results; e == nil {
+					successes++
+				} else {
+					preciseConflict(t, e, persistence.ErrAlreadyExists)
+				}
+			}
+			if successes != 1 {
+				t.Fatalf("duplicate creates succeeded: %d", successes)
+			}
+		})
+	}
 	t.Run("reference versus delete", func(t *testing.T) {
 		a, b := factory(t)
 		_, err := a.CreateSource(t.Context(), persistence.SourceDefinition{Name: targetName, File: &persistence.FileSpec{Data: "{}"}})
