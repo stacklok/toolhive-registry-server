@@ -36,13 +36,13 @@ func RetireExposureClaims(ctx context.Context, conn *pgx.Conn, configRevision, a
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 	if _, err = tx.Exec(ctx, exposureCatalogLock); err != nil {
-		return ExposureRetirement{}, errors.New("cannot lock exposure catalog; require clean schema version 28 and offline drain")
+		return ExposureRetirement{}, errors.New("cannot lock exposure catalog; require clean schema version 28 or 29 and offline drain")
 	}
 	var version int
 	var dirty bool
 	err = tx.QueryRow(ctx, `SELECT version,dirty FROM public.schema_migrations`).Scan(&version, &dirty)
-	if err != nil || version != 28 || dirty {
-		return ExposureRetirement{}, errors.New("exposure retirement requires clean schema version 28; run migrate up separately")
+	if err != nil || version != 28 && version != 29 || dirty {
+		return ExposureRetirement{}, errors.New("exposure retirement requires clean schema version 28 or 29; run migrate up separately")
 	}
 	if _, err = tx.Exec(ctx, `LOCK TABLE public.exposure_claims_archive IN EXCLUSIVE MODE`); err != nil {
 		return ExposureRetirement{}, errors.New("cannot lock exposure archive")

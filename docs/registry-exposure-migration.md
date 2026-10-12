@@ -2,7 +2,9 @@
 
 Improves on #912. This increment implements review tooling, a **dormant**
 revision-bound marker, and explicit offline archive-and-clear. It does **not**
-retire runtime claims/RBAC guards or activate a cutover. Cedar admission and all
+retire runtime claims/RBAC guards or activate a cutover. Schema 29 and a dormant
+internal receipt-consumption primitive are now available, but no CLI, app builder,
+service, worker or listener selects that primitive. Cedar admission and all
 legacy runtime protections remain additive. The public persistence contracts and
 their legacy mutation guards are unchanged; after explicit clearing, those raw
 storage guards no longer have claims to protect.
@@ -25,7 +27,11 @@ Neither acknowledgement nor metadata retirement makes this slice safe to serve.
 
    Migration 000027 creates only a stable logical database UUID and an empty
    acknowledgement row. Migration 000028 adds empty internal archive and transition
-   state. Neither grants consent, clears claims or changes catalog data/generations.
+   state. Migration 000029 adds a nullable consumed-target digest and enforces that
+   it and `consumed_at` are either both NULL or both populated with a valid digest.
+   It refuses unsupported pre-existing consumption without target evidence; it
+   never manufactures or backfills consent. None grants consent, clears claims
+   or changes catalog data/generations.
    `migrate up` retains its ordinary configuration validation; exposure inspection
    separately permits inspecting retired security fields.
 3. Prepare the **FINAL deployment config and policy first**, removing retired fields
@@ -40,7 +46,8 @@ Neither acknowledgement nor metadata retirement makes this slice safe to serve.
    Materialize any exposure-relevant `serve` CLI overrides in YAML/environment for
    review; offline commands load `--config` and environment only. Future cutover
    preflight must revalidate final startup overrides and validate Cedar. Inventory
-   and acknowledgement support clean schemas 27 and 28; retirement requires 28.
+   and acknowledgement support clean schemas 27, 28 and 29; retirement requires
+   28 or 29.
    They never auto-migrate, initialize sources, repair latest pointers, fetch sources
    or start controllers:
 
@@ -139,10 +146,10 @@ are not revisions; actual catalog/lease writes are.
 Any subsequent catalog, target, exposure-relevant config or policy change invalidates
 pending review. Re-inventory and explicitly acknowledge again while offline, before
 retirement. Resuming the protected runtime before retirement can invalidate the
-marker. This slice does **not** consume/enforce the marker at startup. Runtime
-consumption/revalidation is deliberately deferred, including a serialized one-time
-transition and durable retry receipt; legitimate writes after eventual consumption
-must not undergo perpetual historical-digest matching.
+marker. This slice does **not** consume/enforce the marker at startup. The internal
+serialized consumption primitive described below is dormant until the full runtime
+preparation barrier and owner/authorization cutover are implemented. Legitimate
+writes after consumption must not undergo perpetual historical-digest matching.
 
 ## Explicit retirement and recovery evidence
 
@@ -166,8 +173,8 @@ pre-commit error rolls all of them back. A lost commit response has an uncertain
 outcome, and a JSON receipt-output failure occurs after a successful commit; neither
 is evidence that rollback occurred. The original reviewed digest, post-fence digest,
 acknowledgement ID/config/time are never changed by retirement. A new post-retirement
-digest and DB-time retirement timestamp are recorded separately. `consumed_at` remains
-NULL; no runtime path writes it here.
+digest and DB-time retirement timestamp are recorded separately. `consumed_at` and
+`consumed_target_digest` remain NULL; retirement never consumes the receipt.
 
 The archive is sensitive internal migration evidence, with no live-catalog foreign
 keys/cascades, consumer API, or catalog query path. Restrict database/backup access
@@ -175,7 +182,7 @@ and retain it with the backup. Canonical inventory format 1 continues fingerprin
 the explicit live-catalog tables; transition bookkeeping and archive contents are
 excluded, never printed. The immutable original reviewed digest fingerprints the
 original decision evidence, including raw claims and SQL NULL distinctions. Schema
-27 → 28 alone therefore does not invalidate an existing review. Application tooling
+27 → 28 → 29 alone therefore does not invalidate an existing review. Application tooling
 never edits archive rows or re-acknowledges retired/consumed state.
 
 **Retries:** repeats, wrong IDs and attempts to use the post-retirement digest as a
@@ -201,10 +208,73 @@ acknowledge again before retirement. After retirement, changes invalidate pendin
 cutover evidence and cannot be silently rebound; retain downtime and restore the
 backup offline if necessary. There is no restore command or serving activation here.
 
+## Dormant consumption and target continuity
+
+`internal/db.ConsumeExposure` requires clean schema 29. It is **not** a command
+or a supported serving activation path. A future mandatory storage preparation
+barrier must call it only after validating final effective config, rejecting
+retired-field presence, freezing the actual loaded Cedar engine and completing
+read-only compatibility preflight over all final configured and persisted sources
+and operator scopes. These integration requirements remain unimplemented here;
+do not invoke it manually to bypass them. Public persistence stays policy-free.
+
+The primitive locks the explicit catalog/receipt/schema tables in EXCLUSIVE mode
+inside a serializable transaction before reading the snapshot. On first consumption
+it requires the exact pending config/policy revision and current post-retirement
+digest for a whole-catalog decision; a whole-catalog acknowledgement alone is
+insufficient, even for unlabeled rows. Empty-mode consumption requires the current
+post-fence digest and **every** catalog table still empty. Every DB-time unexpired
+lease, including stale-generation leases, blocks consumption. It advances source
+generations and invalidates only applied baselines, preserving payloads, counts,
+last-success state, hashes and tokens. It atomically stores a DB-time `consumed_at`
+and target digest without modifying any pending acknowledgement/retirement fields
+or archive. Failures before commit roll back; concurrent starts serialize, with
+bounded serialization/deadlock retries. A lost commit response requires receipt
+inspection, not an assumption of rollback.
+
+The consumed-target fingerprint is SHA-256 of the UTF-8 JSON encoding of this
+unambiguous, versioned tuple (no trailing newline):
+
+```text
+["registry-exposure-consumed-target", 1, logicalDatabaseUUID,
+ connectionConfigHost, connectionConfigPort, current_database()]
+```
+
+It uses the configured host spelling, **not** a DNS-resolved address, credentials,
+config, policy or catalog. Same-target restarts verify only this digest; legitimate
+catalog/config/policy changes do not rebind or invalidate historical evidence.
+They still need normal current config, Cedar and source/operator compatibility
+validation by the future preparation barrier. Host aliases are a target change,
+consistent with inventory semantics, and fail closed without silent rebinding.
+
+A consumed backup restored to the **same target** retains continuity. On another
+target, use the correct reviewed endpoint, or restore an **offline pre-retirement
+backup** and perform a new explicit review/retirement for that target. There is no
+relocation/rebinding tool. A cloned database behind the identical endpoint and
+logical UUID is indistinguishable: this digest is continuity evidence, **not** an
+attestation of physical database uniqueness.
+
+Inspect consumption without exposing archived claims:
+
+```sql
+SELECT acknowledgement_id, retirement_id, consumed_at, consumed_target_digest
+FROM public.exposure_acknowledgement
+WHERE singleton;
+```
+
+The config loader retains retired-field and environment fingerprint inputs from
+the same raw YAML/environment snapshot used to decode the effective config.
+`Config.ExposureReview(engine.Revision())` uses final in-memory CLI overrides and
+the exact bytes frozen in the loaded Cedar engine, never rereading either file.
+Offline fingerprints retain format 1. Changes before policy load invalidate pending
+review; changes after load cannot silently bind consent to a different evaluator.
+
 ## Rollback
 
-Before retirement/consumption, 000028 can be downgraded only when its archive is
-empty, preserving pending acknowledgement evidence in 000027. It **refuses** to
+Before consumption, 000029 can be downgraded to 000028 without changing pending
+acknowledgement or retirement evidence. It refuses to discard any consumed timestamp
+or target digest. Before retirement/consumption, 000028 can be downgraded only when
+its archive is empty, preserving pending acknowledgement evidence in 000027. It **refuses** to
 lose any retirement, consumption or archive data. The unchanged 000027 downgrade
 still refuses to discard any acknowledgement, even invalidated state. Before any
 acknowledgement, downgrading/reapplying 000027 creates a new database identity and
