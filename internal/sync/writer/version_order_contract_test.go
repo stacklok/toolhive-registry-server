@@ -17,7 +17,7 @@ func TestLatestSpellingOrder(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 	source := createTestRegistry(t, pool, "order-source")
-	w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	w, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 	latest := func(kind string) string {
 		t.Helper()
@@ -41,7 +41,7 @@ func TestLatestSpellingOrder(t *testing.T) {
 			reg.Data.Skills = append(reg.Data.Skills, createTestSkill("com.example", "skill-order", version))
 			reg.Data.Plugins = append(reg.Data.Plugins, createTestPlugin("com.example", "plugin-order", version))
 		}
-		require.NoError(t, w.Store(ctx, "order-source", reg))
+		require.NoError(t, w.store(ctx, "order-source", reg))
 		for _, kind := range []string{"MCP", "SKILL", "PLUGIN"} {
 			require.Equal(t, tc.want, latest(kind), kind)
 		}
@@ -55,7 +55,7 @@ func TestLatestSpellingOrder(t *testing.T) {
 		replacement.Data.Servers = []upstreamv0.ServerJSON{createTestServer("example.com/order", remaining)}
 		replacement.Data.Skills = []toolhivetypes.Skill{createTestSkill("com.example", "skill-order", remaining)}
 		replacement.Data.Plugins = []toolhivetypes.Plugin{createTestPlugin("com.example", "plugin-order", remaining)}
-		require.NoError(t, w.Store(ctx, "order-source", replacement))
+		require.NoError(t, w.store(ctx, "order-source", replacement))
 		for _, kind := range []string{"MCP", "SKILL", "PLUGIN"} {
 			require.Equal(t, remaining, latest(kind), kind)
 		}

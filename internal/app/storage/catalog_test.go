@@ -1,6 +1,10 @@
 package storage_test
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +17,47 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
+	registrypg "github.com/stacklok/toolhive-registry-server/pkg/registry/postgres"
 )
+
+//nolint:paralleltest // PGPASSFILE is process-global fixture configuration.
+func TestCatalogOwnedPoolPgpassResolution(t *testing.T) {
+	conn, cleanup := database.SetupTestDBContainer(t, t.Context())
+	t.Cleanup(cleanup)
+	require.NoError(t, database.MigrateUp(t.Context(), conn))
+	pg := conn.Config()
+	require.NotEmpty(t, pg.Password, "fixture requires a password")
+	path := filepath.Join(t.TempDir(), ".pgpass")
+	require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf("%s:%d:%s:%s:%s\n", pg.Host, pg.Port, pg.Database, pg.User, pg.Password)), 0600))
+	t.Setenv("PGPASSFILE", path)
+	cfg := &config.Config{Database: &config.DatabaseConfig{Host: pg.Host, Port: int(pg.Port), User: pg.User, Database: pg.Database, SSLMode: "disable"}}
+	store, err := (storage.CatalogPostgres{}).Open(t.Context(), cfg)
+	require.NoError(t, err)
+	t.Cleanup(store.Close)
+	// Read-only preflight forces authentication on the newly owned pool.
+	_, err = store.Preflight(t.Context(), nil, nil, "")
+	require.NoError(t, err)
+}
+
+func TestCatalogEntriesRepairFailureBeforeServing(t *testing.T) {
+	t.Parallel()
+	conn, _ := database.SetupTestDB(t)
+	pool, err := pgxpool.New(t.Context(), conn.Config().ConnString())
+	require.NoError(t, err)
+	t.Cleanup(pool.Close)
+	blocker, err := pool.Begin(t.Context())
+	require.NoError(t, err)
+	defer blocker.Rollback(context.Background())
+	_, err = blocker.Exec(t.Context(), `LOCK TABLE source IN SHARE ROW EXCLUSIVE MODE`)
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	entries, err := registrypg.NewEntries(ctx, pool, 65536)
+	require.Error(t, err)
+	require.Nil(t, entries)
+	require.NoError(t, blocker.Commit(t.Context()))
+	require.NoError(t, pool.Ping(t.Context()), "borrowed pool remains usable after repair failure")
+}
 
 func TestCatalogHistoricalCompatibilityBeforeConsumption(t *testing.T) {
 	t.Parallel()

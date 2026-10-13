@@ -11,7 +11,8 @@ preflight precede schema-29 receipt consumption; both listeners and new writers 
 behind that mandatory barrier. Existing catalogs require the
 [explicit offline exposure procedure](registry-exposure-migration.md). Empty installs
 may explicitly use default-false `--initialize-empty`, never to approve existing data.
-Legacy code and physical columns remain unselected until #915 cleanup. Statements below
+The legacy runtime is removed; private offline config compatibility and physical claims
+columns remain at schema 29 until the final forward schema slice. Statements below
 about dormant consumption or retained legacy guards describe the original proposal,
 not the selected runtime.
 
@@ -436,7 +437,7 @@ ownership, fencing, validation and Kubernetes service-account RBAC remain intact
 ## Migration: a deliberate exposure decision
 
 An instance-wide permit is **not equivalent** to legacy visibility filtering.
-Under the current [auth rules §4](../.claude/rules/auth.md#4-default-deny-when-authz-is-enabled),
+Under the historical default-deny model (see [exposure compatibility](../.claude/rules/auth.md#4-historical-default-deny-and-exposure-compatibility)),
 **unlabeled data is default-denied too** when legacy authorization is active.
 Inventory both labeled and unlabeled source/view/entry-name rows, including null,
 empty-object and malformed claims, plus config and operator annotations. “No

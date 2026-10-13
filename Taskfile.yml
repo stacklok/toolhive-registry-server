@@ -30,7 +30,7 @@ tasks:
       - |
         swag init -q -g docs.go \
           --dir cmd/thv-registry-api,pkg/registry/httpapi,internal/api,internal/auth \
-          --exclude cmd/thv-registry-api/app,cmd/thv-registry-api/docs,internal/api/v1,internal/api/registry,internal/api/x \
+          --exclude cmd/thv-registry-api/app,cmd/thv-registry-api/docs \
           --v3.1 --output {{.SWAG_OUTPUT_DIR}} \
           --parseDependencyLevel 1 2>/dev/null
 

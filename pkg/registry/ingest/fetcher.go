@@ -22,6 +22,8 @@ import (
 // ErrFetch deliberately omits remote responses, URLs, paths and credentials.
 var ErrFetch = errors.New("source fetch failed")
 
+//go:generate mockgen -destination=mocks/io.go -package=mocks -source=fetcher.go
+
 // HTTPClient retrieves a complete bounded response. Implementations must honor
 // context cancellation, reject non-success responses and enforce their URL policy.
 type HTTPClient interface {

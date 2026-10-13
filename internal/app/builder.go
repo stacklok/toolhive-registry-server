@@ -1,8 +1,8 @@
+// Package app assembles the standalone catalog and owns its application lifecycle.
 package app
 
 import (
 	"compress/gzip"
-	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -10,23 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/stacklok/toolhive-registry-server/internal/api"
-	"github.com/stacklok/toolhive-registry-server/internal/app/storage"
 	auditmw "github.com/stacklok/toolhive-registry-server/internal/audit"
-	"github.com/stacklok/toolhive-registry-server/internal/auth"
-	"github.com/stacklok/toolhive-registry-server/internal/authorization"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
-	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
-	"github.com/stacklok/toolhive-registry-server/internal/service"
-	"github.com/stacklok/toolhive-registry-server/internal/sources"
-	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
@@ -39,192 +28,30 @@ const (
 	defaultIdleTimeout         = 60 * time.Second
 )
 
-// RegistryAppOptions is a function that configures the registry app builder
+// RegistryAppOptions configures CatalogApp's HTTP servers.
 type RegistryAppOptions func(*registryAppConfig) error
 
-// registryAppBuilder builds a RegistryApp using the builder pattern
-// It supports dependency injection for testing while providing sensible defaults for production
 type registryAppConfig struct {
-	config          *config.Config
-	admissionEngine *authorization.Engine
-
-	// Optional component overrides (primarily for testing)
-	registryHandlerFactory sources.RegistryHandlerFactory
-	syncManager            pkgsync.Manager
-	storageFactory         storage.Factory // Replaces: storageManager, statusPersistence, registryProvider
-
-	// HTTP server options
-	address         string
-	internalAddress string
-	middlewares     []func(http.Handler) http.Handler
-	requestTimeout  time.Duration
-	readTimeout     time.Duration
-	writeTimeout    time.Duration
-	idleTimeout     time.Duration
-
-	// Auth components
-	authMiddleware  func(http.Handler) http.Handler
-	authInfoHandler http.Handler
-
-	// Telemetry components
-	meterProvider  metric.MeterProvider
-	tracerProvider trace.TracerProvider
-	metricsHandler http.Handler
-
-	// Coordinator options (primarily for testing)
-	coordinatorOpts []coordinator.Option
+	config                                                 *config.Config
+	address, internalAddress                               string
+	middlewares                                            []func(http.Handler) http.Handler
+	requestTimeout, readTimeout, writeTimeout, idleTimeout time.Duration
+	meterProvider                                          metric.MeterProvider
+	tracerProvider                                         trace.TracerProvider
+	metricsHandler                                         http.Handler
 }
 
-type registryMetricsReaderFactory interface {
-	CreateRegistryMetricsReader(ctx context.Context) (telemetry.RegistryMetricReader, error)
-}
-
-func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
-	cfg := &registryAppConfig{
-		address:         defaultHTTPAddress,
-		internalAddress: defaultInternalHTTPAddress,
-		requestTimeout:  defaultRequestTimeout,
-		readTimeout:     defaultReadTimeout,
-		writeTimeout:    defaultWriteTimeout,
-		idleTimeout:     defaultIdleTimeout,
-	}
-
-	// Apply options
-	for _, opt := range opts {
-		if err := opt(cfg); err != nil {
-			return nil, err
-		}
-	}
-
-	return cfg, nil
-}
-
-// NewRegistryApp creates a new builder with the given configuration
-func NewRegistryApp(
-	ctx context.Context,
-	opts ...RegistryAppOptions,
-) (*RegistryApp, error) {
-	cfg, err := baseConfig(opts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build base configuration: %w", err)
-	}
-
-	if err := preflightAdmission(cfg); err != nil {
-		return nil, err
-	}
-
-	// Create storage factory for all storage-dependent components
-	if err := ensureStorageFactory(ctx, cfg); err != nil {
-		return nil, err
-	}
-
-	// Ensure cleanup happens on error
-	var cleanupNeeded = true
-	defer func() {
-		if cleanupNeeded && cfg.storageFactory != nil {
-			cfg.storageFactory.Cleanup()
-		}
-	}()
-
-	// Build sync components using factory
-	syncCoordinator, err := buildSyncComponents(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build sync components: %w", err)
-	}
-
-	// Build service components using factory
-	registryService, err := buildServiceComponents(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build service components: %w", err)
-	}
-
-	// Build auth middleware (if not injected)
-	if cfg.authMiddleware == nil {
-		var authErr error
-		cfg.authMiddleware, cfg.authInfoHandler, authErr = auth.NewAdmissionAuthMiddleware(
-			ctx, cfg.config.Auth, cfg.config.Authorization.AllowAnonymousCatalog, auth.DefaultValidatorFactory)
-		if authErr != nil {
-			return nil, fmt.Errorf("failed to build auth middleware: %w", authErr)
-		}
-	}
-
-	// Build audit logger (if audit is enabled)
-	auditLogger, err := buildAuditLogger(cfg.config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create audit logger: %w", err)
-	}
-
-	// Build HTTP server
-	httpServer, err := buildHTTPServer(ctx, cfg, registryService, auditLogger)
-	if err != nil {
-		if auditLogger != nil {
-			_ = auditLogger.Close()
-		}
-		return nil, fmt.Errorf("failed to build HTTP server: %w", err)
-	}
-
-	// Build internal HTTP server for health/readiness/version
-	internalHTTPServer := buildInternalHTTPServer(cfg, registryService)
-
-	// Create application context
-	appCtx, cancel := context.WithCancel(ctx) //nolint:gosec // G118 false positive: cancel is called in cancelFunc below
-
-	// Cleanup is now handled by the app, not in defer
-	cleanupNeeded = false
-
-	cancelFunc := func() {
-		if auditLogger != nil {
-			_ = auditLogger.Close()
-		}
-		if cfg.storageFactory != nil {
-			cfg.storageFactory.Cleanup()
-		}
-		cancel()
-	}
-
-	return &RegistryApp{
-		config: cfg.config,
-		components: &AppComponents{
-			SyncCoordinator: syncCoordinator,
-			RegistryService: registryService,
-		},
-		httpServer:         httpServer,
-		internalHTTPServer: internalHTTPServer,
-		ctx:                appCtx,
-		cancelFunc:         cancelFunc,
-	}, nil
-}
-
-// WithAdmissionEngine reuses the immutable policy preflight performed before CLI migrations.
-func WithAdmissionEngine(engine *authorization.Engine) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		if engine == nil {
-			return authorization.ErrEvaluation
-		}
-		cfg.admissionEngine = engine
-		return nil
-	}
-}
-
-// WithConfig sets the configuration
-func WithConfig(c *config.Config) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.config = c
-		return nil
-	}
-}
-
-// WithAddress sets the HTTP server address
+// WithAddress sets the public HTTP server address.
 func WithAddress(addr string) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
 		if addr == "" {
 			return fmt.Errorf("address cannot be empty")
 		}
-
 		parts := strings.SplitN(addr, ":", 2)
-		host := parts[0]
-		port := parts[1]
-
+		if len(parts) != 2 {
+			return fmt.Errorf("address is not a valid port: %s", addr)
+		}
+		host, port := parts[0], parts[1]
 		if port == "" {
 			return fmt.Errorf("address is not a valid port: %s", addr)
 		}
@@ -234,27 +61,25 @@ func WithAddress(addr string) RegistryAppOptions {
 		if host == "" {
 			host = "0.0.0.0"
 		}
-
 		if _, err := netip.ParseAddrPort(host + ":" + port); err != nil {
 			return fmt.Errorf("address is not a valid port: %w", err)
 		}
-
 		cfg.address = addr
 		return nil
 	}
 }
 
-// WithInternalAddress sets the internal HTTP server address for health, readiness, and version endpoints
+// WithInternalAddress sets the health/readiness/version/metrics server address.
 func WithInternalAddress(addr string) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
 		if addr == "" {
 			return fmt.Errorf("internal address cannot be empty")
 		}
-
 		parts := strings.SplitN(addr, ":", 2)
-		host := parts[0]
-		port := parts[1]
-
+		if len(parts) != 2 {
+			return fmt.Errorf("internal address is not a valid port: %s", addr)
+		}
+		host, port := parts[0], parts[1]
 		if port == "" {
 			return fmt.Errorf("internal address is not a valid port: %s", addr)
 		}
@@ -264,364 +89,70 @@ func WithInternalAddress(addr string) RegistryAppOptions {
 		if host == "" {
 			host = "0.0.0.0"
 		}
-
 		if _, err := netip.ParseAddrPort(host + ":" + port); err != nil {
 			return fmt.Errorf("internal address is not a valid port: %w", err)
 		}
-
 		cfg.internalAddress = addr
 		return nil
 	}
 }
 
-// WithMiddlewares sets custom HTTP middlewares
+// WithMiddlewares sets custom HTTP middlewares.
 func WithMiddlewares(mw ...func(http.Handler) http.Handler) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.middlewares = mw
-		return nil
-	}
+	return func(cfg *registryAppConfig) error { cfg.middlewares = mw; return nil }
 }
 
-// WithRegistryHandlerFactory allows injecting a custom registry handler factory (for testing)
-func WithRegistryHandlerFactory(f sources.RegistryHandlerFactory) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.registryHandlerFactory = f
-		return nil
-	}
-}
-
-// WithStorageFactory allows injecting a custom storage factory (for testing)
-func WithStorageFactory(f storage.Factory) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.storageFactory = f
-		return nil
-	}
-}
-
-// WithSyncManager allows injecting a custom sync manager (for testing)
-func WithSyncManager(sm pkgsync.Manager) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.syncManager = sm
-		return nil
-	}
-}
-
-// WithCoordinatorOptions sets additional coordinator options (e.g., for testing).
-func WithCoordinatorOptions(opts ...coordinator.Option) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.coordinatorOpts = append(cfg.coordinatorOpts, opts...)
-		return nil
-	}
-}
-
-// WithMeterProvider sets the OpenTelemetry meter provider for HTTP metrics
+// WithMeterProvider sets the OpenTelemetry meter provider.
 func WithMeterProvider(mp metric.MeterProvider) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.meterProvider = mp
-		return nil
-	}
+	return func(cfg *registryAppConfig) error { cfg.meterProvider = mp; return nil }
 }
 
-// WithTracerProvider sets the OpenTelemetry tracer provider for HTTP tracing
+// WithTracerProvider sets the OpenTelemetry tracer provider.
 func WithTracerProvider(tp trace.TracerProvider) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.tracerProvider = tp
-		return nil
-	}
+	return func(cfg *registryAppConfig) error { cfg.tracerProvider = tp; return nil }
 }
 
-// WithMetricsHandler sets the Prometheus /metrics HTTP handler, mounted on
-// the internal server alongside health/readiness/version. Nil disables the
-// route (metrics disabled or no Prometheus reader configured).
+// WithMetricsHandler mounts the Prometheus handler on the internal server only.
 func WithMetricsHandler(h http.Handler) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.metricsHandler = h
-		return nil
-	}
+	return func(cfg *registryAppConfig) error { cfg.metricsHandler = h; return nil }
 }
 
-// buildSyncComponents builds sync manager, coordinator, and related components
-func buildSyncComponents(
-	ctx context.Context,
-	b *registryAppConfig,
-) (coordinator.Coordinator, error) {
-	slog.Info("Initializing sync components")
-
-	// Build registry handler factory (storage-agnostic)
-	if b.registryHandlerFactory == nil {
-		b.registryHandlerFactory = sources.NewRegistryHandlerFactory()
+func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
+	cfg := &registryAppConfig{
+		address: defaultHTTPAddress, internalAddress: defaultInternalHTTPAddress,
+		requestTimeout: defaultRequestTimeout, readTimeout: defaultReadTimeout,
+		writeTimeout: defaultWriteTimeout, idleTimeout: defaultIdleTimeout,
 	}
-
-	// Create state service using storage factory
-	stateService, err := b.storageFactory.CreateStateService(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create state service: %w", err)
-	}
-
-	// Build sync manager using storage factory
-	if b.syncManager == nil {
-		syncWriter, err := b.storageFactory.CreateSyncWriter(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create sync writer: %w", err)
-		}
-
-		b.syncManager = pkgsync.NewDefaultSyncManager(
-			b.registryHandlerFactory,
-			syncWriter,
-		)
-
-		// Setup Kubernetes reconciler if any registry uses Kubernetes source
-		if err := setupKubernetesReconciler(ctx, b.config, syncWriter); err != nil {
+	for _, opt := range opts {
+		if err := opt(cfg); err != nil {
 			return nil, err
 		}
 	}
-
-	// Create coordinator options for metrics
-	var coordOpts []coordinator.Option
-
-	// Create sync metrics if meter provider is configured
-	if b.meterProvider != nil {
-		syncMetrics, err := telemetry.NewSyncMetrics(b.meterProvider)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create sync metrics: %w", err)
-		}
-		if syncMetrics != nil {
-			coordOpts = append(coordOpts, coordinator.WithSyncMetrics(syncMetrics))
-			slog.Info("Sync metrics enabled")
-		}
-
-		if readerFactory, ok := b.storageFactory.(registryMetricsReaderFactory); ok {
-			registryMetricsReader, err := readerFactory.CreateRegistryMetricsReader(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create registry metrics reader: %w", err)
-			}
-
-			registryMetrics, err := telemetry.NewRegistryMetrics(b.meterProvider, registryMetricsReader)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create registry metrics: %w", err)
-			}
-			if registryMetrics != nil {
-				coordOpts = append(coordOpts, coordinator.WithRegistryMetrics(registryMetrics))
-				slog.Info("Registry metrics enabled")
-			}
-		} else {
-			slog.Debug("Registry metrics disabled: storage factory does not provide a registry metrics reader")
-		}
-	}
-
-	// Add tracing if tracer provider is configured
-	if b.tracerProvider != nil {
-		tracer := b.tracerProvider.Tracer(coordinator.CoordinatorTracerName)
-		coordOpts = append(coordOpts, coordinator.WithTracer(tracer))
-		slog.Info("Sync coordinator tracing enabled")
-	}
-
-	// Append any externally provided coordinator options (e.g., polling interval for tests)
-	coordOpts = append(coordOpts, b.coordinatorOpts...)
-
-	// Create coordinator (storage-agnostic)
-	syncCoordinator := coordinator.New(b.syncManager, stateService, b.config, coordOpts...)
-	slog.Info("Sync components initialized successfully")
-
-	return syncCoordinator, nil
+	return cfg, nil
 }
 
-// buildServiceComponents builds registry service and providers
-func buildServiceComponents(
-	ctx context.Context,
-	b *registryAppConfig,
-) (service.RegistryService, error) {
-	slog.Info("Initializing service components")
-
-	if b.config == nil {
-		return nil, fmt.Errorf("config cannot be nil")
-	}
-
-	// Use storage factory to create the service
-	svc, err := b.storageFactory.CreateRegistryService(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create registry service: %w", err)
-	}
-
-	slog.Info("Service components initialized successfully")
-	return svc, nil
-}
-
-// buildHTTPServer builds the HTTP server with router and middleware
-//
-//nolint:unparam // we prefer having a similar interface
-func buildHTTPServer(
-	_ context.Context,
-	b *registryAppConfig,
-	svc service.RegistryService,
-	auditLogger *auditmw.Logger,
-) (*http.Server, error) {
-	slog.Info("Initializing HTTP server")
-
-	// Use default middlewares if not provided
-	if b.middlewares == nil {
-		b.middlewares = []func(http.Handler) http.Handler{
-			middleware.RequestID,
-			// middleware.RealIP is intentionally omitted: it was deprecated in
-			// chi v5.3.0 because it blindly trusts client-supplied headers
-			// (True-Client-IP / X-Real-IP / leftmost X-Forwarded-For) and
-			// mutates r.RemoteAddr, which is an IP-spoofing risk. We keep
-			// r.RemoteAddr as the direct peer address; the raw X-Forwarded-For
-			// header is still preserved for forensics in audit events.
-			middleware.Recoverer,
-			middleware.Timeout(b.requestTimeout),
-			api.LoggingMiddleware,
-			securityHeadersMiddleware,
-		}
-	}
-
-	// Add observability and compression middlewares (metrics, tracing, compression)
-	if err := addObservabilityMiddlewares(b); err != nil {
-		return nil, err
-	}
-
-	var auditCfg *config.AuditConfig
-	if b.config != nil {
-		auditCfg = b.config.Audit
-	}
-
-	// Auth failure audit middleware runs BEFORE auth so it can observe 401
-	// rejections that never reach the post-auth audit middleware. This is
-	// critical for SIEM visibility into failed authentication attempts.
-	b.middlewares = append(b.middlewares, auditmw.AuthFailureMiddleware(auditCfg, auditLogger))
-
-	// Extract authentication config if available; the v1 router derives both
-	// role checks (Authz) and publish-time claim enforcement (Mode) from it.
-	var authCfg *config.AuthConfig
-	if b.config != nil && b.config.Auth != nil {
-		authCfg = b.config.Auth
-	}
-	var authzCfg *config.AuthzConfig
-	if authCfg != nil {
-		authzCfg = authCfg.Authz
-	}
-
-	// Resolve roles for all authenticated requests so that downstream code
-	// (e.g., super-admin bypass in claim validation) can use IsSuperAdmin(ctx).
-	postAuth := chi.Chain(auth.ResolveRolesMiddleware(authzCfg), auditmw.Middleware(auditCfg, auditLogger))
-	authenticate := func(next http.Handler) http.Handler { return b.authMiddleware(postAuth.Handler(next)) }
-
-	// Add audit middleware after auth and roles are resolved so that JWT
-	// claims and roles are available for the audit event subjects.
-	if auditCfg != nil && auditCfg.Enabled {
-		slog.Info("Audit logging middleware enabled")
-	}
-
-	serverOpts := []api.ServerOption{
-		api.WithMiddlewares(b.middlewares...),
-		api.WithAuthInfoHandler(b.authInfoHandler),
-		api.WithAuthConfig(authCfg),
-	}
-	// Create router with middlewares
-	registrar, err := authorization.NewRegistrar(b.admissionEngine, b.config.Authorization.IdentityMappings, auditLogger)
-	if err != nil {
-		return nil, err
-	}
-	router, err := api.NewAdmissionServer(svc, registrar, b.config.Admin.Enabled, authenticate, serverOpts...)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create HTTP server
-	server := &http.Server{
-		Addr:         b.address,
-		Handler:      router,
-		ReadTimeout:  b.readTimeout,
-		WriteTimeout: b.writeTimeout,
-		IdleTimeout:  b.idleTimeout,
-	}
-
-	slog.Info("HTTP server configured", "address", b.address)
-	return server, nil
-}
-
-// buildInternalHTTPServer builds the internal HTTP server for health, readiness, version, and metrics endpoints
-func buildInternalHTTPServer(b *registryAppConfig, svc service.RegistryService) *http.Server {
-	router := api.NewInternalServer(svc, b.metricsHandler)
-	return &http.Server{
-		Addr:         b.internalAddress,
-		Handler:      router,
-		ReadTimeout:  b.readTimeout,
-		WriteTimeout: b.writeTimeout,
-		IdleTimeout:  b.idleTimeout,
-	}
-}
-
-func preflightAdmission(cfg *registryAppConfig) error {
-	if err := cfg.config.ValidateAdmission(); err != nil {
-		return err
-	}
-	if cfg.admissionEngine != nil {
-		return nil
-	}
-	engine, err := authorization.Load(cfg.config.Authorization.PolicyFile)
-	if err != nil {
-		return err
-	}
-	cfg.admissionEngine = engine
-	return nil
-}
-
-// addObservabilityMiddlewares prepends metrics, tracing, and compression
-// middlewares to the middleware chain when the corresponding providers or
-// feature flags are configured.
 func addObservabilityMiddlewares(b *registryAppConfig) error {
-	// Add metrics middleware if meter provider is configured
-	// This should be added early in the chain to capture all requests
 	if b.meterProvider != nil {
 		metricsMiddleware, err := telemetry.MetricsMiddleware(b.meterProvider)
 		if err != nil {
 			return fmt.Errorf("failed to create metrics middleware: %w", err)
 		}
 		if metricsMiddleware != nil {
-			// Prepend metrics middleware to capture all requests including those rejected by auth
 			b.middlewares = append([]func(http.Handler) http.Handler{metricsMiddleware}, b.middlewares...)
 			slog.Info("HTTP metrics middleware enabled")
 		}
 	}
-
-	// Add tracing middleware if tracer provider is configured
-	// This should be added early in the chain to capture all requests
 	if b.tracerProvider != nil {
-		tracingMiddleware := telemetry.TracingMiddleware(b.tracerProvider)
-		// Prepend tracing middleware to capture all requests including those rejected by auth
-		b.middlewares = append([]func(http.Handler) http.Handler{tracingMiddleware}, b.middlewares...)
+		b.middlewares = append([]func(http.Handler) http.Handler{telemetry.TracingMiddleware(b.tracerProvider)}, b.middlewares...)
 		slog.Info("HTTP tracing middleware enabled")
 	}
-
-	// Add compression middleware if enabled via THV_REGISTRY_COMPRESS_RESPONSE
 	if b.config != nil && b.config.IsCompressionEnabled() {
 		b.middlewares = append([]func(http.Handler) http.Handler{middleware.Compress(gzip.DefaultCompression)}, b.middlewares...)
 		slog.Info("HTTP response compression enabled")
 	}
-
 	return nil
 }
 
-// ensureStorageFactory creates the storage factory if not already injected.
-func ensureStorageFactory(ctx context.Context, cfg *registryAppConfig) error {
-	if cfg.storageFactory != nil {
-		return nil
-	}
-	var storageOpts []storage.FactoryOption
-	if cfg.tracerProvider != nil {
-		storageOpts = append(storageOpts, storage.WithTracerProvider(cfg.tracerProvider))
-	}
-	var err error
-	cfg.storageFactory, err = storage.NewStorageFactory(ctx, cfg.config, storageOpts...)
-	if err != nil {
-		return fmt.Errorf("failed to create storage factory: %w", err)
-	}
-	return nil
-}
-
-// buildAuditLogger creates a dedicated audit logger when audit logging is enabled.
-// Returns nil when audit is not enabled.
 func buildAuditLogger(cfg *config.Config) (*auditmw.Logger, error) {
 	if cfg == nil || !cfg.IsAuditEnabled() {
 		return nil, nil
@@ -633,49 +164,6 @@ func buildAuditLogger(cfg *config.Config) (*auditmw.Logger, error) {
 	return auditmw.NewLogger(logFile)
 }
 
-// setupKubernetesReconciler creates a Kubernetes reconciler if any registry uses the Kubernetes source type.
-func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWriter writer.SyncWriter) error {
-	for _, reg := range cfg.Sources {
-		if reg.GetType() != config.SourceTypeKubernetes {
-			continue
-		}
-
-		opts := []kubernetes.Option{
-			kubernetes.WithSyncWriter(syncWriter),
-			kubernetes.WithRegistryName(reg.Name),
-		}
-
-		// Use namespaces from source config if set, otherwise fall back to global WatchNamespace
-		if reg.Kubernetes != nil && len(reg.Kubernetes.Namespaces) > 0 {
-			opts = append(opts, kubernetes.WithNamespaces(reg.Kubernetes.Namespaces...))
-		} else if cfg.WatchNamespace != "" {
-			namespaces := strings.Split(cfg.WatchNamespace, ",")
-			opts = append(opts, kubernetes.WithNamespaces(namespaces...))
-		}
-
-		// Each K8s source needs a unique leader election ID to avoid lease conflicts.
-		// Source names are validated as unique (config validation rejects duplicates),
-		// so appending the source name is sufficient for uniqueness. We intentionally
-		// do NOT include namespace names: since both source names and namespaces use
-		// the DNS label charset (lowercase alphanumeric + hyphens), joining them with
-		// a hyphen would create ambiguous boundaries (e.g. source "foo-bar" + ns "baz"
-		// would collide with source "foo" + ns "bar-baz").
-		leaderID := cfg.LeaderElectionID
-		if leaderID == "" {
-			leaderID = "toolhive-registry-server-leader-election"
-		}
-		leaseID := fmt.Sprintf("%s-%s", leaderID, reg.Name)
-		opts = append(opts, kubernetes.WithLeaderElectionID(leaseID))
-
-		_, err := kubernetes.NewMCPServerReconciler(ctx, opts...)
-		if err != nil {
-			return fmt.Errorf("failed to create kubernetes reconciler for source %s: %w", reg.Name, err)
-		}
-	}
-	return nil
-}
-
-// securityHeadersMiddleware sets baseline security response headers on every request.
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")

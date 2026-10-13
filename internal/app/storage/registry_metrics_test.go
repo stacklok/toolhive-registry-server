@@ -25,9 +25,7 @@ func TestRegistryMetricsReader_RegistryMetricCounts(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 
-	factory := &DatabaseFactory{pool: pool}
-	reader, err := factory.CreateRegistryMetricsReader(ctx)
-	require.NoError(t, err)
+	reader := &registryMetricsReader{pool: pool}
 
 	t.Run("returns empty counts against a fresh database", func(t *testing.T) {
 		t.Parallel()
@@ -95,6 +93,21 @@ func TestRegistryMetricsReader_RegistryMetricCounts(t *testing.T) {
 // checks, raising registryMetricCountsQueryTimeout above the TTL disables the
 // cache silently: every caller re-runs the full-table aggregate, on an
 // unauthenticated /metrics endpoint, with no test going red.
+func TestCatalogMetricCountsCountNamesNotVersions(t *testing.T) {
+	t.Parallel()
+	conn, _ := database.SetupTestDB(t)
+	pool, err := pgxpool.New(t.Context(), conn.Config().ConnString())
+	require.NoError(t, err)
+	t.Cleanup(pool.Close)
+	_, err = pool.Exec(t.Context(), `INSERT INTO source(name,source_type,syncable,creation_type) VALUES('alpha','git',true,'CONFIG'),('empty','git',true,'CONFIG');
+INSERT INTO registry_entry(source_id,entry_type,name) SELECT s.id,k.kind,k.name FROM source s CROSS JOIN (VALUES('MCP'::entry_type,'server'),('SKILL'::entry_type,'skill'),('PLUGIN'::entry_type,'plugin')) k(kind,name) WHERE s.name='alpha';
+INSERT INTO entry_version(entry_id,name,version) SELECT e.id,e.name,v.version FROM registry_entry e CROSS JOIN (VALUES('1'),('2')) v(version);`)
+	require.NoError(t, err)
+	counts, err := (&registryMetricsReader{pool: pool}).RegistryMetricCounts(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, []telemetry.RegistryMetricCount{{SourceName: "alpha", ServerCount: 1, SkillCount: 1, PluginCount: 1}, {SourceName: "empty"}}, counts)
+}
+
 func TestRegistryMetricCountsTimeoutInvariants(t *testing.T) {
 	t.Parallel()
 

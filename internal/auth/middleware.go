@@ -253,24 +253,3 @@ func (m *multiProviderMiddleware) writeError(w http.ResponseWriter, errCode, des
 		slog.Error("Failed to encode error response", "error", err)
 	}
 }
-
-// WrapWithPublicPaths wraps an auth middleware to bypass authentication for public paths.
-// It checks each request path against the provided list of public paths using IsPublicPath.
-// Requests to public paths are passed directly to the next handler without authentication,
-// while all other requests go through the provided auth middleware.
-func WrapWithPublicPaths(
-	authMw func(http.Handler) http.Handler,
-	publicPaths []string,
-) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		// Pre-wrap the handler once during initialization, not per-request
-		authWrappedNext := authMw(next)
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !IsPublicPath(r.URL.Path, publicPaths) {
-				authWrappedNext.ServeHTTP(w, r)
-			} else {
-				next.ServeHTTP(w, r)
-			}
-		})
-	}
-}

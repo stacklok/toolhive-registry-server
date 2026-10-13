@@ -8,8 +8,9 @@ old `RegistryService`, start an old coordinator/writer or start a Kubernetes man
 
 The CLI selects this composition. Helm opts into empty-install preparation only
 when `initializeEmptyCatalog` is explicitly enabled; production defaults remain
-private OAuth/admin-off with an externally supplied read-only policy. Legacy code/tests,
-configuration structs and physical claims columns remain unselected until #915 cleanup.
+private OAuth/admin-off with an externally supplied read-only policy. The obsolete
+runtime/role/claims service and its factories are removed. Private offline configuration
+compatibility and physical claims columns remain at schema 29 until the final schema slice.
 Never co-own sources with old writers; stop/drain all old readers/writers before review.
 
 ## Direct use
@@ -159,8 +160,9 @@ its exposure and retention have been separately reviewed.
 The CLI, Helm opt-in and Compose optional empty-install override select the new
 runtime. Default OpenAPI is generated from public HTTP DTOs/descriptors, with protected
 410 tombstones and no removed RBAC/resource-claims schemas. Legacy annotations are
-not indexed. CLI and public app tests exercise selected startup, while old
-`NewRegistryApp` tests remain characterization only.
+not indexed. CLI and public app tests exercise selected startup; the old
+`NewRegistryApp` and legacy claims/RBAC characterization suites are removed. See
+[contract coverage](registry-contract-tests.md) for the old-to-current acceptance mapping.
 
 Actual ct install with newly built images and remote CI must still be validated
 before release. This local change does not publish a new production image/chart;

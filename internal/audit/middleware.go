@@ -251,8 +251,5 @@ func subjectsFromRequest(r *http.Request) map[string]string {
 	if user != "" {
 		subjects["user"] = user
 	}
-	if auth.IsSuperAdmin(r.Context()) {
-		subjects["role"] = "super_admin"
-	}
 	return subjects
 }

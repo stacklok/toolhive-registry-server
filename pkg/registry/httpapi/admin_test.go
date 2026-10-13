@@ -15,9 +15,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/mock/gomock"
 
-	legacy "github.com/stacklok/toolhive-registry-server/internal/api/v1"
-	"github.com/stacklok/toolhive-registry-server/internal/config"
-	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/catalog"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/catalog/mocks"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/httpapi"
@@ -122,22 +119,22 @@ func TestAdminConstructionAndInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	actual, old := make(map[string]bool), make(map[string]bool)
-	walk := func(r http.Handler, out map[string]bool) {
-		t.Helper()
-		if err := chi.Walk(r.(chi.Routes), func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-			if route != "/me" && !strings.HasSuffix(route, "/claims") {
-				out[method+" "+route] = true
-			}
-			return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
+	actual := make(map[string]bool)
+	if err := chi.Walk(h.(chi.Routes), func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		actual[method+" "+route] = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
-	walk(h, actual)
-	walk(legacy.Router(nil, nil), old)
-	if !reflect.DeepEqual(actual, old) || len(actual) != len(decorated) {
-		t.Fatal(actual, old, decorated)
+	want := map[string]bool{
+		"GET /sources": true, "GET /sources/{name}": true, "GET /sources/{name}/entries": true,
+		"PUT /sources/{name}": true, "DELETE /sources/{name}": true,
+		"GET /registries": true, "GET /registries/{name}": true, "GET /registries/{name}/entries": true,
+		"PUT /registries/{name}": true, "DELETE /registries/{name}": true,
+		"POST /entries": true, "DELETE /entries/{type}/{name}/versions/{version}": true,
+	}
+	if !reflect.DeepEqual(actual, want) || len(actual) != len(decorated) {
+		t.Fatal(actual, want, decorated)
 	}
 	for _, d := range inventory {
 		if decorated[d.Method+" "+d.Template] != d || d.ResourceType == "" {
@@ -281,22 +278,19 @@ func TestAdminWireMatchesLegacyWithoutClaims(t *testing.T) {
 			source.ID, source.Origin, source.CreatedAt, source.UpdatedAt = "incarnation", persistence.OriginConfig, at, at
 			f.sources.EXPECT().GetSource(gomock.Any(), source.Name).Return(source, nil)
 			f.status.EXPECT().Status(gomock.Any(), source.Name).Return(persistence.JobStatus{SourceID: source.ID, Phase: persistence.JobCompleted, StartedAt: &at, EndedAt: &at, Attempts: 2, ServerCount: 3, SkillCount: 4, PluginCount: 5, LastHash: "secret hash", LeaseExpiresAt: &at}, nil)
-			var cfg any
-			switch source.Name {
-			case "git":
-				cfg = &config.GitConfig{Repository: source.Git.Repository, Auth: &config.GitAuthConfig{Username: "user", PasswordFile: "/secret/ref"}}
-			case "api":
-				cfg = &config.APIConfig{Endpoint: source.API.Endpoint, Timeout: "10s"}
-			case "file":
-				cfg = &config.FileConfig{Path: "/registry.json"}
-			case "managed":
-				cfg = &config.ManagedConfig{}
-			case "kubernetes":
-				cfg = &config.KubernetesConfig{Namespaces: []string{"default"}}
+			configs := map[string]any{
+				"git":        map[string]any{"repository": "https://example.org", "auth": map[string]any{"username": "user", "passwordFile": "/secret/ref"}},
+				"api":        map[string]any{"endpoint": "https://example.org", "timeout": "10s"},
+				"file":       map[string]any{"path": "/registry.json"},
+				"managed":    map[string]any{},
+				"kubernetes": map[string]any{"Namespaces": []string{"default"}},
 			}
-			want := service.SourceInfo{Name: source.Name, Type: source.Name, SourceType: config.SourceType(source.Name), CreationType: service.CreationTypeCONFIG, SourceConfig: cfg, SyncSchedule: source.Schedule, CreatedAt: at, UpdatedAt: at, SyncStatus: &service.SourceSyncStatus{Phase: "complete", LastSyncTime: &at, LastAttempt: &at, AttemptCount: 2, ServerCount: 3, SkillCount: 4, PluginCount: 5}}
-			if source.Filter != nil {
-				want.FilterConfig = &config.FilterConfig{Names: source.Filter.Names}
+			want := map[string]any{"name": source.Name, "type": source.Name, "sourceType": source.Name, "creationType": "CONFIG", "sourceConfig": configs[source.Name], "createdAt": "2026-01-02T03:04:05Z", "updatedAt": "2026-01-02T03:04:05Z", "syncStatus": map[string]any{"phase": "complete", "lastSyncTime": "2026-01-02T03:04:05Z", "lastAttempt": "2026-01-02T03:04:05Z", "attemptCount": 2, "serverCount": 3, "skillCount": 4, "pluginCount": 5}}
+			if source.Schedule != "" {
+				want["syncSchedule"] = "1h"
+			}
+			if source.Name == "git" {
+				want["filterConfig"] = map[string]any{"names": map[string]any{"include": []string{"a"}}}
 			}
 			adminJSON(t, adminResponse(t, mountAdmin(t, f.ops, httpapi.AdminOptions{}), "GET", "/v1/sources/"+source.Name, ""), 200, want)
 		})
@@ -304,7 +298,7 @@ func TestAdminWireMatchesLegacyWithoutClaims(t *testing.T) {
 	f := newAdminFixture(t)
 	v := persistence.ViewDefinition{Name: "public", Origin: persistence.OriginAPI, Sources: []string{"one", "two"}, CreatedAt: at, UpdatedAt: at}
 	f.views.EXPECT().GetView(gomock.Any(), "public").Return(v, nil)
-	adminJSON(t, adminResponse(t, mountAdmin(t, f.ops, httpapi.AdminOptions{}), "GET", "/v1/registries/public", ""), 200, service.RegistryInfo{Name: v.Name, CreationType: service.CreationTypeAPI, Sources: v.Sources, CreatedAt: at, UpdatedAt: at})
+	adminJSON(t, adminResponse(t, mountAdmin(t, f.ops, httpapi.AdminOptions{}), "GET", "/v1/registries/public", ""), 200, map[string]any{"name": "public", "creationType": "API", "sources": []string{"one", "two"}, "createdAt": "2026-01-02T03:04:05Z", "updatedAt": "2026-01-02T03:04:05Z"})
 }
 
 func TestAdminDiagnosticWireKeepsAllVersionsAndSources(t *testing.T) {
@@ -318,25 +312,32 @@ func TestAdminDiagnosticWireKeepsAllVersionsAndSources(t *testing.T) {
 		{Kind: persistence.PluginKind, Name: "item", Version: "1", CreatedAt: at, UpdatedAt: at},
 	}
 	f.entries.EXPECT().ListSourceVersions(gomock.Any(), "one").Return(rows, nil)
-	versions := func(row persistence.DiagnosticVersion) service.EntryVersionInfo {
-		return service.EntryVersionInfo{Version: row.Version, Title: row.Title, Description: row.Description, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
-	}
 	h := mountAdmin(t, f.ops, httpapi.AdminOptions{})
-	adminJSON(t, adminResponse(t, h, "GET", "/v1/sources/one/entries", ""), 200, service.SourceEntriesResponse{Entries: []service.SourceEntryInfo{
-		{EntryType: "MCP", Name: rows[0].Name, Versions: []service.EntryVersionInfo{versions(rows[0]), versions(rows[1])}},
-		{EntryType: "SKILL", Name: "item", Versions: []service.EntryVersionInfo{versions(rows[2])}},
-		{EntryType: "PLUGIN", Name: "item", Versions: []service.EntryVersionInfo{versions(rows[3])}},
+	version1 := map[string]any{"version": "1", "title": "title", "description": "description", "createdAt": "2026-01-02T00:00:00Z", "updatedAt": "2026-01-02T00:00:00Z"}
+	version2 := map[string]any{"version": "2", "createdAt": "2026-01-02T00:00:00Z", "updatedAt": "2026-01-02T00:00:00Z"}
+	extension := map[string]any{"version": "1", "createdAt": "2026-01-02T00:00:00Z", "updatedAt": "2026-01-02T00:00:00Z"}
+	adminJSON(t, adminResponse(t, h, "GET", "/v1/sources/one/entries", ""), 200, map[string]any{"entries": []any{
+		map[string]any{"entryType": "MCP", "name": "com.example/item", "versions": []any{version1, version2}},
+		map[string]any{"entryType": "SKILL", "name": "item", "versions": []any{extension}},
+		map[string]any{"entryType": "PLUGIN", "name": "item", "versions": []any{extension}},
 	}})
 	var viewRows []persistence.ViewDiagnosticVersion
-	var want []service.RegistryEntryInfo
+	var want []any
 	for _, row := range rows {
 		for i, source := range []string{"one", "two"} {
 			viewRows = append(viewRows, persistence.ViewDiagnosticVersion{DiagnosticVersion: row, SourceName: source, SourceID: "private incarnation", Position: int32(i)})
-			want = append(want, service.RegistryEntryInfo{EntryType: string(row.Kind), Name: row.Name, Version: row.Version, Title: row.Title, Description: row.Description, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, SourceName: source, Position: int32(i)})
+			wire := map[string]any{"entryType": string(row.Kind), "name": row.Name, "version": row.Version, "createdAt": "2026-01-02T00:00:00Z", "updatedAt": "2026-01-02T00:00:00Z", "sourceName": source, "position": i}
+			if row.Title != "" {
+				wire["title"] = "title"
+			}
+			if row.Description != "" {
+				wire["description"] = "description"
+			}
+			want = append(want, wire)
 		}
 	}
 	f.entries.EXPECT().ListViewVersions(gomock.Any(), "public").Return(viewRows, nil)
-	adminJSON(t, adminResponse(t, h, "GET", "/v1/registries/public/entries", ""), 200, service.RegistryEntriesResponse{Entries: want})
+	adminJSON(t, adminResponse(t, h, "GET", "/v1/registries/public/entries", ""), 200, map[string]any{"entries": want})
 }
 
 func TestAdminPUTOnlyAlreadyExistsUpdates(t *testing.T) {

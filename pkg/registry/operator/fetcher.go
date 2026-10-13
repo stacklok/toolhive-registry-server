@@ -1,6 +1,6 @@
 // Package operator is the optional Kubernetes adapter. It exports ToolHive CRDs
-// without interpreting identity annotations. The standalone legacy controller is
-// an exclusive alternative owner; never run both against the same source.
+// without interpreting identity annotations. It must exclusively own its source;
+// never run an old unfenced binary against the same source.
 package operator
 
 import (
@@ -126,7 +126,9 @@ func (f *Fetcher) Fetch(ctx context.Context, definition persistence.SourceDefini
 		}
 		return strings.Compare(a.Version, b.Version)
 	})
-	// Colliding names across CRD kinds must fail, not silently pick one resource.
+	// Duplicate name/version exports must fail rather than silently pick a resource.
+	// Same-name exports with different versions retain the historical identity;
+	// the cross-kind identity decision is still pending.
 	if err := persistence.ValidateSnapshot(&snapshot); err != nil {
 		return ingest.Result{}, err
 	}

@@ -18,9 +18,11 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/authorization"
+	readermocks "github.com/stacklok/toolhive-registry-server/internal/authorization/mocks"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
-	"github.com/stacklok/toolhive-registry-server/internal/service"
-	mocksvc "github.com/stacklok/toolhive-registry-server/internal/service/mocks"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/catalog"
+	adminmocks "github.com/stacklok/toolhive-registry-server/pkg/registry/catalog/mocks"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/httpapi"
 )
 
 func admissionTestGate(t *testing.T, policy string) *authorization.Registrar {
@@ -39,49 +41,80 @@ func admissionTestAuth(t *testing.T) (func(http.Handler) http.Handler, *config.A
 	var issuer string
 	provider := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, r.ParseForm())
-		active := r.Form.Get("token") == "valid"
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"active": active, "iss": issuer, "sub": "operator", "aud": "registry", "exp": time.Now().Add(time.Hour).Unix()}))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"active": r.Form.Get("token") == "valid", "iss": issuer, "sub": "operator", "roles": []string{"superAdmin", "manageSources", "manageRegistries", "manageEntries"}, "aud": "registry", "exp": time.Now().Add(time.Hour).Unix()}))
 	}))
 	t.Cleanup(provider.Close)
 	issuer = provider.URL
 	ca := filepath.Join(t.TempDir(), "ca.pem")
 	require.NoError(t, os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: provider.Certificate().Raw}), 0600))
-	cfg := &config.AuthConfig{Mode: config.AuthModeOAuth, InsecureAllowHTTP: true, OAuth: &config.OAuthConfig{Providers: []config.OAuthProviderConfig{{Name: "test", IssuerURL: issuer, Audience: "registry", JwksUrl: issuer + "/jwks", IntrospectionURL: issuer + "/introspect", ClientID: "test", ClientSecretFile: "", CACertPath: ca, AllowPrivateIP: true}}}}
-	cfg.OAuth.Realm = "admission-test"
-	cfg.OAuth.ResourceURL = "https://registry.example.org"
-	// ToolHive's authenticated RFC7662 client is selected by ClientID; no secret
-	// or real provider is needed for the local introspection fixture.
-	mw, _, err := auth.NewAdmissionAuthMiddleware(context.Background(), cfg, true, auth.DefaultValidatorFactory)
+	cfg := &config.AuthConfig{Mode: config.AuthModeOAuth, InsecureAllowHTTP: true, OAuth: &config.OAuthConfig{Providers: []config.OAuthProviderConfig{{Name: "test", IssuerURL: issuer, Audience: "registry", JwksUrl: issuer + "/jwks", IntrospectionURL: issuer + "/introspect", ClientID: "test", CACertPath: ca, AllowPrivateIP: true}}}}
+	cfg.OAuth.Realm, cfg.OAuth.ResourceURL = "admission-test", "https://registry.example.org"
+	mw, _, err := auth.NewCatalogAuthMiddleware(context.Background(), cfg, true, auth.DefaultValidatorFactory)
 	require.NoError(t, err)
 	return mw, cfg
 }
 
+func admissionCapabilities(t *testing.T) (catalog.Reader, httpapi.AdminOperations) {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	diagnostics, err := catalog.NewDiagnostics(adminmocks.NewMockEntryDiagnostics(ctrl), adminmocks.NewMockSourceStatusReader(ctrl))
+	require.NoError(t, err)
+	return readermocks.NewMockReader(ctrl), httpapi.AdminOperations{Sources: adminmocks.NewMockSources(ctrl), Views: adminmocks.NewMockViews(ctrl), Publisher: adminmocks.NewMockManagedPublisher(ctrl), Diagnostics: diagnostics}
+}
+
 const admissionTestPermit = `permit(principal is Registry::Principal, action, resource == Registry::Instance::"catalog");`
 
-func TestAdmissionManifestActualRoutes(t *testing.T) {
+func TestCatalogAdmissionActualRoutesAndRolesNeverGrant(t *testing.T) {
 	t.Parallel()
-	mw, cfg := admissionTestAuth(t)
+	mw, _ := admissionTestAuth(t)
 	for _, admin := range []bool{false, true} {
-		raw := mocksvc.NewMockRegistryService(gomock.NewController(t))
-		router, err := NewAdmissionServer(raw, admissionTestGate(t, `forbid(principal, action, resource);`), admin, mw, WithAuthConfig(cfg))
+		reader, operations := admissionCapabilities(t)
+		router, err := NewCatalogServer(reader, operations, admissionTestGate(t, `forbid(principal, action, resource);`), admin, mw)
 		require.NoError(t, err)
-		expected := map[string]bool{}
-		for _, route := range admissionManifest(admin) {
-			expected[route.method+" "+route.template] = true
+		want := map[string]bool{
+			"GET /openapi.json":                                                         true,
+			"GET /registry/{registryName}/v0.1/servers":                                 true,
+			"GET /registry/{registryName}/v0.1/servers/{serverName}/versions":           true,
+			"GET /registry/{registryName}/v0.1/servers/{serverName}/versions/{version}": true,
 		}
+		for _, family := range []string{"skills", "plugins"} {
+			for _, suffix := range []string{"", "/", "/{namespace}/{name}", "/{namespace}/{name}/versions", "/{namespace}/{name}/versions/{version}"} {
+				want["GET /registry/{registryName}/v0.1/x/dev.toolhive/"+family+suffix] = true
+			}
+		}
+		if admin {
+			for _, family := range []string{"sources", "registries"} {
+				for _, route := range []string{"GET /v1/" + family, "GET /v1/" + family + "/{name}", "GET /v1/" + family + "/{name}/entries", "PUT /v1/" + family + "/{name}", "DELETE /v1/" + family + "/{name}"} {
+					want[route] = true
+				}
+			}
+			for _, route := range []string{"POST /v1/entries", "DELETE /v1/entries/{type}/{name}/versions/{version}", "GET /v1/me", "GET /v1/entries/{type}/{name}/claims", "PUT /v1/entries/{type}/{name}/claims"} {
+				want[route] = true
+			}
+		}
+		actual := map[string]bool{}
 		require.NoError(t, chi.Walk(router, func(method, path string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-			require.True(t, expected[method+" "+path])
-			delete(expected, method+" "+path)
+			actual[method+" "+path] = true
 			return nil
 		}))
-		require.Empty(t, expected)
-		for _, route := range admissionManifest(admin) {
-			path := strings.NewReplacer("{registryName}", "default", "{serverName}", "io.example%2Fserver", "{namespace}", "example", "{name}", "test", "{version}", "latest", "{type}", "server").Replace(route.template)
-			request := httptest.NewRequest(route.method, path, strings.NewReader(`{"server":{}}`))
+		require.Equal(t, want, actual)
+		for route := range want {
+			method, template, _ := strings.Cut(route, " ")
+			path := strings.NewReplacer("{registryName}", "default", "{serverName}", "io.example%2Fserver", "{namespace}", "example", "{name}", "test", "{version}", "1.0.0", "{type}", "skill").Replace(template)
+			body := ""
+			switch {
+			case method == "POST":
+				body = `{"skill":{"namespace":"com.example","name":"test","version":"1","description":"published"}}`
+			case method == "PUT" && strings.HasPrefix(template, "/v1/sources/"):
+				body = `{"managed":{}}`
+			case method == "PUT" && strings.HasPrefix(template, "/v1/registries/"):
+				body = `{"sources":["test"]}`
+			}
+			request := httptest.NewRequest(method, path, strings.NewReader(body))
 			request.Header.Set("Authorization", "Bearer valid")
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
-			if route.retired {
+			if template == "/v1/me" || strings.HasSuffix(template, "/claims") {
 				require.Equal(t, 410, response.Code, path)
 			} else {
 				require.Equal(t, 403, response.Code, path)
@@ -89,18 +122,15 @@ func TestAdmissionManifestActualRoutes(t *testing.T) {
 		}
 		for _, tc := range []struct {
 			method, path string
-			status       int
+			code         int
 		}{
-			{"GET", "/unknown", 404}, {"POST", "/registry/default/v0.1/servers", 405},
-			{"HEAD", "/registry/default/v0.1/servers", 405}, {"OPTIONS", "/registry/default/v0.1/servers", 405},
-			{"GET", "/health", 404}, {"GET", "/registry//default/v0.1/servers", 404},
-			{"GET", "/registry/default/v0.1/not%2Fservers", 404},
+			{"GET", "/unknown", 404}, {"POST", "/registry/default/v0.1/servers", 405}, {"HEAD", "/registry/default/v0.1/servers", 405}, {"OPTIONS", "/registry/default/v0.1/servers", 405}, {"GET", "/health", 404}, {"GET", "/registry//default/v0.1/servers", 404}, {"GET", "/registry/default/v0.1/not%2Fservers", 404},
 		} {
 			response := httptest.NewRecorder()
 			request := httptest.NewRequest(tc.method, tc.path, nil)
 			request.Header.Set("X-HTTP-Method-Override", "GET")
 			router.ServeHTTP(response, request)
-			require.Equal(t, tc.status, response.Code)
+			require.Equal(t, tc.code, response.Code)
 		}
 		if !admin {
 			response := httptest.NewRecorder()
@@ -110,55 +140,7 @@ func TestAdmissionManifestActualRoutes(t *testing.T) {
 	}
 }
 
-func TestAdmissionConsumerDispatchAndLegacyDenial(t *testing.T) {
-	t.Parallel()
-	mw, cfg := admissionTestAuth(t)
-	for _, tc := range []struct{ path, operation string }{
-		{"/registry/default/v0.1/servers", "ListServers"},
-		{"/registry/default/v0.1/servers/io.example%2Ftest/versions", "ListServerVersions"},
-		{"/registry/default/v0.1/servers/io.example%2Ftest/versions/latest", "GetServerVersion"},
-		{"/registry/default/v0.1/x/dev.toolhive/skills/", "ListSkills"},
-		{"/registry/default/v0.1/x/dev.toolhive/skills/example/test", "GetSkillVersion"},
-		{"/registry/default/v0.1/x/dev.toolhive/skills/example/test/versions", "ListSkills"},
-		{"/registry/default/v0.1/x/dev.toolhive/skills/example/test/versions/1.0.0", "GetSkillVersion"},
-		{"/registry/default/v0.1/x/dev.toolhive/plugins/", "ListPlugins"},
-		{"/registry/default/v0.1/x/dev.toolhive/plugins/example/test", "GetPluginVersion"},
-		{"/registry/default/v0.1/x/dev.toolhive/plugins/example/test/versions", "ListPlugins"},
-		{"/registry/default/v0.1/x/dev.toolhive/plugins/example/test/versions/latest", "GetPluginVersion"},
-	} {
-		t.Run(tc.path, func(t *testing.T) {
-			t.Parallel()
-			raw := mocksvc.NewMockRegistryService(gomock.NewController(t))
-			// The old service's rejection must survive Cedar Allow unchanged.
-			switch tc.operation {
-			case "ListServers":
-				raw.EXPECT().ListServers(gomock.Any(), gomock.Any()).Return(nil, service.ErrClaimsInsufficient)
-			case "ListServerVersions":
-				raw.EXPECT().ListServerVersions(gomock.Any(), gomock.Any()).Return(nil, service.ErrClaimsInsufficient)
-			case "GetServerVersion":
-				raw.EXPECT().GetServerVersion(gomock.Any(), gomock.Any()).Return(nil, service.ErrClaimsInsufficient)
-			case "ListSkills":
-				raw.EXPECT().ListSkills(gomock.Any(), gomock.Any()).Return(nil, service.ErrClaimsInsufficient)
-			case "GetSkillVersion":
-				raw.EXPECT().GetSkillVersion(gomock.Any(), gomock.Any()).Return(nil, service.ErrClaimsInsufficient)
-			case "ListPlugins":
-				raw.EXPECT().ListPlugins(gomock.Any(), gomock.Any()).Return(nil, service.ErrClaimsInsufficient)
-			case "GetPluginVersion":
-				raw.EXPECT().GetPluginVersion(gomock.Any(), gomock.Any()).Return(nil, service.ErrClaimsInsufficient)
-			}
-			router, err := NewAdmissionServer(raw, admissionTestGate(t, admissionTestPermit), false, mw, WithAuthConfig(cfg))
-			require.NoError(t, err)
-			request := httptest.NewRequest("GET", tc.path, nil)
-			request.Header.Set("Authorization", "Bearer valid")
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, request)
-			require.Equal(t, 403, response.Code)
-			require.Empty(t, response.Header().Get("WWW-Authenticate"))
-		})
-	}
-}
-
-func TestAdmissionUnauthorizedChallenges(t *testing.T) {
+func TestCatalogAdmissionUnauthorizedChallenges(t *testing.T) {
 	t.Parallel()
 	mw, cfg := admissionTestAuth(t)
 	for _, tc := range []struct {
@@ -182,21 +164,18 @@ func TestAdmissionUnauthorizedChallenges(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, []byte(admissionTestPermit), 0600))
 				engine, err := authorization.Load(path)
 				require.NoError(t, err)
-				gate, err = authorization.NewRegistrar(engine, []config.IdentityMapping{{
-					Issuer: cfg.OAuth.Providers[0].IssuerURL,
-					Groups: &config.AttributeMapping{Claim: "sub", Format: "string-array"},
-				}}, nil)
+				gate, err = authorization.NewRegistrar(engine, []config.IdentityMapping{{Issuer: cfg.OAuth.Providers[0].IssuerURL, Groups: &config.AttributeMapping{Claim: "sub", Format: "string-array"}}}, nil)
 				require.NoError(t, err)
 			}
-			raw := mocksvc.NewMockRegistryService(gomock.NewController(t))
-			router, err := NewAdmissionServer(raw, gate, true, mw, WithAuthConfig(cfg))
+			reader, operations := admissionCapabilities(t)
+			router, err := NewCatalogServer(reader, operations, gate, true, mw)
 			require.NoError(t, err)
 			for _, route := range admissionManifest(true) {
 				if len(tc.headers) == 0 && !strings.HasPrefix(route.template, "/v1/") {
-					continue // Anonymous catalog evidence is intentional.
+					continue
 				}
 				if tc.badMapping && route.retired {
-					continue // Tombstones require authentication, not Cedar attributes.
+					continue
 				}
 				path := strings.NewReplacer("{registryName}", "default", "{serverName}", "test", "{namespace}", "example", "{name}", "test", "{version}", "latest", "{type}", "server").Replace(route.template)
 				request := httptest.NewRequest(route.method, path, nil)
@@ -205,58 +184,11 @@ func TestAdmissionUnauthorizedChallenges(t *testing.T) {
 				}
 				response := httptest.NewRecorder()
 				router.ServeHTTP(response, request)
-				require.Equal(t, http.StatusUnauthorized, response.Code, path)
+				require.Equal(t, 401, response.Code, path)
 				require.Contains(t, response.Header().Get("WWW-Authenticate"), `Bearer realm="admission-test"`, path)
 				require.Contains(t, response.Header().Get("WWW-Authenticate"), `error="`+tc.code+`"`, path)
 				require.Contains(t, response.Header().Get("WWW-Authenticate"), `resource_metadata="https://registry.example.org/.well-known/oauth-protected-resource"`, path)
 			}
 		})
 	}
-}
-
-func TestAdmissionWiringAndCredentials(t *testing.T) {
-	t.Parallel()
-	mw, cfg := admissionTestAuth(t)
-	raw := mocksvc.NewMockRegistryService(gomock.NewController(t))
-	for _, authn := range []func(http.Handler) http.Handler{mw, func(next http.Handler) http.Handler { return next }} {
-		router, err := NewAdmissionServer(raw, admissionTestGate(t, `forbid(principal, action, resource);`), true, authn, WithAuthConfig(cfg))
-		require.NoError(t, err)
-		for _, token := range []string{"", "invalid"} {
-			request := httptest.NewRequest("GET", "/registry/default/v0.1/servers", nil)
-			if token != "" {
-				request.Header.Set("Authorization", "Bearer "+token)
-			}
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, request)
-			if token == "invalid" && response.Code != 500 {
-				require.Equal(t, 401, response.Code)
-			} else {
-				require.Contains(t, []int{403, 500}, response.Code)
-			}
-		}
-	}
-	gate := admissionTestGate(t, admissionTestPermit)
-	guarded, err := gate.Guard(raw)
-	require.NoError(t, err)
-	_, err = guarded.ListSources(context.Background())
-	require.ErrorIs(t, err, authorization.ErrEvidence)
-	router := chi.NewRouter()
-	handler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		_, err := guarded.ListSources(r.Context())
-		require.ErrorIs(t, err, authorization.ErrEvidence)
-	})
-	require.NoError(t, gate.Register(router, "GET", "/mislabeled", authorization.CatalogRead, handler, mw))
-	request := httptest.NewRequest("GET", "/mislabeled", nil)
-	request.Header.Set("Authorization", "Bearer valid")
-	router.ServeHTTP(httptest.NewRecorder(), request)
-	require.Error(t, gate.Register(router, "GET", "/mislabeled", authorization.CatalogRead, handler, mw))
-	require.Error(t, gate.Register(router, "GET", "/unknown", authorization.Action("root"), handler, mw))
-	require.Error(t, gate.Register(router, "GET", "/nil", authorization.CatalogRead, nil, mw))
-	alternate := chi.NewRouter()
-	alternate.Mount("/alternate", router)
-	request = httptest.NewRequest("GET", "/alternate/mislabeled", nil)
-	request.Header.Set("Authorization", "Bearer valid")
-	response := httptest.NewRecorder()
-	alternate.ServeHTTP(response, request)
-	require.Equal(t, 500, response.Code)
 }

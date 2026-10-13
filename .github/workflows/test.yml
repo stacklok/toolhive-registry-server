@@ -21,8 +21,8 @@ jobs:
         include:
           - name: db-sqlc
             packages: ./internal/db/sqlc
-          - name: service-db
-            packages: ./internal/service/db
+          - name: postgres-adapter
+            packages: ./pkg/registry/postgres
           - name: sync-writer
             packages: ./internal/sync/writer
           - name: misc
@@ -76,7 +76,7 @@ jobs:
         ./cmd/thv-registry-api/app
         ./internal/app/storage
         ./internal/db/sqlc
-        ./internal/service/db
+        ./pkg/registry/postgres
         ./internal/sync/writer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -169,8 +169,8 @@ jobs:
           go-version: 'stable'
           cache: true
 
-      - name: Run integration tests
-        run: go test -tags integration -v -count=1 ./internal/authz/
+      - name: Run standalone HTTP and Cedar acceptance with race detector
+        run: go test -race -tags integration -v -count=1 ./cmd/thv-registry-api/app ./internal/app ./internal/api ./internal/auth ./internal/authorization
 
       - name: Install pinned envtest tool and assets
         run: |
@@ -183,4 +183,6 @@ jobs:
           printf 'KUBEBUILDER_ASSETS=%s\n' "$assets" >> "$GITHUB_ENV"
 
       - name: Run Kubernetes manager acceptance with race detector
-        run: go test -p 2 -race -tags integration -count=1 ./internal/kubernetes ./pkg/registry/operator -run '^(TestRegisteredStartupRefresh|TestRegisteredOperator)$' -v
+        env:
+          USE_EXISTING_CLUSTER: 'false'
+        run: go test -p 2 -race -tags integration -count=1 ./pkg/registry/operator -run '^TestRegisteredOperator$' -v

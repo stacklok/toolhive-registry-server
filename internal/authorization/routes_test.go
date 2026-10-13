@@ -12,8 +12,11 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
+	readermocks "github.com/stacklok/toolhive-registry-server/internal/authorization/mocks"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
-	mocksvc "github.com/stacklok/toolhive-registry-server/internal/service/mocks"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/catalog"
+	adminmocks "github.com/stacklok/toolhive-registry-server/pkg/registry/catalog/mocks"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/httpapi"
 )
 
 func TestHTTPAdmissionDiagnosticFailsClosed(t *testing.T) {
@@ -24,13 +27,16 @@ func TestHTTPAdmissionDiagnosticFailsClosed(t *testing.T) {
 	require.NoError(t, err)
 	gate, err := NewRegistrar(&Engine{policies: policies, revision: "test"}, nil, nil)
 	require.NoError(t, err)
-	guarded, err := gate.Guard(mocksvc.NewMockRegistryService(gomock.NewController(t)))
+	reader := readermocks.NewMockReader(gomock.NewController(t))
+	diagnostics, err := catalog.NewDiagnostics(adminmocks.NewMockEntryDiagnostics(gomock.NewController(t)), adminmocks.NewMockSourceStatusReader(gomock.NewController(t)))
+	require.NoError(t, err)
+	guarded, _, err := gate.GuardCatalog(reader, httpapi.AdminOperations{Sources: adminmocks.NewMockSources(gomock.NewController(t)), Views: adminmocks.NewMockViews(gomock.NewController(t)), Publisher: adminmocks.NewMockManagedPublisher(gomock.NewController(t)), Diagnostics: diagnostics})
 	require.NoError(t, err)
 	mw, _, err := auth.NewAdmissionAuthMiddleware(context.Background(), &config.AuthConfig{Mode: config.AuthModeAnonymous}, true, auth.DefaultValidatorFactory)
 	require.NoError(t, err)
 	router := chi.NewRouter()
 	require.NoError(t, gate.Register(router, "GET", "/servers", CatalogRead, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := guarded.ListServers(r.Context())
+		_, err := guarded.List(r.Context(), "public", catalog.Query{})
 		require.ErrorIs(t, err, ErrEvaluation)
 		// Even a handler that attempts to write its own error cannot overwrite the
 		// fail-closed response or expose a diagnostic after the facade rejects it.

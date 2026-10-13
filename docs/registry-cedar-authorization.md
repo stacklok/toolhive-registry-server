@@ -234,7 +234,8 @@ Offline inventory, acknowledgement and explicit metadata archive-and-clear are
 implemented in the [migration guide](registry-exposure-migration.md). Only the
 explicit `retire-claims` command clears historical metadata; ordinary migrations,
 startup and reconciliation never do so. The new runtime consumes valid evidence
-after preflight. Legacy code/columns remain unselected until #915 cleanup.
+after preflight. The legacy runtime is removed; private offline compatibility,
+physical claims columns, archives and receipts remain at schema 29 until the final slice.
 
 This is a breaking upgrade, not a policy-file swap. Before upgrading, back up and
 inventory ALL old catalogs: sources, views, entries, retained snapshots and operator

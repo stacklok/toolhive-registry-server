@@ -1,171 +1,110 @@
 # CLAUDE.md
 
-This file provides AI assistant guidance for working with the ToolHive Registry API Server codebase.
+Guidance for the ToolHive Registry API Server codebase.
 
 ## Design Rules
 
-Scoped design rules live in [`.claude/rules/`](.claude/rules/). Each file has a `paths:` frontmatter glob and is auto-loaded when Claude Code is working on files that match. They cover layering, the data model, auth/claims, the API surface (admin vs upstream spec), the sync pipeline, and secrets handling. Read the rule file that matches the area you're changing, and cite it by section when reviewing a PR that conflicts with one (e.g. "this violates `auth.md` §3 — uniform claim matching").
+Read the matching files in [`.claude/rules/`](.claude/rules/) before changing their
+scoped paths. They cover layering, data ownership, verified authentication/Cedar,
+HTTP, ingestion/fencing and secrets. Cite the file and section when reviewing a
+conflict. The rules now describe the active public-component architecture, not
+the removed resource-claims/RBAC runtime.
 
-## Available Subagents
+## Specialized Agents
 
-Registry Server uses specialized AI subagents for different aspects of development. These agents are configured in `.claude/agents/` and MUST be invoked when you need to perform tasks that come under their expertise:
-
-### Core Development Agents
-
-- **golang-code-writer**: Expert Go developer for writing clean, idiomatic Go code. Use when creating new functions, structs, interfaces, or complete packages.
-
-- **unit-test-writer**: Specialized in writing comprehensive unit tests for Go code. Use when you need thorough test coverage for functions, methods, or components.
-
-- **code-reviewer**: Reviews code for Registry Server best practices, security patterns, Go conventions, and architectural consistency. Use after significant code changes. Should cross-check changes against the matching rule file under `.claude/rules/`.
-
-- **tech-lead-orchestrator**: Provides architectural oversight, task delegation, and technical leadership for code development projects. Use for complex features or architectural decisions.
-
-### Support Agents
-
-- **security-advisor**: Provides security guidance for coding tasks, including code reviews, architecture decisions, and secure implementation patterns.
-
-### When to Use Subagents
-
-Invoke specialized agents when:
-- You need expertise in their specific domain (e.g., writing code, reviewing code)
-- Writing new code (use golang-code-writer)
-- Creating tests (use unit-test-writer)
-- Orchestrating the different tasks to other subagents that are required for completing work asked by the user (use tech-lead-orchestrator)
-- Reviewing code that is written (use code-reviewer)
-
-The agents work together - for example, tech-lead-orchestrator might delegate to golang-code-writer for implementation and then to code-reviewer for validation, then finally to security-advisor for a security check of any implementation details.
+When delegation is available and authorized, use the agents in `.claude/agents/`:
+`golang-code-writer` for Go implementation, `unit-test-writer` for tests,
+`code-reviewer` for architecture/security/conventions, `tech-lead-orchestrator` for
+complex coordination, and `security-advisor` for security decisions. Explicit
+operator instructions control delegation and publication.
 
 ## Project Overview
 
-See [README.md](README.md) for complete project documentation including features, API endpoints, configuration, and deployment.
+See [README.md](README.md) and [standalone assembly](docs/registry-standalone-assembly.md).
+The standalone binary serves a nonpersonalized MCP/skills/plugins catalog using the
+same public components available to embedders. OAuth verifies identity; operator-
+authored Cedar admits whole-instance actions. Named registries are ordered views,
+not tenant/privacy boundaries. Shared registry contracts contain no identity or
+resource claims. Hosts own personalized selection and admission when embedding.
 
-**Quick Summary**: A standards-compliant MCP Registry API server that provides REST endpoints for discovering MCP servers and skills. Ingests data from Git, API, file, and Kubernetes sources into a shared entry pool, and exposes consumer views through claim-scoped registries.
+## Architecture
 
-## Essential Build Commands
-
-See [README.md](README.md#development) for complete build and development documentation.
-
-**Most commonly used:**
-- `task build` - Build the binary
-- `task lint-fix` - **Preferred** linting (auto-fixes issues)
-- `task test` - Run tests
-- `task gen` - Generate mocks (run before testing)
-- `task all` - Lint, test, and build
-
-## Code Architecture
-
-High-level shape (read `.claude/rules/layering.md` for the rules that govern layer boundaries):
-
-```
-cmd/thv-registry-api/      # Entrypoint only: main.go, app wiring, generated OpenAPI docs
+```text
+cmd/thv-registry-api/          CLI, migration commands and standalone wiring
+pkg/registry/
+  model/ formats/             Identity/storage-independent payloads and validation
+  persistence/                Definitions, atomic entries, diagnostics, jobs/fencing
+  catalog/                    Small reader/admin/publisher/diagnostic capabilities
+  httpapi/                    Host-selected consumer/admin routers and serializers
+  ingest/ reconcile/          Git/API/file fetching and leased reconciliation
+  operator/                   Optional policy-free Kubernetes conversion/runner
+  postgres/                   Explicit PostgreSQL implementation adapter
 internal/
-  api/                     # HTTP layer — Chi routers and handlers
-    v1/                      # Admin API (/v1/sources, /v1/registries, /v1/entries, /v1/me)
-    registry/v01/            # Upstream MCP Registry v0.1 consumer API (/registry/{name}/v0.1/...)
-    x/skills/                # Consumer extension: /x/dev.toolhive/skills
-    common/                  # Shared request/response helpers
-  app/                     # Application assembly and lifecycle (builder + functional options)
-    storage/                 # storage.Factory — DI seam for all DB-backed components
-  service/                 # Business logic — RegistryService interface, claim checks, dedup, cursors
-    db/                      # Postgres-backed service implementation and claims filter
-  sources/                 # Ingestion handlers — RegistryHandler, RegistryHandlerFactory (git, api, file)
-  sync/                    # Sync orchestration — Manager, Coordinator, writer (serializable txn)
-  kubernetes/              # K8s controllers — MCPServer / VirtualMCPServer / MCPRemoteProxy CRDs
-  auth/                    # Authentication (JWT middleware, validators, OAuth config)
-  authz/                   # Authorization integration tests (role + claim enforcement)
-  audit/                   # Audit logging middleware (wraps all /v1 handlers)
-  config/                  # YAML config loader and validation (viper)
-  db/                      # Low-level DB plumbing, migrations runner, sqlc-generated code
-  filtering/               # Name/tag filter implementation (used during ingestion)
-  telemetry/               # OpenTelemetry setup (metrics + tracing)
-database/migrations/       # SQL migrations (numbered, up/down)
-docs/                      # Developer documentation — configuration, deployment, etc.
-.claude/rules/             # Scoped design rules, auto-loaded by Claude Code per paths glob
+  app/ storage/               NewCatalogApp preparation, ownership and DI
+  api/                        Cedar classifier, audit/tombstones, internal probes/OpenAPI
+  auth/ authorization/        Verified JWT/introspection, identity projection and Cedar
+  config/                     YAML/env, secrets, retired-presence/offline compatibility
+  db/                         SQL plumbing, latest repair, exposure inventory/receipts
+  sync/standalone/            Leased worker supervision and lifecycle
+  sync/writer/                Caller-owned transactional payload COPY/upsert machinery
+  kubernetes/                 Standalone client and retired-export preflight
+  audit/ telemetry/           Safe attribution and observability
+  git/ httpclient/ filtering/ Low-level shared ingestion helpers
+ database/migrations/        Historical numbered SQL migrations
 ```
 
-The app is assembled with a builder + functional options pattern (`app.NewRegistryApp(ctx, opts...)`) so tests can inject fakes for storage, sync manager, registry handler factory, and coordinator options. Two HTTP servers are started: public (default `:8080`) and internal (`:8081` — health/readiness/version only, no auth).
+`app.NewCatalogApp(ctx, CatalogOptions{...})` enforces final config, frozen policy,
+open, read-only historical/source/operator preflight, schema-29 exposure consumption,
+then atomic definition reconciliation/latest repair and guarded HTTP. Constructors
+start no application work; Start/Wait/Stop own listeners/workers and join inline
+work before closing owned resources. Inject CatalogFactory, operator, fetcher and
+reconciliation capabilities rather than recreate a monolithic RegistryService.
+Public (`:8080`) and internal (`:8081`) servers stay separate. Admin is absent by
+default; enabled admin requires OAuth. Internal probes/metrics have no auth/audit.
 
-### Key Patterns for AI Development
+### Compatibility boundary
 
-- **Builder + functional options**: Wire new components through `internal/app/builder.go` using `With*` options. Factory interfaces preferred over direct dependencies — tests need injection points.
-- **Layered flow**: API handlers call `service.RegistryService`, which calls storage and source interfaces. API must not call DB or `sources.*` directly. Service must not import `net/http` or `client-go`.
-- **Source type inference**: `SourceConfig.GetType()` is the single source of truth for which source type a config represents. No `type:` field — exactly one of `git/api/file/managed/kubernetes` blocks must be set.
-- **Record filters**: Claims filtering and dedup are composed as `RecordFilter` chains in `internal/service/db/`, applied during row streaming. No SQL-level JSONB operators — see `.claude/rules/data-model.md` §7.
-- **Table-driven tests**: Standard pattern throughout. Mock HTTP clients, filesystem, Git operations.
-- **Mock generation**: Use `go.uber.org/mock` via `//go:generate mockgen` directives. Run `task gen` to regenerate — never hand-write mocks.
+The old app, service, routers, claims matcher/roles and unfenced sync/controller
+runtime are removed. Private config structures/raw history and version-1 fingerprint
+JSON remain unchanged because schema-29 pending receipts bind them. Claims columns,
+archives, receipts and mutation guards remain until the final forward schema slice.
+Never rewrite historical migrations, infer consent from empty data, silently clear
+claims or let old/new binaries co-own sources. See the
+[offline migration guide](docs/registry-exposure-migration.md).
 
-## Testing Guidelines
+## Development and Tests
 
-- **Always run `task gen` before testing** to regenerate mocks
-- Tests are located alongside source files (`*_test.go`)
-- Use the table-driven test pattern for comprehensive coverage
-- Mock external dependencies (HTTP clients, filesystem, Git operations, K8s client)
-- Integration-style authz tests live in [internal/authz/](internal/authz/) and exercise the full stack with different auth postures (anonymous, oauth-no-authz, oauth+authz)
-- Service-layer mocks: [internal/service/mocks/](internal/service/mocks/)
-- Source handler mocks: [internal/sources/mocks/](internal/sources/mocks/)
-- Sync mocks: [internal/sync/mocks/](internal/sync/mocks/) and [internal/sync/writer/mocks/](internal/sync/writer/mocks/)
+- `task build`: build the binary.
+- `task gen`: regenerate mocks and sqlc; **always run before tests**.
+- `task lint-fix`: preferred linting with fixes (not `task lint`).
+- `task test`: tests; direct `go test -race -tags integration ./...` also exercises
+  integration-tagged acceptance with isolated envtest assets and
+  `USE_EXISTING_CLUSTER=false`. Never target a user cluster.
+- Table-driven tests live beside source; mock external dependencies using
+  `go.uber.org/mock` / `//go:generate mockgen`, never hand-write generated mocks.
+- Public external-module fixtures prove importability and forbidden dependency
+  graphs. Expected HTTP wire fixtures and route inventories must be independent of
+  production DTOs/serializers. See [coverage mapping](docs/registry-contract-tests.md).
+- Current real HTTP/Cedar/security acceptance lives in CLI/app/API/auth/authorization
+  tests, not the removed `internal/authz` claims suites.
+- Add queries to `database/queries/*.sql`, regenerate sqlc with `task gen`, and
+  consume privately from the explicit PostgreSQL adapter.
+- OpenAPI is generated from active public HTTP adapters and standalone metadata/
+  tombstones. Use the pinned Swag revision in Taskfile and compare generated schema
+  parity. Do not run recursive-deletion documentation commands for workspace cleanup.
 
-## AI Assistant Best Practices
+## Code Style
 
-### Code Style
-- **Public methods first, private methods last** within a Go file
-- Interfaces defined where consumed, implementations beside them
-- Respect layer direction: API → service → storage/sources (never the other way)
-
-### Workflow
-1. **Linting**: Always use `task lint-fix` (not `task lint`)
-2. **Testing**: Run `task gen` before testing so mocks match interfaces
-3. **Commits**: Follow the `## Commit Message Style` section below
-
-### Common Tasks
-
-**Adding a new admin API endpoint:**
-1. Add handler in [internal/api/v1/](internal/api/v1/) (e.g., `routes.go` for wiring, plus a dedicated handler file)
-2. Wrap with the appropriate `auditmw.Audited*` helper and put it inside the correct role group (`RequireRole(auth.RoleX, authzCfg)`) — `.claude/rules/api.md` §4
-3. Add Swagger annotations on the handler
-4. Run `task docs` to regenerate the OpenAPI spec
-5. Add unit tests (handler-level) plus an authz integration test in [internal/authz/](internal/authz/) if the endpoint is claim-scoped
-
-**Adding a new source type:**
-1. Add the type constant in [internal/config/config.go](internal/config/config.go) and a new config struct
-2. Update `SourceConfig`, `GetType()`, `validateSourceTypeCount`, `validateSourceSpecificConfig`, and `IsNonSyncedSource` if appropriate — `.claude/rules/data-model.md` §2
-3. Implement `sources.RegistryHandler` (if synced) or wire a controller (if non-synced, like Kubernetes)
-4. Register in [internal/sources/factory.go](internal/sources/factory.go)
-5. Add a DB migration if new columns are needed
-6. Run `task gen`, then add table-driven tests and a round-trip config-load test
-
-**Adding a new DB query:**
-1. Add the SQL in `database/queries/*.sql` with a `-- name:` comment for sqlc
-2. Run `task gen` to regenerate sqlc bindings
-3. Consume from `internal/service/db/` — do not reach into sqlc types from the API layer
-
-### Key Dependencies
-- **Web**: [go-chi/chi](https://github.com/go-chi/chi) router
-- **CLI**: Cobra + Viper
-- **Postgres**: `pgx/v5` (driver) + `sqlc` (typed queries) + `golang-migrate` (migrations)
-- **Git**: `go-git` (public repos over HTTPS)
-- **K8s**: `controller-runtime` + `client-go`, scoped to `internal/kubernetes/**`
-- **Auth**: `go-jose` / OIDC JWKS for JWT validation
-- **Testing**: `go.uber.org/mock`, `embedded-postgres` (real PostgreSQL 16 child processes in integration tests; the first run downloads and caches the PostgreSQL binaries)
-- **Docs**: swaggo/swag generates OpenAPI from code annotations
+Public methods before private methods. Interfaces where consumed, implementations
+beside them. Keep API → catalog capabilities → persistence contracts direction.
+Validate inputs at trust boundaries, preserve exact payload/version metadata,
+propagate classified errors without leaking credentials or raw backend causes.
+Standalone SourceConfig.GetType and public SourceDefinition.Kind infer exactly one
+source block. Whole-name source selection precedes search/version/latest/pagination.
 
 ## Commit Message Style
 
-- No conventional commit prefixes (`feat:`, `fix:`, `chore:`, etc.)
-- Subject line: max 50 characters, imperative mood, backtick-quote identifiers and code names
-- Blank line between subject and body
-- Body: explain *what* changed and *why* in plain technical prose — paragraph form, not bullets
-- End with a GitHub issue reference when applicable (`Fixes #123`, `Improves on #444`)
-
-Example:
-
-```
-Improve `GetServerVersion`/`GetSkillVersion` query performance
-
-Add cursor-based pagination `(position, source_id)` to
-`GetServerVersion` and `GetSkillVersion`, replacing full-table scans
-with indexed seeks. Add two supporting indexes to eliminate nested-loop
-seq scans.
-
-Improves on #444
-```
+No conventional commit prefixes. Imperative subject, max 50 characters, backtick-
+quote identifiers/code names. Blank line, then paragraph body explaining what/why.
+End with an issue reference when applicable (`Fixes #123`, `Improves on #444`).
+Do not commit or publish without operator authorization.

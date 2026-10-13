@@ -15,11 +15,7 @@ import (
 
 	// Import generated docs package to register OpenAPI spec via init()
 	_ "github.com/stacklok/toolhive-registry-server/docs/thv-registry-api"
-	v01 "github.com/stacklok/toolhive-registry-server/internal/api/registry/v01"
-	apiv1 "github.com/stacklok/toolhive-registry-server/internal/api/v1"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
-	"github.com/stacklok/toolhive-registry-server/internal/config"
-	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/versions"
 )
 
@@ -32,7 +28,6 @@ type serverConfig struct {
 	// shared with the other layers of the application.
 	middlewares     []func(http.Handler) http.Handler
 	authInfoHandler http.Handler
-	authConfig      *config.AuthConfig
 }
 
 // WithMiddlewares adds middleware to the server
@@ -47,49 +42,6 @@ func WithAuthInfoHandler(handler http.Handler) ServerOption {
 	return func(cfg *serverConfig) {
 		cfg.authInfoHandler = handler
 	}
-}
-
-// WithAuthConfig sets the authentication configuration used by the v1 router.
-// Both role-based access control (Authz) and publish-time claim enforcement
-// (Mode) are derived from it.
-func WithAuthConfig(authCfg *config.AuthConfig) ServerOption {
-	return func(cfg *serverConfig) {
-		cfg.authConfig = authCfg
-	}
-}
-
-// NewServer creates and configures the HTTP router with the given service and options
-func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
-	// Initialize configuration with defaults
-	cfg := &serverConfig{
-		middlewares: []func(http.Handler) http.Handler{},
-	}
-
-	// Apply options
-	for _, opt := range opts {
-		opt(cfg)
-	}
-
-	r := chi.NewRouter()
-
-	// Apply middleware
-	for _, mw := range cfg.middlewares {
-		r.Use(mw)
-	}
-
-	// Mount OpenAPI endpoint
-	r.Get("/openapi.json", openAPIHandler)
-
-	// Mount auth info handler at well-known endpoint (if configured)
-	if cfg.authInfoHandler != nil {
-		r.Handle("/.well-known/oauth-protected-resource", cfg.authInfoHandler)
-	}
-
-	// Mount MCP Registry API v0.1 routes
-	r.Mount("/registry", v01.Router(svc))
-	r.Mount("/v1", apiv1.Router(svc, cfg.authConfig))
-
-	return r
 }
 
 type readinessChecker interface{ CheckReadiness(context.Context) error }

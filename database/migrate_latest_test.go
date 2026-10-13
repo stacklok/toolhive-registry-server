@@ -6,7 +6,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
+	dbcore "github.com/stacklok/toolhive-registry-server/internal/db"
 )
 
 func TestLatestKindDownRejectsUnpointedCollision(t *testing.T) {
@@ -99,7 +99,7 @@ func TestLatestKindMigrationAndRepair(t *testing.T) {
 	pool, err := pgxpool.New(ctx, db.Config().ConnString())
 	require.NoError(t, err)
 	defer pool.Close()
-	require.NoError(t, state.ReconcileLatestVersions(ctx, pool))
+	require.NoError(t, dbcore.ReconcileLatestVersions(ctx, pool))
 	rows, err := db.Query(ctx, `SELECT l.entry_type::text,l.version FROM latest_entry_version l JOIN source s ON s.id=l.source_id WHERE s.name='mixed' ORDER BY l.entry_type::text`)
 	require.NoError(t, err)
 	defer rows.Close()

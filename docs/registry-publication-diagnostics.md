@@ -1,11 +1,10 @@
 # Managed publication and unshadowed diagnostics
 
-This **production-unwired #913 slice** adds independently replaceable
-`catalog.Publisher` and `catalog.Diagnostics`, not a generic admin service.
-Standalone still uses its legacy guarded services and writers. No HTTP routes,
-assembly cutover, claims removal, authorization policy, dependency changes or
-schema migrations are included. The complete guarded assembly swap belongs to
-#914; reusable HTTP remains unfinished under #913.
+`catalog.Publisher` and `catalog.Diagnostics` are independently replaceable
+capabilities, not a generic admin service. Standalone selects them behind mandatory
+Cedar admission after [schema-29 exposure preparation](registry-exposure-migration.md).
+Public [admin HTTP](registry-admin-http.md) serializes their results without identity
+or resource claims; the obsolete monolithic service/writer runtime is removed.
 
 These are **raw host-owned operations, not a standalone authorization boundary**.
 Hosts authorize every call and decide who can publish or inspect diagnostics.
