@@ -1,4 +1,4 @@
-package state
+package db_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/database"
-	"github.com/stacklok/toolhive-registry-server/internal/config"
+	dbcore "github.com/stacklok/toolhive-registry-server/internal/db"
 )
 
 func TestInitializeReconcilesExistingLatest(t *testing.T) {
@@ -39,14 +39,13 @@ func TestInitializeReconcilesExistingLatest(t *testing.T) {
 		require.NoError(t, err)
 		latestIDs[tc.name] = newID
 	}
-	state := NewDBStateService(pool)
-	require.NoError(t, state.Initialize(ctx, &config.Config{}))
+	require.NoError(t, dbcore.ReconcileLatestVersions(ctx, pool))
 	var before string
 	require.NoError(t, pool.QueryRow(ctx, `SELECT jsonb_build_object(
 		'entries', (SELECT jsonb_agg(to_jsonb(e) ORDER BY e.entry_type,e.name) FROM registry_entry e WHERE e.source_id=$1),
 		'versions', (SELECT jsonb_agg(to_jsonb(v) ORDER BY e.entry_type,e.name,v.version) FROM entry_version v JOIN registry_entry e ON e.id=v.entry_id WHERE e.source_id=$1))`, source).Scan(&before))
 	for range 2 {
-		require.NoError(t, ReconcileLatestVersions(ctx, pool))
+		require.NoError(t, dbcore.ReconcileLatestVersions(ctx, pool))
 		for name, want := range latestIDs {
 			var got uuid.UUID
 			require.NoError(t, pool.QueryRow(ctx, `SELECT latest_version_id FROM latest_entry_version

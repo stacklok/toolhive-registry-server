@@ -11,8 +11,6 @@ import (
 
 	"go.uber.org/mock/gomock"
 
-	"github.com/stacklok/toolhive-registry-server/internal/config"
-	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/catalog"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/httpapi"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
@@ -21,19 +19,20 @@ import (
 
 const validInline = `{"version":"1.0.0","meta":{"last_updated":"2025-01-15T10:30:00Z"},"data":{"servers":[{"name":"com.example/weather","description":"claims are ordinary data","version":"1.0","packages":[]}]}}`
 
-func TestAdminLegacySourceRequestsAndMutationSchemas(t *testing.T) {
+func TestAdminSourceRequestsAndMutationSchemas(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name         string
-		request      service.SourceCreateRequest
+		request      string
 		definition   persistence.SourceDefinition
 		sourceConfig any
+		filter       any
 	}{
-		{"git", service.SourceCreateRequest{Git: &config.GitConfig{Repository: "https://example.org", Branch: "main", Path: "registry.json", Auth: &config.GitAuthConfig{Username: "host", PasswordFile: "/not-read-by-http"}}, SyncPolicy: &config.SyncPolicyConfig{Interval: "1h"}, Filter: &config.FilterConfig{Tags: &config.TagFilterConfig{Exclude: []string{"private"}}}}, persistence.SourceDefinition{Name: "git", Git: &persistence.GitSpec{Repository: "https://example.org", Branch: "main", Path: "registry.json", Auth: &persistence.GitAuth{Username: "host", PasswordFile: "/not-read-by-http"}}, Schedule: "1h", Filter: &persistence.Filter{Tags: &persistence.NameFilter{Exclude: []string{"private"}}}}, &config.GitConfig{Repository: "https://example.org", Branch: "main", Path: "registry.json", Auth: &config.GitAuthConfig{Username: "host", PasswordFile: "/not-read-by-http"}}},
-		{"api", service.SourceCreateRequest{API: &config.APIConfig{Endpoint: "https://example.org", Timeout: "10s"}, SyncPolicy: &config.SyncPolicyConfig{Interval: "1h"}}, persistence.SourceDefinition{Name: "api", API: &persistence.APISpec{Endpoint: "https://example.org", Timeout: "10s"}, Schedule: "1h"}, &config.APIConfig{Endpoint: "https://example.org", Timeout: "10s"}},
-		{"file", service.SourceCreateRequest{File: &config.FileConfig{Data: validInline}}, persistence.SourceDefinition{Name: "file", File: &persistence.FileSpec{Data: validInline}}, &config.FileConfig{Data: validInline}},
-		{"managed", service.SourceCreateRequest{Managed: &config.ManagedConfig{}}, persistence.SourceDefinition{Name: "managed", Managed: &persistence.ManagedSpec{}}, &config.ManagedConfig{}},
-		{"kubernetes", service.SourceCreateRequest{Kubernetes: &config.KubernetesConfig{Namespaces: []string{"one", "two"}}}, persistence.SourceDefinition{Name: "kubernetes", Kubernetes: &persistence.KubernetesSpec{Namespaces: []string{"one", "two"}}}, &config.KubernetesConfig{Namespaces: []string{"one", "two"}}},
+		{"git", `{"git":{"repository":"https://example.org","branch":"main","path":"registry.json","auth":{"username":"host","passwordFile":"/not-read-by-http"}},"syncPolicy":{"interval":"1h"},"filter":{"tags":{"exclude":["private"]}}}`, persistence.SourceDefinition{Name: "git", Git: &persistence.GitSpec{Repository: "https://example.org", Branch: "main", Path: "registry.json", Auth: &persistence.GitAuth{Username: "host", PasswordFile: "/not-read-by-http"}}, Schedule: "1h", Filter: &persistence.Filter{Tags: &persistence.NameFilter{Exclude: []string{"private"}}}}, map[string]any{"repository": "https://example.org", "branch": "main", "path": "registry.json", "auth": map[string]any{"username": "host", "passwordFile": "/not-read-by-http"}}, map[string]any{"tags": map[string]any{"exclude": []string{"private"}}}},
+		{"api", `{"api":{"endpoint":"https://example.org","timeout":"10s"},"syncPolicy":{"interval":"1h"}}`, persistence.SourceDefinition{Name: "api", API: &persistence.APISpec{Endpoint: "https://example.org", Timeout: "10s"}, Schedule: "1h"}, map[string]any{"endpoint": "https://example.org", "timeout": "10s"}, nil},
+		{"file", `{"file":{"data":` + quotedInline(t) + `}}`, persistence.SourceDefinition{Name: "file", File: &persistence.FileSpec{Data: validInline}}, map[string]any{"data": validInline}, nil},
+		{"managed", `{"managed":{}}`, persistence.SourceDefinition{Name: "managed", Managed: &persistence.ManagedSpec{}}, map[string]any{}, nil},
+		{"kubernetes", `{"kubernetes":{"namespaces":["one","two"]}}`, persistence.SourceDefinition{Name: "kubernetes", Kubernetes: &persistence.KubernetesSpec{Namespaces: []string{"one", "two"}}}, map[string]any{"Namespaces": []string{"one", "two"}}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -42,19 +41,30 @@ func TestAdminLegacySourceRequestsAndMutationSchemas(t *testing.T) {
 			stored := tc.definition
 			stored.ID, stored.Origin, stored.CreatedAt, stored.UpdatedAt = "assigned", persistence.OriginAPI, at, at
 			f.sources.EXPECT().CreateSource(gomock.Any(), tc.definition).Return(stored, nil)
-			body, err := json.Marshal(tc.request)
-			if err != nil {
-				t.Fatal(err)
+			want := map[string]any{"name": tc.name, "type": tc.name, "sourceType": tc.name, "creationType": "API", "sourceConfig": tc.sourceConfig, "createdAt": "2026-01-02T00:00:00Z", "updatedAt": "2026-01-02T00:00:00Z"}
+			if tc.filter != nil {
+				want["filterConfig"] = tc.filter
 			}
-			want := service.SourceInfo{Name: tc.name, Type: tc.name, SourceType: config.SourceType(tc.name), CreationType: service.CreationTypeAPI, SourceConfig: tc.sourceConfig, FilterConfig: tc.request.Filter, SyncSchedule: tc.definition.Schedule, CreatedAt: at, UpdatedAt: at}
+			if tc.definition.Schedule != "" {
+				want["syncSchedule"] = tc.definition.Schedule
+			}
 			h := mountAdmin(t, f.ops, httpapi.AdminOptions{})
-			adminJSON(t, adminResponse(t, h, "PUT", "/v1/sources/"+tc.name, string(body)), 201, want)
+			adminJSON(t, adminResponse(t, h, "PUT", "/v1/sources/"+tc.name, tc.request), 201, want)
 			f.sources.EXPECT().ListSources(gomock.Any()).Return([]persistence.SourceDefinition{stored}, nil)
 			f.status.EXPECT().Status(gomock.Any(), tc.name).Return(persistence.JobStatus{SourceID: stored.ID, Phase: persistence.JobCompleted}, nil)
-			want.SyncStatus = &service.SourceSyncStatus{Phase: "complete"}
-			adminJSON(t, adminResponse(t, h, "GET", "/v1/sources", ""), 200, service.SourceListResponse{Sources: []service.SourceInfo{want}})
+			want["syncStatus"] = map[string]any{"phase": "complete", "attemptCount": 0, "serverCount": 0, "skillCount": 0, "pluginCount": 0}
+			adminJSON(t, adminResponse(t, h, "GET", "/v1/sources", ""), 200, map[string]any{"sources": []any{want}})
 		})
 	}
+}
+
+func quotedInline(t *testing.T) string {
+	t.Helper()
+	body, err := json.Marshal(validInline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(body)
 }
 
 func TestAdminViewMutationAndListSchemas(t *testing.T) {
@@ -65,7 +75,7 @@ func TestAdminViewMutationAndListSchemas(t *testing.T) {
 	stored.Origin = persistence.OriginAPI
 	stored.CreatedAt = time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 	stored.UpdatedAt = stored.CreatedAt
-	want := service.RegistryInfo{Name: stored.Name, CreationType: service.CreationTypeAPI, Sources: stored.Sources, CreatedAt: stored.CreatedAt, UpdatedAt: stored.UpdatedAt}
+	want := map[string]any{"name": "public", "creationType": "API", "sources": []string{"one", "two"}, "createdAt": "2026-01-02T00:00:00Z", "updatedAt": "2026-01-02T00:00:00Z"}
 	h := mountAdmin(t, f.ops, httpapi.AdminOptions{})
 	f.views.EXPECT().CreateView(gomock.Any(), input).Return(stored, nil)
 	adminJSON(t, adminResponse(t, h, "PUT", "/v1/registries/public", `{"sources":["one","two"]}`), 201, want)
@@ -73,9 +83,7 @@ func TestAdminViewMutationAndListSchemas(t *testing.T) {
 	f.views.EXPECT().UpdateView(gomock.Any(), "public", input).Return(stored, nil)
 	adminJSON(t, adminResponse(t, h, "PUT", "/v1/registries/public", `{"sources":["one","two"]}`), 200, want)
 	f.views.EXPECT().ListViews(gomock.Any()).Return([]persistence.ViewDefinition{stored}, nil)
-	adminJSON(t, adminResponse(t, h, "GET", "/v1/registries", ""), 200, struct {
-		Registries []service.RegistryInfo `json:"registries"`
-	}{[]service.RegistryInfo{want}})
+	adminJSON(t, adminResponse(t, h, "GET", "/v1/registries", ""), 200, map[string]any{"registries": []any{want}})
 }
 
 func TestAdminNestedClaimsUnknownExtensionsAndDottedKeys(t *testing.T) {

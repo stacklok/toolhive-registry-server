@@ -4,39 +4,39 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/internal/audit"
 	"github.com/stacklok/toolhive-registry-server/internal/authorization"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/httpapi"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
-func TestAdmissionClassificationRejectsMissingUnknownAndNil(t *testing.T) {
+func TestCatalogClassificationRejectsMismatchedDescriptor(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name         string
-		declarations map[string]routeAdmission
-		nilHandler   bool
-	}{
-		{"missing classification", nil, false},
-		{"unknown action", map[string]routeAdmission{"GET /route": {
-			method: "GET", template: "/route", action: authorization.Action("unknown"),
-			audit: routeAudit{event: audit.EventServerList, resource: audit.ResourceTypeServer},
-		}}, false},
-		{"missing audit classification", map[string]routeAdmission{"GET /route": {
-			method: "GET", template: "/route", action: authorization.CatalogRead,
-		}}, false},
-		{"nil handler", map[string]routeAdmission{"GET /route": {method: "GET", template: "/route", action: authorization.CatalogRead}}, true},
+	d := httpapi.RouteDescriptor{Method: "GET", Template: "/{registryName}/v0.1/servers", Kind: persistence.ServerKind, Operation: httpapi.List, AuditEvent: "server.list", ResourceType: "server", ResourceParam: "serverName", RegistryParam: "registryName"}
+	e := routeAdmission{method: "GET", template: "/registry/{registryName}/v0.1/servers", action: authorization.CatalogRead, audit: routeAudit{event: "server.list", resource: "server", param: "serverName"}}
+	require.True(t, matchesCatalogDescriptor(d, e))
+	for _, change := range []func(*httpapi.RouteDescriptor){
+		func(d *httpapi.RouteDescriptor) { d.Operation = httpapi.Delete },
+		func(d *httpapi.RouteDescriptor) { d.Kind = persistence.SkillKind },
+		func(d *httpapi.RouteDescriptor) { d.AuditEvent = "" },
+		func(d *httpapi.RouteDescriptor) { d.ResourceType = "source" },
+		func(d *httpapi.RouteDescriptor) { d.ResourceParam = "name" },
+		func(d *httpapi.RouteDescriptor) { d.RegistryParam = "" },
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			var handler http.Handler = http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("unclassified downstream handler called") })
-			if tc.nilHandler {
-				handler = nil
-			}
-			gate := admissionTestGate(t, admissionTestPermit)
-			walk := admissionWalker(chi.NewRouter(), gate, tc.declarations, func(next http.Handler) http.Handler { return next })
-			require.Error(t, walk("GET", "/route", handler))
-		})
+		changed := d
+		change(&changed)
+		require.False(t, matchesCatalogDescriptor(changed, e), changed)
 	}
+	e.action = "unknown"
+	require.False(t, matchesCatalogDescriptor(d, e))
+}
+
+func TestCatalogServerRequiresAdmissionAndAuthentication(t *testing.T) {
+	t.Parallel()
+	reader, ops := admissionCapabilities(t)
+	_, err := NewCatalogServer(reader, ops, nil, false, func(h http.Handler) http.Handler { return h })
+	require.ErrorIs(t, err, authorization.ErrEvidence)
+	_, err = NewCatalogServer(reader, ops, admissionTestGate(t, admissionTestPermit), false, nil)
+	require.ErrorIs(t, err, authorization.ErrEvidence)
 }

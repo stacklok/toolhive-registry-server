@@ -42,8 +42,7 @@ type CatalogOperator interface {
 }
 
 // CatalogOptions selects the standalone public-component composition.
-// HTTP options are the existing WithAddress/WithInternalAddress/timeouts/telemetry
-// options. Legacy storage, sync and authentication overrides are rejected.
+// HTTP options configure addresses, timeouts, middleware and telemetry.
 type CatalogOptions struct {
 	Config *config.Config
 	// InitializeEmpty explicitly authorizes only a new, entirely empty catalog.
@@ -108,10 +107,6 @@ func NewCatalogApp(ctx context.Context, options CatalogOptions) (_ *CatalogApp, 
 	b, err := baseConfig(options.HTTP...)
 	if err != nil {
 		return nil, err
-	}
-	if b.config != nil || b.storageFactory != nil || b.syncManager != nil || b.registryHandlerFactory != nil ||
-		len(b.coordinatorOpts) != 0 || b.authMiddleware != nil || b.admissionEngine != nil {
-		return nil, errors.New("legacy assembly overrides are not supported by CatalogApp")
 	}
 	if options.Reconcile.PollInterval == 0 {
 		options.Reconcile.PollInterval = time.Second

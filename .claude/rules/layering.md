@@ -2,83 +2,51 @@
 paths:
   - "internal/**/*.go"
   - "cmd/**/*.go"
+  - "pkg/registry/**/*.go"
 ---
 
 # Layering and App Assembly
 
-Applies to all Go code in the service. These rules govern how packages relate and how the
-app is wired together. Violating them is how unit tests grow real-DB dependencies and
-refactors become global.
+## 1. Sources → Entry Pool → Views
 
-## 1. Three-Layer Data Model: Sources → Entry Pool → Registries
+Sources own entry versions; named registries are ordered consumer views, not tenants.
+Admin definitions, filters and jobs must not leak into upstream consumer payloads.
+Public model/formats/persistence/catalog contracts contain no identity, resource claims,
+visibility policy or authorization scope. Personalized selection belongs to a host service.
 
-Ingestion, storage, and consumer views are distinct layers. Sources are an admin concern,
-registries are the consumer boundary, and the entry pool is the only shared state.
+## 2. Dependency Direction
 
-**Detect**: admin concepts (sync config, source filters, ingestion hashes) leaking into
-`/registry/{name}/v0.1/...` request/response shapes; new per-registry tables; handlers under
-`internal/api/registry/v01/` that reference `sources.*` types directly.
+HTTP consumes small catalog capabilities; catalog and reconciliation consume persistence
+contracts. Contracts never import PostgreSQL, standalone config/auth or application wiring.
+`pkg/registry/httpapi` serializes the supplied page without filtering, sorting or refilling.
+PostgreSQL may explicitly import `internal/db` and transactional `internal/sync/writer`;
+these are implementation adapters, never exported types in portable contracts.
+Kubernetes belongs in optional `pkg/registry/operator` and its standalone client boundary;
+core ingestion/reconciliation must not import Kubernetes. The low-level Git/HTTP/filter
+helpers remain shared implementation dependencies, not standalone policy.
 
-**Instead**: admin concerns belong under `/v1/` (`internal/api/v1/`). Consumer endpoints go
-through `service.RegistryService` and see only `registry_entry` + `entry_version` data.
+## 3. Two HTTP Servers
 
-## 2. Layer Direction: API → Service → Storage/Sources
+The public server (default `:8080`) carries mandatory verified authentication, fixed-action
+Cedar admission and audit. It mounts consumer routes, opt-in `/v1` administration,
+OpenAPI and the fixed OAuth bootstrap GET. Operational `/health`, `/readiness`, `/version`
+and optional `/metrics` belong only to the internal server (`:8081`), without auth/audit.
+Do not introduce configurable public-path bypasses or mount operational routes publicly.
 
-The dependency arrow goes one way. HTTP concerns stay out of business logic; Postgres and
-K8s stay out of the service layer.
+## 4. Catalog Assembly and Ownership
 
-**Detect**: `internal/api/**` files importing `internal/service/db/**`, `database/**`, or
-concrete `sources.*` types; `internal/service/**` importing `net/http`, `client-go`, or
-controller-runtime; `client-go` imports anywhere outside `internal/kubernetes/**`,
-`pkg/registry/operator/**`, and the K8s sync path.
-
-**Instead**: API handlers call `service.RegistryService`. Service depends on storage
-interfaces (`storage.Factory`), not concrete drivers. Kubernetes code lives in
-`internal/kubernetes/**` or optional `pkg/registry/operator/**` and is invoked from sync orchestration.
-The public operator borrows clients/managers and contains no claims policy;
-core public ingestion/reconciliation must not import Kubernetes.
-
-## 3. Two HTTP Servers: Public and Internal
-
-Operational endpoints run on a separate port with no auth middleware. Consumer and admin
-traffic run on the public port with full middleware.
-
-**What must hold:**
-- Public server (default `:8080`): all `/v1/`, `/registry/`, `/openapi.json`,
-  `/.well-known/...` routes. Carries auth and audit middleware.
-- Internal server (default `:8081`): `/health`, `/readiness`, `/version`, and (when metrics
-  are enabled) `/metrics`. No auth, no audit, no rate limiting.
-- Internal endpoints are never reachable from the public port.
-
-**Breaks if violated:** Kubernetes probes fail when auth is required; operational endpoints
-become part of the customer-facing API contract; rate limiting on the public path throttles
-probes.
-
-## 4. Builder + Functional Options; Factory Interfaces for DI
-
-The app is assembled with `app.NewRegistryApp(ctx, opts...)`. Every non-trivial component
-is injectable for tests through a factory interface.
-
-**Detect**: a new component wired with a direct concrete dependency that has no
-corresponding `With*` option; tests that stand up real Postgres / real K8s / real HTTP
-because there is no injection seam; a struct literal in `internal/app/builder.go` for a
-component that doesn't go through its factory.
-
-**Instead**: wire new components through `internal/app/builder.go` using a `With*` option
-and a factory interface. Tests lean on `WithStorageFactory`, `WithSyncManager`,
-`WithRegistryHandlerFactory`, `WithCoordinatorOptions`. Concrete implementations live
-beside the interfaces.
+`app.NewCatalogApp` composes the same public components available to embedders.
+`CatalogOptions` injects storage, operator, fetcher and reconciliation dependencies;
+HTTP options retain shared audit, telemetry, middleware and timeout helpers.
+Storage must implement all preparation phases, with no legacy fallback: final config,
+frozen Cedar, open, read-only historical/source/operator preflight, schema-29 receipt
+consumption, then atomic reconciliation/repair and guarded services/HTTP.
+Constructors start no application workers/listeners. Start/Wait/Stop must join all owned
+and inline work before closing storage/audit resources. Borrowed resources stay borrowed.
+Never recreate `RegistryService`, the old app/storage factories or unleased coordinator.
 
 ## 5. No Cross-Layer Helpers
 
-Don't create "common" packages that leak types across layer boundaries — e.g., a helper
-package that depends on both `net/http` and the DB types. Shared helpers are the easy way
-to launder layering violations.
-
-**Detect**: a new package under `internal/` that imports from more than one of
-{`internal/api/**`, `internal/service/**`, `internal/db/**`, `client-go`, `controller-runtime`};
-utility files that accept both `http.Request` and `pgx.Tx`.
-
-**Instead**: put the helper in the layer that owns it, or split the helper so each layer
-gets its own narrow version. `internal/api/common` is intentionally scoped to
-request/response helpers only — keep it that way.
+No common package bridging HTTP, SQL, Kubernetes and identity. Interfaces are defined
+where consumed; implementations live beside them. Separate-module tests must prove
+public importability and the actual forbidden dependency graph, not just package names.

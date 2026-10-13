@@ -1,11 +1,10 @@
 # Reusable admin HTTP (#913)
 
 `pkg/registry/httpapi.AdminRouter` finishes the reusable HTTP capability alongside
-[consumer HTTP](registry-consumer-http.md). **Both are dormant in production.**
-This completes the shared services and HTTP extraction in #913, not the #914
-standalone swap, #912 claims migration, or #915 cleanup. No new listener is started
-and no legacy role/claims/storage guard is removed; standalone assembly and its
-acceptance gates remain separate work.
+[consumer HTTP](registry-consumer-http.md). Standalone now selects both behind
+mandatory Cedar admission after [schema-29 exposure preparation](registry-exposure-migration.md).
+Public routers start no listener and provide no implicit admission; see
+[standalone assembly](registry-standalone-assembly.md) for preparation and ownership.
 
 ## Capabilities and lifecycle
 
@@ -93,8 +92,8 @@ or treat all non-2xx responses as no mutation. Callbacks must not panic or retry
 mutations. There is no user identity or payload in the observer. Noncommitted failures
 produce no mutation observation; the host still audits the route/status.
 
-**Standalone must retain mandatory authentication/admission and existing audit
-coverage when #914 mounts this router.** This example is not a standalone Cedar
+**Standalone retains mandatory authentication/admission and existing audit
+coverage when mounting this router.** This example is not a standalone Cedar
 implementation or permission to expose unprotected administration. `/v1/me` and
 entry-claims endpoints are not mounted here; standalone retains its separately
 protected static 410 tombstones. The consumer router never implicitly includes
@@ -103,7 +102,8 @@ admin, and neither router mounts health/readiness/version/metrics endpoints.
 ## Exact route inventory
 
 `AdminRoutes()` is a fresh inventory, cross-checked in tests against the twelve
-retained actual legacy registrations. There are **no trailing-slash aliases**.
+retained actual registrations using a fixed, explicit inventory, not legacy routers.
+There are **no trailing-slash aliases**.
 Source and view resources use `name`; exact deletion also identifies `KindParam:
 "type"`. Publication has a body union, not a path kind discriminator.
 
@@ -204,7 +204,7 @@ scope. Each complete entry diagnostic call has its own storage snapshot contract
 ## Verification and remaining work
 
 Tests cover the full route/decorator manifest and host middleware, independent
-capability replacements, legacy wire-schema comparisons, create/update/error and
+capability replacements, fixed claims-free wire expectations, create/update/error and
 partial-commit audit behavior, retired-field detection and body/path validation.
 Real HTTP + default catalog + PostgreSQL tests exercise unshadowed collisions,
 all-kind singleton publication, exact deletion/latest/history, ownership/location
@@ -212,8 +212,7 @@ constraints and no mutation for invalid bodies. An external module proves public
 replacement/mounting and an import graph excluding registry-internal config/auth,
 PostgreSQL and Kubernetes from the HTTP core.
 
-#914 still owns guarded standalone assembly, exposure preparation/migration,
-exclusive writer lifecycle, protected tombstones and listener/operational separation.
-Legacy generated Swagger remains intentionally unchanged here: schema regeneration
-for the new standalone request/response surface belongs to that #914 cutover. Do
-not advertise the dormant router as the current production schema.
+The active [standalone assembly](registry-standalone-assembly.md) owns mandatory
+admission, exposure preparation, exclusive leased lifecycle, protected tombstones and
+listener/operational separation. Default OpenAPI is generated from active public DTOs,
+metadata handlers and tombstones. Physical schema cleanup remains a separate final slice.

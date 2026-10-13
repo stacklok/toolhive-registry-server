@@ -1,4 +1,4 @@
-package state
+package db_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/database"
+	dbcore "github.com/stacklok/toolhive-registry-server/internal/db"
 )
 
 func repairTestPool(t *testing.T) *pgxpool.Pool {
@@ -77,7 +78,7 @@ func TestRepairLegacyKindCollisions(t *testing.T) {
 	}
 	_ = repairTestEntry(t, pool, source, "PLUGIN", "unambiguous", "1.0.0")
 	for range 2 {
-		require.NoError(t, ReconcileLatestVersions(ctx, pool))
+		require.NoError(t, dbcore.ReconcileLatestVersions(ctx, pool))
 		var got uuid.UUID
 		require.NoError(t, pool.QueryRow(ctx, `SELECT latest_version_id FROM latest_entry_version WHERE source_id=$1 AND entry_type='MCP' AND name='pointed'`, source).Scan(&got))
 		var want uuid.UUID
@@ -94,7 +95,7 @@ func TestRepairLegacyKindCollisions(t *testing.T) {
 	}
 	_, err := pool.Exec(ctx, `UPDATE latest_entry_version SET version='stale' WHERE source_id=$1 AND entry_type='MCP' AND name='pointed'`, source)
 	require.NoError(t, err)
-	require.NoError(t, ReconcileLatestVersions(ctx, pool))
+	require.NoError(t, dbcore.ReconcileLatestVersions(ctx, pool))
 	var storedVersion string
 	require.NoError(t, pool.QueryRow(ctx, `SELECT version FROM latest_entry_version WHERE source_id=$1 AND entry_type='MCP' AND name='pointed'`, source).Scan(&storedVersion))
 	require.Equal(t, "v1.0.0", storedVersion)
@@ -124,7 +125,7 @@ func TestRepairSerializesConcurrentVersionWrites(t *testing.T) {
 	_, err = writer.Exec(ctx, `UPDATE latest_entry_version SET latest_version_id=$1,version='2.0.0' WHERE source_id=$2 AND name='shared'`, published, source)
 	require.NoError(t, err)
 	finished := make(chan error, 1)
-	go func() { finished <- ReconcileLatestVersions(ctx, pool) }()
+	go func() { finished <- dbcore.ReconcileLatestVersions(ctx, pool) }()
 	waitForRepairLockWait(t, pool, "LOCK TABLE source, registry_entry")
 	select {
 	case err := <-finished:
@@ -144,7 +145,7 @@ func TestRepairSerializesConcurrentVersionWrites(t *testing.T) {
 	defer func() { _ = lock.Rollback(context.Background()) }()
 	_, err = lock.Exec(ctx, `LOCK TABLE source, registry_entry, entry_version, latest_entry_version IN SHARE ROW EXCLUSIVE MODE`)
 	require.NoError(t, err)
-	require.NoError(t, reconcileLatestVersions(ctx, lock))
+	require.NoError(t, dbcore.ReconcileLatestVersionsTx(ctx, lock))
 	deleted := make(chan error, 1)
 	go func() {
 		deletion, err := pool.Begin(ctx)
@@ -188,7 +189,7 @@ func TestRepairCancellationRollsBack(t *testing.T) {
 	require.NoError(t, err)
 	active, cancel := context.WithCancel(ctx)
 	finished := make(chan error, 1)
-	go func() { finished <- ReconcileLatestVersions(active, pool) }()
+	go func() { finished <- dbcore.ReconcileLatestVersions(active, pool) }()
 	waitForRepairLockWait(t, pool, "LOCK TABLE source, registry_entry")
 	cancel()
 	require.Error(t, <-finished)
@@ -196,7 +197,7 @@ func TestRepairCancellationRollsBack(t *testing.T) {
 	var got uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx, `SELECT latest_version_id FROM latest_entry_version WHERE source_id=$1 AND name='blocked'`, source).Scan(&got))
 	require.Equal(t, old, got)
-	require.NoError(t, ReconcileLatestVersions(ctx, pool))
+	require.NoError(t, dbcore.ReconcileLatestVersions(ctx, pool))
 	require.NoError(t, pool.QueryRow(ctx, `SELECT latest_version_id FROM latest_entry_version WHERE source_id=$1 AND name='blocked'`, source).Scan(&got))
 	require.NotEqual(t, old, got)
 }

@@ -1,11 +1,10 @@
 # Reusable consumer HTTP
 
 `pkg/registry/httpapi` adapts **already selected** application pages to the MCP
-Registry v0.1 and ToolHive skills/plugins wire formats. It is intentionally
-**production-unwired**: standalone still uses its old admission, claims guards,
-consumer handlers and writers. No migration, cutover or auth removal is included.
-[Admin HTTP](registry-admin-http.md) now completes the reusable #913 HTTP capability;
-the guarded standalone assembly swap remains #914 work.
+Registry v0.1 and ToolHive skills/plugins wire formats. Standalone selects this
+router through mandatory Cedar-guarded capabilities after schema-29 exposure preparation.
+[Admin HTTP](registry-admin-http.md) completes the reusable HTTP capability; see
+[standalone assembly](registry-standalone-assembly.md) for listener, admission and lifecycle ownership.
 
 ## Host assembly
 
@@ -45,8 +44,8 @@ relative to `/registry`. Each descriptor includes method, template, entry kind,
 domain operation, stable legacy audit event/resource type and resource/registry/
 namespace parameter names. `Decorate` receives the descriptor and handler exactly
 once per actual registration, not by URL guessing at request time. Hosts can use
-ordinary middleware here. Future standalone admission must map these domain
-operations to fixed actions and require the **whole** manifest; this library
+ordinary middleware here. Standalone maps domain operations to fixed actions and
+requires the **whole** manifest; this library
 exports no authorization action, principal or entity schema.
 
 ## Replacement applications

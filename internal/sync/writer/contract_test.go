@@ -9,7 +9,7 @@ import (
 	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
 	"github.com/stretchr/testify/require"
 
-	statepkg "github.com/stacklok/toolhive-registry-server/internal/sync/state"
+	dbcore "github.com/stacklok/toolhive-registry-server/internal/db"
 )
 
 // TestStoreContractAllKindsAtomicity exercises a failure in the last kind, after
@@ -21,7 +21,7 @@ func TestStoreContractAllKindsAtomicity(t *testing.T) {
 	ctx := context.Background()
 	first := createTestRegistry(t, pool, "first-source")
 	second := createTestRegistry(t, pool, "second-source")
-	w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	w, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 	snapshot := func(suffix string) *toolhivetypes.UpstreamRegistry {
 		server := createTestServerWithPackages("example.com/server", "1.0.0")
@@ -36,8 +36,8 @@ func TestStoreContractAllKindsAtomicity(t *testing.T) {
 		return reg
 	}
 	old := snapshot("original")
-	require.NoError(t, w.Store(ctx, "first-source", old))
-	require.NoError(t, w.Store(ctx, "second-source", old))
+	require.NoError(t, w.store(ctx, "first-source", old))
+	require.NoError(t, w.store(ctx, "second-source", old))
 	// Include version rows, payloads, related packages, and latest pointers in
 	// the same exact comparison; counts alone would miss partial overwrites.
 	const stateQuery = `SELECT jsonb_build_object(
@@ -58,7 +58,7 @@ func TestStoreContractAllKindsAtomicity(t *testing.T) {
 		return got
 	}
 	beforeFirst, beforeSecond := state(first.sourceID), state(second.sourceID)
-	require.NoError(t, statepkg.ReconcileLatestVersions(ctx, pool))
+	require.NoError(t, dbcore.ReconcileLatestVersions(ctx, pool))
 	require.Equal(t, beforeFirst, state(first.sourceID), "repair must not alter payloads or packages")
 	require.Equal(t, beforeSecond, state(second.sourceID))
 	// The trigger is test-local and fires only in the final plugin stage.
@@ -69,7 +69,7 @@ func TestStoreContractAllKindsAtomicity(t *testing.T) {
 	changed := snapshot("attempted")
 	changed.Data.Servers = []upstreamv0.ServerJSON{createTestServer("example.com/new", "2.0.0")}
 	changed.Data.Skills = []toolhivetypes.Skill{createTestSkill("com.example", "new", "2.0.0")}
-	err = w.Store(ctx, "first-source", changed)
+	err = w.store(ctx, "first-source", changed)
 	require.ErrorContains(t, err, "late plugin failure")
 	require.Equal(t, beforeFirst, state(first.sourceID))
 	require.Equal(t, beforeSecond, state(second.sourceID))
@@ -96,7 +96,7 @@ func TestStoreContractAllKindsAtomicity(t *testing.T) {
 	finished := make(chan struct{})
 	var storeErr error
 	go func() {
-		storeErr = w.Store(active, "first-source", cancelledSnapshot)
+		storeErr = w.store(active, "first-source", cancelledSnapshot)
 		close(finished)
 	}()
 	defer func() {
@@ -134,7 +134,7 @@ func TestStoreContractAllKindsAtomicity(t *testing.T) {
 	require.Equal(t, beforeFirst, state(first.sourceID))
 	require.Equal(t, beforeSecond, state(second.sourceID))
 
-	require.NoError(t, w.Store(ctx, "first-source", createTestUpstreamRegistry(nil)))
+	require.NoError(t, w.store(ctx, "first-source", createTestUpstreamRegistry(nil)))
 	require.NotEqual(t, beforeFirst, state(first.sourceID))
 	require.Equal(t, beforeSecond, state(second.sourceID))
 	for _, kind := range []string{"MCP", "SKILL", "PLUGIN"} {

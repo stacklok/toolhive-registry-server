@@ -1,10 +1,10 @@
-// Package writer contains the SyncWriter interface and implementations
+// Package writer implements transactional PostgreSQL payload staging.
+// Callers own fencing, mutation guards and transaction commit.
 package writer
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -13,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
 	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
@@ -38,85 +37,9 @@ const (
 	skillRegistryTypeGit = "git"
 )
 
-// dbSyncWriter is a SyncWriter implementation that persists data to a database
+// dbSyncWriter stages payloads within a caller-owned transaction.
 type dbSyncWriter struct {
-	pool        *pgxpool.Pool
 	maxMetaSize int
-}
-
-// NewDBSyncWriter creates a new dbSyncWriter with the given connection pool.
-// The caller is responsible for closing the pool when done.
-// maxMetaSize specifies the maximum allowed size in bytes for publisher-provided
-// metadata extensions and must be greater than zero.
-func NewDBSyncWriter(pool *pgxpool.Pool, maxMetaSize int) (SyncWriter, error) {
-	if pool == nil {
-		return nil, fmt.Errorf("pgx pool is required")
-	}
-	return &dbSyncWriter{pool: pool, maxMetaSize: maxMetaSize}, nil
-}
-
-// Store saves a UpstreamRegistry instance to database storage for a specific registry.
-//
-// This method performs an efficient bulk sync using temporary tables and COPY operations:
-//  1. Validates the registry exists
-//  2. Upserts registry entries (one per name), entry versions (one per name+version),
-//     and mcp_server rows via temp tables and COPY to preserve existing UUIDs
-//  3. Deletes orphaned servers that no longer exist in upstream (CASCADE cleans related data)
-//  4. For packages/remotes/icons: creates temp tables, copies data, bulk upserts, deletes orphans
-//  5. Updates the latest_entry_version table for each unique server name
-//
-// The operation is performed within a serializable transaction to ensure consistency.
-// Temp tables are automatically dropped at transaction end (ON COMMIT DROP).
-//
-//nolint:gocyclo
-func (d *dbSyncWriter) Store(
-	ctx context.Context,
-	registryName string,
-	reg *toolhivetypes.UpstreamRegistry,
-	opts ...StoreOption,
-) error {
-	if reg == nil {
-		return fmt.Errorf("registry data is required")
-	}
-
-	// Begin transaction with serializable isolation level for consistency
-	tx, err := d.pool.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   pgx.Serializable,
-		AccessMode: pgx.ReadWrite,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
-			// Log rollback error in production; here we just ignore it
-			_ = rollbackErr
-		}
-	}()
-
-	querier := sqlc.New(tx)
-
-	// Step 1: Validate registry exists and get registry ID
-	registry, err := querier.GetSourceByName(ctx, registryName)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("registry not found: %s", registryName)
-		}
-		return fmt.Errorf("failed to get registry: %w", err)
-	}
-
-	storeOpts, err := parseStoreOptions(opts)
-	if err != nil {
-		return err
-	}
-
-	if err := d.storeSourceTx(ctx, tx, registry.ID, reg, registry.Claims, storeOpts.PerEntryClaims); err != nil {
-		return err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-	return nil
 }
 
 // StoreSourceTx writes a complete source snapshot in the caller's transaction.

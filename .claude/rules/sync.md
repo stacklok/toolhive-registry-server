@@ -1,108 +1,48 @@
 ---
 paths:
   - "internal/sync/**/*.go"
-  - "internal/sources/**/*.go"
   - "internal/kubernetes/**/*.go"
   - "pkg/registry/ingest/**/*.go"
   - "pkg/registry/reconcile/**/*.go"
   - "pkg/registry/operator/**/*.go"
 ---
 
-# Sync Pipeline
+# Ingestion and Reconciliation
 
-Applies to ingestion coordination, source handlers, and the K8s watch path. These rules
-keep the registry internally consistent under failure and avoid mixing synced and
-non-synced source behavior.
+## 1. Atomic Fenced Snapshots Preserve Last Good Data
 
-## 1. Sync Runs in a Serializable Transaction; Failure Preserves Previous Data
+Public reconciliation consumes `persistence.Jobs`: source incarnation, generation,
+lease identity and authoritative expiry fence commit and acknowledgement in one operation.
+Failure/cancellation/partial listing never becomes an empty success. PostgreSQL retains
+serializable transactions, payload temp tables/COPY/upsert, latest and orphan cleanup.
+`internal/sync/writer.StoreSourceTx` and `PublishSourceTx` only stage inside the caller's
+transaction; no unleased Store facade, manager, state service or old coordinator exists.
+Schema-29 claims plumbing/mutation guards remain until the final schema slice, not policy.
 
-Sync writes use `pgx.Serializable` isolation. Temp tables + `COPY` feed a single
-transaction that commits or rolls back as a unit. A half-applied sync is worse than a
-stale registry. Reusable coordinators consume `persistence.Jobs` atomicity and
-fencing rather than importing SQL transactions; the PostgreSQL implementation
-retains these serializable transaction rules.
+## 2. Scheduled Versus Manual Sources
 
-**What must hold:**
-- Bulk insert/upsert uses temp tables populated via `COPY`, merged into target tables
-  inside one serializable transaction.
-- On any failure (fetch error, validation error, DB error), the transaction rolls back and
-  the previous good data remains visible. The `registry_sync` row records the failure.
-- Orphan cleanup runs inside the same transaction — do not commit inserts and skip
-  deletions on error.
+ClaimNext schedules Git/API/file only; managed/operator/inline files bypass polling.
+Managed publication is individual atomic publication/deletion, not full-source replacement.
+Manual/operator refresh uses Acquire through the leased coordinator. `internal/sync/standalone`
+supervises owned workers, refreshes definitions and joins inline/background work on shutdown.
+Constructors start no work; borrowed transports, clients/managers and telemetry remain borrowed.
 
-**Detect**: sync code calling `tx.Commit()` before orphan deletion; separate transactions
-for different stages of a single sync; isolation level set to anything other than
-`pgx.Serializable`; early returns between staging and commit that don't roll back.
+## 3. Operator Opt-In and Full Scope
 
-**Breaks if violated:** consumers observe registries with half-imported entries or dangling
-version rows; sync failure becomes an outage rather than a retry-able condition.
+Preserve exact `toolhive.stacklok.dev/registry-export=true` and configured export URL/description,
+never silently advertise cluster-internal status URLs. Support MCPServer, VirtualMCPServer
+and MCPRemoteProxy. Fetch all configured namespaces and all kinds before one source commit,
+including valid empty startup snapshots. List/watch/cache/commit failures retain last good
+state and cannot mark initial readiness. Namespace changes require reconstruction and fencing.
+Standalone preflight checks retired authz-claims annotation presence before conversion;
+public conversion is identity-free. Preserve service-account RBAC.
+The same-name cross-kind operator identity decision (including differing versions) remains
+pending user agreement. Do not change collision behavior or describe it as resolved.
 
-## 2. Non-Synced Source Types Skip the Sync Loop
+## 4. Validate Imports Before Returning
 
-`managed` and `kubernetes` sources don't fetch from external data. `managed` is an
-API-written container; `kubernetes` is a controller-driven watch. Running the
-hash-compare / fetch path on them is pure overhead.
-
-**What must hold:**
-- `SourceConfig.IsNonSyncedSource()` returns true for `managed` and `kubernetes`. The sync
-  coordinator skips these sources entirely.
-- Non-synced sources do not require `syncPolicy` or `filter` in config; if present, they
-  are silently ignored.
-- K8s ingestion happens via the controller-runtime reconciler in `internal/kubernetes/**`,
-  not through `sync.Manager`.
-
-**Detect**: sync coordinator code that enumerates sources without calling
-`IsNonSyncedSource()`; config validation that requires `syncPolicy` on managed/K8s; a K8s
-handler registered through `sources.RegistryHandlerFactory`.
-
-**Instead**: the managed source is written only by the publish/delete/claim-update
-handlers. K8s sources are populated by the reconciler using the same `SyncWriter` interface
-the coordinator uses, so they share the transactional guarantees of §1.
-
-The reusable path uses `Jobs.ClaimNext` for scheduled Git/API/file sources only
-(inline files are also excluded). Operator/manual refresh explicitly uses `Acquire`
-through the shared leased coordinator, never the scheduled polling loop. A public
-operator runner owns only its watches; the host owns its client and manager.
-
-## 3. Legacy K8s Source Claims Don't Inherit; Entries Get Claims From an Annotation
-
-This section applies only to `internal/kubernetes` until #912. The reusable
-`pkg/registry/operator` path must never parse or propagate identity annotations.
-Shared conversion remains policy-free; legacy parsing stays in the legacy controller.
-Never co-own one source with legacy and leased writers.
-
-A single K8s source typically covers a namespace containing CRDs owned by different teams
-with different visibility. Inheriting source claims would force one source per team.
-Per-CRD claims via annotation let one source serve many claim sets.
-
-**What must hold:**
-- Source claims on `kubernetes`-type sources are used *only* for `manageSources` role
-  scoping, never merged into entry claims.
-- Entry claims come exclusively from the `toolhive.stacklok.dev/authz-claims` JSON
-  annotation on the CRD.
-- CRDs opt in to registry export via `toolhive.stacklok.dev/registry-export=true`. Without
-  that annotation, the resource is ignored.
-- Malformed claims JSON causes the specific CRD to be skipped with a warning log — it is
-  not fatal for the source.
-
-**Detect**: K8s sync code that reads source claims and writes them to entries; code paths
-that treat a missing `authz-claims` annotation as "inherit from source"; CRD ingestion that
-proceeds on malformed annotation JSON.
-
-**Instead**: parse `authz-claims` per CRD. On parse failure, log and skip that CRD only —
-other CRDs in the source continue. Missing annotation → entry has no claims (visible to
-all when anonymous, invisible when authz is active — that is the intended default-deny).
-
-## 4. Source Handlers Validate Before They Return
-
-`sources.RegistryHandler.FetchRegistry` returns a `*FetchResult` only when the payload
-parses against the upstream MCP registry schema and has at least one server. The sync
-writer trusts its input.
-
-**Detect**: handler implementations that return a `FetchResult` with a nil or empty
-`Registry`; handler code that propagates raw upstream bytes without calling
-`ValidateUpstreamRegistryBytes`; sync writer code that re-validates what a handler already
-returned.
-
-**Instead**: validation is the handler's responsibility. The writer assumes valid input
-and focuses on transactional correctness.
+`ingest.Fetcher` returns only complete validated upstream snapshots and change hashes.
+Malformed/empty import-format responses fail without exposing remote/credential details;
+operator replacement may legitimately be empty. Source-specific IO and secret loading are
+explicit borrowed dependencies. Git/file hash original bytes; API hashes canonical Data.
+Validation/fetch failure must preserve the applied baseline and previous successful snapshot.

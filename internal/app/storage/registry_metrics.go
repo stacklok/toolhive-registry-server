@@ -51,15 +51,6 @@ type registryMetricsReader struct {
 
 var _ telemetry.RegistryMetricReader = (*registryMetricsReader)(nil)
 
-// CreateRegistryMetricsReader creates a reader for source-level registry metrics.
-func (d *DatabaseFactory) CreateRegistryMetricsReader(_ context.Context) (telemetry.RegistryMetricReader, error) {
-	if d.pool == nil {
-		return nil, fmt.Errorf("pgx pool is required")
-	}
-
-	return &registryMetricsReader{pool: d.pool}, nil
-}
-
 func (r *registryMetricsReader) RegistryMetricCounts(
 	ctx context.Context,
 ) ([]telemetry.RegistryMetricCount, error) {
