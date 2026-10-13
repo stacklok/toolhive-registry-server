@@ -11,7 +11,7 @@ import (
 
 func TestLatestKindDownRejectsUnpointedCollision(t *testing.T) {
 	t.Parallel()
-	db, _ := SetupTestDB(t)
+	db, _ := SetupTestDBAt(t, 29)
 	ctx := t.Context()
 	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable) VALUES('unpointed','managed','{}',false)`)
 	require.NoError(t, err)
@@ -30,7 +30,7 @@ func TestLatestKindDownRejectsUnpointedCollision(t *testing.T) {
 
 func TestLatestKindRoundTripAndPayloadGuard(t *testing.T) {
 	t.Parallel()
-	db, _ := SetupTestDB(t)
+	db, _ := SetupTestDBAt(t, 29)
 	ctx := t.Context()
 	require.NoError(t, migrateTestTo(t, db, 24))
 	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable) VALUES('roundtrip','managed','{}',false)`)
@@ -46,7 +46,7 @@ func TestLatestKindRoundTripAndPayloadGuard(t *testing.T) {
 	_, err = db.Exec(ctx, `INSERT INTO latest_entry_version(source_id,name,version,latest_version_id)
  SELECT e.source_id,e.name,v.version,v.id FROM registry_entry e JOIN entry_version v ON v.entry_id=e.id WHERE e.name='server'`)
 	require.NoError(t, err)
-	require.NoError(t, MigrateUp(ctx, db))
+	require.NoError(t, MigrateUpTo(ctx, db, 29))
 	var kind, description string
 	require.NoError(t, db.QueryRow(ctx, `SELECT l.entry_type::text,v.description FROM latest_entry_version l
  JOIN entry_version v ON v.id=l.latest_version_id WHERE l.name='server'`).Scan(&kind, &description))
@@ -56,14 +56,14 @@ func TestLatestKindRoundTripAndPayloadGuard(t *testing.T) {
 	require.NoError(t, db.QueryRow(ctx, `SELECT v.description FROM latest_entry_version l JOIN entry_version v
  ON v.id=l.latest_version_id WHERE l.name='server'`).Scan(&description))
 	require.Equal(t, "retained", description)
-	require.NoError(t, MigrateUp(ctx, db))
+	require.NoError(t, MigrateUpTo(ctx, db, 29))
 	require.NoError(t, db.QueryRow(ctx, `SELECT l.entry_type::text FROM latest_entry_version l WHERE l.name='server'`).Scan(&kind))
 	require.Equal(t, "MCP", kind)
 }
 
 func TestLatestKindDownRejectsNewPayload(t *testing.T) {
 	t.Parallel()
-	db, _ := SetupTestDB(t)
+	db, _ := SetupTestDBAt(t, 29)
 	ctx := t.Context()
 	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable) VALUES('payload','managed','{}',false)`)
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestLatestKindDownRejectsNewPayload(t *testing.T) {
 
 func TestLatestKindMigrationAndRepair(t *testing.T) {
 	t.Parallel()
-	db, _ := SetupTestDB(t)
+	db, _ := SetupTestDBAt(t, 29)
 	ctx := t.Context()
 	require.NoError(t, migrateTestTo(t, db, 24))
 	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable) VALUES('mixed','managed','{}',false)`)
@@ -95,7 +95,7 @@ func TestLatestKindMigrationAndRepair(t *testing.T) {
  SELECT e.source_id,e.name,v.version,v.id FROM registry_entry e JOIN entry_version v ON v.entry_id=e.id
  WHERE e.entry_type='MCP' AND v.version='custom'`)
 	require.NoError(t, err)
-	require.NoError(t, MigrateUp(ctx, db))
+	require.NoError(t, MigrateUpTo(ctx, db, 29))
 	pool, err := pgxpool.New(ctx, db.Config().ConnString())
 	require.NoError(t, err)
 	defer pool.Close()

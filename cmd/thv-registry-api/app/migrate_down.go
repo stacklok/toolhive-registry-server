@@ -25,7 +25,7 @@ migrations to revert. This is a safety measure to prevent accidental data loss.`
 }
 
 func runMigrateDown(cmd *cobra.Command, _ []string) error {
-	ctx := context.Background()
+	ctx := cmd.Context()
 
 	// Parse and validate flags
 	numSteps, yes, configPath, err := parseMigrateDownFlags(cmd)
@@ -34,7 +34,7 @@ func runMigrateDown(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Load configuration
-	cfg, err := config.LoadConfig(config.WithConfigPath(configPath))
+	cfg, err := config.LoadCatalogConfig(config.WithConfigPath(configPath))
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
@@ -126,7 +126,7 @@ func executeMigrationDown(ctx context.Context, conn *pgx.Conn, connString string
 	}
 
 	// Get current version
-	version, dirty, err := database.GetVersion(connString)
+	version, dirty, err := database.GetVersionContext(ctx, connString)
 	if err != nil {
 		slog.Warn("Unable to get migration version", "error", err)
 	} else if dirty {

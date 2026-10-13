@@ -135,9 +135,6 @@ func (d *Definitions) UpdateSource(
 		if old.File != nil && fileKind(old.File) != fileKind(s.File) {
 			return fmt.Errorf("%w: file location kind immutable", persistence.ErrKindChange)
 		}
-		if e = requireNoClaims(ctx, tx, "source", name); e != nil {
-			return e
-		}
 		if e = requireKnownFields(ctx, tx, name, old); e != nil {
 			return e
 		}
@@ -166,16 +163,6 @@ func (d *Definitions) DeleteSource(ctx context.Context, name string) error {
 		}
 		if old.Origin != persistence.OriginAPI {
 			return fmt.Errorf("%w: CONFIG source", persistence.ErrConfigOwned)
-		}
-		if e = requireNoClaims(ctx, tx, "source", name); e != nil {
-			return e
-		}
-		claimed, e := sqlc.New(tx).EntryHasClaims(ctx, uuid.MustParse(old.ID))
-		if e != nil {
-			return classify(e)
-		}
-		if claimed {
-			return fmt.Errorf("%w: claimed legacy entries", persistence.ErrConflict)
 		}
 		used, e := sqlc.New(tx).DefSourceUsed(ctx, uuid.MustParse(old.ID))
 		if e != nil {
@@ -273,9 +260,6 @@ func (d *Definitions) UpdateView(
 		if v.Origin != "" && v.Origin != persistence.OriginAPI {
 			return fmt.Errorf("%w: immutable view origin", persistence.ErrInvalid)
 		}
-		if e = requireNoClaims(ctx, tx, "registry", name); e != nil {
-			return e
-		}
 		id, e := sqlc.New(tx).DefViewID(ctx, name)
 		if e != nil {
 			return classify(e)
@@ -306,9 +290,6 @@ func (d *Definitions) DeleteView(ctx context.Context, name string) error {
 		if old.Origin != persistence.OriginAPI {
 			return fmt.Errorf("%w: CONFIG view", persistence.ErrConfigOwned)
 		}
-		if e = requireNoClaims(ctx, tx, "registry", name); e != nil {
-			return e
-		}
 		return classify(sqlc.New(tx).DefDeleteAPIView(ctx, name))
 	})
 }
@@ -333,9 +314,6 @@ func (d *Definitions) Reconcile(
 				if old.Origin != persistence.OriginConfig {
 					return fmt.Errorf("%w: API source name", persistence.ErrConflict)
 				}
-				if e = requireNoClaims(ctx, tx, "source", s.Name); e != nil {
-					return e
-				}
 				a, _ := old.Kind()
 				b, _ := s.Kind()
 				if a != b {
@@ -358,9 +336,6 @@ func (d *Definitions) Reconcile(
 				if old.Origin != persistence.OriginConfig {
 					return fmt.Errorf("%w: API view name", persistence.ErrConflict)
 				}
-				if e = requireNoClaims(ctx, tx, "registry", v.Name); e != nil {
-					return e
-				}
 			}
 		}
 		keepViews := make([]string, 0, len(views))
@@ -370,14 +345,6 @@ func (d *Definitions) Reconcile(
 		err := sqlc.New(tx).DefPruneViews(ctx, keepViews)
 		if err != nil {
 			return classify(err)
-		}
-		// Fail closed when a legacy claimed row would otherwise have been pruned.
-		blocked, err := sqlc.New(tx).DefBlockedViews(ctx, keepViews)
-		if err != nil {
-			return classify(err)
-		}
-		if blocked {
-			return fmt.Errorf("%w: claimed CONFIG view", persistence.ErrConflict)
 		}
 		keepSources := make([]string, 0, len(sources))
 		for _, s := range sources {
@@ -389,13 +356,6 @@ func (d *Definitions) Reconcile(
 		err = sqlc.New(tx).DefDeleteConfigLinks(ctx)
 		if err != nil {
 			return classify(err)
-		}
-		blocked, err = sqlc.New(tx).DefBlockedSources(ctx, keepSources)
-		if err != nil {
-			return classify(err)
-		}
-		if blocked {
-			return fmt.Errorf("%w: claimed CONFIG source or entries", persistence.ErrConflict)
 		}
 		err = sqlc.New(tx).DefPruneSources(ctx, keepSources)
 		if err != nil {
@@ -437,6 +397,24 @@ func (d *Definitions) write(ctx context.Context, fn func(pgx.Tx) error) error {
 	return writeTx(ctx, d.pool, true, fn)
 }
 
+func requireSchema(ctx context.Context, tx pgx.Tx) error {
+	// Held for the whole transaction; never cache compatibility across writes.
+	if _, err := tx.Exec(ctx, `LOCK TABLE public.schema_migrations IN SHARE MODE`); err != nil {
+		return fmt.Errorf("%w: schema compatibility unavailable; upgrade offline", classify(err))
+	}
+	var version int
+	var dirty bool
+	err := tx.QueryRow(ctx, `SELECT version, dirty FROM public.schema_migrations`).Scan(&version, &dirty)
+	if err != nil {
+		return fmt.Errorf("%w: schema compatibility unavailable; upgrade offline", classify(err))
+	}
+	if version != 30 || dirty {
+		return fmt.Errorf("%w: clean schema 30 required; upgrade offline using docs/registry-exposure-migration.md",
+			persistence.ErrUnavailable)
+	}
+	return nil
+}
+
 func writeTx(ctx context.Context, pool *pgxpool.Pool, lock bool, fn func(pgx.Tx) error) error {
 	// Definition/entry writes retain the adapter-wide lock; jobs lock only
 	// their source rows, so a long COPY does not block another source's job.
@@ -448,7 +426,8 @@ func writeTx(ctx context.Context, pool *pgxpool.Pool, lock bool, fn func(pgx.Tx)
 		if err != nil {
 			return classify(err)
 		}
-		if lock {
+		err = requireSchema(ctx, tx)
+		if err == nil && lock {
 			_, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(910,1)`)
 		}
 		if err == nil {
@@ -683,26 +662,6 @@ func requireKnownFields(ctx context.Context, q querier, name string, old persist
 	return nil
 }
 
-func requireNoClaims(ctx context.Context, q querier, table, name string) error {
-	var has any
-	var e error
-	switch table {
-	case "source":
-		has, e = sqlc.New(q).DefSourceClaims(ctx, name)
-	case "registry":
-		has, e = sqlc.New(q).DefViewClaims(ctx, name)
-	default:
-		return persistence.ErrInvalid
-	}
-	if e != nil {
-		return classify(e)
-	}
-	if has == true {
-		return fmt.Errorf("%w: legacy claimed definition is not owned by this adapter", persistence.ErrConflict)
-	}
-	return nil
-}
-
 type retryable struct{}
 
 func (retryable) Error() string { return "concurrent definition modification" }
@@ -719,7 +678,7 @@ func classify(err error) error {
 	}
 	if errors.Is(err, persistence.ErrInvalid) || errors.Is(err, persistence.ErrNotFound) ||
 		errors.Is(err, persistence.ErrConflict) || errors.Is(err, persistence.ErrInUse) ||
-		errors.Is(err, persistence.ErrBusy) || errors.Is(err, persistence.ErrStale) {
+		errors.Is(err, persistence.ErrBusy) || errors.Is(err, persistence.ErrStale) || errors.Is(err, persistence.ErrUnavailable) {
 		return err
 	}
 	var pg *pgconn.PgError

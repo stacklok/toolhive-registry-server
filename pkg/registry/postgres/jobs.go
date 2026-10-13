@@ -68,16 +68,6 @@ func (d *Jobs) ClaimNext(ctx context.Context, duration time.Duration) (persisten
 				definition.File != nil && definition.File.Data != "" {
 				continue
 			}
-			row, e := q.EntrySource(ctx, uuid.MustParse(definition.ID))
-			if e != nil {
-				return classify(e)
-			}
-			if e = guardClaims(ctx, q, row); errors.Is(e, persistence.ErrConflict) {
-				continue
-			}
-			if e != nil {
-				return e
-			}
 			result, e = acquireTx(ctx, tx, name, duration)
 			if errors.Is(e, persistence.ErrBusy) || errors.Is(e, persistence.ErrConflict) || errors.Is(e, persistence.ErrInvalid) {
 				continue
@@ -154,13 +144,6 @@ func (d *Jobs) Complete(ctx context.Context, job persistence.Job, result persist
 		if e := checkJobFence(ctx, q, id, lease, job.Generation); e != nil {
 			return e
 		}
-		row, e := q.EntrySource(ctx, id)
-		if e != nil {
-			return classify(e)
-		}
-		if e = guardClaims(ctx, q, row); e != nil {
-			return e
-		}
 		n, e := q.JobFinishUnchanged(ctx, sqlc.JobFinishUnchangedParams{
 			Column1: id, Column2: lease, Column3: job.Generation, Column4: result.Hash, Column5: result.FilterHash})
 		if e != nil {
@@ -208,9 +191,6 @@ func (d *Jobs) CommitSnapshot(
 		}
 		if row.Name != job.Source.Name || row.SourceType != kind {
 			return persistence.ErrStale
-		}
-		if e = guardClaims(ctx, q, row); e != nil {
-			return e
 		}
 		if e = writer.StoreSourceTx(ctx, tx, id, &snapshot, d.maxMetaSize); e != nil {
 			return classify(e)

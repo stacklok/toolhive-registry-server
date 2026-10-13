@@ -3205,9 +3205,9 @@ func TestDbSyncWriter_Store_SkillMultiVersionLatest(t *testing.T) {
 	assert.Equal(t, "3.0.0", latestVersion, "latest_entry_version should point to v3.0.0")
 }
 
-// TestSchema29ClaimsStaging is historical compatibility coverage. These inputs
-// cannot enter public ingestion; retained SQL plumbing is removed in the final schema slice.
-func TestSchema29ClaimsStaging(t *testing.T) {
+// TestSchema30ClaimsFreeStaging verifies that former claim-stamping input has
+// no path into the writer or stored source-owned payloads.
+func TestSchema30ClaimsFreeStaging(t *testing.T) {
 	t.Parallel()
 
 	// Helper to marshal claims JSON for test inputs
@@ -3351,18 +3351,11 @@ func TestSchema29ClaimsStaging(t *testing.T) {
 			ctx := context.Background()
 			ids := createTestRegistry(t, pool, tt.registryName)
 
-			// Set source-level claims if provided
-			if tt.sourceClaims != nil {
-				_, err := pool.Exec(ctx, "UPDATE source SET claims = $1 WHERE id = $2", tt.sourceClaims, ids.sourceID)
-				require.NoError(t, err)
-			}
-
 			reg := createTestUpstreamRegistry(tt.servers)
 			tx, err := pool.Begin(ctx)
 			require.NoError(t, err)
 			defer tx.Rollback(context.Background())
-			// Schema-29 compatibility plumbing only, not public ingestion policy.
-			err = (&dbSyncWriter{maxMetaSize: testMaxMetaSize}).storeSourceTx(ctx, tx, ids.sourceID, reg, tt.sourceClaims, tt.perEntryClaims)
+			err = (&dbSyncWriter{maxMetaSize: testMaxMetaSize}).storeSourceTx(ctx, tx, ids.sourceID, reg)
 			require.NoError(t, err)
 			require.NoError(t, tx.Commit(ctx))
 
@@ -3371,26 +3364,11 @@ func TestSchema29ClaimsStaging(t *testing.T) {
 			entries, err := queries.ListEntriesBySource(ctx, ids.sourceID)
 			require.NoError(t, err)
 
-			// Build a map of entry name -> claims for easy lookup
-			entryClaims := make(map[string][]byte, len(entries))
-			for _, entry := range entries {
-				entryClaims[entry.Name] = entry.Claims
-			}
-
-			for _, exp := range tt.expectations {
-				claims, ok := entryClaims[exp.name]
-				require.True(t, ok, "entry %q should exist", exp.name)
-
-				if exp.claimsNil {
-					assert.Nil(t, claims, "entry %q should have nil claims", exp.name)
-				} else {
-					require.NotNil(t, claims, "entry %q should have non-nil claims", exp.name)
-					var got map[string]string
-					err := json.Unmarshal(claims, &got)
-					require.NoError(t, err, "entry %q claims should be valid JSON", exp.name)
-					assert.Equal(t, exp.claimsMap, got, "entry %q claims mismatch", exp.name)
-				}
-			}
+			require.Len(t, entries, len(tt.expectations))
+			var columns int
+			require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns
+ WHERE table_schema='public' AND table_name IN ('source','registry','registry_entry') AND column_name='claims'`).Scan(&columns))
+			require.Zero(t, columns)
 		})
 	}
 }

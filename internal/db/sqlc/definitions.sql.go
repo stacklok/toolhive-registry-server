@@ -13,29 +13,6 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 )
 
-const defBlockedSources = `-- name: DefBlockedSources :one
-SELECT EXISTS(SELECT 1 FROM source s WHERE s.creation_type='CONFIG' AND NOT (s.name=ANY($1::text[]))
-AND (s.claims IS NOT NULL OR EXISTS(SELECT 1 FROM registry_entry e WHERE e.source_id=s.id AND e.claims IS NOT NULL)))
-`
-
-func (q *Queries) DefBlockedSources(ctx context.Context, dollar_1 []string) (bool, error) {
-	row := q.db.QueryRow(ctx, defBlockedSources, dollar_1)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
-const defBlockedViews = `-- name: DefBlockedViews :one
-SELECT EXISTS(SELECT 1 FROM registry WHERE creation_type='CONFIG' AND NOT (name=ANY($1::text[])) AND claims IS NOT NULL)
-`
-
-func (q *Queries) DefBlockedViews(ctx context.Context, dollar_1 []string) (bool, error) {
-	row := q.db.QueryRow(ctx, defBlockedViews, dollar_1)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const defDeleteAPISource = `-- name: DefDeleteAPISource :exec
 DELETE FROM source WHERE id=$1::uuid AND creation_type='API'
 `
@@ -321,7 +298,7 @@ func (q *Queries) DefLockView(ctx context.Context, name string) (DefLockViewRow,
 }
 
 const defPruneSources = `-- name: DefPruneSources :exec
-DELETE FROM source WHERE creation_type='CONFIG' AND NOT (name=ANY($1::text[])) AND claims IS NULL
+DELETE FROM source WHERE creation_type='CONFIG' AND NOT (name=ANY($1::text[]))
 `
 
 func (q *Queries) DefPruneSources(ctx context.Context, dollar_1 []string) error {
@@ -330,23 +307,12 @@ func (q *Queries) DefPruneSources(ctx context.Context, dollar_1 []string) error 
 }
 
 const defPruneViews = `-- name: DefPruneViews :exec
-DELETE FROM registry WHERE creation_type='CONFIG' AND NOT (name=ANY($1::text[])) AND claims IS NULL
+DELETE FROM registry WHERE creation_type='CONFIG' AND NOT (name=ANY($1::text[]))
 `
 
 func (q *Queries) DefPruneViews(ctx context.Context, dollar_1 []string) error {
 	_, err := q.db.Exec(ctx, defPruneViews, dollar_1)
 	return err
-}
-
-const defSourceClaims = `-- name: DefSourceClaims :one
-SELECT (claims IS NOT NULL)::boolean AS has_claims FROM source WHERE name=$1
-`
-
-func (q *Queries) DefSourceClaims(ctx context.Context, name string) (bool, error) {
-	row := q.db.QueryRow(ctx, defSourceClaims, name)
-	var has_claims bool
-	err := row.Scan(&has_claims)
-	return has_claims, err
 }
 
 const defSourceRaw = `-- name: DefSourceRaw :one
@@ -415,7 +381,7 @@ INSERT INTO source(name,creation_type,source_type,source_config,filter_config,sy
 VALUES($1,'CONFIG',$2,$3::jsonb,$4::jsonb,$5::interval,$6)
 ON CONFLICT(name) DO UPDATE SET source_config=excluded.source_config,filter_config=excluded.filter_config,
 sync_schedule=excluded.sync_schedule,syncable=excluded.syncable,updated_at=now()
-WHERE source.creation_type='CONFIG' AND source.source_type=excluded.source_type AND source.claims IS NULL
+WHERE source.creation_type='CONFIG' AND source.source_type=excluded.source_type
 `
 
 type DefUpsertConfigSourceParams struct {
@@ -445,7 +411,7 @@ func (q *Queries) DefUpsertConfigSource(ctx context.Context, arg DefUpsertConfig
 const defUpsertConfigView = `-- name: DefUpsertConfigView :one
 INSERT INTO registry(name,creation_type) VALUES($1,'CONFIG')
 ON CONFLICT(name) DO UPDATE SET updated_at=now()
-WHERE registry.creation_type='CONFIG' AND registry.claims IS NULL
+WHERE registry.creation_type='CONFIG'
 RETURNING id::text
 `
 
@@ -454,17 +420,6 @@ func (q *Queries) DefUpsertConfigView(ctx context.Context, name string) (string,
 	var id string
 	err := row.Scan(&id)
 	return id, err
-}
-
-const defViewClaims = `-- name: DefViewClaims :one
-SELECT (claims IS NOT NULL)::boolean AS has_claims FROM registry WHERE name=$1
-`
-
-func (q *Queries) DefViewClaims(ctx context.Context, name string) (bool, error) {
-	row := q.db.QueryRow(ctx, defViewClaims, name)
-	var has_claims bool
-	err := row.Scan(&has_claims)
-	return has_claims, err
 }
 
 const defViewID = `-- name: DefViewID :one

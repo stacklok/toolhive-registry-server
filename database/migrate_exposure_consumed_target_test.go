@@ -15,7 +15,7 @@ func TestExposureConsumedTargetMigrationPreservesPendingEvidence(t *testing.T) {
 	for _, retired := range []bool{false, true} {
 		t.Run(map[bool]string{false: "pending", true: "retired"}[retired], func(t *testing.T) {
 			t.Parallel()
-			conn, _ := SetupTestDB(t)
+			conn, _ := SetupTestDBAt(t, 29)
 			require.NoError(t, migrateTestTo(t, conn, 28))
 			_, err := conn.Exec(t.Context(), `INSERT INTO source(name,source_type,claims)
  VALUES('retained','file','{"team":"private-sentinel"}')`)
@@ -32,7 +32,7 @@ func TestExposureConsumedTargetMigrationPreservesPendingEvidence(t *testing.T) {
 			require.NoError(t, conn.QueryRow(t.Context(), `SELECT row_to_json(e)::text FROM exposure_acknowledgement e`).Scan(&before))
 			inventory, err = registrydb.InventoryExposure(t.Context(), conn, consumedTargetRevision)
 			require.NoError(t, err)
-			require.NoError(t, MigrateUp(t.Context(), conn))
+			require.NoError(t, MigrateUpTo(t.Context(), conn, 29))
 			require.NoError(t, conn.QueryRow(t.Context(), `SELECT row_to_json(e)::text FROM
  (SELECT singleton,database_id,inventory_version,acknowledgement_id,acknowledgement_mode,
  reviewed_digest,post_fence_digest,config_revision,acknowledged_at,retirement_id,
@@ -54,7 +54,7 @@ func TestExposureConsumedTargetMigrationPreservesPendingEvidence(t *testing.T) {
 
 func TestExposureConsumedTargetMigrationRefusesUnsupportedConsumption(t *testing.T) {
 	t.Parallel()
-	conn, _ := SetupTestDB(t)
+	conn, _ := SetupTestDBAt(t, 29)
 	require.NoError(t, migrateTestTo(t, conn, 28))
 	inventory, err := registrydb.InventoryExposure(t.Context(), conn, consumedTargetRevision)
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func TestExposureConsumedTargetMigrationRefusesUnsupportedConsumption(t *testing
 	require.NoError(t, err)
 	var before, after string
 	require.NoError(t, conn.QueryRow(t.Context(), `SELECT row_to_json(e)::text FROM exposure_acknowledgement e`).Scan(&before))
-	require.ErrorContains(t, MigrateUp(t.Context(), conn), "consumed exposure state lacks target evidence")
+	require.ErrorContains(t, MigrateUpTo(t.Context(), conn, 29), "consumed exposure state lacks target evidence")
 	require.NoError(t, conn.QueryRow(t.Context(), `SELECT row_to_json(e)::text FROM exposure_acknowledgement e`).Scan(&after))
 	require.Equal(t, before, after)
 	var exists bool
@@ -75,7 +75,7 @@ func TestExposureConsumedTargetMigrationRefusesUnsupportedConsumption(t *testing
 
 func TestExposureConsumedTargetConstraintAndDownRefusal(t *testing.T) {
 	t.Parallel()
-	conn, _ := SetupTestDB(t)
+	conn, _ := SetupTestDBAt(t, 29)
 	inventory, err := registrydb.InventoryExposure(t.Context(), conn, consumedTargetRevision)
 	require.NoError(t, err)
 	_, err = registrydb.AcknowledgeExposure(t.Context(), conn, consumedTargetRevision, inventory.Digest, false, true, true)

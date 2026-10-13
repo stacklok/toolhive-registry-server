@@ -396,7 +396,6 @@ type PluginOciPackage struct {
 type Registry struct {
 	ID           uuid.UUID    `json:"id"`
 	Name         string       `json:"name"`
-	Claims       []byte       `json:"claims"`
 	CreationType CreationType `json:"creation_type"`
 	CreatedAt    *time.Time   `json:"created_at"`
 	UpdatedAt    *time.Time   `json:"updated_at"`
@@ -409,7 +408,6 @@ type RegistryEntry struct {
 	Name      string     `json:"name"`
 	CreatedAt *time.Time `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`
-	Claims    []byte     `json:"claims"`
 }
 
 type RegistrySource struct {
@@ -481,7 +479,6 @@ type Source struct {
 	SourceConfig         []byte           `json:"source_config"`
 	FilterConfig         []byte           `json:"filter_config"`
 	Syncable             bool             `json:"syncable"`
-	Claims               []byte           `json:"claims"`
 	DefinitionGeneration int64            `json:"definition_generation"`
 }
 
@@ -542,7 +539,6 @@ type TempRegistryEntry struct {
 	SourceID  uuid.UUID  `json:"source_id"`
 	EntryType EntryType  `json:"entry_type"`
 	Name      string     `json:"name"`
-	Claims    []byte     `json:"claims"`
 	CreatedAt *time.Time `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`
 }

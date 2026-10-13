@@ -191,8 +191,8 @@ type SourceConfig struct {
 	// Note: Not applicable for non-synced sources (managed and kubernetes) - will be ignored if set
 	Filter *FilterConfig `yaml:"filter,omitempty"`
 
-	// Claims are key-value pairs attached to this source for authorization purposes
-	// Values must be string or []string
+	// Claims is private offline compatibility input. Its JSON-null encoding is
+	// frozen for schema-29 v1 receipts; active catalog preparation rejects it.
 	Claims map[string]any `yaml:"claims,omitempty"`
 }
 
@@ -201,8 +201,8 @@ type RegistryConfig struct {
 	// Name is the identifier for this registry
 	Name string `yaml:"name"`
 
-	// Claims are key-value pairs attached to this registry for authorization purposes
-	// Values must be string or []string
+	// Claims is private offline compatibility input, retained for v1 fingerprints.
+	// Active catalog preparation rejects the field by presence.
 	Claims map[string]any `yaml:"claims,omitempty"`
 
 	// Sources is an ordered list of source names that feed this registry
@@ -335,8 +335,7 @@ type ManagedConfig struct {
 
 // KubernetesConfig defines configuration for Kubernetes-based registries.
 // Kubernetes registries discover MCP servers from running Kubernetes resources.
-// Per-entry claims are set directly on CRDs via the toolhive.stacklok.dev/authz-claims
-// JSON annotation, which is merged with the source's base claims.
+// Retired claims annotation presence is rejected by standalone preflight.
 type KubernetesConfig struct {
 	// Namespaces is a list of Kubernetes namespaces to watch for MCP servers
 	// If empty, watches the namespace configured via WatchNamespace environment variable
@@ -395,16 +394,15 @@ type AuthConfig struct {
 	// Use "anonymous" to explicitly disable authentication for development.
 	Mode AuthMode `yaml:"mode,omitempty"`
 
-	// PublicPaths defines additional paths that bypass authentication
-	// These extend the default public paths (health, docs, swagger, well-known)
-	// Example: ["/custom/public", "/metrics"]
+	// PublicPaths is retired offline compatibility input; it never bypasses auth.
+	// Preserve its v1 JSON encoding, including null when absent.
 	PublicPaths []string `yaml:"publicPaths,omitempty"`
 
 	// OAuth contains OAuth/OIDC specific configuration
 	// Required when Mode is "oauth"
 	OAuth *OAuthConfig `yaml:"oauth,omitempty"`
 
-	// Authz contains authorization configuration for role-based access control
+	// Authz is retired private offline compatibility input for v1 fingerprints.
 	Authz *AuthzConfig `yaml:"authz,omitempty"`
 
 	// InsecureAllowHTTP allows HTTP issuer URLs for development/testing.

@@ -3,7 +3,6 @@ package sqlc
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -791,7 +790,6 @@ func TestGetRegistryByName(t *testing.T) {
 				createdAt := time.Now().UTC()
 				_, err := queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
 					Name:         "test-registry",
-					Claims:       nil,
 					CreationType: CreationTypeCONFIG,
 					CreatedAt:    &createdAt,
 					UpdatedAt:    &createdAt,
@@ -810,42 +808,12 @@ func TestGetRegistryByName(t *testing.T) {
 			},
 		},
 		{
-			name: "get registry with claims",
-			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries) {
-				createdAt := time.Now().UTC()
-				claims, err := json.Marshal(map[string]string{"sub": "user123"})
-				require.NoError(t, err)
-
-				_, err = queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
-					Name:         "registry-with-claims",
-					Claims:       claims,
-					CreationType: CreationTypeCONFIG,
-					CreatedAt:    &createdAt,
-					UpdatedAt:    &createdAt,
-				})
-				require.NoError(t, err)
-			},
-			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
-				registry, err := queries.GetRegistryByName(context.Background(), "registry-with-claims")
-				require.NoError(t, err)
-				require.Equal(t, "registry-with-claims", registry.Name)
-
-				var claims map[string]string
-				err = json.Unmarshal(registry.Claims, &claims)
-				require.NoError(t, err)
-				require.Equal(t, "user123", claims["sub"])
-			},
-		},
-		{
 			name: "get registry with API creation type",
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T, queries *Queries) {
 				createdAt := time.Now().UTC()
 				_, err := queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
 					Name:         "api-registry",
-					Claims:       nil,
 					CreationType: CreationTypeAPI,
 					CreatedAt:    &createdAt,
 					UpdatedAt:    &createdAt,
@@ -867,7 +835,6 @@ func TestGetRegistryByName(t *testing.T) {
 				createdAt := time.Now().UTC()
 				_, err := queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
 					Name:         "registry-alpha",
-					Claims:       nil,
 					CreationType: CreationTypeCONFIG,
 					CreatedAt:    &createdAt,
 					UpdatedAt:    &createdAt,
@@ -876,7 +843,6 @@ func TestGetRegistryByName(t *testing.T) {
 
 				_, err = queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
 					Name:         "registry-beta",
-					Claims:       nil,
 					CreationType: CreationTypeAPI,
 					CreatedAt:    &createdAt,
 					UpdatedAt:    &createdAt,
@@ -911,122 +877,25 @@ func TestGetRegistryByName(t *testing.T) {
 	}
 }
 
-func TestUpsertRegistryUpdatesClaims(t *testing.T) {
+func TestUpsertRegistryPreservesIdentity(t *testing.T) {
 	t.Parallel()
-
-	testCases := []struct {
-		name         string
-		setupFunc    func(t *testing.T, queries *Queries)
-		scenarioFunc func(t *testing.T, queries *Queries)
-	}{
-		{
-			name: "claims are updated on upsert conflict",
-			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries) {
-				createdAt := time.Now().UTC()
-				oldClaims, err := json.Marshal(map[string]string{"org": "acme"})
-				require.NoError(t, err)
-
-				_, err = queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
-					Name:         "claims-update-test",
-					Claims:       oldClaims,
-					CreationType: CreationTypeAPI,
-					CreatedAt:    &createdAt,
-					UpdatedAt:    &createdAt,
-				})
-				require.NoError(t, err)
-			},
-			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
-				updatedAt := time.Now().UTC()
-				newClaims, err := json.Marshal(map[string]string{"org": "contoso", "team": "eng"})
-				require.NoError(t, err)
-
-				// Upsert the same registry with updated claims.
-				returned, err := queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
-					Name:         "claims-update-test",
-					Claims:       newClaims,
-					CreationType: CreationTypeAPI,
-					CreatedAt:    &updatedAt,
-					UpdatedAt:    &updatedAt,
-				})
-				require.NoError(t, err)
-
-				// The RETURNING row must carry the new claims.
-				var returnedClaims map[string]string
-				err = json.Unmarshal(returned.Claims, &returnedClaims)
-				require.NoError(t, err)
-				require.Equal(t, "contoso", returnedClaims["org"])
-				require.Equal(t, "eng", returnedClaims["team"])
-				_, hasAcme := returnedClaims["org"]
-				require.True(t, hasAcme) // key exists but value is "contoso", not "acme"
-				require.NotEqual(t, "acme", returnedClaims["org"])
-
-				// A fresh GET must also reflect the updated claims.
-				fetched, err := queries.GetRegistryByName(context.Background(), "claims-update-test")
-				require.NoError(t, err)
-
-				var fetchedClaims map[string]string
-				err = json.Unmarshal(fetched.Claims, &fetchedClaims)
-				require.NoError(t, err)
-				require.Equal(t, "contoso", fetchedClaims["org"])
-				require.Equal(t, "eng", fetchedClaims["team"])
-				require.NotEqual(t, "acme", fetchedClaims["org"])
-			},
-		},
-		{
-			name: "claims cleared to nil on upsert conflict",
-			//nolint:thelper // We want to see these lines in the test output
-			setupFunc: func(t *testing.T, queries *Queries) {
-				createdAt := time.Now().UTC()
-				oldClaims, err := json.Marshal(map[string]string{"org": "acme"})
-				require.NoError(t, err)
-
-				_, err = queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
-					Name:         "claims-nil-test",
-					Claims:       oldClaims,
-					CreationType: CreationTypeAPI,
-					CreatedAt:    &createdAt,
-					UpdatedAt:    &createdAt,
-				})
-				require.NoError(t, err)
-			},
-			//nolint:thelper // We want to see these lines in the test output
-			scenarioFunc: func(t *testing.T, queries *Queries) {
-				updatedAt := time.Now().UTC()
-
-				// Upsert the same registry with nil claims.
-				returned, err := queries.UpsertRegistry(context.Background(), UpsertRegistryParams{
-					Name:         "claims-nil-test",
-					Claims:       nil,
-					CreationType: CreationTypeAPI,
-					CreatedAt:    &updatedAt,
-					UpdatedAt:    &updatedAt,
-				})
-				require.NoError(t, err)
-
-				// The RETURNING row must have nil claims.
-				require.Nil(t, returned.Claims)
-
-				// A fresh GET must also show nil claims.
-				fetched, err := queries.GetRegistryByName(context.Background(), "claims-nil-test")
-				require.NoError(t, err)
-				require.Nil(t, fetched.Claims)
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			db, cleanupFunc := database.SetupTestDB(t)
-			t.Cleanup(cleanupFunc)
-			queries := New(db)
-			require.NotNil(t, queries)
-
-			tc.setupFunc(t, queries)
-			tc.scenarioFunc(t, queries)
-		})
-	}
+	db, _ := database.SetupTestDB(t)
+	queries := New(db)
+	createdAt := time.Now().UTC()
+	initial, err := queries.UpsertRegistry(t.Context(), UpsertRegistryParams{
+		Name: "upsert-test", CreationType: CreationTypeAPI, CreatedAt: &createdAt, UpdatedAt: &createdAt,
+	})
+	require.NoError(t, err)
+	updatedAt := createdAt.Add(time.Hour)
+	returned, err := queries.UpsertRegistry(t.Context(), UpsertRegistryParams{
+		Name: "upsert-test", CreationType: CreationTypeAPI, CreatedAt: &updatedAt, UpdatedAt: &updatedAt,
+	})
+	require.NoError(t, err)
+	require.Equal(t, initial.ID, returned.ID)
+	require.Equal(t, initial.CreatedAt, returned.CreatedAt)
+	require.Equal(t, CreationTypeAPI, returned.CreationType)
+	require.WithinDuration(t, updatedAt, *returned.UpdatedAt, time.Microsecond)
+	fetched, err := queries.GetRegistryByName(t.Context(), "upsert-test")
+	require.NoError(t, err)
+	require.Equal(t, returned, fetched)
 }

@@ -136,7 +136,7 @@ func TestCatalogFrozenPolicyAndFinalOverrides(t *testing.T) {
 
 func catalogPG(t *testing.T, cfg *config.Config) (*pgx.Conn, *pgxpool.Pool) {
 	t.Helper()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	cc := conn.Config()
 	cfg.Database = &config.DatabaseConfig{Host: cc.Host, Port: int(cc.Port), User: cc.User, Password: cc.Password, Database: cc.Database, SSLMode: "disable"}
 	pool, err := pgxpool.New(t.Context(), cc.ConnString())
@@ -144,7 +144,7 @@ func catalogPG(t *testing.T, cfg *config.Config) (*pgx.Conn, *pgxpool.Pool) {
 	t.Cleanup(pool.Close)
 	return conn, pool
 }
-func approveCatalog(t *testing.T, conn *pgx.Conn, cfg *config.Config, empty bool) {
+func approveCatalog(t *testing.T, conn *pgx.Conn, cfg *config.Config, empty bool, pending ...bool) {
 	t.Helper()
 	revision := catalogRevision(t, cfg)
 	inventory, err := db.InventoryExposure(t.Context(), conn, revision)
@@ -155,9 +155,18 @@ func approveCatalog(t *testing.T, conn *pgx.Conn, cfg *config.Config, empty bool
 		_, err = db.RetireExposureClaims(t.Context(), conn, revision, ack.ID, ack.PostFenceDigest, true, true)
 		require.NoError(t, err)
 	}
+	if len(pending) == 0 {
+		require.NoError(t, FinalizeExposure(t.Context(), CatalogOptions{Config: cfg}))
+		require.NoError(t, database.MigrateUp(t.Context(), conn))
+	}
 }
 func constructCatalog(t *testing.T, cfg *config.Config, pool *pgxpool.Pool, fetcher reconcile.Fetcher) *CatalogApp {
 	t.Helper()
+	require.NoError(t, FinalizeExposure(t.Context(), CatalogOptions{Config: cfg, Storage: storage.CatalogPostgres{BorrowedPool: pool}}))
+	conn, err := pool.Acquire(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, database.MigrateUp(t.Context(), conn.Conn()))
+	conn.Release()
 	app, err := NewCatalogApp(t.Context(), CatalogOptions{Config: cfg, Storage: storage.CatalogPostgres{BorrowedPool: pool}, Fetcher: fetcher,
 		HTTP: []RegistryAppOptions{WithAddress("127.0.0.1:0"), WithInternalAddress("127.0.0.1:0")}, Reconcile: reconcile.Options{PollInterval: 10 * time.Millisecond, LeaseDuration: time.Minute}})
 	require.NoError(t, err)
@@ -184,7 +193,7 @@ func TestCatalogMissingAndStaleReceiptsLeaveDatabaseUntouched(t *testing.T) {
 				_, err = db.AcknowledgeExposure(t.Context(), conn, rev, inventory.Digest, true, true, false)
 				require.NoError(t, err)
 			} else if strings.HasPrefix(state, "stale-") {
-				approveCatalog(t, conn, cfg, false)
+				approveCatalog(t, conn, cfg, false, true)
 			}
 			switch state {
 			case "stale-config":

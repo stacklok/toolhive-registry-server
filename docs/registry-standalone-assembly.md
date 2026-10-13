@@ -10,7 +10,9 @@ The CLI selects this composition. Helm opts into empty-install preparation only
 when `initializeEmptyCatalog` is explicitly enabled; production defaults remain
 private OAuth/admin-off with an externally supplied read-only policy. The obsolete
 runtime/role/claims service and its factories are removed. Private offline configuration
-compatibility and physical claims columns remain at schema 29 until the final schema slice.
+compatibility remains private. Schema 30 removes the live claims columns while
+preserving archives and receipt evidence. The same final binary runs historical
+review/finalization at 29 and forward cleanup before ordinary writes at 30.
 Never co-own sources with old writers; stop/drain all old readers/writers before review.
 
 ## Direct use
@@ -90,7 +92,9 @@ Operator/fetcher and telemetry providers are borrowed; their hosts retain owners
    review. Operator preflight authoritatively lists the entire namespace scope and all
    three CRD kinds. Exact export opt-in followed by retired-annotation presence rejects
    the whole snapshot, even when conversion would otherwise skip an object.
-5. Serialize `ConsumeExposure` at clean schema **29**. Missing/stale/pending unretired
+5. Serialize `ConsumeExposure` at clean schema **30** for ordinary serving; offline
+   `migrate exposure finalize` uses the same barrier at **29** and stops before
+   reconciliation, repair, ingestion or HTTP. Missing/stale/pending unretired
    evidence cannot be bypassed by empty/unlabeled data, authz-off or admin-off. A pending
    receipt checks final config/policy, target and full persisted catalog. Once consumed,
    only target continuity is a restart binding: legitimate catalog/config/policy edits
@@ -167,7 +171,10 @@ not indexed. CLI and public app tests exercise selected startup; the old
 Actual ct install with newly built images and remote CI must still be validated
 before release. This local change does not publish a new production image/chart;
 select an image containing it explicitly (the chart requires that value rather
-than falling back to a legacy image). #915 physical cleanup is deliberately deferred.
+than falling back to a legacy image). Physical cleanup is implemented at schema 30;
+combined external-module final validation and actual image/ct install remain the next
+release gates. The same-name cross-kind operator identity decision is still pending
+user agreement; collision behavior is unchanged.
 
 Embedding applications continue to import the public packages and own their admission,
 personalized selection (if needed) and dependencies. Existing separate-module executable

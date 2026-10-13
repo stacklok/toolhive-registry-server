@@ -68,7 +68,6 @@ SELECT src.source_type AS registry_type,
        s.icons,
        s.metadata,
        s.extension_meta,
-       e.claims,
        rs.source_id,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
@@ -127,7 +126,6 @@ type GetSkillVersionRow struct {
 	Icons          []byte      `json:"icons"`
 	Metadata       []byte      `json:"metadata"`
 	ExtensionMeta  []byte      `json:"extension_meta"`
-	Claims         []byte      `json:"claims"`
 	SourceID       uuid.UUID   `json:"source_id"`
 	Position       int32       `json:"position"`
 }
@@ -175,7 +173,6 @@ func (q *Queries) GetSkillVersion(ctx context.Context, arg GetSkillVersionParams
 			&i.Icons,
 			&i.Metadata,
 			&i.ExtensionMeta,
-			&i.Claims,
 			&i.SourceID,
 			&i.Position,
 		); err != nil {
@@ -209,7 +206,6 @@ SELECT src.source_type AS registry_type,
        s.icons,
        s.metadata,
        s.extension_meta,
-       e.claims,
        0::integer AS position
   FROM skill s
   JOIN entry_version v ON s.version_id = v.id
@@ -247,7 +243,6 @@ type GetSkillVersionBySourceNameRow struct {
 	Icons          []byte      `json:"icons"`
 	Metadata       []byte      `json:"metadata"`
 	ExtensionMeta  []byte      `json:"extension_meta"`
-	Claims         []byte      `json:"claims"`
 	Position       int32       `json:"position"`
 }
 
@@ -276,7 +271,6 @@ func (q *Queries) GetSkillVersionBySourceName(ctx context.Context, arg GetSkillV
 		&i.Icons,
 		&i.Metadata,
 		&i.ExtensionMeta,
-		&i.Claims,
 		&i.Position,
 	)
 	return i, err
@@ -559,7 +553,6 @@ SELECT src.source_type AS registry_type,
        s.icons,
        s.metadata,
        s.extension_meta,
-       e.claims,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
        COALESCE(rs.position, 32767)::integer AS position
@@ -616,7 +609,6 @@ type ListSkillsRow struct {
 	Icons         []byte      `json:"icons"`
 	Metadata      []byte      `json:"metadata"`
 	ExtensionMeta []byte      `json:"extension_meta"`
-	Claims        []byte      `json:"claims"`
 	Position      int32       `json:"position"`
 }
 
@@ -661,7 +653,6 @@ func (q *Queries) ListSkills(ctx context.Context, arg ListSkillsParams) ([]ListS
 			&i.Icons,
 			&i.Metadata,
 			&i.ExtensionMeta,
-			&i.Claims,
 			&i.Position,
 		); err != nil {
 			return nil, err

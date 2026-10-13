@@ -19,7 +19,12 @@ import (
 
 func newBackend(t *testing.T) (*postgres.Definitions, *pgxpool.Pool) {
 	t.Helper()
-	conn, _ := database.SetupTestDB(t)
+	return newBackendAt(t, 30)
+}
+
+func newBackendAt(t *testing.T, version uint) (*postgres.Definitions, *pgxpool.Pool) {
+	t.Helper()
+	conn, _ := database.SetupTestDBAt(t, version)
 	pool, e := pgxpool.New(t.Context(), conn.Config().ConnString())
 	if e != nil {
 		t.Fatal(e)
@@ -55,7 +60,7 @@ func TestConformance(t *testing.T) {
 }
 func TestBorrowedPoolAndLegacyClaims(t *testing.T) {
 	t.Parallel()
-	d, pool := newBackend(t)
+	d, pool := newBackendAt(t, 29)
 	ctx := t.Context()
 	_, e := pool.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable,creation_type,claims)
  VALUES('claimed','managed','{}',false,'API','{"team":"a"}')`)
@@ -67,14 +72,12 @@ func TestBorrowedPoolAndLegacyClaims(t *testing.T) {
 		t.Fatal(e)
 	}
 	_, e = d.UpdateSource(ctx, "claimed", persistence.SourceDefinition{Name: "claimed", Managed: &persistence.ManagedSpec{}})
-	checkUnrefinedConflict(t, e)
-	if !errors.Is(e, persistence.ErrConflict) {
-		t.Fatalf("update claimed source: %v", e)
+	if !errors.Is(e, persistence.ErrUnavailable) {
+		t.Fatalf("update historical source: %v", e)
 	}
-	if e = d.DeleteSource(ctx, "claimed"); !errors.Is(e, persistence.ErrConflict) {
-		t.Fatalf("delete claimed source: %v", e)
+	if e = d.DeleteSource(ctx, "claimed"); !errors.Is(e, persistence.ErrUnavailable) {
+		t.Fatalf("delete historical source: %v", e)
 	}
-	checkUnrefinedConflict(t, e)
 	got, e := d.GetSource(ctx, "claimed")
 	if e != nil {
 		t.Fatal(e)
@@ -125,9 +128,14 @@ func TestUnsupportedLegacyFields(t *testing.T) {
 
 func TestDefinitionDeletePreservesClaimedEntries(t *testing.T) {
 	t.Parallel()
-	d, pool := newBackend(t)
+	d, pool := newBackendAt(t, 29)
 	ctx := t.Context()
-	source, e := d.CreateSource(ctx, persistence.SourceDefinition{Name: "claimed-entries", API: &persistence.APISpec{Endpoint: "https://example.org"}, Schedule: "1h"})
+	_, e := pool.Exec(ctx, `INSERT INTO source(name,source_type,source_config,sync_schedule,creation_type)
+ VALUES('claimed-entries','api','{"endpoint":"https://example.org"}',interval '1 hour','API')`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	source, e := d.GetSource(ctx, "claimed-entries")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -135,7 +143,7 @@ func TestDefinitionDeletePreservesClaimedEntries(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = d.DeleteSource(ctx, source.Name); !errors.Is(e, persistence.ErrConflict) {
+	if e = d.DeleteSource(ctx, source.Name); !errors.Is(e, persistence.ErrUnavailable) {
 		t.Fatalf("delete claimed entries: %v", e)
 	}
 	if _, e = d.GetSource(ctx, source.Name); e != nil {
@@ -145,7 +153,7 @@ func TestDefinitionDeletePreservesClaimedEntries(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = d.Reconcile(ctx, nil, nil); !errors.Is(e, persistence.ErrConflict) {
+	if e = d.Reconcile(ctx, nil, nil); !errors.Is(e, persistence.ErrUnavailable) {
 		t.Fatalf("prune claimed entries: %v", e)
 	}
 	var claims string
@@ -157,7 +165,7 @@ func TestDefinitionDeletePreservesClaimedEntries(t *testing.T) {
 
 func TestReconcilePreservesLegacyClaims(t *testing.T) {
 	t.Parallel()
-	d, pool := newBackend(t)
+	d, pool := newBackendAt(t, 29)
 	ctx := t.Context()
 	_, err := pool.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable,creation_type,claims)
 	 VALUES('owned','managed','{}',false,'CONFIG','{"team":"a"}')`)
@@ -177,7 +185,7 @@ func TestReconcilePreservesLegacyClaims(t *testing.T) {
 		{"update", []persistence.SourceDefinition{{Name: "owned", Managed: &persistence.ManagedSpec{}}},
 			[]persistence.ViewDefinition{{Name: "owned-view", Sources: []string{"owned"}}}},
 	} {
-		if err := d.Reconcile(ctx, tc.sources, tc.views); !errors.Is(err, persistence.ErrConflict) {
+		if err := d.Reconcile(ctx, tc.sources, tc.views); !errors.Is(err, persistence.ErrUnavailable) {
 			t.Fatalf("%s reconcile claimed definition: %v", tc.name, err)
 		}
 	}

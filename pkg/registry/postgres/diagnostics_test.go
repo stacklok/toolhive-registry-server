@@ -88,7 +88,7 @@ func TestDiagnosticsRawLegacyAndStatus(t *testing.T) {
 	}
 	for _, kind := range []persistence.EntryKind{persistence.ServerKind, persistence.SkillKind, persistence.PluginKind} {
 		var entryID string
-		if err = pool.QueryRow(ctx, `INSERT INTO registry_entry(source_id,entry_type,name,claims) VALUES($1,$2,'same','{"secret":"claim"}') RETURNING id::text`, source.ID, kind).Scan(&entryID); err != nil {
+		if err = pool.QueryRow(ctx, `INSERT INTO registry_entry(source_id,entry_type,name) VALUES($1,$2,'same') RETURNING id::text`, source.ID, kind).Scan(&entryID); err != nil {
 			t.Fatal(err)
 		}
 		// Deliberately no payload or related tables: lightweight diagnostics must

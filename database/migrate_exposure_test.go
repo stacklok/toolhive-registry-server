@@ -10,7 +10,7 @@ import (
 
 func TestExposureRetirementMigrationPreservesReviewAndCatalog(t *testing.T) {
 	t.Parallel()
-	conn, _ := SetupTestDB(t)
+	conn, _ := SetupTestDBAt(t, 29)
 	require.NoError(t, migrateTestTo(t, conn, 27))
 	_, err := conn.Exec(t.Context(), `INSERT INTO source(name,source_type,source_config,claims)
  VALUES('retained','file','{}','{"private":"retained"}');
@@ -26,7 +26,7 @@ func TestExposureRetirementMigrationPreservesReviewAndCatalog(t *testing.T) {
 	require.ErrorContains(t, err, "requires clean schema version 28")
 	before, err := registrydb.InventoryExposure(t.Context(), conn, revision)
 	require.NoError(t, err)
-	require.NoError(t, MigrateUp(t.Context(), conn))
+	require.NoError(t, MigrateUpTo(t.Context(), conn, 29))
 	after, err := registrydb.InventoryExposure(t.Context(), conn, revision)
 	require.NoError(t, err)
 	require.Equal(t, before, after, "bookkeeping alone must not invalidate canonical format 1")
@@ -39,7 +39,7 @@ func TestExposureRetirementMigrationPreservesReviewAndCatalog(t *testing.T) {
 	require.True(t, dormant)
 	// New down permits preserving a pending ack; historical 27 down still refuses it.
 	require.NoError(t, migrateTestTo(t, conn, 27))
-	require.NoError(t, MigrateUp(t.Context(), conn))
+	require.NoError(t, MigrateUpTo(t.Context(), conn, 29))
 	_, err = registrydb.RetireExposureClaims(t.Context(), conn, revision, ack.ID, ack.PostFenceDigest, true, true)
 	require.NoError(t, err)
 	require.ErrorContains(t, migrateTestTo(t, conn, 27), "refusing to discard exposure retirement")
@@ -52,7 +52,7 @@ func TestExposureRetirementDownRefusesArchiveOrConsumption(t *testing.T) {
 	for _, state := range []string{"archive", "consumption"} {
 		t.Run(state, func(t *testing.T) {
 			t.Parallel()
-			conn, _ := SetupTestDB(t)
+			conn, _ := SetupTestDBAt(t, 29)
 			if state == "archive" {
 				_, err := conn.Exec(t.Context(), `INSERT INTO exposure_claims_archive
  (retirement_id,row_table,row_id,name,ownership,claims_sql_null)
@@ -79,7 +79,7 @@ func TestExposureRetirementDownRefusesArchiveOrConsumption(t *testing.T) {
 
 func TestExposureArchiveNarrowConstraints(t *testing.T) {
 	t.Parallel()
-	conn, _ := SetupTestDB(t)
+	conn, _ := SetupTestDBAt(t, 29)
 	for _, statement := range []string{
 		`INSERT INTO exposure_claims_archive(retirement_id,row_table,row_id,name,claims_sql_null)
  VALUES(gen_random_uuid(),'arbitrary',gen_random_uuid(),'bad',true)`,
@@ -103,7 +103,7 @@ func TestExposureArchiveNarrowConstraints(t *testing.T) {
 	var version int
 	require.NoError(t, conn.QueryRow(t.Context(), `SELECT version FROM schema_migrations`).Scan(&version))
 	require.Equal(t, 29, version)
-	_, err := conn.Exec(t.Context(), `UPDATE schema_migrations SET version=30`)
+	_, err := conn.Exec(t.Context(), `UPDATE schema_migrations SET version=31`)
 	require.NoError(t, err)
 	_, err = registrydb.InventoryExposure(t.Context(), conn, "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	require.ErrorContains(t, err, "requires clean schema version 27, 28 or 29")
@@ -114,7 +114,7 @@ func TestExposureArchiveNarrowConstraints(t *testing.T) {
 
 func TestExposureMigrationIdentityOnlyAndDowngrade(t *testing.T) {
 	t.Parallel()
-	conn, _ := SetupTestDB(t)
+	conn, _ := SetupTestDBAt(t, 29)
 	require.NoError(t, migrateTestTo(t, conn, 26))
 	_, err := conn.Exec(t.Context(), `INSERT INTO source(name,source_type,source_config,claims)
  VALUES('retained','file','{}','{"private":"retained"}');
@@ -123,7 +123,7 @@ func TestExposureMigrationIdentityOnlyAndDowngrade(t *testing.T) {
 	require.NoError(t, err)
 	var before string
 	require.NoError(t, conn.QueryRow(t.Context(), `SELECT row_to_json(s)::text FROM source s`).Scan(&before))
-	require.NoError(t, MigrateUp(t.Context(), conn))
+	require.NoError(t, MigrateUpTo(t.Context(), conn, 29))
 	var after, identity string
 	var ack *string
 	require.NoError(t, conn.QueryRow(t.Context(), `SELECT row_to_json(s)::text FROM source s`).Scan(&after))
@@ -136,12 +136,12 @@ func TestExposureMigrationIdentityOnlyAndDowngrade(t *testing.T) {
  FROM exposure_acknowledgement`).Scan(&identity, &ack))
 	require.NotEmpty(t, identity)
 	require.Nil(t, ack)
-	require.NoError(t, MigrateUp(t.Context(), conn))
+	require.NoError(t, MigrateUpTo(t.Context(), conn, 29))
 	var unchanged string
 	require.NoError(t, conn.QueryRow(t.Context(), `SELECT database_id::text FROM exposure_acknowledgement`).Scan(&unchanged))
 	require.Equal(t, identity, unchanged)
 	require.NoError(t, migrateTestTo(t, conn, 26))
-	require.NoError(t, MigrateUp(t.Context(), conn))
+	require.NoError(t, MigrateUpTo(t.Context(), conn, 29))
 	revision := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	inventory, err := registrydb.InventoryExposure(t.Context(), conn, revision)
 	require.NoError(t, err)

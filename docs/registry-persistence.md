@@ -9,8 +9,8 @@ Pass a **migrated, caller-owned** `*pgxpool.Pool`; the constructor checks for ni
 but does not connect, migrate, or close the pool. The host retains responsibility
 for its lifetime. There is no built-in tenant, user, auth, visibility, or claims
 policy. **Do not mount these methods directly as unauthenticated endpoints.**
-The existing standalone HTTP service and its authorization are unchanged; this
-adapter is not wired to it. Hosts must authorize every call and control which
+The standalone assembly uses these same public adapters with verified authentication
+and Cedar admission. Embedding hosts must authorize every call and control which
 principals can list or mutate definitions.
 
 ```go
@@ -73,16 +73,13 @@ nonzero timestamps; updates ignore them as inputs. Timestamp-only touches do not
 invalidate jobs. See [definition administration](registry-definition-administration.md)
 for the public catalog wrapper and explicit committed follow-up failure contract.
 
-**Legacy interoperability boundary:** definitions carrying non-null legacy
-claims cannot be updated, deleted, or pruned by this claims-free adapter; those
-operations return `ErrConflict` rather than erasing authorization metadata.
-A source with any claimed entry name likewise cannot be deleted or pruned;
-Source updates and retained CONFIG reconciliation also reject unknown legacy
-spec/filter fields instead of dropping them. Read-only inspection does not
-return claims. Do not have the legacy service and this adapter concurrently
-**own** the same definition: the legacy service can update claims and source
-config outside this adapter's contract. Existing
-standalone claim enforcement remains in the legacy service. The adapter's
+**Schema compatibility boundary:** every public PostgreSQL write and `NewEntries`
+repair requires clean schema 30. Historical, dirty, or newer schemas return
+`ErrUnavailable` (backend maintenance, not a caller resource conflict). Complete
+[offline review, finalization and cleanup](registry-exposure-migration.md) before
+using these adapters. Unknown historical spec/filter fields are still rejected
+instead of being dropped. Read-only inspection does not return claims. Never
+co-own definitions with an old binary. The adapter's
 writes use serializable transactions, a transaction-scoped advisory lock in a
 consistent order, retries on serialization/deadlock failures, conditional
 ownership writes, a RESTRICT source-link FK, and a partial unique index for the
@@ -144,10 +141,8 @@ _ = page // raw source-owned records, not an authorized consumer view
 These methods are **raw catalog storage primitives, not an authorization
 boundary**. The host must apply its own policy before allowing callers to
 read or mutate entries; no claims, tenant, user, JWT, or visibility policy is
-in the public contract. They are not mounted on the standalone HTTP server;
-legacy claim enforcement and wire selection remain unchanged (including known
-legacy version-row-first view shadowing). The separate [consumer-view reader](registry-consumer-reads.md)
-now implements whole-name winning-source selection before search/version/latest/paging;
+in the public contract. Standalone consumer HTTP uses the separate
+[consumer-view reader](registry-consumer-reads.md), which implements whole-name winning-source selection before search/version/latest/paging;
 [unshadowed diagnostics](registry-publication-diagnostics.md) deliberately include all sources' versions. `GetEntry` takes
 `VersionSelector{Exact: "latest"}` for the literal stored version, and
 `VersionSelector{Latest: true}` for the highest under `model.CompareVersions`.
@@ -175,9 +170,11 @@ the new backend and complete its pointer repair **before serving reads**. Old
 writers are incompatible with the new non-null kind column; this is not an
 online rolling-upgrade barrier. `NewEntries(ctx, pool, maxMetaSize)` explicitly repairs
 and backfills every kind/name from entry versions with the approved Go total
-comparator before the adapter serves reads. The standalone service performs
-the same repair during startup. Hosts should construct `NewEntries` after
-applying migration 000025 rather than importing an internal package. No schema
+comparator before the adapter serves reads. The standalone assembly performs
+the same repair during startup. Hosts must first reach **clean schema 30** through
+the [offline exposure workflow](registry-exposure-migration.md), then construct
+`NewEntries(ctx, pool, maxMetaSize)` rather than importing an internal package.
+Schema 25 alone is not supported by the final adapter. No schema
 migration or pool close is hidden inside `NewEntries`. The down migration
 **refuses** to discard cross-kind versions (even without latest pointers) or
 nonempty skill provenance, server schema URLs, package/remote transport
@@ -185,16 +182,14 @@ variables, or icon sizes/theme presence; remove/migrate that data explicitly
 first. There is no SQL-only
 lexical approximation of latest order.
 
-Writes fail `ErrConflict` when either the source or any of its existing entry
-names contains non-null legacy claims (including `{}`); no legacy claims are
-erased. The host must not concurrently let the legacy and new adapter **own**
-the same source. Source replacement serializes source writes and rolls back
+Writes and latest repair reject anything other than clean schema 30 with
+`ErrUnavailable`; they never erase historical claims to make an operation eligible.
+Complete the offline workflow first. Source replacement serializes source writes and rolls back
 all three kinds on failure/cancellation. This unleased method is **not**
 stale-fetch fencing: it returns `ErrBusy` while a live job lease owns that
 source, and after its own successful replacement it invalidates previously
-issued tokens for the source. Do not co-own a source with the legacy writer:
-the old coordinator is an **exclusive alternative owner** and does not enforce
-these leases. A private internal writer transaction seam composes the fenced
+issued tokens for the source. Old binaries are unsupported concurrent owners
+and do not enforce these leases. A private internal writer transaction seam composes the fenced
 snapshot and job acknowledgement without exporting a driver `Tx` through public
 interfaces. The snapshot envelope (`$schema`,
 registry `version`, `meta.last_updated`) is validated but not cataloged as an
@@ -217,7 +212,8 @@ an active lease; `CommitSnapshot` atomically writes snapshot and success metadat
 `Status` inspects the last attempt and last successful counts/hashes. Durations
 are positive microseconds up to 24h; DB time is authoritative. Definition
 changes and source reincarnations invalidate fetched jobs. Active leases block
-unfenced `ReplaceSnapshot`. The old standalone coordinator is **not** safe to
-co-own a source with jobs. See [jobs and lifecycle](registry-persistence-jobs.md)
-for migration, retry/error semantics, full example and conformance. Consumer-view
-query portability and app wiring remain for #913/#914; no auth is removed here.
+unfenced `ReplaceSnapshot`. Job mutations require clean schema 30; the old
+standalone coordinator is removed and old binaries must remain offline. See
+[jobs and lifecycle](registry-persistence-jobs.md) for migration, retry/error
+semantics, full example and conformance. [Standalone assembly](registry-standalone-assembly.md)
+uses these same capabilities behind verified authentication and Cedar admission.

@@ -21,7 +21,7 @@ import (
 
 func TestExposureRetirementArchiveFidelityAndPreservation(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	// Exercise managed payload extras and ownership as well as all three kinds.
 	_, err := conn.Exec(t.Context(), `UPDATE source SET source_type='managed',syncable=false WHERE name='unlinked';
@@ -90,16 +90,15 @@ func TestExposureRetirementArchiveFidelityAndPreservation(t *testing.T) {
 	defer pool.Close()
 	jobs, err := postgres.NewJobs(pool, 65536)
 	require.NoError(t, err)
-	job, err := jobs.Acquire(t.Context(), "linked", time.Minute)
-	require.NoError(t, err)
-	require.NoError(t, jobs.CommitSnapshot(t.Context(), job, persistence.SyncResult{Hash: "new"}, model.Snapshot{}))
+	_, err = jobs.Acquire(t.Context(), "linked", time.Minute)
+	require.ErrorIs(t, err, persistence.ErrUnavailable, "retirement alone must not enable schema-29 writers")
 	require.Equal(t, claims, archiveRows(t, conn, `SELECT row_table,row_id,name,source_id,source_name,kind,ownership,
  claims_sql_null,claims FROM exposure_claims_archive`), "live deletions cannot cascade into evidence")
 }
 
 func TestExposureRetirementRejectsInvalidEvidenceAndConsent(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	before := retirementState(t, conn)
 	inventory := exposureInventory(t, conn)
@@ -135,7 +134,7 @@ func TestExposureRetirementRejectsInvalidEvidenceAndConsent(t *testing.T) {
 
 func TestExposureRetirementRejectsEveryLiveLease(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	ack := retirementAck(t, conn)
 	for _, generation := range []int{2, 0} {
@@ -158,7 +157,7 @@ func TestExposureRetirementAtomicRollback(t *testing.T) {
 	} {
 		t.Run(failure.name, func(t *testing.T) {
 			t.Parallel()
-			conn, _ := database.SetupTestDB(t)
+			conn, _ := database.SetupTestDBAt(t, 29)
 			seedExposure(t, conn)
 			ack := retirementAck(t, conn)
 			_, err := conn.Exec(t.Context(), `CREATE FUNCTION reject_retirement() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -177,7 +176,7 @@ func TestExposureRetirementAtomicRollback(t *testing.T) {
 
 func TestExposureRetirementEmptyMarkerNeedsNoArchive(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	inventory := exposureInventory(t, conn)
 	ack, err := registrydb.AcknowledgeExposure(t.Context(), conn, exposureRevision, inventory.Digest, false, true, true)
 	require.NoError(t, err)
@@ -189,19 +188,15 @@ func TestExposureRetirementEmptyMarkerNeedsNoArchive(t *testing.T) {
 
 func TestExposureRetirementFencesExpiredJobs(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	pool, err := pgxpool.New(t.Context(), conn.Config().ConnString())
 	require.NoError(t, err)
 	defer pool.Close()
-	definitions, err := postgres.NewDefinitions(pool)
-	require.NoError(t, err)
-	source, err := definitions.CreateSource(t.Context(), persistence.SourceDefinition{Name: "fenced", API: &persistence.APISpec{Endpoint: "https://example.org"}, Schedule: "1h"})
-	require.NoError(t, err)
+	source := historicalSource(t, conn, "fenced")
 	jobs, err := postgres.NewJobs(pool, 65536)
 	require.NoError(t, err)
 	ack := retirementAck(t, conn)
-	job, err := jobs.Acquire(t.Context(), source.Name, time.Minute)
-	require.NoError(t, err)
+	job := historicalJob(t, conn, source)
 	_, err = conn.Exec(t.Context(), `UPDATE registry_sync SET lease_expires_at=clock_timestamp()-interval '1 second'`)
 	require.NoError(t, err)
 	// The expired lease write invalidates review; fresh review never rebinds the old ack.
@@ -212,13 +207,13 @@ func TestExposureRetirementFencesExpiredJobs(t *testing.T) {
 	require.NoError(t, err)
 	_, err = conn.Exec(t.Context(), `UPDATE registry_sync SET lease_expires_at=clock_timestamp()+interval '1 hour'`)
 	require.NoError(t, err)
-	require.ErrorIs(t, jobs.Complete(t.Context(), job, persistence.SyncResult{Hash: "old"}), persistence.ErrStale)
-	require.ErrorIs(t, jobs.CommitSnapshot(t.Context(), job, persistence.SyncResult{Hash: "old"}, model.Snapshot{}), persistence.ErrStale)
+	require.ErrorIs(t, jobs.Complete(t.Context(), job, persistence.SyncResult{Hash: "old"}), persistence.ErrUnavailable)
+	require.ErrorIs(t, jobs.CommitSnapshot(t.Context(), job, persistence.SyncResult{Hash: "old"}, model.Snapshot{}), persistence.ErrUnavailable)
 }
 
 func TestExposureRetirementConcurrentMutation(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	ack := retirementAck(t, conn)
 	other, err := pgx.ConnectConfig(t.Context(), conn.Config().Copy())
@@ -248,7 +243,7 @@ func TestExposureRetirementConcurrentMutation(t *testing.T) {
 
 func TestExposureRetirementSerializesConcurrentAttempts(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	ack := retirementAck(t, conn)
 	first, err := pgx.ConnectConfig(t.Context(), conn.Config().Copy())

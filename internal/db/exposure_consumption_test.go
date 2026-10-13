@@ -26,7 +26,7 @@ import (
 
 func TestExposureConsumptionPreservesEvidenceAndCatalog(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	prepareConsumption(t, conn)
 	before := exposureCatalog(t, conn)
@@ -62,7 +62,7 @@ func TestExposureConsumptionPreservesEvidenceAndCatalog(t *testing.T) {
 
 func TestExposureConsumptionRestartAcceptsLegitimateChanges(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	prepareConsumption(t, conn)
 	require.NoError(t, registrydb.ConsumeExposure(t.Context(), conn, exposureRevision))
@@ -85,7 +85,7 @@ func TestExposureConsumptionRejectsMissingAndStaleEvidence(t *testing.T) {
 		"stale-metadata", "stale-payload", "wrong-target", "dirty", "schema-28", "invalid-revision", "missing-row"} {
 		t.Run(state, func(t *testing.T) {
 			t.Parallel()
-			conn, _ := database.SetupTestDB(t)
+			conn, _ := database.SetupTestDBAt(t, 29)
 			seedExposure(t, conn)
 			revision := exposureRevision
 			switch state {
@@ -138,7 +138,7 @@ func TestExposureConsumptionEmptyModeRequiresAllTablesEmpty(t *testing.T) {
 	for _, state := range []string{"empty", "source", "view", "orphan-snapshot"} {
 		t.Run(state, func(t *testing.T) {
 			t.Parallel()
-			conn, _ := database.SetupTestDB(t)
+			conn, _ := database.SetupTestDBAt(t, 29)
 			inventory := exposureInventory(t, conn)
 			_, err := registrydb.AcknowledgeExposure(t.Context(), conn, exposureRevision, inventory.Digest, false, true, true)
 			require.NoError(t, err)
@@ -169,7 +169,7 @@ func TestExposureConsumptionEmptyModeRequiresAllTablesEmpty(t *testing.T) {
 
 func TestExposureConsumptionRejectsEveryLiveLease(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	prepareConsumption(t, conn)
 	for _, generation := range []int{3, 0} {
@@ -184,7 +184,7 @@ func TestExposureConsumptionRejectsEveryLiveLease(t *testing.T) {
 
 func TestExposureConsumptionTargetContinuity(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	inventory := exposureInventory(t, conn)
 	_, err := registrydb.AcknowledgeExposure(t.Context(), conn, exposureRevision, inventory.Digest, false, true, true)
 	require.NoError(t, err)
@@ -220,7 +220,7 @@ func TestExposureConsumptionRollbackAndSerializationRetry(t *testing.T) {
 	} {
 		t.Run(failure.name, func(t *testing.T) {
 			t.Parallel()
-			conn, _ := database.SetupTestDB(t)
+			conn, _ := database.SetupTestDBAt(t, 29)
 			seedExposure(t, conn)
 			prepareConsumption(t, conn)
 			trigger := "CREATE TRIGGER reject_consumption " + failure.timing + " UPDATE ON " + failure.table
@@ -249,7 +249,7 @@ func TestExposureConsumptionRollbackAndSerializationRetry(t *testing.T) {
 
 func TestExposureConsumptionSerializesConcurrentStarts(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	prepareConsumption(t, conn)
 	evidence := pendingExposureEvidence(t, conn)
@@ -276,7 +276,7 @@ func TestExposureConsumptionSerializesConcurrentStarts(t *testing.T) {
 
 func TestExposureConsumptionWaitsThenRevalidatesCatalog(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	prepareConsumption(t, conn)
 	other, err := pgx.ConnectConfig(t.Context(), conn.Config().Copy())
@@ -303,27 +303,22 @@ func TestExposureConsumptionWaitsThenRevalidatesCatalog(t *testing.T) {
 
 func TestExposureConsumptionFencesOldWorkAndRequiresNewBaseline(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	pool, err := pgxpool.New(t.Context(), conn.Config().ConnString())
 	require.NoError(t, err)
 	defer pool.Close()
-	definitions, err := postgres.NewDefinitions(pool)
-	require.NoError(t, err)
-	source, err := definitions.CreateSource(t.Context(), persistence.SourceDefinition{Name: "fenced",
-		API: &persistence.APISpec{Endpoint: "https://example.org"}, Schedule: "1h"})
-	require.NoError(t, err)
+	source := historicalSource(t, conn, "fenced")
 	jobs, err := postgres.NewJobs(pool, 65536)
 	require.NoError(t, err)
-	initial, err := jobs.Acquire(t.Context(), source.Name, time.Minute)
-	require.NoError(t, err)
 	result := persistence.SyncResult{Hash: "same-hash", FilterHash: "same-filter"}
-	require.NoError(t, jobs.CommitSnapshot(t.Context(), initial, result, model.Snapshot{}))
-	old, err := jobs.Acquire(t.Context(), source.Name, time.Minute)
+	old := historicalJob(t, conn, source)
+	_, err = conn.Exec(t.Context(), `UPDATE registry_sync SET last_sync_hash=$1,last_applied_filter_hash=$2,applied_generation=lease_generation`, result.Hash, result.FilterHash)
 	require.NoError(t, err)
 	_, err = conn.Exec(t.Context(), `UPDATE registry_sync SET lease_expires_at=clock_timestamp()-interval '1 second'`)
 	require.NoError(t, err)
 	prepareConsumption(t, conn)
 	require.NoError(t, registrydb.ConsumeExposure(t.Context(), conn, exposureRevision))
+	require.NoError(t, database.MigrateUp(t.Context(), conn))
 	_, err = conn.Exec(t.Context(), `UPDATE registry_sync SET lease_expires_at=clock_timestamp()+interval '1 hour'`)
 	require.NoError(t, err)
 	require.ErrorIs(t, jobs.Complete(t.Context(), old, result), persistence.ErrStale)
@@ -342,7 +337,7 @@ func TestExposureConsumptionBindsActualLoadedPolicy(t *testing.T) {
 	for _, timing := range []string{"before-load", "after-load"} {
 		t.Run(timing, func(t *testing.T) {
 			t.Parallel()
-			conn, _ := database.SetupTestDB(t)
+			conn, _ := database.SetupTestDBAt(t, 29)
 			seedExposure(t, conn)
 			dir := t.TempDir()
 			policy := filepath.Join(dir, "policy.cedar")

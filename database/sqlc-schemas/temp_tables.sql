@@ -9,7 +9,6 @@ CREATE TABLE temp_registry_entry (
     source_id UUID NOT NULL,
     entry_type entry_type NOT NULL,
     name TEXT NOT NULL,
-    claims JSONB,
     created_at TIMESTAMP WITH TIME ZONE,
     updated_at TIMESTAMP WITH TIME ZONE
 );

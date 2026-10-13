@@ -24,16 +24,16 @@ thv-registry-api migrate [flags]
 ### Options
 
 ```
-      --config string       Path to configuration file (YAML format, required)
-  -h, --help[=true|false]   help for migrate
-  -n, --num-steps uint      Number of steps to migrate (0 = all)
-  -y, --yes[=true|false]    Answer yes to all questions
+      --config string    Path to configuration file (YAML format, required)
+  -h, --help             help for migrate
+  -n, --num-steps uint   Number of steps to migrate (0 = all)
+  -y, --yes              Confirm schema migrations only; never exposure consent
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --debug[=true|false]   Enable debug mode
+      --debug   Enable debug mode
 ```
 
 ### SEE ALSO

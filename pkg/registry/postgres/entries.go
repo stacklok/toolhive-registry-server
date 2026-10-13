@@ -35,8 +35,17 @@ func NewEntries(ctx context.Context, pool *pgxpool.Pool, maxMetaSize int) (*Entr
 	if pool == nil || maxMetaSize <= 0 {
 		return nil, fmt.Errorf("%w: pool and positive metadata limit required", persistence.ErrInvalid)
 	}
-	if err := db.ReconcileLatestVersions(ctx, pool); err != nil {
-		return nil, classify(err)
+	if err := writeTx(ctx, pool, false, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SET LOCAL lock_timeout = '5s'`); err != nil {
+			return classify(err)
+		}
+		if _, err := tx.Exec(ctx, `LOCK TABLE source, registry_entry, entry_version, latest_entry_version
+ IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+			return classify(err)
+		}
+		return db.ReconcileLatestVersionsTx(ctx, tx)
+	}); err != nil {
+		return nil, err
 	}
 	return &Entries{pool: pool, maxMetaSize: maxMetaSize}, nil
 }
@@ -71,9 +80,6 @@ func (d *Entries) ReplaceSnapshot(ctx context.Context, source persistence.Source
 		}
 		if row.Name != source.Name || row.SourceType != kind {
 			return fmt.Errorf("%w: source incarnation changed", persistence.ErrConflict)
-		}
-		if e = guardClaims(ctx, q, row); e != nil {
-			return e
 		}
 		allowed, e := q.JobSnapshotAllowed(ctx, id)
 		if e != nil {
@@ -111,13 +117,6 @@ func (d *Entries) Publish(ctx context.Context, entry persistence.Entry) (persist
 		}
 		if e != nil {
 			return classify(e)
-		}
-		row, e := q.EntrySource(ctx, id)
-		if e != nil {
-			return classify(e)
-		}
-		if e = guardClaims(ctx, q, row); e != nil {
-			return e
 		}
 		exists, e := q.EntryVersionExists(ctx, sqlc.EntryVersionExistsParams{
 			SourceID: id, EntryType: sqlc.EntryType(entry.Kind), Name: entry.Name, Version: entry.Version,
@@ -169,13 +168,6 @@ func (d *Entries) DeleteManaged(ctx context.Context, kind persistence.EntryKind,
 		if e != nil {
 			return classify(e)
 		}
-		row, e := q.EntrySource(ctx, id)
-		if e != nil {
-			return classify(e)
-		}
-		if e = guardClaims(ctx, q, row); e != nil {
-			return e
-		}
 		count, e := q.EntryDeleteVersion(ctx, sqlc.EntryDeleteVersionParams{
 			SourceID: id, EntryType: sqlc.EntryType(kind), Name: name, Version: version,
 		})
@@ -190,20 +182,6 @@ func (d *Entries) DeleteManaged(ctx context.Context, kind persistence.EntryKind,
 		}
 		return repointLatest(ctx, q, id, kind, name)
 	})
-}
-
-func guardClaims(ctx context.Context, q *sqlc.Queries, row sqlc.EntrySourceRow) error {
-	if row.HasClaims {
-		return fmt.Errorf("%w: claimed legacy source", persistence.ErrConflict)
-	}
-	claimed, e := q.EntryHasClaims(ctx, row.ID)
-	if e != nil {
-		return classify(e)
-	}
-	if claimed {
-		return fmt.Errorf("%w: claimed legacy entries", persistence.ErrConflict)
-	}
-	return nil
 }
 
 func repointLatest(ctx context.Context, q *sqlc.Queries, id uuid.UUID, kind persistence.EntryKind, name string) error {

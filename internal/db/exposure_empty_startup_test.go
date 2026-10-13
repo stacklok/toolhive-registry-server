@@ -17,7 +17,7 @@ func TestEmptyBootstrapFailsClosed(t *testing.T) {
 	for _, state := range []string{"source-null", "source-json-null", "source-empty-claims", "source-malformed", "view", "snapshot", "live-lease", "pending-existing", "retired-existing", "pending-changed-config", "pending-changed-target", "pending-written", "consumed-other-target"} {
 		t.Run(state, func(t *testing.T) {
 			t.Parallel()
-			conn, _ := database.SetupTestDB(t)
+			conn, _ := database.SetupTestDBAt(t, 29)
 			revision := exposureRevision
 			var mutation string
 			switch state {
@@ -71,7 +71,7 @@ func TestEmptyBootstrapFailsClosed(t *testing.T) {
 
 func TestEmptyBootstrapReusesPendingEmptyAndConsumedEvidence(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	inventory := exposureInventory(t, conn)
 	_, err := registrydb.AcknowledgeExposure(t.Context(), conn, exposureRevision, inventory.Digest, false, true, true)
 	require.NoError(t, err)
@@ -87,7 +87,7 @@ func TestEmptyBootstrapReusesPendingEmptyAndConsumedEvidence(t *testing.T) {
 
 func TestEmptyBootstrapConcurrentPodsReconcileBeforeOtherConsumption(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	start := make(chan struct{})
 	finished := make(chan error, 4)
 	for range 4 {
@@ -120,7 +120,7 @@ func TestEmptyBootstrapConcurrentPodsReconcileBeforeOtherConsumption(t *testing.
 
 func TestEmptyBootstrapAcknowledgementAndConsumptionRollbackTogether(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	_, err := conn.Exec(t.Context(), `CREATE FUNCTION reject_empty_consumption() RETURNS trigger LANGUAGE plpgsql AS $$
  BEGIN IF NEW.consumed_at IS NOT NULL THEN RAISE EXCEPTION 'private-sentinel'; END IF; RETURN NEW; END $$;
  CREATE TRIGGER reject_empty_consumption BEFORE UPDATE ON exposure_acknowledgement

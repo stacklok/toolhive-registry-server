@@ -10,7 +10,7 @@ import (
 
 func TestJobsMigrationLegacyRowsHaveNoAppliedBaseline(t *testing.T) {
 	t.Parallel()
-	db, _ := SetupTestDB(t)
+	db, _ := SetupTestDBAt(t, 29)
 	ctx := t.Context()
 	require.NoError(t, migrateTestTo(t, db, 25))
 	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable) VALUES('legacy-jobs','api','{}',true)`)
@@ -18,7 +18,7 @@ func TestJobsMigrationLegacyRowsHaveNoAppliedBaseline(t *testing.T) {
 	_, err = db.Exec(ctx, `INSERT INTO registry_sync(source_id,sync_status,last_sync_hash,last_applied_filter_hash,server_count)
  SELECT id,'COMPLETED','old-hash','old-filter',7 FROM source WHERE name='legacy-jobs'`)
 	require.NoError(t, err)
-	require.NoError(t, MigrateUp(ctx, db))
+	require.NoError(t, MigrateUpTo(ctx, db, 29))
 	var hash string
 	var applied *int64
 	require.NoError(t, db.QueryRow(ctx, `SELECT last_sync_hash,applied_generation FROM registry_sync
@@ -29,7 +29,7 @@ func TestJobsMigrationLegacyRowsHaveNoAppliedBaseline(t *testing.T) {
 
 func TestJobsMigrationDownRefusesActiveLease(t *testing.T) {
 	t.Parallel()
-	db, _ := SetupTestDB(t)
+	db, _ := SetupTestDBAt(t, 29)
 	ctx := t.Context()
 	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable) VALUES('leased','api','{}',true)`)
 	require.NoError(t, err)

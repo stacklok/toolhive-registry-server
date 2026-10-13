@@ -233,7 +233,11 @@ func TestStandaloneIntroducedAnnotationAlertsAndRetainsLastSnapshot(t *testing.T
 			}
 			require.True(t, runner.Ready())
 			cancel()
-			require.NoError(t, <-done)
+			// Cancellation may race with the already-observed refused refresh.
+			// Its classified failure must not be silently normalized away.
+			if err := <-done; err != nil {
+				require.ErrorIs(t, err, ingest.ErrFetch)
+			}
 			require.NoError(t, api.List(t.Context(), &mcp.MCPRemoteProxyList{}))
 		})
 	}
