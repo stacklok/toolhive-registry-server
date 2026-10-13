@@ -6,6 +6,11 @@ standalone configuration loader, listeners or application builder. The
 [architecture overview](component-architecture.md) describes package boundaries;
 the focused guides below describe each public contract.
 
+Start with the [runnable mTLS catalog tutorial](../examples/embedding/README.md)
+to mount the default reader over an existing schema-30 PostgreSQL catalog. It shows
+host authentication/admission, request cancellation and pool/listener shutdown.
+The fixtures below are verification examples, not application onboarding.
+
 ## Choose a composition
 
 | Need | Components and executable example |

@@ -1,303 +1,122 @@
-# Environment Variables
+# Environment variables and CLI settings
 
-This guide covers using environment variables to configure the ToolHive Registry Server. Environment variables provide a flexible way to override configuration values without modifying YAML files, making them ideal for container deployments, CI/CD pipelines, and environment-specific configurations.
+The server loads a YAML configuration snapshot with supported `THV_REGISTRY_*`
+overrides. CLI listener/config selection is separate: use actual flags rather than
+assuming every flag is bound to the environment.
 
-## Overview
+## Precedence and names
 
-The ToolHive Registry Server uses [Viper](https://github.com/spf13/viper) for configuration management, which supports loading configuration from multiple sources with a clear precedence order.
+For decoded configuration fields, defaults are overridden by YAML, then by
+supported environment variables. Nested keys replace dots with underscores:
+`database.host` becomes `THV_REGISTRY_DATABASE_HOST`. Use uppercase names;
+environment lookups are case-sensitive. Arrays of sources, views, OAuth providers
+and identity mappings belong in YAML, not ad hoc indexed environment variables.
 
-### Configuration Precedence
+`serve --auth-mode` explicitly overrides the decoded auth mode before final
+validation. Global CLI Viper does **not** bind automatic environment variables:
+`THV_REGISTRY_ADDRESS` and `THV_REGISTRY_CONFIG_FILE` do not select a listener or
+config file. Use:
 
-Configuration values are resolved in this order (lowest to highest priority):
-
-1. **Default values** - Hardcoded defaults in the application
-2. **Configuration file** - Values from the YAML config file
-3. **Environment variables** - Values from `THV_REGISTRY_*` environment variables
-4. **Command-line flags** - Values from CLI flags (e.g., `--address`)
-
-Higher priority sources override lower ones. For example, if `database.host` is set to `localhost` in the YAML file but `THV_REGISTRY_DATABASE_HOST=postgres.example.com` is set, the environment variable value (`postgres.example.com`) will be used.
-
-`serve` decodes a single YAML/environment snapshot, then validates final CLI overrides
-before loading frozen Cedar and performing DB side effects. Reserved retired
-`THV_REGISTRY_AUTH_AUTHZ*`, `THV_REGISTRY_AUTH_ROLES*`, `THV_REGISTRY_AUTH_PUBLICPATHS*`
-and source/view claims overrides are rejected by presence, including empty values.
-`THV_REGISTRY_LEADER_ELECTION_ID` is retired and nonempty values fail explicitly;
-the selected runtime uses per-source database leases instead. Global namespace and
-response-compression environment switches remain supported. Empty-install consent
-is only the explicit default-false `serve --initialize-empty` flag, not an environment
-or old authorization switch.
-
-## Naming Convention
-
-All environment variables use the `THV_REGISTRY_` prefix (ToolHive Registry) to avoid conflicts with other applications.
-
-### Rules
-
-1. **Prefix**: All variables start with `THV_REGISTRY_`
-2. **Nested keys**: Use underscores (`_`) to represent nested configuration
-3. **Case**: Environment variables are case-insensitive (but uppercase is conventional)
-4. **Dots to underscores**: Configuration key `database.host` becomes `THV_REGISTRY_DATABASE_HOST`
-
-### Examples
-
-| Configuration Key | Environment Variable | Example Value |
-|-------------------|---------------------|---------------|
-| `registryName` | `THV_REGISTRY_REGISTRYNAME` | `production-registry` |
-| `database.host` | `THV_REGISTRY_DATABASE_HOST` | `postgres.example.com` |
-| `database.port` | `THV_REGISTRY_DATABASE_PORT` | `5432` |
-| `auth.mode` | `THV_REGISTRY_AUTH_MODE` | `oauth` |
-| `auth.oauth.realm` | `THV_REGISTRY_AUTH_OAUTH_REALM` | `mcp-registry` |
-
-## Common Configuration Examples
-
-### Server Configuration
-
-```bash
-# Change the listening address (default: :8080)
-export THV_REGISTRY_ADDRESS=:9090
-
-# Set the registry name
-export THV_REGISTRY_REGISTRYNAME=production-registry
+```sh
+thv-registry-api serve --config /etc/registry/config.yaml \
+  --address :8080 --internal-address 127.0.0.1:8081
 ```
 
-### Database Configuration
+`--config` is required. `--address` defaults to `:8080`; `--internal-address`
+defaults to `:8081`. Probes/metrics exist only on the internal listener, with no
+authentication/audit. Container orchestration may need `:8081` for pod probes, but
+must restrict network exposure. Logging reads `THV_REGISTRY_LOG_LEVEL` separately,
+falling back to `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; default `info`). These
+logging variables do not imply automatic environment binding for CLI flags.
 
-```bash
-# Database connection settings
-export THV_REGISTRY_DATABASE_HOST=postgres.example.com
-export THV_REGISTRY_DATABASE_PORT=5432
-export THV_REGISTRY_DATABASE_USER=registry_app
-export THV_REGISTRY_DATABASE_DATABASE=registry_prod
-export THV_REGISTRY_DATABASE_SSLMODE=verify-full
-export THV_REGISTRY_DATABASE_MIGRATIONUSER=registry_migrator
+`--initialize-empty` is explicit, default-false new-install authorization, not an
+environment setting. Existing catalogs require the
+[offline exposure procedure](registry-exposure-migration.md). Final config and CLI
+overrides are validated before frozen Cedar and DB work. For offline review,
+materialize exposure-relevant overrides in YAML/environment and retain the exact
+same effective configuration through finalization and serving.
 
-# Database passwords (optional — alternative to pgpass file)
-export THV_REGISTRY_DATABASE_PASSWORD=my_app_password
-export THV_REGISTRY_DATABASE_MIGRATIONPASSWORD=my_migration_password
+## Supported configuration overrides
 
-# Connection pool settings
-export THV_REGISTRY_DATABASE_MAXOPENCONNS=25
-export THV_REGISTRY_DATABASE_MAXIDLECONNS=5
-export THV_REGISTRY_DATABASE_CONNMAXLIFETIME=1h
+Common examples:
+
+| YAML key | Environment variable |
+|---|---|
+| `database.host` | `THV_REGISTRY_DATABASE_HOST` |
+| `database.port` | `THV_REGISTRY_DATABASE_PORT` |
+| `database.user` | `THV_REGISTRY_DATABASE_USER` |
+| `database.migrationUser` | `THV_REGISTRY_DATABASE_MIGRATIONUSER` |
+| `database.database` | `THV_REGISTRY_DATABASE_DATABASE` |
+| `database.sslMode` | `THV_REGISTRY_DATABASE_SSLMODE` |
+| `database.maxOpenConns` | `THV_REGISTRY_DATABASE_MAXOPENCONNS` |
+| `auth.mode` | `THV_REGISTRY_AUTH_MODE` |
+| `auth.oauth.resourceUrl` | `THV_REGISTRY_AUTH_OAUTH_RESOURCEURL` |
+| `authorization.policyFile` | `THV_REGISTRY_AUTHORIZATION_POLICYFILE` |
+| `authorization.allowAnonymousCatalog` | `THV_REGISTRY_AUTHORIZATION_ALLOWANONYMOUSCATALOG` |
+
+```sh
+THV_REGISTRY_DATABASE_HOST=postgres-primary.prod.svc.cluster.local \
+  thv-registry-api serve --config /etc/registry/config.yaml
 ```
 
-**Note**: Database passwords can be provided via `THV_REGISTRY_DATABASE_PASSWORD` / `THV_REGISTRY_DATABASE_MIGRATIONPASSWORD` environment variables, or via PostgreSQL's [`.pgpass` file](https://www.postgresql.org/docs/current/libpq-pgpass.html). When an environment variable is set, it takes precedence over the pgpass file. For Kubernetes deployments, prefer injecting passwords from a Secret via `secretKeyRef` rather than plain environment variable values.
+Define complete `sources[]`, `registries[]`, per-source `syncPolicy` and `filter`,
+`auth.oauth.providers[]`, and `authorization.identityMappings[]` in the YAML file.
+Do not change the DB target spelling while an existing-data receipt is pending.
 
-### Authentication Configuration
+Anonymous development requires `auth.mode: anonymous`,
+`authorization.allowAnonymousCatalog: true`, admin off and a Cedar permit (included
+in the built-in policy). Changing `THV_REGISTRY_AUTH_MODE` alone is not a complete
+anonymous configuration. OAuth is the production default; invalid supplied tokens
+never become anonymous. See [authentication](authentication.md) and
+[Cedar admission](registry-cedar-authorization.md).
 
-```bash
-# Set authentication mode
-export THV_REGISTRY_AUTH_MODE=oauth  # or "anonymous" for development
+## Secrets and operational switches
 
-# OAuth/OIDC configuration
-export THV_REGISTRY_AUTH_OAUTH_RESOURCEURL=https://registry.example.com
-export THV_REGISTRY_AUTH_OAUTH_REALM=mcp-registry
+Prefer absolute read-only `passwordFile` for Git, `clientSecretFile` for OAuth, and
+PostgreSQL `PGPASSFILE` for DB passwords. DB
+`THV_REGISTRY_DATABASE_PASSWORD`/`THV_REGISTRY_DATABASE_MIGRATIONPASSWORD` are
+supported escape hatches and override pgpass when set; do not put their values in
+shell commands, Helm ConfigMaps, committed YAML or log output. Static passwords
+and `dynamicAuth` are mutually exclusive. See [database security](database.md#password-security).
+
+Other explicit operational switches include:
+
+- `THV_REGISTRY_WATCH_NAMESPACE`: Kubernetes namespace scope when a source omits
+  namespaces; coordinate with chart RBAC scope and offline operator preflight.
+- `THV_REGISTRY_INSECURE_URL`: env-only insecure OAuth URL opt-in for development,
+  not a YAML field or a production recommendation.
+- `THV_REGISTRY_COMPRESS_RESPONSE`: env-only gzip response compression switch.
+- `THV_REGISTRY_LEADER_ELECTION_ID`: retired; nonempty values fail. Current workers
+  use per-source database leases, not that leader-election setting.
+
+Retired `THV_REGISTRY_AUTH_AUTHZ*`, `THV_REGISTRY_AUTH_ROLES*`,
+`THV_REGISTRY_AUTH_PUBLICPATHS*` and source/view claims overrides are rejected by
+presence, including empty values. They are not compatibility access switches.
+
+## Compose and Helm
+
+`CONFIG_FILE` is **Compose interpolation only** in this repository's
+`docker-compose.yaml`: it selects a filename under mounted `/examples` and expands
+the service's `--config` argument. It has no meaning to a directly invoked binary.
+
+```sh
+CONFIG_FILE=config-docker-multiple.yaml docker compose config --quiet
 ```
 
-**Note**: OAuth provider configuration (including issuer URLs, audiences, and client secrets) should be specified in the YAML configuration file for security and complexity reasons.
+This only validates rendering. Startup, credentials and new/existing catalog paths
+are in [Docker deployment](deployment-docker.md).
 
-### Logging Configuration
-
-```bash
-# Set log level (debug, info, warn, error)
-export THV_REGISTRY_LOG_LEVEL=debug
-
-# Or use the unprefixed version (backward compatible)
-export LOG_LEVEL=debug
-```
-
-## Docker and Docker Compose
-
-Environment variables integrate seamlessly with Docker and Docker Compose:
-
-### Docker Run
-
-```bash
-docker run \
-  -e THV_REGISTRY_DATABASE_HOST=postgres \
-  -e THV_REGISTRY_DATABASE_PORT=5432 \
-  -e THV_REGISTRY_AUTH_MODE=anonymous \
-  -v $(pwd)/config.yaml:/config.yaml \
-  toolhive-registry-api serve --config /config.yaml
-```
-
-### Docker Compose
-
-```yaml
-version: '3.8'
-
-services:
-  registry:
-    image: toolhive-registry-api
-    environment:
-      THV_REGISTRY_DATABASE_HOST: postgres
-      THV_REGISTRY_DATABASE_PORT: 5432
-      THV_REGISTRY_DATABASE_USER: registry_app
-      THV_REGISTRY_DATABASE_DATABASE: registry
-      THV_REGISTRY_AUTH_MODE: anonymous
-      THV_REGISTRY_LOG_LEVEL: info
-    volumes:
-      - ./config.yaml:/config.yaml
-    command: serve --config /config.yaml
-```
-
-## Kubernetes
-
-Environment variables work well with Kubernetes ConfigMaps and Secrets:
-
-### ConfigMap for Non-Sensitive Values
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: registry-config
-data:
-  THV_REGISTRY_DATABASE_HOST: "postgres-service"
-  THV_REGISTRY_DATABASE_PORT: "5432"
-  THV_REGISTRY_AUTH_MODE: "oauth"
-  THV_REGISTRY_LOG_LEVEL: "info"
-```
-
-### Deployment
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: registry-server
-spec:
-  template:
-    spec:
-      containers:
-      - name: registry
-        image: toolhive-registry-api
-        envFrom:
-        - configMapRef:
-            name: registry-config
-        volumeMounts:
-        - name: config
-          mountPath: /config.yaml
-          subPath: config.yaml
-      volumes:
-      - name: config
-        configMap:
-          name: registry-yaml-config
-```
-
-## Limitations and Best Practices
-
-### Complex Nested Structures
-
-Environment variables have limited support for complex nested arrays and structures. The following configurations **should be defined in the YAML file**:
-
-- `registries[]` - Registry configurations (multiple registries with nested settings)
-- `registries[].syncPolicy` - Sync policy per registry
-- `registries[].filter` - Filter rules per registry
-- `auth.oauth.providers[]` - OAuth provider configurations
-
-**Why?** These structures involve arrays of objects with multiple nested fields, which don't map cleanly to environment variables.
-
-### Recommended Approach
-
-1. **Use YAML for complex structures**: Define registries, OAuth providers, and filter rules in the YAML configuration file
-2. **Use environment variables for overrides**: Override simple values like database host, authentication mode, or log level
-3. **Use command-line flags sparingly**: Reserve flags for runtime overrides (e.g., `--address` for port changes)
-
-### Security Considerations
-
-1. **Secrets in YAML files**: For sensitive values like OAuth client secrets, use file references (e.g., `clientSecretFile`) rather than inline values
-2. **Environment variables in logs**: Be careful not to log environment variables that might contain sensitive information
-3. **Kubernetes Secrets**: For Kubernetes deployments, use Secret objects for sensitive environment variables:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: registry-secrets
-type: Opaque
-stringData:
-  THV_REGISTRY_AUTH_MODE: "oauth"
----
-apiVersion: apps/v1
-kind: Deployment
-spec:
-  template:
-    spec:
-      containers:
-      - name: registry
-        envFrom:
-        - secretRef:
-            name: registry-secrets
-```
-
-## Examples by Use Case
-
-### Development Environment
-
-Override auth mode for local testing:
-
-```bash
-# Start with anonymous auth for development
-THV_REGISTRY_AUTH_MODE=anonymous ./thv-registry-api serve --config config-dev.yaml
-```
-
-### CI/CD Pipeline
-
-Override database and logging for integration tests:
-
-```bash
-export THV_REGISTRY_DATABASE_HOST=localhost
-export THV_REGISTRY_DATABASE_PORT=5432
-export THV_REGISTRY_DATABASE_USER=test_user
-export THV_REGISTRY_DATABASE_DATABASE=test_registry
-export THV_REGISTRY_AUTH_MODE=anonymous
-export THV_REGISTRY_LOG_LEVEL=debug
-
-./thv-registry-api serve --config config-test.yaml
-```
-
-### Production Deployment
-
-Minimal environment overrides with production config:
-
-```bash
-# Production uses YAML for most config, only override deployment-specific values
-export THV_REGISTRY_DATABASE_HOST=postgres-primary.prod.svc.cluster.local
-export THV_REGISTRY_LOG_LEVEL=info
-
-./thv-registry-api serve --config config-production.yaml
-```
+For Helm, use `config` for non-secret YAML, `extraEnv` for overrides and mounted
+Secret files for credentials. A `secretKeyRef` is available if file mounts are not
+possible; avoid literal passwords in values. Use the complete
+[Kubernetes values example](deployment-kubernetes.md#prepare-operator-valuesyaml)
+for readable pgpass and internal-only networking instead of constructing a partial
+Deployment that omits auth, credentials or initialization.
 
 ## Troubleshooting
 
-### Check Configuration Precedence
-
-To understand which configuration source is being used:
-
-1. Enable debug logging: `THV_REGISTRY_LOG_LEVEL=debug`
-2. Check server startup logs for configuration values
-3. Verify environment variables are set: `env | grep THV_REGISTRY_`
-
-### Common Issues
-
-**Environment variable not taking effect:**
-- Check the variable name matches the configuration key (use underscores, not dots)
-- Verify the `THV_REGISTRY_` prefix is present
-- Ensure the variable is exported: `export THV_REGISTRY_DATABASE_HOST=...`
-- Remember: YAML values are loaded first, then overridden by env vars
-
-**Configuration validation errors:**
-- Environment variables are type-coerced by Viper (strings to integers, etc.)
-- Invalid values will fail validation after unmarshaling
-- Check the error message for the specific configuration key that failed
-
-## Reference
-
-For a complete list of all configuration options, see:
-- [Configuration Reference](configuration.md) - Complete YAML configuration options
-- [Database Setup](database.md) - Database configuration and credentials
-- [Authentication](authentication.md) - OAuth/OIDC setup
-
-For the underlying technology:
-- [Viper Documentation](https://github.com/spf13/viper) - Configuration library used by ToolHive
+Check exact variable spelling, export scope, the selected YAML file and actual
+CLI flags. Review sanitized startup logs; never dump `env`, pgpass contents or
+password-bearing config to diagnose precedence. A flag is not automatically an
+environment override, and a successfully rendered Compose/Helm file does not
+prove final runtime configuration or database readiness.

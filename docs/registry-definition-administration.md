@@ -64,7 +64,7 @@ Use `errors.Is` for authoritative backend categories:
   and cancellation/deadline behavior remain. Managed singleton, stale incarnation,
   and legacy claimed/unknown metadata guards are **not** `ErrAlreadyExists`.
 
-A later PUT adapter may fall back from create to update only on
+The [admin HTTP PUT adapter](registry-admin-http.md) falls back from create to update only on
 `ErrAlreadyExists`, never on general conflict or a raced pre-read. Backend errors
 are sanitized; do not log full definitions or inline/credential data.
 
@@ -87,7 +87,7 @@ may be sensitive and must not be logged. Replacement applications may construct
 this type with their own joined stage markers and causes.
 
 **Inspect `PostCommitError` first**, before ordinary conflict/cancellation mapping;
-a later HTTP adapter must report `committed: true`. Rediscover persisted
+[admin HTTP reports](registry-admin-http.md) `committed: true` with HTTP 503. Rediscover persisted
 source/view state and current incarnation, then explicitly recover the failed
 follow-up. Hosts' callbacks must reread current definitions and use the leased,
 fenced writer; concurrent mutations may supersede the returned definition or

@@ -92,6 +92,6 @@ extension lists default 50 and reject above 100; server histories request 1000
 with no wire continuation; extension histories request 30 and retain opaque
 response cursor metadata but ignore input limit/cursor query parameters.
 [Definition administration](registry-definition-administration.md) and [managed
-publication/unshadowed diagnostics](registry-publication-diagnostics.md) are also
+publication/complete diagnostics](registry-publication-diagnostics.md) are also
 implemented and mounted through [admin HTTP](registry-admin-http.md) in the guarded
 standalone assembly.

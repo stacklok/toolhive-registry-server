@@ -115,7 +115,7 @@ legacy sanitized 500 `internal server error`. Host error text is neither returne
 nor logged. A disconnected client may not receive a response; the supplied
 request context is still canceled normally.
 
-The default reader's previously documented winner-before-filter selection,
+The default reader's winner-before-filter selection,
 backend cursor format and literal-substring search semantics are unchanged; see
 [consumer reads](registry-consumer-reads.md). HTTP does not retrofit legacy SQL
 wildcard semantics or identity binding onto that reader.

@@ -3820,6 +3820,7 @@ const docTemplate = `{
         },
         "/v1/registries/{name}/entries": {
             "get": {
+                "description": "Every version from every linked source, including shadowed duplicates; no consumer deduplication or pagination.",
                 "parameters": [
                     {
                         "description": "View name",
@@ -3898,7 +3899,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "List unshadowed view version diagnostics",
+                "summary": "List complete view version diagnostics",
                 "tags": [
                     "registries"
                 ]
@@ -4302,6 +4303,7 @@ const docTemplate = `{
         },
         "/v1/sources/{name}/entries": {
             "get": {
+                "description": "Every stored source version; no consumer deduplication or pagination.",
                 "parameters": [
                     {
                         "description": "Source name",
@@ -4380,7 +4382,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "List unshadowed source version diagnostics",
+                "summary": "List complete source version diagnostics",
                 "tags": [
                     "sources"
                 ]

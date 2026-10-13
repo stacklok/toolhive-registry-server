@@ -1,7 +1,7 @@
-# Reusable admin HTTP (#913)
+# Reusable admin HTTP
 
-`pkg/registry/httpapi.AdminRouter` finishes the reusable HTTP capability alongside
-[consumer HTTP](registry-consumer-http.md). Standalone now selects both behind
+`pkg/registry/httpapi.AdminRouter` provides reusable HTTP administration alongside
+[consumer HTTP](registry-consumer-http.md). Standalone selects both behind
 mandatory Cedar admission after [offline preparation/finalization and schema-30 migration](registry-exposure-migration.md).
 Public routers start no listener and provide no implicit admission; see
 [standalone assembly](registry-standalone-assembly.md) for preparation and ownership.
@@ -210,12 +210,12 @@ unknown phases are `unknown`. This deliberately stops swallowing status failures
 or exposing legacy free-form failure text. Counts are catalog counts, not per-user
 scope. Each complete entry diagnostic call has its own storage snapshot contract.
 
-## Verification and remaining work
+## Verification
 
 Tests cover the full route/decorator manifest and host middleware, independent
 capability replacements, fixed claims-free wire expectations, create/update/error and
 partial-commit audit behavior, retired-field detection and body/path validation.
-Real HTTP + default catalog + PostgreSQL tests exercise unshadowed collisions,
+Real HTTP + default catalog + PostgreSQL tests exercise shadowed duplicates,
 all-kind singleton publication, exact deletion/latest/history, ownership/location
 constraints and no mutation for invalid bodies. An external module proves public
 replacement/mounting and an import graph excluding registry-internal config/auth,
@@ -224,4 +224,5 @@ PostgreSQL and Kubernetes from the HTTP core.
 The active [standalone assembly](registry-standalone-assembly.md) owns mandatory
 admission, exposure preparation, exclusive leased lifecycle, protected tombstones and
 listener/operational separation. Default OpenAPI is generated from active public DTOs,
-metadata handlers and tombstones. Physical schema cleanup remains a separate final slice.
+metadata handlers and tombstones. Schema 30 removes live claims columns and guards
+after explicit offline finalization at schema 29; archives and receipts are retained.

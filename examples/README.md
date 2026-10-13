@@ -1,175 +1,87 @@
-# ToolHive Registry API - Configuration Examples
+# Configuration and Go examples
 
-This directory contains sample configuration files demonstrating automatic registry synchronization from different data sources.
+For Go library onboarding, start with the [runnable embedding tutorial](embedding/README.md).
+It serves an existing PostgreSQL catalog with host-owned mTLS admission and shutdown.
+The configurations below are for the standalone CLI.
 
-## Standalone admission setup
+Choose an example by source and deployment environment. These are templates:
+configure a real PostgreSQL endpoint, credentials and trusted OAuth issuer/audience
+before serving. Admin defaults off. Standalone evaluates built-in allow-all Cedar
+after authentication; no group/scope mapping is needed for that policy. When changing
+an issuer, remove unused `authorization.identityMappings` or update their issuer to
+match the configured provider exactly. Mismatched mappings fail startup.
 
-All YAML examples default to private OAuth access and `admin.enabled: false`.
-Configure the trusted issuer/audience and explicitly map its groups or scopes.
-When `authorization.policyFile` is omitted, standalone evaluates its built-in
-allow-all Cedar policy after authentication: every verified identity may use every
-enabled operation. This does not bypass OAuth, enable admin, or enable anonymous
-catalog access. The [Cedar guide](../docs/registry-cedar-authorization.md) has
-typechecked custom policies, policy size/type constraints and opaque-token
-compatibility notes. `serve` selects the nonpersonalized public catalog. Retired
-`auth.authz`, roles/publicPaths and resource claims must be absent in the final
-config. Existing data requires the [offline exposure procedure](../docs/registry-exposure-migration.md);
-a new, entirely empty catalog requires explicit `serve --initialize-empty` (default
-false). Historical claims examples live under `migration-fixtures/` and are expected
-to be rejected by selected startup, not recommended for deployment.
+## Choose a configuration
 
-To restrict access with a custom Cedar policy, set an absolute
-`authorization.policyFile` and mount that same file read-only. A configured custom
-path replaces the built-in policy entirely; a missing, empty, or invalid file fails
-startup rather than falling back. Admin still requires explicit opt-in and OAuth.
+| File | Purpose |
+|---|---|
+| [config-git.yaml](config-git.yaml) | Git catalog, 30-minute polling |
+| [config-api.yaml](config-api.yaml) | Upstream MCP API, hourly polling |
+| [config-file.yaml](config-file.yaml) | Local catalog file, 5-minute polling |
+| [config-docker.yaml](config-docker.yaml) | Repository Compose DB and container paths |
+| [config-docker-multiple.yaml](config-docker-multiple.yaml) | Multiple sources/views in Compose |
+| [config-docker-with-managed.yaml](config-docker-with-managed.yaml) | External and managed sources |
+| [config-database-dev.yaml](config-database-dev.yaml) | Local DB with separate runtime/migration logins |
+| [config-database-prod.yaml](config-database-prod.yaml) | Production DB template |
+| [config-database-passwordfile.yaml](config-database-passwordfile.yaml) | pgpass credential template |
+| [config-oauth.yaml](config-oauth.yaml) | OAuth provider settings |
+| [config-complete.yaml](config-complete.yaml) | Detailed configuration reference |
+| [config-filter-test.yaml](config-filter-test.yaml) | Source filtering example |
 
-For Helm, `policy.existingConfigMap` is optional. When set, it must name a ConfigMap
-containing `policies.cedar`; the chart mounts it read-only at
-`/etc/registry-policies/policies.cedar` and selects that `policyFile` automatically.
-Without it, the chart uses the evaluated built-in allow-all policy. In either case,
-set an explicit catalog-capable image via `image.registryServerUrl` and configure
-`config.auth.oauth.providers` and `config.authorization.identityMappings` as needed.
-Changing an external ConfigMap does not change a running evaluator: explicitly
-restart/roll out every replica, and drain old replicas when revoking access.
+Historical claims fixtures in [migration-fixtures](migration-fixtures/README.md)
+are offline tooling fixtures, not deployment examples. Selected startup rejects
+retired `auth.authz`, roles/publicPaths and resource claims by presence.
 
-Legacy anonymous Docker invocations are no longer a runnable security default.
-Explicit anonymous catalog use requires both the config opt-in and an authored
-Cedar permit; it never enables admin or accepts invalid bearer tokens. The static
-entry-claims/me tombstones and whole-instance admission are explained in the Cedar guide.
+## Run a prepared configuration
 
-## Kind installation tasks
+Follow [database setup](../docs/database.md#setup-guide) first. For a genuinely new,
+entirely empty catalog only:
 
-Both `registry-server-install-latest` and `registry-server-install-local` require
-`VALUES`, an operator-prepared Helm values file with the database and trusted OAuth
-providers/mappings. A custom policy is optional: set `policy.existingConfigMap` only
-when the values select an operator-prepared ConfigMap containing `policies.cedar`.
-The `latest` task also requires `REGISTRY_SERVER_IMAGE`, a catalog-capable release
-tag/digest; it never chooses an old image implicitly. The local task builds the
-current source tree.
-
-```bash
-task registry-server-install-latest VALUES="$CATALOG_VALUES" REGISTRY_SERVER_IMAGE="$REGISTRY_SERVER_IMAGE"
-task registry-server-install-local VALUES="$CATALOG_VALUES"
+```sh
+thv-registry-api serve --config examples/config-git.yaml --initialize-empty
 ```
 
-The `kind-with-registry-server-latest`/`-local` wrapper tasks use the same inputs.
-Only for a genuinely new, entirely empty database, explicitly set
-`initializeEmptyCatalog: true` in your values. Leave it false for existing databases
-and complete the manual offline exposure receipt procedure before an upgrade.
-The [CNPG workflow](../.claude/skills/deploy-registry-server-with-cnpg/SKILL.md)
-shows the additional PostgreSQL setup and admission inputs for that example.
+For an existing catalog, complete the
+[offline exposure procedure](../docs/registry-exposure-migration.md#maintenance-procedure)
+before using the new runtime. A current schema-30 catalog with a consumed same-target
+receipt starts normally:
 
-## Docker Compose: default policy or explicit custom override
-
-The root `docker-compose.yaml` has no Cedar policy mount or policy environment
-variable. Its selected config omits `authorization.policyFile`, so standalone
-evaluates the built-in allow-all policy after OAuth authentication. It supplies no
-anonymous or admin grant by default.
-
-To use a custom restriction, prepare an operator-owned directory outside the
-repository containing:
-
-- `config.yaml`, based on `examples/config-docker.yaml`, with your trusted OAuth
-  issuer/audience and matching identity mappings. Keep the Compose database host
-  `postgres`, database users and `/examples` source paths. Remove retired fields
-  before the final-config-first offline review for an existing catalog.
-- `policies.cedar`, authored for those identities using the
-  [Cedar guide](../docs/registry-cedar-authorization.md#what-does-the-policy-look-like).
-  Set `authorization.policyFile: /etc/registry/policies.cedar` in `config.yaml`.
-
-Restrict writes to deployment administrators and make both files readable by the
-container's application user. Save this override as `compose.admission.yaml` in
-the repository root (local setup only; do not commit credentials):
-
-```yaml
-services:
-  registry-api:
-    command: ["serve", "--config", "/etc/registry/config.yaml", "--address", ":8080"]
-    volumes:
-      - type: bind
-        source: ${REGISTRY_CONFIG_DIR:?Set an absolute directory containing config.yaml and policies.cedar}
-        target: /etc/registry
-        read_only: true
-        bind:
-          create_host_path: false
-    ports:
-      - "127.0.0.1:8081:8081" # Internal probes, loopback only
-```
-
-After setting `REGISTRY_CONFIG_DIR` to that directory's absolute path, run:
-
-```bash
-docker compose -f docker-compose.yaml -f compose.admission.yaml config --quiet
-docker compose -f docker-compose.yaml -f compose.admission.yaml up --build
-```
-
-This retains the base Compose source/database mounts and supplies no implicit
-policy grants. It is a local-development setup, not production TLS or database
-credential guidance. Do not start against an existing database until its claims
-and upgrade requirements have been reviewed and explicitly retired. For a genuinely
-empty install only, explicitly append `--initialize-empty` to the custom override's
-serve command. The supplied `docker-compose.initialize-empty.yaml` alternative uses
-the base `/examples` config path; do not combine it with the custom-config override.
-Neither supplies policy grants or deletes volumes. Restart the API after policy edits.
-
-## Quick Start
-
-**Choose your data source:**
-
-| Source | Use Case | Config File | Sync Interval |
-|--------|----------|-------------|---------------|
-| **Git** | Official registries, version control | [config-git.yaml](config-git.yaml) | 30m |
-| **API** | Upstream aggregation, federation | [config-api.yaml](config-api.yaml) | 1h |
-| **File** | Local development, testing | [config-file.yaml](config-file.yaml) | 5m |
-
-**Start the server with sync:**
-
-```bash
-# Git source (recommended for getting started)
+```sh
 thv-registry-api serve --config examples/config-git.yaml
-
-# API source (upstream MCP registry)
-thv-registry-api serve --config examples/config-api.yaml
-
-# File source (local development)
-thv-registry-api serve --config examples/config-file.yaml
 ```
 
-**Verify sync is working:**
+The public listener is 8080. Probes/metrics exist only on internal 8081. For direct
+local binary use, bind operational traffic to loopback with
+`--internal-address 127.0.0.1:8081`; do not expose it via a public proxy.
 
-Obtain an access token from your configured IdP with the expected audience and
-reader grants. Store the header line
-`Authorization: Bearer <access-token>` in a private file outside the repository,
-readable only by you. Do not paste tokens into shell history or commit them.
-Set `AUTH_HEADER_FILE` to that file's absolute path. These examples use the
-`default` view from the YAML files; substitute your configured view name if different.
-Use HTTPS outside loopback development.
+Store `Authorization: Bearer <access-token>` from the configured issuer/audience
+in a private mode-0600 header file outside the repository. Set `AUTH_HEADER_FILE`
+to its absolute path and use the example's `default` view:
 
-```bash
-# Query the API; curl reads credentials from the private header file.
-curl --fail-with-body --header "@${AUTH_HEADER_FILE:?Set the private header file path}" \
-  http://localhost:8080/registry/default/v0.1/servers | jq
-
-# Check the separate internal listener (no token required).
+```sh
+curl --fail-with-body --header "@${AUTH_HEADER_FILE:?Set private header file path}" \
+  http://localhost:8080/registry/default/v0.1/servers
 curl --fail http://localhost:8081/health
 curl --fail http://localhost:8081/readiness
 ```
 
----
+Use HTTPS outside loopback development. Probe success does not prove OAuth/Cedar
+admission or successful upstream refresh.
 
-## Configuration Files
+## Sources and views
 
-### 1. Git Repository Source
+Define fetch/publication settings under **`sources`** and ordered source names
+under **`registries`**. The earliest source wins all versions of each `(kind,name)`
+before consumer search/version/latest/pagination. Views are not privacy boundaries.
+All following snippets are source/view fragments; use the linked full examples
+for authentication and database settings.
 
-**File:** [config-git.yaml](config-git.yaml)
+### Git
 
-Syncs from the official ToolHive Git repository.
+From [config-git.yaml](config-git.yaml):
 
-**Configuration:**
 ```yaml
-registryName: toolhive
-
-registries:
+sources:
   - name: toolhive
     git:
       repository: https://github.com/stacklok/toolhive-catalog.git
@@ -177,395 +89,125 @@ registries:
       path: pkg/catalog/toolhive/data/registry-upstream.json
     syncPolicy:
       interval: "30m"
+registries:
+  - name: default
+    sources: [toolhive]
 ```
 
-**What happens when you start:**
-1. Background sync coordinator starts immediately
-2. Clones `https://github.com/stacklok/toolhive-catalog.git` (shallow, depth=1)
-3. Extracts `pkg/catalog/toolhive/data/registry-upstream.json` from the `main` branch
-4. Stores synced data in the PostgreSQL database
-5. Repeats every 30 minutes
+Use exactly one of `branch`, `tag` or `commit` to select a ref. To restrict content,
+place `filter` alongside that source's `git`/`syncPolicy`, not inside a view.
+Private Git credentials use an absolute `git.auth.passwordFile` mounted read-only.
 
-**Best for:**
-- Using official ToolHive registry data
-- Version-controlled registry sources
-- Multi-environment deployments (use different branches)
-- Pinning to specific tags/commits for stability
+### API
 
-**Options:**
-- Use `tag: v1.0.0` instead of `branch` to pin to a release
-- Use `commit: abc123` to pin to exact commit
-- Change `interval` to control sync frequency
+From [config-api.yaml](config-api.yaml):
 
----
-
-### 2. API Endpoint Source
-
-**File:** [config-api.yaml](config-api.yaml)
-
-Syncs from another MCP Registry API endpoint (like the official upstream registry).
-
-**Configuration:**
 ```yaml
-registryName: mcp-registry
-
-registries:
+sources:
   - name: mcp-upstream
     api:
       endpoint: https://registry.modelcontextprotocol.io
     syncPolicy:
       interval: "1h"
+registries:
+  - name: default
+    sources: [mcp-upstream]
 ```
 
-**What happens when you start:**
-1. Makes HTTP GET to `https://registry.modelcontextprotocol.io/registry/v0.1/servers`
-2. Stores synced data in the PostgreSQL database
-3. Repeats every hour (less frequent to be respectful of external APIs)
+The importer fetches the upstream `/v0.1/servers` API and completes pagination
+before validating/committing a snapshot. This upstream URL is distinct from this
+server's named consumer path `/registry/default/v0.1/servers`.
 
-**Best for:**
-- Aggregating multiple registry sources
-- Consuming official MCP registry data
-- Creating curated/filtered subsets
-- Registry federation scenarios
+### File
 
-**Format Structure:**
-The upstream format uses a wrapper structure with `version`, `meta`, and `data` sections (see `examples/upstream-registry.json`).
-Each server follows the MCP 2025-10-17 schema with `$schema`, `packages[]`, and `_meta` extensions for ToolHive-specific metadata (tier, status, tools, etc.).
+From [config-file.yaml](config-file.yaml):
 
----
-
-### 3. File Source
-
-**File:** [config-file.yaml](config-file.yaml)
-
-Reads registry data from a local file on the filesystem.
-
-**Configuration:**
 ```yaml
-registryName: toolhive
-
-registries:
+sources:
   - name: local-file
     file:
-      path: ./data/registry.json
+      path: ./examples/upstream-registry.json
     syncPolicy:
       interval: "5m"
-```
-
-**What happens when you start:**
-1. Reads registry data from the specified file path
-2. Validates the JSON data structure
-3. Stores synced data in the PostgreSQL database
-4. Repeats every 5 minutes to detect file changes
-
-**Best for:**
-- Local development and testing
-- Reading from mounted volumes in containers
-- Using pre-generated registry files
-- Quick prototyping without external dependencies
-
-**Note:** The sync manager detects if the file has changed by comparing content hashes, so unchanged files won't trigger a database write.
-
----
-
-### 4. Complete Reference
-
-**File:** [config-complete.yaml](config-complete.yaml)
-
-Comprehensive example showing **all** available configuration options with detailed comments.
-
-Use this as a reference when you need to:
-- Understand all available options
-- Configure advanced filtering
-- See examples of every source type
-- Learn about data formats
-
----
-
-## Configuration Structure
-
-All config files follow this structure:
-
-```yaml
-# Registry name/identifier (optional, defaults to "default")
-registryName: <name>
-
-# Registries configuration (can have multiple registries)
 registries:
-  - name: <registry-name>
-
-    # Source-specific config (one of: git, api, file, managed)
-    git:
-      repository: <url>
-      branch: <name>      # OR tag: <name> OR commit: <sha>
-      path: <file-path>
-
-    api:
-      endpoint: <base-url>
-
-    file:
-      path: <file-path>
-
-    managed: {}  # For API-managed registries (no sync)
-
-    # Per-registry sync policy (required except for managed registries)
-    syncPolicy:
-      interval: <duration>  # e.g., "30m", "1h", "24h"
-
-    # Optional: Per-registry filter
-    filter:
-      names:
-        include: [<glob-patterns>]
-        exclude: [<glob-patterns>]
-      tags:
-        include: [<tag-names>]
-        exclude: [<tag-names>]
+  - name: default
+    sources: [local-file]
 ```
 
----
+Paths resolve in the server process's filesystem; containers need their mounted
+paths (Compose uses `/examples/upstream-registry.json`).
+[upstream-registry.json](upstream-registry.json) demonstrates the import envelope;
+see [formats](../docs/registry-formats.md) for exact payload contracts. File sources
+also support URL or inline data as alternatives to `path`; inline data bypasses
+scheduled polling.
 
-## Customization Guide
+### Managed and Kubernetes
 
-### Sync Frequency
+`managed: {}` is the singleton API-publication source, not a poller. Publication
+requires enabled authenticated admin routes and Cedar permission.
+Kubernetes sources watch export-opted-in resources and periodically reconcile
+full-scope fenced snapshots, not on-demand consumer queries. They do not take
+`syncPolicy`; see [operator configuration](../docs/configuration.md#kubernetes).
 
-Choose based on your source and needs:
+For combined sources/views, use [config-complete.yaml](config-complete.yaml) or
+[config-docker-multiple.yaml](config-docker-multiple.yaml), not separate competing
+config owners against the same database.
 
-```yaml
-syncPolicy:
-  interval: "5m"   # Development/testing - very frequent
-  interval: "30m"  # Git sources - balance freshness vs load
-  interval: "1h"   # API sources - respectful rate limiting
-  interval: "6h"   # Stable sources - infrequent updates
+## Admission and deployment
+
+For an optional restriction, author a custom policy using
+[write a policy](../docs/registry-cedar-authorization.md#write-a-policy), set an
+absolute `authorization.policyFile`, and mount that file read-only. It replaces
+the built-in policy entirely; missing/empty/invalid specified files fail startup.
+Attribute mappings are needed only when the custom policy uses those attributes.
+Admin stays off unless explicitly enabled; anonymous catalog access needs both
+explicit opt-in and a Cedar permit (the built-in policy supplies that permit).
+Invalid supplied credentials never become anonymous.
+
+Use these authoritative deployment paths rather than independent manifests:
+
+- [Compose: new and existing catalogs](../docs/deployment-docker.md): current-source
+  development image, explicit new-empty override, volume-preserving lifecycle,
+  optional custom mount and production credential limitations.
+- [Helm/Kubernetes: new and existing catalogs](../docs/deployment-kubernetes.md):
+  complete `operator-values.yaml`, image selection, database roles/Secret, readable
+  mode-0600 pgpass, OAuth, optional custom policy and internal-only probes.
+
+For local kind tasks, prepare `VALUES` using the Kubernetes guide, including its DB
+and trusted OAuth settings. `registry-server-install-local` builds current source;
+`registry-server-install-latest` requires an explicitly selected catalog-capable
+`REGISTRY_SERVER_IMAGE`. Neither picks initialization consent implicitly:
+
+```sh
+task registry-server-install-local VALUES="$CATALOG_VALUES"
+task registry-server-install-latest VALUES="$CATALOG_VALUES" REGISTRY_SERVER_IMAGE="$REGISTRY_SERVER_IMAGE"
 ```
 
-### Filtering Servers
+Set `initializeEmptyCatalog: true` only for a genuinely new empty DB. These tasks
+require the deliberately prepared local cluster/kubeconfig; do not run them against
+a user cluster by accident. [cnpg](cnpg/) supplies additional database templates,
+not a substitute for production secret provisioning or offline migration review.
 
-Include/exclude specific servers:
+## Monitoring and troubleshooting
 
-```yaml
-filter:
-  # Name-based filtering (glob patterns)
-  names:
-    include:
-      - "official/*"      # Only official namespace
-      - "myorg/*"         # Your organization
-    exclude:
-      - "*/deprecated"    # Skip deprecated
-      - "*/internal"      # Skip internal-only
-      - "*/test"          # Skip test servers
+[Observability](../docs/observability.md) documents actual public HTTP and ingestion
+metrics/traces. Scheduled Git/API/file reconciliation uses database leases and
+atomic fenced commits; failures retain the last good snapshot. Use
+[publication diagnostics](../docs/registry-publication-diagnostics.md) when admin is
+enabled to inspect source state. Do not rely on obsolete sync-manager log strings.
 
-  # Tag-based filtering (exact matches)
-  tags:
-    include:
-      - "production"      # Only production-ready
-      - "verified"        # Only verified servers
-    exclude:
-      - "experimental"    # Skip experimental
-      - "beta"            # Skip beta versions
-```
+- **Startup refused:** check DB configuration, exact issuer mappings, frozen policy
+  and exposure receipts. Empty initialization cannot bypass historical review.
+- **Fetch failed:** verify the source URL/ref/path and server-side network access;
+  private Git credentials must be readable at their configured absolute path.
+- **401/403:** check token issuer/audience/expiry and custom Cedar permissions.
+- **Credentials failed:** check file ownership/mode and exact DB tuple, never print
+  credentials or environment dumps.
 
-**Filter logic:**
-1. Name include patterns (empty = include all)
-2. Name exclude patterns
-3. Tag include (empty = include all)
-4. Tag exclude
+## See also
 
-### Data Format
-
-See [`examples/upstream-registry.json`](upstream-registry.json) for a reference file in the MCP Registry v0.1 format consumed by this server.
-
-### Git Version Pinning
-
-```yaml
-registries:
-  - name: my-registry
-    git:
-      repository: https://github.com/stacklok/toolhive-catalog.git
-
-      # Option 1: Track latest on a branch
-      branch: main
-
-      # Option 2: Pin to a release tag
-      tag: v1.2.3
-
-      # Option 3: Pin to exact commit
-      commit: abc123def456
-
-      path: pkg/catalog/toolhive/data/registry-upstream.json
-    syncPolicy:
-      interval: "30m"
-```
-
----
-
-## Monitoring & Troubleshooting
-
-### Check Sync Status
-
-Sync status is stored in the PostgreSQL database and exposed via server logs.
-
-**Status phases:**
-- `Syncing`: Sync operation in progress
-- `Complete`: Last sync successful
-- `Failed`: Last sync failed (will auto-retry at next sync interval)
-
-### Server Logs
-
-Look for these log messages:
-
-```bash
-# Successful initialization
-"Initializing sync manager for automatic registry synchronization"
-"Loaded sync status: last sync at 2024-11-05T12:00:00Z, 42 servers"
-"Starting background sync coordinator"
-
-# Successful sync
-"Starting sync operation (attempt 1)"
-"Registry data fetched successfully from source"
-"Sync completed successfully: 42 servers, hash=abc123de"
-
-# Sync failures
-"Sync failed: Fetch failed: ..."
-```
-
-### Common Issues
-
-#### Sync Not Starting
-
-**Symptom:** Health endpoint returns unhealthy
-
-**Solution:**
-1. Verify `--config` flag is provided:
-   ```bash
-   thv-registry-api serve --config examples/config-git.yaml
-   ```
-2. Check logs for "Loaded configuration from..."
-3. Ensure `syncPolicy` is defined in config
-4. Ensure `database` is configured and reachable
-
-#### Git Clone Failed
-
-**Symptom:** Status shows `Failed` with git error
-
-**Solutions:**
-- Check repository URL is accessible: `git ls-remote <url>`
-- For private repos, configure git credentials
-- Verify branch/tag/commit exists
-- Check network connectivity
-
-#### API Endpoint Unreachable
-
-**Symptom:** Status shows `Failed` with connection error
-
-**Solutions:**
-- Verify endpoint URL: `curl <endpoint>/v0.1/servers`
-- Check network connectivity
-- Look for rate limiting (increase interval)
-- Verify API is MCP-compatible
-
----
-
-## Storage
-
-All synced data is stored in PostgreSQL. Database configuration is required in the config file.
-
----
-
-## Advanced Usage
-
-### Development Setup
-
-Fast updates for local development:
-
-```yaml
-registries:
-  - name: dev-registry
-    git:
-      repository: https://github.com/stacklok/toolhive-catalog.git
-      branch: develop  # Use dev branch
-      path: pkg/catalog/toolhive/data/registry-upstream.json
-    syncPolicy:
-      interval: "1m"  # Very frequent for testing
-```
-
-### Production Setup
-
-Conservative config with filtering:
-
-```yaml
-registries:
-  - name: prod-registry
-    git:
-      repository: https://github.com/your-org/registry.git
-      branch: production
-      path: registry.json
-    syncPolicy:
-      interval: "30m"
-    filter:
-      tags:
-        include: ["production", "stable"]
-        exclude: ["experimental", "deprecated"]
-```
-
-### Multi-Source Aggregation
-
-Run multiple instances and aggregate at the application level:
-
-```bash
-# Instance 1: Official ToolHive (port 8081)
-thv-registry-api serve \
-  --config examples/config-git.yaml \
-  --address :8081 --internal-address 127.0.0.1:9081 &
-
-# Instance 2: Upstream MCP (port 8082)
-thv-registry-api serve \
-  --config examples/config-api.yaml \
-  --address :8082 --internal-address 127.0.0.1:9082 &
-
-# Instance 3: Local file (port 8083)
-thv-registry-api serve \
-  --config examples/config-file.yaml \
-  --address :8083 --internal-address 127.0.0.1:9083 &
-```
-
-**Note:** Each instance should be configured with its own database or registry name to avoid conflicts.
-
----
-
-## Command Reference
-
-```bash
-# Start with Git sync
-thv-registry-api serve --config examples/config-git.yaml
-
-# Start with API sync
-thv-registry-api serve --config examples/config-api.yaml
-
-# Start with File sync (local development)
-thv-registry-api serve --config examples/config-file.yaml
-
-# Start with custom address
-thv-registry-api serve --config examples/config-git.yaml --address :9090
-
-# Test API endpoint (AUTH_HEADER_FILE setup described in Quick Start)
-curl --fail-with-body --header "@${AUTH_HEADER_FILE:?Set the private header file path}" \
-  http://localhost:8080/registry/default/v0.1/servers | jq
-
-# Check health on the internal listener
-curl --fail http://localhost:8081/health
-
-# Watch logs
-tail -f /var/log/thv-registry-api.log | grep -i sync
-
-# Note: Manual sync triggering is not currently supported
-# Sync happens automatically based on configured intervals
-```
-
----
-
-## See Also
-
-- [Main README](../README.md) - Full project documentation
-- [Architecture](../README.md#architecture) - System design
-- [API Reference](../README.md#api-endpoints) - REST endpoints
-- [CLAUDE.md](../CLAUDE.md) - Development guide
+- [Project overview](../README.md#toolhive-registry-server)
+- [Configuration reference](../docs/configuration.md)
+- [Component architecture](../docs/component-architecture.md)
+- [Consumer HTTP contract](../docs/registry-consumer-http.md)
+- [Ingestion](../docs/registry-ingestion.md)

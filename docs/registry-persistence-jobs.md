@@ -1,14 +1,15 @@
 # Leased registry synchronization jobs
 
 Before embedding ingestion, see [reusable adapters and lifecycle](registry-ingestion.md).
-The standalone compatibility boundary described there remains in force.
+Standalone uses the same leased reconciliation components through its
+[supervisor and preparation barrier](registry-standalone-assembly.md).
 
 `persistence.Jobs` is independent of `RegistryService`, HTTP, secrets and
 identity. `postgres.NewJobs(pool, maxMetaSize)` borrows the same migrated,
 caller-owned PostgreSQL pool. It neither migrates, repairs latest pointers,
 starts a poller/listener nor closes the pool. Construct `NewEntries` once after
 the **offline** migration/repair barrier described in
-[registry persistence](registry-persistence.md#entries-and-atomic-source-snapshots-second-slice)
+[registry persistence](registry-persistence.md#entries-and-atomic-snapshots)
 before serving reads;
 construct `NewJobs` independently. Every PostgreSQL job mutation requires clean
 schema 30; historical, dirty or newer schemas return `ErrUnavailable`, not a

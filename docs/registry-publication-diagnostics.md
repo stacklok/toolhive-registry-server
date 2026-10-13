@@ -1,10 +1,10 @@
-# Managed publication and unshadowed diagnostics
+# Managed publication and complete diagnostics
 
 `catalog.Publisher` and `catalog.Diagnostics` are independently replaceable
 capabilities, not a generic admin service. Standalone selects them behind mandatory
 Cedar admission after [offline preparation/finalization and schema-30 migration](registry-exposure-migration.md).
 Public [admin HTTP](registry-admin-http.md) serializes their results without identity
-or resource claims; the obsolete monolithic service/writer runtime is removed.
+or resource claims.
 
 These are **raw host-owned operations, not a standalone authorization boundary**.
 Hosts authorize every call and decide who can publish or inspect diagnostics.
@@ -96,7 +96,7 @@ sources and `ViewDiagnosticVersion` rows for views. Every stored version of all
 three kinds is included, **including shadowed duplicate names and identical
 versions from different sources**. It does not use `catalog.Reader` or
 `ViewEntryReader`: those deliberately choose a whole-name winning source.
-These diagnostic lists retain the old admin surface's **complete** semantics:
+These diagnostic lists are **complete**:
 no silent cap, truncation, pagination, search or dedup. The host should account
 for the memory/response cost before exposing a large raw catalog.
 
@@ -104,8 +104,9 @@ Rows contain kind, name, exact version, title, description and published/updated
 storage timestamps (`CreatedAt`/`UpdatedAt`). View rows add source name, opaque
 source incarnation ID and zero-based source order position. They contain no
 payload, claims, source definition/configuration or freeform backend error.
-A future HTTP adapter can group source rows by `(kind,name)` and preserve the
-existing admin wire fields; this slice does not define new HTTP serialization.
+The [admin HTTP adapter](registry-admin-http.md#diagnostics-consistency-and-secrecy)
+groups source rows by `(kind,name)` and retains every view row, including shadowed
+duplicates. It owns serialization of the diagnostic wire fields.
 
 Ordering is ascending **byte-lexical** `(name, version, kind)` with source position
 as the view tie-breaker, then source name for equal historical positions (the

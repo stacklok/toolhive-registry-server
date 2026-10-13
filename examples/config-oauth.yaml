@@ -84,6 +84,7 @@ auth:
       - name: kubernetes
         issuerUrl: https://kubernetes.default.svc
         audience: https://kubernetes.default.svc
+        allowPrivateIP: true
         # Path to CA certificate for verifying Kubernetes API server TLS
         caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
@@ -94,6 +95,7 @@ database:
   host: localhost
   port: 5432
   user: thv_user
+  migrationUser: thv_migrator
   database: toolhive_registry
   sslMode: require
 

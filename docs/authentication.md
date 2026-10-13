@@ -91,6 +91,7 @@ auth:
         issuerUrl: https://kubernetes.default.svc
         audience: https://kubernetes.default.svc
         caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        allowPrivateIP: true # Explicit trust of this private cluster issuer.
 ```
 
 This configuration allows both:
@@ -144,6 +145,7 @@ auth:
         issuerUrl: https://kubernetes.default.svc
         audience: https://kubernetes.default.svc
         caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        allowPrivateIP: true # Explicit trust of this private cluster issuer.
 ```
 
 ## Public endpoints
@@ -284,6 +286,7 @@ auth:
         issuerUrl: https://kubernetes.default.svc
         audience: https://kubernetes.default.svc
         caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        allowPrivateIP: true # Explicit trust of this private cluster issuer.
 ```
 
 ### Multi-Region Setup
@@ -305,27 +308,27 @@ auth:
 
 ## Testing Authentication
 
-### Using curl with Bearer Token
+### Using curl with a private bearer header
 
-```bash
-# Get token from your IDP (example)
-TOKEN="your-jwt-token-here"
+Obtain a token for the configured trusted issuer and audience. Store the line
+`Authorization: Bearer <access-token>` in a private mode-0600 file outside the
+repository and set `AUTH_HEADER_FILE` to its absolute path. Use a configured view
+name (`default` in the examples), not an unnamed `/registry/v0.1` path:
 
-# Make authenticated request
-curl -H "Authorization: Bearer $TOKEN" \
-  https://registry.example.com/registry/v0.1/servers
+```sh
+curl --fail-with-body --header "@${AUTH_HEADER_FILE:?Set private header file path}" \
+  https://registry.example.com/registry/default/v0.1/servers
 ```
 
-### Using kubectl with Service Account
+For Kubernetes service-account authentication, obtain a short-lived token with the
+configured audience through your approved token provisioning mechanism and use
+the same private header-file pattern. The provider's issuer must match the token's
+actual issuer; private cluster API issuers need provider-local `allowPrivateIP: true`
+and a trusted CA. Do not print tokens or put them in shell history/process arguments.
 
-```bash
-# Get service account token
-TOKEN=$(kubectl get secret <service-account-token> -o jsonpath='{.data.token}' | base64 -d)
-
-# Make authenticated request
-curl -H "Authorization: Bearer $TOKEN" \
-  https://registry.example.com/registry/v0.1/servers
-```
+Probes are separate, unauthenticated operations on **internal 8081 only**. Check
+`http://localhost:8081/health` and `/readiness` through a loopback mapping or port
+forward; never route that port through the public TLS ingress.
 
 ## Security Best Practices
 
@@ -358,10 +361,11 @@ Check:
 
 ### Token Validation Failures
 
-Enable debug logging to see detailed error messages:
+Enable debug logging with `THV_REGISTRY_LOG_LEVEL=debug` to inspect sanitized
+validation/startup messages:
 
 ```bash
-thv-registry-api serve --config config.yaml --debug
+THV_REGISTRY_LOG_LEVEL=debug thv-registry-api serve --config config.yaml --internal-address 127.0.0.1:8081
 ```
 
 ## See Also

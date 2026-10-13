@@ -196,8 +196,10 @@ watch failures, incarnation/scope mismatch, and startup readiness.
 
 The supervisor is selected by the default CLI/chart
 [`NewCatalogApp` composition](registry-standalone-assembly.md) after its mandatory
-preparation/receipt barrier. Old writers/controllers are removed; never run an old
-binary concurrently against these sources.
+preparation/receipt barrier. Verified OAuth and Cedar admission protect HTTP outside
+these policy-free components; named-view consumer selection belongs to `catalog.Reader`.
+Library admission and personalized selection belong to the embedding host. Never
+run an old unfenced writer/controller concurrently against these sources.
 
 `internal/sync/standalone.New` constructs an unstarted supervisor over the public
 coordinator and injected operator factory. Construction performs no database access,
@@ -253,29 +255,14 @@ converter still owns explicit export URL/description handling and valid empty st
 - Revalidate/consume the acknowledged offline exposure transition, final configuration
   and Cedar policy before any initialization, lease, fetch, watch or serving. Neither
   the supervisor itself nor its tests supply consent or clear historical claims.
-- Validate/remediate legacy definitions before initialization. Public `Kind` rejects
-  schedules/filters on inline, managed and Kubernetes sources. Legacy configuration
-  accepts some such fields (and applies inline filters); **never silently drop those
-  filters** or assume equivalent selection. Provide an explicit operator-facing
-  remediation plan and repeat exposure review when effective configuration changes.
+- Validate/remediate historical definitions before initialization. Public `Kind`
+  rejects schedules/filters on inline, managed and Kubernetes sources; standalone
+  preflight rejects unsupported configuration by presence. If historical inline
+  filters selected data, explicitly preserve that selection in the input catalog
+  rather than silently dropping filters. Repeat exposure review when effective
+  configuration changes.
 - Persist the final effective Kubernetes namespace scope consistently. Empty public
   scope means all namespaces; any later global watch-namespace fallback must be
   resolved into the stored definition used by both fence and runner. Do not narrow
   only the wrapper while leaving stored scope broader. Namespace ordering alone does
   not change ownership; duplicates/invalid namespaces remain rejected by the runner.
-- Complete standalone service/HTTP selection and runtime claims/RBAC retirement in
-  later slices. Current production guards and legacy ingestion remain unchanged.
-
-## Temporary standalone compatibility boundary
-
-The standalone app is **not rewired** to these unrestricted components. Its
-claim-aware service, legacy coordinator/writer, and legacy operator claims parsing
-remain active. Only policy-free machinery is shared: upstream API pagination,
-existing transport/format/filter code, and operator metadata conversion. Filter
-config aliases preserve standalone YAML/JSON behavior. Do not allow the legacy
-writer/controller and leased coordinator/operator to co-own a source. Public
-PostgreSQL writes continue rejecting claimed legacy data rather than erasing it.
-
-Claim removal remains #912, consumer/application services #913, and complete
-standalone reassembly #914. This does not solve named-view consumer queries,
-personalized query selection, or host authorization.
