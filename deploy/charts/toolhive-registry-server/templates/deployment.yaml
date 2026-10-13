@@ -41,12 +41,15 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: "{{ .Values.image.registryServerUrl }}"
+          image: {{ required "image.registryServerUrl must select an image containing catalog startup/receipt enforcement" .Values.image.registryServerUrl | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - serve
             - --config
             - /etc/registry-server/config.yaml
+            {{- if .Values.initializeEmptyCatalog }}
+            - --initialize-empty
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080
@@ -67,8 +70,6 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           env:
-            - name: THV_REGISTRY_LEADER_ELECTION_ID
-              value: "{{ include "toolhive-registry-server.fullname" . }}-leader-election"
             {{- if eq .Values.rbac.scope "namespace" }}
             - name: THV_REGISTRY_WATCH_NAMESPACE
               value: "{{ .Values.rbac.allowedNamespaces | join "," }}"

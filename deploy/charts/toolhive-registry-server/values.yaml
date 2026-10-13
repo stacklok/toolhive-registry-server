@@ -5,8 +5,8 @@
 replicaCount: 1
 
 image:
-  # -- URL of the registry server image
-  registryServerUrl: "ghcr.io/stacklok/thv-registry-api:v1.5.2"
+  # -- Required image containing catalog startup/receipt enforcement. No legacy image fallback.
+  registryServerUrl: ""
 
   # -- Image pull policy
   pullPolicy: IfNotPresent
@@ -141,6 +141,11 @@ initContainers: []
 # The entire config block is rendered as YAML into the ConfigMap, so you can add
 # any new fields without modifying the chart templates.
 
+# -- Explicit new-install authorization for an entirely empty catalog only.
+# Existing catalogs require offline inventory/acknowledgement/retirement.
+# Safe to retain on same-target restarts; never rebinds a consumed receipt.
+initializeEmptyCatalog: false
+
 policy:
   # -- Existing ConfigMap containing an operator-authored policies.cedar key.
   # Required for serving; no sample policy or implicit grant is installed.
@@ -211,10 +216,6 @@ config:
 #       #     exclude: ["*/deprecated"]
 #       #   tags:
 #       #     include: ["stable"]
-#       # Source-level claims inherited by entries during sync
-#       # claims:
-#       #   org: "my-org"
-#       #   tier: "premium"
 #
 #     # Additional source types:
 #     # - name: upstream-mcp
@@ -232,14 +233,11 @@ config:
 #     # - name: k8s-mcp
 #     #   kubernetes:
 #     #     namespaces: ["mcp-prod"]
-#     #   # Per-entry claims set via toolhive.stacklok.dev/authz-claims JSON annotation on CRDs
+#     #   # Export requires registry-export=true; retired authz-claims annotations block preflight.
 #
 #   registries:
 #     - name: default
 #       sources: ["toolhive"]
-#       # Registry-level claims for access gating (JWT must satisfy these)
-#       # claims:
-#       #   org: "my-org"
 #
 #   database:
 #     host: postgres.example.com
@@ -272,19 +270,15 @@ config:
 #           # caCertPath: /etc/ssl/certs/ca.crt
 #           # introspectionUrl: https://auth.example.com/realms/myrealm/protocol/openid-connect/token/introspect
 #           # allowPrivateIP: false
-#     # Authorization: role-based access control via JWT claims
-#     # authz:
-#     #   roles:
-#     #     superAdmin:
-#     #       - role: "super-admin"
-#     #     manageSources:
-#     #       - org: "my-org"
-#     #         role: "admin"
-#     #     manageRegistries:
-#     #       - org: "my-org"
-#     #         role: "admin"
-#     #     manageEntries:
-#     #       - role: "writer"
+#   # Whole-instance permissions come from the externally mounted Cedar policy.
+#   admin:
+#     enabled: false
+#   authorization:
+#     policyFile: /etc/registry-policies/policies.cedar
+#     allowAnonymousCatalog: false
+#     identityMappings:
+#       - issuer: https://auth.example.com/realms/myrealm
+#         groups: {claim: groups, format: string-array}
 #
 #   # OpenTelemetry configuration (optional)
 #   # telemetry:

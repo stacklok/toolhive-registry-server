@@ -12,7 +12,7 @@ Deploy the ToolHive Registry Server to a Kind cluster with OpenTelemetry telemet
 ## Arguments
 
 - `local` - Build the image locally using ko and deploy (default)
-- `latest` - Use the latest published image from GitHub
+- `latest` - Use an explicitly selected catalog-capable release image (no fallback)
 
 ## Prerequisites
 
@@ -77,11 +77,69 @@ fi
 
 ### 3. Deploy Registry Server
 
-Based on the argument, either build locally or use the latest image. Telemetry and the
-database connection are configured dynamically via Helm `--set` flags.
+Based on the argument, either build locally or select a catalog-capable release
+image explicitly. Before installing, prepare `CATALOG_VALUES` with your trusted
+OAuth issuer/audience and identity mappings, author your own Cedar policy and
+create an external ConfigMap with its `policies.cedar` key. Set `POLICY_CONFIGMAP`
+to that name. Follow the [CNPG admission setup](../deploy-registry-server-with-cnpg/SKILL.md#6-deploy-registry-server)
+for the values shape and explicit ConfigMap creation command; do not deploy CNPG
+for this OTEL variant. No allow-all policy or anonymous default is supplied.
+
+For an existing database, stop old readers/writers and complete
+[offline inventory/acknowledgement/retirement](../../../docs/registry-exposure-migration.md)
+using the final config and policy first; choose `CATALOG_INITIALIZATION=existing`.
+Only for a genuinely new, entirely empty database choose
+`CATALOG_INITIALIZATION=new-empty`. Reusing a Postgres deployment does not prove
+its database is empty. Telemetry and database flags below are layered onto your
+admission values, with admin disabled and anonymous catalog access disallowed.
+
+Before running either deployment mode, **append/merge** these required database
+entries for the OTEL deployment into the existing `extraEnv` list in your selected
+`CATALOG_VALUES` file. Preserve all existing entries, including OAuth and proxy
+secret references. If either name already exists, reconcile it explicitly rather
+than adding a duplicate. This example shows only the entries to merge, not a
+replacement values file:
+
+```yaml
+extraEnv:
+  # Keep all existing entries here and append/merge these entries.
+  - name: THV_REGISTRY_DATABASE_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: db-credentials
+        key: password
+  - name: THV_REGISTRY_DATABASE_MIGRATIONPASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: db-credentials
+        key: migration-password
+```
+
+Keep the complete `extraEnv` list owned by that single values file. Helm replaces
+lists rather than merging them; do not override `extraEnv` with another values
+file or command-line flag.
 
 ```bash
+set -euo pipefail
 DEPLOY_MODE="${ARGUMENTS:-local}"
+: "${CATALOG_VALUES:?Set the operator-prepared OAuth/admission values file}"
+: "${POLICY_CONFIGMAP:?Create your external policy ConfigMap first}"
+test -f "$CATALOG_VALUES" || exit 1
+case "$POLICY_CONFIGMAP" in
+  ''|*[!a-z0-9.-]*) echo "ERROR: Invalid ConfigMap name"; exit 1 ;;
+esac
+case "${CATALOG_INITIALIZATION:?Choose existing or new-empty explicitly}" in
+  existing) INITIALIZE_EMPTY=false ;;
+  new-empty) INITIALIZE_EMPTY=true ;;
+  *) echo "ERROR: Choose existing or new-empty"; exit 1 ;;
+esac
+ADMISSION_FLAGS=(
+  -f "$CATALOG_VALUES"
+  --set-string "policy.existingConfigMap=$POLICY_CONFIGMAP"
+  --set "initializeEmptyCatalog=$INITIALIZE_EMPTY"
+  --set config.admin.enabled=false
+  --set config.authorization.allowAnonymousCatalog=false
+)
 
 # Common telemetry configuration flags
 TELEMETRY_FLAGS=(
@@ -100,7 +158,6 @@ DATABASE_FLAGS=(
   --set config.database.user=thv_user
   --set config.database.database=toolhive_registry
   --set config.database.sslMode=disable
-  --set-json 'extraEnv=[{"name":"THV_REGISTRY_DATABASE_PASSWORD","valueFrom":{"secretKeyRef":{"name":"db-credentials","key":"password"}}},{"name":"THV_REGISTRY_DATABASE_MIGRATIONPASSWORD","valueFrom":{"secretKeyRef":{"name":"db-credentials","key":"migration-password"}}}]'
 )
 
 if [ "$DEPLOY_MODE" = "local" ] || [ -z "$DEPLOY_MODE" ]; then
@@ -114,6 +171,9 @@ if [ "$DEPLOY_MODE" = "local" ] || [ -z "$DEPLOY_MODE" ]; then
 
   # Build the image
   REGISTRY_SERVER_IMAGE=$(KO_DOCKER_REPO=kind.local ko build --local -B ./cmd/thv-registry-api | tail -n 1)
+  case "$REGISTRY_SERVER_IMAGE" in
+    ''|*[!a-zA-Z0-9./:@_-]*) echo "ERROR: Invalid image reference"; exit 1 ;;
+  esac
   echo "Built image: $REGISTRY_SERVER_IMAGE"
 
   # Load into kind
@@ -126,17 +186,24 @@ if [ "$DEPLOY_MODE" = "local" ] || [ -z "$DEPLOY_MODE" ]; then
     --namespace toolhive-system \
     --create-namespace \
     --kubeconfig kconfig.yaml \
-    --set image.registryServerUrl="$REGISTRY_SERVER_IMAGE" \
+    --set-string "image.registryServerUrl=$REGISTRY_SERVER_IMAGE" \
     --set image.pullPolicy=Never \
+    "${ADMISSION_FLAGS[@]}" \
     "${TELEMETRY_FLAGS[@]}" \
     "${DATABASE_FLAGS[@]}"
 
 elif [ "$DEPLOY_MODE" = "latest" ]; then
-  echo "Deploying latest registry server image from GitHub..."
+  : "${REGISTRY_SERVER_IMAGE:?Select a catalog-capable release image tag or digest}"
+  case "$REGISTRY_SERVER_IMAGE" in
+    ''|*[!a-zA-Z0-9./:@_-]*) echo "ERROR: Invalid image reference"; exit 1 ;;
+  esac
+  echo "Deploying selected catalog-capable release image..."
   helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server \
     --namespace toolhive-system \
     --create-namespace \
     --kubeconfig kconfig.yaml \
+    --set-string "image.registryServerUrl=$REGISTRY_SERVER_IMAGE" \
+    "${ADMISSION_FLAGS[@]}" \
     "${TELEMETRY_FLAGS[@]}" \
     "${DATABASE_FLAGS[@]}"
 else
@@ -192,8 +259,8 @@ cat <<'EOF'
 To access the registry server API:
   kubectl port-forward -n toolhive-system svc/toolhive-registry-server 8080:8080 --kubeconfig kconfig.yaml
 
-Then test with:
-  curl http://localhost:8080/registry/default/v0.1/servers
+Then test with your IdP token stored in a private header file:
+  curl --fail-with-body --header "@${AUTH_HEADER_FILE:?Set your private header file path}" http://localhost:8080/registry/default/v0.1/servers
 
 To check health and metrics (internal port, no auth):
   kubectl port-forward -n toolhive-system svc/toolhive-registry-server 8081:8081 --kubeconfig kconfig.yaml

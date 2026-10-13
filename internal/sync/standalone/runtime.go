@@ -1,5 +1,5 @@
-// Package standalone supervises leased ingestion for the opt-in CatalogApp.
-// The CLI default still uses legacy assembly; never co-own its sources.
+// Package standalone supervises leased ingestion for CatalogApp and the CLI.
+// Never co-own its sources with legacy assembly.
 package standalone
 
 import (
@@ -145,6 +145,8 @@ func (r *Runtime) SyncInline(ctx context.Context, name string) error {
 
 // Run blocks until cancellation or a terminal worker/backend failure. All owned
 // siblings are canceled and joined on every exit; borrowed resources stay open.
+//
+//nolint:gocyclo // Keep initiating-failure classification and sibling cleanup on the owning lifecycle goroutine.
 func (r *Runtime) Run(ctx context.Context) (err error) {
 	r.mu.Lock()
 	if r.running {
@@ -161,8 +163,13 @@ func (r *Runtime) Run(ctx context.Context) (err error) {
 	var pollDone chan error
 	defer func() {
 		r.ready.Store(false)
+		// Classify the initiating result before canceling our own lifetime.
+		if ctx.Err() != nil {
+			err = shutdown.Result(err)
+		} else if err != nil && shutdown.Result(err) == nil {
+			err = errors.Join(persistence.ErrUnavailable, err)
+		}
 		cancel()
-		err = shutdown.Result(err)
 		if pollDone != nil {
 			err = errors.Join(err, shutdown.Result(<-pollDone))
 		}

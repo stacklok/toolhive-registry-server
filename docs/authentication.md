@@ -15,11 +15,14 @@ The ToolHive Registry API server supports OAuth 2.0/OIDC authentication to prote
 
 ## Overview
 
-Standalone serving also requires an operator-authored Cedar policy file. Cedar
-admission is additional to existing roles and resource claims; see the
-[Cedar transition guide](registry-cedar-authorization.md) before upgrading.
+Standalone serving requires an operator-authored Cedar policy file and a valid
+exposure receipt. Cedar replaces legacy roles/resource claims in the selected
+runtime; permitted readers receive the same nonpersonalized catalog. See the
+[Cedar guide](registry-cedar-authorization.md) and
+[offline exposure procedure](registry-exposure-migration.md) before upgrading.
 The authentication snippets below are not complete standalone configurations.
-`auth.publicPaths` is retired and rejected (including empty/null values).
+`auth.authz`, `auth.roles`, `auth.publicPaths`, and resource `claims` are retired
+and rejected (including empty/null values).
 
 The server defaults to **OAuth mode** for security-by-default. For development environments, you can explicitly set `mode: anonymous`.
 
@@ -148,8 +151,7 @@ On the public listener (default `:8080`), only exact
 exemption. `/openapi.json` requires Cedar `metadata.read`; consumer routes require
 `catalog.read`. There is no configurable public-path bypass. Anonymous catalog
 access requires explicit opt-in **and** a matching Cedar permit; enabled admin
-routes always require OAuth authentication. Anonymous admission cannot be combined
-with legacy `auth.authz` in this transition slice.
+routes always require OAuth authentication. Legacy `auth.authz` is rejected by presence.
 
 ## Provider Configuration
 

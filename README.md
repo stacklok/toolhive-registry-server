@@ -14,11 +14,11 @@
 
 **Discover, govern, and control access to MCP servers, skills, and plugins across your organization**
 
-The ToolHive Registry Server aggregates MCP servers, skills, and plugins from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs that your teams and AI clients can query. Each catalog has its own access control and audit trail, so you decide which entries are visible to which users -- and have a record of who accessed what.
+The ToolHive Registry Server aggregates MCP servers, skills, and plugins from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs. OAuth verifies identity and operator-authored Cedar grants whole-instance operations. Permitted readers of the same view receive the same catalog; views are not privacy boundaries. Use separate instances or host-owned personalized services when audiences must see different data.
 
 It implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). If you're not familiar with MCP: it's an open protocol that lets AI assistants connect to external tools and data sources. This server is the governance layer that sits between your MCP infrastructure and the teams consuming it.
 
-**Why ToolHive Registry Server?** Most MCP setups start with a flat list of servers and no access control. As adoption grows, you need to govern who sees what, aggregate servers from multiple sources, and audit access -- without locking into a proprietary registry. The ToolHive Registry Server is open source, implements the official MCP Registry API spec, and plugs into your existing identity provider, combining multi-tenant claim-based authorization, multi-source aggregation, and SIEM-compliant audit logging in a single service.
+**Why ToolHive Registry Server?** Most MCP setups start with a flat list of servers and no access control. As adoption grows, you need to govern who sees what, aggregate servers from multiple sources, and audit access -- without locking into a proprietary registry. The ToolHive Registry Server is open source, implements the official MCP Registry API spec, and plugs into your existing identity provider, combining whole-instance Cedar authorization, multi-source aggregation, and SIEM-compliant audit logging in a single service.
 
 [Learn more about the ToolHive platform →](https://stacklok.com/platform)
 
@@ -39,9 +39,9 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 
 ### Governance and access control
 
-- **JWT claim-based visibility**: Control which MCP servers, skills, and plugins each user or team can see, per registry. A "production" registry can expose only vetted entries while a "dev-team" registry shows everything.
+- **Cedar admission**: Operator-authored policies grant consumer read, publication and administration operations on the whole instance. No per-entry/view claim filtering.
 - **OAuth 2.0/OIDC authentication**: Plug in your existing identity provider (Okta, Auth0, Azure AD). OAuth is the default; anonymous mode is available for development.
-- **Role-based administration**: Separate roles for managing sources, registries, and entries. Scope each role to specific JWT claims so teams manage their own resources.
+- **Explicit administration**: Admin is disabled by default; enabled endpoints always require authenticated identity and a matching Cedar action permit.
 - **SIEM-compliant audit logging**: Structured log covering all API operations with NIST SP 800-53 AU-3 compliant fields, dedicated file output, and configurable event filtering.
 
 ### Aggregate from anywhere
@@ -52,7 +52,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 
 ### Kubernetes and observability
 
-- **Kubernetes-native discovery**: A built-in reconciler watches for MCP server CRDs across namespaces and syncs them into the registry automatically. Per-entry access control via CRD annotations, multi-namespace support, and leader election for HA.
+- **Kubernetes-native discovery**: Export-opted-in CRDs are ingested through fenced leased writers over the configured namespace scope. Retired claims annotations block preflight.
 - **OpenTelemetry**: Distributed tracing and metrics out of the box.
 - **Standards-compliant**: Implements the official MCP Registry API specification. Clients that speak the spec work out of the box.
 - **PostgreSQL backend**: Database storage with automatic migrations.
@@ -78,25 +78,29 @@ thv-registry-api serve --config examples/config-git.yaml
 thv-registry-api serve --config examples/config-file.yaml
 ```
 
-The server starts on `http://localhost:8080` by default.
+Configure trusted OAuth, PostgreSQL and a read-only operator-authored Cedar policy
+in the selected example first. Existing catalogs require the
+[offline exposure procedure](docs/registry-exposure-migration.md); even unlabeled
+data is not an empty install. Then start with `thv-registry-api serve --config config.yaml`.
+Only for a genuinely new, entirely empty database, explicitly add `--initialize-empty`.
+It grants no policy permission and never approves existing data.
+
+The public listener defaults to `:8080`; probes/metrics use the separate `:8081`.
 
 ### Docker quickstart
 
+Set `REGISTRY_POLICY_FILE` to the absolute operator-authored Cedar policy path and
+configure your OAuth issuer/audience in `examples/config-docker.yaml`. The base
+Compose configuration has no implicit initialization or anonymous grant:
+
 ```bash
-# Using Task (recommended - ensures fresh state)
-task docker-up
-
-# Or detached mode
-task docker-up-detached
-
-# Access the API
-curl http://localhost:8080/registry/default/v0.1/servers
-
-# Stop and clean up
-task docker-down
+docker compose up --build
+# New, entirely empty database only; explicit empty-install authorization:
+docker compose -f docker-compose.yaml -f docker-compose.initialize-empty.yaml up --build
 ```
 
-> **Note:** The `task docker-up` command ensures a fresh start by rebuilding the image and clearing all volumes (database + registry data). This prevents stale state issues.
+Neither invocation deletes existing volumes. Keep production policy/config mounts
+read-only and use TLS or trusted TLS ingress.
 
 ## Core concepts
 
@@ -114,7 +118,7 @@ A **source** is a connection to where MCP server, skill, and plugin entries live
 | **Managed**    | Entries published via the Admin API | Dynamically registered internal servers                      | On-demand    |
 | **Kubernetes** | Discovers deployed MCP servers      | Servers running in your K8s clusters                         | On-demand    |
 
-A **registry** is a named catalog that aggregates one or more sources into a single consumer-facing endpoint. Each registry can pull from different sources and enforce its own access control via JWT claims. Sources are listed in order -- when the same entry appears in multiple sources, the first source in the list wins.
+A **registry** is a named catalog that aggregates one or more sources into a single consumer-facing endpoint. Each registry aggregates sources into an organizational view, not a separate access-control boundary. Sources are listed in order -- when the same entry appears in multiple sources, the first source in the list wins.
 
 **Why they are separate**: Sources and registries have a many-to-many relationship. One source can feed multiple registries, and one registry can pull from multiple sources. This lets you compose different catalogs for different audiences from the same underlying data:
 
@@ -175,7 +179,7 @@ Fully compatible with the upstream MCP Registry API specification:
 
 ToolHive-specific endpoints for managing sources, registries, and entries:
 
-**Source management** (requires `manageSources` role):
+**Source management** (Cedar `sources.read/write/delete`; authenticated admin):
 
 - `GET /v1/sources` - List all configured sources
 - `GET /v1/sources/{name}` - Get a source by name
@@ -183,19 +187,19 @@ ToolHive-specific endpoints for managing sources, registries, and entries:
 - `DELETE /v1/sources/{name}` - Delete a source
 - `GET /v1/sources/{name}/entries` - List entries for a source
 
-**Registry management** (reads: authenticated; writes require `manageRegistries` role):
+**Registry management** (Cedar `views.read/write/delete`; authenticated admin):
 
 - `GET /v1/registries` - List all configured registries with status
 - `GET /v1/registries/{name}` - Get registry details and sync status
-- `GET /v1/registries/{name}/entries` - List entries for a registry (requires `manageRegistries` role)
+- `GET /v1/registries/{name}/entries` - List unshadowed version diagnostics
 - `PUT /v1/registries/{name}` - Create or update a registry
 - `DELETE /v1/registries/{name}` - Delete a registry
 
-**Entry management** (requires `manageEntries` role):
+**Entry management** (Cedar `entries.publish/delete`; authenticated admin):
 
 - `POST /v1/entries` - Publish a server, skill, or plugin entry
 - `DELETE /v1/entries/{type}/{name}/versions/{version}` - Delete a published entry
-- `PUT /v1/entries/{type}/{name}/claims` - Update entry claims
+- `GET/PUT /v1/entries/{type}/{name}/claims` - Authenticated retired-endpoint tombstones (410)
 
 ### Skills extension API (ToolHive-specific)
 
@@ -220,7 +224,7 @@ Read-only endpoints for discovering plugins within a registry:
 - `GET /health` - Health check
 - `GET /readiness` - Readiness check
 - `GET /version` - Version information
-- `GET /v1/me` - Returns the caller's identity and roles
+- `GET /v1/me` - Authenticated retired-endpoint tombstone (410), when admin is enabled
 - `GET /.well-known/oauth-protected-resource` - OAuth discovery (RFC 9728)
 
 ### Use cases
@@ -248,7 +252,17 @@ registries:
       - local
 
 auth:
-  mode: anonymous # Use "oauth" for production
+  mode: oauth
+  oauth:
+    providers:
+      - name: company
+        issuerUrl: https://id.example.org
+        audience: registry-api
+admin:
+  enabled: false
+authorization:
+  policyFile: /etc/registry/policies.cedar # Operator-authored, mounted read-only.
+  allowAnonymousCatalog: false
 
 database:
   host: localhost

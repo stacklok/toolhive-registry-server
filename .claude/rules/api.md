@@ -11,9 +11,11 @@ audit trails cover every admin operation.
 
 ## Standalone admission staging
 
-The CLI/chart default retains the additive legacy facade and the legacy rules below.
-The opt-in `app.NewCatalogApp` composes public services/HTTP only after the mandatory
-exposure barrier. Its registrar checks every actual public route descriptor against
+The CLI selects `app.NewCatalogApp`, composing public services/HTTP only after the
+mandatory exposure barrier. Legacy rules below apply only to the unselected legacy
+facade/characterization until #915 cleanup. Explicit empty-install opt-in is not
+existing-data approval and never bypasses policy/config/source/operator preflight.
+Its registrar checks every actual public route descriptor against
 the closed method/template/domain-operation/action/audit manifest; each guarded method
 requires private matching evidence. No raw services, old routers or role middleware
 may enter that path. Admin is opt-in and always authenticated; `/v1/me` and GET/PUT

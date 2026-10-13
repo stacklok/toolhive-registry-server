@@ -1,9 +1,13 @@
 # Registry Server Helm values for CloudNativePG (CNPG) backend
-# Use with: helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server -f examples/cnpg/helm-values.yaml
+# Layer this file with operator-prepared admission values; see
+# .claude/skills/deploy-registry-server-with-cnpg/SKILL.md for the full workflow.
+# Explicit catalog-capable image, OAuth and an existing policy ConfigMap are required.
+# initializeEmptyCatalog remains false: opt in only for a genuinely new, empty DB.
+# Existing databases require docs/registry-exposure-migration.md, not the fresh flag.
 #
 # Prerequisites:
 #   1. Install CNPG operator: kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/releases/cnpg-1.25.1.yaml
-#   2. Deploy CNPG cluster: kubectl apply -f postgres.yaml
+#   2. Deploy CNPG cluster: kubectl apply -f examples/cnpg/postgres.yaml
 #   3. Deploy pgpass secret: kubectl apply -f examples/cnpg/pgpass-secret.yaml
 #   4. Wait for cluster to be ready: kubectl wait --for=condition=Ready cluster/registry-db -n toolhive-system --timeout=5m
 
@@ -51,8 +55,19 @@ extraVolumeMounts:
     subPath: .pgpass
     readOnly: true
 
+# No implicit serving policy or fresh-database authorization.
+initializeEmptyCatalog: false
+policy:
+  existingConfigMap: "" # Supply the operator-created ConfigMap name at installation.
+
 # Registry server configuration with CNPG PostgreSQL
 config:
+  admin:
+    enabled: false
+  authorization:
+    policyFile: /etc/registry-policies/policies.cedar
+    allowAnonymousCatalog: false
+    identityMappings: [] # Set mappings matching your chosen Cedar policy.
   sources:
     - name: toolhive
       git:
@@ -79,6 +94,8 @@ config:
     maxIdleConns: 5
     connMaxLifetime: "30m"
 
-  # Authentication configuration
+  # Supply trusted OAuth providers in the operator's admission values file.
   auth:
-    mode: anonymous
+    mode: oauth
+    oauth:
+      providers: []

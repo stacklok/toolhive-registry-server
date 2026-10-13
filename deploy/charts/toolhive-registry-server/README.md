@@ -13,7 +13,7 @@ A Helm chart for deploying the ToolHive Registry Server - the central metadata h
 ## TL;DR
 
 ```console
-helm upgrade -i toolhive-registry-server oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server -n toolhive-system --create-namespace
+helm upgrade -i toolhive-registry-server oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server -n toolhive-system --create-namespace --values operator-values.yaml
 ```
 
 Or for a custom values file:
@@ -38,21 +38,36 @@ ConfigMap with an operator-authored `policies.cedar` key. Set
 Map verified groups/scopes with `config.authorization.identityMappings`.
 The chart installs no sample policy or implicit grant. Defaults are private OAuth
 and admin disabled; publishing/administration require explicit `config.admin.enabled`
-and authenticated policy permission, plus the retained legacy roles/claims.
+and authenticated Cedar permission. Retired `auth.authz`, roles/publicPaths and
+resource claims are rejected. Existing catalogs require offline review and explicit
+claims retirement before the new runtime consumes the receipt; no startup flag approves
+existing data.
+
+For a genuinely new, entirely empty database only, explicitly set
+`initializeEmptyCatalog: true` (default false). This adds `serve --initialize-empty`;
+it authorizes empty-install preparation after policy/config and source/operator
+preflight, not permission to browse. The flag may remain on same-target replicas
+and restarts without resetting or rebinding a consumed receipt. Pending existing-data
+review must follow the manual chain, with this flag omitted for first consumption.
+`image.registryServerUrl` is explicitly required and defaults to empty: select a
+build/release containing this startup path. The chart never silently falls back to
+an older published binary that ignores Cedar/admin/receipt settings. Historical
+images do not implement the new flag or preparation barrier.
 
 Policy edits require a rollout/restart of every replica; an externally supplied
 ConfigMap does not automatically change the running evaluator. Drain old replicas
-when revoking access. Anonymous admission cannot be enabled while legacy
-`auth.authz` is configured in this transitional slice. See the
-[Cedar transition guide](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-cedar-authorization.md)
-before upgrading; no claims removal or exposure migration is performed here.
+when revoking access. See the
+[Cedar guide](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-cedar-authorization.md)
+and [offline exposure procedure](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-exposure-migration.md)
+before upgrading. Both ct fixtures opt in only for their disposable database and
+externally mounted deny-all policy; the chart installs no production consent/grant.
 
 ### Installing from the Chart
 
 Install one of the available versions:
 
 ```shell
-helm upgrade -i <release_name> oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server --version=<version> -n toolhive-system --create-namespace
+helm upgrade -i <release_name> oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server --version=<version> -n toolhive-system --create-namespace --values operator-values.yaml
 ```
 
 > **Tip**: List all releases using `helm list`
@@ -139,9 +154,10 @@ rather than through the Service.
 | extraVolumes | list | `[]` | Additional volumes to add to the pod |
 | fullnameOverride | string | `""` | Override the full name of the chart |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
-| image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v1.5.2"` | URL of the registry server image |
+| image.registryServerUrl | string | `""` | Required image containing catalog startup/receipt enforcement. No legacy image fallback. |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries |
 | initContainers | list | `[]` | Init containers to run before the main container Use this for setup tasks like preparing pgpass files, waiting for dependencies, etc. Init containers share the same volumes as the main container (extraVolumes) |
+| initializeEmptyCatalog | bool | `false` | Explicit new-install authorization for an entirely empty catalog only. Existing catalogs require offline inventory/acknowledgement/retirement. Safe to retain on same-target restarts; never rebinds a consumed receipt. |
 | livenessProbe | object | `{"httpGet":{"path":"/health","port":"internal-http"},"initialDelaySeconds":30,"periodSeconds":10}` | Liveness probe configuration |
 | nameOverride | string | `""` | Override the name of the chart |
 | nodeSelector | object | `{}` | Node selector for pod scheduling |

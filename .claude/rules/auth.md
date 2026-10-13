@@ -15,16 +15,18 @@ when claims don't cover.
 
 ## Standalone Cedar admission transition
 
-The production CLI/chart default remains additive Cedar plus legacy claims/RBAC;
-legacy rules below still apply to that path. The opt-in `app.NewCatalogApp` path
-instead requires final retired-field validation, frozen Cedar, read-only historical
-source/operator preflight and schema-29 receipt consumption before any reconciliation,
-repair or serving. It uses only public nonpersonalized services and leased ingestion;
-never mount legacy roles/routes or co-own its sources with the old writers. See
-`docs/registry-standalone-assembly.md`. #914 remains open until startup/chart selection.
+The production CLI selects `app.NewCatalogApp`. Legacy rules below apply only
+to unselected legacy code/characterization until #915 cleanup. The selected path
+requires final retired-field validation, frozen Cedar, read-only historical
+source/operator preflight and schema-29 receipt consumption before reconciliation,
+repair or serving. It uses public nonpersonalized services and leased ingestion;
+never mount legacy roles/routes or co-own sources with old writers. Explicit
+`--initialize-empty` authorizes only a virgin, entirely empty catalog after preflight;
+it never approves existing data or resets/rebinds evidence. See
+`docs/registry-standalone-assembly.md` and `docs/registry-exposure-migration.md`.
 Both paths fail closed on missing verified identity or fixed-action route evidence,
 disable admin by default, require OAuth for admin and retain protected 410 tombstones.
-Neither performs automatic claims retirement or supplies exposure consent.
+Neither performs automatic claims retirement or supplies existing-data consent.
 `Engine.Revision()` identifies actual frozen policy bytes; startup fingerprints must
 not reread the policy file. Public contracts remain identity-free.
 

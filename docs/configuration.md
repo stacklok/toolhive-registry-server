@@ -29,6 +29,8 @@ thv-registry-api serve --config config.yaml
 |------|-------------|----------|---------|
 | `--config` | Path to YAML configuration file | Yes | - |
 | `--address` | Server listen address | No | `:8080` |
+| `--internal-address` | Internal probes/metrics listen address | No | `:8081` |
+| `--initialize-empty` | Explicit empty-install authorization only; never approve existing data | No | `false` |
 | `--auth-mode` | Override auth mode (anonymous or oauth) | No | - |
 
 ## Standalone Cedar admission (required)
@@ -53,14 +55,21 @@ authorization:
         format: string-array
 ```
 
-Configure matching OAuth issuer/audience and retain legacy `auth.authz` and resource
-claims. Cedar is an **additional** restriction; the acknowledged exposure migration,
-claims/RBAC removal and non-personalized catalog are not implemented in this slice.
-Admin is off by default and requires OAuth when enabled. Anonymous admission is
-unavailable while legacy `auth.authz` is configured, rather than letting absent
-caller claims bypass its filters. `auth.publicPaths` is rejected, even empty/null
-or environment-injected values. OpenAPI requires `metadata.read`; only exact GET
-credential-bootstrap metadata is exempt. Internal probes remain on their separate port.
+Configure matching OAuth issuer/audience. `serve` selects `NewCatalogApp`: Cedar
+is whole-instance admission, not a per-entry or per-view privacy filter. Remove
+`auth.authz`, `auth.roles`, `auth.publicPaths`, and source/view `claims`; their
+presence (even empty/null or environment-injected values) is rejected. Admin is
+off by default and requires OAuth when enabled. OpenAPI requires `metadata.read`;
+only exact GET credential-bootstrap metadata is exempt. Internal probes remain
+on their separate port.
+
+Every pre-existing catalog, including unlabeled data, requires the explicit
+[offline inventory/acknowledgement/retirement procedure](registry-exposure-migration.md).
+For a new, entirely empty database only, `serve --initialize-empty --config config.yaml`
+explicitly authorizes empty-install preparation after final config, frozen policy
+and read-only source/operator preflight. This default-false flag does not grant
+policy permissions or approve existing data; it is safe to retain for same-target
+replicas/restarts without resetting or rebinding the receipt.
 
 See the [Cedar guide](registry-cedar-authorization.md) for typechecked policies,
 identity mapping/introspection constraints, retirement tombstones and transition
@@ -158,7 +167,7 @@ Sources define where registry data comes from. Multiple sources can be configure
 | `kubernetes` | object | No* | Kubernetes resource configuration |
 | `syncPolicy` | object | Yes† | Sync policy configuration |
 | `filter` | object | No | Server filtering rules |
-| `claims` | map | No | Key-value pairs for authorization purposes |
+| `claims` | retired | Rejected by presence, including null; use the offline exposure guide |
 
 \* Exactly one data source must be configured per source entry
 † Required for synced sources (git, api, file); not applicable for managed or kubernetes sources
@@ -171,7 +180,7 @@ The `registries:` block aggregates sources into named registry views. At least o
 |-------|------|----------|-------------|
 | `name` | string | Yes | Unique name for this registry |
 | `sources` | array | Yes | Ordered list of source names that feed this registry |
-| `claims` | map | No | Key-value pairs for authorization purposes |
+| `claims` | retired | Rejected by presence, including null; use the offline exposure guide |
 
 ## Data Sources
 
@@ -282,18 +291,11 @@ kubernetes:
 |-------|------|----------|-------------|
 | `namespaces` | array | No | Kubernetes namespaces to watch (empty = uses `THV_REGISTRY_WATCH_NAMESPACE` env var) |
 
-**Per-entry claims:** CRDs can carry per-entry authorization claims via the
-`toolhive.stacklok.dev/authz-claims` JSON annotation. The annotation value uses the same
-`map[string]any` format as source claims (strings or arrays of strings). Source claims are
-**not** merged — entries get exactly the claims from the annotation. Entries without the
-annotation have no claims and are invisible when authz is configured (default-deny).
-
-```yaml
-# Example CRD annotation for per-entry claims:
-metadata:
-  annotations:
-    toolhive.stacklok.dev/authz-claims: '{"team": "platform"}'
-```
+**Retired annotations:** an export-opted-in CRD carrying
+`toolhive.stacklok.dev/authz-claims` is rejected during read-only startup preflight,
+including empty/null/malformed values. Explicitly remediate live objects before
+exposure review/cutover; the new operator never parses or propagates resource claims.
+Export still requires exact `toolhive.stacklok.dev/registry-export: "true"`.
 
 **Per-entry version:** the entry version is resolved in this order:
 
