@@ -32,6 +32,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 - [API Endpoints](#api-endpoints)
 - [Configuration](#configuration)
 - [The ToolHive Platform](#the-toolhive-platform)
+- [Embedding](#embedding)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 
@@ -47,7 +48,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 ### Aggregate from anywhere
 
 - **Five source types**: Pull entries from Git repos, upstream MCP registries, local files, Kubernetes clusters, or publish them via the Admin API.
-- **Compose catalogs from multiple sources**: Each registry aggregates one or more sources, listed in order of precedence. One source can feed multiple registries, so the same internal catalog can serve different teams with different visibility rules.
+- **Compose catalogs from multiple sources**: Each registry aggregates sources in order of precedence. Views are catalog compositions, not privacy or authorization boundaries.
 - **Background sync**: Sources are polled on configurable intervals with retry logic. Registries stay current without manual intervention.
 
 ### Kubernetes and observability
@@ -55,7 +56,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 - **Kubernetes-native discovery**: Export-opted-in CRDs are ingested through fenced leased writers over the configured namespace scope. Retired claims annotations block preflight.
 - **OpenTelemetry**: Distributed tracing and metrics out of the box.
 - **Standards-compliant**: Implements the official MCP Registry API specification. Clients that speak the spec work out of the box.
-- **PostgreSQL backend**: Database storage with automatic migrations.
+- **PostgreSQL backend**: Guarded forward migrations, with explicit offline review/finalization for existing catalogs.
 
 ## Quickstart
 
@@ -71,11 +72,12 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 # Build the binary
 task build
 
-# Run with Git source
-thv-registry-api serve --config examples/config-git.yaml
+# After configuring PostgreSQL, trusted OAuth and the mounted Cedar policy:
+# Existing catalog: complete the linked offline procedure before serving.
+./bin/thv-registry-api serve --config examples/config-git.yaml
 
-# Run with local file
-thv-registry-api serve --config examples/config-file.yaml
+# New, entirely empty database only (explicit opt-in):
+./bin/thv-registry-api serve --config examples/config-file.yaml --initialize-empty
 ```
 
 Configure trusted OAuth, PostgreSQL and a read-only operator-authored Cedar policy
@@ -101,6 +103,26 @@ docker compose -f docker-compose.yaml -f docker-compose.initialize-empty.yaml up
 
 Neither invocation deletes existing volumes. Keep production policy/config mounts
 read-only and use TLS or trusted TLS ingress.
+
+## Embedding
+
+Import only the public components you need from `pkg/registry`: models/formats,
+persistence, catalog, ingestion/reconciliation, HTTP and optional PostgreSQL/operator
+adapters. Hosts own admission, personalized selection, pools/clients, listeners and
+shutdown. `internal/app` is the standalone composition, not a public host framework.
+
+[Executable examples and the #906/#915 acceptance matrix](docs/registry-embedding-validation.md)
+include a combined separate-module PostgreSQL → ingestion → catalog → HTTP workflow:
+
+```sh
+task gen
+GOWORK=off go test -race -count=1 ./pkg/registry/postgres -run '^TestExternalCompleteAssembly$'
+```
+
+The test prepares a disposable schema-30 database; it does not accept a production
+DSN or target your cluster. [Compatibility/release notes](docs/registry-embedding-validation.md#compatibility-and-release-notes)
+cover payload DTOs, invalidated legacy cursors, literal search, approved total version
+ordering, module boundaries and backup-only rollback.
 
 ## Core concepts
 

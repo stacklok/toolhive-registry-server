@@ -2,7 +2,7 @@
 
 `pkg/registry/httpapi.AdminRouter` finishes the reusable HTTP capability alongside
 [consumer HTTP](registry-consumer-http.md). Standalone now selects both behind
-mandatory Cedar admission after [schema-29 exposure preparation](registry-exposure-migration.md).
+mandatory Cedar admission after [offline preparation/finalization and schema-30 migration](registry-exposure-migration.md).
 Public routers start no listener and provide no implicit admission; see
 [standalone assembly](registry-standalone-assembly.md) for preparation and ownership.
 

@@ -31,10 +31,9 @@ Kubernetes (no separate type field). The spec is stored in the existing
 columns. `Schedule` maps to `sync_schedule` (PostgreSQL interval): git, API,
 and file path/URL sources need a positive microsecond-resolution Go duration;
 managed, Kubernetes, and inline file data have no schedule/filter and are
-not syncable. These normalized, config-shaped definitions are **not** a
-drop-in replacement for legacy YAML: non-synced legacy fields are ignored at
-runtime while this API rejects schedule/filter on those kinds; inline file data
-is unscheduled here even though legacy YAML requires a policy. Git credentials
+not syncable. The final standalone configuration uses these same rules: retired or
+unsupported schedules/filters fail preflight by presence rather than being ignored;
+inline file data is unscheduled. Git credentials
 are represented only by an absolute password-file path; hosts must validate
 and load that file themselves when executing a sync. Inline file data can be sensitive: callers should avoid
 passing secrets and must not log full definitions. The adapter never logs

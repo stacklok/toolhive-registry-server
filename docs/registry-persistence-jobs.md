@@ -137,8 +137,9 @@ return runErr
 
 Backend authors can run exported `conformance.RunJobs` and
 `conformance.RunJobsMulti` with separate handles over shared state. PostgreSQL
-and an independent copy-on-write test backend use the same suite. This closes
-the **persistence** jobs capability, not all of #910: portable consumer-view
-selection/querying and standalone app wiring remain for #913/#914. Standalone
-claim-aware API/auth behavior is unchanged; do not mount these raw methods as
-unauthenticated endpoints.
+and an independent copy-on-write test backend use the same suite. Public consumer-view
+selection and standalone wiring are active through the same public components;
+standalone verified authentication and Cedar stay outside Jobs. Do not mount these
+raw methods as unauthenticated endpoints. Equivalent schedule durations (`1h`/`60m`)
+retain generation/lease/baseline; an actual duration change fences old work. This
+normalizes generation-equivalence comparison, not submitted user payloads.

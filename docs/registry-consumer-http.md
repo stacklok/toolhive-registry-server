@@ -2,7 +2,7 @@
 
 `pkg/registry/httpapi` adapts **already selected** application pages to the MCP
 Registry v0.1 and ToolHive skills/plugins wire formats. Standalone selects this
-router through mandatory Cedar-guarded capabilities after schema-29 exposure preparation.
+router through mandatory Cedar-guarded capabilities after offline exposure preparation/finalization and clean schema-30 migration.
 [Admin HTTP](registry-admin-http.md) completes the reusable HTTP capability; see
 [standalone assembly](registry-standalone-assembly.md) for listener, admission and lifecycle ownership.
 
