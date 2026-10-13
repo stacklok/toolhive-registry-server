@@ -123,7 +123,7 @@ routers are explicitly policy-free. The [real host-authentication/non-Cedar exam
 covers consumer and admin without internal authentication or policy dependencies.
 `internal/app` is the Cedar-only standalone composition, not a public host framework.
 
-[Executable examples and the #906/#915 acceptance matrix](docs/registry-embedding-validation.md)
+[Embedding guidance and executable examples](docs/registry-embedding-validation.md)
 include a combined separate-module PostgreSQL → ingestion → catalog → HTTP workflow:
 
 ```sh
@@ -131,10 +131,11 @@ task gen
 GOWORK=off go test -race -count=1 ./pkg/registry/postgres -run '^TestExternalCompleteAssembly$'
 ```
 
-The test prepares a disposable schema-30 database; it does not accept a production
-DSN or target your cluster. [Compatibility/release notes](docs/registry-embedding-validation.md#compatibility-and-release-notes)
-cover payload DTOs, invalidated legacy cursors, literal search, approved total version
-ordering, module boundaries and backup-only rollback.
+The test prepares a disposable schema-30 database; it does not use a deployment
+DSN or target your cluster. See [consumer reads](docs/registry-consumer-reads.md) for
+selection, version ordering and cursor contracts, and the
+[offline migration guide](docs/registry-exposure-migration.md) for existing-data
+review, backups and rollback restrictions.
 
 ## Core concepts
 
@@ -333,7 +334,7 @@ See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for the co
 - **[Authentication](docs/authentication.md)** - OAuth/OIDC security
 - **[Observability](docs/observability.md)** - OpenTelemetry tracing and metrics
 - **[Registry sync](docs/registry-sync.md)** - How background sync works
-- **[Registry component architecture](docs/component-architecture.md)** - Proposed embeddable architecture for #906
+- **[Registry component architecture](docs/component-architecture.md)** - Public packages, contracts and ownership
 - **[Registry models and formats](docs/registry-formats.md)** - Embed payload validation and response formatting without storage
 - **[Reusable ingestion and operator export](docs/registry-ingestion.md)** - Source adapters, leased coordination, and optional Kubernetes lifecycle
 - **[Definition persistence](docs/registry-persistence.md)** - Embeddable source and named-view definitions

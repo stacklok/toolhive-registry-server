@@ -1,30 +1,31 @@
 # Standalone public-component assembly
 
-`internal/app.NewCatalogApp` is the default `serve` composition for #914/#912.
-It assembles the actual public PostgreSQL definitions/jobs/entries, catalog reader,
-definition administration, publisher and diagnostics, public consumer/admin HTTP
-adapters, leased supervisor and standalone operator boundary. It does not adapt the
-old `RegistryService`, start an old coordinator/writer or start a Kubernetes manager.
+[`internal/app.NewCatalogApp`](../internal/app/catalog.go) is the CLI's `serve`
+composition. It assembles public PostgreSQL definitions/jobs/entries, catalog reader,
+definition administration, publisher and diagnostics, consumer/admin HTTP adapters,
+a leased supervisor and the standalone operator boundary. The operator uses the
+public runner with a direct Kubernetes client, not a Kubernetes manager.
 
-The CLI selects this composition. Helm opts into empty-install preparation only
-when `initializeEmptyCatalog` is explicitly enabled; production defaults remain
-private OAuth/admin-off with evaluated built-in allow-all Cedar unless a read-only
-custom policy replaces it. Every verified identity can use every enabled operation,
-including admin if enabled; anonymous catalog access remains explicit opt-in. The obsolete
-runtime/role/claims service and its factories are removed. Private offline configuration
-compatibility remains private. Schema 30 removes the live claims columns while
-preserving archives and receipt evidence. The same final binary runs historical
-review/finalization at 29 and forward cleanup before ordinary writes at 30.
-Never co-own sources with old writers; stop/drain all old readers/writers before review.
+Defaults are private OAuth, admin disabled and mandatory evaluated built-in allow-all
+Cedar. Every verified identity can use every enabled operation, including admin if
+enabled. A custom policy replaces the built-in policy entirely; invalid custom policy
+fails startup. Anonymous catalog access requires explicit opt-in and a Cedar permit.
+See [Cedar authorization](registry-cedar-authorization.md) for configuration.
+
+Ordinary writes require clean schema 30. Existing catalogs need explicit offline
+review/finalization at schema 29 before migration to 30; archives, receipts and private
+historical-input compatibility remain available for that procedure. Stop/drain all old
+readers and writers before review; never co-own sources with old binaries. Follow the
+[offline migration guide](registry-exposure-migration.md#maintenance-procedure), not
+empty-install initialization, for existing data.
 
 ## Direct use
 
-Within this repository, load the configuration, apply final overrides through
-`CatalogOptions.Overrides`, and call the new entrypoint after the explicit offline
-procedure below. `LoadCatalogConfig` and offline inspection use the same decoded
-YAML/environment snapshot without the old loader's source/view validation; public
-inline definitions are supported and final source/admission validation happens after
-overrides in NewCatalogApp. The loader still validates database settings **before**
+Within this repository, load configuration, apply final overrides through
+`CatalogOptions.Overrides`, and call `NewCatalogApp` after storage preparation.
+`LoadCatalogConfig` and offline inspection use the same decoded YAML/environment
+snapshot. Public inline definitions are supported; final source/admission validation
+happens after overrides in `NewCatalogApp`. The loader validates database settings **before**
 `CatalogOptions.Overrides`; even an alternate storage factory requires valid loader
 DB settings when using `LoadCatalogConfig`. It is not a decode-only loader.
 The CLI uses `LoadCatalogConfig` and applies `--auth-mode` as a final override.
@@ -101,7 +102,7 @@ Operator/fetcher and telemetry providers are borrowed; their hosts retain owners
 5. Serialize `ConsumeExposure` at clean schema **30** for ordinary serving; offline
    `migrate exposure finalize` uses the same barrier at **29** and stops before
    reconciliation, repair, ingestion or HTTP. Missing/stale/pending unretired
-   evidence cannot be bypassed by empty/unlabeled data, authz-off or admin-off. A pending
+   evidence cannot be bypassed by empty/unlabeled data, auth mode or admin enablement. A pending
    receipt checks final config/policy, target and full persisted catalog. Once consumed,
    only target continuity is a restart binding: legitimate catalog/config/policy edits
    do not require matching a historical catalog hash.
@@ -135,8 +136,15 @@ that stored scope. Historical API sources with an empty scope and a nonempty glo
 fallback fail preflight until the intended scope is explicitly materialized in storage.
 There is no client-only narrowing of an all-namespace Jobs definition.
 
-Source CRUD persists first and synchronously invokes leased inline sync and refresh.
-Failures return truthful **503 committed** responses; audit records the actual creation
+Operator names are `com.toolhive.k8s.<namespace>/<name>` and do not include CRD kind.
+Exported resources of different kinds with the same namespace/name therefore share
+one catalog identity when versions differ. Equal versions reject the entire snapshot
+as duplicate entries, leaving the last good snapshot visible. Use distinct resource
+names when they represent distinct catalog servers.
+
+Source mutations persist first. Inline-file create/update synchronously invokes
+leased sync; every successful source mutation notifies the runtime to refresh.
+Follow-up failures return **503 committed** responses; audit records the actual creation
 or update event and `mutation_committed`, not a guessed event based on HTTP status.
 Periodic rediscovery recovers missed refresh notifications. Every source origin is
 included, independent of view links; managed publication never acquires a sync lease.
@@ -165,29 +173,23 @@ The existing optional full request-body audit capture is a separate opt-in: publ
 metadata and inline administrative configuration may contain secrets. Leave it off unless
 its exposure and retention have been separately reviewed.
 
-## Activation and remaining release gates
+## Deployment and embedding
 
-The CLI, Helm opt-in and Compose optional empty-install override select the new
-runtime. Default OpenAPI is generated from public HTTP DTOs/descriptors, with protected
-410 tombstones and no removed RBAC/resource-claims schemas. Legacy annotations are
-not indexed. CLI and public app tests exercise selected startup; the old
-`NewRegistryApp` and legacy claims/RBAC characterization suites are removed. See
-[contract coverage](registry-contract-tests.md) for the old-to-current acceptance mapping.
+Build with `task build` and run `./bin/thv-registry-api serve --config /path/to/config.yaml`.
+The Helm chart requires an explicit `image.registryServerUrl`; select a binary
+compatible with the catalog schema. `policy.existingConfigMap` optionally supplies
+a custom policy file. Omission evaluates built-in allow-all Cedar, not a bypass of
+OAuth or admin enablement.
 
-Actual image/chart installation belongs to isolated release/CI validation. Parent
-#942's 14 checks, including actual-image Helm fresh startup through 0 → 30, passed
-at `4f9fa8bc0e6a827c0fa96f6615d8d1550058ef9d`; this is not evidence for an unpublished
-head or a user's deployment. The current app acceptance deliberately uses a fake Kubernetes
-API with real PostgreSQL and bound OAuth HTTP; `TestRegisteredOperator` separately uses
-isolated envtest to exercise the real CRD watch/manager path. Select an image containing
-the final binary explicitly (the chart requires it instead of falling back to a legacy
-image). The combined external-module workflow and shared HTTP/backend suite are mapped in
-[final embedding validation](registry-embedding-validation.md). The same-name cross-kind
-operator identity limitation is preserved; collision behavior is unchanged and identity
-redesign is out of scope.
+For a new, entirely empty catalog only, opt into `serve --initialize-empty`, Helm
+`initializeEmptyCatalog: true`, or the Compose `docker-compose.initialize-empty.yaml`
+override. These options default off and cannot approve existing catalogs. Keep
+configuration and custom policy mounts read-only and use TLS or trusted TLS ingress.
+OpenAPI describes public HTTP DTOs/routes and protected 410 tombstones; operational
+probes remain internal.
 
-Embedding applications continue to import the public packages and own their admission,
-personalized selection (if needed) and dependencies. Existing separate-module executable
-fixtures additionally demonstrate optional host authentication/non-Cedar `httpapi.Authorizer`
-via `Middleware`/`Decorate`; `internal/app` remains the Cedar-only standalone composition, not a new public
-host framework.
+External applications use [public components and examples](registry-embedding-validation.md),
+not `internal/app`. Library hosts own admission and may use a non-Cedar
+`httpapi.Authorizer` through `Middleware`/`Decorate`; this standalone composition
+always uses Cedar. See [contract tests](registry-contract-tests.md) for local
+verification commands and the boundaries of the PostgreSQL and Kubernetes suites.

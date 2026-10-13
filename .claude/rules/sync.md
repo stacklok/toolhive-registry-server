@@ -37,9 +37,9 @@ including valid empty startup snapshots. List/watch/cache/commit failures retain
 state and cannot mark initial readiness. Namespace changes require reconstruction and fencing.
 Standalone preflight checks retired authz-claims annotation presence before conversion;
 public conversion is identity-free. Preserve service-account RBAC.
-The pre-existing same-name cross-kind operator identity limitation (including differing
-versions) is preserved and characterized. No collision behavior changes or identity
-redesign is part of this work.
+Operator catalog names include namespace/name but not CRD kind. Distinct kinds with
+that same name share a catalog identity when versions differ; duplicate exact
+`(kind,name,version)` entries reject the snapshot and preserve last good data.
 
 ## 4. Validate Imports Before Returning
 
