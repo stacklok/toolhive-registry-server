@@ -14,9 +14,10 @@ paths:
 
 A source owns `(kind,name,version)` payloads and related packages/remotes/icons.
 Latest is selected per `(source,kind,name)` using the shared total version order.
-Public entries and source/view definitions contain no resource claims. Schema 29 still
-has historical claims columns and guarded mutation plumbing for offline transition;
-retain them, archives, receipts and historical migrations until the final forward slice.
+Public entries and source/view definitions contain no resource claims. Historical
+schema 29 retains claims columns/guards for offline review and explicit retirement;
+schema 30 drops live columns/guards only after finalization. Preserve archives,
+receipts and immutable historical migrations.
 Do not infer exposure consent from empty/null claims or automatically strip claims.
 Private config compatibility structures must keep version-1 exposure fingerprint JSON
 byte semantics unchanged; retired-field presence/history classification is intentional.

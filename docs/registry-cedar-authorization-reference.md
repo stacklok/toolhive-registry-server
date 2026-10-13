@@ -7,12 +7,13 @@ not deployment instructions. Plain Cedar and the pinned experimental validator a
 implemented; use the [current Cedar guide](registry-cedar-authorization.md) for config.
 `serve` now selects the nonpersonalized public services/HTTP and exclusively leased
 runtime through `NewCatalogApp`. Final config/frozen-policy and read-only source/operator
-preflight precede schema-29 receipt consumption; both listeners and new writers remain
+preflight precede receipt consumption (offline finalization at 29, ordinary serving
+at clean 30); both listeners and new writers remain
 behind that mandatory barrier. Existing catalogs require the
 [explicit offline exposure procedure](registry-exposure-migration.md). Empty installs
 may explicitly use default-false `--initialize-empty`, never to approve existing data.
-The legacy runtime is removed; private offline config compatibility and physical claims
-columns remain at schema 29 until the final forward schema slice. Statements below
+The legacy runtime and live claims columns are removed at schema 30; private offline
+config compatibility, historical archives and receipts remain. Statements below
 about dormant consumption or retained legacy guards describe the original proposal,
 not the selected runtime.
 

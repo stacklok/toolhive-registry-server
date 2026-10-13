@@ -2,8 +2,10 @@
 
 The public-component catalog is the active default standalone runtime. Legacy runtime,
 claims/RBAC service, route constructors and unfenced writers/controllers are removed.
-This cleanup changes no public behavior or schema: physical claims plumbing, historical
-migrations, archives, receipts and version-1 config fingerprint JSON remain at schema 29.
+This cleanup uses forward schema 30: live claims columns/guards are removed after
+explicit offline finalization at 29. Historical migrations, archives, receipts and
+version-1 config fingerprint JSON remain unchanged. See the
+[final embedding acceptance matrix](registry-embedding-validation.md) for #906/#915.
 
 ## Active acceptance and old-to-current mapping
 
@@ -23,6 +25,21 @@ migrations, archives, receipts and version-1 config fingerprint JSON remain at s
 | Old registered controller acceptance | `pkg/registry/operator/manager_integration_test.go` (`TestRegisteredOperator`) starts a real registered leader-elected manager in isolated envtest, installs all three CRDs and observes nonempty, changed and empty snapshots. CI explicitly runs this current package/test, not the deleted controller test. |
 | Existing-data/offline/security transition | `cmd/thv-registry-api/app/migrate_exposure_test.go`, `internal/db/exposure*_test.go`, `internal/config/{exposure,catalog,authorization}_test.go`, `internal/app/catalog_pipeline_test.go`: inventory/ack/explicit retire/archive/consume, every protected table, null/unlabeled data, policy/config binding, leases, target continuity, atomic rollback and missing/stale receipt fail-closed behavior. |
 | Public dependency/embedding contracts | Separate-module fixtures in model/formats/persistence/catalog/httpapi/ingest/operator and actual dependency-graph tests remain. Portable framework contracts/HTTP have no registry-internal service/config/auth dependency; PostgreSQL alone imports the explicit internal SQL/writer adapters. |
+
+**Run the combined external workflow:**
+`GOWORK=off go test -race -count=1 ./pkg/registry/postgres -run '^TestExternalCompleteAssembly$'`.
+The parent prepares an isolated schema-30 database and passes its DSN without printing it;
+the separate module imports only public components and owns its pool and HTTP server.
+
+**Shared HTTP/backend acceptance:** `pkg/registry/httpapi/conformance.RunConsumer`
+runs unchanged in `TestConsumerHTTPMemory` and `TestConsumerHTTPPostgres`. It covers
+whole-name selection before supported filters, all kinds, literal search/latest,
+query-bound page walks, changed source ordering/view incarnation, 999/1000/1001
+server and 29/30/31 extension histories and their distinct continuation metadata.
+Extension wire lists intentionally ignore version/status/updated-since; the same
+catalog query assertions exercise those supported backend filters independently.
+`RunJobs` also checks API update and CONFIG reconciliation of `1h` → `60m` retaining
+generation, active lease and applied baseline, while `2h` fences old work.
 
 The operator same-name cross-kind identity choice remains **pending user response**,
 including CRDs with different versions. `pkg/registry/operator/fetcher_test.go`

@@ -16,17 +16,23 @@ decision, not per-view access or per-entry filtering.
 
 **Status:** `serve` selects `internal/app.NewCatalogApp` and the public services,
 HTTP adapters and exclusively leased ingestion. Final retired-field validation,
-frozen Cedar, read-only source/operator preflight and serialized schema-29 receipt
-consumption precede reconciliation/repair and both listeners. Permitted readers
+frozen Cedar, read-only source/operator preflight and serialized receipt consumption
+(offline finalization at 29, ordinary serving at clean 30) precede reconciliation/repair
+and both listeners. Permitted readers
 receive the same nonpersonalized catalog. Existing data requires the explicit
 [offline exposure procedure](registry-exposure-migration.md); startup never strips
 claims or automatically approves it. `--initialize-empty` is explicit new-install
-authorization only, disabled by default. Legacy physical cleanup remains #915.
+authorization only, disabled by default. Schema 30 removes live claims columns only
+after explicit historical finalization; archives and receipts remain.
 
 The examples below are parsed and strictly typechecked by tests against the
-embedded application schema using cedar-go v1.8.0's experimental validator.
-This verifies the Go implementation, not parity with the Rust reference validator.
-Reference-validator fixtures and independent review remain release gates.
+embedded application schema using cedar-go v1.8.0's **experimental** validator.
+`TestOfficialReferenceParity` compares validation and evaluation with versioned
+fixtures actually executed using the official Rust `cedar-policy` **4.13.0** crate.
+The [pinned generator and provenance](../internal/authorization/testdata/reference/README.md)
+cover the shipped schema, examples and decision matrix, not every possible Cedar
+policy or language feature. Passing fixtures do not make the Go validator stable
+or eliminate independent security review.
 
 OAuth establishes identity; an operator-owned Cedar policy file grants operations
 on the whole instance. There is no policy editor, policy API or automatic allow-all
@@ -235,7 +241,8 @@ implemented in the [migration guide](registry-exposure-migration.md). Only the
 explicit `retire-claims` command clears historical metadata; ordinary migrations,
 startup and reconciliation never do so. The new runtime consumes valid evidence
 after preflight. The legacy runtime is removed; private offline compatibility,
-physical claims columns, archives and receipts remain at schema 29 until the final slice.
+historical migrations, archives and receipts remain. The same final binary finalizes
+historical format-1 evidence at 29 before forward cleanup removes live columns at 30.
 
 This is a breaking upgrade, not a policy-file swap. Before upgrading, back up and
 inventory ALL old catalogs: sources, views, entries, retained snapshots and operator
@@ -259,6 +266,10 @@ and live operator annotations before cutover; do not restart legacy binaries aft
 clearing. Inspect unresolved receipt outcomes offline or restore the verified backup.
 
 ## Product questions
+
+These are deployment-owner checklist questions, not unresolved implementation choices
+or automatic exposure approval. The separate operator same-name cross-kind identity
+choice remains pending user agreement; see the [acceptance matrix](registry-embedding-validation.md).
 
 - Does whole-catalog operation permission meet the intended use, or is per-entry privacy required?
 - Is the first deployment private or publicly browsable, and who needs publisher versus operator access?

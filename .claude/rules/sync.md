@@ -17,7 +17,8 @@ Failure/cancellation/partial listing never becomes an empty success. PostgreSQL 
 serializable transactions, payload temp tables/COPY/upsert, latest and orphan cleanup.
 `internal/sync/writer.StoreSourceTx` and `PublishSourceTx` only stage inside the caller's
 transaction; no unleased Store facade, manager, state service or old coordinator exists.
-Schema-29 claims plumbing/mutation guards remain until the final schema slice, not policy.
+Historical schema-29 mutation guards protect offline transition. Ordinary public
+writes require clean schema 30 after explicit finalization; preserve archives/receipts.
 
 ## 2. Scheduled Versus Manual Sources
 
