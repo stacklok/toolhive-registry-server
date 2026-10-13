@@ -47,7 +47,8 @@ registries:
 admin:
   enabled: false
 authorization:
-  policyFile: /etc/registry/policies.cedar # Author and mount explicitly; no implicit grants.
+  # Omit policyFile for built-in allow-all Cedar after authentication.
+  # policyFile: /etc/registry/policies.cedar # Optional custom replacement; mount read-only.
   allowAnonymousCatalog: false
   identityMappings:
     - issuer: https://id.example.org

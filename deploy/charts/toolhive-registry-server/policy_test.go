@@ -35,13 +35,14 @@ func TestProductionDefaultsRequireExplicitEmptyBootstrap(t *testing.T) {
 	for _, initialization := range []string{"default", "false", "true"} {
 		t.Run(initialization, func(t *testing.T) {
 			t.Parallel()
-			args := []string{"template", "production", ".", "--set", "policy.existingConfigMap=operator-policy",
+			args := []string{"template", "production", ".",
 				"--set", "image.registryServerUrl=ko.local/thv-registry-api:ci-test"}
 			if initialization != "default" {
 				args = append(args, "--set", "initializeEmptyCatalog="+initialization)
 			}
 			output, err := exec.CommandContext(t.Context(), helm, args...).CombinedOutput()
 			require.NoError(t, err, "%s", output)
+			require.NotContains(t, string(output), "cedar-policy", "default must not require an external mount")
 			if initialization != "true" {
 				require.NotContains(t, string(output), "--initialize-empty")
 			} else {
@@ -78,7 +79,7 @@ func TestProductionDefaultsRequireExplicitEmptyBootstrap(t *testing.T) {
 				require.Empty(t, cfg.Auth.OAuth.Providers, "operator must supply trusted providers")
 				require.False(t, cfg.Admin.Enabled)
 				require.False(t, cfg.Authorization.AllowAnonymousCatalog)
-				require.Equal(t, "/etc/registry-policies/policies.cedar", cfg.Authorization.PolicyFile)
+				require.Empty(t, cfg.Authorization.PolicyFile, "default evaluates built-in Cedar without a mount")
 			}
 		})
 	}
@@ -177,6 +178,22 @@ func TestCIPolicyMount(t *testing.T) {
 			require.Equal(t, config.AuthModeAnonymous, cfg.Auth.Mode)
 			require.True(t, cfg.Authorization.AllowAnonymousCatalog)
 
+			if cfg.Authorization.PolicyFile == "" {
+				require.NotContains(t, string(output), "cedar-policy")
+				engine, err := authorization.Load("")
+				require.NoError(t, err)
+				gate, err := authorization.NewRegistrar(engine, nil, nil)
+				require.NoError(t, err)
+				mw, _, err := auth.NewAdmissionAuthMiddleware(context.Background(), cfg.Auth, true, nil)
+				require.NoError(t, err)
+				router := chi.NewRouter()
+				require.NoError(t, gate.Register(router, "GET", "/openapi.json", authorization.MetadataRead,
+					http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }), mw))
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, httptest.NewRequest("GET", "/openapi.json", nil))
+				require.Equal(t, http.StatusOK, response.Code)
+				return
+			}
 			policyFixture, err := os.ReadFile("../../../.github/registry-ci-policy.yaml")
 			require.NoError(t, err)
 			var policyMap corev1.ConfigMap

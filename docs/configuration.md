@@ -35,18 +35,27 @@ thv-registry-api serve --config config.yaml
 
 ## Standalone Cedar admission (required)
 
-Every standalone deployment requires `authorization.policyFile`, an absolute path
-to an explicitly mounted, bounded plain Cedar file. The policy is parsed and
-strictly schema-validated with pinned cedar-go v1.8.0 before writers/operator
-construction or serving; `serve` preflights it before migrations. Effective auth
-configuration is validated again after CLI overrides. No policy means no startup,
-not allow-all. Policy changes take effect only after restarting every replica.
+Every standalone deployment evaluates Cedar. Omit `authorization.policyFile` (or
+leave the optional path empty) to load built-in allow-all Cedar: every verified
+identity may use **every enabled operation**, including administration if explicitly
+enabled. This is actual policy evaluation, not an auth bypass. Admin remains off by
+default and requires verified OAuth when enabled; anonymous catalog access requires
+explicit opt-in. Invalid credentials never become anonymous; unknown/mismatched
+routes and evaluation errors/diagnostics deny.
+
+An optional absolute `authorization.policyFile` replaces the built-in policy entirely,
+never concatenates with it. Missing/unreadable/empty/comment-only/invalid explicitly
+configured files fail startup with no fallback. The bounded plain Cedar policy is
+parsed and strictly schema-validated with pinned cedar-go v1.8.0 before migrations,
+writers or serving. Effective auth configuration is validated after CLI overrides.
+Policy changes take effect only after restarting every replica.
 
 ```yaml
 admin:
   enabled: false
 authorization:
-  policyFile: /etc/registry/policies.cedar
+  # Optional custom restriction; omit for evaluated built-in allow-all Cedar.
+  # policyFile: /etc/registry/policies.cedar
   allowAnonymousCatalog: false
   identityMappings:
     - issuer: https://id.example.org
@@ -74,7 +83,22 @@ replicas/restarts without resetting or rebinding the receipt.
 See the [Cedar guide](registry-cedar-authorization.md) for typechecked policies,
 identity mapping/introspection constraints, retirement tombstones and transition
 instructions. Snippets below illustrate particular settings and must include the
-mandatory admission blocks and trusted OAuth configuration to serve traffic.
+trusted authentication configuration and explicit anonymous opt-in when needed to serve traffic.
+
+Compose no longer requires an external policy mount. To use a custom policy, add a
+Compose override and set the optional path in the selected config (or use
+`THV_REGISTRY_AUTHORIZATION_POLICYFILE`):
+
+```yaml
+services:
+  registry-api:
+    volumes:
+      - /absolute/operator/policies.cedar:/etc/registry/policies.cedar:ro
+    environment:
+      THV_REGISTRY_AUTHORIZATION_POLICYFILE: /etc/registry/policies.cedar
+```
+
+Keep the override/path identical throughout offline exposure review and finalization.
 
 ## Configuration File Structure
 

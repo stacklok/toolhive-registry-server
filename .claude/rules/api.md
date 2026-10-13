@@ -12,6 +12,10 @@ Consumer routes remain `/registry/{registryName}/v0.1/servers` and version route
 skills/plugins live under `/x/dev.toolhive/`. Preserve upstream/extension wire shapes,
 named prefixes, route-specific version bounds and existing continuation behavior.
 Public HTTP consumes host-selected capabilities, not standalone config/auth or sqlc.
+Hosts may use the narrow `Authorizer` contract (context + RouteDescriptor) via
+`Authorize` in Decorate after their authentication Middleware; nil, errors and
+unknown/mismatched routes deny. Omitting decoration is explicitly policy-free.
+Standalone retains its mandatory Cedar registrar, guards and audit, not a selectable engine.
 Admin `/v1` uses small independent source/view/publisher/diagnostic operations.
 
 ## 2. Global Claims-Free Publication

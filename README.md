@@ -14,7 +14,7 @@
 
 **Discover, govern, and control access to MCP servers, skills, and plugins across your organization**
 
-The ToolHive Registry Server aggregates MCP servers, skills, and plugins from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs. OAuth verifies identity and operator-authored Cedar grants whole-instance operations. Permitted readers of the same view receive the same catalog; views are not privacy boundaries. Use separate instances or host-owned personalized services when audiences must see different data.
+The ToolHive Registry Server aggregates MCP servers, skills, and plugins from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs. OAuth verifies identity and Cedar grants whole-instance operations. Standalone evaluates built-in allow-all Cedar by default; an optional custom file replaces it entirely. Every verified identity can use every enabled operation, including admin if explicitly enabled (admin is off by default). Permitted readers of the same view receive the same catalog; views are not privacy boundaries. Use separate instances or host-owned personalized services when audiences must see different data.
 
 It implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). If you're not familiar with MCP: it's an open protocol that lets AI assistants connect to external tools and data sources. This server is the governance layer that sits between your MCP infrastructure and the teams consuming it.
 
@@ -40,7 +40,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 
 ### Governance and access control
 
-- **Cedar admission**: Operator-authored policies grant consumer read, publication and administration operations on the whole instance. No per-entry/view claim filtering.
+- **Cedar admission**: Evaluated built-in allow-all after authentication; optional custom policies replace it entirely to restrict consumer read, publication and administration. No per-entry/view claim filtering.
 - **OAuth 2.0/OIDC authentication**: Plug in your existing identity provider (Okta, Auth0, Azure AD). OAuth is the default; anonymous mode is available for development.
 - **Explicit administration**: Admin is disabled by default; enabled endpoints always require authenticated identity and a matching Cedar action permit.
 - **SIEM-compliant audit logging**: Structured log covering all API operations with NIST SP 800-53 AU-3 compliant fields, dedicated file output, and configurable event filtering.
@@ -72,7 +72,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 # Build the binary
 task build
 
-# After configuring PostgreSQL, trusted OAuth and the mounted Cedar policy:
+# After configuring PostgreSQL and trusted OAuth (custom Cedar mount optional):
 # Existing catalog: complete the linked offline procedure before serving.
 ./bin/thv-registry-api serve --config examples/config-git.yaml
 
@@ -80,8 +80,11 @@ task build
 ./bin/thv-registry-api serve --config examples/config-file.yaml --initialize-empty
 ```
 
-Configure trusted OAuth, PostgreSQL and a read-only operator-authored Cedar policy
-in the selected example first. Existing catalogs require the
+Configure trusted OAuth and PostgreSQL in the selected example first. Omit
+`authorization.policyFile` for built-in allow-all Cedar, or explicitly mount a custom
+restriction read-only (invalid specified files fail startup, never default fallback).
+Anonymous catalog access requires explicit opt-in; invalid credentials never become
+anonymous. Existing catalogs require the
 [offline exposure procedure](docs/registry-exposure-migration.md); even unlabeled
 data is not an empty install. Then start with `thv-registry-api serve --config config.yaml`.
 Only for a genuinely new, entirely empty database, explicitly add `--initialize-empty`.
@@ -91,9 +94,10 @@ The public listener defaults to `:8080`; probes/metrics use the separate `:8081`
 
 ### Docker quickstart
 
-Set `REGISTRY_POLICY_FILE` to the absolute operator-authored Cedar policy path and
-configure your OAuth issuer/audience in `examples/config-docker.yaml`. The base
-Compose configuration has no implicit initialization or anonymous grant:
+Configure your OAuth issuer/audience in `examples/config-docker.yaml`. No external
+policy mount is required by default; see [configuration](docs/configuration.md) for an
+optional custom policy override. The base Compose configuration has no implicit
+initialization or anonymous grant:
 
 ```bash
 docker compose up --build
@@ -109,7 +113,15 @@ read-only and use TLS or trusted TLS ingress.
 Import only the public components you need from `pkg/registry`: models/formats,
 persistence, catalog, ingestion/reconciliation, HTTP and optional PostgreSQL/operator
 adapters. Hosts own admission, personalized selection, pools/clients, listeners and
-shutdown. `internal/app` is the standalone composition, not a public host framework.
+shutdown. Hosts own the authorizer lifecycle; it is borrowed and shared across
+requests, so it must be concurrency-safe and honor request-context cancellation.
+Cedar is optional for libraries: `httpapi.Authorizer` takes host context and an existing
+`RouteDescriptor`; use `httpapi.Authorize(authorizer)` as the existing `Decorate`
+seam after host authentication `Middleware`. Nil, deny, errors and unknown or
+mismatched routes fail closed before application calls. Undecorated low-level
+routers are explicitly policy-free. The [real host-authentication/non-Cedar example](pkg/registry/httpapi/testdata/external/authorization_test.go)
+covers consumer and admin without internal authentication or policy dependencies.
+`internal/app` is the Cedar-only standalone composition, not a public host framework.
 
 [Executable examples and the #906/#915 acceptance matrix](docs/registry-embedding-validation.md)
 include a combined separate-module PostgreSQL → ingestion → catalog → HTTP workflow:
@@ -283,7 +295,9 @@ auth:
 admin:
   enabled: false
 authorization:
-  policyFile: /etc/registry/policies.cedar # Operator-authored, mounted read-only.
+  # Omit policyFile to evaluate built-in allow-all Cedar after authentication.
+  # For a custom restriction, mount the file read-only and set its absolute path:
+  # policyFile: /etc/registry/policies.cedar
   allowAnonymousCatalog: false
 
 database:

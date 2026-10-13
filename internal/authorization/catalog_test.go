@@ -32,7 +32,7 @@ func TestCatalogEveryMethodFailsClosedWithoutOwnActionEvidence(t *testing.T) {
 	status := adminmocks.NewMockSourceStatusReader(ctrl)
 	diagnostics, err := catalog.NewDiagnostics(entries, status)
 	require.NoError(t, err)
-	engine, err := parse([]byte(`permit(principal,action,resource);`))
+	engine, err := Load("")
 	require.NoError(t, err)
 	gate, err := NewRegistrar(engine, nil, nil)
 	require.NoError(t, err)

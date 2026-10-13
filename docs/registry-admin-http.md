@@ -30,6 +30,15 @@ No reflection-based dependency probing is performed by the admin constructor.
 Templates are relative to the host's `/v1` mount. The router is policy-free, **not
 self-authenticating or automatically audited**. This is an embedding boundary,
 not an authorization omission to fill with library JWT/Cedar/claims logic.
+For protected consumer/admin assembly, implement the public `httpapi.Authorizer`
+(context + existing RouteDescriptor, returning allow/error) and use
+`Decorate: httpapi.Authorize(authorizer)` after host authentication Middleware.
+Nil (including typed nil), deny, errors and unknown/mismatched routes fail closed
+with 403 before mutation. Omitting decoration leaves the low-level router explicitly
+policy-free, not an implicit allow in the protected helper. This contract grants no
+exposure consent. The [external TLS authentication/non-Cedar example](../pkg/registry/httpapi/testdata/external/authorization_test.go)
+uses real host credential verification and tests consumer/admin allow, deny, error,
+invalid/missing credentials and unknown/mismatched operations.
 
 ## Explicit host mount, admission and audit
 

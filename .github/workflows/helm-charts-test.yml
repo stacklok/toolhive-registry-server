@@ -53,10 +53,10 @@ jobs:
       - name: Run chart-testing (lint)
         run: ct lint --config ct.yaml
 
-      - name: Verify CI policy configuration and mount
+      - name: Verify default Cedar and optional custom policy mount
         run: |
           task gen
-          go test ./deploy/charts/toolhive-registry-server -run TestCIPolicyMount -count=1
+          go test ./deploy/charts/toolhive-registry-server -count=1
 
       - name: Create KIND cluster
         uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
@@ -79,7 +79,7 @@ jobs:
 
           # Deploy PostgreSQL using raw manifests to the same namespace
           kubectl apply -f .github/postgres-manifests.yaml -n toolhive-test
-          # ct.yaml uses this same fixed namespace for the registry release.
+          # Optional custom-policy fixture used by postgres-values.yaml only.
           kubectl apply -f .github/registry-ci-policy.yaml -n toolhive-test
 
           # Wait for PostgreSQL to be ready

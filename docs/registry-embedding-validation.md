@@ -145,13 +145,16 @@ compatibility review; dependency `x/exp` Cedar validation remains experimental.
 
 ## Deployment and reference-validation evidence
 
-Build with `task build`, then use `./bin/thv-registry-api`. Final configuration must
-point `authorization.policyFile` at a readable absolute, read-only mounted Cedar file
-and configure trusted OAuth; enabled admin additionally needs its action permits.
+Build with `task build`, then use `./bin/thv-registry-api`. Configure trusted OAuth;
+omit `authorization.policyFile` to evaluate built-in allow-all Cedar, or mount an
+optional custom file read-only to replace it entirely. Every verified identity can
+use every enabled operation by default, including enabled admin; admin remains off
+by default and authenticated when enabled. Invalid explicit files fail startup.
 Select an image **containing this final binary** explicitly, not an old `latest` image.
-The chart requires `image.registryServerUrl` and `policy.existingConfigMap`; it defaults
-`initializeEmptyCatalog` to false. Compose requires `REGISTRY_POLICY_FILE`, mounts it
-read-only, and builds from the selected checkout. Only a new **entirely empty** catalog
+The chart requires `image.registryServerUrl`; `policy.existingConfigMap` is optional
+and sets the custom file path when selected. `initializeEmptyCatalog` defaults to
+false. Compose requires no external policy mount by default and builds from the
+selected checkout. Only a new **entirely empty** catalog
 may opt into `serve --initialize-empty`, Helm `initializeEmptyCatalog: true`, or the
 explicit `docker-compose.initialize-empty.yaml` override. Existing catalogs use the
 manual 29 → finalize → 30 workflow first, with no empty-install shortcut. See the

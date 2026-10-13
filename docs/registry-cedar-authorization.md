@@ -34,9 +34,16 @@ cover the shipped schema, examples and decision matrix, not every possible Cedar
 policy or language feature. Passing fixtures do not make the Go validator stable
 or eliminate independent security review.
 
-OAuth establishes identity; an operator-owned Cedar policy file grants operations
-on the whole instance. There is no policy editor, policy API or automatic allow-all
-policy. Claims-removal is not per-entry privacy: after explicit migration, finance
+OAuth establishes identity; standalone always evaluates Cedar. With no custom
+`authorization.policyFile`, built-in allow-all Cedar admits every verified identity
+to every enabled operation, **including admin if enabled**. Admin stays off by default
+and requires verified OAuth. Anonymous catalog access still needs explicit opt-in;
+invalid credentials never fall back to anonymous. Unknown/mismatched operations,
+missing evidence and evaluation diagnostics/errors deny. There is no standalone
+alternate engine/provider/plugin option and no policy editor or API.
+
+For the group-restricted catalog described here, explicitly supply the custom policy
+below: it replaces the default entirely, never unions with it. Claims-removal is not per-entry privacy: after explicit migration, finance
 and engineering readers querying the same view see the same catalog. If their data
 must remain separate, use host-owned personalized services or separate instances,
 not another Cedar group rule.
@@ -82,7 +89,8 @@ Plain Cedar is the file format for this slice and supersedes the earlier JSON
 bundle recommendation. The absolute path must refer to a readable regular file
 of at most 1 MiB. Missing, empty, comment-only, syntax-invalid or schema-invalid
 files fail preflight before migrations in `serve`, and before storage/writer/operator
-construction in the app builder. There is no implicit policy or allow-all fallback.
+construction in the app builder. An invalid explicit file never falls back to the
+built-in policy. Omission alone selects the default; neither policy grants exposure consent.
 
 Authenticated principals use `Registry::Principal` with a deterministic ID derived
 from a JSON tuple of the exact verified provider issuer and subject (SHA-256,
@@ -207,9 +215,9 @@ services. Only exact GET `/.well-known/oauth-protected-resource` is a credential
 bootstrap exemption; OpenAPI requires `metadata.read`. `auth.publicPaths` is
 rejected, including empty and null values, rather than interpreted as a bypass.
 
-A missing, empty or invalid policy prevents startup from serving catalog/admin
-traffic. No matching grant denies the operation without calling the
-catalog service. Server-side evaluation failure returns a safe generic error
+A missing, empty or invalid **explicitly configured policy file** prevents startup
+from serving catalog/admin traffic. No matching grant denies the operation without
+calling the catalog service. Server-side evaluation failure returns a safe generic error
 (503 for evaluator unavailability, 500 for wiring faults), never partial data.
 Cedar admission decision events contain actor, action, decision and policy revision,
 not raw tokens, claims or policy contents. This is not a guarantee about all logs:

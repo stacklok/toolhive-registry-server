@@ -8,6 +8,7 @@ import (
 
 // AuthorizationConfig configures the standalone, restart-loaded Cedar gate.
 type AuthorizationConfig struct {
+	// Omission evaluates built-in allow-all Cedar; custom files replace it entirely.
 	PolicyFile            string            `yaml:"policyFile"`
 	AllowAnonymousCatalog bool              `yaml:"allowAnonymousCatalog"`
 	IdentityMappings      []IdentityMapping `yaml:"identityMappings"`
@@ -45,8 +46,11 @@ func (c *Config) ValidateAdmission() error {
 	if c.Auth.PublicPaths != nil || c.publicPathsPresent {
 		return fmt.Errorf("auth.publicPaths is not supported")
 	}
-	if c.Authorization == nil || !filepath.IsAbs(c.Authorization.PolicyFile) {
-		return fmt.Errorf("authorization.policyFile must be an absolute path")
+	if c.Authorization == nil {
+		c.Authorization = &AuthorizationConfig{}
+	}
+	if c.Authorization.PolicyFile != "" && !filepath.IsAbs(c.Authorization.PolicyFile) {
+		return fmt.Errorf("authorization.policyFile must be an absolute path when specified")
 	}
 	if c.Admin.Enabled && c.Auth.Mode != AuthModeOAuth {
 		return fmt.Errorf("admin.enabled requires OAuth")

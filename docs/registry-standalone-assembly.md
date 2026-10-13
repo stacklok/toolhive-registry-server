@@ -8,7 +8,9 @@ old `RegistryService`, start an old coordinator/writer or start a Kubernetes man
 
 The CLI selects this composition. Helm opts into empty-install preparation only
 when `initializeEmptyCatalog` is explicitly enabled; production defaults remain
-private OAuth/admin-off with an externally supplied read-only policy. The obsolete
+private OAuth/admin-off with evaluated built-in allow-all Cedar unless a read-only
+custom policy replaces it. Every verified identity can use every enabled operation,
+including admin if enabled; anonymous catalog access remains explicit opt-in. The obsolete
 runtime/role/claims service and its factories are removed. Private offline configuration
 compatibility remains private. Schema 30 removes the live claims columns while
 preserving archives and receipt evidence. The same final binary runs historical
@@ -28,7 +30,9 @@ DB settings when using `LoadCatalogConfig`. It is not a decode-only loader.
 The CLI uses `LoadCatalogConfig` and applies `--auth-mode` as a final override.
 Cedar is loaded exactly once before the CLI storage factory applies schema migrations;
 its frozen revision is the review binding and its engine is the actual evaluator.
-There is no default policy or automatic existing-data consent. Direct constructors
+Omission selects built-in allow-all Cedar, never an authentication/evidence bypass;
+an invalid explicitly configured file fails startup, with no default fallback.
+Neither default nor custom policy grants automatic existing-data consent. Direct constructors
 retain the mandatory guard. `CatalogOptions.InitializeEmpty` is explicit empty-install
 authorization only and invokes the internal `ConsumeEmpty` preparation method after
 all source/operator preflight; no public persistence contract gains consent fields:
@@ -79,6 +83,8 @@ Operator/fetcher and telemetry providers are borrowed; their hosts retain owners
    too. Raw-key/environment evidence is retained from loading, not reread at startup.
 2. Load and strictly validate immutable Cedar. Bind `Config.ExposureReview` to the
    actual `Engine.Revision`, never reread the policy/config file during preparation.
+   Offline inventory/acknowledge/retire hash the same default bytes on omission; the
+   version-1 projection and explicit-file pending receipt protocol are unchanged.
 3. The CLI storage factory applies schema migrations only now, under the final
    validated config/frozen policy; migrations never supply consent. The default Go
    storage factory opens storage without migrations. Neither initializes definitions,
@@ -179,5 +185,6 @@ operator identity decision remains pending user agreement; collision behavior is
 
 Embedding applications continue to import the public packages and own their admission,
 personalized selection (if needed) and dependencies. Existing separate-module executable
-fixtures remain unchanged; `internal/app` is the standalone composition, not a new public
+fixtures additionally demonstrate optional host authentication/non-Cedar `httpapi.Authorizer`
+via `Middleware`/`Decorate`; `internal/app` remains the Cedar-only standalone composition, not a new public
 host framework.

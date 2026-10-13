@@ -147,15 +147,15 @@ initContainers: []
 initializeEmptyCatalog: false
 
 policy:
-  # -- Existing ConfigMap containing an operator-authored policies.cedar key.
-  # Required for serving; no sample policy or implicit grant is installed.
+  # -- Optional ConfigMap containing a custom policies.cedar key, replacing the built-in allow-all Cedar policy.
   existingConfigMap: ""
 
 config:
   admin:
     enabled: false
   authorization:
-    policyFile: /etc/registry-policies/policies.cedar
+    # Omit policyFile to evaluate built-in allow-all Cedar after authentication.
+    # policy.existingConfigMap sets the custom mounted path automatically.
     allowAnonymousCatalog: false
     identityMappings: []
   # Sources configuration - at least one source must be configured
