@@ -24,7 +24,7 @@ const exposureRevision = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 func TestExposureInventoryStableReadOnlyCoverage(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	_, err := conn.Exec(t.Context(), `SET TIME ZONE 'UTC'; SET intervalstyle = 'postgres'`)
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestExposureInventoryStableReadOnlyCoverage(t *testing.T) {
 
 func TestExposureSQLAndJSONNullPayloadCoverage(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	rows, err := conn.Query(t.Context(), `SELECT table_name,column_name FROM information_schema.columns
  WHERE table_schema='public' AND data_type='jsonb' AND table_name<>'exposure_claims_archive' ORDER BY table_name,column_name`)
@@ -109,7 +109,7 @@ func TestExposureSQLAndJSONNullPayloadCoverage(t *testing.T) {
 
 func TestExposureEveryTableMutationInvalidatesDigest(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	_, err := conn.Exec(t.Context(), `INSERT INTO source(name,source_type) VALUES('unreferenced','file')`)
 	require.NoError(t, err)
@@ -170,7 +170,7 @@ func TestExposureEveryTableMutationInvalidatesDigest(t *testing.T) {
 
 func TestExposureAcknowledgementConsentLeasesAndPreservation(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	inventory := exposureInventory(t, conn)
 	for _, consent := range []struct{ approve, offline bool }{{false, false}, {true, false}, {false, true}} {
@@ -221,15 +221,15 @@ func TestExposureAcknowledgementConsentLeasesAndPreservation(t *testing.T) {
 	defer pool.Close()
 	jobs, err := postgres.NewJobs(pool, 65536)
 	require.NoError(t, err)
-	job, err := jobs.Acquire(t.Context(), "linked", time.Minute)
-	require.NoError(t, err)
-	err = jobs.CommitSnapshot(t.Context(), job, persistence.SyncResult{Hash: "new"}, model.Snapshot{})
-	require.ErrorIs(t, err, persistence.ErrConflict, "acknowledgement must not disable legacy claims guards")
+	_, err = jobs.Acquire(t.Context(), "linked", time.Minute)
+	require.ErrorIs(t, err, persistence.ErrUnavailable)
+	err = jobs.CommitSnapshot(t.Context(), persistence.Job{Source: persistence.SourceDefinition{ID: "00000000-0000-0000-0000-000000000001"}, LeaseID: "00000000-0000-0000-0000-000000000002", Generation: 1}, persistence.SyncResult{Hash: "new"}, model.Snapshot{})
+	require.ErrorIs(t, err, persistence.ErrUnavailable, "acknowledgement must not disable legacy claims guards")
 }
 
 func TestExposureAcknowledgementRollsBackFenceOnMarkerFailure(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	_, err := conn.Exec(t.Context(), `CREATE FUNCTION reject_exposure_marker() RETURNS trigger LANGUAGE plpgsql AS $$
  BEGIN RAISE EXCEPTION 'private-sentinel'; END $$;
@@ -251,7 +251,7 @@ func TestExposureEmptyRequiresAllPersistedTablesEmpty(t *testing.T) {
 	for _, state := range []string{"empty", "source", "view", "snapshot", "orphan-snapshot"} {
 		t.Run(state, func(t *testing.T) {
 			t.Parallel()
-			conn, _ := database.SetupTestDB(t)
+			conn, _ := database.SetupTestDBAt(t, 29)
 			if state == "source" || state == "snapshot" {
 				_, err := conn.Exec(t.Context(), `INSERT INTO source(name,source_type,source_config) VALUES('only','file','{}')`)
 				require.NoError(t, err)
@@ -283,20 +283,38 @@ func TestExposureEmptyRequiresAllPersistedTablesEmpty(t *testing.T) {
 	}
 }
 
+func historicalSource(t *testing.T, conn *pgx.Conn, name string) persistence.SourceDefinition {
+	t.Helper()
+	_, err := conn.Exec(t.Context(), `INSERT INTO source(name,source_type,source_config,sync_schedule,creation_type)
+ VALUES($1,'api','{"endpoint":"https://example.org"}',interval '1 hour','API')`, name)
+	require.NoError(t, err)
+	var id string
+	require.NoError(t, conn.QueryRow(t.Context(), `SELECT id::text FROM source WHERE name=$1`, name).Scan(&id))
+	return persistence.SourceDefinition{ID: id, Name: name, Origin: persistence.OriginAPI,
+		API: &persistence.APISpec{Endpoint: "https://example.org"}, Schedule: "1h"}
+}
+
+func historicalJob(t *testing.T, conn *pgx.Conn, source persistence.SourceDefinition) persistence.Job {
+	t.Helper()
+	job := persistence.Job{Source: source}
+	require.NoError(t, conn.QueryRow(t.Context(), `INSERT INTO registry_sync(source_id,sync_status,lease_id,lease_generation,lease_expires_at)
+ SELECT id,'IN_PROGRESS',gen_random_uuid(),definition_generation,clock_timestamp()+interval '1 hour' FROM source WHERE id=$1
+ ON CONFLICT(source_id) DO UPDATE SET lease_id=gen_random_uuid(),lease_generation=excluded.lease_generation,
+ lease_expires_at=excluded.lease_expires_at,sync_status='IN_PROGRESS'
+ RETURNING lease_id::text,lease_generation,lease_expires_at`, source.ID).Scan(&job.LeaseID, &job.Generation, &job.ExpiresAt))
+	return job
+}
+
 func TestExposureFencesExpiredPreReviewJobs(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	pool, err := pgxpool.New(t.Context(), conn.Config().ConnString())
 	require.NoError(t, err)
 	defer pool.Close()
-	definitions, err := postgres.NewDefinitions(pool)
-	require.NoError(t, err)
-	source, err := definitions.CreateSource(t.Context(), persistence.SourceDefinition{Name: "fenced", API: &persistence.APISpec{Endpoint: "https://example.org"}, Schedule: "1h"})
-	require.NoError(t, err)
+	source := historicalSource(t, conn, "fenced")
 	jobs, err := postgres.NewJobs(pool, 65536)
 	require.NoError(t, err)
-	job, err := jobs.Acquire(t.Context(), source.Name, time.Minute)
-	require.NoError(t, err)
+	job := historicalJob(t, conn, source)
 	_, err = conn.Exec(t.Context(), `UPDATE registry_sync SET lease_expires_at=clock_timestamp()-interval '1 second'`)
 	require.NoError(t, err)
 	inventory := exposureInventory(t, conn)
@@ -306,13 +324,13 @@ func TestExposureFencesExpiredPreReviewJobs(t *testing.T) {
 	// (not a caller clock or cached expiry) rejects both completion paths.
 	_, err = conn.Exec(t.Context(), `UPDATE registry_sync SET lease_expires_at=clock_timestamp()+interval '1 hour'`)
 	require.NoError(t, err)
-	require.ErrorIs(t, jobs.Complete(t.Context(), job, persistence.SyncResult{Hash: "old"}), persistence.ErrStale)
-	require.ErrorIs(t, jobs.CommitSnapshot(t.Context(), job, persistence.SyncResult{Hash: "old"}, model.Snapshot{}), persistence.ErrStale)
+	require.ErrorIs(t, jobs.Complete(t.Context(), job, persistence.SyncResult{Hash: "old"}), persistence.ErrUnavailable)
+	require.ErrorIs(t, jobs.CommitSnapshot(t.Context(), job, persistence.SyncResult{Hash: "old"}, model.Snapshot{}), persistence.ErrUnavailable)
 }
 
 func TestExposureConcurrentMutationWhileAcknowledgementWaits(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	inventory := exposureInventory(t, conn)
 	other, err := pgx.ConnectConfig(t.Context(), conn.Config().Copy())
@@ -343,7 +361,7 @@ func TestExposureConcurrentMutationWhileAcknowledgementWaits(t *testing.T) {
 
 func TestExposureInventoryConsistentDuringConcurrentWrites(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	seedExposure(t, conn)
 	before := exposureInventory(t, conn)
 	reader, err := pgx.ConnectConfig(t.Context(), conn.Config().Copy())

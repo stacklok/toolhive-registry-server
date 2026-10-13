@@ -16,7 +16,7 @@ import (
 
 func repairTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	db, cleanup := database.SetupTestDB(t)
+	db, cleanup := database.SetupTestDBAt(t, 29)
 	t.Cleanup(cleanup)
 	pool, err := pgxpool.New(context.Background(), db.Config().ConnString())
 	require.NoError(t, err)

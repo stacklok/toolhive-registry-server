@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	"github.com/stacklok/toolhive-registry-server/database"
 	"github.com/stacklok/toolhive-registry-server/internal/app/storage"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
@@ -29,18 +30,23 @@ func TestCatalogFirstMatchingHashNeedsNewBaselineAndFencesOldWork(t *testing.T) 
 	defs, err := postgres.NewDefinitions(pool)
 	require.NoError(t, err)
 	payload := `{"version":"1.0.0","meta":{"last_updated":"2025-01-15T10:30:00Z"},"data":{"servers":[{"$schema":"https://example.org/server.schema.json","name":"com.example/inline","description":"historical","version":"1"}]}}`
-	source, err := defs.CreateSource(t.Context(), persistence.SourceDefinition{Name: "unlinked", File: &persistence.FileSpec{Data: payload}})
+	_, err = conn.Exec(t.Context(), `INSERT INTO source(name,source_type,source_config,syncable,creation_type)
+ VALUES('unlinked','file',jsonb_build_object('data',$1::text),false,'API')`, payload)
+	require.NoError(t, err)
+	source, err := defs.GetSource(t.Context(), "unlinked")
 	require.NoError(t, err)
 	jobs, err := postgres.NewJobs(pool, 65536)
 	require.NoError(t, err)
-	coordinator, err := reconcile.New(jobs, ingest.New(ingest.Options{}), reconcile.Options{PollInterval: time.Second, LeaseDuration: time.Minute})
+	initial, err := ingest.New(ingest.Options{}).Fetch(t.Context(), source)
 	require.NoError(t, err)
-	require.NoError(t, coordinator.Sync(t.Context(), source.Name))
+	oldWork := persistence.Job{Source: source}
+	require.NoError(t, conn.QueryRow(t.Context(), `INSERT INTO registry_sync(source_id,sync_status,last_sync_hash,last_applied_filter_hash,applied_generation,
+ lease_id,lease_generation,lease_expires_at) SELECT id,'IN_PROGRESS',$1,'',definition_generation,gen_random_uuid(),
+ definition_generation,clock_timestamp()+interval '1 hour' FROM source WHERE name='unlinked'
+ RETURNING lease_id::text,lease_generation,lease_expires_at`, initial.Hash).Scan(&oldWork.LeaseID, &oldWork.Generation, &oldWork.ExpiresAt))
 	oldStatus, err := jobs.Status(t.Context(), source.Name)
 	require.NoError(t, err)
 	require.True(t, oldStatus.BaselineValid)
-	oldWork, err := jobs.Acquire(t.Context(), source.Name, time.Second)
-	require.NoError(t, err)
 	_, err = conn.Exec(t.Context(), `UPDATE registry_sync SET lease_expires_at=clock_timestamp()-interval '1 second'`)
 	require.NoError(t, err)
 	approveCatalog(t, conn, cfg, false)
@@ -79,10 +85,12 @@ func TestCatalogOperatorEmptyStartupAndAPIScopeCRUD(t *testing.T) {
  INSERT INTO entry_version(entry_id,name,version,description) SELECT id,name,'1','stale export' FROM registry_entry;
  INSERT INTO mcp_server(version_id) SELECT id FROM entry_version`)
 	require.NoError(t, err)
-	approveCatalog(t, conn, cfg, false)
+	approveCatalog(t, conn, cfg, false, true)
 	scheme := runtime.NewScheme()
 	require.NoError(t, mcp.AddToScheme(scheme))
 	api := fake.NewClientBuilder().WithScheme(scheme).Build()
+	require.NoError(t, FinalizeExposure(t.Context(), CatalogOptions{Config: cfg, Storage: storage.CatalogPostgres{BorrowedPool: pool}, Operator: &kubernetes.StandaloneFactory{API: api}}))
+	require.NoError(t, database.MigrateUp(t.Context(), conn))
 	app, err := NewCatalogApp(t.Context(), CatalogOptions{Config: cfg, Storage: storage.CatalogPostgres{BorrowedPool: pool}, Operator: &kubernetes.StandaloneFactory{API: api}, HTTP: []RegistryAppOptions{WithAddress("127.0.0.1:0"), WithInternalAddress("127.0.0.1:0")}, Reconcile: reconcile.Options{PollInterval: time.Hour, LeaseDuration: time.Minute}})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = app.Stop() })

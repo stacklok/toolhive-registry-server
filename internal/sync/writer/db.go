@@ -49,7 +49,7 @@ func StoreSourceTx(
 	ctx context.Context, tx pgx.Tx, sourceID uuid.UUID,
 	reg *toolhivetypes.UpstreamRegistry, maxMetaSize int,
 ) error {
-	if err := (&dbSyncWriter{maxMetaSize: maxMetaSize}).storeSourceTx(ctx, tx, sourceID, reg, nil, nil); err != nil {
+	if err := (&dbSyncWriter{maxMetaSize: maxMetaSize}).storeSourceTx(ctx, tx, sourceID, reg); err != nil {
 		return err
 	}
 	return sqlc.New(tx).EntryDeleteEmptyNames(ctx, sourceID)
@@ -64,7 +64,7 @@ func PublishSourceTx(
 	d := &dbSyncWriter{maxMetaSize: maxMetaSize}
 	q := sqlc.New(tx)
 	if len(reg.Data.Servers) == 1 {
-		ids, err := d.storeSyncInTempTables(ctx, tx, sourceID, reg.Data.Servers, nil, nil)
+		ids, err := d.storeSyncInTempTables(ctx, tx, sourceID, reg.Data.Servers)
 		if err != nil {
 			return err
 		}
@@ -77,18 +77,17 @@ func PublishSourceTx(
 		return d.updateLatestVersions(ctx, q, sourceID, ids, reg.Data.Servers)
 	}
 	if len(reg.Data.Skills) == 1 {
-		return d.storeSkills(ctx, tx, sourceID, reg.Data.Skills, nil, false)
+		return d.storeSkills(ctx, tx, sourceID, reg.Data.Skills, false)
 	}
-	return d.storePlugins(ctx, tx, sourceID, reg.Data.Plugins, nil, false)
+	return d.storePlugins(ctx, tx, sourceID, reg.Data.Plugins, false)
 }
 
 func (d *dbSyncWriter) storeSourceTx(
 	ctx context.Context, tx pgx.Tx, sourceID uuid.UUID, reg *toolhivetypes.UpstreamRegistry,
-	claims []byte, perEntryClaims map[string][]byte,
 ) error {
 	querier := sqlc.New(tx)
 	// Step 2: Upsert all servers using temp table and COPY, collect their IDs
-	serverIDMap, err := d.storeSyncInTempTables(ctx, tx, sourceID, reg.Data.Servers, claims, perEntryClaims)
+	serverIDMap, err := d.storeSyncInTempTables(ctx, tx, sourceID, reg.Data.Servers)
 	if err != nil {
 		return fmt.Errorf("failed to upsert servers: %w", err)
 	}
@@ -114,7 +113,7 @@ func (d *dbSyncWriter) storeSourceTx(
 	}
 
 	// Step 6: Store skills
-	if err := d.storeSkills(ctx, tx, sourceID, reg.Data.Skills, claims, true); err != nil {
+	if err := d.storeSkills(ctx, tx, sourceID, reg.Data.Skills, true); err != nil {
 		return fmt.Errorf("failed to store skills: %w", err)
 	}
 	if err := dropEntryTempTables(ctx, querier); err != nil {
@@ -122,7 +121,7 @@ func (d *dbSyncWriter) storeSourceTx(
 	}
 
 	// Step 7: Store plugins
-	if err := d.storePlugins(ctx, tx, sourceID, reg.Data.Plugins, claims, true); err != nil {
+	if err := d.storePlugins(ctx, tx, sourceID, reg.Data.Plugins, true); err != nil {
 		return fmt.Errorf("failed to store plugins: %w", err)
 	}
 	return nil
@@ -141,8 +140,6 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 	tx pgx.Tx,
 	registryID uuid.UUID,
 	servers []upstreamv0.ServerJSON,
-	claims []byte,
-	perEntryClaims map[string][]byte,
 ) (map[string]uuid.UUID, error) {
 	if len(servers) == 0 {
 		return make(map[string]uuid.UUID), nil
@@ -151,7 +148,7 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 	querier := sqlc.New(tx)
 
 	// 1. Upsert registry entries (one per unique name)
-	entryMap, err := sqlCopyEntries(ctx, tx, registryID, servers, claims, perEntryClaims)
+	entryMap, err := sqlCopyEntries(ctx, tx, registryID, servers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to copy entries: %w", err)
 	}
@@ -670,7 +667,7 @@ func copyAndUpsertEntries(ctx context.Context, tx pgx.Tx, entryRows [][]any) (ma
 	entryCopyCount, err := tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"temp_registry_entry"},
-		[]string{"id", "source_id", "entry_type", "name", "claims", "created_at", "updated_at"},
+		[]string{"id", "source_id", "entry_type", "name", "created_at", "updated_at"},
 		pgx.CopyFromRows(entryRows),
 	)
 	if err != nil {
@@ -700,8 +697,6 @@ func sqlCopyEntries(
 	tx pgx.Tx,
 	registryID uuid.UUID,
 	servers []upstreamv0.ServerJSON,
-	claims []byte,
-	perEntryClaims map[string][]byte,
 ) (map[string]uuid.UUID, error) {
 	// Deduplicate by name — one registry_entry per unique server name
 	seen := make(map[string]bool, len(servers))
@@ -718,18 +713,11 @@ func sqlCopyEntries(
 			return nil, fmt.Errorf("failed to generate entry ID: %w", err)
 		}
 
-		// Use per-entry claims if available, otherwise fall back to source-level claims
-		entryClaims := claims
-		if ec, ok := perEntryClaims[server.Name]; ok {
-			entryClaims = ec
-		}
-
 		entryRows = append(entryRows, []any{
 			entryID,
 			registryID,
 			sqlc.EntryTypeMCP,
 			server.Name,
-			entryClaims,
 			&now,
 			&now,
 		})
@@ -904,7 +892,6 @@ func (d *dbSyncWriter) storeSkills(
 	tx pgx.Tx,
 	registryID uuid.UUID,
 	skills []toolhivetypes.Skill,
-	claims []byte,
 	replace bool,
 ) error {
 	querier := sqlc.New(tx)
@@ -938,7 +925,6 @@ func (d *dbSyncWriter) storeSkills(
 			registryID,
 			sqlc.EntryTypeSKILL,
 			skill.Name,
-			claims,
 			&now,
 			&now,
 		})
@@ -1219,7 +1205,6 @@ func (d *dbSyncWriter) storePlugins(
 	tx pgx.Tx,
 	registryID uuid.UUID,
 	plugins []toolhivetypes.Plugin,
-	claims []byte,
 	replace bool,
 ) error {
 	querier := sqlc.New(tx)
@@ -1253,7 +1238,6 @@ func (d *dbSyncWriter) storePlugins(
 			registryID,
 			sqlc.EntryTypePLUGIN,
 			plugin.Name,
-			claims,
 			&now,
 			&now,
 		})

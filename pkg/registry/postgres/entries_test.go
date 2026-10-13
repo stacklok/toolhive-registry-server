@@ -362,22 +362,25 @@ func TestEntryClaimsCompatibility(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = pool.Exec(t.Context(), `INSERT INTO registry_entry(source_id,entry_type,name,claims) VALUES($1,'SKILL','private','{"team":"a"}')`, s.ID)
+	_, e = pool.Exec(t.Context(), `INSERT INTO registry_entry(source_id,entry_type,name) VALUES($1,'SKILL','private')`, s.ID)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = store.ReplaceSnapshot(t.Context(), s, model.Snapshot{}); !errors.Is(e, persistence.ErrConflict) {
-		t.Fatalf("claimed entry: %v", e)
+	if _, e := pool.Exec(t.Context(), `UPDATE schema_migrations SET version=29`); e != nil {
+		t.Fatal(e)
+	}
+	if e = store.ReplaceSnapshot(t.Context(), s, model.Snapshot{}); !errors.Is(e, persistence.ErrUnavailable) {
+		t.Fatalf("old schema entry: %v", e)
 	}
 	var n int
 	if e = pool.QueryRow(t.Context(), `SELECT count(*) FROM registry_entry WHERE source_id=$1`, s.ID).Scan(&n); e != nil || n != 1 {
 		t.Fatalf("claimed entry lost: %d %v", n, e)
 	}
-	_, e = pool.Exec(t.Context(), `UPDATE source SET claims='{"team":"a"}' WHERE id=$1`, s.ID)
+	_, e = pool.Exec(t.Context(), `UPDATE schema_migrations SET version=30,dirty=true`)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = store.ReplaceSnapshot(t.Context(), s, model.Snapshot{}); !errors.Is(e, persistence.ErrConflict) {
+	if e = store.ReplaceSnapshot(t.Context(), s, model.Snapshot{}); !errors.Is(e, persistence.ErrUnavailable) {
 		t.Fatalf("claimed source: %v", e)
 	}
 }

@@ -30,7 +30,7 @@ func TestMigrateExposureCLI(t *testing.T) {
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	path := exposureCLIConfig(t, conn)
 	execute := func(args ...string) (string, error) {
 		t.Helper()
@@ -129,7 +129,7 @@ func TestMigrateExposureCLI(t *testing.T) {
 
 func TestMigrateExposureRetirementOutputFailureKeepsOffline(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	path := exposureCLIConfig(t, conn)
 	_, err := conn.Exec(t.Context(), `INSERT INTO source(name,source_type,source_config,claims)
 VALUES('persisted','file','{}','{"team":"private-claims-sentinel"}')`)
@@ -178,7 +178,7 @@ VALUES('persisted','file','{}','{"team":"private-claims-sentinel"}')`)
 
 func TestMigrateExposureInventoryDoesNotAutoMigrate(t *testing.T) {
 	t.Parallel()
-	conn, _ := database.SetupTestDB(t)
+	conn, _ := database.SetupTestDBAt(t, 29)
 	require.NoError(t, database.MigrateDown(t.Context(), conn, 3))
 	command := newMigrateExposureCmd()
 	command.PersistentFlags().String("config", exposureCLIConfig(t, conn), "")

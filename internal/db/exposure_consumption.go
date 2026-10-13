@@ -2,14 +2,13 @@ package db
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/stacklok/toolhive-registry-server/internal/db/exposuretarget"
 )
 
 var errExposureConsumeRetry = errors.New("concurrent exposure consumption")
@@ -63,8 +62,8 @@ func consumeExposure(ctx context.Context, conn *pgx.Conn, revision string, initi
 	if err != nil {
 		return consumeError(err, "cannot inspect exposure schema")
 	}
-	if version != 29 || dirty {
-		return errors.New("exposure consumption requires clean schema version 29; run migrate up separately")
+	if version != 29 && version != 30 || dirty {
+		return errors.New("exposure consumption requires clean schema version 29 or 30; follow docs/registry-exposure-migration.md")
 	}
 	var databaseID string
 	var format int
@@ -79,12 +78,12 @@ func consumeExposure(ctx context.Context, conn *pgx.Conn, revision string, initi
 	if err != nil {
 		return consumeError(err, "exposure consumption evidence unavailable")
 	}
-	if format != ExposureInventoryVersion {
+	if format != 1 && (version != 30 || format != 2) {
 		return errors.New("unsupported exposure inventory format")
 	}
-	target, err := consumedExposureTarget(ctx, tx, databaseID)
+	target, err := exposuretarget.Digest(ctx, tx, databaseID)
 	if err != nil {
-		return err
+		return consumeError(err, "exposure database target unavailable")
 	}
 	if consumedAt != nil {
 		if consumedTarget == nil || *consumedTarget != target {
@@ -95,17 +94,14 @@ func consumeExposure(ctx context.Context, conn *pgx.Conn, revision string, initi
 		// startup revision: normal catalog and policy changes must remain possible.
 		return consumeError(tx.Commit(ctx), "cannot finish exposure target verification")
 	}
+	if version == 30 && (format != 2 || id != nil && (mode == nil || *mode != exposureEmptyMode)) {
+		return errors.New("pending historical exposure evidence cannot be activated at schema 30; " +
+			"restore and finalize offline at schema 29")
+	}
 	if initializeEmpty && id == nil {
 		if mode != nil || reviewed != nil || postFence != nil || configRevision != nil || acknowledgedAt != nil ||
 			retirementID != nil || postRetirement != nil || retiredAt != nil || consumedTarget != nil {
 			return errors.New("initialize-empty requires a new logical catalog identity with no prior review")
-		}
-		var archived bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM public.exposure_claims_archive)`).Scan(&archived); err != nil {
-			return consumeError(err, "cannot inspect exposure archive")
-		}
-		if archived {
-			return errors.New("initialize-empty cannot reuse a retired catalog identity")
 		}
 		inventory, err := inventoryExposureTx(ctx, tx, revision)
 		if err != nil {
@@ -148,6 +144,13 @@ func consumeExposure(ctx context.Context, conn *pgx.Conn, revision string, initi
 		if retirementID != nil || retiredAt != nil || postRetirement != nil {
 			return errors.New("invalid empty exposure evidence; remain offline")
 		}
+		var archived bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM public.exposure_claims_archive)`).Scan(&archived); err != nil {
+			return consumeError(err, "cannot inspect exposure archive")
+		}
+		if archived {
+			return errors.New("empty exposure consumption cannot reuse archived catalog history")
+		}
 	default:
 		return errors.New("unsupported exposure acknowledgement mode")
 	}
@@ -183,20 +186,6 @@ func consumeExposure(ctx context.Context, conn *pgx.Conn, revision string, initi
 		return consumeError(err, "cannot record exposure consumption")
 	}
 	return consumeError(tx.Commit(ctx), "exposure consumption outcome unknown; remain offline; inspect stored receipt")
-}
-
-func consumedExposureTarget(ctx context.Context, tx pgx.Tx, databaseID string) (string, error) {
-	var database string
-	if err := tx.QueryRow(ctx, `SELECT current_database()`).Scan(&database); err != nil {
-		return "", consumeError(err, "exposure database target unavailable")
-	}
-	connection := tx.Conn().Config()
-	encoded, err := json.Marshal([]any{"registry-exposure-consumed-target", 1, databaseID,
-		connection.Host, connection.Port, database})
-	if err != nil {
-		return "", errors.New("cannot fingerprint consumed exposure target")
-	}
-	return fmt.Sprintf("sha256:%x", sha256.Sum256(encoded)), nil
 }
 
 func consumeError(err error, message string) error {

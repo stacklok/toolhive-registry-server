@@ -11,7 +11,7 @@ mdx:
 
 ## thv-registry-api migrate exposure retire-claims
 
-Archive and clear claims OFFLINE; runtime cutover not yet available
+Archive and clear claims OFFLINE before finalize and schema cleanup
 
 ### Synopsis
 
@@ -20,8 +20,8 @@ Prepare the FINAL config and policy without retired fields BEFORE inventory and
 acknowledgement. Match that pending acknowledgement ID and its post-fence digest.
 Back up and stop/drain ALL readers, writers and controllers. Archive ALL source,
 view and entry claims, clear them to SQL NULL and fence old jobs atomically.
-Remain OFFLINE afterward: this slice cannot safely restart the legacy runtime.
-Restore a verified backup offline or wait for the runtime cutover release.
+Remain OFFLINE afterward: finalize the existing receipt, then migrate up to 30.
+Never restart a legacy runtime against retired metadata.
 Repeats are rejected without changes; a lost response or receipt output failure
 requires remaining offline and inspecting stored retirement state as documented in
 docs/registry-exposure-migration.md, not re-acknowledging or rebinding evidence.
@@ -46,7 +46,7 @@ thv-registry-api migrate exposure retire-claims [flags]
       --config string    Path to configuration file (YAML format, required)
       --debug            Enable debug mode
   -n, --num-steps uint   Number of steps to migrate (0 = all)
-  -y, --yes              Answer yes to all questions
+  -y, --yes              Confirm schema migrations only; never exposure consent
 ```
 
 ### SEE ALSO

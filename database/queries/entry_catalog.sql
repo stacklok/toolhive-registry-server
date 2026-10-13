@@ -5,11 +5,8 @@ SELECT EXISTS(SELECT 1 FROM source WHERE id=sqlc.arg(source_id)::uuid);
 SELECT id FROM source WHERE source_type='managed' FOR UPDATE;
 
 -- name: EntrySource :one
-SELECT id, name, source_type, (claims IS NOT NULL)::boolean AS has_claims
+SELECT id, name, source_type
 FROM source WHERE id=sqlc.arg(source_id)::uuid FOR UPDATE;
-
--- name: EntryHasClaims :one
-SELECT EXISTS(SELECT 1 FROM registry_entry WHERE source_id=sqlc.arg(source_id)::uuid AND claims IS NOT NULL);
 
 -- name: EntryDeleteEmptyNames :exec
 DELETE FROM registry_entry e WHERE e.source_id=sqlc.arg(source_id)::uuid

@@ -66,7 +66,7 @@ func (q *Queries) DeleteRegistry(ctx context.Context, name string) (int64, error
 }
 
 const getAPIRegistriesByNames = `-- name: GetAPIRegistriesByNames :many
-SELECT id, name, claims, creation_type, created_at, updated_at
+SELECT id, name, creation_type, created_at, updated_at
 FROM registry
 WHERE name = ANY($1::text[])
   AND creation_type = 'API'
@@ -84,7 +84,6 @@ func (q *Queries) GetAPIRegistriesByNames(ctx context.Context, names []string) (
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
-			&i.Claims,
 			&i.CreationType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -100,7 +99,7 @@ func (q *Queries) GetAPIRegistriesByNames(ctx context.Context, names []string) (
 }
 
 const getRegistryByName = `-- name: GetRegistryByName :one
-SELECT id, name, claims, creation_type, created_at, updated_at
+SELECT id, name, creation_type, created_at, updated_at
 FROM registry WHERE name = $1
 `
 
@@ -110,7 +109,6 @@ func (q *Queries) GetRegistryByName(ctx context.Context, name string) (Registry,
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
-		&i.Claims,
 		&i.CreationType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -137,7 +135,7 @@ func (q *Queries) LinkRegistrySource(ctx context.Context, arg LinkRegistrySource
 
 const listRegistries = `-- name: ListRegistries :many
 
-SELECT id, name, claims, creation_type, created_at, updated_at
+SELECT id, name, creation_type, created_at, updated_at
 FROM registry
 WHERE ($1::text IS NULL OR name > $1)
 ORDER BY name
@@ -162,7 +160,6 @@ func (q *Queries) ListRegistries(ctx context.Context, arg ListRegistriesParams) 
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
-			&i.Claims,
 			&i.CreationType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -235,33 +232,26 @@ func (q *Queries) UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySo
 }
 
 const upsertConfigRegistry = `-- name: UpsertConfigRegistry :one
-INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
-VALUES ($1, $2, 'CONFIG', $3, $4)
-ON CONFLICT (name) DO UPDATE SET claims = EXCLUDED.claims, updated_at = EXCLUDED.updated_at
+INSERT INTO registry (name, creation_type, created_at, updated_at)
+VALUES ($1, 'CONFIG', $2, $3)
+ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
 WHERE registry.creation_type = 'CONFIG'
-RETURNING id, name, claims, creation_type, created_at, updated_at
+RETURNING id, name, creation_type, created_at, updated_at
 `
 
 type UpsertConfigRegistryParams struct {
 	Name      string     `json:"name"`
-	Claims    []byte     `json:"claims"`
 	CreatedAt *time.Time `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`
 }
 
 // Insert or update a CONFIG registry without overwriting API-owned rows.
 func (q *Queries) UpsertConfigRegistry(ctx context.Context, arg UpsertConfigRegistryParams) (Registry, error) {
-	row := q.db.QueryRow(ctx, upsertConfigRegistry,
-		arg.Name,
-		arg.Claims,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-	)
+	row := q.db.QueryRow(ctx, upsertConfigRegistry, arg.Name, arg.CreatedAt, arg.UpdatedAt)
 	var i Registry
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
-		&i.Claims,
 		&i.CreationType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -270,15 +260,14 @@ func (q *Queries) UpsertConfigRegistry(ctx context.Context, arg UpsertConfigRegi
 }
 
 const upsertRegistry = `-- name: UpsertRegistry :one
-INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (name) DO UPDATE SET claims = EXCLUDED.claims, updated_at = EXCLUDED.updated_at
-RETURNING id, name, claims, creation_type, created_at, updated_at
+INSERT INTO registry (name, creation_type, created_at, updated_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
+RETURNING id, name, creation_type, created_at, updated_at
 `
 
 type UpsertRegistryParams struct {
 	Name         string       `json:"name"`
-	Claims       []byte       `json:"claims"`
 	CreationType CreationType `json:"creation_type"`
 	CreatedAt    *time.Time   `json:"created_at"`
 	UpdatedAt    *time.Time   `json:"updated_at"`
@@ -289,7 +278,6 @@ type UpsertRegistryParams struct {
 func (q *Queries) UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) (Registry, error) {
 	row := q.db.QueryRow(ctx, upsertRegistry,
 		arg.Name,
-		arg.Claims,
 		arg.CreationType,
 		arg.CreatedAt,
 		arg.UpdatedAt,
@@ -298,7 +286,6 @@ func (q *Queries) UpsertRegistry(ctx context.Context, arg UpsertRegistryParams) 
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
-		&i.Claims,
 		&i.CreationType,
 		&i.CreatedAt,
 		&i.UpdatedAt,

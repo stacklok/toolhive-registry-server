@@ -41,7 +41,7 @@ func TestCatalogOperatorAuthoritativeGateBeforeConsume(t *testing.T) {
 			conn, pool := catalogPG(t, cfg)
 			cfg.Sources = append(cfg.Sources, config.SourceConfig{Name: "operator", Kubernetes: &config.KubernetesConfig{}})
 			cfg.WatchNamespace = "two,one"
-			approveCatalog(t, conn, cfg, true)
+			approveCatalog(t, conn, cfg, true, true)
 			scheme := runtime.NewScheme()
 			require.NoError(t, mcp.AddToScheme(scheme))
 			meta := metav1.ObjectMeta{Name: "exported", Namespace: "two", Annotations: map[string]string{"toolhive.stacklok.dev/registry-export": "true", "toolhive.stacklok.dev/authz-claims": ""}}

@@ -130,6 +130,23 @@ func AcknowledgeExposure(ctx context.Context, conn *pgx.Conn, configRevision, di
 		if transitioned {
 			return ExposureAcknowledgement{}, errors.New("exposure already transitioned; acknowledgement evidence cannot be replaced")
 		}
+		var inventoryVersion int
+		if err = tx.QueryRow(ctx, `SELECT inventory_version FROM public.exposure_acknowledgement WHERE singleton`).Scan(
+			&inventoryVersion); err != nil {
+			return ExposureAcknowledgement{}, errors.New("cannot inspect exposure format")
+		}
+		if schemaVersion == 30 && (inventoryVersion != 2 || !initializeEmpty) {
+			return ExposureAcknowledgement{}, errors.New("historical review cannot be rebound at schema 30; finalize offline at schema 29")
+		}
+		if initializeEmpty {
+			var archived bool
+			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM public.exposure_claims_archive)`).Scan(&archived); err != nil {
+				return ExposureAcknowledgement{}, errors.New("cannot inspect exposure archive")
+			}
+			if archived {
+				return ExposureAcknowledgement{}, errors.New("initialize-empty cannot reuse archived catalog history")
+			}
+		}
 	}
 	if inventory.Digest != digest {
 		return ExposureAcknowledgement{}, errors.New("exposure digest mismatch; inventory and review again")
@@ -215,16 +232,19 @@ func inventoryExposureTx(ctx context.Context, tx pgx.Tx, revision string) (Expos
 	var version int
 	var dirty bool
 	err := tx.QueryRow(ctx, `SELECT version,dirty FROM public.schema_migrations`).Scan(&version, &dirty)
-	if err != nil || (version != 27 && version != 28 && version != 29) || dirty {
+	if err != nil || (version != 27 && version != 28 && version != 29 && version != 30) || dirty {
 		return ExposureInventory{}, errors.New(
-			"exposure inventory requires clean schema version 27, 28 or 29; run migrate up separately")
+			"exposure inventory requires clean schema version 27, 28 or 29 (or claims-free 30); run migrate up separately")
 	}
 	inventory := ExposureInventory{Version: ExposureInventoryVersion, ConfigRevision: revision,
 		Counts: map[string]int64{}, Records: []ExposureRecord{}, Links: []ExposureLink{}}
+	if version == 30 {
+		inventory.Version = 2
+	}
 	var format int
 	if err := tx.QueryRow(ctx, `SELECT database_id::text,inventory_version
  FROM public.exposure_acknowledgement WHERE singleton`).Scan(
-		&inventory.DatabaseID, &format); err != nil || format != ExposureInventoryVersion {
+		&inventory.DatabaseID, &format); err != nil || (format != 1 && format != inventory.Version) {
 		return ExposureInventory{}, errors.New("exposure database identity unavailable")
 	}
 	var database string
@@ -241,8 +261,8 @@ func inventoryExposureTx(ctx context.Context, tx pgx.Tx, revision string) (Expos
 	linked := map[string]bool{}
 	for _, table := range exposureTables {
 		projection := "'row',row_to_json(t)"
-		if table.claims {
-			projection += ",'claims_sql_null',claims IS NULL"
+		if table.claims && version < 30 {
+			projection += " ,'claims_sql_null',claims IS NULL"
 		}
 		if table.jsonNulls != "" {
 			projection += ",'sql_nulls',ARRAY[" + table.jsonNulls + "]"
@@ -280,9 +300,13 @@ func inventoryExposureTx(ctx context.Context, tx pgx.Tx, revision string) (Expos
 				if table.name == exposureSourceTable {
 					r.Kind = r.SourceType
 				}
+				class := "removed"
+				if version < 30 {
+					class = exposureClaimsClass(r.Claims, envelope.SQLNull)
+				}
 				inventory.Records = append(inventory.Records, ExposureRecord{Table: table.name, ID: r.ID, Name: r.Name,
 					SourceID: r.SourceID, Kind: r.Kind, Ownership: r.Ownership, Generation: r.Generation,
-					Claims: exposureClaimsClass(r.Claims, envelope.SQLNull)})
+					Claims: class})
 			}
 			if table.name == "registry_source" {
 				var link struct{ Row ExposureLink }

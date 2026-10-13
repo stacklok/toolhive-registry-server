@@ -71,8 +71,14 @@ func SetupTestDBContainer(t *testing.T, ctx context.Context) (*pgx.Conn, func())
 // SetupTestDB returns an isolated, migrated database on a package-shared Postgres process.
 func SetupTestDB(t *testing.T) (*pgx.Conn, func()) {
 	t.Helper()
+	return SetupTestDBAt(t, 30)
+}
 
-	db, release, err := acquireSharedTestDB(t.Context())
+// SetupTestDBAt creates an isolated fixture at an explicit historical schema.
+func SetupTestDBAt(t *testing.T, version uint) (*pgx.Conn, func()) {
+	t.Helper()
+
+	db, release, err := acquireSharedTestDB(t.Context(), version)
 	require.NoError(t, err)
 
 	var once sync.Once
@@ -155,7 +161,7 @@ var sharedTestDB struct {
 	instance *sharedTestPostgres
 }
 
-func acquireSharedTestDB(ctx context.Context) (*pgx.Conn, func(context.Context) error, error) {
+func acquireSharedTestDB(ctx context.Context, version uint) (*pgx.Conn, func(context.Context) error, error) {
 	sharedTestDB.Lock()
 	defer sharedTestDB.Unlock()
 
@@ -194,7 +200,7 @@ func acquireSharedTestDB(ctx context.Context) (*pgx.Conn, func(context.Context) 
 			discardUnusedSharedTestPostgres(instance),
 		)
 	}
-	if err := MigrateUp(ctx, db); err != nil {
+	if err := MigrateUpTo(ctx, db, version); err != nil {
 		return nil, nil, errors.Join(
 			err,
 			db.Close(ctx),
