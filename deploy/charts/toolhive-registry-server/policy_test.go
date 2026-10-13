@@ -32,17 +32,17 @@ func TestProductionDefaultsRequireExplicitEmptyBootstrap(t *testing.T) {
 	output, err := exec.CommandContext(t.Context(), helm, "template", "production", ".").CombinedOutput()
 	require.Error(t, err, "no implicit legacy image may be selected")
 	require.Contains(t, string(output), "image.registryServerUrl must select an image containing catalog startup/receipt enforcement")
-	for _, optIn := range []string{"default", "false", "true"} {
-		t.Run(optIn, func(t *testing.T) {
+	for _, initialization := range []string{"default", "false", "true"} {
+		t.Run(initialization, func(t *testing.T) {
 			t.Parallel()
 			args := []string{"template", "production", ".", "--set", "policy.existingConfigMap=operator-policy",
 				"--set", "image.registryServerUrl=ko.local/thv-registry-api:ci-test"}
-			if optIn != "default" {
-				args = append(args, "--set", "initializeEmptyCatalog="+optIn)
+			if initialization != "default" {
+				args = append(args, "--set", "initializeEmptyCatalog="+initialization)
 			}
 			output, err := exec.CommandContext(t.Context(), helm, args...).CombinedOutput()
 			require.NoError(t, err, "%s", output)
-			if optIn != "true" {
+			if initialization != "true" {
 				require.NotContains(t, string(output), "--initialize-empty")
 			} else {
 				require.Contains(t, string(output), "--initialize-empty")
@@ -90,19 +90,19 @@ func TestCNPGAdmissionValues(t *testing.T) {
 	if err != nil {
 		t.Skip("helm is required for chart rendering")
 	}
-	for _, optIn := range []string{"false", "true"} {
-		t.Run(optIn, func(t *testing.T) {
+	for _, initialization := range []string{"false", "true"} {
+		t.Run(initialization, func(t *testing.T) {
 			t.Parallel()
 			output, err := exec.CommandContext(t.Context(), helm, "template", "cnpg", ".",
 				"--namespace", "toolhive-system", "-f", "../../../examples/cnpg/helm-values.yaml",
 				"--set-string", "image.registryServerUrl=example.invalid/registry:catalog",
 				"--set-string", "policy.existingConfigMap=operator-policy",
-				"--set", "initializeEmptyCatalog="+optIn,
+				"--set", "initializeEmptyCatalog="+initialization,
 				"--set-json", `config.auth.oauth.providers=[{"name":"corporate","issuerUrl":"https://id.example.com","audience":"registry-api"}]`,
 				"--set-json", `config.authorization.identityMappings=[{"issuer":"https://id.example.com","groups":{"claim":"groups","format":"string-array"}}]`,
 			).CombinedOutput()
 			require.NoError(t, err, "%s", output)
-			require.Equal(t, optIn == "true", bytes.Contains(output, []byte("--initialize-empty")))
+			require.Equal(t, initialization == "true", bytes.Contains(output, []byte("--initialize-empty")))
 			require.NotContains(t, string(output), "permit(", "the chart never supplies an access policy")
 			decoder := k8syaml.NewYAMLOrJSONDecoder(bytes.NewReader(output), 4096)
 			var found bool
