@@ -350,18 +350,19 @@ func (q *Queries) DefSourceClaims(ctx context.Context, name string) (bool, error
 }
 
 const defSourceRaw = `-- name: DefSourceRaw :one
-SELECT source_config, filter_config FROM source WHERE name=$1
+SELECT source_config, filter_config, syncable FROM source WHERE name=$1
 `
 
 type DefSourceRawRow struct {
 	SourceConfig []byte `json:"source_config"`
 	FilterConfig []byte `json:"filter_config"`
+	Syncable     bool   `json:"syncable"`
 }
 
 func (q *Queries) DefSourceRaw(ctx context.Context, name string) (DefSourceRawRow, error) {
 	row := q.db.QueryRow(ctx, defSourceRaw, name)
 	var i DefSourceRawRow
-	err := row.Scan(&i.SourceConfig, &i.FilterConfig)
+	err := row.Scan(&i.SourceConfig, &i.FilterConfig, &i.Syncable)
 	return i, err
 }
 

@@ -1,17 +1,19 @@
 # Offline exposure review and explicit claims retirement
 
-Improves on #912. This increment implements review tooling, a **dormant**
-revision-bound marker, and explicit offline archive-and-clear. It does **not**
-retire runtime claims/RBAC guards or activate a cutover. Schema 29 and a dormant
-internal receipt-consumption primitive are now available, but no CLI, app builder,
-service, worker or listener selects that primitive. Cedar admission and all
-legacy runtime protections remain additive. The public persistence contracts and
-their legacy mutation guards are unchanged; after explicit clearing, those raw
-storage guards no longer have claims to protect.
+This guide documents the existing offline review and explicit archive-and-clear
+commands. The production CLI/chart default is still the legacy protected runtime.
+A complete opt-in Go composition is now available through
+[`internal/app.NewCatalogApp`](registry-standalone-assembly.md), which enforces the
+mandatory preparation barrier and consumes schema-29 evidence before any config
+reconciliation/latest repair or serving. Only use that explicit composition after
+the offline procedure; **do not restart the legacy `serve` command after retirement**.
+CLI/chart activation is the next PR; #912/#914 are not complete. Public persistence
+contracts and historical legacy guards remain unchanged. No schema migration,
+`--yes` flag, empty/unlabeled data or builder call automatically grants consent.
 
-**Do not restart the current runtime after `retire-claims`.** Keep the deployment
-offline until the runtime cutover release, or restore the verified backup offline.
-Neither acknowledgement nor metadata retirement makes this slice safe to serve.
+The descriptions of dormant machinery and future startup below refer to the
+legacy CLI-default path. For the available Go path's exact ordering, lifecycle,
+namespace remediation and remaining activation work, use the assembly guide.
 
 ## Maintenance procedure
 
@@ -208,15 +210,16 @@ acknowledge again before retirement. After retirement, changes invalidate pendin
 cutover evidence and cannot be silently rebound; retain downtime and restore the
 backup offline if necessary. There is no restore command or serving activation here.
 
-## Dormant consumption and target continuity
+## Receipt consumption and target continuity
 
-`internal/db.ConsumeExposure` requires clean schema 29. It is **not** a command
-or a supported serving activation path. A future mandatory storage preparation
-barrier must call it only after validating final effective config, rejecting
+`internal/db.ConsumeExposure` requires clean schema 29. It is not a separate
+command or permission to bypass preparation. The opt-in `app.NewCatalogApp`
+composition calls it only after validating final effective config, rejecting
 retired-field presence, freezing the actual loaded Cedar engine and completing
 read-only compatibility preflight over all final configured and persisted sources
-and operator scopes. These integration requirements remain unimplemented here;
-do not invoke it manually to bypass them. Public persistence stays policy-free.
+and operator scopes. See the [assembly guide](registry-standalone-assembly.md).
+The CLI/chart default still does not select this composition; startup activation
+is the next PR. Public persistence stays policy-free.
 
 The primitive locks the explicit catalog/receipt/schema tables in EXCLUSIVE mode
 inside a serializable transaction before reading the snapshot. On first consumption
@@ -244,7 +247,7 @@ It uses the configured host spelling, **not** a DNS-resolved address, credential
 config, policy or catalog. Same-target restarts verify only this digest; legitimate
 catalog/config/policy changes do not rebind or invalidate historical evidence.
 They still need normal current config, Cedar and source/operator compatibility
-validation by the future preparation barrier. Host aliases are a target change,
+validation by the preparation barrier. Host aliases are a target change,
 consistent with inventory semantics, and fail closed without silent rebinding.
 
 A consumed backup restored to the **same target** retains continuity. On another

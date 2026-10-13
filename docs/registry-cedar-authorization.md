@@ -14,20 +14,16 @@ Cedar applies to both the consumer and admin APIs. In this admission slice,
 latest-version endpoint in every named view. It is an endpoint admission
 decision, not per-view access or per-entry filtering.
 
-**Status: user-authorized first runtime admission slice for #912.** Cedar is an
-additional restriction, not a replacement for legacy authorization yet. Existing
-`auth.authz`, role resolution, source/view/entry claims, personalized filtering,
-service checks and PostgreSQL mutation guards remain in force. A Cedar permit
-cannot bypass them, including the legacy super-admin rules. No data or claims
-are automatically removed or exposed. Offline inventory, dormant revision-bound
-acknowledgement and explicit offline archive-and-clear are implemented; see the
-[migration guide](registry-exposure-migration.md). Metadata retirement is **not**
-runtime activation: remain offline afterward until a runtime cutover release or
-an offline backup restore. Runtime claims/RBAC retirement and marker consumption
-remain a later slice; #912 is not complete. Schema 29 and dormant internal receipt
-consumption now exist, but no serving path selects them; the mandatory preparation
-barrier and owner/authorization cutover remain prerequisites. Services/HTTP
-extraction (#913–#915) is deferred.
+**Status:** the CLI/chart default remains the additive Cedar + legacy claims/RBAC
+path. The complete public-component composition is now available as the opt-in Go
+entrypoint `internal/app.NewCatalogApp`; see the
+[standalone assembly guide](registry-standalone-assembly.md). That path requires
+explicit offline exposure evidence, retired-field/source/operator preflight and
+serialized schema-29 receipt consumption before reconciliation/repair. Its permitted
+readers receive the same nonpersonalized catalog; it starts only leased ingestion.
+It never automatically strips claims or supplies consent. Do not use the legacy
+CLI after retirement. CLI/startup/chart selection is the next PR; #912/#914 are not
+closed by this composition-only slice and legacy cleanup remains #915.
 
 The examples below are parsed and strictly typechecked by tests against the
 embedded application schema using cedar-go v1.8.0's experimental validator.

@@ -77,6 +77,26 @@ func (d *Definitions) ListSources(ctx context.Context) ([]persistence.SourceDefi
 	return out, nil
 }
 
+// CheckSourceCompatibility performs a read-only check for unrepresentable historical
+// specification fields. Hosts can use it before any configuration reconciliation.
+func (d *Definitions) CheckSourceCompatibility(ctx context.Context, name string) error {
+	old, err := d.GetSource(ctx, name)
+	if err != nil {
+		return err
+	}
+	if err := requireKnownFields(ctx, d.pool, name, old); err != nil {
+		return err
+	}
+	raw, err := sqlc.New(d.pool).DefSourceRaw(ctx, name)
+	if err != nil {
+		return classify(err)
+	}
+	if raw.Syncable != synced(old) {
+		return fmt.Errorf("%w: historical syncable flag does not match the source specification", persistence.ErrConflict)
+	}
+	return nil
+}
+
 // UpdateSource replaces an API-owned source without changing its identity or kind.
 //
 //nolint:gocyclo // Ownership, legacy metadata, and immutable kind checks form one atomic update gate.

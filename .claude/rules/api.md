@@ -11,14 +11,15 @@ audit trails cover every admin operation.
 
 ## Standalone admission staging
 
-Standalone assembly mounts only the guarded service facade through the mandatory
-Cedar route registrar. The closed method/template/action/audit manifest is checked against
-the legacy routers at construction; their stable audit wrappers and underlying
-claims checks remain. Admin is opt-in. `/v1/me` and GET/PUT entry-claims endpoints
-are explicitly classified static authenticated 410 tombstones, not service calls.
-The old router constructors remain internal compatibility seams for existing handler
-tests, not a supported standalone assembly. Consumer responses remain personalized
-under legacy claims where configured; shared HTTP extraction is deferred.
+The CLI/chart default retains the additive legacy facade and the legacy rules below.
+The opt-in `app.NewCatalogApp` composes public services/HTTP only after the mandatory
+exposure barrier. Its registrar checks every actual public route descriptor against
+the closed method/template/domain-operation/action/audit manifest; each guarded method
+requires private matching evidence. No raw services, old routers or role middleware
+may enter that path. Admin is opt-in and always authenticated; `/v1/me` and GET/PUT
+claims are protected static 410 tombstones. New consumer pages/cursors are
+nonpersonalized, public contracts are identity-free, and committed callbacks supply
+truthful creation/update audit events even on 503. See `docs/registry-standalone-assembly.md`.
 
 ## 1. Consumer API Is Upstream-Spec-Compliant; Admin API Is Ours
 

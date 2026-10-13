@@ -55,6 +55,71 @@ func lifecycleBarrier(t *testing.T, reached <-chan struct{}) {
 	}
 }
 
+type lifecycleWorker struct{ started chan<- struct{} }
+
+func (lifecycleWorker) Ready() bool { return true }
+
+func (w lifecycleWorker) Run(ctx context.Context) error {
+	w.started <- struct{}{}
+	<-ctx.Done()
+	return nil
+}
+
+func TestDiscoveryCompletionIgnoresNilWorkerAfterLifetimeCancellation(t *testing.T) {
+	t.Parallel()
+	listed, release := make(chan struct{}), make(chan struct{})
+	r := &Runtime{
+		sources: lifecycleSources{list: func(context.Context) ([]persistence.SourceDefinition, error) {
+			close(listed)
+			<-release
+			return nil, nil
+		}},
+		workers: map[string]*owned{"worker": {done: make(chan error, 1)}},
+	}
+	lifetime, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, err := r.discover(t.Context(), lifetime, false, nil, func() {})
+		result <- err
+	}()
+	lifecycleBarrier(t, listed)
+	cancel()
+	r.workers["worker"].done <- nil
+	close(release)
+	require.NoError(t, lifecycleResult(t, result))
+}
+
+func TestCleanStopsCanRepeat(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	jobs := mocks.NewMockJobs(ctrl)
+	jobs.EXPECT().ClaimNext(gomock.Any(), time.Minute).Return(persistence.Job{}, false, nil).AnyTimes()
+	started := make(chan struct{}, 2)
+	r, err := New(
+		lifecycleSources{list: func(context.Context) ([]persistence.SourceDefinition, error) {
+			return []persistence.SourceDefinition{{ID: "one", Name: "one", Kubernetes: &persistence.KubernetesSpec{}}}, nil
+		}},
+		jobs, mocks.NewMockFetcher(ctrl),
+		Options{
+			Reconcile: reconcile.Options{PollInterval: time.Hour, LeaseDuration: time.Minute},
+			Operator: func(persistence.SourceDefinition) (Worker, error) {
+				return lifecycleWorker{started: started}, nil
+			},
+			Preflight: func(context.Context, persistence.SourceDefinition) error { return nil },
+		},
+	)
+	require.NoError(t, err)
+	for range 2 {
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() { done <- r.Run(ctx) }()
+		lifecycleBarrier(t, started)
+		cancel()
+		require.NoError(t, lifecycleResult(t, done))
+	}
+}
+
 func TestRefreshLifecycleSnapshot(t *testing.T) {
 	t.Parallel()
 	for _, delayed := range []bool{false, true} {

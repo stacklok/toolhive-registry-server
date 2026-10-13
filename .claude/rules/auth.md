@@ -15,24 +15,18 @@ when claims don't cover.
 
 ## Standalone Cedar admission transition
 
-The standalone app additionally requires a strictly validated, restart-loaded
-Cedar policy on consumer and admin operations. This is admission only: all legacy
-rules below still apply. Cedar Allow does not bypass roles, claims, filtering or
-PostgreSQL guards; legacy super-admin does not bypass Cedar. Missing authentication
-or route evidence fails closed. Administration is disabled by default and, when
-enabled, requires OAuth. Configurable `auth.publicPaths` is rejected.
-
-`/v1/me` and GET/PUT entry-claims routes are static authenticated 410 tombstones
-in the standalone surface. Prepare entry retagging on the legacy release before
-upgrading; there is no new undocumented Cedar retag action. Source/view and
-publication claims remain enforced. See `docs/registry-cedar-authorization.md`.
-Claims/RBAC removal and acknowledged offline exposure migration are separate work.
-Schema 29 and `internal/db.ConsumeExposure` provide dormant target-bound transition
-machinery only; no serving path calls it. Do not remove legacy protections or treat
-that primitive as startup authorization before the mandatory preparation barrier,
-nonpersonalized service cutover and exclusive leased-ingestion ownership are wired
-and tested together. `Engine.Revision()` identifies the actual frozen policy bytes;
-startup fingerprints must not reread the policy file.
+The production CLI/chart default remains additive Cedar plus legacy claims/RBAC;
+legacy rules below still apply to that path. The opt-in `app.NewCatalogApp` path
+instead requires final retired-field validation, frozen Cedar, read-only historical
+source/operator preflight and schema-29 receipt consumption before any reconciliation,
+repair or serving. It uses only public nonpersonalized services and leased ingestion;
+never mount legacy roles/routes or co-own its sources with the old writers. See
+`docs/registry-standalone-assembly.md`. #914 remains open until startup/chart selection.
+Both paths fail closed on missing verified identity or fixed-action route evidence,
+disable admin by default, require OAuth for admin and retain protected 410 tombstones.
+Neither performs automatic claims retirement or supplies exposure consent.
+`Engine.Revision()` identifies actual frozen policy bytes; startup fingerprints must
+not reread the policy file. Public contracts remain identity-free.
 
 ## 1. Authentication and Authorization Are Separate Concerns
 

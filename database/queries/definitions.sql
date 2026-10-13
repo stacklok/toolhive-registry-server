@@ -26,7 +26,7 @@ WHERE name=$1 AND creation_type='API';
 SELECT (claims IS NOT NULL)::boolean AS has_claims FROM source WHERE name=$1;
 
 -- name: DefSourceRaw :one
-SELECT source_config, filter_config FROM source WHERE name=$1;
+SELECT source_config, filter_config, syncable FROM source WHERE name=$1;
 
 -- name: DefSourceUsed :one
 SELECT EXISTS(SELECT 1 FROM registry_source WHERE source_id=$1::uuid);

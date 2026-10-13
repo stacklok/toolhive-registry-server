@@ -13,6 +13,7 @@ import (
 
 	gitclient "github.com/stacklok/toolhive-registry-server/internal/git"
 	"github.com/stacklok/toolhive-registry-server/internal/httpclient"
+	"github.com/stacklok/toolhive-registry-server/internal/shutdown"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
@@ -174,16 +175,17 @@ func (f *Fetcher) readGit(ctx context.Context, spec persistence.GitSpec) ([]byte
 }
 
 func safeError(ctx context.Context, err error) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
+	result := ctx.Err()
 	if errors.Is(err, context.Canceled) {
-		return context.Canceled
+		result = errors.Join(result, context.Canceled)
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return context.DeadlineExceeded
+		result = errors.Join(result, context.DeadlineExceeded)
 	}
-	return ErrFetch
+	if shutdown.Result(err) != nil {
+		result = errors.Join(result, ErrFetch)
+	}
+	return result
 }
 
 type defaultGit struct{}

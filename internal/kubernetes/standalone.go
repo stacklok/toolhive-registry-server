@@ -20,7 +20,7 @@ import (
 var ErrRetiredExportClaims = errors.New("exported operator resource has retired authz-claims annotation; " +
 	"review exposure and explicitly remove it before standalone cutover")
 
-// NewStandaloneOperator is a dormant compatibility boundary around the public
+// NewStandaloneOperator constructs the compatibility boundary around the public
 // runner, not a manager constructor. The authoritative client remains caller-owned.
 // report receives only the bounded retired-annotation diagnostic; it must not block.
 func NewStandaloneOperator(
@@ -38,6 +38,9 @@ func NewStandaloneOperator(
 func PreflightStandaloneOperator(ctx context.Context, api client.WithWatch, definition persistence.SourceDefinition) error {
 	if api == nil {
 		return persistence.ErrInvalid
+	}
+	if definition.ID == "" {
+		definition.ID = "preflight"
 	}
 	checked := &standaloneExportClient{WithWatch: api}
 	if _, err := operator.NewFetcher(checked, definition); err != nil {

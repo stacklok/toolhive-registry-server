@@ -15,9 +15,10 @@ import (
 var errExposureConsumeRetry = errors.New("concurrent exposure consumption")
 
 // ConsumeExposure validates and consumes pending offline evidence, or verifies
-// only target continuity on restart. It is deliberately not wired into serving:
-// callers must first validate final configuration, freeze the loaded Cedar policy
-// and finish read-only source/operator compatibility preflight. It never retires
+// only target continuity on restart. The opt-in CatalogApp preparation barrier
+// calls this after validating final configuration, freezing the loaded Cedar policy
+// and finishing read-only source/operator compatibility preflight. The legacy CLI
+// default does not select it. It never retires
 // claims, initializes definitions, repairs storage or starts work.
 func ConsumeExposure(ctx context.Context, conn *pgx.Conn, configRevision string) error {
 	if !validExposureDigest(configRevision) {

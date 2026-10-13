@@ -146,10 +146,15 @@ func (m *multiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 			m.writeError(w, errorCodeInvalidToken, "verified issuer and subject required")
 			return
 		}
+		logSub, logUser := sub, user
+		if catalogProjection(r.Context()) {
+			logSub = PrincipalID(VerifiedIdentity{Issuer: result.Issuer, Subject: sub, Claims: result.Claims})
+			logUser = ""
+		}
 		slog.Info("Authentication successful",
 			"provider", result.Provider,
-			"sub", sub,
-			"user", user,
+			"sub", logSub,
+			"user", logUser,
 			"remote_addr", r.RemoteAddr,
 			"path", r.URL.Path)
 
@@ -157,7 +162,7 @@ func (m *multiProviderMiddleware) Middleware(next http.Handler) http.Handler {
 		// "HTTP request" line emitted from the outer LoggingMiddleware can
 		// see the authenticated subject (its r.Context() is fixed before the
 		// chain runs, so it cannot otherwise reach claims attached below).
-		SetIdentity(r.Context(), sub, user)
+		SetIdentity(r.Context(), logSub, logUser)
 
 		// Store validated claims in request context for downstream authorization
 		ctx := ContextWithClaims(r.Context(), result.Claims)

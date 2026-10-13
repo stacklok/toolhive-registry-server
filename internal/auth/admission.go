@@ -64,6 +64,24 @@ func NewAdmissionAuthMiddleware(ctx context.Context, cfg *config.AuthConfig, all
 	}, info, nil
 }
 
+// NewCatalogAuthMiddleware keeps verified claims available for evaluation while
+// projecting only the bounded principal ID into authentication/access/audit logs.
+// The legacy CLI continues to use NewAdmissionAuthMiddleware.
+func NewCatalogAuthMiddleware(ctx context.Context, cfg *config.AuthConfig, allowAnonymous bool,
+	factory validatorFactory) (func(http.Handler) http.Handler, http.Handler, error) {
+	mw, info, err := NewAdmissionAuthMiddleware(ctx, cfg, allowAnonymous, factory)
+	if err != nil {
+		return nil, nil, err
+	}
+	return func(next http.Handler) http.Handler {
+		authenticated := mw(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), catalogProjectionKey{}, true)
+			authenticated.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}, info, nil
+}
+
 // WriteAdmissionUnauthorized retains the configured OAuth challenge for rejections
 // after optional authentication. Descriptions must be static, never claim values.
 func WriteAdmissionUnauthorized(w http.ResponseWriter, r *http.Request, description string) {

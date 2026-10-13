@@ -1,10 +1,7 @@
 package authorization
 
 import (
-	"crypto/sha256"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -30,12 +27,7 @@ func principal(identity auth.VerifiedIdentity, mappings []config.IdentityMapping
 				return types.Entity{}, errors.New("reserved identity attribute")
 			}
 		}
-		// A JSON tuple avoids delimiter collisions; hashing keeps the audit actor bounded.
-		tuple, err := json.Marshal([]string{identity.Issuer, identity.Subject})
-		if err != nil {
-			return types.Entity{}, errors.New("invalid identity")
-		}
-		uid.ID = types.String(fmt.Sprintf("authenticated:%x", sha256.Sum256(tuple)))
+		uid.ID = types.String(auth.PrincipalID(identity))
 		for _, mapping := range mappings {
 			if mapping.Issuer != identity.Issuer {
 				continue
