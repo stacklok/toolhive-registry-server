@@ -2,19 +2,18 @@
 
 [Back to the product proposal](registry-cedar-authorization.md).
 
-This reference preserves the original investigation below as background.
-The user authorized a first admission-only runtime slice using a plain Cedar
-file and the pinned experimental validator. Plain Cedar supersedes the earlier
-JSON-bundle recommendation. See the [main document](registry-cedar-authorization.md)
-for the implemented configuration and transitional restrictions. Offline inventory,
-dormant revision-bound acknowledgement and explicit offline archive-and-clear are
-implemented; see the [migration guide](registry-exposure-migration.md). After metadata
-retirement remain offline until a runtime cutover release or an offline backup
-restore. Schema 29 and a dormant internal target-bound consumption primitive now
-exist; no serving path selects it. Final non-personalized serving, startup marker
-consumption, cutover and runtime claims/RBAC removal below remain future work,
-not completed migration functionality.
-Existing service, claims, role and PostgreSQL guard code remains in force.
+This reference preserves the original investigation below as **historical background**,
+not deployment instructions. Plain Cedar and the pinned experimental validator are
+implemented; use the [current Cedar guide](registry-cedar-authorization.md) for config.
+`serve` now selects the nonpersonalized public services/HTTP and exclusively leased
+runtime through `NewCatalogApp`. Final config/frozen-policy and read-only source/operator
+preflight precede schema-29 receipt consumption; both listeners and new writers remain
+behind that mandatory barrier. Existing catalogs require the
+[explicit offline exposure procedure](registry-exposure-migration.md). Empty installs
+may explicitly use default-false `--initialize-empty`, never to approve existing data.
+Legacy code and physical columns remain unselected until #915 cleanup. Statements below
+about dormant consumption or retained legacy guards describe the original proposal,
+not the selected runtime.
 
 ## Recommendation and boundary
 

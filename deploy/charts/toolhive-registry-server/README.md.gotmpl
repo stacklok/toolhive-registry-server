@@ -13,7 +13,7 @@
 ## TL;DR
 
 ```console
-helm upgrade -i toolhive-registry-server oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server -n toolhive-system --create-namespace
+helm upgrade -i toolhive-registry-server oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server -n toolhive-system --create-namespace --values operator-values.yaml
 ```
 
 Or for a custom values file:
@@ -38,21 +38,36 @@ ConfigMap with an operator-authored `policies.cedar` key. Set
 Map verified groups/scopes with `config.authorization.identityMappings`.
 The chart installs no sample policy or implicit grant. Defaults are private OAuth
 and admin disabled; publishing/administration require explicit `config.admin.enabled`
-and authenticated policy permission, plus the retained legacy roles/claims.
+and authenticated Cedar permission. Retired `auth.authz`, roles/publicPaths and
+resource claims are rejected. Existing catalogs require offline review and explicit
+claims retirement before the new runtime consumes the receipt; no startup flag approves
+existing data.
+
+For a genuinely new, entirely empty database only, explicitly set
+`initializeEmptyCatalog: true` (default false). This adds `serve --initialize-empty`;
+it authorizes empty-install preparation after policy/config and source/operator
+preflight, not permission to browse. The flag may remain on same-target replicas
+and restarts without resetting or rebinding a consumed receipt. Pending existing-data
+review must follow the manual chain, with this flag omitted for first consumption.
+`image.registryServerUrl` is explicitly required and defaults to empty: select a
+build/release containing this startup path. The chart never silently falls back to
+an older published binary that ignores Cedar/admin/receipt settings. Historical
+images do not implement the new flag or preparation barrier.
 
 Policy edits require a rollout/restart of every replica; an externally supplied
 ConfigMap does not automatically change the running evaluator. Drain old replicas
-when revoking access. Anonymous admission cannot be enabled while legacy
-`auth.authz` is configured in this transitional slice. See the
-[Cedar transition guide](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-cedar-authorization.md)
-before upgrading; no claims removal or exposure migration is performed here.
+when revoking access. See the
+[Cedar guide](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-cedar-authorization.md)
+and [offline exposure procedure](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-exposure-migration.md)
+before upgrading. Both ct fixtures opt in only for their disposable database and
+externally mounted deny-all policy; the chart installs no production consent/grant.
 
 ### Installing from the Chart
 
 Install one of the available versions:
 
 ```shell
-helm upgrade -i <release_name> oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server --version=<version> -n toolhive-system --create-namespace
+helm upgrade -i <release_name> oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server --version=<version> -n toolhive-system --create-namespace --values operator-values.yaml
 ```
 
 > **Tip**: List all releases using `helm list`

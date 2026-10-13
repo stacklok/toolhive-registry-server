@@ -90,6 +90,43 @@ func bodyError(w http.ResponseWriter, err error) bool {
 	return false
 }
 
+// ErrorResponse is the JSON error envelope used by the public HTTP adapters.
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+// CommittedErrorResponse reports a persisted mutation whose follow-up failed.
+type CommittedErrorResponse struct {
+	Error     string `json:"error"`
+	Committed bool   `json:"committed"`
+	Resource  any    `json:"resource,omitempty"`
+}
+
+// SourcesResponse lists source definitions and their allowlisted status.
+type SourcesResponse struct {
+	Sources []sourceInfo `json:"sources"`
+}
+
+// ViewsResponse lists named views.
+type ViewsResponse struct {
+	Registries []viewInfo `json:"registries"`
+}
+
+// ViewRequest specifies ordered source references without resource claims.
+type ViewRequest struct {
+	Sources []string `json:"sources"`
+}
+
+// SourceEntriesResponse lists unshadowed source version diagnostics.
+type SourceEntriesResponse struct {
+	Entries []sourceEntryInfo `json:"entries"`
+}
+
+// ViewEntriesResponse lists unshadowed view version diagnostics.
+type ViewEntriesResponse struct {
+	Entries []viewEntryInfo `json:"entries"`
+}
+
 type sourceRequest struct {
 	Git        *persistence.GitSpec     `json:"git,omitempty"`
 	API        *persistence.APISpec     `json:"api,omitempty"`
@@ -102,8 +139,10 @@ type sourceRequest struct {
 	Filter *persistence.Filter `json:"filter,omitempty"`
 }
 
-// Legacy KubernetesConfig has no JSON tag: retain its actual capitalized wire key.
-type kubernetesConfig struct{ Namespaces []string }
+// Retain the legacy capitalized wire key explicitly for runtime and OpenAPI parity.
+type kubernetesConfig struct {
+	Namespaces []string `json:"Namespaces"`
+}
 
 func (req sourceRequest) definition(name string) persistence.SourceDefinition {
 	s := persistence.SourceDefinition{Name: name, Git: req.Git, API: req.API, File: req.File,

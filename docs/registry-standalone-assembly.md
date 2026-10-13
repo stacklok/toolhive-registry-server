@@ -1,16 +1,16 @@
-# Opt-in standalone public-component assembly
+# Standalone public-component assembly
 
-`internal/app.NewCatalogApp` is an available **opt-in Go entrypoint** for #914/#912.
+`internal/app.NewCatalogApp` is the default `serve` composition for #914/#912.
 It assembles the actual public PostgreSQL definitions/jobs/entries, catalog reader,
 definition administration, publisher and diagnostics, public consumer/admin HTTP
 adapters, leased supervisor and standalone operator boundary. It does not adapt the
 old `RegistryService`, start an old coordinator/writer or start a Kubernetes manager.
 
-**The production CLI and charts still select the legacy default.** This change does
-not close #914: startup selection and chart activation belong to the next PR. Legacy
-code/tests, configuration fields and historical migrations remain for that transition
-and #915 cleanup. Never run the legacy CLI against a retired catalog, or co-own sources
-with an old writer. Stop/drain all old readers/writers before offline review.
+The CLI selects this composition. Helm opts into empty-install preparation only
+when `initializeEmptyCatalog` is explicitly enabled; production defaults remain
+private OAuth/admin-off with an externally supplied read-only policy. Legacy code/tests,
+configuration structs and physical claims columns remain unselected until #915 cleanup.
+Never co-own sources with old writers; stop/drain all old readers/writers before review.
 
 ## Direct use
 
@@ -22,8 +22,13 @@ inline definitions are supported and final source/admission validation happens a
 overrides in NewCatalogApp. The loader still validates database settings **before**
 `CatalogOptions.Overrides`; even an alternate storage factory requires valid loader
 DB settings when using `LoadCatalogConfig`. It is not a decode-only loader.
-The CLI still uses LoadConfig's legacy validation. There is no consent
-boolean, default policy or automatic migration:
+The CLI uses `LoadCatalogConfig` and applies `--auth-mode` as a final override.
+Cedar is loaded exactly once before the CLI storage factory applies schema migrations;
+its frozen revision is the review binding and its engine is the actual evaluator.
+There is no default policy or automatic existing-data consent. Direct constructors
+retain the mandatory guard. `CatalogOptions.InitializeEmpty` is explicit empty-install
+authorization only and invokes the internal `ConsumeEmpty` preparation method after
+all source/operator preflight; no public persistence contract gains consent fields:
 
 ```go
 cfg, err := config.LoadCatalogConfig(config.WithConfigPath(configPath))
@@ -55,7 +60,7 @@ or unguarded router is exposed by the application.
 `storage.CatalogPostgres{BorrowedPool: pool}` explicitly borrows a migrated pool;
 application cleanup never closes it. With the default factory the application owns the
 opened pool. Injected `CatalogFactory` implementations **must** return the preparation
-interface: `Preflight`, `Consume`, `Initialize`, `Close`. There is no optional assertion
+interface: `Preflight`, `Consume`, `ConsumeEmpty`, `Initialize`, `Close`. There is no optional assertion
 or legacy fallback. Returned storage transfers cleanup even alongside an error; when
 returning nil storage, the factory cleans its own partially opened resources. Fake/host
 resources remain borrowed only if their Close implementation declares that behavior.
@@ -71,7 +76,10 @@ Operator/fetcher and telemetry providers are borrowed; their hosts retain owners
    too. Raw-key/environment evidence is retained from loading, not reread at startup.
 2. Load and strictly validate immutable Cedar. Bind `Config.ExposureReview` to the
    actual `Engine.Revision`, never reread the policy/config file during preparation.
-3. Open storage without migration, definition initialization, latest repair or workers.
+3. The CLI storage factory applies schema migrations only now, under the final
+   validated config/frozen policy; migrations never supply consent. The default Go
+   storage factory opens storage without migrations. Neither initializes definitions,
+   repairs latest pointers or starts workers during Open.
 4. Read-only compatibility preflight over **all** historical definitions (CONFIG/API,
    linked/unlinked and CONFIG rows about to be replaced) and all final definitions.
    Unsupported historical fields/ingestion flags, invalid names, incompatible inline
@@ -101,7 +109,11 @@ before any definitions are reconciled. The existing offline commands alone archi
 claims. Neither `migrate up --yes`, an empty schema nor application construction supplies
 consent. An error after successful consumption/initialization does not roll back the
 recorded exposure transition: inspect the receipt and retry the same target, never clear
-or rebind evidence automatically.
+or rebind evidence automatically. The explicit `serve --initialize-empty` new-install
+alternative atomically records empty-mode evidence and consumes it under the same
+catalog/receipt/schema/archive locks after preflight. It never activates pending
+existing-data evidence or silently resets changed pending review; consumed same-target
+restarts do not re-acknowledge even when another replica has already reconciled data.
 
 ## Namespace and lifecycle ownership
 
@@ -142,17 +154,18 @@ The existing optional full request-body audit capture is a separate opt-in: publ
 metadata and inline administrative configuration may contain secrets. Leave it off unless
 its exposure and retention have been separately reviewed.
 
-## Remaining activation work (next PR)
+## Activation and remaining release gates
 
-- Select NewCatalogApp from CLI startup, preserving final overrides and the mandatory
-  barrier; do not run legacy automatic initialization/migration before it.
-- Activate charts/config examples with Cedar and explicit administration defaults, the
-  offline maintenance/receipt procedure, full-scope operator permissions and probe ports.
-- Update the default OpenAPI schema/annotations to the public admin surface and retired
-  claims fields. This PR deliberately does not regenerate the legacy-default Swagger
-  artifact; `/openapi.json` currently serves that transitional artifact behind admission.
-- Validate the selected startup/chart path and monitor its CI before considering #914
-  complete. Delete legacy monolith/claims fields and physical columns only in #915.
+The CLI, Helm opt-in and Compose optional empty-install override select the new
+runtime. Default OpenAPI is generated from public HTTP DTOs/descriptors, with protected
+410 tombstones and no removed RBAC/resource-claims schemas. Legacy annotations are
+not indexed. CLI and public app tests exercise selected startup, while old
+`NewRegistryApp` tests remain characterization only.
+
+Actual ct install with newly built images and remote CI must still be validated
+before release. This local change does not publish a new production image/chart;
+select an image containing it explicitly (the chart requires that value rather
+than falling back to a legacy image). #915 physical cleanup is deliberately deferred.
 
 Embedding applications continue to import the public packages and own their admission,
 personalized selection (if needed) and dependencies. Existing separate-module executable

@@ -115,7 +115,7 @@ func prepareAdmissionTestServer(t *testing.T, cfg *registryAppConfig) {
 	}
 	engine, err := authorization.Load(cfg.config.Authorization.PolicyFile)
 	require.NoError(t, err)
-	cfg.admissionEngine = engine
+	require.NoError(t, WithAdmissionEngine(engine)(cfg))
 	cfg.authMiddleware, _, err = auth.NewAdmissionAuthMiddleware(context.Background(), cfg.config.Auth, true, auth.DefaultValidatorFactory)
 	require.NoError(t, err)
 }

@@ -16,8 +16,9 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/database"
 	registryapp "github.com/stacklok/toolhive-registry-server/internal/app"
-	"github.com/stacklok/toolhive-registry-server/internal/authorization"
+	"github.com/stacklok/toolhive-registry-server/internal/app/storage"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/shutdown"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
@@ -32,7 +33,11 @@ The server requires a configuration file (--config) that specifies:
 - Authentication configuration
 - All other operational settings
 
-Database configuration is required. Migrations run automatically on startup.
+Database configuration is required. Validated startup applies schema migrations,
+but never authorizes exposure of existing data. Existing catalogs require the offline
+procedure in docs/registry-exposure-migration.md. For a genuinely new, entirely empty
+catalog only, --initialize-empty explicitly authorizes empty-install preparation.
+It grants no Cedar permissions and never retires or approves existing data.
 
 See examples/ directory for sample configurations.`,
 	SilenceUsage: true,
@@ -48,6 +53,8 @@ func init() {
 	serveCmd.Flags().String("internal-address", ":8081", "Address to listen on for internal endpoints (health, readiness, version)")
 	serveCmd.Flags().String("config", "", "Path to configuration file (YAML format, required)")
 	serveCmd.Flags().String("auth-mode", "", "Override auth mode from config (anonymous or oauth)")
+	serveCmd.Flags().Bool("initialize-empty", false,
+		"Explicitly authorize a new, entirely empty catalog only; never approve existing data")
 
 	err := viper.BindPFlag("address", serveCmd.Flags().Lookup("address"))
 	if err != nil {
@@ -72,35 +79,32 @@ func init() {
 	}
 }
 
-func runServe(cmd *cobra.Command, _ []string) error {
-	ctx := context.Background()
+func runServe(cmd *cobra.Command, _ []string) (err error) {
+	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	preparing := true
+	defer func() {
+		if preparing && ctx.Err() != nil {
+			err = shutdown.Result(err)
+		}
+	}()
 
-	// Load and validate configuration
+	// Decode one YAML/environment snapshot; constructor validates final overrides.
 	configPath := viper.GetString("config")
-	cfg, err := config.LoadConfig(
+	cfg, err := config.LoadCatalogConfig(
 		config.WithConfigPath(configPath),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Resolve auth mode: apply override if specified, then apply default if still empty
-	// Priority: flag > config file > default
 	authModeOverride, _ := cmd.Flags().GetString("auth-mode")
-	resolveAuthMode(cfg, authModeOverride)
-	if err := cfg.ValidateAdmission(); err != nil {
-		return err
-	}
-	engine, err := authorization.Load(cfg.Authorization.PolicyFile)
-	if err != nil {
-		return err
-	}
+	initializeEmpty, _ := cmd.Flags().GetBool("initialize-empty")
 
 	slog.Info("Loaded configuration",
 		"config_path", configPath,
 		"source_count", len(cfg.Sources),
 		"registry_count", len(cfg.Registries),
-		"auth_mode", cfg.Auth.Mode,
 	)
 
 	// Log database configuration (sanitized - no passwords or connection strings)
@@ -137,51 +141,41 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		}
 	}()
 
-	// Database is required — validate before proceeding
-	if cfg.Database == nil {
-		return fmt.Errorf("database configuration is required")
-	}
-
-	// Run database migrations
-	slog.Info("Running database migrations")
-	if err := runMigrations(ctx, cfg); err != nil {
-		return fmt.Errorf("failed to run database migrations: %w", err)
-	}
-
-	// Build application using the builder pattern
 	address := viper.GetString("address")
 	internalAddress := viper.GetString("internal-address")
-	app, err := registryapp.NewRegistryApp(
-		ctx,
-		registryapp.WithConfig(cfg),
-		registryapp.WithAdmissionEngine(engine),
-		registryapp.WithAddress(address),
-		registryapp.WithInternalAddress(internalAddress),
-		registryapp.WithMeterProvider(tel.MeterProvider()),
-		registryapp.WithTracerProvider(tel.TracerProvider()),
-		registryapp.WithMetricsHandler(tel.MetricsHandler()),
-	)
+	application, err := registryapp.NewCatalogApp(ctx, registryapp.CatalogOptions{
+		Config: cfg, InitializeEmpty: initializeEmpty,
+		Overrides: []func(*config.Config) error{func(final *config.Config) error {
+			resolveAuthMode(final, authModeOverride)
+			return nil
+		}},
+		Storage: serveCatalogStorage{},
+		HTTP: []registryapp.RegistryAppOptions{
+			registryapp.WithAddress(address),
+			registryapp.WithInternalAddress(internalAddress),
+			registryapp.WithMeterProvider(tel.MeterProvider()),
+			registryapp.WithTracerProvider(tel.TracerProvider()),
+			registryapp.WithMetricsHandler(tel.MetricsHandler()),
+		},
+	})
 	if err != nil {
-		return fmt.Errorf("failed to build application: %w", err)
+		return fmt.Errorf("failed to prepare catalog application: %w", err)
 	}
+	// Run owns shutdown classification; never renormalize its terminal result.
+	preparing = false
+	return application.Run()
+}
 
-	slog.Info("Starting registry API server", "address", address)
+// Open is called only after NewCatalogApp validates final config and freezes Cedar.
+// The evaluator and review fingerprint both use those same frozen policy bytes.
+// Migrations supply schema, never consent; receipt consumption follows preflight.
+type serveCatalogStorage struct{}
 
-	// Start application in goroutine
-	go func() {
-		if err := app.Start(); err != nil {
-			slog.Error("Application failed", "error", err)
-			os.Exit(1)
-		}
-	}()
-
-	// Wait for interrupt signal to gracefully shutdown the server
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	// Graceful shutdown
-	return app.Stop(defaultGracefulTimeout)
+func (serveCatalogStorage) Open(ctx context.Context, cfg *config.Config) (storage.CatalogStorage, error) {
+	if err := runMigrations(ctx, cfg); err != nil {
+		return nil, fmt.Errorf("failed to run database migrations: %w", err)
+	}
+	return (storage.CatalogPostgres{}).Open(ctx, cfg)
 }
 
 // buildMigrationConnString builds a connection string for the migration user.

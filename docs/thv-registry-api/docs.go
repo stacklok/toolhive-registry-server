@@ -8,165 +8,47 @@ const docTemplate = `{
     "schemes": {{ marshal .Schemes }},
     "components": {
         "schemas": {
-            "github_com_stacklok_toolhive-registry-server_internal_config.APIConfig": {
+            "auth.protectedResourceMetadata": {
                 "properties": {
-                    "endpoint": {
-                        "description": "Endpoint is the base API URL (without path)\nThe registry handler will append the appropriate paths for the MCP Registry API v0.1:\n  - /v0.1/servers - List all servers\n  - /v0.1/servers/{name}/versions - List server versions\n  - /v0.1/servers/{name}/versions/{version} - Get specific version\nExample: \"http://my-registry-api.default.svc.cluster.local/registry\"",
-                        "type": "string"
-                    },
-                    "timeout": {
-                        "description": "Timeout is the per-request timeout for HTTP requests to the API endpoint\nAccepts a Go duration string (e.g., \"30s\", \"1m\"); must be \u003e 0 and \u003c= 5m\nDefaults to 10s if not specified\nUseful for public or occasionally-slow upstreams where the default is too aggressive",
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.FileConfig": {
-                "properties": {
-                    "data": {
-                        "description": "Data is the inline registry data as a JSON string\nMutually exclusive with Path and URL - exactly one must be specified\nUseful for API-created registries where the data is provided directly",
-                        "type": "string"
-                    },
-                    "path": {
-                        "description": "Path is the path to the registry.json file on the local filesystem\nCan be absolute or relative to the working directory\nMutually exclusive with URL and Data - exactly one must be specified",
-                        "type": "string"
-                    },
-                    "timeout": {
-                        "description": "Timeout is the timeout for HTTP requests when using URL\nDefaults to 30s if not specified\nOnly applicable when URL is set",
-                        "type": "string"
-                    },
-                    "url": {
-                        "description": "URL is the HTTP/HTTPS URL to fetch the registry file from\nMutually exclusive with Path and Data - exactly one must be specified\nHTTPS is required unless the host is localhost or THV_REGISTRY_INSECURE_URL=true",
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig": {
-                "properties": {
-                    "names": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig"
-                    },
-                    "tags": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig": {
-                "properties": {
-                    "passwordFile": {
-                        "description": "PasswordFile is the path to a file containing the Git password/token\nMust be an absolute path; whitespace is trimmed from the content",
-                        "type": "string"
-                    },
-                    "username": {
-                        "description": "Username is the Git username for HTTP Basic authentication",
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.GitConfig": {
-                "properties": {
-                    "auth": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitAuthConfig",
-                        "description": "Auth contains optional authentication for private repositories"
-                    },
-                    "branch": {
-                        "description": "Branch is the Git branch to use (mutually exclusive with Tag and Commit)",
-                        "type": "string"
-                    },
-                    "commit": {
-                        "description": "Commit is the Git commit SHA to use (mutually exclusive with Branch and Tag)",
-                        "type": "string"
-                    },
-                    "path": {
-                        "description": "Path is the path to the registry file within the repository",
-                        "type": "string"
-                    },
-                    "repository": {
-                        "description": "Repository is the Git repository URL (HTTP/HTTPS/SSH)",
-                        "type": "string"
-                    },
-                    "tag": {
-                        "description": "Tag is the Git tag to use (mutually exclusive with Branch and Commit)",
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig": {
-                "properties": {
-                    "namespaces": {
-                        "description": "Namespaces is a list of Kubernetes namespaces to watch for MCP servers\nIf empty, watches the namespace configured via WatchNamespace environment variable",
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig": {
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.NameFilterConfig": {
-                "properties": {
-                    "exclude": {
+                    "authorization_servers": {
                         "items": {
                             "type": "string"
                         },
                         "type": "array",
                         "uniqueItems": false
                     },
-                    "include": {
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.SourceType": {
-                "enum": [
-                    "git",
-                    "api",
-                    "file",
-                    "managed",
-                    "kubernetes"
-                ],
-                "type": "string",
-                "x-enum-varnames": [
-                    "SourceTypeGit",
-                    "SourceTypeAPI",
-                    "SourceTypeFile",
-                    "SourceTypeManaged",
-                    "SourceTypeKubernetes"
-                ]
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig": {
-                "properties": {
-                    "interval": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_config.TagFilterConfig": {
-                "properties": {
-                    "exclude": {
+                    "bearer_methods_supported": {
                         "items": {
                             "type": "string"
                         },
                         "type": "array",
                         "uniqueItems": false
                     },
-                    "include": {
+                    "resource": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "formats.ExtensionMetadata": {
+                "properties": {
+                    "count": {
+                        "type": "integer"
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "formats.PluginListResponse": {
+                "properties": {
+                    "metadata": {
+                        "$ref": "#/components/schemas/formats.ExtensionMetadata"
+                    },
+                    "plugins": {
                         "items": {
-                            "type": "string"
+                            "$ref": "#/components/schemas/registry.Plugin"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -174,86 +56,244 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "github_com_stacklok_toolhive-registry-server_internal_service.CreationType": {
-                "enum": [
-                    "API",
-                    "CONFIG"
-                ],
-                "type": "string",
-                "x-enum-varnames": [
-                    "CreationTypeAPI",
-                    "CreationTypeCONFIG"
-                ]
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.EntryVersionInfo": {
+            "formats.SkillListResponse": {
                 "properties": {
-                    "createdAt": {
-                        "type": "string"
+                    "metadata": {
+                        "$ref": "#/components/schemas/formats.ExtensionMetadata"
                     },
-                    "description": {
-                        "type": "string"
-                    },
-                    "title": {
-                        "type": "string"
-                    },
-                    "updatedAt": {
-                        "type": "string"
-                    },
-                    "version": {
-                        "type": "string"
+                    "skills": {
+                        "items": {
+                            "$ref": "#/components/schemas/registry.Skill"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
                     }
                 },
                 "type": "object"
             },
-            "github_com_stacklok_toolhive-registry-server_internal_service.Plugin": {
+            "httpapi.CommittedErrorResponse": {
                 "properties": {
-                    "_meta": {
-                        "additionalProperties": {},
-                        "type": "object"
-                    },
-                    "createdAt": {
-                        "type": "string"
-                    },
-                    "description": {
-                        "type": "string"
-                    },
-                    "icons": {
-                        "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.PluginIcon"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    },
-                    "id": {
-                        "type": "string"
-                    },
-                    "isLatest": {
+                    "committed": {
                         "type": "boolean"
                     },
-                    "license": {
+                    "error": {
                         "type": "string"
                     },
-                    "metadata": {
-                        "additionalProperties": {},
-                        "type": "object"
+                    "resource": {}
+                },
+                "type": "object"
+            },
+            "httpapi.ErrorResponse": {
+                "properties": {
+                    "error": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "httpapi.SourceEntriesResponse": {
+                "properties": {
+                    "entries": {
+                        "items": {
+                            "$ref": "#/components/schemas/httpapi.sourceEntryInfo"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "httpapi.SourcesResponse": {
+                "properties": {
+                    "sources": {
+                        "items": {
+                            "$ref": "#/components/schemas/httpapi.sourceInfo"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "httpapi.ViewEntriesResponse": {
+                "properties": {
+                    "entries": {
+                        "items": {
+                            "$ref": "#/components/schemas/httpapi.viewEntryInfo"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "httpapi.ViewRequest": {
+                "properties": {
+                    "sources": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "httpapi.ViewsResponse": {
+                "properties": {
+                    "registries": {
+                        "items": {
+                            "$ref": "#/components/schemas/httpapi.viewInfo"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "httpapi.kubernetesConfig": {
+                "properties": {
+                    "Namespaces": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "httpapi.publishRequest": {
+                "properties": {
+                    "plugin": {
+                        "$ref": "#/components/schemas/model.Plugin"
+                    },
+                    "server": {
+                        "$ref": "#/components/schemas/model.Server"
+                    },
+                    "skill": {
+                        "$ref": "#/components/schemas/model.Skill"
+                    }
+                },
+                "type": "object"
+            },
+            "httpapi.sourceEntryInfo": {
+                "properties": {
+                    "entryType": {
+                        "$ref": "#/components/schemas/persistence.EntryKind"
                     },
                     "name": {
                         "type": "string"
                     },
-                    "namespace": {
-                        "type": "string"
-                    },
-                    "packages": {
+                    "versions": {
                         "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.PluginPackage"
+                            "$ref": "#/components/schemas/httpapi.versionInfo"
                         },
                         "type": "array",
                         "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "httpapi.sourceInfo": {
+                "properties": {
+                    "createdAt": {
+                        "type": "string"
                     },
-                    "repository": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.PluginRepository"
+                    "creationType": {
+                        "$ref": "#/components/schemas/persistence.Origin"
                     },
-                    "status": {
+                    "filterConfig": {
+                        "$ref": "#/components/schemas/persistence.Filter"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "sourceConfig": {},
+                    "sourceType": {
+                        "type": "string"
+                    },
+                    "syncSchedule": {
+                        "type": "string"
+                    },
+                    "syncStatus": {
+                        "$ref": "#/components/schemas/httpapi.sourceSyncStatus"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "httpapi.sourceRequest": {
+                "properties": {
+                    "api": {
+                        "$ref": "#/components/schemas/persistence.APISpec"
+                    },
+                    "file": {
+                        "$ref": "#/components/schemas/persistence.FileSpec"
+                    },
+                    "filter": {
+                        "$ref": "#/components/schemas/persistence.Filter"
+                    },
+                    "git": {
+                        "$ref": "#/components/schemas/persistence.GitSpec"
+                    },
+                    "kubernetes": {
+                        "$ref": "#/components/schemas/httpapi.kubernetesConfig"
+                    },
+                    "managed": {
+                        "$ref": "#/components/schemas/persistence.ManagedSpec"
+                    },
+                    "syncPolicy": {
+                        "properties": {
+                            "interval": {
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "type": "object"
+            },
+            "httpapi.sourceSyncStatus": {
+                "properties": {
+                    "attemptCount": {
+                        "type": "integer"
+                    },
+                    "lastAttempt": {
+                        "type": "string"
+                    },
+                    "lastSyncTime": {
+                        "type": "string"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "phase": {
+                        "type": "string"
+                    },
+                    "pluginCount": {
+                        "type": "integer"
+                    },
+                    "serverCount": {
+                        "type": "integer"
+                    },
+                    "skillCount": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "httpapi.versionInfo": {
+                "properties": {
+                    "createdAt": {
+                        "type": "string"
+                    },
+                    "description": {
                         "type": "string"
                     },
                     "title": {
@@ -268,37 +308,7 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest": {
-                "properties": {
-                    "claims": {
-                        "additionalProperties": {},
-                        "description": "Authorization claims",
-                        "type": "object"
-                    },
-                    "sources": {
-                        "description": "ordered list of source names",
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.RegistryEntriesResponse": {
-                "properties": {
-                    "entries": {
-                        "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryEntryInfo"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.RegistryEntryInfo": {
+            "httpapi.viewEntryInfo": {
                 "properties": {
                     "createdAt": {
                         "type": "string"
@@ -307,7 +317,7 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "entryType": {
-                        "type": "string"
+                        "$ref": "#/components/schemas/persistence.EntryKind"
                     },
                     "name": {
                         "type": "string"
@@ -330,17 +340,13 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo": {
+            "httpapi.viewInfo": {
                 "properties": {
-                    "claims": {
-                        "additionalProperties": {},
-                        "type": "object"
-                    },
                     "createdAt": {
                         "type": "string"
                     },
                     "creationType": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.CreationType"
+                        "$ref": "#/components/schemas/persistence.Origin"
                     },
                     "name": {
                         "type": "string"
@@ -354,433 +360,6 @@ const docTemplate = `{
                     },
                     "updatedAt": {
                         "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.Skill": {
-                "properties": {
-                    "_meta": {
-                        "additionalProperties": {},
-                        "type": "object"
-                    },
-                    "allowedTools": {
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    },
-                    "compatibility": {
-                        "type": "string"
-                    },
-                    "createdAt": {
-                        "type": "string"
-                    },
-                    "description": {
-                        "type": "string"
-                    },
-                    "icons": {
-                        "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillIcon"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    },
-                    "id": {
-                        "type": "string"
-                    },
-                    "isLatest": {
-                        "type": "boolean"
-                    },
-                    "license": {
-                        "type": "string"
-                    },
-                    "metadata": {
-                        "additionalProperties": {},
-                        "type": "object"
-                    },
-                    "name": {
-                        "type": "string"
-                    },
-                    "namespace": {
-                        "type": "string"
-                    },
-                    "packages": {
-                        "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillPackage"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    },
-                    "provenance": {
-                        "$ref": "#/components/schemas/registry.Provenance"
-                    },
-                    "repository": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillRepository"
-                    },
-                    "status": {
-                        "type": "string"
-                    },
-                    "title": {
-                        "type": "string"
-                    },
-                    "updatedAt": {
-                        "type": "string"
-                    },
-                    "version": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.SourceCreateRequest": {
-                "properties": {
-                    "api": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.APIConfig",
-                        "description": "API endpoint source"
-                    },
-                    "claims": {
-                        "additionalProperties": {},
-                        "description": "Authorization claims",
-                        "type": "object"
-                    },
-                    "file": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FileConfig",
-                        "description": "Local file or URL source"
-                    },
-                    "filter": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig",
-                        "description": "Name/tag filtering rules"
-                    },
-                    "git": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.GitConfig",
-                        "description": "Git repository source"
-                    },
-                    "kubernetes": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.KubernetesConfig",
-                        "description": "Kubernetes discovery source"
-                    },
-                    "managed": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.ManagedConfig",
-                        "description": "Managed registry (no sync)"
-                    },
-                    "syncPolicy": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SyncPolicyConfig",
-                        "description": "Sync schedule configuration"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.SourceEntriesResponse": {
-                "properties": {
-                    "entries": {
-                        "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceEntryInfo"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.SourceEntryInfo": {
-                "properties": {
-                    "claims": {
-                        "additionalProperties": {},
-                        "type": "object"
-                    },
-                    "entryType": {
-                        "type": "string"
-                    },
-                    "name": {
-                        "type": "string"
-                    },
-                    "versions": {
-                        "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.EntryVersionInfo"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo": {
-                "properties": {
-                    "claims": {
-                        "additionalProperties": {},
-                        "description": "Authorization claims",
-                        "type": "object"
-                    },
-                    "createdAt": {
-                        "type": "string"
-                    },
-                    "creationType": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.CreationType",
-                        "description": "API or CONFIG"
-                    },
-                    "filterConfig": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.FilterConfig",
-                        "description": "Filtering rules"
-                    },
-                    "name": {
-                        "type": "string"
-                    },
-                    "sourceConfig": {
-                        "description": "Type-specific source configuration"
-                    },
-                    "sourceType": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_config.SourceType",
-                        "description": "git, api, file, managed, kubernetes"
-                    },
-                    "syncSchedule": {
-                        "description": "Sync interval string",
-                        "type": "string"
-                    },
-                    "syncStatus": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceSyncStatus"
-                    },
-                    "type": {
-                        "description": "MANAGED, FILE, REMOTE, KUBERNETES",
-                        "type": "string"
-                    },
-                    "updatedAt": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.SourceListResponse": {
-                "properties": {
-                    "sources": {
-                        "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_internal_service.SourceSyncStatus": {
-                "properties": {
-                    "attemptCount": {
-                        "description": "Number of sync attempts",
-                        "type": "integer"
-                    },
-                    "lastAttempt": {
-                        "description": "Last sync attempt",
-                        "type": "string"
-                    },
-                    "lastSyncTime": {
-                        "description": "Last completed sync attempt",
-                        "type": "string"
-                    },
-                    "message": {
-                        "description": "Status or error message",
-                        "type": "string"
-                    },
-                    "phase": {
-                        "description": "complete, syncing, failed",
-                        "type": "string"
-                    },
-                    "pluginCount": {
-                        "description": "Number of plugins in registry",
-                        "type": "integer"
-                    },
-                    "serverCount": {
-                        "description": "Number of servers in registry",
-                        "type": "integer"
-                    },
-                    "skillCount": {
-                        "description": "Number of skills in registry",
-                        "type": "integer"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_pkg_registry_formats.ExtensionMetadata": {
-                "properties": {
-                    "count": {
-                        "type": "integer"
-                    },
-                    "nextCursor": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_pkg_registry_model.PluginIcon": {
-                "properties": {
-                    "label": {
-                        "type": "string"
-                    },
-                    "size": {
-                        "type": "string"
-                    },
-                    "src": {
-                        "type": "string"
-                    },
-                    "type": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_pkg_registry_model.PluginPackage": {
-                "properties": {
-                    "commit": {
-                        "type": "string"
-                    },
-                    "digest": {
-                        "type": "string"
-                    },
-                    "identifier": {
-                        "type": "string"
-                    },
-                    "mediaType": {
-                        "type": "string"
-                    },
-                    "ref": {
-                        "type": "string"
-                    },
-                    "registryType": {
-                        "type": "string"
-                    },
-                    "subfolder": {
-                        "type": "string"
-                    },
-                    "url": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_pkg_registry_model.PluginRepository": {
-                "properties": {
-                    "type": {
-                        "type": "string"
-                    },
-                    "url": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillIcon": {
-                "properties": {
-                    "label": {
-                        "type": "string"
-                    },
-                    "size": {
-                        "type": "string"
-                    },
-                    "src": {
-                        "type": "string"
-                    },
-                    "type": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillPackage": {
-                "properties": {
-                    "commit": {
-                        "type": "string"
-                    },
-                    "digest": {
-                        "type": "string"
-                    },
-                    "identifier": {
-                        "type": "string"
-                    },
-                    "mediaType": {
-                        "type": "string"
-                    },
-                    "ref": {
-                        "type": "string"
-                    },
-                    "registryType": {
-                        "type": "string"
-                    },
-                    "subfolder": {
-                        "type": "string"
-                    },
-                    "url": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "github_com_stacklok_toolhive-registry-server_pkg_registry_model.SkillRepository": {
-                "properties": {
-                    "type": {
-                        "type": "string"
-                    },
-                    "url": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api_v1.publishEntryRequest": {
-                "properties": {
-                    "claims": {
-                        "additionalProperties": {},
-                        "type": "object"
-                    },
-                    "plugin": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.Plugin"
-                    },
-                    "server": {
-                        "$ref": "#/components/schemas/v0.ServerJSON"
-                    },
-                    "skill": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.Skill"
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api_v1.registryListResponse": {
-                "properties": {
-                    "registries": {
-                        "items": {
-                            "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api_x_plugins.PluginListResponse": {
-                "properties": {
-                    "metadata": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_formats.ExtensionMetadata"
-                    },
-                    "plugins": {
-                        "items": {
-                            "$ref": "#/components/schemas/registry.Plugin"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api_x_skills.SkillListResponse": {
-                "properties": {
-                    "metadata": {
-                        "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_pkg_registry_formats.ExtensionMetadata"
-                    },
-                    "skills": {
-                        "items": {
-                            "$ref": "#/components/schemas/registry.Skill"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
                     }
                 },
                 "type": "object"
@@ -1035,6 +614,126 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "model.Plugin": {
+                "properties": {
+                    "_meta": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    },
+                    "createdAt": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "icons": {
+                        "items": {
+                            "$ref": "#/components/schemas/model.PluginIcon"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "isLatest": {
+                        "type": "boolean"
+                    },
+                    "license": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "namespace": {
+                        "type": "string"
+                    },
+                    "packages": {
+                        "items": {
+                            "$ref": "#/components/schemas/model.PluginPackage"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "repository": {
+                        "$ref": "#/components/schemas/model.PluginRepository"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "type": "string"
+                    },
+                    "version": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "model.PluginIcon": {
+                "properties": {
+                    "label": {
+                        "type": "string"
+                    },
+                    "size": {
+                        "type": "string"
+                    },
+                    "src": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "model.PluginPackage": {
+                "properties": {
+                    "commit": {
+                        "type": "string"
+                    },
+                    "digest": {
+                        "type": "string"
+                    },
+                    "identifier": {
+                        "type": "string"
+                    },
+                    "mediaType": {
+                        "type": "string"
+                    },
+                    "ref": {
+                        "type": "string"
+                    },
+                    "registryType": {
+                        "type": "string"
+                    },
+                    "subfolder": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "model.PluginRepository": {
+                "properties": {
+                    "type": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "model.Repository": {
                 "properties": {
                     "id": {
@@ -1052,6 +751,207 @@ const docTemplate = `{
                     "url": {
                         "example": "https://github.com/modelcontextprotocol/servers",
                         "format": "uri",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "model.Server": {
+                "properties": {
+                    "$schema": {
+                        "example": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+                        "format": "uri",
+                        "minLength": 1,
+                        "type": "string"
+                    },
+                    "_meta": {
+                        "$ref": "#/components/schemas/v0.ServerMeta"
+                    },
+                    "description": {
+                        "example": "MCP server providing weather data and forecasts via OpenWeatherMap API",
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                    },
+                    "icons": {
+                        "items": {
+                            "$ref": "#/components/schemas/model.Icon"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "name": {
+                        "example": "io.github.user/weather",
+                        "maxLength": 200,
+                        "minLength": 3,
+                        "pattern": "^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$",
+                        "type": "string"
+                    },
+                    "packages": {
+                        "items": {
+                            "$ref": "#/components/schemas/model.Package"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "remotes": {
+                        "items": {
+                            "$ref": "#/components/schemas/model.Transport"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "repository": {
+                        "$ref": "#/components/schemas/model.Repository"
+                    },
+                    "title": {
+                        "example": "Weather API",
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                    },
+                    "version": {
+                        "example": "1.0.2",
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                    },
+                    "websiteUrl": {
+                        "example": "https://modelcontextprotocol.io/examples",
+                        "format": "uri",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "model.Skill": {
+                "properties": {
+                    "_meta": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    },
+                    "allowedTools": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "compatibility": {
+                        "type": "string"
+                    },
+                    "createdAt": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "icons": {
+                        "items": {
+                            "$ref": "#/components/schemas/model.SkillIcon"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "isLatest": {
+                        "type": "boolean"
+                    },
+                    "license": {
+                        "type": "string"
+                    },
+                    "metadata": {
+                        "additionalProperties": {},
+                        "type": "object"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "namespace": {
+                        "type": "string"
+                    },
+                    "packages": {
+                        "items": {
+                            "$ref": "#/components/schemas/model.SkillPackage"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "provenance": {
+                        "$ref": "#/components/schemas/registry.Provenance"
+                    },
+                    "repository": {
+                        "$ref": "#/components/schemas/model.SkillRepository"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "type": "string"
+                    },
+                    "version": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "model.SkillIcon": {
+                "properties": {
+                    "label": {
+                        "type": "string"
+                    },
+                    "size": {
+                        "type": "string"
+                    },
+                    "src": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "model.SkillPackage": {
+                "properties": {
+                    "commit": {
+                        "type": "string"
+                    },
+                    "digest": {
+                        "type": "string"
+                    },
+                    "identifier": {
+                        "type": "string"
+                    },
+                    "mediaType": {
+                        "type": "string"
+                    },
+                    "ref": {
+                        "type": "string"
+                    },
+                    "registryType": {
+                        "type": "string"
+                    },
+                    "subfolder": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "model.SkillRepository": {
+                "properties": {
+                    "type": {
+                        "type": "string"
+                    },
+                    "url": {
                         "type": "string"
                     }
                 },
@@ -1095,6 +995,125 @@ const docTemplate = `{
                     }
                 },
                 "type": "object"
+            },
+            "persistence.APISpec": {
+                "properties": {
+                    "endpoint": {
+                        "type": "string"
+                    },
+                    "timeout": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "persistence.EntryKind": {
+                "enum": [
+                    "MCP",
+                    "SKILL",
+                    "PLUGIN"
+                ],
+                "type": "string",
+                "x-enum-varnames": [
+                    "ServerKind",
+                    "SkillKind",
+                    "PluginKind"
+                ]
+            },
+            "persistence.FileSpec": {
+                "properties": {
+                    "data": {
+                        "type": "string"
+                    },
+                    "path": {
+                        "type": "string"
+                    },
+                    "timeout": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "persistence.Filter": {
+                "properties": {
+                    "names": {
+                        "$ref": "#/components/schemas/persistence.NameFilter"
+                    },
+                    "tags": {
+                        "$ref": "#/components/schemas/persistence.NameFilter"
+                    }
+                },
+                "type": "object"
+            },
+            "persistence.GitAuth": {
+                "properties": {
+                    "passwordFile": {
+                        "type": "string"
+                    },
+                    "username": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "persistence.GitSpec": {
+                "properties": {
+                    "auth": {
+                        "$ref": "#/components/schemas/persistence.GitAuth"
+                    },
+                    "branch": {
+                        "type": "string"
+                    },
+                    "commit": {
+                        "type": "string"
+                    },
+                    "path": {
+                        "type": "string"
+                    },
+                    "repository": {
+                        "type": "string"
+                    },
+                    "tag": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "persistence.ManagedSpec": {
+                "type": "object"
+            },
+            "persistence.NameFilter": {
+                "properties": {
+                    "exclude": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "include": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "persistence.Origin": {
+                "enum": [
+                    "API",
+                    "CONFIG"
+                ],
+                "type": "string",
+                "x-enum-varnames": [
+                    "OriginAPI",
+                    "OriginConfig"
+                ]
             },
             "registry.Plugin": {
                 "properties": {
@@ -1523,9 +1542,27 @@ const docTemplate = `{
         "url": ""
     },
     "paths": {
+        "/.well-known/oauth-protected-resource": {
+            "get": {
+                "description": "Fixed unauthenticated OAuth bootstrap. Scopes are not legacy role names.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/auth.protectedResourceMetadata"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "summary": "OAuth protected-resource metadata"
+            }
+        },
         "/openapi.json": {
             "get": {
-                "description": "Get the OpenAPI 3.1.0 specification for this API",
+                "description": "Get the OpenAPI 3.1.0 specification; requires Cedar metadata.read",
                 "responses": {
                     "200": {
                         "content": {
@@ -1536,6 +1573,32 @@ const docTemplate = `{
                             }
                         },
                         "description": "OpenAPI 3.1.0 specification"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
                     },
                     "500": {
                         "content": {
@@ -1551,6 +1614,11 @@ const docTemplate = `{
                         "description": "Internal Server Error"
                     }
                 },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "summary": "OpenAPI specification",
                 "tags": [
                     "system"
@@ -1559,10 +1627,10 @@ const docTemplate = `{
         },
         "/registry/{registryName}/v0.1/servers": {
             "get": {
-                "description": "Get a list of available servers from a specific registry",
+                "description": "Nonpersonalized upstream page. Requires Cedar catalog.read. All versions are included unless version is specified.",
                 "parameters": [
                     {
-                        "description": "Registry name",
+                        "description": "Named view",
                         "in": "path",
                         "name": "registryName",
                         "required": true,
@@ -1571,7 +1639,7 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Pagination cursor for retrieving next set of results",
+                        "description": "Opaque continuation cursor",
                         "in": "query",
                         "name": "cursor",
                         "schema": {
@@ -1579,15 +1647,17 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Maximum number of items to return",
+                        "description": "Page size; values above 1000 are clamped",
                         "in": "query",
                         "name": "limit",
                         "schema": {
+                            "default": 30,
+                            "minimum": 1,
                             "type": "integer"
                         }
                     },
                     {
-                        "description": "Search servers by name (substring match)",
+                        "description": "Substring search",
                         "in": "query",
                         "name": "search",
                         "schema": {
@@ -1595,9 +1665,17 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Filter by version ('latest' for latest version, or an exact version like '1.2.3')",
+                        "description": "Exact version or latest",
                         "in": "query",
                         "name": "version",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "RFC3339 timestamp",
+                        "in": "query",
+                        "name": "updated_since",
                         "schema": {
                             "type": "string"
                         }
@@ -1618,40 +1696,51 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
                     },
                     "401": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Unauthorized"
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Registry not found"
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     }
                 },
                 "security": [
@@ -1659,18 +1748,18 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "List servers in specific registry",
+                "summary": "List server versions",
                 "tags": [
-                    "registry"
+                    "servers"
                 ]
             }
         },
         "/registry/{registryName}/v0.1/servers/{serverName}/versions": {
             "get": {
-                "description": "Returns all available versions for a specific MCP server from a specific registry",
+                "description": "Bounded to 1000 versions; no wire continuation or query pagination.",
                 "parameters": [
                     {
-                        "description": "Registry name",
+                        "description": "Named view",
                         "in": "path",
                         "name": "registryName",
                         "required": true,
@@ -1679,7 +1768,7 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "URL-encoded server name (e.g., \\",
+                        "description": "URL-encoded reverse-DNS server name",
                         "in": "path",
                         "name": "serverName",
                         "required": true,
@@ -1697,46 +1786,57 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "A list of all versions for the server"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
                     },
                     "401": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Unauthorized"
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Server not found"
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     }
                 },
                 "security": [
@@ -1744,18 +1844,17 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "List all versions of an MCP server in specific registry",
+                "summary": "List a server's version history",
                 "tags": [
-                    "registry"
+                    "servers"
                 ]
             }
         },
         "/registry/{registryName}/v0.1/servers/{serverName}/versions/{version}": {
             "get": {
-                "description": "Returns detailed information about a specific version of an MCP server from a specific registry.\nUse the special version ` + "`" + `latest` + "`" + ` to get the latest version.",
                 "parameters": [
                     {
-                        "description": "Registry name",
+                        "description": "Named view",
                         "in": "path",
                         "name": "registryName",
                         "required": true,
@@ -1764,7 +1863,7 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "URL-encoded server name (e.g., \\",
+                        "description": "URL-encoded reverse-DNS server name",
                         "in": "path",
                         "name": "serverName",
                         "required": true,
@@ -1773,7 +1872,7 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "URL-encoded version to retrieve (e.g., \\",
+                        "description": "Exact version or latest",
                         "in": "path",
                         "name": "version",
                         "required": true,
@@ -1791,46 +1890,57 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Detailed server information"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
                     },
                     "401": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Unauthorized"
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Server or version not found"
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     }
                 },
                 "security": [
@@ -1838,18 +1948,18 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "Get specific MCP server version in specific registry",
+                "summary": "Get a server version",
                 "tags": [
-                    "registry"
+                    "servers"
                 ]
             }
         },
         "/registry/{registryName}/v0.1/x/dev.toolhive/plugins": {
             "get": {
-                "description": "List plugins in a registry (paginated, latest versions).",
+                "description": "All versions; status, version and updated_since query fields are not selection filters.",
                 "parameters": [
                     {
-                        "description": "Registry name",
+                        "description": "Named view",
                         "in": "path",
                         "name": "registryName",
                         "required": true,
@@ -1858,114 +1968,28 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Filter by name/description substring",
-                        "in": "query",
-                        "name": "search",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Filter by status (comma-separated, e.g. active,deprecated)",
-                        "in": "query",
-                        "name": "status",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Max results (default 50, max 100)",
-                        "in": "query",
-                        "name": "limit",
-                        "schema": {
-                            "type": "integer"
-                        }
-                    },
-                    {
-                        "description": "Pagination cursor",
+                        "description": "Opaque continuation cursor",
                         "in": "query",
                         "name": "cursor",
                         "schema": {
                             "type": "string"
                         }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/internal_api_x_plugins.PluginListResponse"
-                                }
-                            }
-                        },
-                        "description": "List of plugins"
                     },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
-                    }
-                },
-                "security": [
                     {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "List plugins in registry",
-                "tags": [
-                    "plugins"
-                ]
-            }
-        },
-        "/registry/{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}": {
-            "get": {
-                "description": "Get the latest version of a plugin by namespace and name.",
-                "parameters": [
-                    {
-                        "description": "Registry name",
-                        "in": "path",
-                        "name": "registryName",
-                        "required": true,
+                        "description": "Page size",
+                        "in": "query",
+                        "name": "limit",
                         "schema": {
-                            "type": "string"
+                            "default": 50,
+                            "maximum": 100,
+                            "minimum": 1,
+                            "type": "integer"
                         }
                     },
                     {
-                        "description": "Plugin namespace (reverse-DNS)",
-                        "in": "path",
-                        "name": "namespace",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Plugin name",
-                        "in": "path",
-                        "name": "name",
-                        "required": true,
+                        "description": "Substring search",
+                        "in": "query",
+                        "name": "search",
                         "schema": {
                             "type": "string"
                         }
@@ -1976,144 +2000,61 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/registry.Plugin"
+                                    "$ref": "#/components/schemas/formats.PluginListResponse"
                                 }
                             }
                         },
-                        "description": "Plugin details"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Plugin not found"
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
-                    }
-                },
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "summary": "Get latest plugin version",
-                "tags": [
-                    "plugins"
-                ]
-            }
-        },
-        "/registry/{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}/versions": {
-            "get": {
-                "description": "List all versions of a plugin.",
-                "parameters": [
-                    {
-                        "description": "Registry name",
-                        "in": "path",
-                        "name": "registryName",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Plugin namespace (reverse-DNS)",
-                        "in": "path",
-                        "name": "namespace",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Plugin name",
-                        "in": "path",
-                        "name": "name",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/internal_api_x_plugins.PluginListResponse"
-                                }
-                            }
-                        },
-                        "description": "List of plugin versions"
-                    },
-                    "400": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Bad request"
-                    },
-                    "404": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Plugin not found"
-                    },
-                    "500": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
                     }
                 },
                 "security": [
@@ -2127,12 +2068,12 @@ const docTemplate = `{
                 ]
             }
         },
-        "/registry/{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}/versions/{version}": {
+        "/registry/{registryName}/v0.1/x/dev.toolhive/plugins/": {
             "get": {
-                "description": "Get a specific version of a plugin.",
+                "description": "All versions; status, version and updated_since query fields are not selection filters.",
                 "parameters": [
                     {
-                        "description": "Registry name",
+                        "description": "Named view",
                         "in": "path",
                         "name": "registryName",
                         "required": true,
@@ -2141,7 +2082,329 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Plugin namespace (reverse-DNS)",
+                        "description": "Opaque continuation cursor",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Page size",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "default": 50,
+                            "maximum": 100,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Substring search",
+                        "in": "query",
+                        "name": "search",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/formats.PluginListResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "List plugin versions",
+                "tags": [
+                    "plugins"
+                ]
+            }
+        },
+        "/registry/{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}": {
+            "get": {
+                "parameters": [
+                    {
+                        "description": "Named view",
+                        "in": "path",
+                        "name": "registryName",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Plugin namespace",
+                        "in": "path",
+                        "name": "namespace",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Plugin name",
+                        "in": "path",
+                        "name": "name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/registry.Plugin"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Get the latest plugin version",
+                "tags": [
+                    "plugins"
+                ]
+            }
+        },
+        "/registry/{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}/versions": {
+            "get": {
+                "description": "Bounded to 30 versions with extension continuation metadata; query pagination is not accepted.",
+                "parameters": [
+                    {
+                        "description": "Named view",
+                        "in": "path",
+                        "name": "registryName",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Plugin namespace",
+                        "in": "path",
+                        "name": "namespace",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Plugin name",
+                        "in": "path",
+                        "name": "name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/formats.PluginListResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "List a plugin's version history",
+                "tags": [
+                    "plugins"
+                ]
+            }
+        },
+        "/registry/{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}/versions/{version}": {
+            "get": {
+                "parameters": [
+                    {
+                        "description": "Named view",
+                        "in": "path",
+                        "name": "registryName",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Plugin namespace",
                         "in": "path",
                         "name": "namespace",
                         "required": true,
@@ -2159,7 +2422,7 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Plugin version",
+                        "description": "Exact version or latest",
                         "in": "path",
                         "name": "version",
                         "required": true,
@@ -2177,46 +2440,57 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Plugin details"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Plugin or version not found"
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
                     }
                 },
                 "security": [
@@ -2224,7 +2498,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "Get specific plugin version",
+                "summary": "Get a plugin version",
                 "tags": [
                     "plugins"
                 ]
@@ -2232,10 +2506,10 @@ const docTemplate = `{
         },
         "/registry/{registryName}/v0.1/x/dev.toolhive/skills": {
             "get": {
-                "description": "List skills in a registry (paginated, latest versions).",
+                "description": "All versions; status, version and updated_since query fields are not selection filters.",
                 "parameters": [
                     {
-                        "description": "Registry name",
+                        "description": "Named view",
                         "in": "path",
                         "name": "registryName",
                         "required": true,
@@ -2244,33 +2518,28 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Filter by name/description substring",
+                        "description": "Opaque continuation cursor",
                         "in": "query",
-                        "name": "search",
+                        "name": "cursor",
                         "schema": {
                             "type": "string"
                         }
                     },
                     {
-                        "description": "Filter by status (comma-separated, e.g. active,deprecated)",
-                        "in": "query",
-                        "name": "status",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "Max results (default 50, max 100)",
+                        "description": "Page size",
                         "in": "query",
                         "name": "limit",
                         "schema": {
+                            "default": 50,
+                            "maximum": 100,
+                            "minimum": 1,
                             "type": "integer"
                         }
                     },
                     {
-                        "description": "Pagination cursor",
+                        "description": "Substring search",
                         "in": "query",
-                        "name": "cursor",
+                        "name": "search",
                         "schema": {
                             "type": "string"
                         }
@@ -2281,37 +2550,61 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/internal_api_x_skills.SkillListResponse"
+                                    "$ref": "#/components/schemas/formats.SkillListResponse"
                                 }
                             }
                         },
-                        "description": "List of skills"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
                     }
                 },
                 "security": [
@@ -2319,18 +2612,18 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "List skills in registry",
+                "summary": "List skill versions",
                 "tags": [
                     "skills"
                 ]
             }
         },
-        "/registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}": {
+        "/registry/{registryName}/v0.1/x/dev.toolhive/skills/": {
             "get": {
-                "description": "Get the latest version of a skill by namespace and name.",
+                "description": "All versions; status, version and updated_since query fields are not selection filters.",
                 "parameters": [
                     {
-                        "description": "Registry name",
+                        "description": "Named view",
                         "in": "path",
                         "name": "registryName",
                         "required": true,
@@ -2339,7 +2632,120 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Skill namespace (reverse-DNS)",
+                        "description": "Opaque continuation cursor",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Page size",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "default": 50,
+                            "maximum": 100,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Substring search",
+                        "in": "query",
+                        "name": "search",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/formats.SkillListResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "List skill versions",
+                "tags": [
+                    "skills"
+                ]
+            }
+        },
+        "/registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}": {
+            "get": {
+                "parameters": [
+                    {
+                        "description": "Named view",
+                        "in": "path",
+                        "name": "registryName",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Skill namespace",
                         "in": "path",
                         "name": "namespace",
                         "required": true,
@@ -2366,46 +2772,57 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Skill details"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Skill not found"
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
                     }
                 },
                 "security": [
@@ -2413,7 +2830,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "Get latest skill version",
+                "summary": "Get the latest skill version",
                 "tags": [
                     "skills"
                 ]
@@ -2421,10 +2838,10 @@ const docTemplate = `{
         },
         "/registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions": {
             "get": {
-                "description": "List all versions of a skill.",
+                "description": "Bounded to 30 versions with extension continuation metadata; query pagination is not accepted.",
                 "parameters": [
                     {
-                        "description": "Registry name",
+                        "description": "Named view",
                         "in": "path",
                         "name": "registryName",
                         "required": true,
@@ -2433,7 +2850,7 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Skill namespace (reverse-DNS)",
+                        "description": "Skill namespace",
                         "in": "path",
                         "name": "namespace",
                         "required": true,
@@ -2456,50 +2873,61 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/internal_api_x_skills.SkillListResponse"
+                                    "$ref": "#/components/schemas/formats.SkillListResponse"
                                 }
                             }
                         },
-                        "description": "List of skill versions"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Skill not found"
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
                     }
                 },
                 "security": [
@@ -2507,7 +2935,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "List skill versions",
+                "summary": "List a skill's version history",
                 "tags": [
                     "skills"
                 ]
@@ -2515,10 +2943,9 @@ const docTemplate = `{
         },
         "/registry/{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions/{version}": {
             "get": {
-                "description": "Get a specific version of a skill.",
                 "parameters": [
                     {
-                        "description": "Registry name",
+                        "description": "Named view",
                         "in": "path",
                         "name": "registryName",
                         "required": true,
@@ -2527,7 +2954,7 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Skill namespace (reverse-DNS)",
+                        "description": "Skill namespace",
                         "in": "path",
                         "name": "namespace",
                         "required": true,
@@ -2545,7 +2972,7 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Skill version",
+                        "description": "Exact version or latest",
                         "in": "path",
                         "name": "version",
                         "required": true,
@@ -2563,46 +2990,57 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Skill details"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Skill or version not found"
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
                     }
                 },
                 "security": [
@@ -2610,7 +3048,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "Get specific skill version",
+                "summary": "Get a skill version",
                 "tags": [
                     "skills"
                 ]
@@ -2618,18 +3056,18 @@ const docTemplate = `{
         },
         "/v1/entries": {
             "post": {
-                "description": "Publish a new server, skill, or plugin entry. Exactly one of 'server', 'skill', or 'plugin' must be provided.",
+                "description": "Exactly one of server, skill or plugin. No top-level claims. Returns that raw payload, not a consumer envelope.",
                 "requestBody": {
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/internal_api_v1.publishEntryRequest",
-                                "summary": "request",
-                                "description": "Entry to publish (server, skill, or plugin)"
+                                "$ref": "#/components/schemas/httpapi.publishRequest",
+                                "summary": "entry",
+                                "description": "One entry payload"
                             }
                         }
                     },
-                    "description": "Entry to publish (server, skill, or plugin)",
+                    "description": "One entry payload",
                     "required": true
                 },
                 "responses": {
@@ -2637,65 +3075,120 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object"
+                                    "oneOf": [
+                                        {
+                                            "$ref": "#/components/schemas/model.Server"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/model.Skill"
+                                        },
+                                        {
+                                            "$ref": "#/components/schemas/model.Plugin"
+                                        }
+                                    ]
                                 }
                             }
                         },
-                        "description": "Published entry (server or skill)"
+                        "description": "Created"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "409": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Conflict"
+                        "description": "Bad Request"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.CommittedErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Service Unavailable"
                     }
                 },
-                "summary": "Publish entry",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Publish one managed entry version",
                 "tags": [
-                    "v1"
+                    "entries"
                 ]
             }
         },
         "/v1/entries/{type}/{name}/claims": {
             "get": {
-                "deprecated": true,
-                "description": "Static authenticated tombstone in standalone when admin is enabled; prepare retagging before upgrade.",
+                "description": "Authenticated static tombstone when admin is enabled. Claims are not read or mutated.",
                 "parameters": [
                     {
-                        "description": "Entry Type",
+                        "description": "Entry kind",
                         "in": "path",
                         "name": "type",
                         "required": true,
@@ -2704,7 +3197,7 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Entry Name",
+                        "description": "Entry name",
                         "in": "path",
                         "name": "name",
                         "required": true,
@@ -2732,20 +3225,21 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Retired endpoint"
+                        "description": "Unauthorized"
                     }
                 },
-                "summary": "Retired entry claims endpoint",
-                "tags": [
-                    "v1"
-                ]
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Retired entry claims endpoint"
             },
             "put": {
-                "deprecated": true,
-                "description": "Static authenticated tombstone in standalone when admin is enabled; prepare retagging before upgrade.",
+                "description": "Authenticated static tombstone when admin is enabled. Claims are not read or mutated.",
                 "parameters": [
                     {
-                        "description": "Entry Type",
+                        "description": "Entry kind",
                         "in": "path",
                         "name": "type",
                         "required": true,
@@ -2754,7 +3248,7 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Entry Name",
+                        "description": "Entry name",
                         "in": "path",
                         "name": "name",
                         "required": true,
@@ -2782,30 +3276,36 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Retired endpoint"
+                        "description": "Unauthorized"
                     }
                 },
-                "summary": "Retired entry claims endpoint",
-                "tags": [
-                    "v1"
-                ]
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Retired entry claims endpoint"
             }
         },
         "/v1/entries/{type}/{name}/versions/{version}": {
             "delete": {
-                "description": "Delete a published entry version",
                 "parameters": [
                     {
-                        "description": "Entry Type (server, skill, or plugin)",
+                        "description": "Entry kind",
                         "in": "path",
                         "name": "type",
                         "required": true,
                         "schema": {
+                            "enum": [
+                                "server",
+                                "skill",
+                                "plugin"
+                            ],
                             "type": "string"
                         }
                     },
                     {
-                        "description": "Entry Name",
+                        "description": "URL-encoded entry name",
                         "in": "path",
                         "name": "name",
                         "required": true,
@@ -2814,7 +3314,7 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "Version",
+                        "description": "Exact version",
                         "in": "path",
                         "name": "version",
                         "required": true,
@@ -2831,52 +3331,87 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Not found"
+                        "description": "Bad Request"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.CommittedErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Service Unavailable"
                     }
                 },
-                "summary": "Delete published entry",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Delete a managed entry version",
                 "tags": [
-                    "v1"
+                    "entries"
                 ]
             }
         },
         "/v1/me": {
             "get": {
-                "deprecated": true,
-                "description": "Retired in standalone. Admin must be enabled; authenticated requests receive a static tombstone.",
+                "description": "Requires OAuth authentication when admin is enabled. No legacy roles or claims are returned.",
                 "responses": {
                     "401": {
                         "content": {
@@ -2896,55 +3431,77 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Retired endpoint"
+                        "description": "Unauthorized"
                     }
                 },
-                "summary": "Retired identity endpoint",
-                "tags": [
-                    "v1"
-                ]
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Retired identity endpoint"
             }
         },
         "/v1/registries": {
             "get": {
-                "description": "List all registries",
                 "responses": {
                     "200": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/internal_api_v1.registryListResponse"
+                                    "$ref": "#/components/schemas/httpapi.ViewsResponse"
                                 }
                             }
                         },
-                        "description": "Registries list"
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Unauthorized"
                     }
                 },
-                "summary": "List registries",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "List named views",
                 "tags": [
-                    "v1"
+                    "registries"
                 ]
             }
         },
         "/v1/registries/{name}": {
             "delete": {
-                "description": "Delete a registry by name",
                 "parameters": [
                     {
-                        "description": "Registry Name",
+                        "description": "View name",
                         "in": "path",
                         "name": "name",
                         "required": true,
@@ -2955,71 +3512,93 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "204": {
-                        "description": "Registry deleted"
+                        "description": "No Content"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "403": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Cannot modify config-created registry"
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Registry not found"
+                        "description": "Bad Request"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.CommittedErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Service Unavailable"
                     }
                 },
-                "summary": "Delete registry",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Delete an API-owned view",
                 "tags": [
-                    "v1"
+                    "registries"
                 ]
             },
             "get": {
-                "description": "Get a registry by name",
                 "parameters": [
                     {
-                        "description": "Registry Name",
+                        "description": "View name",
                         "in": "path",
                         "name": "name",
                         "required": true,
@@ -3033,62 +3612,78 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
+                                    "$ref": "#/components/schemas/httpapi.viewInfo"
                                 }
                             }
                         },
-                        "description": "Registry details"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Registry not found"
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
                     }
                 },
-                "summary": "Get registry",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Get a named view",
                 "tags": [
-                    "v1"
+                    "registries"
                 ]
             },
             "put": {
-                "description": "Create a new registry or update an existing one",
+                "description": "API-owned definitions only; ordered source references. Retired top-level claims are rejected, including null.",
                 "parameters": [
                     {
-                        "description": "Registry Name",
+                        "description": "View name",
                         "in": "path",
                         "name": "name",
                         "required": true,
@@ -3101,13 +3696,13 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryCreateRequest",
-                                "summary": "request",
-                                "description": "Registry configuration"
+                                "$ref": "#/components/schemas/httpapi.ViewRequest",
+                                "summary": "view",
+                                "description": "Ordered source references"
                             }
                         }
                     },
-                    "description": "Registry configuration",
+                    "description": "Ordered source references",
                     "required": true
                 },
                 "responses": {
@@ -3115,74 +3710,119 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
+                                    "$ref": "#/components/schemas/httpapi.viewInfo"
                                 }
                             }
                         },
-                        "description": "Registry updated"
+                        "description": "OK"
                     },
                     "201": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryInfo"
+                                    "$ref": "#/components/schemas/httpapi.viewInfo"
                                 }
                             }
                         },
-                        "description": "Registry created"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "403": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Cannot modify config-created registry"
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.CommittedErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Service Unavailable"
                     }
                 },
-                "summary": "Create or update registry",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Create or update a named view",
                 "tags": [
-                    "v1"
+                    "registries"
                 ]
             }
         },
         "/v1/registries/{name}/entries": {
             "get": {
-                "description": "List all entries for a registry",
                 "parameters": [
                     {
-                        "description": "Registry Name",
+                        "description": "View name",
                         "in": "path",
                         "name": "name",
                         "required": true,
@@ -3196,98 +3836,144 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.RegistryEntriesResponse"
+                                    "$ref": "#/components/schemas/httpapi.ViewEntriesResponse"
                                 }
                             }
                         },
-                        "description": "Registry entries"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Registry not found"
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
                     }
                 },
-                "summary": "List registry entries",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "List unshadowed view version diagnostics",
                 "tags": [
-                    "v1"
+                    "registries"
                 ]
             }
         },
         "/v1/sources": {
             "get": {
-                "description": "List all sources",
                 "responses": {
                     "200": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceListResponse"
+                                    "$ref": "#/components/schemas/httpapi.SourcesResponse"
                                 }
                             }
                         },
-                        "description": "Sources list"
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Unauthorized"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
                     }
                 },
-                "summary": "List sources",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "List source definitions",
                 "tags": [
-                    "v1"
+                    "sources"
                 ]
             }
         },
         "/v1/sources/{name}": {
             "delete": {
-                "description": "Delete a source by name",
                 "parameters": [
                     {
-                        "description": "Source Name",
+                        "description": "Source name",
                         "in": "path",
                         "name": "name",
                         "required": true,
@@ -3298,84 +3984,93 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "204": {
-                        "description": "Source deleted"
+                        "description": "No Content"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "403": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Cannot modify config-created source"
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Source not found"
+                        "description": "Bad Request"
                     },
                     "409": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Source in use"
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.CommittedErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Service Unavailable"
                     }
                 },
-                "summary": "Delete source",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Delete an API-owned source",
                 "tags": [
-                    "v1"
+                    "sources"
                 ]
             },
             "get": {
-                "description": "Get a source by name",
                 "parameters": [
                     {
-                        "description": "Source Name",
+                        "description": "Source name",
                         "in": "path",
                         "name": "name",
                         "required": true,
@@ -3389,62 +4084,88 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo"
+                                    "$ref": "#/components/schemas/httpapi.sourceInfo"
                                 }
                             }
                         },
-                        "description": "Source details"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Source not found"
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     }
                 },
-                "summary": "Get source",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Get a source definition and status",
                 "tags": [
-                    "v1"
+                    "sources"
                 ]
             },
             "put": {
-                "description": "Create a new source or update an existing one",
+                "description": "API-owned definitions only; retired top-level claims are rejected, including null. Callback failure returns 503 with committed=true.",
                 "parameters": [
                     {
-                        "description": "Source Name",
+                        "description": "Source name",
                         "in": "path",
                         "name": "name",
                         "required": true,
@@ -3457,13 +4178,13 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceCreateRequest",
-                                "summary": "request",
-                                "description": "Source configuration"
+                                "$ref": "#/components/schemas/httpapi.sourceRequest",
+                                "summary": "source",
+                                "description": "Exactly one source specification"
                             }
                         }
                     },
-                    "description": "Source configuration",
+                    "description": "Exactly one source specification",
                     "required": true
                 },
                 "responses": {
@@ -3471,87 +4192,119 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo"
+                                    "$ref": "#/components/schemas/httpapi.sourceInfo"
                                 }
                             }
                         },
-                        "description": "Source updated"
+                        "description": "OK"
                     },
                     "201": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceInfo"
+                                    "$ref": "#/components/schemas/httpapi.sourceInfo"
                                 }
                             }
                         },
-                        "description": "Source created"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "403": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Cannot modify config-created source"
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "409": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Managed source limit reached"
+                        "description": "Bad Request"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.CommittedErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Service Unavailable"
                     }
                 },
-                "summary": "Create or update source",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Create or update a source",
                 "tags": [
-                    "v1"
+                    "sources"
                 ]
             }
         },
         "/v1/sources/{name}/entries": {
             "get": {
-                "description": "List all entries for a source",
                 "parameters": [
                     {
-                        "description": "Source Name",
+                        "description": "Source name",
                         "in": "path",
                         "name": "name",
                         "required": true,
@@ -3565,55 +4318,71 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_stacklok_toolhive-registry-server_internal_service.SourceEntriesResponse"
+                                    "$ref": "#/components/schemas/httpapi.SourceEntriesResponse"
                                 }
                             }
                         },
-                        "description": "Source entries"
+                        "description": "OK"
                     },
                     "400": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Bad request"
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
                     },
                     "404": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Source not found"
+                        "description": "Bad Request"
                     },
                     "500": {
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    },
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/httpapi.ErrorResponse"
                                 }
                             }
                         },
-                        "description": "Internal server error"
+                        "description": "Bad Request"
                     }
                 },
-                "summary": "List source entries",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "List unshadowed source version diagnostics",
                 "tags": [
-                    "v1"
+                    "sources"
                 ]
             }
         }
@@ -3625,7 +4394,7 @@ const docTemplate = `{
 var SwaggerInfo = &swag.Spec{
 	Version:          "0.1",
 	Title:            "ToolHive Registry API",
-	Description:      "API for accessing MCP server registry data and deployed server information\nThis API provides endpoints to query the MCP (Model Context Protocol) server registry,\nget information about available servers, and check the status of deployed servers.\n\nAuthentication is required by default. Use Bearer token authentication with a valid\nOAuth/OIDC access token. The /.well-known/oauth-protected-resource endpoint provides\nOAuth discovery metadata (RFC 9728).",
+	Description:      "API for discovering MCP servers, skills and plugins in nonpersonalized named views.\nCedar grants whole-instance operations; admin is optional and always authenticated.\nExisting catalogs require explicit offline exposure review before activation.\n\nAuthentication is required by default. Use Bearer token authentication with a valid\nOAuth/OIDC access token. The /.well-known/oauth-protected-resource endpoint provides\nOAuth discovery metadata (RFC 9728).",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

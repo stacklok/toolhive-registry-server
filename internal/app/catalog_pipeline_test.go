@@ -28,6 +28,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile"
 	fetchmocks "github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile/mocks"
 )
 
@@ -150,7 +151,10 @@ func TestCatalogInlinePostCommitFailureRetainsSnapshotAndTruthfulAudit(t *testin
 	require.NotContains(t, string(data), "attempted new")
 	// A failed creation must report source.create even though HTTP is 503.
 	catalogRequest(t, public, "PUT", "/v1/sources/failed-new", string(body), credential, 503)
-	require.NoError(t, app.Stop())
+	// A real concurrent fetch failure remains a shutdown result, not a log-only error.
+	if err := app.Stop(); err != nil {
+		require.ErrorIs(t, err, ingest.ErrFetch)
+	}
 	auditData, err := os.ReadFile(logfile)
 	require.NoError(t, err)
 	var committedCreate bool
@@ -163,6 +167,66 @@ func TestCatalogInlinePostCommitFailureRetainsSnapshotAndTruthfulAudit(t *testin
 	require.True(t, committedCreate)
 	require.NotContains(t, string(auditData), "SECRET")
 	require.NotContains(t, string(auditData), credential)
+}
+
+func TestCatalogRunCancellationBeforeStartIsClean(t *testing.T) {
+	t.Parallel()
+	cfg := catalogTestConfig(t)
+	conn, pool := catalogPG(t, cfg)
+	approveCatalog(t, conn, cfg, true)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	app, err := NewCatalogApp(ctx, CatalogOptions{Config: cfg, Storage: storage.CatalogPostgres{BorrowedPool: pool}})
+	require.NoError(t, err)
+	cancel()
+	require.NoError(t, app.Run())
+	require.NoError(t, pool.Ping(t.Context()))
+}
+
+func TestCatalogRenewDeadlinePropagatesThroughWait(t *testing.T) {
+	t.Parallel()
+	cfg := catalogTestConfig(t)
+	conn, pool := catalogPG(t, cfg)
+	approveCatalog(t, conn, cfg, true)
+	backend, err := (storage.CatalogPostgres{BorrowedPool: pool}).Open(t.Context(), cfg)
+	require.NoError(t, err)
+	ctrl := gomock.NewController(t)
+	factory := storagemocks.NewMockCatalogFactory(ctrl)
+	store := storagemocks.NewMockCatalogStorage(ctrl)
+	jobs, fetcher := fetchmocks.NewMockJobs(ctrl), fetchmocks.NewMockFetcher(ctrl)
+	ttl := 60 * time.Millisecond
+	job := persistence.Job{Source: persistence.SourceDefinition{ID: "source-id", Name: "source", File: &persistence.FileSpec{Path: "/registry.json"}, Schedule: "1h"}, LeaseID: "lease", Generation: 1}
+	jobs.EXPECT().ClaimNext(gomock.Any(), ttl).Return(job, true, nil)
+	fetcher.EXPECT().Fetch(gomock.Any(), job.Source).DoAndReturn(func(ctx context.Context, _ persistence.SourceDefinition) (ingest.Result, error) {
+		<-ctx.Done()
+		return ingest.Result{}, ctx.Err()
+	})
+	jobs.EXPECT().Renew(gomock.Any(), job, ttl).DoAndReturn(func(ctx context.Context, j persistence.Job, _ time.Duration) (persistence.Job, error) {
+		<-ctx.Done()
+		return j, ctx.Err()
+	})
+	jobs.EXPECT().Fail(gomock.Any(), job, persistence.FailureStorage).Return(nil)
+	factory.EXPECT().Open(gomock.Any(), gomock.Any()).Return(store, nil)
+	store.EXPECT().Preflight(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
+	store.EXPECT().Consume(gomock.Any(), catalogRevision(t, cfg)).DoAndReturn(backend.Consume)
+	store.EXPECT().Initialize(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, s []persistence.SourceDefinition, v []persistence.ViewDefinition) (storage.CatalogComponents, error) {
+		components, err := backend.Initialize(ctx, s, v)
+		components.Jobs = jobs
+		return components, err
+	})
+	store.EXPECT().Close().Do(backend.Close)
+	app, err := NewCatalogApp(t.Context(), CatalogOptions{Config: cfg, Storage: factory, Fetcher: fetcher,
+		Reconcile: reconcile.Options{PollInterval: time.Hour, LeaseDuration: ttl},
+		HTTP:      []RegistryAppOptions{WithAddress("127.0.0.1:0"), WithInternalAddress("127.0.0.1:0")}})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = app.Stop() })
+	require.NoError(t, app.Start())
+	err = app.Wait()
+	require.NoError(t, t.Context().Err())
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorIs(t, err, persistence.ErrUnavailable)
+	require.ErrorIs(t, app.Stop(), persistence.ErrUnavailable)
+	require.NoError(t, pool.Ping(t.Context()))
 }
 
 func TestCatalogTerminalRuntimeErrorJoinsAndClosesExactlyOnce(t *testing.T) {

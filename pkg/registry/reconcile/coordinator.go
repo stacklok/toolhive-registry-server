@@ -179,6 +179,10 @@ func (c *Coordinator) renew(ctx context.Context, cancel context.CancelFunc, job 
 			_, err := c.jobs.Renew(renewCtx, job, c.options.LeaseDuration)
 			done()
 			if err != nil {
+				// A renewal's own timeout is a backend failure, not outer shutdown.
+				if ctx.Err() == nil && shutdown.Result(err) == nil {
+					err = errors.Join(persistence.ErrUnavailable, err)
+				}
 				cancel()
 				return err
 			}

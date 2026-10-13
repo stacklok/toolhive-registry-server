@@ -1,19 +1,50 @@
 # Offline exposure review and explicit claims retirement
 
-This guide documents the existing offline review and explicit archive-and-clear
-commands. The production CLI/chart default is still the legacy protected runtime.
-A complete opt-in Go composition is now available through
-[`internal/app.NewCatalogApp`](registry-standalone-assembly.md), which enforces the
-mandatory preparation barrier and consumes schema-29 evidence before any config
-reconciliation/latest repair or serving. Only use that explicit composition after
-the offline procedure; **do not restart the legacy `serve` command after retirement**.
-CLI/chart activation is the next PR; #912/#914 are not complete. Public persistence
-contracts and historical legacy guards remain unchanged. No schema migration,
-`--yes` flag, empty/unlabeled data or builder call automatically grants consent.
+This guide documents offline review and explicit archive-and-clear commands.
+`serve` now selects [`internal/app.NewCatalogApp`](registry-standalone-assembly.md):
+final config/policy validation precedes migrations, then read-only compatibility
+preflight and schema-29 receipt consumption precede reconciliation, repair, both
+listeners and leased writers. No schema migration, `--yes`, empty/unlabeled data,
+old authorization flag or builder call grants existing-data consent. Legacy code
+and physical columns remain unselected until #915; do not restart old binaries
+against a retired catalog.
 
-The descriptions of dormant machinery and future startup below refer to the
-legacy CLI-default path. For the available Go path's exact ordering, lifecycle,
-namespace remediation and remaining activation work, use the assembly guide.
+## New, entirely empty installs only
+
+Prepare the **final** config first, with trusted OAuth providers, administration off
+unless explicitly needed, no retired fields, and a readable operator-authored Cedar
+policy mounted read-only. A deny-all policy is valid but grants no access. Then,
+only for a genuinely empty new database, explicitly authorize empty-install mode:
+
+```sh
+thv-registry-api serve --config /etc/registry/config.yaml --initialize-empty
+```
+
+The flag defaults to false. After final config/frozen-policy validation and read-only
+source/operator preflight, preparation locks **every catalog table**, schema, receipt
+and archive in a serializable transaction. A virgin logical identity and all-empty
+catalog are required; SQL NULL claims do not make a row empty. Empty acknowledgement
+and first consumption commit together, preserving the full pending validation and
+excluding external writers between them. A valid pending offline empty review may
+be reused without changing its evidence; changed pending config/policy/catalog/target
+fails. Pending existing-data or retired decisions cannot be activated by this flag:
+complete the manual chain below and omit it for first consumption.
+
+Retaining the flag on replicas/restarts is safe once consumed: verify only the
+existing target continuity, without resetting, fencing or rebinding the receipt,
+even after normal catalog/config/policy edits. No policy permission is supplied.
+The offline `initialize-empty` command below remains available for maintenance;
+it is not a second chart/job activation framework.
+
+Helm: `initializeEmptyCatalog: false` by default; explicitly set true for a new empty
+install, alongside `policy.existingConfigMap`, trusted OAuth and DB settings. The
+chart also requires an explicit `image.registryServerUrl` built from this startup
+change; it has no legacy-image fallback. Both ct fixtures opt in only for their disposable
+test DB and use externally mounted deny-all policy. Production images need no shell/jq.
+Compose: set `REGISTRY_POLICY_FILE` to the absolute operator-authored policy path,
+configure the OAuth provider in the selected config, and only for an empty install use
+`docker compose -f docker-compose.yaml -f docker-compose.initialize-empty.yaml up --build`.
+Base Compose does not initialize implicitly; neither command removes existing volumes.
 
 ## Maintenance procedure
 
@@ -46,8 +77,8 @@ namespace remediation and remaining activation work, use the assembly guide.
    annotations before that future startup; this command does not contact a cluster.
 
    Materialize any exposure-relevant `serve` CLI overrides in YAML/environment for
-   review; offline commands load `--config` and environment only. Future cutover
-   preflight must revalidate final startup overrides and validate Cedar. Inventory
+   review; offline commands load `--config` and environment only. Startup revalidates
+   final overrides and freezes Cedar once for evaluation and the receipt fingerprint. Inventory
    and acknowledgement support clean schemas 27, 28 and 29; retirement requires
    28 or 29.
    They never auto-migrate, initialize sources, repair latest pointers, fetch sources
@@ -68,7 +99,7 @@ namespace remediation and remaining activation work, use the assembly guide.
    Output never includes raw claims, payloads, policies or credentials. This is an
    offline database inventory: it includes persisted operator exports, but does not
    contact Kubernetes or upstream sources. Review live export annotations separately;
-   the standalone operator compatibility gate remains future cutover work.
+   the standalone startup gate validates live exports over the full effective scope.
 4. Decide whether **all historical catalog data**, including unlinked and retained
    data, can be shared with a future whole-instance reader population. If not,
    remain on the protected runtime, or prepare separate instances/host-owned
@@ -111,11 +142,12 @@ namespace remediation and remaining activation work, use the assembly guide.
    have no retired fields. A changed config/policy requires fresh inventory and
    acknowledgement **before** clearing; arbitrary rebinding is never accepted.
    `initialize-empty` already has valid new-install evidence and needs no archive
-   or retirement command. It still cannot activate the future runtime in this slice.
+   or retirement command. It can be consumed by the new `serve` after preflight.
 
-   Successful retirement reports exactly: **"metadata retired; runtime cutover not
-   yet available in this slice"**. Remain offline; do not run `serve`, reconciliation
-   or legacy embedding applications against the cleared database. If JSON receipt
+   The historical retirement command still reports **"metadata retired; runtime cutover not
+   yet available in this slice"** for compatibility. With this binary, after inspecting
+   successful receipt delivery, cut over using `serve --config /etc/registry/config.yaml`
+   (without `--initialize-empty`). Never restart legacy binaries or embeddings. If JSON receipt
    delivery fails after the command reports **"claim metadata retirement committed;
    remain offline; inspect stored receipt"**, the database transaction already
    committed: remain offline and use the recovery inspection below rather than retrying.
@@ -148,10 +180,9 @@ are not revisions; actual catalog/lease writes are.
 Any subsequent catalog, target, exposure-relevant config or policy change invalidates
 pending review. Re-inventory and explicitly acknowledge again while offline, before
 retirement. Resuming the protected runtime before retirement can invalidate the
-marker. This slice does **not** consume/enforce the marker at startup. The internal
-serialized consumption primitive described below is dormant until the full runtime
-preparation barrier and owner/authorization cutover are implemented. Legitimate
-writes after consumption must not undergo perpetual historical-digest matching.
+marker. Startup enforces and consumes valid pending evidence through the full
+preparation barrier. Legitimate writes after consumption do not undergo perpetual
+historical-digest matching.
 
 ## Explicit retirement and recovery evidence
 
@@ -208,18 +239,17 @@ rolled-back attempt may be retried only when its rollback is independently
 established and the same pending evidence still matches; otherwise inventory and
 acknowledge again before retirement. After retirement, changes invalidate pending
 cutover evidence and cannot be silently rebound; retain downtime and restore the
-backup offline if necessary. There is no restore command or serving activation here.
+backup offline if necessary. There is no restore or automatic rebinding command.
 
 ## Receipt consumption and target continuity
 
 `internal/db.ConsumeExposure` requires clean schema 29. It is not a separate
-command or permission to bypass preparation. The opt-in `app.NewCatalogApp`
+command or permission to bypass preparation. The default `app.NewCatalogApp`
 composition calls it only after validating final effective config, rejecting
 retired-field presence, freezing the actual loaded Cedar engine and completing
 read-only compatibility preflight over all final configured and persisted sources
 and operator scopes. See the [assembly guide](registry-standalone-assembly.md).
-The CLI/chart default still does not select this composition; startup activation
-is the next PR. Public persistence stays policy-free.
+The CLI selects this composition; public persistence stays policy-free.
 
 The primitive locks the explicit catalog/receipt/schema tables in EXCLUSIVE mode
 inside a serializable transaction before reading the snapshot. On first consumption
