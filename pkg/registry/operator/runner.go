@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
+	"github.com/stacklok/toolhive-registry-server/internal/shutdown"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile"
 )
@@ -97,7 +98,7 @@ func (r *Runner) Run(ctx context.Context) error {
 		for _, list := range resourceLists() {
 			w, err := r.client.Watch(work, list, client.InNamespace(namespace))
 			if err != nil {
-				if ctx.Err() != nil {
+				if ctx.Err() != nil && shutdown.Result(err) == nil {
 					return nil
 				}
 				return ErrWatch
@@ -112,12 +113,12 @@ func (r *Runner) Run(ctx context.Context) error {
 	for {
 		err := r.coordinator.Sync(work, r.fetcher.definition.Name)
 		select {
-		case err := <-fatal:
-			return err
+		case failure := <-fatal:
+			return errors.Join(failure, shutdown.Result(err))
 		default:
 		}
 		if ctx.Err() != nil {
-			return nil
+			return shutdown.Result(err)
 		}
 		if err == nil {
 			r.ready.Store(true)

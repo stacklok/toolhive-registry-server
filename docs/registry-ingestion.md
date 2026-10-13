@@ -25,9 +25,10 @@ Git credentials remain absolute file **references**, not persisted plaintext.
 Authenticated Git requires a host `LoadSecret(ctx, absolutePath)` callback that
 validates and resolves the reference (including symlinks) before reading it.
 No automatic environment or secret loading is performed. Do not log definitions,
-inline data, credential values, or raw low-level transport errors. The high-level
-fetcher and coordinator return sanitized fetch/validation errors; job failures
-store only the persistence allowlisted categories.
+inline data, credential values, or raw low-level transport errors. The provided
+fetch adapters sanitize transport errors; ordinary coordinator fetch/validation
+failures are sanitized too. Injected fetcher/backend errors retained during shutdown
+must not be logged raw. Job failures store only the persistence allowlisted categories.
 
 `Fetcher.Fetch(ctx, definition)` returns `ingest.Result{Snapshot, Hash}`. A host
 can use it without Jobs, or supply its own implementation of `reconcile.Fetcher`.
@@ -106,8 +107,10 @@ false after stop/fatal backend failure. It is not “every remote source succeed
 Fetch/validation failures are safely recorded and retried; infrastructure errors
 return from `Run`. A source deleted or recreated during acquired work is a stale
 attempt, not a fatal storage failure; polling continues with other sources.
-Cancellation returns nil from `Run` and a context error from
-an interrupted `Sync`. Reentrant `Run` returns `ErrBusy`.
+Cancellation/deadline-only shutdown returns nil from `Run`; an interrupted `Sync`
+returns its context error. Wrapped or joined non-cancellation failures from active
+work, renewal or independent `Fail` cleanup remain in the returned error, even if
+shutdown races with them. Reentrant `Run` returns `ErrBusy`.
 
 The [separate-module executable fixture](../pkg/registry/ingest/testdata/external/consumer_test.go)
 assembles a real inline fetcher with generated Jobs expectations, without a DB or
@@ -189,7 +192,12 @@ Real manager/envtest acceptance is included in CI with the existing pinned 1.33.
 assets; fake-client tests cover complete scope, opt-in/out, metadata, listing and
 watch failures, incarnation/scope mismatch, and startup readiness.
 
-## Available but unwired standalone lifecycle
+## Standalone lifecycle with opt-in composition
+
+The supervisor below is now selected by the complete opt-in Go
+[`NewCatalogApp` composition](registry-standalone-assembly.md) after its mandatory
+preparation/receipt barrier. The production CLI/chart default remains legacy; never
+co-own sources. CLI startup/chart selection is the next #914 slice.
 
 `internal/sync/standalone.New` now constructs a dormant supervisor over the public
 coordinator and injected operator factory. It performs no database access, source
@@ -217,7 +225,11 @@ Source deletion, incarnation replacement and canonical namespace-scope changes
 cancel and **join** old workers before starting replacements. Readiness is false
 during replacement and until the new worker's startup succeeds. Terminal worker or
 scheduled backend failures cancel and join siblings. Shutdown closes neither borrowed
-clients nor pools. The host supplies restart/backoff and bounded compatibility alerts.
+clients nor pools. In-flight discovery is also canceled and joined before `Run`
+returns; its completed backend failure is joined with any selected worker failure
+or shutdown result. Pure cancellation/deadline shutdown is clean, but mixed errors
+retain their non-cancellation causes. The host supplies restart/backoff and bounded
+compatibility alerts.
 
 `internal/kubernetes.NewStandaloneOperator` wraps an authoritative `client.WithWatch`
 and constructs the **existing public runner**, never a Kubernetes manager. Its List

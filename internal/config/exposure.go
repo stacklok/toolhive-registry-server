@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -139,19 +140,25 @@ func retiredExposureFields(data []byte) (map[string]any, error) {
 	return retired, nil
 }
 
-func exposureEnvironment() map[string]string {
+func exposureEnvironment() map[string]string { return exposureEnvironmentFrom(os.Environ()) }
+
+//nolint:gocyclo // Preserve security override presence without retaining credential values.
+func exposureEnvironmentFrom(environment []string) map[string]string {
 	env := map[string]string{}
-	for _, item := range os.Environ() {
+	for _, item := range environment {
 		key, value, ok := strings.Cut(item, "=")
+		key = strings.ToUpper(key)
 		if !ok || !strings.HasPrefix(key, EnvPrefix+"_") {
 			continue
 		}
-		key = strings.TrimPrefix(key, EnvPrefix+"_")
+		key = strings.ReplaceAll(strings.ToUpper(strings.TrimPrefix(key, EnvPrefix+"_")), ".", "_")
 		if strings.HasPrefix(key, "AUTH_") || strings.HasPrefix(key, "AUTHORIZATION_") ||
 			strings.HasPrefix(key, "ADMIN_") || strings.HasPrefix(key, "SOURCES_") ||
 			strings.HasPrefix(key, "REGISTRIES_") || key == "WATCH_NAMESPACE" || key == "INSECURE_URL" {
 			if !strings.Contains(key, "PASSWORD") && !strings.Contains(key, "SECRET") && !strings.Contains(key, "TOKEN") {
 				env[key] = value
+			} else if retiredEnvironmentKey(key) {
+				env[key] = "" // Preserve forbidden presence without credential values.
 			}
 		}
 	}
@@ -189,6 +196,8 @@ func exposurePolicyRevision(path string) (string, error) {
 	return fmt.Sprintf("sha256:%x", sha256.Sum256(data)), nil
 }
 
+var retiredSourceField = regexp.MustCompile(`^(sources|registries)(\[[0-9]+\]|\.[0-9]+)\.claims($|\.)`)
+
 func collectRetiredFields(value any, path string, fields map[string]any) {
 	switch value := value.(type) {
 	case map[string]any:
@@ -199,8 +208,8 @@ func collectRetiredFields(value any, path string, fields map[string]any) {
 				next = path + "." + key
 			}
 			if next == "auth.authz" || next == "auth.publicpaths" || next == "auth.roles" ||
-				key == "claims" && strings.HasSuffix(path, "]") &&
-					(strings.HasPrefix(path, "sources[") || strings.HasPrefix(path, "registries[")) && !strings.Contains(path, ".") {
+				strings.HasPrefix(next, "auth.authz.") || strings.HasPrefix(next, "auth.roles.") ||
+				strings.HasPrefix(next, "auth.publicpaths.") || retiredSourceField.MatchString(next) {
 				fields[next] = child
 				continue
 			}

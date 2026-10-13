@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/stacklok/toolhive-registry-server/internal/shutdown"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
@@ -78,6 +80,8 @@ func Convert(object client.Object) (*model.Server, error) {
 // Fetch lists every configured namespace and every supported CRD kind before
 // returning a snapshot. Empty is valid. Any list failure preserves old data.
 // Malformed export metadata is skipped as in the standalone operator adapter.
+//
+//nolint:gocyclo // Validate the complete scope before returning any snapshot, including cancellation races.
 func (f *Fetcher) Fetch(ctx context.Context, definition persistence.SourceDefinition) (ingest.Result, error) {
 	if !f.matches(definition) {
 		return ingest.Result{}, persistence.ErrInvalid
@@ -90,10 +94,10 @@ func (f *Fetcher) Fetch(ctx context.Context, definition persistence.SourceDefini
 	for _, namespace := range namespaces {
 		for _, list := range resourceLists() {
 			if err := f.reader.List(ctx, list, client.InNamespace(namespace)); err != nil {
-				if ctx.Err() != nil {
+				if ctx.Err() != nil && shutdown.Result(err) == nil {
 					return ingest.Result{}, ctx.Err()
 				}
-				return ingest.Result{}, ingest.ErrFetch
+				return ingest.Result{}, errors.Join(ctx.Err(), ingest.ErrFetch)
 			}
 			if list.GetContinue() != "" {
 				return ingest.Result{}, ingest.ErrFetch

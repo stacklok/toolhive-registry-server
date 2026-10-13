@@ -177,6 +177,9 @@ func emitEvent(
 		"duration_ms":    duration.Milliseconds(),
 		"response_bytes": bytesWritten,
 	}
+	if info := RouteInfoFromContext(r.Context()); info != nil && info.MutationCommitted {
+		extra["mutation_committed"] = true
+	}
 	if reqID := middleware.GetReqID(r.Context()); reqID != "" {
 		extra["request_id"] = reqID
 	}
@@ -230,14 +233,15 @@ func emitAuthFailureEvent(r *http.Request, logger *Logger) {
 // audit event logging. Returns an "anonymous" marker when no claims are
 // present, or when claims lack a `sub`, preserving the existing audit shape.
 // Identity resolution itself (sub + display-name fallback) is delegated to
-// auth.IdentityFromClaims so the access logger and audit pipeline cannot drift.
+// auth.IdentityFromContext so catalog projection and legacy attribution agree
+// with the access logger without modifying the verified claims.
 func subjectsFromRequest(r *http.Request) map[string]string {
 	claims := auth.ClaimsFromContext(r.Context())
 	if claims == nil {
 		return map[string]string{"identity": "anonymous"}
 	}
 
-	sub, user := auth.IdentityFromClaims(claims)
+	sub, user := auth.IdentityFromContext(r.Context())
 	subjects := make(map[string]string, 4)
 	if sub != "" {
 		subjects["sub"] = sub

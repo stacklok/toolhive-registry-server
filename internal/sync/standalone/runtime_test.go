@@ -488,7 +488,12 @@ func TestInlineCancellationAndIncarnationGuard(t *testing.T) {
 				})
 			}
 			jobs.EXPECT().Fail(gomock.Any(), job, category).DoAndReturn(func(context.Context, persistence.Job, persistence.FailureCategory) error { cancel(); return nil })
-			require.NoError(t, r.Run(ctx))
+			err = r.Run(ctx)
+			if recreated {
+				require.ErrorIs(t, err, ingest.ErrFetch, "cancellation during cleanup must not erase the completed attempt's failure")
+			} else {
+				require.NoError(t, err)
+			}
 			require.False(t, r.Ready())
 		})
 	}
