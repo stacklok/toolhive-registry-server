@@ -249,26 +249,20 @@ tasks:
         go run ./cmd/thv-registry-api migrate down --config {{.CONFIG}} --num-steps {{.NUM_STEPS}} --yes
 
   docker-up:
-    desc: Start docker compose with fresh state (rebuilds image, clears all volumes)
+    desc: Build and start docker compose, preserving volumes
     cmds:
-      - echo "Stopping and removing all containers and volumes..."
-      - docker compose down -v
-      - echo "Building fresh image and starting services..."
       - docker compose up --build
 
   docker-up-detached:
-    desc: Start docker compose in detached mode with fresh state
+    desc: Build and start docker compose in detached mode, preserving volumes
     cmds:
-      - echo "Stopping and removing all containers and volumes..."
-      - docker compose down -v
-      - echo "Building fresh image and starting services in background..."
       - docker compose up --build -d
       - echo "Services started. View logs with task docker-logs"
 
   docker-down:
-    desc: Stop docker compose and remove all containers and volumes
+    desc: Stop docker compose and remove containers, preserving volumes
     cmds:
-      - docker compose down -v
+      - docker compose down
 
   docker-logs:
     desc: View docker compose logs (use FOLLOW=true for tail -f behavior)
@@ -307,6 +301,8 @@ tasks:
 
   registry-server-install-latest:
     desc: Install an explicitly selected catalog-capable release image (requires REGISTRY_SERVER_IMAGE and VALUES)
+    vars:
+      NAMESPACE: '{{.NAMESPACE | default "toolhive-system"}}'
     requires:
       vars: [REGISTRY_SERVER_IMAGE, VALUES]
     preconditions:
@@ -317,7 +313,7 @@ tasks:
     cmds:
       - |
         helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server \
-        --namespace toolhive-system --create-namespace --kubeconfig kconfig.yaml \
+        --namespace {{.NAMESPACE | shellQuote}} --create-namespace --kubeconfig kconfig.yaml \
         --values {{.VALUES | shellQuote}} \
         --set-string {{printf "image.registryServerUrl=%s" .REGISTRY_SERVER_IMAGE | shellQuote}}
 
@@ -327,6 +323,7 @@ tasks:
       vars: [VALUES]
     vars:
       CLUSTER_NAME: '{{.CLUSTER_NAME | default "thv-registry"}}'
+      NAMESPACE: '{{.NAMESPACE | default "toolhive-system"}}'
     preconditions:
       - sh: 'test -f {{.VALUES | shellQuote}}'
         msg: VALUES must name an operator-prepared Helm values file with database, OAuth and optional custom policy configuration
@@ -339,7 +336,7 @@ tasks:
         esac
         kind load docker-image "$REGISTRY_SERVER_IMAGE" --name {{.CLUSTER_NAME | shellQuote}}
         helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server \
-        --namespace toolhive-system \
+        --namespace {{.NAMESPACE | shellQuote}} \
         --create-namespace \
         --kubeconfig kconfig.yaml \
         --values {{.VALUES | shellQuote}} \
@@ -358,6 +355,6 @@ tasks:
     desc: Uninstall registry server from kind
     vars:
       CLUSTER_NAME: '{{.CLUSTER_NAME | default "thv-registry"}}'
-      NAMESPACE: '{{.NAMESPACE | default "thv-registry"}}'
+      NAMESPACE: '{{.NAMESPACE | default "toolhive-system"}}'
     cmds:
-      - helm uninstall toolhive-registry-server --namespace {{.NAMESPACE}} --kubeconfig kconfig.yaml
+      - helm uninstall toolhive-registry-server --namespace {{.NAMESPACE | shellQuote}} --kubeconfig kconfig.yaml

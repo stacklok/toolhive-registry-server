@@ -6,7 +6,7 @@ Complete configuration reference for the ToolHive Registry API server.
 
 - [Overview](#overview)
 - [Configuration File Structure](#configuration-file-structure)
-- [Registry Configuration](#registry-configuration)
+- [Sources and views](#source-configuration)
 - [Data Sources](#data-sources)
 - [Sync Policy](#sync-policy)
 - [Filtering](#filtering)
@@ -353,9 +353,9 @@ metadata:
 ```
 
 **Features:**
-- Queries running Kubernetes resources
-- No background synchronization (on-demand only)
-- Requires in-cluster service account or kubeconfig
+- Watches export-opted-in MCPServer, VirtualMCPServer and MCPRemoteProxy resources
+- Periodically reconciles full-scope snapshots through fenced database leases
+- Requires in-cluster service account or kubeconfig; consumer reads use persisted data
 
 **Does NOT support:**
 - Sync policy configuration
@@ -378,7 +378,7 @@ syncPolicy:
 
 **Not applicable for:**
 - Managed registries (no sync)
-- Kubernetes registries (no sync)
+- Kubernetes sources (watch plus periodic reconciliation, not configured by `syncPolicy`)
 
 ## Filtering
 
@@ -415,7 +415,7 @@ filter:
 
 **Not applicable for:**
 - Managed registries (controlled via API)
-- Kubernetes registries (use labelSelector instead)
+- Kubernetes sources (selection uses namespace scope and export opt-in annotations)
 
 ## Authentication
 
@@ -489,21 +489,42 @@ See [Database Configuration](database.md#password-security) for password managem
 
 | Variable | Description |
 |----------|-------------|
-| `CONFIG_FILE` | Override config file path |
+| `CONFIG_FILE` | Compose-only filename under `/examples`; direct CLI uses `--config` |
 | `THV_REGISTRY_INSECURE_URL` | Allow HTTP URLs for development (default: false) |
 
 ## Examples
 
 ### Development (Local File)
 
+Save the following as `config-local.yaml`. Bind **both** standalone listeners to
+loopback explicitly; the CLI defaults listen on all interfaces, and anonymous
+mode does not restrict the bind address:
+
+```sh
+thv-registry-api serve --config config-local.yaml \
+  --address 127.0.0.1:8080 --internal-address 127.0.0.1:8081
+```
+
+For a genuinely new empty database only, add `--initialize-empty`; existing data
+requires the offline exposure procedure before serving.
+
 ```yaml
 sources:
   - name: local
     file:
-      path: ./examples/registry-sample.json
-
+      path: ./examples/upstream-registry.json
+    syncPolicy:
+      interval: "5m"
+registries:
+  - name: default
+    sources: [local]
+admin:
+  enabled: false
+authorization:
+  allowAnonymousCatalog: true
+  identityMappings: []
 auth:
-  mode: anonymous
+  mode: anonymous # Loopback-only development, with built-in Cedar permit.
 
 database:
   host: localhost
@@ -603,6 +624,8 @@ auth:
       - name: kubernetes
         issuerUrl: https://kubernetes.default.svc
         audience: https://kubernetes.default.svc
+        caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        allowPrivateIP: true # Explicit trust of this private cluster issuer.
 
 database:
   host: postgres
@@ -623,10 +646,10 @@ The configuration is validated on startup. Common validation errors:
 - **Invalid filter patterns**: Check glob pattern syntax
 - **Database connection**: Verify connection parameters
 
-Run with `--debug` flag for detailed validation output:
+Enable sanitized debug logging with `THV_REGISTRY_LOG_LEVEL=debug`:
 
 ```bash
-thv-registry-api serve --config config.yaml --debug
+THV_REGISTRY_LOG_LEVEL=debug thv-registry-api serve --config config.yaml
 ```
 
 ## See Also

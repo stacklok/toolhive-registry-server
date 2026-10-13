@@ -117,12 +117,12 @@ type ViewRequest struct {
 	Sources []string `json:"sources"`
 }
 
-// SourceEntriesResponse lists unshadowed source version diagnostics.
+// SourceEntriesResponse lists complete source version diagnostics.
 type SourceEntriesResponse struct {
 	Entries []sourceEntryInfo `json:"entries"`
 }
 
-// ViewEntriesResponse lists unshadowed view version diagnostics.
+// ViewEntriesResponse lists complete view version diagnostics.
 type ViewEntriesResponse struct {
 	Entries []viewEntryInfo `json:"entries"`
 }

@@ -1,6 +1,6 @@
 # Registry persistence (definitions, entries, jobs)
 
-## Definitions (first slice)
+## Definitions
 
 `pkg/registry/persistence` defines storage-independent `Sources`, `Views`, and
 `Reconciler` capabilities. `pkg/registry/postgres.NewDefinitions(pool)` implements
@@ -63,7 +63,7 @@ and `ErrUnavailable` (backend details and connection strings are not exposed).
 `ErrAlreadyExists` (same source/view name), `ErrConfigOwned` (API mutation of
 CONFIG), and `ErrKindChange` (source/file-location kind) refine `ErrConflict`
 without conflating singleton, stale-ID or legacy metadata guards. Context
-cancellation/deadline errors propagate. This slice has no CAS revisions:
+cancellation/deadline errors propagate. Definitions have no CAS revisions:
 mutations of a given definition are serialized and last committed update wins.
 `CreatedAt`/`UpdatedAt` are storage-assigned UTC metadata from existing columns;
 new rows are nonzero, historical NULLs read as zero, and successful writes touch
@@ -100,7 +100,7 @@ func TestMyDefinitions(t *testing.T) {
 }
 ```
 
-## Entries and atomic source snapshots (second slice)
+## Entries and atomic snapshots
 
 `persistence.EntryReader`, `ManagedPublisher`, and `SnapshotWriter` are narrow
 capabilities (or use the combined `Entries` interface). `postgres.NewEntries(ctx, pool,
@@ -142,7 +142,7 @@ boundary**. The host must apply its own policy before allowing callers to
 read or mutate entries; no claims, tenant, user, JWT, or visibility policy is
 in the public contract. Standalone consumer HTTP uses the separate
 [consumer-view reader](registry-consumer-reads.md), which implements whole-name winning-source selection before search/version/latest/paging;
-[unshadowed diagnostics](registry-publication-diagnostics.md) deliberately include all sources' versions. `GetEntry` takes
+[complete diagnostics](registry-publication-diagnostics.md) deliberately include all sources' versions. `GetEntry` takes
 `VersionSelector{Exact: "latest"}` for the literal stored version, and
 `VersionSelector{Latest: true}` for the highest under `model.CompareVersions`.
 Lists use a source- and filter-bound opaque cursor with C/byte-lexical
@@ -199,7 +199,7 @@ Backend implementers can run `conformance.RunEntries` and
 `conformance.RunEntriesMulti` against a fresh source/entry backend. They run
 against PostgreSQL and an independent copy-on-write test-only memory backend.
 
-## Leased synchronization jobs (third slice)
+## Leased jobs
 
 `persistence.Jobs` and `postgres.NewJobs(pool, maxMetaSize)` add the storage-neutral
 job/status/lease capability. The pool remains host-owned; no constructor starts

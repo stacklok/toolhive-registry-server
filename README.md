@@ -80,7 +80,9 @@ task build
 ./bin/thv-registry-api serve --config examples/config-file.yaml --initialize-empty
 ```
 
-Configure trusted OAuth and PostgreSQL in the selected example first. Omit
+Configure trusted OAuth and PostgreSQL in the selected example first. If changing
+an issuer, also update or remove its `authorization.identityMappings` entry; the
+built-in policy needs no group/scope mappings. Omit
 `authorization.policyFile` for built-in allow-all Cedar, or explicitly mount a custom
 restriction read-only (invalid specified files fail startup, never default fallback).
 Anonymous catalog access requires explicit opt-in; invalid credentials never become
@@ -110,32 +112,14 @@ read-only and use TLS or trusted TLS ingress.
 
 ## Embedding
 
-Import only the public components you need from `pkg/registry`: models/formats,
-persistence, catalog, ingestion/reconciliation, HTTP and optional PostgreSQL/operator
-adapters. Hosts own admission, personalized selection, pools/clients, listeners and
-shutdown. Hosts own the authorizer lifecycle; it is borrowed and shared across
-requests, so it must be concurrency-safe and honor request-context cancellation.
-Cedar is optional for libraries: `httpapi.Authorizer` takes host context and an existing
-`RouteDescriptor`; use `httpapi.Authorize(authorizer)` as the existing `Decorate`
-seam after host authentication `Middleware`. Nil, deny, errors and unknown or
-mismatched routes fail closed before application calls. Undecorated low-level
-routers are explicitly policy-free. The [real host-authentication/non-Cedar example](pkg/registry/httpapi/testdata/external/authorization_test.go)
-covers consumer and admin without internal authentication or policy dependencies.
-`internal/app` is the Cedar-only standalone composition, not a public host framework.
+Start with the [runnable Go embedding tutorial](examples/embedding/README.md):
+serve an existing PostgreSQL catalog through the public consumer router with
+host-owned mTLS authentication and clean shutdown. Hosts own admission, selection,
+pools and listeners; importing the library does not enable standalone OAuth/Cedar
+or administration.
 
-[Embedding guidance and executable examples](docs/registry-embedding-validation.md)
-include a combined separate-module PostgreSQL → ingestion → catalog → HTTP workflow:
-
-```sh
-task gen
-GOWORK=off go test -race -count=1 ./pkg/registry/postgres -run '^TestExternalCompleteAssembly$'
-```
-
-The test prepares a disposable schema-30 database; it does not use a deployment
-DSN or target your cluster. See [consumer reads](docs/registry-consumer-reads.md) for
-selection, version ordering and cursor contracts, and the
-[offline migration guide](docs/registry-exposure-migration.md) for existing-data
-review, backups and rollback restrictions.
+Use the [embedding guide](docs/registry-embedding-validation.md) to choose focused
+components and find contract/conformance tests.
 
 ## Core concepts
 
@@ -151,7 +135,7 @@ A **source** is a connection to where MCP server, skill, and plugin entries live
 | **Git**        | Clones entries from a Git repo      | A version-controlled internal catalog                        | Auto         |
 | **File**       | Reads from the local filesystem     | A curated `registry.json` on disk                            | Auto         |
 | **Managed**    | Entries published via the Admin API | Dynamically registered internal servers                      | On-demand    |
-| **Kubernetes** | Discovers deployed MCP servers      | Servers running in your K8s clusters                         | On-demand    |
+| **Kubernetes** | Discovers deployed MCP servers      | Servers running in your K8s clusters                         | Watch + periodic reconcile |
 
 A **registry** is a named catalog that aggregates one or more sources into a single consumer-facing endpoint. Each registry aggregates sources into an organizational view, not a separate access-control boundary. Sources are listed in order -- when the same entry appears in multiple sources, the first source in the list wins.
 
@@ -226,7 +210,7 @@ ToolHive-specific endpoints for managing sources, registries, and entries:
 
 - `GET /v1/registries` - List all configured registries with status
 - `GET /v1/registries/{name}` - Get registry details and sync status
-- `GET /v1/registries/{name}/entries` - List unshadowed version diagnostics
+- `GET /v1/registries/{name}/entries` - Complete diagnostics from all linked sources, including shadowed duplicate versions
 - `PUT /v1/registries/{name}` - Create or update a registry
 - `DELETE /v1/registries/{name}` - Delete a registry
 
@@ -280,6 +264,8 @@ sources:
   - name: local
     file:
       path: /data/registry.json
+    syncPolicy:
+      interval: "5m"
 
 registries:
   - name: my-registry
@@ -308,13 +294,6 @@ database:
   database: registry
 ```
 
-### Complete guides
-
-- **[Configuration reference](docs/configuration.md)** - Complete configuration options
-- **[Environment variables](docs/environment-variables.md)** - Using environment variables for configuration
-- **[Database setup](docs/database.md)** - PostgreSQL configuration, migrations, and security
-- **[Authentication](docs/authentication.md)** - OAuth/OIDC setup and security
-
 ## The ToolHive platform
 
 The Registry Server can be deployed standalone or as part of the full [ToolHive](https://github.com/stacklok/toolhive) platform. Together, the platform components cover the full MCP lifecycle:
@@ -328,21 +307,18 @@ See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for the co
 
 ## Documentation
 
-- **[Configuration reference](docs/configuration.md)** - All configuration options
-- **[Environment variables](docs/environment-variables.md)** - Environment variable overrides
-- **[Database setup](docs/database.md)** - PostgreSQL setup and migrations
-- **[Authentication](docs/authentication.md)** - OAuth/OIDC security
-- **[Observability](docs/observability.md)** - OpenTelemetry tracing and metrics
-- **[Registry sync](docs/registry-sync.md)** - How background sync works
-- **[Registry component architecture](docs/component-architecture.md)** - Public packages, contracts and ownership
-- **[Registry models and formats](docs/registry-formats.md)** - Embed payload validation and response formatting without storage
-- **[Reusable ingestion and operator export](docs/registry-ingestion.md)** - Source adapters, leased coordination, and optional Kubernetes lifecycle
-- **[Definition persistence](docs/registry-persistence.md)** - Embeddable source and named-view definitions
-- **[Kubernetes deployment](docs/deployment-kubernetes.md)** - K8s deployment and HA
-- **[Docker deployment](docs/deployment-docker.md)** - Docker Compose setup
-- **[API documentation](docs/thv-registry-api/)** - Auto-generated OpenAPI docs
-- **[CLI reference](docs/cli/)** - Command-line interface docs
-- **[Examples](examples/)** - Working configuration examples
+| Task | Start here | Focused references |
+| --- | --- | --- |
+| Deploy a new instance | [Docker/Compose](docs/deployment-docker.md) or [Kubernetes/Helm](docs/deployment-kubernetes.md) | [Database setup](docs/database.md), [configuration](docs/configuration.md), [environment overrides](docs/environment-variables.md), [configuration examples](examples/README.md) |
+| Upgrade an existing catalog | [Offline exposure migration](docs/registry-exposure-migration.md) | [Standalone preparation and lifecycle](docs/registry-standalone-assembly.md), [CLI reference](docs/cli/thv-registry-api.md) |
+| Call the HTTP API | [OpenAPI reference](docs/thv-registry-api/swagger.yaml) | [OAuth authentication](docs/authentication.md), [Cedar admission](docs/registry-cedar-authorization.md), [consumer HTTP](docs/registry-consumer-http.md), [admin HTTP](docs/registry-admin-http.md) |
+| Embed in a Go host | [Runnable mTLS catalog tutorial](examples/embedding/README.md), then [composition guide](docs/registry-embedding-validation.md) | [Architecture](docs/component-architecture.md), [models/formats](docs/registry-formats.md), [consumer reads](docs/registry-consumer-reads.md), [persistence](docs/registry-persistence.md), [leased jobs](docs/registry-persistence-jobs.md), [ingestion/operator](docs/registry-ingestion.md), [definition administration](docs/registry-definition-administration.md), [publication/diagnostics](docs/registry-publication-diagnostics.md) |
+| Operate and troubleshoot | [Observability](docs/observability.md) | [Background synchronization](docs/registry-sync.md), [database operation](docs/database.md) |
+| Develop and verify | [Contributing](CONTRIBUTING.md) | [Contract tests and isolated acceptance](docs/registry-contract-tests.md) |
+
+Generate code before tests: `task gen`, then `task test`. To compile and smoke-test
+the embedding tutorial without a database, run `go test -race ./examples/embedding`
+after generation.
 
 ## Contributing
 

@@ -22,7 +22,7 @@ type ViewAdmin interface{ persistence.Views }
 // EntryPublisher publishes/removes exact versions in the singleton managed source.
 type EntryPublisher interface{ persistence.ManagedPublisher }
 
-// AdminDiagnostics supplies complete unshadowed projections and safe job status.
+// AdminDiagnostics supplies complete raw projections and safe job status.
 // It is deliberately not ConsumerPages, job mutation or readiness.
 type AdminDiagnostics interface {
 	persistence.EntryDiagnostics

@@ -11,6 +11,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestQuickstartDatabaseRoles(t *testing.T) {
+	examples, err := filepath.Abs(filepath.Join("..", "..", "examples"))
+	require.NoError(t, err)
+	t.Parallel()
+	for _, name := range []string{"file", "git", "oauth", "complete", "database-dev"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := LoadConfig(WithConfigPath(filepath.Join(examples, "config-"+name+".yaml")))
+			require.NoError(t, err)
+			require.Equal(t, "thv_user", cfg.Database.User)
+			require.Equal(t, "thv_migrator", cfg.Database.GetMigrationUser())
+			require.NoError(t, cfg.ValidateCatalogCutover())
+		})
+	}
+}
+
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

@@ -45,7 +45,7 @@ and [admin HTTP](registry-admin-http.md) for signatures, routes and error mappin
   singleton managed source, not a view or an external source.
 - **Whole-name priority.** The earliest view source wins every version of a
   `(kind, name)` before search, version/latest selection or pagination. Diagnostics
-  show unshadowed versions. HTTP preserves the supplied page's order and supported
+  show every source's versions, including shadowed duplicates. HTTP preserves the supplied page's order and supported
   cursor metadata; it never filters, deduplicates or refills it. Cursors do not
   promise snapshot isolation across requests.
 - **Exact versions.** Stored spellings remain exact. `model.CompareVersions` orders

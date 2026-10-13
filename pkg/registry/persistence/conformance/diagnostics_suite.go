@@ -32,7 +32,7 @@ type TiedDiagnosticPositionFactory func(*testing.T) (
 	func(context.Context, string) error,
 )
 
-// RunDiagnostics checks complete, unshadowed diagnostic projections independently
+// RunDiagnostics checks complete raw diagnostic projections independently
 // of consumer dedup. Backends must use one snapshot for definitions/links/rows.
 //
 //nolint:gocyclo // Independent cases exercise complete multi-kind listing and consistency semantics.

@@ -201,7 +201,8 @@ func docUpsertSource() {}
 // @Router /v1/sources/{name} [delete]
 func docDeleteSource() {}
 
-// @Summary List unshadowed source version diagnostics
+// @Summary List complete source version diagnostics
+// @Description Every stored source version; no consumer deduplication or pagination.
 // @Tags sources
 // @Produce json
 // @Security BearerAuth
@@ -254,7 +255,8 @@ func docUpsertView() {}
 // @Router /v1/registries/{name} [delete]
 func docDeleteView() {}
 
-// @Summary List unshadowed view version diagnostics
+// @Summary List complete view version diagnostics
+// @Description Every version from every linked source, including shadowed duplicates; no consumer deduplication or pagination.
 // @Tags registries
 // @Produce json
 // @Security BearerAuth

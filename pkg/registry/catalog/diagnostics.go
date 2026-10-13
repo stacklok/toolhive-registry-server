@@ -6,7 +6,7 @@ import (
 
 //go:generate mockgen -destination=mocks/administration.go -package=mocks github.com/stacklok/toolhive-registry-server/pkg/registry/persistence ManagedPublisher,EntryDiagnostics,SourceStatusReader
 
-// Diagnostics exposes raw unshadowed versions and sanitized job status, not
+// Diagnostics exposes complete raw versions and sanitized job status, not
 // consumer selection, source configuration, readiness or job mutation. Hosts own
 // authorization. Status is authoritative for its own SourceID; separate calls
 // do not promise an atomic definition/status observation.

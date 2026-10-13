@@ -17,7 +17,7 @@ sources:
     file:
       # Path to the registry.json file (absolute or relative)
       # Can be a mounted ConfigMap, downloaded file, or any JSON file
-      path: ./data/registry.json
+      path: ./examples/upstream-registry.json
 
     # Per-registry automatic synchronization policy
     syncPolicy:
@@ -71,6 +71,7 @@ database:
   host: localhost
   port: 5432
   user: thv_user
+  migrationUser: thv_migrator
   database: toolhive_registry
   # For development, disable SSL (NOT for production!)
   sslMode: disable

@@ -124,72 +124,36 @@ task gen
 task test
 
 # Run specific test
-go test ./internal/service/... -v
+go test ./pkg/registry/httpapi/... -v
 ```
 
 The project uses table-driven tests with mocks generated via `go.uber.org/mock`.
 
 #### Architecture
 
-The server follows clean architecture with clear separation of concerns:
-
-```text
-┌─────────────────────────────────────────────┐
-│  API Layer (Chi Router)                     │
-│  ├─ Registry API v0.1                       │
-│  ├─ Admin API v1                            │
-│  └─ OAuth/OIDC Middleware                   │
-└─────────────────────────────────────────────┘
-                    │
-┌─────────────────────────────────────────────┐
-│  Service Layer (RegistryService)            │
-│  └─ PostgreSQL backend                      │
-└─────────────────────────────────────────────┘
-                    │
-┌─────────────────────────────────────────────┐
-│  Data Source Layer                          │
-│  ├─ Git Handler                             │
-│  ├─ API Handler                             │
-│  ├─ File Handler                            │
-│  ├─ Managed Handler                         │
-│  └─ Kubernetes Handler                      │
-└─────────────────────────────────────────────┘
-                    │
-┌─────────────────────────────────────────────┐
-│  Sync Layer (Background Coordinator)        │
-└─────────────────────────────────────────────┘
-```
+The public [component architecture](docs/component-architecture.md) separates
+HTTP adapters, small catalog capabilities and persistence contracts. Standalone
+adds verified OAuth, Cedar admission, exposure preparation and leased worker
+supervision; embedders own their host's admission and lifecycle. See the
+[runnable embedding tutorial](examples/embedding/README.md) for a complete host.
 
 #### Project structure
 
 ```text
-cmd/thv-registry-api/    # Main application
-├── app/                 # CLI commands (serve, migrate, prime-db, version)
-└── main.go
-
-internal/                # Internal packages
-├── api/                 # HTTP API handlers
-├── app/                 # Application builder and startup
-├── audit/               # SIEM-compliant audit logging
-├── auth/                # OAuth/OIDC authentication
-├── authz/               # JWT claim-based authorization
-├── config/              # Configuration loading
-├── db/                  # Database access (sqlc generated)
-├── filtering/           # Registry entry filtering
-├── kubernetes/          # Kubernetes reconciler for K8s sources
-├── registry/            # Registry data models
-├── service/             # Business logic
-├── sources/             # Data source handlers (Git, API, File, Managed)
-├── sync/                # Background sync coordination
-├── telemetry/           # OpenTelemetry integration
-└── validators/          # Input validation
-
-database/                # Database schema and queries
-├── migrations/          # SQL migrations
-└── queries/             # SQL queries for sqlc
-
-examples/                # Example configurations
-docs/                    # Documentation
+cmd/thv-registry-api/    # CLI and standalone composition
+pkg/registry/           # Public model/formats, persistence, catalog, HTTP,
+                        # ingestion/reconciliation, operator and PostgreSQL adapter
+internal/app/           # Standalone preparation and lifecycle
+internal/api/           # Cedar admission, audit, probes and tombstones
+internal/auth/          # Verified OAuth identity
+internal/authorization/ # Instance/action Cedar policies
+internal/config/        # YAML/env and offline compatibility
+internal/db/            # SQL plumbing and exposure receipts
+internal/sync/          # Standalone supervision and transactional writer
+internal/kubernetes/    # Standalone client and export preflight
+database/               # Historical migrations and sqlc queries
+examples/               # Configurations and runnable Go embedding
+docs/                   # Documentation
 ```
 
 #### Development guidelines

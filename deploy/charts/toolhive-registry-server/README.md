@@ -12,15 +12,20 @@ A Helm chart for deploying the ToolHive Registry Server - the central metadata h
 
 ## TL;DR
 
+Prepare a complete operator-owned values file using the authoritative
+[Kubernetes deployment guide](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/deployment-kubernetes.md).
+It covers PostgreSQL roles, readable credentials, a current-runtime image, trusted
+OAuth, optional custom Cedar and separate new/existing catalog procedures. Defaults
+alone are not a deployable database/authentication configuration.
+
+From the matching source checkout:
+
 ```console
-helm upgrade -i toolhive-registry-server oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server -n toolhive-system --create-namespace --values operator-values.yaml
+helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server -n toolhive-system --create-namespace --values operator-values.yaml
 ```
 
-Or for a custom values file:
-
-```consoleCustom
-helm upgrade -i toolhive-registry-server oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server -n toolhive-system --create-namespace --values values-custom.yaml
-```
+For a published chart, pin a chart version compatible with your selected runtime
+image; do not assume a historical published chart/image includes this runtime.
 
 ## Prerequisites
 
@@ -66,8 +71,7 @@ ConfigMap does not automatically change the running evaluator. Drain old replica
 when revoking access. See the
 [Cedar guide](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-cedar-authorization.md)
 and [offline exposure procedure](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-exposure-migration.md)
-before upgrading. Both ct fixtures opt in only for their disposable database: one
-exercises the built-in policy, one the optional deny-all mount. Policy is not exposure consent.
+before upgrading. Policy is not exposure consent.
 
 ### Installing from the Chart
 
@@ -77,14 +81,14 @@ Install one of the available versions:
 helm upgrade -i <release_name> oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server --version=<version> -n toolhive-system --create-namespace --values operator-values.yaml
 ```
 
-> **Tip**: List all releases using `helm list`
+> **Tip**: List releases in this namespace using `helm list -n toolhive-system`
 
 ### Uninstalling the Chart
 
 To uninstall/delete the `toolhive-registry-server` deployment:
 
 ```console
-helm uninstall <release_name>
+helm uninstall <release_name> -n toolhive-system
 ```
 
 The command removes all the Kubernetes components associated with the chart and deletes the release. You will have to delete the namespace manually if you used Helm to create it.
@@ -100,14 +104,19 @@ scrapers only.
 This does not expose the internal port outside the cluster (the default Service `type`
 is `ClusterIP`), but with the default Service type any pod elsewhere in the cluster can
 reach it, not just the registry server's own pod. If your cluster does not already treat
-all in-cluster workloads as equally trusted, restrict the internal port to your metrics
-scraper and probe traffic with a NetworkPolicy, e.g.:
+all in-cluster workloads as equally trusted, restrict ingress with a NetworkPolicy.
+Ingress isolation applies to **all ports**, so a standalone policy must allow 8080
+clients separately from 8081 monitoring. Customize namespace/pod labels for your
+actual ingress controller and scraper; this example allows only those callers.
+Kubelet probes reach the pod directly; confirm your CNI's node/probe behavior.
+Other policies selecting these pods can add permissions (policies are additive).
 
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: toolhive-registry-server-internal
+  name: toolhive-registry-server-ingress
+  namespace: toolhive-system
 spec:
   podSelector:
     matchLabels:
@@ -118,7 +127,20 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: controller
+      ports:
+        - port: 8080
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
               kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
       ports:
         - port: 8081
           protocol: TCP

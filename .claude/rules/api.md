@@ -47,7 +47,8 @@ hashed verified attribution, request logging and transport/security headers.
 
 The earliest view source wins all versions of `(kind,name)` before search/version/latest/
 pagination. No claims-based promotion of a lower source. Admin diagnostics retain
-unshadowed source/version data rather than consumer deduplication.
+complete source/view version data, including shadowed duplicates, rather than
+consumer deduplication.
 
 ## 6. Trust-Boundary Validation
 

@@ -1,532 +1,223 @@
-# Docker Deployment
+# Docker deployment
 
-This guide covers deploying the ToolHive Registry API server using Docker and Docker Compose.
+Use the repository's Compose setup for local development. It builds the current
+source and includes PostgreSQL; it is not a production credential or TLS setup.
+Run the commands below from the repository root with Docker Compose v2.
 
-## Table of Contents
+## Compose: prepare configuration
 
-- [Docker](#docker)
-- [Docker Compose](#docker-compose)
-- [Production Considerations](#production-considerations)
-- [Troubleshooting](#troubleshooting)
+1. Install Docker/Compose and allow enough disk space for a Go image build and
+   persistent PostgreSQL data.
+2. In [examples/config-docker.yaml](../examples/config-docker.yaml), replace the
+   OAuth provider's `issuerUrl` and `audience` with your trusted IdP settings.
+   Admin stays off. Built-in allow-all Cedar admits authenticated users without
+   group mappings. If you add mappings for a custom policy, their issuer must
+   match a configured provider exactly.
+3. Keep the supplied database host `postgres`, users `db_app`/`db_migrator`,
+   database `registry`, and file path `/examples/upstream-registry.json` for this
+   development setup. `CONFIG_FILE` selects another file under `/examples` in
+   Compose; it is not a registry CLI environment variable.
 
-## Docker
+[The Compose file](../docker-compose.yaml) mounts `examples` read-only and stores
+PostgreSQL in `postgres_data`. The development image embeds test passwords in
+`/home/appuser/.pgpass`, owned by UID 1001 with mode 0600. The PostgreSQL init
+script creates the matching roles **only when its data directory is empty**.
+Existing volumes are preserved; rebuilding does not recreate database users.
+Public API, internal probes, and PostgreSQL host mappings are loopback-only.
 
-### Building the Image
+For an optional custom Cedar replacement, use the read-only mount instructions
+in [configuration](configuration.md#standalone-cedar-admission-required).
+The file replaces the built-in policy completely. Keep the same final config,
+policy bytes, source paths and DB target during existing-data review.
 
-Build from source:
+## Compose: new, entirely empty database
 
-```bash
-# Using Task
-task build-image
+Only when this deployment's PostgreSQL catalog is genuinely new and entirely
+empty, use the supplied explicit initialization override:
 
-# Or using Docker directly
-docker build -t ghcr.io/stacklok/toolhive/thv-registry-api:latest .
+```sh
+docker compose -f docker-compose.yaml -f docker-compose.initialize-empty.yaml config --quiet
+docker compose -f docker-compose.yaml -f docker-compose.initialize-empty.yaml up --build -d
 ```
 
-### Running with Docker
+This adds `serve --initialize-empty`; it neither deletes data nor approves an
+existing catalog. It is safe on same-target restarts after consumption. The base
+Compose command and Task lifecycle commands deliberately do not add it.
 
-#### Git Source
+## Compose: existing database
 
-```bash
-docker run -d \
-  --name registry-api \
-  -p 8080:8080 \
-  -v $(pwd)/examples:/config:ro \
-  ghcr.io/stacklok/toolhive/thv-registry-api:latest \
-  serve --config /config/config-git.yaml
+For a catalog already running the current runtime with a consumed same-target
+receipt and clean schema 30, preserve its final config and credentials and start
+normally:
+
+```sh
+docker compose config --quiet
+docker compose up --build -d
 ```
 
-#### File Source
+For a historical catalog, **do not start the new server yet**:
 
-```bash
-docker run -d \
-  --name registry-api \
-  -p 8080:8080 \
-  -v $(pwd)/examples:/config:ro \
-  -v $(pwd)/data/registry.json:/data/registry.json:ro \
-  ghcr.io/stacklok/toolhive/thv-registry-api:latest \
-  serve --config /config/config-file.yaml
+1. Stop and drain all readers, writers, sync workers, controllers and embedding
+   applications; prevent automatic restarts. `docker compose stop registry-api`
+   stops only this deployment, not other users of the database.
+2. Take and verify a full database, roles, config and policy backup; see
+   [database recovery](database.md#backup-and-recovery).
+3. Complete the [offline exposure procedure](registry-exposure-migration.md#maintenance-procedure)
+   with the current binary and the exact final config. Stop at schema 29,
+   inventory, explicitly acknowledge whole-catalog exposure, retire claims,
+   finalize offline, then migrate forward to 30. No old/new writer overlap or
+   generic rolling migration job is supported.
+4. Start base Compose as above, without the initialization override for first
+   existing-data receipt consumption. Never point an old binary at schema 30.
+
+To run the guide's offline CLI commands in the Compose network, first build the
+image and ensure PostgreSQL is available without starting the API:
+
+```sh
+# Base Compose: explicitly choose the same CONFIG_FILE as serving (default shown).
+export CONFIG_FILE=config-docker.yaml
+REGISTRY_CONFIG_PATH="/examples/${CONFIG_FILE}"
+docker compose build registry-api
+docker compose up -d postgres
+docker compose run --rm --no-deps registry-api \
+  migrate up --config "${REGISTRY_CONFIG_PATH}" --to-version 29 --yes
 ```
 
-#### With Database
+Replace the `migrate up ...` arguments with each reviewed offline command from
+that guide, always passing `--config "${REGISTRY_CONFIG_PATH}"` to inventory,
+acknowledgement, retirement, finalization and migration. This shell variable is
+an explicit **container path**, not an automatically resolved CLI setting.
+`CONFIG_FILE` defaults to `config-docker.yaml` and selects a file under `/examples`
+only in base Compose's serving command. Replace the exported filename above with
+your selected file; if you selected it in Compose's `.env`, copy that value here
+explicitly (`.env` does not populate your shell). Keep this exported selection for
+all maintenance and serving commands.
 
-```bash
-# Create pgpass file with database credentials
-cat > ~/.pgpass <<EOF
-postgres:5432:registry:db_app:app_password
-EOF
-chmod 600 ~/.pgpass
+`run` retains the service's config/data mounts and pgpass environment, but replaces
+its `command` and does not publish service ports. For a custom override mounting
+configuration at `/etc/registry/config.yaml` and setting the serving command to
+use that path, use this variant for maintenance:
 
-docker run -d \
-  --name registry-api \
-  -p 8080:8080 \
-  -v $(pwd)/examples:/config:ro \
-  -v ~/.pgpass:/root/.pgpass:ro \
-  -e PGPASSFILE=/root/.pgpass \
-  ghcr.io/stacklok/toolhive/thv-registry-api:latest \
-  serve --config /config/config-database-dev.yaml
+```sh
+REGISTRY_CONFIG_PATH=/etc/registry/config.yaml
+docker compose -f docker-compose.yaml -f operator.override.yaml build registry-api
+docker compose -f docker-compose.yaml -f operator.override.yaml up -d postgres
+docker compose -f docker-compose.yaml -f operator.override.yaml run --rm --no-deps registry-api \
+  migrate up --config "${REGISTRY_CONFIG_PATH}" --to-version 29 --yes
 ```
 
-### Docker Run Options
+Use your actual override filename and mounted path. Pass those same `-f` files and
+explicit `--config` path to **every** offline command, including inventory and
+finalization, and use the same overrides when serving. An override's serving
+`command` does not select configuration for `run` when CLI arguments replace it.
+Keep policy/environment overrides and the database host spelling unchanged between
+review and serving. Do not run these migration commands on a live catalog.
 
-Common options:
+## Verify and manage Compose
 
-```bash
-docker run \
-  -d                                    # Run in background
-  --name registry-api                   # Container name
-  -p 8080:8080                         # Port mapping
-  -v $(pwd)/config:/config:ro          # Config volume (read-only)
-  -v ~/.pgpass:/root/.pgpass:ro        # Mount pgpass file
-  -e PGPASSFILE=/root/.pgpass          # Point to pgpass file
-  --restart unless-stopped              # Restart policy
-  --health-cmd='curl -f http://localhost:8080/health || exit 1' \
-  --health-interval=30s                 # Health check
-  --health-timeout=3s \
-  --health-retries=3 \
-  ghcr.io/stacklok/toolhive/thv-registry-api:latest \
-  serve --config /config/config.yaml
+Obtain a token for the configured issuer/audience. Store the line
+`Authorization: Bearer <access-token>` in a private mode-0600 file outside the
+repository; set `AUTH_HEADER_FILE` to its absolute path. No token is required for
+internal probes.
+
+```sh
+docker compose ps
+docker compose logs registry-api
+curl --fail http://localhost:8081/health
+curl --fail http://localhost:8081/readiness
+curl --fail-with-body --header "@${AUTH_HEADER_FILE:?Set a private header file}" \
+  http://localhost:8080/registry/default/v0.1/servers
 ```
 
-## Docker Compose
+`/health`, `/readiness`, `/version`, and enabled `/metrics` exist **only on 8081**.
+Keep that unauthenticated listener off public proxies. See
+[observability](observability.md) for telemetry configuration.
 
-A complete Docker Compose setup is provided that includes PostgreSQL and the API server with automatic migrations.
+Normal lifecycle commands preserve named volumes:
 
-### Quick Start
-
-**Recommended: Use Task commands for fresh state**
-
-```bash
-# Start with fresh state (rebuilds image, clears volumes)
-task docker-up
-
-# Or detached mode
-task docker-up-detached
-
-# View logs
-task docker-logs           # All logs
-FOLLOW=true task docker-logs  # Tail logs
-
-# Stop and clean up
-task docker-down
+```sh
+task docker-up           # compose up --build, attached
+task docker-up-detached  # compose up --build -d
+task docker-logs
+task docker-down         # compose down, no volume removal
 ```
 
-**Alternative: Direct docker-compose**
+These Task commands use base Compose only. For a new install use the explicit
+override above; for a custom override continue to use its `docker compose -f ...`
+commands. To stop without removing containers, use `docker compose stop`.
+Use a separate new catalog when you need an empty environment. Never remove
+volumes as routine upgrade or troubleshooting hygiene.
 
-```bash
-# Start services (may have stale state)
-docker-compose up
+Changing source/config or frozen policy files requires restarting the API; changing
+a source file's contents is detected on its configured polling interval. Leased
+snapshots and sync state live in PostgreSQL, not an independently disposable cache.
 
-# For fresh start, you must manually rebuild and clean:
-docker-compose down -v && docker-compose up --build
+## Images and standalone containers
+
+Published images use **`ghcr.io/stacklok/thv-registry-api`**. Select a tag/digest
+verified to contain the current catalog runtime; do not assume a published `latest`
+contains this branch. For a source build with an explicit local tag:
+
+```sh
+docker build --platform linux/amd64 -t thv-registry-api:local .
 ```
 
-> **Important:** The `task docker-up` commands automatically ensure fresh state by:
-> - Rebuilding the registry-api image from source
-> - Clearing the postgres_data volume (fresh database)
-> - Clearing the registry_data volume (no cached sync state)
->
-> This prevents subtle bugs from stale migrations, old code, or cached data.
+This root Dockerfile hardcodes `GOARCH=amd64`: build and run it as **linux/amd64**,
+using emulation if your host is not AMD64. Deploy this image only to compatible
+Kubernetes nodes (`kubernetes.io/arch: amd64`), not native ARM64 nodes. It runs as
+UID 1001. In contrast, `task build-image` runs
+`ko build --local -B` with default `REPO=ghcr.io/stacklok/toolhive-registry-server`;
+use the image reference ko actually prints. It does not automatically create
+`thv-registry-api:local` or a published release tag. Compose uses its own
+[development Dockerfile](../docker/dockerfile-compose), which sets `GOOS=linux`
+but does not hardcode `GOARCH`; it builds for the selected builder platform.
 
-### Architecture
+A standalone container needs an already provisioned PostgreSQL endpoint, final
+config with paths valid inside the container, and credentials. Use a pgpass file
+with entries matching **that config's** host, port, database and both users.
+Prepare a deployment-only copy owned by UID 1001, mode 0600, in a traversable
+host directory; do not mount a user's private file under `/root`. With rootless
+engines use the engine's UID mapping when preparing ownership. Verify readability
+as the actual container user, never broaden pgpass permissions to fix access.
 
-The `docker-compose.yaml` includes two services:
-
-1. **postgres** - PostgreSQL 18 database server
-2. **registry-api** - Main API server (runs migrations automatically on startup)
-
-**Service startup flow:**
-```
-postgres (healthy) → registry-api (runs migrations, then starts)
-```
-
-### Configuration
-
-Default setup uses:
-- **Config file**: `examples/config-docker.yaml`
-- **Sample data**: `examples/registry-sample.json`
-- **Database passwords**: Managed via pgpass file (`docker/pgpass`) mounted into the container
-  - `PGPASSFILE` environment variable points to the mounted pgpass file
-  - Contains credentials for both application and migration users
-
-### Docker Compose File
-
-The complete `docker-compose.yaml` in the repository root demonstrates:
-
-- Database-backed registry storage
-- Separate users for migrations and operations
-- Automatic schema migrations on startup
-- Limited database privileges (principle of least privilege)
-- File-based data source (for demo purposes)
-- Proper service dependencies and health checks
-
-### Accessing the API
-
-Once running, the API is available at http://localhost:8080
-
-```bash
-# List all servers
-curl http://localhost:8080/registry/v0.1/servers
-
-# Get specific server version
-curl http://localhost:8080/registry/v0.1/servers/example%2Ffilesystem/versions/latest
-
-# Health check
-curl http://localhost:8080/health
+```sh
+docker run --platform linux/amd64 -d --name registry-api \
+  -p 127.0.0.1:8080:8080 -p 127.0.0.1:8081:8081 \
+  --mount "type=bind,src=${REGISTRY_CONFIG_DIR:?Set absolute config directory},dst=/config,readonly" \
+  --mount "type=bind,src=${PGPASS_PATH:?Set prepared absolute pgpass path},dst=/run/pgpass,readonly" \
+  -e PGPASSFILE=/run/pgpass \
+  thv-registry-api:local serve --config /config/config.yaml
 ```
 
-### Customization
+Add `--initialize-empty` only for a new empty catalog; otherwise perform the offline
+upgrade first. Source files, optional policy, CA certificates and secret files must
+also be mounted at the absolute paths configured. The production image need not
+contain curl or a shell; probe from the host or orchestration layer.
 
-#### Using Your Own Registry Data
+## Credentials and production operation
 
-1. Edit `examples/registry-sample.json` with your MCP servers
-2. Or change the source configuration in `examples/config-docker.yaml`
-3. Restart: `docker-compose restart registry-api`
+The supplied Compose passwords and baked pgpass are for development only. Editing
+`docker/pgpass` does not change the image's embedded file; changing
+`POSTGRES_PASSWORD` or the init script does not rotate roles in an existing volume.
+Do not recreate/delete a database to rotate passwords. Use an administrative DB
+connection to change the real roles, then securely replace mounted consumer
+credentials and restart consumers as described in
+[database password rotation](database.md#password-rotation).
 
-#### Using Git Source
-
-Update `examples/config-docker.yaml`:
-
-```yaml
-sources:
-  - name: toolhive
-    git:
-      repository: https://github.com/your-org/your-repo.git
-      branch: main
-      path: path/to/registry.json
-    syncPolicy:
-      interval: "30m"
-
-registries:
-  - name: default
-    sources: ["toolhive"]
-```
-
-Restart:
-```bash
-docker-compose restart registry-api
-```
-
-#### Changing Database Credentials
-
-1. Update the pgpass file (`docker/pgpass`) with new credentials:
-
-```bash
-# Edit docker/pgpass
-postgres:5432:registry:db_app:new-app-password
-postgres:5432:registry:db_migrator:new-migration-password
-```
-
-2. Update PostgreSQL superuser password in `docker-compose.yaml`:
-
-```yaml
-postgres:
-  environment:
-    - POSTGRES_PASSWORD=new-postgres-password
-```
-
-3. Recreate services:
-```bash
-docker-compose down
-docker-compose up -d
-```
-
-### Database Access
-
-The Docker Compose setup creates three database users:
-
-- `registry`: Superuser (for administration)
-- `db_migrator`: Migration user with schema modification privileges
-- `db_app`: Application user with limited data access privileges
-
-#### Connecting to PostgreSQL
-
-```bash
-# As superuser (for administration)
-docker exec -it toolhive-registry-postgres psql -U registry -d registry
-
-# As application user
-docker exec -it toolhive-registry-postgres psql -U db_app -d registry
-
-# From host machine
-PGPASSWORD=registry_password psql -h localhost -U registry -d registry
-PGPASSWORD=app_password psql -h localhost -U db_app -d registry
-```
-
-#### Database Backup
-
-```bash
-# Backup database
-docker exec toolhive-registry-postgres pg_dump -U registry registry > backup.sql
-
-# Restore database
-docker exec -i toolhive-registry-postgres psql -U registry registry < backup.sql
-```
-
-### Advanced Docker Compose
-
-#### Custom docker-compose.override.yaml
-
-Create `docker-compose.override.yaml` for local customizations:
-
-```yaml
-version: '3.8'
-
-services:
-  registry-api:
-    environment:
-      - DEBUG=true
-    ports:
-      - "9090:8080"  # Different port
-    volumes:
-      - ./my-config.yaml:/config/config.yaml:ro
-
-  postgres:
-    ports:
-      - "5433:5432"  # Expose on different port
-```
-
-Docker Compose automatically merges override files.
-
-#### Production-like Setup
-
-Create `docker-compose.prod.yaml`:
-
-```yaml
-version: '3.8'
-
-services:
-  registry-api:
-    restart: always
-    deploy:
-      replicas: 2
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 40s
-
-  postgres:
-    restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U registry"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  postgres-data:
-    driver: local
-```
-
-Run with:
-```bash
-docker-compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
-```
-
-#### With Authentication
-
-Update `examples/config-docker.yaml`:
-
-```yaml
-auth:
-  mode: oauth
-  oauth:
-    resourceUrl: https://registry.localhost
-    providers:
-      - name: my-idp
-        issuerUrl: https://auth.example.com
-        audience: api://registry
-```
-
-Add OAuth provider service to `docker-compose.yaml` if needed.
-
-## Production Considerations
-
-### Security
-
-1. **Don't use default passwords** in production
-2. **Use secrets management** (Docker Swarm secrets, external secret store)
-3. **Enable TLS** (use reverse proxy like Nginx or Traefik)
-4. **Enable authentication** (OAuth, not anonymous mode)
-5. **Limit network exposure** (don't expose database port)
-6. **Use read-only volumes** where possible
-
-### Persistence
-
-Important volumes to persist:
-
-```yaml
-volumes:
-  # Database data (critical!)
-  postgres-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /data/postgres
-
-  # Sync state (optional but recommended)
-  registry-data:
-    driver: local
-```
-
-### Logging
-
-Configure logging drivers:
-
-```yaml
-services:
-  registry-api:
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-```
-
-Or use centralized logging:
-
-```yaml
-logging:
-  driver: "syslog"
-  options:
-    syslog-address: "tcp://logs.example.com:514"
-    tag: "registry-api"
-```
-
-### Monitoring
-
-Add monitoring services:
-
-```yaml
-services:
-  prometheus:
-    image: prom/prometheus:latest
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
-
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-```
-
-### Reverse Proxy
-
-Use Nginx or Traefik for TLS termination:
-
-```yaml
-services:
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./certs:/etc/nginx/certs:ro
-    depends_on:
-      - registry-api
-```
+For production, use separate limited runtime and schema-owning migration users,
+external read-only credentials rather than this development image, PostgreSQL TLS,
+verified backups and trusted TLS ingress on **8080 only**. Do not publish PostgreSQL
+or 8081 externally. [Database setup](database.md#setup-guide) and
+[authentication](authentication.md) describe the required inputs.
 
 ## Troubleshooting
 
-### Container Won't Start
-
-Check logs:
-```bash
-docker-compose logs registry-api
-docker logs registry-api
-```
-
-Common issues:
-- Configuration file not found or malformed
-- Environment variables not set
-- Database connection failure
-- Port already in use
-
-### Database Connection Failed
-
-Verify database is running:
-```bash
-docker-compose ps postgres
-docker-compose logs postgres
-```
-
-Test connection:
-```bash
-docker exec toolhive-registry-postgres pg_isready -U registry
-```
-
-### Slow Startup
-
-The first startup may be slow due to:
-- Database migrations running
-- Initial Git clone (if using Git source)
-- Docker image download
-
-Monitor progress:
-```bash
-docker-compose logs -f registry-api
-```
-
-### Port Already in Use
-
-Change port mapping in `docker-compose.yaml`:
-```yaml
-ports:
-  - "8081:8080"  # Use 8081 instead of 8080
-```
-
-Or in docker run:
-```bash
-docker run -p 8081:8080 ...
-```
-
-### Cannot Access from Host
-
-Check:
-1. Container is running: `docker ps`
-2. Port is exposed: `docker port registry-api`
-3. Firewall allows connection
-4. Using correct URL: `http://localhost:8080` (not `http://127.0.0.1:8080` on some systems)
-
-### Migrations Failing
-
-Run migrations manually:
-```bash
-docker-compose exec registry-api \
-  thv-registry-api migrate up --config /etc/registry/config.yaml
-```
-
-Check migration status:
-```bash
-docker-compose exec postgres \
-  psql -U registry -d registry -c "SELECT * FROM schema_migrations;"
-```
-
-## See Also
-
-- [Configuration Guide](configuration.md) - Complete configuration reference
-- [Database Setup](database.md) - Database configuration and migrations
-- [Authentication](authentication.md) - OAuth and security configuration
-- [Kubernetes Deployment](deployment-kubernetes.md) - Deploy on Kubernetes
+- **Startup refused:** inspect logs for invalid final config, missing exposure
+  evidence or dirty schema. Remain offline for migration recovery; never force a
+  schema version or use empty initialization to bypass review.
+- **DB authentication failed:** check the mounted file's ownership/mode and exact
+  host/database/user tuple. Do not dump environment variables or credential files.
+- **401/403:** verify issuer/audience and token expiry, then Cedar permission. A
+  healthy internal probe does not prove consumer admission.
+- **Not ready:** check database and initial operator snapshot failures. A failed
+  refresh preserves the last good snapshot, not an empty successful catalog.
