@@ -9,30 +9,22 @@ named catalog views. These are separate grants: publishers and operators who
 need to browse must also belong to `registry-readers`; no role automatically
 inherits consumer-read access.
 
-Cedar applies to both the consumer and admin APIs. In this admission slice,
-`catalog.read` admits a caller to every consumer list, get, version-list and
-latest-version endpoint in every named view. It is an endpoint admission
-decision, not per-view access or per-entry filtering.
+Cedar applies to both the consumer and admin APIs. `catalog.read` admits a caller
+to every consumer list, get, version-list and latest-version endpoint in every named
+view. It is an endpoint admission decision, not per-view access or per-entry filtering.
 
-**Status:** `serve` selects `internal/app.NewCatalogApp` and the public services,
-HTTP adapters and exclusively leased ingestion. Final retired-field validation,
-frozen Cedar, read-only source/operator preflight and serialized receipt consumption
-(offline finalization at 29, ordinary serving at clean 30) precede reconciliation/repair
-and both listeners. Permitted readers
-receive the same nonpersonalized catalog. Existing data requires the explicit
-[offline exposure procedure](registry-exposure-migration.md); startup never strips
-claims or automatically approves it. `--initialize-empty` is explicit new-install
-authorization only, disabled by default. Schema 30 removes live claims columns only
-after explicit historical finalization; archives and receipts remain.
+Permitted readers receive the same nonpersonalized catalog. Existing data requires
+the explicit [offline exposure procedure](registry-exposure-migration.md); startup
+never strips claims or automatically approves exposure. `--initialize-empty` is
+explicit new-install authorization only, disabled by default. See
+[standalone assembly](registry-standalone-assembly.md) for preparation and lifecycle.
 
-The examples below are parsed and strictly typechecked by tests against the
-embedded application schema using cedar-go v1.8.0's **experimental** validator.
-`TestOfficialReferenceParity` compares validation and evaluation with versioned
-fixtures actually executed using the official Rust `cedar-policy` **4.13.0** crate.
-The [pinned generator and provenance](../internal/authorization/testdata/reference/README.md)
-cover the shipped schema, examples and decision matrix, not every possible Cedar
-policy or language feature. Passing fixtures do not make the Go validator stable
-or eliminate independent security review.
+Policies use the [embedded application schema](../internal/authorization/schema.cedarschema)
+and cedar-go v1.8.0's **experimental** strict validator. The examples below are
+checked by `TestOfficialReferenceParity` against versioned official Rust
+`cedar-policy` 4.13.0 fixtures; see the
+[pinned generator](../internal/authorization/testdata/reference/README.md).
+That comparison covers the shipped schema and examples, not every Cedar feature.
 
 OAuth establishes identity; standalone always evaluates Cedar. With no custom
 `authorization.policyFile`, built-in allow-all Cedar admits every verified identity
@@ -43,12 +35,14 @@ missing evidence and evaluation diagnostics/errors deny. There is no standalone
 alternate engine/provider/plugin option and no policy editor or API.
 
 For the group-restricted catalog described here, explicitly supply the custom policy
-below: it replaces the default entirely, never unions with it. Claims-removal is not per-entry privacy: after explicit migration, finance
-and engineering readers querying the same view see the same catalog. If their data
+below: it replaces the default entirely, never unions with it. Whole-instance
+admission provides no per-entry privacy: finance and engineering readers querying
+the same view see the same catalog. If their data
 must remain separate, use host-owned personalized services or separate instances,
-not another Cedar group rule.
+not another Cedar group rule. See the [technical reference](registry-cedar-authorization-reference.md)
+for the implemented route/action boundary, identity projection and evaluation failures.
 
-## What would I configure?
+## Configure authorization
 
 1. Retain or configure your trusted OAuth IdP and registry audience. Have it issue
    a `groups` claim as an array of strings in the token used for registry access.
@@ -85,8 +79,7 @@ authorization:
         format: string-array
 ```
 
-Plain Cedar is the file format for this slice and supersedes the earlier JSON
-bundle recommendation. The absolute path must refer to a readable regular file
+Policy files contain plain Cedar. The absolute path must refer to a readable regular file
 of at most 1 MiB. Missing, empty, comment-only, syntax-invalid or schema-invalid
 files fail preflight before migrations in `serve`, and before storage/writer/operator
 construction in the app builder. An invalid explicit file never falls back to the
@@ -112,12 +105,12 @@ provider-established issuer; it still needs matching issuer and audience.
 Duplicate provider names/issuers and duplicate/unconfigured identity mappings
 are rejected. No provider attributes are inferred from unverified JWT parsing.
 
-## What does the policy look like?
+## Write a policy
 
 A principal is the caller, with identity attributes established by authentication.
 An action is the requested operation, such as browsing or publishing.
 The resource is the entire registry instance, always `Registry::Instance::"catalog"`,
-not an entry, source or view. These names follow the proposed registry schema.
+not an entry, source or view. These names are defined by the embedded registry schema.
 
 Put all three blocks in `policies.cedar`. Replace the issuer and group
 names with your IdP's exact values. Permits add grants; without a matching permit,
@@ -169,17 +162,15 @@ permit (
 | `/registry/{registryName}/v0.1/x/dev.toolhive/plugins` | List plugins, fetch a plugin's latest version, list versions, fetch an exact version |
 
 This includes each family's nested entry and version routes, for every named
-view selected by `{registryName}`. The singleton
-`Registry::Instance::"catalog"` means this proposed policy cannot grant one
-reader access to only one view. Once admitted, callers receive the ordinary
-consumer response for that view; this proposal adds no personalized filtering
-or per-view grants.
+view selected by `{registryName}`. The singleton `Registry::Instance::"catalog"`
+cannot express grants for individual views or entries. Once admitted, callers
+receive the same consumer response for that view.
 
 The issuer check prevents a same-named group from another provider granting access.
 `principal has groups` safely handles tokens without that optional attribute.
 Policy-file write access is security administration, separate from these API grants.
 
-## How would I start it and check access?
+## Start and verify access
 
 Mount `config.yaml` and `policies.cedar` read-only at `/etc/registry/`, with write
 access restricted to deployment administrators. Use TLS or a trusted TLS ingress.
@@ -205,9 +196,9 @@ or per-view Cedar grant.
 
 With admin enabled, `/v1/me` and both GET/PUT
 `/v1/entries/{type}/{name}/claims` are authenticated static 410 tombstones, with
-no service calls. Retagging via those endpoints is no longer available in this
-slice; inventory/backup and resolve entry claims on the legacy release before
-upgrading. Source/view resource claims are likewise retired and rejected by presence.
+no service calls. They cannot retag entries; use the
+[offline migration procedure](registry-exposure-migration.md#maintenance-procedure)
+to review and retire historical claims. Source/view resource claims are rejected by presence.
 With admin disabled the entire `/v1` surface is absent (404). Operational probes
 stay on the separate internal port. Unknown public URLs return 404, unsupported
 methods (including HEAD/OPTIONS for catalog routes) return 405 without calling
@@ -221,7 +212,7 @@ calling the catalog service. Server-side evaluation failure returns a safe gener
 (503 for evaluator unavailability, 500 for wiring faults), never partial data.
 Cedar admission decision events contain actor, action, decision and policy revision,
 not raw tokens, claims or policy contents. This is not a guarantee about all logs:
-the pre-existing opt-in `audit.includeRequestData` captures request bodies, including
+the opt-in `audit.includeRequestData` captures request bodies, including
 resource claims and any sensitive payload values, even on Cedar denials. Leave it
 disabled unless that exposure and the audit sink's access/retention are acceptable.
 Permission does not imply that a subsequent write succeeded.
@@ -244,45 +235,30 @@ authentication when enabled, even with anonymous browsing.
 
 ## Migration: a deliberate exposure decision
 
-Offline inventory, acknowledgement and explicit metadata archive-and-clear are
-implemented in the [migration guide](registry-exposure-migration.md). Only the
-explicit `retire-claims` command clears historical metadata; ordinary migrations,
-startup and reconciliation never do so. The new runtime consumes valid evidence
-after preflight. The legacy runtime is removed; private offline compatibility,
-historical migrations, archives and receipts remain. The same final binary finalizes
-historical format-1 evidence at 29 before forward cleanup removes live columns at 30.
+Follow the [offline migration procedure](registry-exposure-migration.md#maintenance-procedure)
+for inventory, acknowledgement, explicit claims retirement and finalization at schema
+29 before schema-30 cleanup. Only `retire-claims` archives and clears historical
+metadata; startup, reconciliation and ordinary migrations cannot approve exposure.
+Archives, receipts and version-1 fingerprint compatibility remain for offline tooling.
 
-This is a breaking upgrade, not a policy-file swap. Before upgrading, back up and
-inventory ALL old catalogs: sources, views, entries, retained snapshots and operator
-exports, including unlabelled data. Unlabelled data was also default-denied when
-legacy authorization was enabled, so "no claims" does not mean "safe to expose".
+This is a breaking upgrade, not a policy-file swap. Stop/drain all old readers and
+writers and verify a complete backup. Inventory every catalog, including unlabeled
+data: it was also default-denied under legacy authorization. No claims does not mean
+safe to expose. Decide whether the whole catalog can be shared with admitted readers
+or requires host-owned personalization or separate instances; resource claims cannot
+be automatically translated to equivalent whole-instance permissions.
 
-The operator decides whether the complete catalog may be shared with the new reader
-population, or whether to move data to host-owned personalization or separate
-instances. Staying on the legacy release remains an option. There is no automatic
-translation from old resource claims to equivalent whole-instance permissions.
+Prepare final config/policy and remediate retired fields and exported operator
+annotations before review. A changed pending review requires fresh inventory and
+acknowledgement, never silent receipt rebinding. `initialize-empty` applies only to
+an entirely empty new catalog. Do not restart old binaries after retirement; inspect
+unresolved receipt outcomes offline. Schema-30 rollback requires restoring a verified
+complete backup, not reconstructing claims from archives.
 
-Stop/drain old readers and writers. Prepare the **final** config/policy without
-retired fields before inventorying the historical database and acknowledging its
-whole-catalog exposure decision. Changing config invalidates an old acknowledgement;
-re-inventory and acknowledge, never silently rebind it. Then explicit offline
-`retire-claims` may archive/clear metadata against the pending post-fence digest.
-Fresh `initialize-empty` evidence needs no archive. The new startup consumes valid
-markers after the mandatory final-config/frozen-policy/source/operator preparation
-barrier. Startup never silently clears metadata. Resolve retired config/API claims
-and live operator annotations before cutover; do not restart legacy binaries after
-clearing. Inspect unresolved receipt outcomes offline or restore the verified backup.
+## Library hosts
 
-## Product questions
-
-These are deployment-owner checklist questions, not unresolved implementation choices
-or automatic exposure approval. The separate operator same-name cross-kind identity
-limitation is preserved and characterized; identity redesign is out of scope. See the
-[acceptance matrix](registry-embedding-validation.md).
-
-- Does whole-catalog operation permission meet the intended use, or is per-entry privacy required?
-- Is the first deployment private or publicly browsable, and who needs publisher versus operator access?
-- Is an operator-managed file with restart activation acceptable for policy changes?
-- Is an offline inventory, exposure decision and acknowledged migration an acceptable upgrade journey?
-
-The [technical reference](registry-cedar-authorization-reference.md) has optional investigation, schema, route, validation, migration and draft issue details.
+Cedar is mandatory for standalone, not for reusable packages. Library hosts own
+verified authentication, admission and personalized selection. They may supply
+`httpapi.Authorizer` through `Middleware`/`Decorate` without any Cedar dependency;
+undecorated routers are policy-free. See [embedding guidance](registry-embedding-validation.md)
+for the public contracts and executable host-authentication example.

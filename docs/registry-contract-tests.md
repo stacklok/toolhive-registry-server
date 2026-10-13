@@ -1,78 +1,92 @@
-# Registry contract coverage
+# Registry contract tests
 
-The public-component catalog is the active default standalone runtime. Legacy runtime,
-claims/RBAC service, route constructors and unfenced writers/controllers are removed.
-This cleanup uses forward schema 30: live claims columns/guards are removed after
-explicit offline finalization at 29. Historical migrations, archives, receipts and
-version-1 config fingerprint JSON remain unchanged. See the
-[final embedding acceptance matrix](registry-embedding-validation.md) for #906/#915.
+The suites exercise public components, backend behavior and the standalone
+composition. Use [embedding guidance](registry-embedding-validation.md) for runnable
+external examples and [component architecture](component-architecture.md) for the
+boundaries those examples exercise.
 
-## Active acceptance and old-to-current mapping
+## Suites by contract
 
-| Retired surface / unique contract | Current executable coverage |
+Shared backend suites below live in `pkg/registry/persistence/conformance`.
+
+| Contract | Suites |
 | --- | --- |
-| Monolithic service selection, shadowing, cursors and 999/1000/1001 server / 29/30/31 extension histories | `pkg/registry/persistence/conformance/view_suite.go` (whole-name winners, bounds/histories, invalid cursors), `pkg/registry/postgres/view_reads_test.go`, `pkg/registry/postgres/consumer_http_test.go` (`TestConsumerHTTPPostgres`), `pkg/registry/catalog/reader_test.go`. Whole-name winner selection precedes all filters/version/latest/pagination; lower-source histories are not promoted. |
-| Old HTTP routers/DTO comparisons, route inventory, host selection and wire compatibility | `pkg/registry/httpapi/consumer_test.go`, `admin_test.go`, `admin_compat_test.go`: fixed claims-free wire maps and explicit route inventories independent of production DTOs/formatters; `pkg/registry/postgres/{consumer,admin}_http_test.go`: real HTTP + catalog + PostgreSQL. |
-| Managed/external ownership, all-kind publish/delete, nonlatest deletion and latest/history fidelity | `pkg/registry/persistence/conformance/{entries,publication}_suite.go`, PostgreSQL and independent-memory conformance; `pkg/registry/postgres/admin_http_test.go` (`TestAdminHTTPPostgres`). |
-| Old config state initialization, singleton/provenance and atomic rollback | `pkg/registry/persistence/conformance/suite.go` (config managed replacement, API/config conflicts, immutable origin), `pkg/registry/postgres/definitions_test.go` (claim preservation, unknown-field rollback), `internal/app/storage/catalog_test.go` (historical compatibility and effective stored namespaces). |
-| Old storage factory password-file authentication, repair failure and metric counts | `internal/app/storage/catalog_test.go` (`TestCatalogOwnedPoolPgpassResolution`, `TestCatalogEntriesRepairFailureBeforeServing`), `registry_metrics_test.go` (`TestCatalogMetricCountsCountNamesNotVersions` plus query/cache timeout invariants); `internal/app/catalog_admission_metrics_test.go`: current storage metrics and separate internal port. |
-| Old app DI/lifecycle/HTTP options | `internal/app/builder_test.go`: shared address/options/timeouts/telemetry/security helpers; `catalog*_test.go`: preparation order, cleanup/ownership, startup/listeners, inline/background joins, failures and cancellation. |
-| Old roles/claims integration, auth bypass and guarded monolith | `internal/api/admission_test.go`: current public routers, verified introspection, explicit route inventory, all-action Cedar 403 despite all legacy role claims, credential challenges and protected 410; `internal/authorization/catalog_test.go`: every method's own-action evidence, omitted/alternate/mislabeled admission; `routes_test.go`: evaluator diagnostics fail closed. `cmd/thv-registry-api/app/serve_catalog_authz_test.go` and `internal/app/catalog{,_identity,_admission_metrics}_test.go`: real HTTP/JWT/PostgreSQL, anonymous permit/deny, private OAuth, admin-off, admitted CRUD/publication, denied actions and safe audit attribution. No resource-claims service remains. |
-| Old malformed import/failure-last-good/private Git behavior | `pkg/registry/ingest/fetcher_test.go`: malformed/empty import, partial API failure/cursors, `TestPrivateGitCredentialBoundary` and `TestExampleCatalogThroughPublicIngest`; public upstream/IO/shutdown tests; `pkg/registry/reconcile/coordinator_test.go` and PostgreSQL `reconcile_test.go`: categorized failures, last-good baseline, cancellation, reconfiguration/deletion fencing. Low-level Git/HTTP/filter tests remain shared. |
-| Old source writer Store facade and payload atomicity | The facade/options/interface/mocks are removed. `internal/sync/writer/{db,contract,version_order_contract}_test.go` retain all-kind COPY/upsert/latest/orphan/related-package fidelity and late-failure/blocked-cancellation rollback through caller-owned test transactions and active `StoreSourceTx`. `TestSchema29ClaimsStaging` is historical plumbing coverage only. PostgreSQL jobs tests and reusable jobs conformance cover actual fenced commit/acknowledgement. |
-| Old state latest repair / historical migration fixtures | Repair/locking/cancellation tests moved to `internal/db/latest{,_upgrade}_test.go` and now call `db.ReconcileLatestVersions` / `ReconcileLatestVersionsTx`; `database/migrate_latest_test.go` calls the current repair directly at the intended historical schema. No migration test was dropped. |
-| Old three-kind export predicates, complete/empty startup scope, list/metadata failures | `pkg/registry/operator/{conversion,fetcher,shutdown}_test.go` (exact opt-in, all kinds, complete scope, metadata, empty commit/readiness, list/watch/cancellation failure), `internal/kubernetes/standalone_test.go` (retired-annotation presence before conversion, later namespace/kind/incomplete failures, last-good data), and `internal/app/catalog_ingestion_test.go` (`TestCatalogOperatorPostgresHTTPOwnershipAndScopeChange`: fake Kubernetes API plus real PostgreSQL, actual app supervisor/runner and bound OAuth HTTP; all kinds/two namespaces, managed ownership and persisted scope shrink). The fake-client/real-PG app boundary is deliberate; `TestRegisteredOperator` separately covers real CRD watches through isolated envtest. |
-| Old registered controller acceptance | `pkg/registry/operator/manager_integration_test.go` (`TestRegisteredOperator`) starts a real registered leader-elected manager in isolated envtest, installs all three CRDs and observes nonempty, changed and empty snapshots. CI explicitly runs this current package/test, not the deleted controller test. |
-| Existing-data/offline/security transition | `cmd/thv-registry-api/app/migrate_exposure_test.go`, `internal/db/exposure*_test.go`, `internal/config/{exposure,catalog,authorization}_test.go`, `internal/app/catalog_pipeline_test.go`: inventory/ack/explicit retire/archive/consume, every protected table, null/unlabeled data, policy/config binding, leases, target continuity, atomic rollback and missing/stale receipt fail-closed behavior. |
-| Public dependency/embedding contracts | Separate-module fixtures in model/formats/persistence/catalog/httpapi/ingest/operator and actual dependency-graph tests remain. Portable framework contracts/HTTP have no registry-internal service/config/auth dependency; PostgreSQL alone imports the explicit internal SQL/writer adapters. |
+| Payload validation, serialization and exact version ordering | `pkg/registry/model` and `pkg/registry/formats`, including the separate-module format fixture. |
+| Definition provenance, managed singleton and atomic config reconciliation | `pkg/registry/persistence/conformance/suite.go`, run against independent memory and PostgreSQL; `pkg/registry/postgres/definitions_test.go` adds historical-field and schema refusal cases. |
+| All-kind atomic snapshots, source-local publication/deletion and latest | Shared `entries_suite.go` and `publication_suite.go`; `pkg/registry/postgres` adapter tests; `internal/sync/writer` tests exercise COPY/upsert, related metadata, orphan cleanup and rollback in caller-owned transactions. |
+| Lease expiry, stale generations/incarnations and atomic commit/acknowledgement | Shared `jobs_suite.go`, PostgreSQL jobs/reconciliation tests and `pkg/registry/reconcile` coordinator/shutdown tests. Equivalent schedule durations retain leases/baselines; changed durations fence work. |
+| Whole-name winners, filters, versions and bound cursors | Shared `view_suite.go`, `pkg/registry/catalog/reader_test.go`, PostgreSQL view tests and the shared consumer HTTP suite described below. |
+| Consumer/admin wire shapes, validation and host replacement | `pkg/registry/httpapi` tests and separate-module fixtures; PostgreSQL `consumer_http_test.go` and `admin_http_test.go` combine HTTP, catalog and real storage. |
+| Import validation, transport boundaries and failure-last-good behavior | `pkg/registry/ingest` fetcher/upstream/shutdown tests, including private Git credentials, malformed/empty imports and partial API pagination. |
+| Standalone preparation, ownership and shutdown | `internal/app/catalog*_test.go`, storage tests and CLI `serve_catalog*_test.go`: final config/frozen policy, receipt barriers, inline/background joins, borrowed/owned resources and listener/worker errors. |
+| Verified authentication, Cedar and protected routes | `internal/auth`, `internal/authorization`, `internal/api/admission_test.go` and CLI/app HTTP tests: JWT/introspection, anonymous opt-in, admin-off, fixed-action evidence, evaluator failures, protected 410 routes and safe attribution. |
+| Offline upgrades and retained evidence | CLI `migrate_exposure_test.go`, `internal/db/exposure*_test.go`, config presence tests and `database` migration tests: inventory/acknowledge/retire/finalize, target continuity, archives/receipts, rollback on failure and schema-30 refusal/cleanup. See the [operational migration guide](registry-exposure-migration.md). |
 
-**Run the combined external workflow:**
-`GOWORK=off go test -race -count=1 ./pkg/registry/postgres -run '^TestExternalCompleteAssembly$'`.
-The parent prepares an isolated schema-30 database and passes its DSN without printing it;
-the separate module imports only public components and owns its pool and HTTP server.
+Expected HTTP bodies and route inventories are fixed independently of production
+DTOs, serializers and route discovery. Do not generate expected responses by calling
+the formatter under test. `httpapi/conformance.RunConsumer` runs unchanged against
+independent memory selection (`TestConsumerHTTPMemory`) and PostgreSQL
+(`TestConsumerHTTPPostgres`). It checks all three kinds, literal search, whole-name
+winners before filters, query-bound page walks, reordered sources/view incarnations,
+and histories below/at/above 1000 servers and 30 skills/plugins. Server histories
+have no continuation; extension histories emit cursor metadata but ignore input
+pagination. Unsupported extension wire filters are distinct from backend query tests.
 
-**Shared HTTP/backend acceptance:** `pkg/registry/httpapi/conformance.RunConsumer`
-runs unchanged in `TestConsumerHTTPMemory` and `TestConsumerHTTPPostgres`. It covers
-whole-name selection before supported filters, all kinds, literal search/latest,
-query-bound page walks, changed source ordering/view incarnation, 999/1000/1001
-server and 29/30/31 extension histories and their distinct continuation metadata.
-Extension wire lists intentionally ignore version/status/updated-since; the same
-catalog query assertions exercise those supported backend filters independently.
-`RunJobs` also checks API update and CONFIG reconciliation of `1h` → `60m` retaining
-generation, active lease and applied baseline, while `2h` fences old work.
+The separate-module fixtures execute with `GOWORK=off -mod=readonly`; parent tests
+also inspect actual transitive imports. The complete PostgreSQL fixture exercises
+public definitions/jobs, ingestion, catalog and both HTTP routers. Adapter dependencies
+are intentional: import checks distinguish portable packages from PostgreSQL and
+Kubernetes adapters rather than banning those dependencies from the entire module.
 
-The operator same-name cross-kind identity limitation is a documented pre-existing
-constraint, including CRDs with different versions. `pkg/registry/operator/fetcher_test.go`
-(`TestHistoricalCrossKindNameIdentityNotRewritten`) characterizes unchanged duplicate-
-version rejection and shared-name projection for different versions; this slice does
-not redesign identities or collision behavior.
+## Kubernetes test boundaries
 
-**Run active manager acceptance:** with installed pinned Kubernetes 1.33.0 assets,
-`USE_EXISTING_CLUSTER=false KUBEBUILDER_ASSETS=/path/to/1.33.0-linux-amd64 go test -p 2 -race -tags integration ./pkg/registry/operator -run '^TestRegisteredOperator$' -count=1`.
-The fixture also hard-disables existing-cluster mode. CI pins the envtest tool and
-immutable release index in `.github/workflows/test.yml`. Full acceptance is
-`go test -p 2 -race -tags integration -count=1 ./...` with the same isolated assets.
-Actual image/chart installation and external deployment validation are separate release gates;
-no cleanup validation operates on a user's database or cluster.
+- `pkg/registry/operator` unit tests use fake clients for export opt-in, all three
+  CRD kinds, full namespace scope, metadata validation, empty snapshots, readiness
+  and list/watch/cancellation failures. Naming tests and
+  `TestHistoricalCrossKindNameIdentityNotRewritten` cover same-name cross-kind exports.
+- `internal/kubernetes/standalone_test.go` checks retired-annotation presence before
+  conversion and rejects incomplete or failed full-scope listings.
+- `internal/app/catalog_ingestion_test.go` contains
+  `TestCatalogOperatorPostgresHTTPOwnershipAndScopeChange`: **fake Kubernetes API,
+  real PostgreSQL**, the actual supervisor/runner and bound OAuth HTTP. It exercises
+  all kinds over two namespaces, managed publication/removal and persisted scope shrink.
+- `pkg/registry/operator/manager_integration_test.go` contains
+  `TestRegisteredOperator`: **real isolated envtest API and leader-elected manager,
+  generated mock Jobs**, not PostgreSQL. It installs all three CRDs, observes watches
+  and nonempty/changed/empty startup snapshots, and injects list/watch failures.
+  These suites do not constitute one live-Kubernetes-plus-PostgreSQL assembly.
 
-## Historical #909 baseline (not active behavior)
+## Run with isolated dependencies
 
-The record below describes characterization **before** the public-component cutover.
-Deleted test paths refer to immutable parent `b17b0aa10d410f7a11f3dc2befe3b627976debf6`,
-not runnable current suites. Its personalized claims semantics and known bugs are historical
-evidence, not contracts of the active nonpersonalized catalog. The mapping above supersedes
-old acceptance commands, outstanding-work statements and descriptions of “current” behavior.
+Run from the repository root with the Go version in `go.mod`, Task, mockgen and sqlc.
+Always run `task gen` before tests. Database helpers start embedded PostgreSQL 16
+and create isolated databases, normally at schema 30; historical tests explicitly
+select their schema. They do not use a deployment DSN or require Docker. The first
+run needs network access to cache PostgreSQL binaries; subsequent runs can reuse them.
 
-| Surface | Executable checks | Preserved behavior / boundary |
-| --- | --- | --- |
-| Consumer protocol and version boundaries | `internal/api/registry/v01/routes_test.go` (`TestVersionRouteContract`, `TestToolHiveClientCompatibility`); corresponding extension `routes_test.go`; `internal/service/db/contract_test.go` (`TestRealServiceVersionHistoryBoundaries`) | The actual service stores 999/1000/1001 server and 29/30/31 skill/plugin histories, each with a lower-priority source collision. **HISTORICAL LIMITATION:** server version listing caps the SQL result at 1000 *before* dedup; a duplicated first version leaves only 999 unique versions at/above 1000 despite higher versions existing. Extension list views return 29 or 30 identities in one page without a cursor and 31 as a 30+1 page walk with a terminating cursor. HTTP version routes ignore `limit`/`cursor`: servers respond with at most 1000 and no continuation; skill/plugin routes respond with 30 and forward a service cursor in metadata **without** accepting one back on that route. Thus no cursor on the server route does **not** mean a complete history, and extension version-route cursors are not followable on that route. HTTP routing tests still use mock services; real-service history is tested separately. |
-| Selection and priority | `internal/service/db/contract_test.go` (`TestCurrentLimitationVersionScopedSourceSelection`); existing same-version shadowing tests in `internal/service/db/shadowing_*_test.go`; `internal/service/cursor_test.go` | **HISTORICAL LIMITATION, not the intended contract:** the SQL sorts by name/version before source position and deduplicates individual rows. With A at higher priority containing 2.0/3.0 and B containing 1.0/2.0, list can include B's 1.0 while latest and overlapping 2.0 come from A; an exact get for 1.0 returns B. Search on B's payload can also promote B. A one-item cursor walk across these versions and another name is characterized. Fix whole-name winner selection before freezing the catalog interface; do not preserve this behavior as the desired API. Claims-based promotion is host behavior, **not** an OSS catalog requirement. Base64 name/version cursors are an observation, not a frozen public cursor contract; concurrent updates have no snapshot guarantee. |
-| Managed publication | `internal/service/db/contract_test.go` (`TestManagedExternalOwnershipAllKinds`, `TestPluginManagedLatestAfterDelete`); `internal/service/db/impl_test.go` (publish/delete); `internal/api/v1/entries_test.go` | All three kinds reject external-only version deletion. When managed and external sources own identical names/versions, managed publish and deletion retain external payload and latest; deleting a managed nonlatest plugin leaves its latest pointer unchanged. Claims checks are host-specific, not portable acceptance criteria. |
-| Source replacement and version ordering | `internal/sync/writer/contract_test.go` (`TestStoreContractAllKindsAtomicity`); `internal/sync/writer/version_order_contract_test.go` (`TestLatestSpellingOrder`); `internal/sync/writer/db_test.go` (per-kind tests) | One serializable transaction per source. A plugin-stage DB error after server and skill writes, or cancellation while the transaction is blocked on the plugin table, preserves both sources' exact prior versions, payloads, latest pointers and related OCI and Git packages. The cancellation test observes a plugin lock wait in its own database blocked by its own lock-holder connection. A valid empty snapshot clears all three kinds for only its source. The all-kind test also exposed and fixed reuse of skill temp tables by the plugin stage. **Intentional ordering change (#910):** semantic precedence wins among Masterminds-parseable versions, parseable beats unparsable, equal precedence breaks ties by exact raw spelling, and unparsable strings compare lexically. Snapshot input order no longer selects the latest spelling. Existing latest pointers are re-evaluated synchronously during database service construction (`internal/sync/state/latest.go`), before the app can start serving. The stored spellings remain exact identifiers. |
-| Operator ownership | `internal/kubernetes/controller_snapshot_test.go` (complete scope, all-kind changes, second-namespace failures, writer/cancellation failures, cache-sync failure, active-list cancellation and `TestCurrentLimitationCrossKindIdentityCollision`); `internal/kubernetes/controller_manager_integration_test.go` (`TestRegisteredStartupRefresh`, `integration` tag); `internal/kubernetes/controller_test.go` (predicates) | Reconcile lists **all configured** namespaces and all three kinds before replacing its one source; second-namespace failures, writer errors and cancelled contexts leave the last snapshot. An opt-in change or empty cache generates a refresh even without CR events: envtest starts a real leader-elected manager, installs all three CRDs and observes an empty snapshot delivered through `SetupWithManager`/the channel for both no objects and a removed namespace. A real DB writer test documents the **HISTORICAL LIMITATION** where two CR kinds with the same namespace/name collide and the previous snapshot survives. No public ID rewrite or readiness/status URL requirement is added. |
+```sh
+task gen
+# Public contracts and adapters, including separate-module and PostgreSQL fixtures:
+GOWORK=off go test -race -count=1 ./pkg/registry/...
+# The same HTTP and job contracts on memory and PostgreSQL:
+GOWORK=off go test -race -count=1 ./pkg/registry/persistence/conformance ./pkg/registry/postgres \
+  -run 'TestConsumerHTTP(Memory|Postgres)$|Test(MemoryJobs|JobsConformance)$'
+# Standalone HTTP/authentication/Cedar, preparation and lifecycle:
+GOWORK=off go test -race -count=1 ./cmd/thv-registry-api/app ./internal/app ./internal/api ./internal/auth ./internal/authorization
+```
 
-**Intentional corrections in this change:** operator event reconciliation now uses the full configured scope instead of the triggering namespace; startup queues a full refresh after cache sync even with no CRD events; list extraction enforces `registry-export=true` rather than relying only on watch predicates. These remove stale or non-opted-in exports. No new wire pagination or source/storage framework is introduced.
+For manager tests, set `KUBEBUILDER_ASSETS` to installed Kubernetes **1.33.0** envtest
+assets (`etcd` and `kube-apiserver`). The pinned tool and release index are in
+[the test workflow](../.github/workflows/test.yml). Keep existing-cluster mode disabled;
+`TestRegisteredOperator` also disables it in the fixture. Never target a user cluster.
 
-**Historical manager acceptance:** `TestRegisteredStartupRefresh` ran the old registered controller in isolated envtest with pinned Kubernetes 1.33.0 assets and a pinned immutable release index. It is removed with that runtime; use `TestRegisteredOperator` and the active command above. The safety requirements (hard-disabled existing-cluster mode, all three installed CRDs and actual manager registration rather than a direct Reconcile call) remain in the public acceptance.
+```sh
+export KUBEBUILDER_ASSETS=/path/to/1.33.0-linux-amd64
+export USE_EXISTING_CLUSTER=false
+# Registered operator only:
+GOWORK=off go test -p 2 -race -tags integration -count=1 ./pkg/registry/operator -run '^TestRegisteredOperator$'
+# Full suite, including integration-tagged tests:
+GOWORK=off go test -p 2 -race -tags integration -count=1 ./...
+```
 
-**Not frozen / outstanding conformance work:** A single HTTP+real-service boundary test and a ToolHive-client multipage walkthrough are not yet included. The startup suite uses a generated writer mock instead of a persisted writer; the removed namespace is represented by a CR outside the configured cache, not a real previously persisted source. Operator cancellation during a running Store still needs further coverage. Future public backends need shared black-box conformance for dedup at version limits, malformed/mismatched cursors, managed latest after every deletion, and lease/fencing/reconfigure races. Current version ordering uses `model.CompareVersions` (semver group above non-semver, semantic precedence then exact raw spelling; lexical within non-semver) and is a total order. Existing latest pointers are repaired synchronously in the database storage factory during app construction, before either public or internal HTTP server is built/started; failure aborts construction (the readiness probe only checks DB connectivity after startup). The transaction locks `source`, `registry_entry`, `entry_version`, and `latest_entry_version` in `SHARE ROW EXCLUSIVE` mode before scanning, with a five-second lock-wait timeout. Concurrent new writers wait or finish before the scan. **Stop/drain all old-binary readers and writers, back up, migrate 000025 offline, and initialize the new backend's repair before reads:** old writers cannot populate the new non-null kind column; rolling mixed-version deployments are unsupported. This repair is intended for small registries and preserves snapshots, payloads and claims. Migration 000025 keys catalog latest pointers by `(source_id,entry_type,name)` and the adapter repairs every kind/name, including those without a prior pointer. This removes the legacy catalog latest-key collision; it does not address the independent operator CRD cross-kind identity collision. Resolve whole-name source selection, operator identity and cursor compatibility deliberately before freezing #907's public contracts. Do not retain host claims expectations in the future catalog.
+These commands exercise local test assemblies, not a deployed image or Helm installation.
