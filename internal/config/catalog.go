@@ -18,8 +18,8 @@ func LoadCatalogConfig(opts ...Option) (*Config, error) {
 	return LoadConfig(opts...)
 }
 
-// ValidateCatalogCutover is used only by the public-component assembly. The
-// legacy loader retains its fields for the CLI and offline exposure inventory.
+// ValidateCatalogCutover validates final standalone config. The legacy loader
+// retains historical fields only for characterization and offline inspection.
 func (c *Config) ValidateCatalogCutover() error {
 	if c == nil {
 		return errors.New("config is required")
@@ -45,6 +45,9 @@ func (c *Config) ValidateCatalogCutover() error {
 		if v.Claims != nil {
 			return errors.New("registry claims are retired; remove the field before cutover")
 		}
+	}
+	if c.LeaderElectionID != "" {
+		return errors.New("THV_REGISTRY_LEADER_ELECTION_ID is retired; unset it, catalog writers use per-source database leases")
 	}
 	if err := c.ValidateAdmission(); err != nil {
 		return err

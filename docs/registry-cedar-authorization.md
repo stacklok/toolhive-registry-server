@@ -14,35 +14,26 @@ Cedar applies to both the consumer and admin APIs. In this admission slice,
 latest-version endpoint in every named view. It is an endpoint admission
 decision, not per-view access or per-entry filtering.
 
-**Status:** the CLI/chart default remains the additive Cedar + legacy claims/RBAC
-path. The complete public-component composition is now available as the opt-in Go
-entrypoint `internal/app.NewCatalogApp`; see the
-[standalone assembly guide](registry-standalone-assembly.md). That path requires
-explicit offline exposure evidence, retired-field/source/operator preflight and
-serialized schema-29 receipt consumption before reconciliation/repair. Its permitted
-readers receive the same nonpersonalized catalog; it starts only leased ingestion.
-It never automatically strips claims or supplies consent. Do not use the legacy
-CLI after retirement. CLI/startup/chart selection is the next PR; #912/#914 are not
-closed by this composition-only slice and legacy cleanup remains #915.
+**Status:** `serve` selects `internal/app.NewCatalogApp` and the public services,
+HTTP adapters and exclusively leased ingestion. Final retired-field validation,
+frozen Cedar, read-only source/operator preflight and serialized schema-29 receipt
+consumption precede reconciliation/repair and both listeners. Permitted readers
+receive the same nonpersonalized catalog. Existing data requires the explicit
+[offline exposure procedure](registry-exposure-migration.md); startup never strips
+claims or automatically approves it. `--initialize-empty` is explicit new-install
+authorization only, disabled by default. Legacy physical cleanup remains #915.
 
 The examples below are parsed and strictly typechecked by tests against the
 embedded application schema using cedar-go v1.8.0's experimental validator.
 This verifies the Go implementation, not parity with the Rust reference validator.
 Reference-validator fixtures and independent review remain release gates.
 
-Today, operators configure fixed roles and attach claims to sources, views and
-entries to control access and filter results. We propose replacing those rules
-with an operator-owned Cedar policy file that grants operations on the whole
-instance. Keep OAuth for identity; use Cedar to decide what that identity may do.
-There is no policy editor, policy API or automatic sample allow-all policy.
-
-The eventual claims-removal design is not per-entry privacy. After the separate,
-explicitly acknowledged migration, finance and engineering readers querying the
-same view will see the same catalog, including both teams' entries. That is **not**
-the behavior of this admission-only slice: legacy claims still restrict responses.
-Named views organize data, but Cedar does not grant per-view access. If finance
-must not see engineering entries after migration, use host-owned personalized
-catalog services or separate instances, not another Cedar group rule.
+OAuth establishes identity; an operator-owned Cedar policy file grants operations
+on the whole instance. There is no policy editor, policy API or automatic allow-all
+policy. Claims-removal is not per-entry privacy: after explicit migration, finance
+and engineering readers querying the same view see the same catalog. If their data
+must remain separate, use host-owned personalized services or separate instances,
+not another Cedar group rule.
 
 ## What would I configure?
 
@@ -55,9 +46,9 @@ catalog services or separate instances, not another Cedar group rule.
    below. Point your registry config at it and explicitly enable admin endpoints
    for publishing and administration.
 
-Keep existing database, sources, views, operational settings and legacy
-`auth.authz`/resource claims. The new blocks are mandatory standalone admission
-configuration. Map only verified claims.
+Keep database, supported sources/views and operational settings. Remove retired
+`auth.authz`/roles/publicPaths and resource claims from the **final** config before
+offline review. Map only verified identity claims; those are not resource claims.
 
 ```yaml
 # Existing authentication fields
@@ -178,12 +169,10 @@ Policy-file write access is security administration, separate from these API gra
 
 Mount `config.yaml` and `policies.cedar` read-only at `/etc/registry/`, with write
 access restricted to deployment administrators. Use TLS or a trusted TLS ingress.
-After mounting policy and config, start with the existing invocation
-`thv-registry-api serve --config /etc/registry/config.yaml`.
-Configure legacy roles and resource claims as before: readers still need the
-view/entry claims; publishers need the legacy `manageEntries` role and covered
-managed-source/entry claims; operators need `manageSources`/`manageRegistries`
-and their resource claims whenever `auth.authz` is enabled.
+After the [offline procedure](registry-exposure-migration.md), start with
+`thv-registry-api serve --config /etc/registry/config.yaml`. For a genuinely empty
+new database only, explicitly use `serve --initialize-empty --config /etc/registry/config.yaml`.
+No legacy roles or resource claim filters participate in either selected path.
 
 With admin explicitly enabled and the example policies, the expected results are:
 
@@ -195,17 +184,16 @@ With admin explicitly enabled and the example policies, the expected results are
 | Publisher or operator without `registry-readers` | 403 | Its separate grant, if any | Its separate grant, if any |
 | Anonymous, no token | 401 | 401 | 401 |
 
-The table shows Cedar admission only. "Allowed" still requires all applicable
-legacy roles and claims, normal payload validation, ownership and storage checks.
+"Allowed" still requires normal payload validation, ownership and storage checks.
 A 401 means authentication is missing or invalid; a 403 means a valid caller lacks
-permission. Responses remain unchanged and may still be caller-specific under
-legacy claims filtering. There is no new per-entry or per-view Cedar grant.
+permission. Permitted readers receive the same pages/cursors; there is no per-entry
+or per-view Cedar grant.
 
 With admin enabled, `/v1/me` and both GET/PUT
 `/v1/entries/{type}/{name}/claims` are authenticated static 410 tombstones, with
 no service calls. Retagging via those endpoints is no longer available in this
 slice; inventory/backup and resolve entry claims on the legacy release before
-upgrading. Source/view configuration and their legacy claims remain supported.
+upgrading. Source/view resource claims are likewise retired and rejected by presence.
 With admin disabled the entire `/v1` surface is absent (404). Operational probes
 stay on the separate internal port. Unknown public URLs return 404, unsupported
 methods (including HEAD/OPTIONS for catalog routes) return 405 without calling
@@ -232,14 +220,9 @@ Anonymous browsing is optional and off by default. It requires both
 `authorization.allowAnonymousCatalog: true` and a Cedar `catalog.read` permit
 for the anonymous principal; the private reader-group policy above does not
 provide one. Invalid supplied tokens still get 401, never anonymous fallback.
-**Transitional constraint:** anonymous catalog admission is rejected at startup
-when legacy `auth.authz` is configured. Those legacy list filters interpret absent
-caller claims as unfiltered; allowing anonymous requests there would bypass the
-protection retained in this slice. Do not disable legacy authorization to make
-restricted catalogs anonymous. Keep those deployments authenticated until the
-separate acknowledged exposure migration/removal is implemented. Anonymous
-admission works for explicitly non-claims-scoped deployments, with the config
-opt-in and a policy permit; it is not a migration shortcut.
+Retired `auth.authz` is rejected for every authentication mode. Anonymous admission
+is not a migration shortcut: every pre-existing catalog still requires explicit
+whole-catalog review and retirement, including unlabeled data.
 `PublicPaths` or any other authentication bypass must never bypass Cedar: a
 consumer route without verified or explicitly anonymous request evidence is
 denied. Admin endpoints are disabled by default, and always require
@@ -247,11 +230,11 @@ authentication when enabled, even with anonymous browsing.
 
 ## Migration: a deliberate exposure decision
 
-Offline inventory, pending acknowledgement and explicit metadata archive-and-clear
-are implemented in the [migration guide](registry-exposure-migration.md). This is
-**not** completion of a runtime cutover: claims/RBAC/storage guard code remains
-unchanged. Only the explicit `retire-claims` command clears historical metadata;
-afterward stay offline. Ordinary migrations/startup/reconciliation never do this.
+Offline inventory, acknowledgement and explicit metadata archive-and-clear are
+implemented in the [migration guide](registry-exposure-migration.md). Only the
+explicit `retire-claims` command clears historical metadata; ordinary migrations,
+startup and reconciliation never do so. The new runtime consumes valid evidence
+after preflight. Legacy code/columns remain unselected until #915 cleanup.
 
 This is a breaking upgrade, not a policy-file swap. Before upgrading, back up and
 inventory ALL old catalogs: sources, views, entries, retained snapshots and operator
@@ -268,11 +251,11 @@ retired fields before inventorying the historical database and acknowledging its
 whole-catalog exposure decision. Changing config invalidates an old acknowledgement;
 re-inventory and acknowledge, never silently rebind it. Then explicit offline
 `retire-claims` may archive/clear metadata against the pending post-fence digest.
-Fresh `initialize-empty` evidence needs no archive. Both markers remain dormant:
-a later slice must consume/revalidate them before guard retirement. Startup never
-silently clears metadata. Resolve retired config/API claims and operator annotations
-before eventual cutover. Do not restart this slice after clearing; stay offline
-until the runtime cutover release or restore the verified backup offline.
+Fresh `initialize-empty` evidence needs no archive. The new startup consumes valid
+markers after the mandatory final-config/frozen-policy/source/operator preparation
+barrier. Startup never silently clears metadata. Resolve retired config/API claims
+and live operator annotations before cutover; do not restart legacy binaries after
+clearing. Inspect unresolved receipt outcomes offline or restore the verified backup.
 
 ## Product questions
 

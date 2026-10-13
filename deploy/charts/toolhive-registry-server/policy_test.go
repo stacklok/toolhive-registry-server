@@ -23,6 +23,115 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
+func TestProductionDefaultsRequireExplicitEmptyBootstrap(t *testing.T) {
+	t.Parallel()
+	helm, err := exec.LookPath("helm")
+	if err != nil {
+		t.Skip("helm is required for chart rendering")
+	}
+	output, err := exec.CommandContext(t.Context(), helm, "template", "production", ".").CombinedOutput()
+	require.Error(t, err, "no implicit legacy image may be selected")
+	require.Contains(t, string(output), "image.registryServerUrl must select an image containing catalog startup/receipt enforcement")
+	for _, optIn := range []string{"default", "false", "true"} {
+		t.Run(optIn, func(t *testing.T) {
+			t.Parallel()
+			args := []string{"template", "production", ".", "--set", "policy.existingConfigMap=operator-policy",
+				"--set", "image.registryServerUrl=ko.local/thv-registry-api:ci-test"}
+			if optIn != "default" {
+				args = append(args, "--set", "initializeEmptyCatalog="+optIn)
+			}
+			output, err := exec.CommandContext(t.Context(), helm, args...).CombinedOutput()
+			require.NoError(t, err, "%s", output)
+			if optIn != "true" {
+				require.NotContains(t, string(output), "--initialize-empty")
+			} else {
+				require.Contains(t, string(output), "--initialize-empty")
+			}
+			require.NotContains(t, string(output), "THV_REGISTRY_LEADER_ELECTION_ID")
+			decoder := k8syaml.NewYAMLOrJSONDecoder(bytes.NewReader(output), 4096)
+			for {
+				var document struct {
+					Kind string
+					Data map[string]string
+				}
+				err := decoder.Decode(&document)
+				if err == io.EOF {
+					break
+				}
+				require.NoError(t, err)
+				if document.Kind != "ConfigMap" {
+					continue
+				}
+				var cfg struct {
+					Auth struct {
+						Mode  string
+						OAuth struct{ Providers []any }
+					}
+					Admin         struct{ Enabled bool }
+					Authorization struct {
+						PolicyFile            string
+						AllowAnonymousCatalog bool
+					}
+				}
+				require.NoError(t, k8syaml.NewYAMLOrJSONDecoder(bytes.NewBufferString(document.Data["config.yaml"]), 4096).Decode(&cfg))
+				require.Equal(t, "oauth", cfg.Auth.Mode)
+				require.Empty(t, cfg.Auth.OAuth.Providers, "operator must supply trusted providers")
+				require.False(t, cfg.Admin.Enabled)
+				require.False(t, cfg.Authorization.AllowAnonymousCatalog)
+				require.Equal(t, "/etc/registry-policies/policies.cedar", cfg.Authorization.PolicyFile)
+			}
+		})
+	}
+}
+
+func TestCNPGAdmissionValues(t *testing.T) {
+	t.Parallel()
+	helm, err := exec.LookPath("helm")
+	if err != nil {
+		t.Skip("helm is required for chart rendering")
+	}
+	for _, optIn := range []string{"false", "true"} {
+		t.Run(optIn, func(t *testing.T) {
+			t.Parallel()
+			output, err := exec.CommandContext(t.Context(), helm, "template", "cnpg", ".",
+				"--namespace", "toolhive-system", "-f", "../../../examples/cnpg/helm-values.yaml",
+				"--set-string", "image.registryServerUrl=example.invalid/registry:catalog",
+				"--set-string", "policy.existingConfigMap=operator-policy",
+				"--set", "initializeEmptyCatalog="+optIn,
+				"--set-json", `config.auth.oauth.providers=[{"name":"corporate","issuerUrl":"https://id.example.com","audience":"registry-api"}]`,
+				"--set-json", `config.authorization.identityMappings=[{"issuer":"https://id.example.com","groups":{"claim":"groups","format":"string-array"}}]`,
+			).CombinedOutput()
+			require.NoError(t, err, "%s", output)
+			require.Equal(t, optIn == "true", bytes.Contains(output, []byte("--initialize-empty")))
+			require.NotContains(t, string(output), "permit(", "the chart never supplies an access policy")
+			decoder := k8syaml.NewYAMLOrJSONDecoder(bytes.NewReader(output), 4096)
+			var found bool
+			for {
+				var document corev1.ConfigMap
+				err := decoder.Decode(&document)
+				if err == io.EOF {
+					break
+				}
+				require.NoError(t, err)
+				if document.Kind != "ConfigMap" {
+					continue
+				}
+				path := filepath.Join(t.TempDir(), "config.yaml")
+				require.NoError(t, os.WriteFile(path, []byte(document.Data["config.yaml"]), 0600))
+				cfg, err := config.LoadCatalogConfig(config.WithConfigPath(path))
+				require.NoError(t, err)
+				require.NoError(t, cfg.ValidateCatalogCutover())
+				require.Equal(t, "registry-db-rw", cfg.Database.Host)
+				require.Equal(t, config.AuthModeOAuth, cfg.Auth.Mode)
+				require.False(t, cfg.Admin.Enabled)
+				require.False(t, cfg.Authorization.AllowAnonymousCatalog)
+				found = true
+			}
+			require.True(t, found)
+		})
+	}
+}
+
 func TestCIPolicyMount(t *testing.T) {
 	t.Parallel()
 	valuesFiles, err := filepath.Glob("ci/*-values.yaml")
@@ -61,9 +170,9 @@ func TestCIPolicyMount(t *testing.T) {
 			require.NotEmpty(t, configMap.Data["config.yaml"])
 			configPath := filepath.Join(t.TempDir(), "config.yaml")
 			require.NoError(t, os.WriteFile(configPath, []byte(configMap.Data["config.yaml"]), 0600))
-			cfg, err := config.LoadConfig(config.WithConfigPath(configPath))
+			cfg, err := config.LoadCatalogConfig(config.WithConfigPath(configPath))
 			require.NoError(t, err)
-			require.NoError(t, cfg.ValidateAdmission())
+			require.NoError(t, cfg.ValidateCatalogCutover())
 			require.False(t, cfg.Admin.Enabled)
 			require.Equal(t, config.AuthModeAnonymous, cfg.Auth.Mode)
 			require.True(t, cfg.Authorization.AllowAnonymousCatalog)
@@ -76,6 +185,7 @@ func TestCIPolicyMount(t *testing.T) {
 			require.Len(t, pod.Containers, 1)
 			container := pod.Containers[0]
 			require.Contains(t, container.Args, "/etc/registry-server/config.yaml")
+			require.Contains(t, container.Args, "--initialize-empty")
 			require.Equal(t, "/readiness", container.ReadinessProbe.HTTPGet.Path)
 			require.Equal(t, "internal-http", container.ReadinessProbe.HTTPGet.Port.StrVal)
 			mounted := false

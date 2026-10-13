@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -155,17 +156,22 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// Swag's ReadDoc mutates its registered Spec; render the static document once.
+var openAPISpec = sync.OnceValues(func() (string, error) { return swag.ReadDoc("swagger") })
+
 // openAPIHandler handles OpenAPI specification requests
 //
 // @Summary		OpenAPI specification
-// @Description	Get the OpenAPI 3.1.0 specification for this API
+// @Description	Get the OpenAPI 3.1.0 specification; requires Cedar metadata.read
+// @Security BearerAuth
+// @Failure 401,403 {object} map[string]string
 // @Tags		system
 // @Produce		json
 // @Success		200	{object}	object	"OpenAPI 3.1.0 specification"
 // @Failure		500	{object}	map[string]string
 // @Router		/openapi.json [get]
 func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
-	doc, err := swag.ReadDoc("swagger")
+	doc, err := openAPISpec()
 	if err != nil {
 		slog.Error("Failed to read OpenAPI specification", "error", err)
 		w.Header().Set("Content-Type", "application/json")

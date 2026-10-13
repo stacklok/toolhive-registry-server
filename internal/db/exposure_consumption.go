@@ -15,17 +15,24 @@ import (
 var errExposureConsumeRetry = errors.New("concurrent exposure consumption")
 
 // ConsumeExposure validates and consumes pending offline evidence, or verifies
-// only target continuity on restart. The opt-in CatalogApp preparation barrier
-// calls this after validating final configuration, freezing the loaded Cedar policy
-// and finishing read-only source/operator compatibility preflight. The legacy CLI
-// default does not select it. It never retires
-// claims, initializes definitions, repairs storage or starts work.
+// only target continuity on restart, after the mandatory application preflight.
 func ConsumeExposure(ctx context.Context, conn *pgx.Conn, configRevision string) error {
+	return consumeExposureRetry(ctx, conn, configRevision, false)
+}
+
+// ConsumeEmptyExposure explicitly authorizes a virgin, entirely empty catalog.
+// Existing pending whole-catalog decisions are never activated by this path.
+// Consumed receipts verify target continuity without rebinding historical evidence.
+func ConsumeEmptyExposure(ctx context.Context, conn *pgx.Conn, configRevision string) error {
+	return consumeExposureRetry(ctx, conn, configRevision, true)
+}
+
+func consumeExposureRetry(ctx context.Context, conn *pgx.Conn, configRevision string, initializeEmpty bool) error {
 	if !validExposureDigest(configRevision) {
 		return errors.New("invalid exposure config revision")
 	}
 	for range 3 {
-		err := consumeExposure(ctx, conn, configRevision)
+		err := consumeExposure(ctx, conn, configRevision, initializeEmpty)
 		if !errors.Is(err, errExposureConsumeRetry) {
 			return err
 		}
@@ -37,7 +44,7 @@ func ConsumeExposure(ctx context.Context, conn *pgx.Conn, configRevision string)
 }
 
 //nolint:gocyclo // Pending and consumed evidence have distinct validation rules within one atomic transition.
-func consumeExposure(ctx context.Context, conn *pgx.Conn, revision string) error {
+func consumeExposure(ctx context.Context, conn *pgx.Conn, revision string, initializeEmpty bool) error {
 	tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return consumeError(err, "cannot begin exposure consumption")
@@ -46,6 +53,9 @@ func consumeExposure(ctx context.Context, conn *pgx.Conn, revision string) error
 	// Lock before acquiring a snapshot, including SELECT FOR UPDATE job owners.
 	if _, err = tx.Exec(ctx, exposureCatalogLock); err != nil {
 		return consumeError(err, "cannot lock exposure catalog; require clean schema version 29")
+	}
+	if _, err = tx.Exec(ctx, `LOCK TABLE public.exposure_claims_archive IN EXCLUSIVE MODE`); err != nil {
+		return consumeError(err, "cannot lock exposure archive")
 	}
 	var version int
 	var dirty bool
@@ -84,6 +94,43 @@ func consumeExposure(ctx context.Context, conn *pgx.Conn, revision string) error
 		// Historical digests/config/policy are immutable evidence, not a perpetual
 		// startup revision: normal catalog and policy changes must remain possible.
 		return consumeError(tx.Commit(ctx), "cannot finish exposure target verification")
+	}
+	if initializeEmpty && id == nil {
+		if mode != nil || reviewed != nil || postFence != nil || configRevision != nil || acknowledgedAt != nil ||
+			retirementID != nil || postRetirement != nil || retiredAt != nil || consumedTarget != nil {
+			return errors.New("initialize-empty requires a new logical catalog identity with no prior review")
+		}
+		var archived bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM public.exposure_claims_archive)`).Scan(&archived); err != nil {
+			return consumeError(err, "cannot inspect exposure archive")
+		}
+		if archived {
+			return errors.New("initialize-empty cannot reuse a retired catalog identity")
+		}
+		inventory, err := inventoryExposureTx(ctx, tx, revision)
+		if err != nil {
+			return err
+		}
+		for _, count := range inventory.Counts {
+			if count != 0 {
+				return errors.New("initialize-empty requires every persisted catalog table to be empty; " +
+					"existing data requires offline review")
+			}
+		}
+		// Bootstrap and first consumption share all locks: no external writer can
+		// slip between empty acknowledgement and full pending validation.
+		err = tx.QueryRow(ctx, `UPDATE public.exposure_acknowledgement SET
+ acknowledgement_id=gen_random_uuid(),acknowledgement_mode='empty',reviewed_digest=$1,
+ post_fence_digest=$1,config_revision=$2,acknowledged_at=clock_timestamp()
+ WHERE singleton RETURNING acknowledgement_id::text,acknowledged_at`, inventory.Digest, revision).Scan(&id, &acknowledgedAt)
+		if err != nil {
+			return consumeError(err, "cannot record empty exposure acknowledgement")
+		}
+		empty := exposureEmptyMode
+		mode, reviewed, postFence, configRevision = &empty, &inventory.Digest, &inventory.Digest, &revision
+	}
+	if initializeEmpty && (mode == nil || *mode != exposureEmptyMode) {
+		return errors.New("initialize-empty cannot activate a pending existing catalog; complete the offline review/retirement chain")
 	}
 	if consumedTarget != nil || id == nil || mode == nil || reviewed == nil || postFence == nil ||
 		configRevision == nil || acknowledgedAt == nil || !validExposureDigest(*reviewed) ||

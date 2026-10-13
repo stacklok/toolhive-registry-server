@@ -17,6 +17,16 @@ Configuration values are resolved in this order (lowest to highest priority):
 
 Higher priority sources override lower ones. For example, if `database.host` is set to `localhost` in the YAML file but `THV_REGISTRY_DATABASE_HOST=postgres.example.com` is set, the environment variable value (`postgres.example.com`) will be used.
 
+`serve` decodes a single YAML/environment snapshot, then validates final CLI overrides
+before loading frozen Cedar and performing DB side effects. Reserved retired
+`THV_REGISTRY_AUTH_AUTHZ*`, `THV_REGISTRY_AUTH_ROLES*`, `THV_REGISTRY_AUTH_PUBLICPATHS*`
+and source/view claims overrides are rejected by presence, including empty values.
+`THV_REGISTRY_LEADER_ELECTION_ID` is retired and nonempty values fail explicitly;
+the selected runtime uses per-source database leases instead. Global namespace and
+response-compression environment switches remain supported. Empty-install consent
+is only the explicit default-false `serve --initialize-empty` flag, not an environment
+or old authorization switch.
+
 ## Naming Convention
 
 All environment variables use the `THV_REGISTRY_` prefix (ToolHive Registry) to avoid conflicts with other applications.

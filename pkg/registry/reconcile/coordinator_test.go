@@ -128,7 +128,7 @@ func TestFailureCategories(t *testing.T) {
 func TestRenewAndCancellation(t *testing.T) {
 	t.Parallel()
 	for _, phase := range []string{"fetch", "commit"} {
-		for _, mode := range []string{"cancel", "renew fails", "renew mixed", "renew stale", "renew succeeds"} {
+		for _, mode := range []string{"cancel", "renew deadline", "renew fails", "renew mixed", "renew stale", "renew succeeds"} {
 			t.Run(phase+"/"+mode, func(t *testing.T) {
 				t.Parallel()
 				ctrl := gomock.NewController(t)
@@ -141,6 +141,9 @@ func TestRenewAndCancellation(t *testing.T) {
 				jobs.EXPECT().Acquire(gomock.Any(), job.Source.Name, ttl).Return(job, nil)
 				var renewCalls atomic.Int32
 				renewErr := error(nil)
+				if mode == "renew deadline" {
+					renewErr = context.DeadlineExceeded
+				}
 				if mode == "renew fails" {
 					renewErr = persistence.ErrUnavailable
 				}
@@ -154,6 +157,10 @@ func TestRenewAndCancellation(t *testing.T) {
 					renewCalls.Add(1)
 					if mode == "cancel" {
 						cancel()
+						<-ctx.Done()
+						return j, ctx.Err()
+					}
+					if mode == "renew deadline" {
 						<-ctx.Done()
 						return j, ctx.Err()
 					}
@@ -184,7 +191,7 @@ func TestRenewAndCancellation(t *testing.T) {
 						return nil
 					})
 				}
-				if mode == "cancel" || mode == "renew fails" || mode == "renew mixed" {
+				if mode == "cancel" || mode == "renew deadline" || mode == "renew fails" || mode == "renew mixed" {
 					category := persistence.FailureStorage
 					if mode == "cancel" {
 						category = persistence.FailureCancelled
@@ -202,6 +209,10 @@ func TestRenewAndCancellation(t *testing.T) {
 					require.NoError(t, err)
 				case "cancel":
 					require.ErrorIs(t, err, context.Canceled)
+				case "renew deadline":
+					require.NoError(t, ctx.Err())
+					require.ErrorIs(t, err, context.DeadlineExceeded)
+					require.ErrorIs(t, err, persistence.ErrUnavailable)
 				default:
 					require.ErrorIs(t, err, renewErr)
 				}

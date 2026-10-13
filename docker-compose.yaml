@@ -63,6 +63,8 @@ services:
     volumes:
       # Mount entire examples directory - all configs and registry files available
       - ./examples:/examples:ro
+      # Required operator-authored policy; no default policy is bundled.
+      - ${REGISTRY_POLICY_FILE:?Set REGISTRY_POLICY_FILE to an absolute operator-authored Cedar file}:/etc/registry/policies.cedar:ro
       - registry_data:/app/data
       # pgpass file is now built into the container image
     # Use CONFIG_FILE env var to switch between configs (defaults to config-docker.yaml)
@@ -71,7 +73,6 @@ services:
     environment:
       - LOG_LEVEL=debug
       - PGPASSFILE=/home/appuser/.pgpass
-      - THV_REGISTRY_INSECURE_URL=true
     networks:
       - registry-network
     restart: unless-stopped

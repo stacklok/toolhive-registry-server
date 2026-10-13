@@ -23,7 +23,11 @@ The server requires a configuration file (--config) that specifies:
 - Authentication configuration
 - All other operational settings
 
-Database configuration is required. Migrations run automatically on startup.
+Database configuration is required. Validated startup applies schema migrations,
+but never authorizes exposure of existing data. Existing catalogs require the offline
+procedure in docs/registry-exposure-migration.md. For a genuinely new, entirely empty
+catalog only, --initialize-empty explicitly authorizes empty-install preparation.
+It grants no Cedar permissions and never retires or approves existing data.
 
 See examples/ directory for sample configurations.
 
@@ -37,14 +41,15 @@ thv-registry-api serve [flags]
       --address string            Address to listen on (default ":8080")
       --auth-mode string          Override auth mode from config (anonymous or oauth)
       --config string             Path to configuration file (YAML format, required)
-  -h, --help[=true|false]         help for serve
+  -h, --help                      help for serve
+      --initialize-empty          Explicitly authorize a new, entirely empty catalog only; never approve existing data
       --internal-address string   Address to listen on for internal endpoints (health, readiness, version) (default ":8081")
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --debug[=true|false]   Enable debug mode
+      --debug   Enable debug mode
 ```
 
 ### SEE ALSO

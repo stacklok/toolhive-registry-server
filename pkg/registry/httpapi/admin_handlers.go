@@ -48,9 +48,7 @@ func serveSourceAdmin(ops AdminOperations, route RouteDescriptor, name string, w
 			}
 			infos = append(infos, info)
 		}
-		writeJSON(w, struct {
-			Sources []sourceInfo `json:"sources"`
-		}{infos}, http.StatusOK)
+		writeJSON(w, SourcesResponse{infos}, http.StatusOK)
 	case Get:
 		source, err := ops.Sources.GetSource(r.Context(), name)
 		if err != nil {
@@ -96,9 +94,7 @@ func serveSourceAdmin(ops AdminOperations, route RouteDescriptor, name string, w
 			writeAdminError(w, err)
 			return
 		}
-		writeJSON(w, struct {
-			Entries []sourceEntryInfo `json:"entries"`
-		}{sourceEntriesWire(rows)}, http.StatusOK)
+		writeJSON(w, SourceEntriesResponse{sourceEntriesWire(rows)}, http.StatusOK)
 	}
 }
 
@@ -132,9 +128,7 @@ func serveViewAdmin(ops AdminOperations, route RouteDescriptor, name string, w h
 		for _, view := range views {
 			infos = append(infos, viewWire(view))
 		}
-		writeJSON(w, struct {
-			Registries []viewInfo `json:"registries"`
-		}{infos}, http.StatusOK)
+		writeJSON(w, ViewsResponse{infos}, http.StatusOK)
 	case Get:
 		view, err := ops.Views.GetView(r.Context(), name)
 		if err != nil {
@@ -143,9 +137,7 @@ func serveViewAdmin(ops AdminOperations, route RouteDescriptor, name string, w h
 		}
 		writeJSON(w, viewWire(view), http.StatusOK)
 	case Upsert:
-		var req struct {
-			Sources []string `json:"sources"`
-		}
+		var req ViewRequest
 		if !decodeAdminBody(w, r, &req) {
 			return
 		}
@@ -182,9 +174,7 @@ func serveViewAdmin(ops AdminOperations, route RouteDescriptor, name string, w h
 			entries = append(entries, viewEntryInfo{EntryType: row.Kind, Name: row.Name,
 				versionInfo: versionWire(row.DiagnosticVersion), SourceName: row.SourceName, Position: row.Position})
 		}
-		writeJSON(w, struct {
-			Entries []viewEntryInfo `json:"entries"`
-		}{entries}, http.StatusOK)
+		writeJSON(w, ViewEntriesResponse{entries}, http.StatusOK)
 	}
 }
 
@@ -245,11 +235,7 @@ func finishMutation(
 ) {
 	if postCommitted(err) {
 		observeMutation(r, route, operation)
-		writeJSON(w, struct {
-			Error     string `json:"error"`
-			Committed bool   `json:"committed"`
-			Resource  any    `json:"resource,omitempty"`
-		}{"mutation committed; follow-up failed", true, payload}, http.StatusServiceUnavailable)
+		writeJSON(w, CommittedErrorResponse{"mutation committed; follow-up failed", true, payload}, http.StatusServiceUnavailable)
 		return
 	}
 	if err != nil {

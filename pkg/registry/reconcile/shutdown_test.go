@@ -25,7 +25,7 @@ func TestCommittedAttemptRetainsRenewalFault(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			jobs, fetcher := mocks.NewMockJobs(ctrl), mocks.NewMockFetcher(ctrl)
 			job := jobFixture()
-			ttl := 60 * time.Millisecond
+			ttl := time.Second
 			backendErr := errors.New("renewal backend failure")
 			entered := make(chan struct{})
 			jobs.EXPECT().Acquire(gomock.Any(), job.Source.Name, ttl).Return(job, nil)

@@ -1,6 +1,9 @@
 # CI test values for chart-testing with PostgreSQL
 # Image built with ko and loaded into KIND cluster
 
+# Known-empty disposable CI database only; deny-all policy grants no exposure.
+initializeEmptyCatalog: true
+
 image:
   registryServerUrl: ko.local/thv-registry-api:ci-test
   pullPolicy: Never

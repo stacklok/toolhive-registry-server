@@ -108,6 +108,20 @@ func (mr *MockCatalogStorageMockRecorder) Consume(arg0, arg1 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Consume", reflect.TypeOf((*MockCatalogStorage)(nil).Consume), arg0, arg1)
 }
 
+// ConsumeEmpty mocks base method.
+func (m *MockCatalogStorage) ConsumeEmpty(arg0 context.Context, arg1 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConsumeEmpty", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ConsumeEmpty indicates an expected call of ConsumeEmpty.
+func (mr *MockCatalogStorageMockRecorder) ConsumeEmpty(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsumeEmpty", reflect.TypeOf((*MockCatalogStorage)(nil).ConsumeEmpty), arg0, arg1)
+}
+
 // Initialize mocks base method.
 func (m *MockCatalogStorage) Initialize(arg0 context.Context, arg1 []persistence.SourceDefinition, arg2 []persistence.ViewDefinition) (storage.CatalogComponents, error) {
 	m.ctrl.T.Helper()

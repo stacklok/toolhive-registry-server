@@ -9,12 +9,17 @@ Before starting, customize the trusted issuer/audience, explicitly map its group
 or scopes, and create/mount an operator-owned plain Cedar file at the absolute
 `authorization.policyFile`. Nothing installs an allow-all policy. The
 [Cedar guide](../docs/registry-cedar-authorization.md) has typechecked policies,
-policy size/type constraints and opaque-token compatibility notes. Keep legacy
-`auth.authz` and resource claims where used: Cedar is an additional restriction,
-not a completed migration to non-personalized catalogs.
+policy size/type constraints and opaque-token compatibility notes. `serve` selects
+the nonpersonalized public catalog. Retired `auth.authz`, roles/publicPaths and
+resource claims must be absent in the final config. Existing data requires the
+[offline exposure procedure](../docs/registry-exposure-migration.md); a new, entirely
+empty catalog requires explicit `serve --initialize-empty` (default false).
+Historical claims examples live under `migration-fixtures/` and are expected to
+be rejected by selected startup, not recommended for deployment.
 
 For containers, mount the chosen policy read-only at `/etc/registry/policies.cedar`.
-For Helm, create a ConfigMap containing `policies.cedar`, set
+For Helm, create a ConfigMap containing `policies.cedar`, select an explicit
+catalog-capable image via `image.registryServerUrl` (no legacy fallback), set
 `policy.existingConfigMap` to its name, and configure `config.auth.oauth.providers`
 and `config.authorization.identityMappings`. The chart mounts policy read-only
 at `/etc/registry-policies/policies.cedar`. Changing an external ConfigMap does not
@@ -24,19 +29,40 @@ old replicas when revoking access. Admin requires explicit opt-in and OAuth.
 Legacy anonymous Docker invocations are no longer a runnable security default.
 Explicit anonymous catalog use requires both the config opt-in and an authored
 Cedar permit; it never enables admin or accepts invalid bearer tokens. The static
-entry-claims/me tombstones and remaining legacy role/claim requirements are
-explained in the Cedar transition guide.
+entry-claims/me tombstones and whole-instance admission are explained in the Cedar guide.
+
+## Kind installation tasks
+
+Both `registry-server-install-latest` and `registry-server-install-local` require
+`VALUES`, an operator-prepared Helm values file with the database, trusted OAuth
+providers/mappings and `policy.existingConfigMap`. Create that external ConfigMap
+with your own reviewed `policies.cedar` before installing. The `latest` task also
+requires `REGISTRY_SERVER_IMAGE`, a catalog-capable release tag/digest; it never
+chooses an old image implicitly. The local task builds the current source tree.
+
+```bash
+task registry-server-install-latest VALUES="$CATALOG_VALUES" REGISTRY_SERVER_IMAGE="$REGISTRY_SERVER_IMAGE"
+task registry-server-install-local VALUES="$CATALOG_VALUES"
+```
+
+The `kind-with-registry-server-latest`/`-local` wrapper tasks use the same inputs.
+Only for a genuinely new, entirely empty database, explicitly set
+`initializeEmptyCatalog: true` in your values. Leave it false for existing databases
+and complete the manual offline exposure receipt procedure before an upgrade.
+The [CNPG workflow](../.claude/skills/deploy-registry-server-with-cnpg/SKILL.md)
+shows the additional PostgreSQL setup and admission inputs for that example.
 
 ## Docker Compose: explicit operator mount
 
-The root `docker-compose.yaml` does not supply a Cedar policy volume. It will not
-start the API as-is. Before running it, prepare an operator-owned directory outside
+The root `docker-compose.yaml` requires `REGISTRY_POLICY_FILE`, an absolute path
+to an operator-authored Cedar file, mounted read-only. It supplies no policy by
+default. For a customized config mount, prepare an operator-owned directory outside
 the repository containing:
 
 - `config.yaml`, based on `examples/config-docker.yaml`, with your trusted OAuth
   issuer/audience and matching identity mappings. Keep the Compose database host
-  `postgres`, database users and `/examples` source paths. Keep existing legacy
-  authorization/claims if upgrading an existing database.
+  `postgres`, database users and `/examples` source paths. Remove retired fields
+  before the final-config-first offline review for an existing catalog.
 - `policies.cedar`, authored for those identities using the
   [Cedar guide](../docs/registry-cedar-authorization.md#what-does-the-policy-look-like).
   Set `authorization.policyFile: /etc/registry/policies.cedar` in `config.yaml`.
@@ -60,7 +86,8 @@ services:
       - "127.0.0.1:8081:8081" # Internal probes, loopback only
 ```
 
-After setting `REGISTRY_CONFIG_DIR` to that directory's absolute path, run:
+After setting `REGISTRY_CONFIG_DIR` to that directory's absolute path and
+`REGISTRY_POLICY_FILE` to its `policies.cedar`, run:
 
 ```bash
 docker compose -f docker-compose.yaml -f compose.admission.yaml config --quiet
@@ -70,7 +97,11 @@ docker compose -f docker-compose.yaml -f compose.admission.yaml up --build
 This retains the base Compose source/database mounts and supplies no implicit
 policy grants. It is a local-development setup, not production TLS or database
 credential guidance. Do not start against an existing database until its claims
-and upgrade requirements have been reviewed. Restart the API after policy edits.
+and upgrade requirements have been reviewed and explicitly retired. For a genuinely
+empty install only, explicitly append `--initialize-empty` to the custom override's
+serve command. The supplied `docker-compose.initialize-empty.yaml` alternative uses
+the base `/examples` config path; do not combine it with the custom-config override.
+Neither supplies policy grants or deletes volumes. Restart the API after policy edits.
 
 ## Quick Start
 
@@ -98,7 +129,7 @@ thv-registry-api serve --config examples/config-file.yaml
 **Verify sync is working:**
 
 Obtain an access token from your configured IdP with the expected audience and
-reader grants (plus legacy claims when enabled). Store the header line
+reader grants. Store the header line
 `Authorization: Bearer <access-token>` in a private file outside the repository,
 readable only by you. Do not paste tokens into shell history or commit them.
 Set `AUTH_HEADER_FILE` to that file's absolute path. These examples use the

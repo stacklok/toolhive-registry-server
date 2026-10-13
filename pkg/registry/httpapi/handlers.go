@@ -261,7 +261,7 @@ func writeServiceError(w http.ResponseWriter, err error) {
 }
 
 func writeError(w http.ResponseWriter, message string, status int) {
-	writeJSON(w, map[string]string{"error": message}, status)
+	writeJSON(w, ErrorResponse{Error: message}, status)
 }
 
 func writeJSON(w http.ResponseWriter, value any, status int) {

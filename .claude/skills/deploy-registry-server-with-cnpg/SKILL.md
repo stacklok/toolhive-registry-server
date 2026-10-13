@@ -12,7 +12,7 @@ Deploy the ToolHive Registry Server to a Kind cluster with CloudNativePG (CNPG) 
 ## Arguments
 
 - `local` - Build the image locally using ko and deploy (default)
-- `latest` - Use the latest published image from GitHub
+- `latest` - Use an explicitly selected catalog-capable release image (no fallback)
 
 ## Prerequisites
 
@@ -97,48 +97,102 @@ kubectl apply -f examples/cnpg/pgpass-secret.yaml --kubeconfig kconfig.yaml
 
 ### 6. Deploy Registry Server
 
-Based on the argument, either build locally or use the latest image.
+Before either install mode, prepare an operator-owned admission values file outside
+this repository and set `CATALOG_VALUES` to its path. Configure your actual OAuth
+issuer/audience, resource URL and identity mappings as described in
+[the Cedar guide](../../../docs/registry-cedar-authorization.md). For example,
+customize these values (the example domains are not a working IdP):
+
+```yaml
+config:
+  auth:
+    mode: oauth
+    oauth:
+      resourceUrl: https://registry.example.com
+      providers:
+        - name: corporate
+          issuerUrl: https://id.example.com
+          audience: registry-api
+  authorization:
+    allowAnonymousCatalog: false
+    identityMappings:
+      - issuer: https://id.example.com
+        groups: {claim: groups, format: string-array}
+```
+
+Author and review your own plain Cedar policy for those identities; set
+`POLICY_FILE` to its path and `POLICY_CONFIGMAP` to a chosen ConfigMap name.
+The policy must typecheck against the registry schema. No policy, wildcard permit,
+or anonymous access is supplied by this workflow. A deny-all policy is valid and
+keeps the API denied while operational readiness still works. Admin stays disabled.
+
+Create the external policy ConfigMap yourself in the target namespace before Helm:
 
 ```bash
+: "${POLICY_FILE:?Set the path to your reviewed Cedar policy}"
+: "${POLICY_CONFIGMAP:?Choose the external policy ConfigMap name}"
+test -f "$POLICY_FILE" || exit 1
+kubectl create configmap "$POLICY_CONFIGMAP" --namespace toolhive-system \
+  --from-file="policies.cedar=$POLICY_FILE" --kubeconfig kconfig.yaml
+```
+
+For an existing database, stop all old readers/writers and complete the manual
+inventory, acknowledgement and (where required) claims-retirement receipt procedure
+in [the upgrade guide](../../../docs/registry-exposure-migration.md) using the exact
+final config and policy before serving. Set `CATALOG_INITIALIZATION=existing`.
+Do not use fresh initialization to bypass existing-data review, even when old claims
+are NULL. Only for a genuinely new, entirely empty database, explicitly choose
+`CATALOG_INITIALIZATION=new-empty`. There is no initialization default.
+
+For `latest`, set `REGISTRY_SERVER_IMAGE` to a release tag/digest verified to contain
+catalog startup and receipt enforcement. Old pre-cutover images are not compatible.
+`local` builds that image from the current source tree. Both modes pass the image,
+external policy and chosen initialization mode explicitly:
+
+```bash
+set -euo pipefail
 DEPLOY_MODE="${ARGUMENTS:-local}"
+: "${CATALOG_VALUES:?Set the operator-prepared OAuth/admission values file}"
+: "${POLICY_CONFIGMAP:?Create your external policy ConfigMap first}"
+test -f "$CATALOG_VALUES" || exit 1
+case "${CATALOG_INITIALIZATION:?Choose existing or new-empty explicitly}" in
+  existing) INITIALIZE_EMPTY=false ;;
+  new-empty) INITIALIZE_EMPTY=true ;;
+  *) echo "ERROR: Choose existing or new-empty"; exit 1 ;;
+esac
 
-if [ "$DEPLOY_MODE" = "local" ] || [ -z "$DEPLOY_MODE" ]; then
-  echo "Building registry server image locally with ko..."
-
-  # Check ko is installed
-  if ! command -v ko >/dev/null 2>&1; then
-    echo "ERROR: ko is not installed. Install from https://ko.build/"
-    exit 1
-  fi
-
-  # Build the image
+if [ "$DEPLOY_MODE" = "local" ]; then
+  command -v ko >/dev/null 2>&1 || { echo "ERROR: ko is not installed"; exit 1; }
   REGISTRY_SERVER_IMAGE=$(KO_DOCKER_REPO=kind.local ko build --local -B ./cmd/thv-registry-api | tail -n 1)
-  echo "Built image: $REGISTRY_SERVER_IMAGE"
-
-  # Load into kind
-  echo "Loading image into Kind cluster..."
-  kind load docker-image "$REGISTRY_SERVER_IMAGE" --name thv-registry
-
-  # Deploy with helm using CNPG values file
-  echo "Deploying registry server with CNPG PostgreSQL..."
-  helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server \
-    --namespace toolhive-system \
-    --kubeconfig kconfig.yaml \
-    -f examples/cnpg/helm-values.yaml \
-    --set image.registryServerUrl="$REGISTRY_SERVER_IMAGE" \
-    --set image.pullPolicy=Never
-
+  PULL_POLICY=Never
 elif [ "$DEPLOY_MODE" = "latest" ]; then
-  echo "Deploying latest registry server image from GitHub..."
-  helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server \
-    --namespace toolhive-system \
-    --kubeconfig kconfig.yaml \
-    -f examples/cnpg/helm-values.yaml
+  : "${REGISTRY_SERVER_IMAGE:?Select a catalog-capable release image tag or digest}"
+  PULL_POLICY=IfNotPresent
 else
   echo "ERROR: Unknown deploy mode '$DEPLOY_MODE'. Use 'local' or 'latest'."
   exit 1
 fi
+case "$REGISTRY_SERVER_IMAGE" in
+  ''|*[!a-zA-Z0-9./:@_-]*) echo "ERROR: Invalid image reference"; exit 1 ;;
+esac
+case "$POLICY_CONFIGMAP" in
+  ''|*[!a-z0-9.-]*) echo "ERROR: Invalid ConfigMap name"; exit 1 ;;
+esac
+if [ "$DEPLOY_MODE" = "local" ]; then
+  kind load docker-image "$REGISTRY_SERVER_IMAGE" --name thv-registry
+fi
+helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server \
+  --namespace toolhive-system --kubeconfig kconfig.yaml \
+  -f examples/cnpg/helm-values.yaml -f "$CATALOG_VALUES" \
+  --set-string "image.registryServerUrl=$REGISTRY_SERVER_IMAGE" \
+  --set-string "image.pullPolicy=$PULL_POLICY" \
+  --set-string "policy.existingConfigMap=$POLICY_CONFIGMAP" \
+  --set "initializeEmptyCatalog=$INITIALIZE_EMPTY"
 ```
+
+Changing the external policy ConfigMap requires an explicit rollout of every
+replica; the running evaluator uses frozen policy bytes. Drain old replicas for
+revocations. Never reset a consumed receipt or reuse a fresh flag for an upgrade.
 
 ### 7. Wait for Deployment
 
@@ -187,9 +241,12 @@ CNPG Services created:
 To access the registry server API:
   kubectl port-forward -n toolhive-system svc/toolhive-registry-server 8080:8080 --kubeconfig kconfig.yaml
 
-Then test with:
-  curl http://localhost:8080/health
-  curl http://localhost:8080/registry/toolhive/v0.1/servers?limit=3
+Then test with your IdP token stored in a private header file (no token in history):
+  curl --fail-with-body --header "@${AUTH_HEADER_FILE:?Set your private header file path}" http://localhost:8080/registry/default/v0.1/servers?limit=3
+
+For unauthenticated health checks on the internal port:
+  kubectl port-forward -n toolhive-system svc/toolhive-registry-server 8081:8081 --kubeconfig kconfig.yaml
+  curl http://localhost:8081/health
 
 To connect to PostgreSQL directly:
   kubectl port-forward -n toolhive-system svc/registry-db-rw 5432:5432 --kubeconfig kconfig.yaml

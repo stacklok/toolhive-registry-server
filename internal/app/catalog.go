@@ -21,6 +21,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/authorization"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
+	shutdownresult "github.com/stacklok/toolhive-registry-server/internal/shutdown"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/standalone"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/catalog"
@@ -40,11 +41,13 @@ type CatalogOperator interface {
 	Worker(persistence.Jobs, persistence.SourceDefinition, reconcile.Options) (standalone.Worker, error)
 }
 
-// CatalogOptions selects a complete opt-in composition, not the production CLI.
+// CatalogOptions selects the standalone public-component composition.
 // HTTP options are the existing WithAddress/WithInternalAddress/timeouts/telemetry
 // options. Legacy storage, sync and authentication overrides are rejected.
 type CatalogOptions struct {
-	Config          *config.Config
+	Config *config.Config
+	// InitializeEmpty explicitly authorizes only a new, entirely empty catalog.
+	InitializeEmpty bool
 	Overrides       []func(*config.Config) error
 	Storage         storage.CatalogFactory
 	Operator        CatalogOperator
@@ -188,8 +191,13 @@ func NewCatalogApp(ctx context.Context, options CatalogOptions) (_ *CatalogApp, 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err = store.Consume(ctx, review.Revision); err != nil {
-		return nil, err
+	if options.InitializeEmpty {
+		err = store.ConsumeEmpty(ctx, review.Revision)
+	} else {
+		err = store.Consume(ctx, review.Revision)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("catalog exposure preparation: %w; see docs/registry-exposure-migration.md", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -354,6 +362,9 @@ func (a *CatalogApp) Start() error {
 // Run starts and then joins the application, preserving terminal failures.
 func (a *CatalogApp) Run() error {
 	if err := a.Start(); err != nil {
+		if a.ctx.Err() != nil {
+			return shutdownresult.Result(err)
+		}
 		return err
 	}
 	return a.Wait()

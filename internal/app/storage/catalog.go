@@ -35,6 +35,7 @@ type CatalogStorage interface {
 		[]persistence.SourceDefinition, error,
 	)
 	Consume(context.Context, string) error
+	ConsumeEmpty(context.Context, string) error
 	Initialize(context.Context, []persistence.SourceDefinition, []persistence.ViewDefinition) (CatalogComponents, error)
 	Close()
 }
@@ -169,6 +170,15 @@ func (s *catalogPostgres) Consume(ctx context.Context, revision string) error {
 	}
 	defer conn.Release()
 	return db.ConsumeExposure(ctx, conn.Conn(), revision)
+}
+
+func (s *catalogPostgres) ConsumeEmpty(ctx context.Context, revision string) error {
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return errors.New("exposure connection unavailable")
+	}
+	defer conn.Release()
+	return db.ConsumeEmptyExposure(ctx, conn.Conn(), revision)
 }
 
 func (s *catalogPostgres) Initialize(
