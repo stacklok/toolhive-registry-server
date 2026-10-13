@@ -111,7 +111,9 @@ func ConsumerRoutes() []RouteDescriptor {
 	return routes
 }
 
-// ConsumerRouter returns an unstarted handler to mount under /registry. It mounts
+// ConsumerRouter returns an unstarted, policy-free handler to mount under /registry.
+// Omitting Decorate explicitly leaves admission to the host; use Authorize for a
+// protected boundary (nil authorizers deny). It mounts
 // no admin or operational routes and extracts no authentication/claims data.
 // Dependencies must be initialized; nil (including typed nil) is rejected.
 func ConsumerRouter(pages ConsumerPages, options ConsumerOptions) (http.Handler, error) {

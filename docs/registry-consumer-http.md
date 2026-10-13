@@ -33,8 +33,18 @@ metadata, implicit HEAD or OPTIONS handlers are mounted. Chi returns 405 for
 unsupported methods on known paths and 404 for unknown paths; neither calls the
 application. A host can add its own routes or method handlers outside this router.
 
-Admission is **entirely host-owned**. The public router can be unprotected; do not
-mount it over formerly protected data without explicit host policy. It has no
+Admission is **entirely host-owned**. The low-level router is explicitly policy-free
+when `Decorate` is omitted; do not mount it over formerly protected data without
+explicit host policy. For a protected boundary, implement the narrow
+`httpapi.Authorizer.Authorize(context.Context, RouteDescriptor) (bool, error)` and
+set `Decorate: httpapi.Authorize(authorizer)` after host authentication `Middleware`.
+Nil (including typed nil), deny, errors and unknown/mismatched descriptors deny with
+403 before application calls; diagnostics never reach clients. Host identity lives
+only in host context, with no Cedar/JWT/internal auth/user/tenant/persistence-policy
+contract. This is HTTP/application-boundary admission, not exposure consent or a
+standalone engine/provider/plugin framework. See the [external-module TLS authentication
+and non-Cedar example](../pkg/registry/httpapi/testdata/external/authorization_test.go).
+The router has no
 identity, claims, JWT, Cedar schema, standalone configuration, PostgreSQL or
 Kubernetes dependency. The default `catalog.Reader` is non-personalized.
 

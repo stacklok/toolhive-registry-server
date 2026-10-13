@@ -15,7 +15,17 @@ may explicitly use default-false `--initialize-empty`, never to approve existing
 The legacy runtime and live claims columns are removed at schema 30; private offline
 config compatibility, historical archives and receipts remain. Statements below
 about dormant consumption or retained legacy guards describe the original proposal,
-not the selected runtime.
+not the selected runtime. Issue #944 supersedes the historical mandatory-file/defaults
+proposals below: standalone always evaluates Cedar, using built-in allow-all on
+omission, or a valid custom file replacing it entirely. Admin remains off by default
+and requires verified OAuth when enabled; every verified identity gets every enabled
+operation by default. Anonymous catalog access requires explicit opt-in; invalid
+credentials, unknown/mismatched routes and evaluator diagnostics/errors deny.
+Libraries expose only the optional HTTP/application `httpapi.Authorizer` host-context
+contract via Middleware/Decorate, not a standalone engine/provider/plugin selector.
+Neither policy grants exposure consent; offline review hashes the effective default
+bytes identically to finalize/startup. Use the current guides rather than the old
+JSON-bundle or missing-file proposals preserved below.
 
 ## Recommendation and boundary
 

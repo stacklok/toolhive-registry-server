@@ -2,29 +2,35 @@
 
 This directory contains sample configuration files demonstrating automatic registry synchronization from different data sources.
 
-## Standalone admission setup (required)
+## Standalone admission setup
 
-All YAML examples now default to private OAuth access and `admin.enabled: false`.
-Before starting, customize the trusted issuer/audience, explicitly map its groups
-or scopes, and create/mount an operator-owned plain Cedar file at the absolute
-`authorization.policyFile`. Nothing installs an allow-all policy. The
-[Cedar guide](../docs/registry-cedar-authorization.md) has typechecked policies,
-policy size/type constraints and opaque-token compatibility notes. `serve` selects
-the nonpersonalized public catalog. Retired `auth.authz`, roles/publicPaths and
-resource claims must be absent in the final config. Existing data requires the
-[offline exposure procedure](../docs/registry-exposure-migration.md); a new, entirely
-empty catalog requires explicit `serve --initialize-empty` (default false).
-Historical claims examples live under `migration-fixtures/` and are expected to
-be rejected by selected startup, not recommended for deployment.
+All YAML examples default to private OAuth access and `admin.enabled: false`.
+Configure the trusted issuer/audience and explicitly map its groups or scopes.
+When `authorization.policyFile` is omitted, standalone evaluates its built-in
+allow-all Cedar policy after authentication: every verified identity may use every
+enabled operation. This does not bypass OAuth, enable admin, or enable anonymous
+catalog access. The [Cedar guide](../docs/registry-cedar-authorization.md) has
+typechecked custom policies, policy size/type constraints and opaque-token
+compatibility notes. `serve` selects the nonpersonalized public catalog. Retired
+`auth.authz`, roles/publicPaths and resource claims must be absent in the final
+config. Existing data requires the [offline exposure procedure](../docs/registry-exposure-migration.md);
+a new, entirely empty catalog requires explicit `serve --initialize-empty` (default
+false). Historical claims examples live under `migration-fixtures/` and are expected
+to be rejected by selected startup, not recommended for deployment.
 
-For containers, mount the chosen policy read-only at `/etc/registry/policies.cedar`.
-For Helm, create a ConfigMap containing `policies.cedar`, select an explicit
-catalog-capable image via `image.registryServerUrl` (no legacy fallback), set
-`policy.existingConfigMap` to its name, and configure `config.auth.oauth.providers`
-and `config.authorization.identityMappings`. The chart mounts policy read-only
-at `/etc/registry-policies/policies.cedar`. Changing an external ConfigMap does not
-change a running evaluator: explicitly restart/roll out every replica, and drain
-old replicas when revoking access. Admin requires explicit opt-in and OAuth.
+To restrict access with a custom Cedar policy, set an absolute
+`authorization.policyFile` and mount that same file read-only. A configured custom
+path replaces the built-in policy entirely; a missing, empty, or invalid file fails
+startup rather than falling back. Admin still requires explicit opt-in and OAuth.
+
+For Helm, `policy.existingConfigMap` is optional. When set, it must name a ConfigMap
+containing `policies.cedar`; the chart mounts it read-only at
+`/etc/registry-policies/policies.cedar` and selects that `policyFile` automatically.
+Without it, the chart uses the evaluated built-in allow-all policy. In either case,
+set an explicit catalog-capable image via `image.registryServerUrl` and configure
+`config.auth.oauth.providers` and `config.authorization.identityMappings` as needed.
+Changing an external ConfigMap does not change a running evaluator: explicitly
+restart/roll out every replica, and drain old replicas when revoking access.
 
 Legacy anonymous Docker invocations are no longer a runnable security default.
 Explicit anonymous catalog use requires both the config opt-in and an authored
@@ -34,11 +40,12 @@ entry-claims/me tombstones and whole-instance admission are explained in the Ced
 ## Kind installation tasks
 
 Both `registry-server-install-latest` and `registry-server-install-local` require
-`VALUES`, an operator-prepared Helm values file with the database, trusted OAuth
-providers/mappings and `policy.existingConfigMap`. Create that external ConfigMap
-with your own reviewed `policies.cedar` before installing. The `latest` task also
-requires `REGISTRY_SERVER_IMAGE`, a catalog-capable release tag/digest; it never
-chooses an old image implicitly. The local task builds the current source tree.
+`VALUES`, an operator-prepared Helm values file with the database and trusted OAuth
+providers/mappings. A custom policy is optional: set `policy.existingConfigMap` only
+when the values select an operator-prepared ConfigMap containing `policies.cedar`.
+The `latest` task also requires `REGISTRY_SERVER_IMAGE`, a catalog-capable release
+tag/digest; it never chooses an old image implicitly. The local task builds the
+current source tree.
 
 ```bash
 task registry-server-install-latest VALUES="$CATALOG_VALUES" REGISTRY_SERVER_IMAGE="$REGISTRY_SERVER_IMAGE"
@@ -52,12 +59,15 @@ and complete the manual offline exposure receipt procedure before an upgrade.
 The [CNPG workflow](../.claude/skills/deploy-registry-server-with-cnpg/SKILL.md)
 shows the additional PostgreSQL setup and admission inputs for that example.
 
-## Docker Compose: explicit operator mount
+## Docker Compose: default policy or explicit custom override
 
-The root `docker-compose.yaml` requires `REGISTRY_POLICY_FILE`, an absolute path
-to an operator-authored Cedar file, mounted read-only. It supplies no policy by
-default. For a customized config mount, prepare an operator-owned directory outside
-the repository containing:
+The root `docker-compose.yaml` has no Cedar policy mount or policy environment
+variable. Its selected config omits `authorization.policyFile`, so standalone
+evaluates the built-in allow-all policy after OAuth authentication. It supplies no
+anonymous or admin grant by default.
+
+To use a custom restriction, prepare an operator-owned directory outside the
+repository containing:
 
 - `config.yaml`, based on `examples/config-docker.yaml`, with your trusted OAuth
   issuer/audience and matching identity mappings. Keep the Compose database host
@@ -86,8 +96,7 @@ services:
       - "127.0.0.1:8081:8081" # Internal probes, loopback only
 ```
 
-After setting `REGISTRY_CONFIG_DIR` to that directory's absolute path and
-`REGISTRY_POLICY_FILE` to its `policies.cedar`, run:
+After setting `REGISTRY_CONFIG_DIR` to that directory's absolute path, run:
 
 ```bash
 docker compose -f docker-compose.yaml -f compose.admission.yaml config --quiet

@@ -1,7 +1,7 @@
 # Registry Server Helm values for CloudNativePG (CNPG) backend
 # Layer this file with operator-prepared admission values; see
 # .claude/skills/deploy-registry-server-with-cnpg/SKILL.md for the full workflow.
-# Explicit catalog-capable image, OAuth and an existing policy ConfigMap are required.
+# Explicit catalog-capable image and trusted OAuth are required; custom Cedar is optional.
 # initializeEmptyCatalog remains false: opt in only for a genuinely new, empty DB.
 # Existing databases require docs/registry-exposure-migration.md, not the fresh flag.
 #
@@ -55,17 +55,17 @@ extraVolumeMounts:
     subPath: .pgpass
     readOnly: true
 
-# No implicit serving policy or fresh-database authorization.
+# No implicit fresh-database authorization; default Cedar is evaluated allow-all.
 initializeEmptyCatalog: false
 policy:
-  existingConfigMap: "" # Supply the operator-created ConfigMap name at installation.
+  existingConfigMap: "" # Optional custom replacement; chart sets its mounted policyFile.
 
 # Registry server configuration with CNPG PostgreSQL
 config:
   admin:
     enabled: false
   authorization:
-    policyFile: /etc/registry-policies/policies.cedar
+    # Omit policyFile to evaluate built-in allow-all after authentication.
     allowAnonymousCatalog: false
     identityMappings: [] # Set mappings matching your chosen Cedar policy.
   sources:

@@ -16,7 +16,8 @@ func TestAdmissionEffectiveConfiguration(t *testing.T) {
 		valid  bool
 	}{
 		{"private", func(*Config) {}, true},
-		{"missing policy", func(c *Config) { c.Authorization = nil }, false},
+		{"omitted authorization", func(c *Config) { c.Authorization = nil }, true},
+		{"omitted policy", func(c *Config) { c.Authorization.PolicyFile = "" }, true},
 		{"relative policy", func(c *Config) { c.Authorization.PolicyFile = "policy.cedar" }, false},
 		{"admin anonymous", func(c *Config) { c.Admin.Enabled = true; c.Auth.Mode = AuthModeAnonymous }, false},
 		{"bad CLI override", func(c *Config) { c.Auth.Mode = "invalid" }, false},

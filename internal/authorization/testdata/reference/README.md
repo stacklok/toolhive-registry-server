@@ -40,6 +40,12 @@ this procedure in a `dev` shell. Updating policy examples, schema or cases requi
 actual regeneration with the pinned reference, not hand-adjusted expected results.
 SHA-256 provenance binds all three inputs; routine Go CI needs no Rust build.
 
+Issue #944 changed omission/default resolution only. The referenced guide Cedar
+blocks, schema and 17 cases remain unchanged; the new built-in allow-all policy is
+covered by Go evaluator/boundary tests, not this Rust fixture matrix. No Rust
+regeneration was performed or is claimed for that default change. Rust remains a
+reference-validation tool only, never a runtime dependency.
+
 This is bounded evidence for the shipped policies/schema and cases, **not universal
 language/validator equivalence**. The official cedar-go v1.8.0
 [README](https://github.com/cedar-policy/cedar-go/blob/v1.8.0/README.md#comparison-to-the-rust-implementation)

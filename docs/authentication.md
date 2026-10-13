@@ -15,8 +15,13 @@ The ToolHive Registry API server supports OAuth 2.0/OIDC authentication to prote
 
 ## Overview
 
-Standalone serving requires an operator-authored Cedar policy file and a valid
-exposure receipt. Cedar replaces legacy roles/resource claims in the selected
+Standalone serving always evaluates Cedar and requires a valid exposure receipt.
+Omitted `authorization.policyFile` loads built-in allow-all Cedar: every verified
+identity gets every enabled operation, including admin if explicitly enabled.
+Admin stays off by default and requires verified OAuth; anonymous catalog access
+requires explicit opt-in. Invalid supplied credentials never become anonymous.
+A custom file replaces the default entirely; invalid specified files fail startup.
+Cedar replaces legacy roles/resource claims in the selected
 runtime; permitted readers receive the same nonpersonalized catalog. See the
 [Cedar guide](registry-cedar-authorization.md) and
 [offline exposure procedure](registry-exposure-migration.md) before upgrading.
@@ -53,7 +58,8 @@ auth:
 admin:
   enabled: false
 authorization:
-  policyFile: /etc/registry/policies.cedar # Author and mount explicitly.
+  # Optional custom replacement; omission evaluates built-in allow-all Cedar.
+  # policyFile: /etc/registry/policies.cedar
   allowAnonymousCatalog: true
 ```
 
@@ -242,7 +248,8 @@ auth:
 admin:
   enabled: false
 authorization:
-  policyFile: /etc/registry/policies.cedar # Author and mount explicitly.
+  # Optional custom replacement; omission evaluates built-in allow-all Cedar.
+  # policyFile: /etc/registry/policies.cedar
   allowAnonymousCatalog: true
 ```
 

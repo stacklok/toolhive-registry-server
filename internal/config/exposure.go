@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/stacklok/toolhive-registry-server/internal/authorization/policydata"
 )
 
 // ExposureConfig contains only safe offline review metadata, never config values.
@@ -34,8 +36,11 @@ func LoadExposureConfig(path string) (*Config, ExposureConfig, error) {
 	if err != nil {
 		return nil, ExposureConfig{}, errors.New("exposure configuration unavailable or invalid")
 	}
-	policyRevision := "absent"
-	if cfg.Authorization != nil && cfg.Authorization.PolicyFile != "" {
+	if cfg.Authorization == nil {
+		cfg.Authorization = &AuthorizationConfig{}
+	}
+	policyRevision := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(policydata.Default)))
+	if cfg.Authorization.PolicyFile != "" {
 		policyRevision, err = exposurePolicyRevision(cfg.Authorization.PolicyFile)
 		if err != nil {
 			return nil, ExposureConfig{}, err

@@ -28,7 +28,9 @@ helpers remain shared implementation dependencies, not standalone policy.
 ## 3. Two HTTP Servers
 
 The public server (default `:8080`) carries mandatory verified authentication, fixed-action
-Cedar admission and audit. It mounts consumer routes, opt-in `/v1` administration,
+fixed-action Cedar admission (built-in allow-all when policyFile is omitted, custom
+files replacing it entirely) and audit. Authentication and route enablement remain
+independent gates. It mounts consumer routes, opt-in `/v1` administration,
 OpenAPI and the fixed OAuth bootstrap GET. Operational `/health`, `/readiness`, `/version`
 and optional `/metrics` belong only to the internal server (`:8081`), without auth/audit.
 Do not introduce configurable public-path bypasses or mount operational routes publicly.

@@ -15,8 +15,11 @@ against a retired catalog.
 ## New, entirely empty installs only
 
 Prepare the **final** config first, with trusted OAuth providers, administration off
-unless explicitly needed, no retired fields, and a readable operator-authored Cedar
-policy mounted read-only. A deny-all policy is valid but grants no access. Then,
+unless explicitly needed and no retired fields. Omit `authorization.policyFile` for
+evaluated built-in allow-all Cedar, or mount a valid custom restriction read-only.
+Every verified identity gets every enabled operation by default, including admin if
+enabled; anonymous catalog access still requires explicit opt-in. A deny-all custom
+policy is valid but grants no access. Neither policy grants exposure consent. Then,
 only for a genuinely empty new database, explicitly authorize empty-install mode:
 
 ```sh
@@ -40,12 +43,14 @@ The offline `initialize-empty` command below remains available for maintenance;
 it is not a second chart/job activation framework.
 
 Helm: `initializeEmptyCatalog: false` by default; explicitly set true for a new empty
-install, alongside `policy.existingConfigMap`, trusted OAuth and DB settings. The
+install, alongside trusted OAuth and DB settings. `policy.existingConfigMap` is optional
+and replaces the built-in policy entirely. The
 chart also requires an explicit `image.registryServerUrl` built from this startup
 change; it has no legacy-image fallback. Both ct fixtures opt in only for their disposable
-test DB and use externally mounted deny-all policy. Production images need no shell/jq.
-Compose: set `REGISTRY_POLICY_FILE` to the absolute operator-authored policy path,
-configure the OAuth provider in the selected config, and only for an empty install use
+test DB: one exercises the built-in policy and one the optional deny-all mount.
+Production images need no shell/jq. Compose requires no external policy mount by
+default. Configure the OAuth provider in the selected config (see configuration
+reference for an optional read-only custom mount), and only for an empty install use
 `docker compose -f docker-compose.yaml -f docker-compose.initialize-empty.yaml up --build`.
 Base Compose does not initialize implicitly; neither command removes existing volumes.
 
@@ -55,8 +60,12 @@ Base Compose does not initialize implicitly; neither command removes existing vo
    controllers, including old binaries and embedding applications. Prevent restarts
    and background reconciliation. Take and verify a database/config/policy backup.
    A digest or absence of a live lease cannot prove old processes are offline.
-2. Prepare the **FINAL deployment config, mounted Cedar policy and operator export
-   annotations first**. Remove retired fields by presence, including explicit nulls
+2. Prepare the **FINAL deployment config, effective Cedar policy and operator export
+   annotations first**. Omitted policy resolves to the same built-in bytes for inventory,
+   acknowledgement, retirement, finalize and startup, not an `absent` sentinel. A custom
+   file replaces the default entirely; explicitly configured unavailable or invalid files
+   fail startup. The independent version-1 fingerprint format and explicit-file pending
+   receipts remain unchanged. Remove retired fields by presence, including explicit nulls
    and environment overrides. Preserve the same effective YAML/environment, policy
    contents and database host spelling throughout review and finalization. Materialize
    exposure-relevant `serve` CLI overrides in YAML/environment for offline commands.

@@ -22,8 +22,9 @@ operator instructions control delegation and publication.
 
 See [README.md](README.md) and [standalone assembly](docs/registry-standalone-assembly.md).
 The standalone binary serves a nonpersonalized MCP/skills/plugins catalog using the
-same public components available to embedders. OAuth verifies identity; operator-
-authored Cedar admits whole-instance actions. Named registries are ordered views,
+same public components available to embedders. OAuth verifies identity; standalone
+Cedar admits whole-instance actions (built-in evaluated allow-all by default, optional
+custom replacement). Named registries are ordered views,
 not tenant/privacy boundaries. Shared registry contracts contain no identity or
 resource claims. Hosts own personalized selection and admission when embedding.
 

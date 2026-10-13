@@ -313,7 +313,7 @@ tasks:
       - sh: 'test -n {{.REGISTRY_SERVER_IMAGE | shellQuote}} && case {{.REGISTRY_SERVER_IMAGE | shellQuote}} in *[!a-zA-Z0-9./:@_-]*) exit 1;; esac'
         msg: REGISTRY_SERVER_IMAGE must be a catalog-capable OCI image reference without whitespace or Helm separators
       - sh: 'test -f {{.VALUES | shellQuote}}'
-        msg: VALUES must name an operator-prepared Helm values file with database, OAuth and external policy configuration
+        msg: VALUES must name an operator-prepared Helm values file with database, OAuth and optional custom policy configuration
     cmds:
       - |
         helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server \
@@ -329,7 +329,7 @@ tasks:
       CLUSTER_NAME: '{{.CLUSTER_NAME | default "thv-registry"}}'
     preconditions:
       - sh: 'test -f {{.VALUES | shellQuote}}'
-        msg: VALUES must name an operator-prepared Helm values file with database, OAuth and external policy configuration
+        msg: VALUES must name an operator-prepared Helm values file with database, OAuth and optional custom policy configuration
     cmds:
       - |
         set -e

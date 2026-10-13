@@ -1,16 +1,14 @@
 # CI test values for chart-testing
 # Image built with ko and loaded into KIND cluster
 
-# Known-empty disposable CI database only; deny-all policy grants no exposure.
+# Known-empty disposable CI database only; policy never grants exposure consent.
 initializeEmptyCatalog: true
 
 image:
   registryServerUrl: ko.local/thv-registry-api:ci-test
   pullPolicy: Never
 
-# Readiness-only CI fixture; never grants access to catalog or admin operations.
-policy:
-  existingConfigMap: registry-ci-deny-all
+# Exercise built-in Cedar with explicit anonymous catalog opt-in and admin off.
 
 # Use minimal resources for CI testing
 resources:

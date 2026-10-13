@@ -15,6 +15,8 @@ import (
 	expast "github.com/cedar-policy/cedar-go/x/exp/ast"
 	"github.com/cedar-policy/cedar-go/x/exp/schema"
 	"github.com/cedar-policy/cedar-go/x/exp/schema/validate"
+
+	"github.com/stacklok/toolhive-registry-server/internal/authorization/policydata"
 )
 
 // Action is a closed standalone security operation.
@@ -61,9 +63,13 @@ func (e *Engine) Revision() string {
 	return "sha256:" + e.revision
 }
 
-// Load rejects missing, empty, oversized, unparsable and ill-typed policy files.
+// Load evaluates the built-in allow-all Cedar policy when path is omitted.
+// An explicit file replaces it entirely and must be nonempty, bounded and valid.
 // Parser/validator errors deliberately do not escape: they may contain policy text.
 func Load(path string) (*Engine, error) {
+	if path == "" {
+		return parse([]byte(policydata.Default))
+	}
 	if !filepath.IsAbs(path) {
 		return nil, errors.New("policy path must be absolute")
 	}

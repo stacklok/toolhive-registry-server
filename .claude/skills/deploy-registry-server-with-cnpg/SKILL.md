@@ -120,13 +120,15 @@ config:
         groups: {claim: groups, format: string-array}
 ```
 
-Author and review your own plain Cedar policy for those identities; set
-`POLICY_FILE` to its path and `POLICY_CONFIGMAP` to a chosen ConfigMap name.
-The policy must typecheck against the registry schema. No policy, wildcard permit,
-or anonymous access is supplied by this workflow. A deny-all policy is valid and
-keeps the API denied while operational readiness still works. Admin stays disabled.
+Optionally author and review a custom plain Cedar policy; set `POLICY_FILE` and
+`POLICY_CONFIGMAP` only when replacing the built-in policy. With no custom file,
+standalone evaluates built-in allow-all Cedar after verified OAuth: every verified
+identity can use every enabled operation, including admin if explicitly enabled.
+Admin stays disabled by default; anonymous catalog access requires explicit opt-in.
+An invalid specified file fails startup, never falls back. A deny-all custom policy
+is valid and keeps the API denied while operational readiness still works.
 
-Create the external policy ConfigMap yourself in the target namespace before Helm:
+Only for a custom policy, create its external ConfigMap before Helm:
 
 ```bash
 : "${POLICY_FILE:?Set the path to your reviewed Cedar policy}"
@@ -147,13 +149,12 @@ are NULL. Only for a genuinely new, entirely empty database, explicitly choose
 For `latest`, set `REGISTRY_SERVER_IMAGE` to a release tag/digest verified to contain
 catalog startup and receipt enforcement. Old pre-cutover images are not compatible.
 `local` builds that image from the current source tree. Both modes pass the image,
-external policy and chosen initialization mode explicitly:
+optional custom policy and chosen initialization mode explicitly:
 
 ```bash
 set -euo pipefail
 DEPLOY_MODE="${ARGUMENTS:-local}"
 : "${CATALOG_VALUES:?Set the operator-prepared OAuth/admission values file}"
-: "${POLICY_CONFIGMAP:?Create your external policy ConfigMap first}"
 test -f "$CATALOG_VALUES" || exit 1
 case "${CATALOG_INITIALIZATION:?Choose existing or new-empty explicitly}" in
   existing) INITIALIZE_EMPTY=false ;;
@@ -175,9 +176,13 @@ fi
 case "$REGISTRY_SERVER_IMAGE" in
   ''|*[!a-zA-Z0-9./:@_-]*) echo "ERROR: Invalid image reference"; exit 1 ;;
 esac
-case "$POLICY_CONFIGMAP" in
-  ''|*[!a-z0-9.-]*) echo "ERROR: Invalid ConfigMap name"; exit 1 ;;
-esac
+POLICY_ARGS=()
+if [ -n "${POLICY_CONFIGMAP:-}" ]; then
+  case "$POLICY_CONFIGMAP" in
+    *[!a-z0-9.-]*) echo "ERROR: Invalid ConfigMap name"; exit 1 ;;
+  esac
+  POLICY_ARGS=(--set-string "policy.existingConfigMap=$POLICY_CONFIGMAP")
+fi
 if [ "$DEPLOY_MODE" = "local" ]; then
   kind load docker-image "$REGISTRY_SERVER_IMAGE" --name thv-registry
 fi
@@ -186,7 +191,7 @@ helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-
   -f examples/cnpg/helm-values.yaml -f "$CATALOG_VALUES" \
   --set-string "image.registryServerUrl=$REGISTRY_SERVER_IMAGE" \
   --set-string "image.pullPolicy=$PULL_POLICY" \
-  --set-string "policy.existingConfigMap=$POLICY_CONFIGMAP" \
+  "${POLICY_ARGS[@]}" \
   --set "initializeEmptyCatalog=$INITIALIZE_EMPTY"
 ```
 

@@ -29,16 +29,23 @@ helm upgrade -i toolhive-registry-server oci://ghcr.io/stacklok/toolhive-registr
 
 ## Usage
 
-### Cedar admission configuration (required)
+### Cedar admission defaults and custom overrides
 
-Configure trusted OAuth issuers/audiences before starting, and explicitly create a
-ConfigMap with an operator-authored `policies.cedar` key. Set
-`policy.existingConfigMap` to its name: the chart mounts it read-only at
-`/etc/registry-policies/policies.cedar`, matching `config.authorization.policyFile`.
-Map verified groups/scopes with `config.authorization.identityMappings`.
-The chart installs no sample policy or implicit grant. Defaults are private OAuth
-and admin disabled; publishing/administration require explicit `config.admin.enabled`
-and authenticated Cedar permission. Retired `auth.authz`, roles/publicPaths and
+Configure trusted OAuth issuers/audiences before starting. With no custom file,
+standalone evaluates built-in allow-all Cedar: every verified identity may use every
+enabled operation, including admin if enabled. Defaults remain private OAuth and
+admin disabled; anonymous catalog access needs explicit opt-in. Invalid supplied
+credentials never become anonymous, and route/evidence/evaluation failures deny.
+
+Optionally create a ConfigMap with a custom `policies.cedar` key and set
+`policy.existingConfigMap`: the chart mounts it read-only at
+`/etc/registry-policies/policies.cedar` and sets `config.authorization.policyFile`
+automatically. An incompatible explicit path is rejected. A separately mounted
+absolute custom path is also valid without `policy.existingConfigMap`. The custom
+file replaces the built-in policy entirely; unavailable/empty/invalid specified
+files fail startup, never fall back. Map verified groups/scopes with
+`config.authorization.identityMappings` if the custom policy uses them.
+Retired `auth.authz`, roles/publicPaths and
 resource claims are rejected. Existing catalogs require offline review and explicit
 claims retirement before the new runtime consumes the receipt; no startup flag approves
 existing data.
@@ -59,8 +66,8 @@ ConfigMap does not automatically change the running evaluator. Drain old replica
 when revoking access. See the
 [Cedar guide](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-cedar-authorization.md)
 and [offline exposure procedure](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-exposure-migration.md)
-before upgrading. Both ct fixtures opt in only for their disposable database and
-externally mounted deny-all policy; the chart installs no production consent/grant.
+before upgrading. Both ct fixtures opt in only for their disposable database: one
+exercises the built-in policy, one the optional deny-all mount. Policy is not exposure consent.
 
 ### Installing from the Chart
 
