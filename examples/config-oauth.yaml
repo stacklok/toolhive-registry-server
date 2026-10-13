@@ -41,7 +41,8 @@ registries:
 admin:
   enabled: false
 authorization:
-  policyFile: /etc/registry/policies.cedar
+  # Optional custom restriction replaces built-in allow-all Cedar entirely.
+  # policyFile: /etc/registry/policies.cedar # Mount read-only when specified.
   allowAnonymousCatalog: false
   identityMappings:
     - issuer: https://idp.example.com

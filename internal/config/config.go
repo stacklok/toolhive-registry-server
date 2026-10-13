@@ -812,6 +812,10 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	// THV_REGISTRY_DATABASE_MIGRATIONPASSWORD would be silently ignored.
 	v.SetDefault("database.password", "")
 	v.SetDefault("database.migrationPassword", "")
+	// Register the optional policy key so env overrides work even when YAML omits it.
+	if err := v.BindEnv("authorization.policyFile"); err != nil {
+		return nil, fmt.Errorf("failed to bind policy environment override: %w", err)
+	}
 
 	// Use one file snapshot for Viper and presence checks: Viper discards nulls.
 	data, err := os.ReadFile(loaderCfg.path)

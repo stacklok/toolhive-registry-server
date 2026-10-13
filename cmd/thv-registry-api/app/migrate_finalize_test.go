@@ -25,11 +25,25 @@ import (
 
 func TestOneFinalBinaryOfflineUpgrade(t *testing.T) {
 	t.Parallel()
+	testOneFinalBinaryOfflineUpgrade(t, true)
+}
+
+func TestDefaultPolicyOfflineUpgrade(t *testing.T) {
+	t.Parallel()
+	testOneFinalBinaryOfflineUpgrade(t, false)
+}
+
+func testOneFinalBinaryOfflineUpgrade(t *testing.T, custom bool) {
+	t.Helper()
 	conn, _ := database.SetupTestDBAt(t, 28)
 	ctx := t.Context()
 	dir := t.TempDir()
 	policy := filepath.Join(dir, "policy.cedar")
 	require.NoError(t, os.WriteFile(policy, []byte(`permit(principal, action == Registry::Action::"catalog.read", resource);`), 0600))
+	policySetting := ""
+	if custom {
+		policySetting = " policyFile: " + policy + "\n"
+	}
 	path := filepath.Join(dir, "config.yaml")
 	cc := conn.Config()
 	require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`database:
@@ -42,8 +56,7 @@ func TestOneFinalBinaryOfflineUpgrade(t *testing.T) {
 auth:
  mode: anonymous
 authorization:
- policyFile: %s
- allowAnonymousCatalog: true
+%s allowAnonymousCatalog: true
 sources:
  - name: future
    file:
@@ -51,7 +64,7 @@ sources:
 registries:
  - name: future
    sources: [future]
-`, cc.Host, cc.Port, cc.User, cc.Password, cc.Database, policy)), 0600))
+`, cc.Host, cc.Port, cc.User, cc.Password, cc.Database, policySetting)), 0600))
 	_, err := conn.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable,creation_type,claims)
  VALUES('history','managed','{}',false,'API','{"team":"private"}');
  INSERT INTO registry(name,creation_type,claims) VALUES('history','API','null');

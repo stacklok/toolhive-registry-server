@@ -18,12 +18,20 @@ project only hashed verified identity, never raw tokens, claims, names or policy
 
 ## 2. Fixed-Action Cedar, Not RBAC
 
-Standalone requires frozen, strictly validated nonempty Cedar and a closed action set.
+Standalone always uses frozen, strictly validated nonempty Cedar and a closed action set.
+Omitted `authorization.policyFile` loads built-in allow-all Cedar through the actual
+evaluator; an explicit custom file replaces it entirely and fails startup if unavailable
+or invalid. Independent authentication/route-enable/evidence gates still apply; every
+verified identity can use every enabled operation by default, including enabled admin.
 Admin is absent by default and always requires OAuth when enabled. Anonymous catalog
 access requires both explicit configuration and a Cedar permit. No implicit roles,
 `superAdmin` bypass or automatic translation of old role rules into permits exists.
 Evaluator errors fail closed; a permit with diagnostics is not successful authorization.
 Public components remain identity-free and return nonpersonalized pages/cursors.
+The public HTTP/application-boundary `httpapi.Authorizer` uses only host context and
+`RouteDescriptor` through the existing Middleware/Decorate seams. Low-level routers
+are explicitly policy-free when the decorator is absent; `httpapi.Authorize(nil)`
+fails closed. This is not a standalone provider/plugin selection seam.
 
 ## 3. Evidence at Every Operation
 
@@ -58,7 +66,9 @@ See `docs/registry-exposure-migration.md` and `docs/registry-standalone-assembly
 ## 5. Frozen Preparation
 
 Bind exposure review to the actual `Engine.Revision`, never reread policy bytes after
-loading. Read-only historical sources and authoritative full-scope operator preflight
+loading. Offline review resolves omitted policy to the same built-in bytes, never an
+`absent` sentinel. Explicit-file version-1 serialization and receipts remain compatible.
+Read-only historical sources and authoritative full-scope operator preflight
 precede schema-29 consumption, writes or serving. Old and new binaries must not co-own
 sources: stop/drain all historical readers/writers before offline review and cutover.
 

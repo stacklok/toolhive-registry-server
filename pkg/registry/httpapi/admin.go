@@ -117,7 +117,8 @@ func AdminRoutes() []RouteDescriptor {
 }
 
 // AdminRouter constructs an unstarted policy-free handler to mount explicitly at
-// /v1. It performs no IO and owns no resources. Hosts must supply admission and
+// /v1. Omitting Decorate explicitly leaves admission to the host; Authorize with
+// a nil authorizer denies. It performs no IO and owns no resources. Hosts must supply admission and
 // audit wrappers for standalone use; consumer mounting never mounts this router.
 // Nil errors name the missing capability. Dependencies must be initialized;
 // typed nil dependencies and handlers are outside the caller contract (no reflection).
