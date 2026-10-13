@@ -177,11 +177,14 @@ not indexed. CLI and public app tests exercise selected startup; the old
 Actual image/chart installation belongs to isolated release/CI validation. Parent
 #942's 14 checks, including actual-image Helm fresh startup through 0 → 30, passed
 at `4f9fa8bc0e6a827c0fa96f6615d8d1550058ef9d`; this is not evidence for an unpublished
-head or a user's deployment. Select an image containing the final binary explicitly
-(the chart requires it instead of falling back to a legacy image). The combined
-external-module workflow and shared HTTP/backend suite are mapped in
+head or a user's deployment. The current app acceptance deliberately uses a fake Kubernetes
+API with real PostgreSQL and bound OAuth HTTP; `TestRegisteredOperator` separately uses
+isolated envtest to exercise the real CRD watch/manager path. Select an image containing
+the final binary explicitly (the chart requires it instead of falling back to a legacy
+image). The combined external-module workflow and shared HTTP/backend suite are mapped in
 [final embedding validation](registry-embedding-validation.md). The same-name cross-kind
-operator identity decision remains pending user agreement; collision behavior is unchanged.
+operator identity limitation is preserved; collision behavior is unchanged and identity
+redesign is out of scope.
 
 Embedding applications continue to import the public packages and own their admission,
 personalized selection (if needed) and dependencies. Existing separate-module executable
