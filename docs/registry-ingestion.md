@@ -192,21 +192,19 @@ Real manager/envtest acceptance is included in CI with the existing pinned 1.33.
 assets; fake-client tests cover complete scope, opt-in/out, metadata, listing and
 watch failures, incarnation/scope mismatch, and startup readiness.
 
-## Standalone lifecycle with opt-in composition
+## Standalone lifecycle
 
-The supervisor below is now selected by the complete opt-in Go
+The supervisor is selected by the default CLI/chart
 [`NewCatalogApp` composition](registry-standalone-assembly.md) after its mandatory
-preparation/receipt barrier. The production CLI/chart default remains legacy; never
-co-own sources. CLI startup/chart selection is the next #914 slice.
+preparation/receipt barrier. Old writers/controllers are removed; never run an old
+binary concurrently against these sources.
 
-`internal/sync/standalone.New` now constructs a dormant supervisor over the public
-coordinator and injected operator factory. It performs no database access, source
-listing, fetch, lease, watch, initialization or manager startup. `Preflight` reads
+`internal/sync/standalone.New` constructs an unstarted supervisor over the public
+coordinator and injected operator factory. Construction performs no database access,
+source listing, fetch, lease, watch, initialization or manager startup. `Preflight` reads
 **all persisted sources**, CONFIG/API and linked/unlinked alike, validates public
 definitions, and invokes the supplied read-only compatibility check. `Run` repeats
 that startup barrier before starting scheduled polling and per-source workers.
-Nothing in the production builder, service, sync selection or exposure-marker
-consumption selects this adapter yet.
 
 Scheduled Git/API/file ingestion stays with `Coordinator.Run` and `Jobs.ClaimNext`;
 there is no second source scheduler, hash implementation or CRUD path. Inline files
@@ -248,13 +246,13 @@ introduction emits only the fixed remediation diagnostic through the host callba
 records a categorized fetch failure and preserves the last good snapshot. The public
 converter still owns explicit export URL/description handling and valid empty startup.
 
-### Remaining cutover blockers
+### Cutover requirements enforced by standalone
 
 - Stop/drain legacy unfenced writers/controllers before selecting this owner. No
   constructor that starts a manager can participate in the cutover preflight barrier.
 - Revalidate/consume the acknowledged offline exposure transition, final configuration
   and Cedar policy before any initialization, lease, fetch, watch or serving. Neither
-  this adapter nor its tests run claims retirement or consume the dormant marker.
+  the supervisor itself nor its tests supply consent or clear historical claims.
 - Validate/remediate legacy definitions before initialization. Public `Kind` rejects
   schedules/filters on inline, managed and Kubernetes sources. Legacy configuration
   accepts some such fields (and applies inline filters); **never silently drop those

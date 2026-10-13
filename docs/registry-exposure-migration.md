@@ -5,9 +5,9 @@ This guide documents offline review and explicit archive-and-clear commands.
 final config/policy validation precedes migrations, then read-only compatibility
 preflight and schema-29 receipt consumption precede reconciliation, repair, both
 listeners and leased writers. No schema migration, `--yes`, empty/unlabeled data,
-old authorization flag or builder call grants existing-data consent. Legacy code
-and physical columns remain unselected until #915; do not restart old binaries
-against a retired catalog.
+old authorization flag or builder call grants existing-data consent. The obsolete
+runtime is removed; private offline config compatibility, claims columns, archives and
+receipts remain at schema 29. Do not restart old binaries against a retired catalog.
 
 ## New, entirely empty installs only
 

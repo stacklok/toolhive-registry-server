@@ -16,7 +16,6 @@ import (
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/catalog"
-	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/httpapi"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
@@ -88,36 +87,25 @@ func entry(kind persistence.EntryKind, name, version string) persistence.Entry {
 	return e
 }
 func expectedPage(kind persistence.EntryKind, entries []persistence.Entry, cursor string) any {
-	switch kind {
-	case persistence.ServerKind:
-		items := make([]*model.Server, len(entries))
-		for i := range entries {
-			items[i] = entries[i].Server
-		}
-		return formats.ServerPage(items, cursor)
-	case persistence.SkillKind:
-		items := make([]*model.Skill, len(entries))
-		for i := range entries {
-			items[i] = entries[i].Skill
-		}
-		return formats.SkillPage(items, cursor)
-	case persistence.PluginKind:
-		items := make([]*model.Plugin, len(entries))
-		for i := range entries {
-			items[i] = entries[i].Plugin
-		}
-		return formats.PluginPage(items, cursor)
+	items := make([]any, 0, len(entries))
+	for _, e := range entries {
+		items = append(items, expectedEntry(e))
 	}
-	panic("unknown test kind")
+	metadata := map[string]any{"count": len(entries)}
+	if cursor != "" {
+		metadata["nextCursor"] = cursor
+	}
+	field := map[persistence.EntryKind]string{persistence.ServerKind: "servers", persistence.SkillKind: "skills", persistence.PluginKind: "plugins"}[kind]
+	return map[string]any{field: items, "metadata": metadata}
 }
 func expectedEntry(e persistence.Entry) any {
 	switch e.Kind {
 	case persistence.ServerKind:
-		return formats.ServerPayload(e.Server)
+		return map[string]any{"server": map[string]any{"$schema": "", "name": e.Name, "version": e.Version, "description": "selected", "_meta": map[string]any{"io.modelcontextprotocol.registry/publisher-provided": map[string]any{"host": "kept"}}}, "_meta": map[string]any{}}
 	case persistence.SkillKind:
-		return formats.SkillPayload(e.Skill)
+		return map[string]any{"namespace": "com.example", "name": e.Name, "version": e.Version, "description": "", "status": "deprecated", "metadata": map[string]any{"host": "kept"}}
 	case persistence.PluginKind:
-		return formats.PluginPayload(e.Plugin)
+		return map[string]any{"namespace": "com.example", "name": e.Name, "version": e.Version, "description": "", "status": "deprecated", "_meta": map[string]any{"host": "kept"}}
 	}
 	panic("unknown test kind")
 }
@@ -127,7 +115,14 @@ func assertJSON(t *testing.T, w *httptest.ResponseRecorder, value any) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w.Code != 200 || w.Header().Get("Content-Type") != "application/json" || w.Body.String() != string(want)+"\n" {
+	var gotJSON, wantJSON any
+	if err := json.Unmarshal(w.Body.Bytes(), &gotJSON); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(want, &wantJSON); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 200 || w.Header().Get("Content-Type") != "application/json" || !reflect.DeepEqual(gotJSON, wantJSON) {
 		t.Fatalf("response %d %s; want %s", w.Code, w.Body.String(), want)
 	}
 }
@@ -225,6 +220,22 @@ func TestRouteInventoryAndUnsupportedMethods(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	want := map[string]bool{
+		"GET /{registryName}/v0.1/servers":                                                      true,
+		"GET /{registryName}/v0.1/servers/{serverName}/versions":                                true,
+		"GET /{registryName}/v0.1/servers/{serverName}/versions/{version}":                      true,
+		"GET /{registryName}/v0.1/x/dev.toolhive/skills":                                        true,
+		"GET /{registryName}/v0.1/x/dev.toolhive/skills/":                                       true,
+		"GET /{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}":                     true,
+		"GET /{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions":            true,
+		"GET /{registryName}/v0.1/x/dev.toolhive/skills/{namespace}/{name}/versions/{version}":  true,
+		"GET /{registryName}/v0.1/x/dev.toolhive/plugins":                                       true,
+		"GET /{registryName}/v0.1/x/dev.toolhive/plugins/":                                      true,
+		"GET /{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}":                    true,
+		"GET /{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}/versions":           true,
+		"GET /{registryName}/v0.1/x/dev.toolhive/plugins/{namespace}/{name}/versions/{version}": true,
+	}
+	actual := map[string]bool{}
 	inventory := map[string]httpapi.RouteDescriptor{}
 	for _, d := range httpapi.ConsumerRoutes() {
 		inventory[d.Method+" "+d.Template] = d
@@ -235,9 +246,13 @@ func TestRouteInventoryAndUnsupportedMethods(t *testing.T) {
 		if !ok || d.AuditEvent == "" || d.Operation == "" || d.ResourceType == "" {
 			return fmt.Errorf("unclassified: %s", key)
 		}
+		actual[key] = true
 		delete(inventory, key)
 		return nil
 	})
+	if !reflect.DeepEqual(want, actual) {
+		t.Fatal(want, actual)
+	}
 	if err != nil || len(inventory) != 0 {
 		t.Fatalf("manifest: %v / %v", err, inventory)
 	}
@@ -411,7 +426,7 @@ func TestBadHostPayloadDoesNotPanicOrLeak(t *testing.T) {
 	fake := &selectedPages{}
 	h := mounted(t, fake, httpapi.ConsumerOptions{})
 	w := response(t, h, "GET", "/registry/public/v0.1/servers")
-	assertJSON(t, w, formats.ServerPage(nil, ""))
+	assertJSON(t, w, expectedPage(persistence.ServerKind, nil, ""))
 	if !reflect.DeepEqual(fake.page, catalog.Page{}) {
 		t.Fatal("page mutated")
 	}

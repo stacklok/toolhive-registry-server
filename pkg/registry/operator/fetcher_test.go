@@ -86,6 +86,37 @@ func TestCompleteScopeAndExportChanges(t *testing.T) {
 	require.ErrorIs(t, err, persistence.ErrInvalid)
 }
 
+func TestHistoricalCrossKindNameIdentityNotRewritten(t *testing.T) {
+	t.Parallel()
+	// Characterization only: the user decision about different CRD kinds sharing
+	// namespace/name (including different versions) is still pending.
+	for _, version := range []string{"1.0.0", "2.0.0"} {
+		t.Run(version, func(t *testing.T) {
+			t.Parallel()
+			server := &mcp.MCPServer{ObjectMeta: metadata("same", "one"), Spec: mcp.MCPServerSpec{Image: "example.org/image:1.0.0"}}
+			virtual := &mcp.VirtualMCPServer{ObjectMeta: metadata("same", "one")}
+			virtual.Annotations["toolhive.stacklok.dev/registry-version"] = version
+			api := fake.NewClientBuilder().WithScheme(scheme(t)).WithObjects(server, virtual).Build()
+			fetcher, err := operator.NewFetcher(api, definition())
+			require.NoError(t, err)
+			got, err := fetcher.Fetch(t.Context(), definition())
+			if version == "1.0.0" {
+				require.ErrorIs(t, err, persistence.ErrInvalid)
+				require.Empty(t, got.Hash)
+				require.Empty(t, got.Snapshot.Data.Servers)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, got.Snapshot.Data.Servers, 2)
+			for _, s := range got.Snapshot.Data.Servers {
+				require.Equal(t, "com.toolhive.k8s.one/same", s.Name)
+			}
+			require.Equal(t, "1.0.0", got.Snapshot.Data.Servers[0].Version)
+			require.Equal(t, version, got.Snapshot.Data.Servers[1].Version)
+		})
+	}
+}
+
 func TestFailedListNeverReturnsPartial(t *testing.T) {
 	t.Parallel()
 	for _, incomplete := range []bool{false, true} {

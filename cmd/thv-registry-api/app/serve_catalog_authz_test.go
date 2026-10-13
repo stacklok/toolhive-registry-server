@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/internal/auth"
 )
 
 //nolint:paralleltest // Real selected CLI, Viper flags and OAuth over disposable PostgreSQL.
@@ -55,7 +56,8 @@ func TestDefaultServeOAuthCatalogAndRetiredRoutes(t *testing.T) {
 		t.Helper()
 		value := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 			"iss": issuer.URL, "sub": subject, "aud": "registry-cli", "exp": time.Now().Add(time.Hour).Unix(),
-			"groups": []string{subject}, "role": "not-a-legacy-role",
+			"groups": []string{subject}, "role": "superAdmin",
+			"roles": []string{"superAdmin", "manageSources", "manageRegistries", "manageEntries"},
 		})
 		value.Header["kid"] = "test"
 		encoded, err := value.SignedString(key)
@@ -71,7 +73,13 @@ func TestDefaultServeOAuthCatalogAndRetiredRoutes(t *testing.T) {
 	text = strings.Replace(text, "allowAnonymousCatalog: true", "allowAnonymousCatalog: false", 1)
 	require.NoError(t, os.WriteFile(configPath, []byte(text), 0600))
 	policy := filepath.Join(filepath.Dir(configPath), "policy.cedar")
-	require.NoError(t, os.WriteFile(policy, []byte(`permit(principal,action,resource) when { principal.authenticated };`), 0600))
+	deniedID := auth.PrincipalID(auth.VerifiedIdentity{
+		Issuer: issuer.URL, Subject: "legacy-admin", Claims: jwt.MapClaims{"iss": issuer.URL, "sub": "legacy-admin"},
+	})
+	require.NotEmpty(t, deniedID)
+	policyBytes := `permit(principal,action,resource) when { principal.authenticated };` +
+		`forbid(principal == Registry::Principal::"` + deniedID + `",action,resource);`
+	require.NoError(t, os.WriteFile(policy, []byte(policyBytes), 0600))
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	address := listener.Addr().String()
@@ -115,6 +123,10 @@ func TestDefaultServeOAuthCatalogAndRetiredRoutes(t *testing.T) {
 		return payload
 	}
 	first, second := token("finance"), token("engineering")
+	denied := token("legacy-admin")
+	request("GET", "/v1/sources", "", denied, 403)
+	request("GET", "/registry/public/v0.1/servers", "", denied, 403)
+	request("POST", "/v1/entries", `{"skill":{"namespace":"com.example","name":"denied","version":"1","description":"denied"}}`, denied, 403)
 	request("GET", "/registry/public/v0.1/servers", "", "", 401)
 	request("GET", "/v1/sources", "", "", 401)
 	request("GET", "/openapi.json", "", "", 401)

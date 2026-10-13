@@ -59,6 +59,38 @@ func TestLatestSelectorsAndHostContext(t *testing.T) {
 	}
 }
 
+func TestGenericVersionPathDecodingAndWhitespace(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		encoded, decoded string
+		code             int
+	}{
+		{"1.2.3", "1.2.3", 200}, {"test-server_123", "test-server_123", 200},
+		{"test%2Fversion", "test/version", 200}, {"test%40v1", "test@v1", 200},
+		{"test%3Av1", "test:v1", 200}, {"test%3Dv1", "test=v1", 200},
+		{"test%26v1", "test&v1", 200}, {"test%2Bv1", "test+v1", 200},
+		{"test%2525version", "test%25version", 200},
+		{"%20", "", 400}, {"%09", "", 400}, {"%0A", "", 400}, {"%0D", "", 400},
+		{"test%20version", "", 400}, {"test%09version", "", 400}, {"test%0Aversion", "", 400}, {"test%0Dversion", "", 400},
+	} {
+		t.Run(tc.encoded, func(t *testing.T) {
+			t.Parallel()
+			fake := &selectedPages{entry: entry(persistence.ServerKind, "selected", "1")}
+			w := response(t, mounted(t, fake, httpapi.ConsumerOptions{}), "GET", "/registry/public/v0.1/servers/com.example%2Fitem/versions/"+tc.encoded)
+			if w.Code != tc.code {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			if tc.code == 200 {
+				if fake.calls != 1 || fake.selector.Exact != tc.decoded {
+					t.Fatal(fake)
+				}
+			} else if fake.calls != 0 {
+				t.Fatal(fake.calls)
+			}
+		})
+	}
+}
+
 func TestEncodedNamespaceAndIgnoredHistoryQuery(t *testing.T) {
 	t.Parallel()
 	for _, family := range []struct {

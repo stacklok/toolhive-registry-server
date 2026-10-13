@@ -15,8 +15,8 @@ import (
 )
 
 // NewCatalogServer mounts only public HTTP adapters over guarded capabilities.
-// The legacy route manifest supplies stable closed action/audit classifications,
-// not legacy handlers, role middleware or a RegistryService adapter.
+// The closed route manifest supplies stable action/audit classifications checked
+// against every actual public descriptor; no legacy handler or facade participates.
 //
 //nolint:gocyclo // Construct the complete closed manifest atomically before returning a handler.
 func NewCatalogServer(reader catalog.Reader, adminOps httpapi.AdminOperations, registrar *authorization.Registrar,

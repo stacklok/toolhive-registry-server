@@ -8,13 +8,12 @@ also implement `DefinitionAdmin` itself. Construction performs no IO, starts no
 work, and neither owns nor closes the supplied, initialized non-nil backends.
 Typed nil implementations are outside the caller contract.
 
-**Production-unwired #913 slice:** standalone still uses its legacy guarded
-services, claims and writers. The complete guarded assembly swap belongs to #914.
-There is no HTTP extraction, authorization change, migration or cutover here.
-Hosts must authorize calls themselves. Config reconciliation remains the separate
-`persistence.Reconciler` capability; [publication and diagnostics](registry-publication-diagnostics.md)
-are separate production-unwired operations, not part of `DefinitionAdmin`.
-Never co-own a source with the old unfenced writer or strip legacy claims.
+Standalone mounts these capabilities behind mandatory Cedar admission after
+[exposure preparation](registry-exposure-migration.md). Embedding hosts authorize calls
+themselves. Config reconciliation remains the separate `persistence.Reconciler`
+capability; [publication and diagnostics](registry-publication-diagnostics.md) are
+separate operations, not part of `DefinitionAdmin`.
+Never co-own a source with old binaries or strip historical claims automatically.
 
 ```go
 admin, err := catalog.NewDefinitionAdmin(sourceStore, viewStore,

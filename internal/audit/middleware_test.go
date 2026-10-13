@@ -1037,11 +1037,9 @@ func TestSubjectsFromRequest(t *testing.T) {
 	tests := []struct {
 		name            string
 		claims          jwt.MapClaims
-		roles           []auth.Role
 		expectSub       string
 		expectUser      string
 		expectAnonymous bool
-		expectSuperRole bool
 	}{
 		{
 			name:            "no claims produces anonymous",
@@ -1077,11 +1075,9 @@ func TestSubjectsFromRequest(t *testing.T) {
 			expectUser: "alice@example.com",
 		},
 		{
-			name:            "super admin gets role in subjects",
-			claims:          jwt.MapClaims{"sub": "admin-1"},
-			roles:           []auth.Role{auth.RoleSuperAdmin},
-			expectSub:       "admin-1",
-			expectSuperRole: true,
+			name:      "role claims do not confer audit authority",
+			claims:    jwt.MapClaims{"sub": "admin-1", "roles": []string{"superAdmin"}},
+			expectSub: "admin-1",
 		},
 	}
 
@@ -1093,9 +1089,6 @@ func TestSubjectsFromRequest(t *testing.T) {
 			ctx := req.Context()
 			if tt.claims != nil {
 				ctx = auth.ContextWithClaims(ctx, tt.claims)
-			}
-			if len(tt.roles) > 0 {
-				ctx = auth.ContextWithRoles(ctx, tt.roles)
 			}
 			req = req.WithContext(ctx)
 
@@ -1111,9 +1104,7 @@ func TestSubjectsFromRequest(t *testing.T) {
 			if tt.expectUser != "" {
 				assert.Equal(t, tt.expectUser, subjects["user"])
 			}
-			if tt.expectSuperRole {
-				assert.Equal(t, "super_admin", subjects["role"])
-			}
+			assert.NotContains(t, subjects, "role")
 		})
 	}
 }

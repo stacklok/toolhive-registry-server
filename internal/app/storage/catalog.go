@@ -1,3 +1,4 @@
+// Package storage provides standalone catalog preparation and PostgreSQL metrics.
 package storage
 
 import (

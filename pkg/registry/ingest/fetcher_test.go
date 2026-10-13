@@ -14,8 +14,10 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest/mocks"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
@@ -88,6 +90,57 @@ func TestInjectedIOAndSecretBoundary(t *testing.T) {
 	source.Git.Auth.PasswordFile = "relative"
 	_, err = f.Fetch(t.Context(), source)
 	require.ErrorIs(t, err, persistence.ErrInvalid)
+}
+
+func TestPrivateGitCredentialBoundary(t *testing.T) {
+	t.Parallel()
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprint(fail), func(t *testing.T) {
+			t.Parallel()
+			reader := mocks.NewMockGitReader(gomock.NewController(t))
+			source := persistence.SourceDefinition{Name: "private", Git: &persistence.GitSpec{Repository: "https://example.org/private", Branch: "main", Auth: &persistence.GitAuth{Username: "host", PasswordFile: "/host/token"}}, Schedule: "1h"}
+			if !fail {
+				want := *source.Git
+				want.Path = "registry.json"
+				reader.EXPECT().Read(gomock.Any(), want, "fixture-token").Return([]byte(payload), nil)
+			}
+			fetcher := ingest.New(ingest.Options{Git: reader, LoadSecret: func(_ context.Context, path string) (string, error) {
+				require.Equal(t, "/host/token", path)
+				if fail {
+					return "", fmt.Errorf("private credential unavailable")
+				}
+				return "fixture-token", nil
+			}})
+			result, err := fetcher.Fetch(t.Context(), source)
+			if fail {
+				require.ErrorIs(t, err, ingest.ErrFetch)
+				require.NotContains(t, err.Error(), "credential")
+				require.Empty(t, result.Hash)
+			} else {
+				require.NoError(t, err)
+				require.Len(t, result.Snapshot.Data.Servers, 1)
+			}
+		})
+	}
+}
+
+func TestExampleCatalogThroughPublicIngest(t *testing.T) {
+	t.Parallel()
+	source := persistence.SourceDefinition{Name: "example", File: &persistence.FileSpec{Path: "../../../examples/upstream-registry.json"}, Schedule: "1h"}
+	result, err := ingest.New(ingest.Options{}).Fetch(t.Context(), source)
+	require.NoError(t, err)
+	require.Len(t, result.Snapshot.Data.Servers, 12)
+	var names []string
+	for _, server := range result.Snapshot.Data.Servers {
+		require.NotEmpty(t, server.Name)
+		require.NotEmpty(t, server.Description)
+		require.NotEmpty(t, server.Packages)
+		names = append(names, server.Name)
+	}
+	for _, name := range []string{"io.github.stacklok/adb-mysql-mcp-server", "io.github.stacklok/github", "io.github.stacklok/filesystem"} {
+		require.Contains(t, names, name)
+	}
+	require.NotEmpty(t, result.Snapshot.Meta.LastUpdated)
 }
 
 func TestImportFailureNeverReturnsSnapshot(t *testing.T) {
