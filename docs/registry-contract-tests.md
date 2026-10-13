@@ -21,7 +21,7 @@ version-1 config fingerprint JSON remain unchanged. See the
 | Old malformed import/failure-last-good/private Git behavior | `pkg/registry/ingest/fetcher_test.go`: malformed/empty import, partial API failure/cursors, `TestPrivateGitCredentialBoundary` and `TestExampleCatalogThroughPublicIngest`; public upstream/IO/shutdown tests; `pkg/registry/reconcile/coordinator_test.go` and PostgreSQL `reconcile_test.go`: categorized failures, last-good baseline, cancellation, reconfiguration/deletion fencing. Low-level Git/HTTP/filter tests remain shared. |
 | Old source writer Store facade and payload atomicity | The facade/options/interface/mocks are removed. `internal/sync/writer/{db,contract,version_order_contract}_test.go` retain all-kind COPY/upsert/latest/orphan/related-package fidelity and late-failure/blocked-cancellation rollback through caller-owned test transactions and active `StoreSourceTx`. `TestSchema29ClaimsStaging` is historical plumbing coverage only. PostgreSQL jobs tests and reusable jobs conformance cover actual fenced commit/acknowledgement. |
 | Old state latest repair / historical migration fixtures | Repair/locking/cancellation tests moved to `internal/db/latest{,_upgrade}_test.go` and now call `db.ReconcileLatestVersions` / `ReconcileLatestVersionsTx`; `database/migrate_latest_test.go` calls the current repair directly at the intended historical schema. No migration test was dropped. |
-| Old three-kind export predicates, complete/empty startup scope, list/metadata failures | `pkg/registry/operator/{conversion,fetcher,shutdown}_test.go` (exact opt-in, all kinds, complete scope, metadata, empty commit/readiness, list/watch/cancellation failure), `internal/kubernetes/standalone_test.go` (retired-annotation presence before conversion, later namespace/kind/incomplete failures, last-good data), and `internal/app/catalog_ingestion_test.go` (actual PostgreSQL empty startup and API scope CRUD). |
+| Old three-kind export predicates, complete/empty startup scope, list/metadata failures | `pkg/registry/operator/{conversion,fetcher,shutdown}_test.go` (exact opt-in, all kinds, complete scope, metadata, empty commit/readiness, list/watch/cancellation failure), `internal/kubernetes/standalone_test.go` (retired-annotation presence before conversion, later namespace/kind/incomplete failures, last-good data), and `internal/app/catalog_ingestion_test.go` (`TestCatalogOperatorPostgresHTTPOwnershipAndScopeChange`: fake Kubernetes API plus real PostgreSQL, actual app supervisor/runner and bound OAuth HTTP; all kinds/two namespaces, managed ownership and persisted scope shrink). The fake-client/real-PG app boundary is deliberate; `TestRegisteredOperator` separately covers real CRD watches through isolated envtest. |
 | Old registered controller acceptance | `pkg/registry/operator/manager_integration_test.go` (`TestRegisteredOperator`) starts a real registered leader-elected manager in isolated envtest, installs all three CRDs and observes nonempty, changed and empty snapshots. CI explicitly runs this current package/test, not the deleted controller test. |
 | Existing-data/offline/security transition | `cmd/thv-registry-api/app/migrate_exposure_test.go`, `internal/db/exposure*_test.go`, `internal/config/{exposure,catalog,authorization}_test.go`, `internal/app/catalog_pipeline_test.go`: inventory/ack/explicit retire/archive/consume, every protected table, null/unlabeled data, policy/config binding, leases, target continuity, atomic rollback and missing/stale receipt fail-closed behavior. |
 | Public dependency/embedding contracts | Separate-module fixtures in model/formats/persistence/catalog/httpapi/ingest/operator and actual dependency-graph tests remain. Portable framework contracts/HTTP have no registry-internal service/config/auth dependency; PostgreSQL alone imports the explicit internal SQL/writer adapters. |
@@ -41,13 +41,11 @@ catalog query assertions exercise those supported backend filters independently.
 `RunJobs` also checks API update and CONFIG reconciliation of `1h` → `60m` retaining
 generation, active lease and applied baseline, while `2h` fences old work.
 
-The operator same-name cross-kind identity choice remains **pending user response**,
-including CRDs with different versions. `pkg/registry/operator/fetcher_test.go`
+The operator same-name cross-kind identity limitation is a documented pre-existing
+constraint, including CRDs with different versions. `pkg/registry/operator/fetcher_test.go`
 (`TestHistoricalCrossKindNameIdentityNotRewritten`) characterizes unchanged duplicate-
-version rejection and shared-name projection for different versions; it does not
-approve that identity model.
-Cleanup does not change collision behavior, allocate new identities or claim that
-this independent limitation is resolved.
+version rejection and shared-name projection for different versions; this slice does
+not redesign identities or collision behavior.
 
 **Run active manager acceptance:** with installed pinned Kubernetes 1.33.0 assets,
 `USE_EXISTING_CLUSTER=false KUBEBUILDER_ASSETS=/path/to/1.33.0-linux-amd64 go test -p 2 -race -tags integration ./pkg/registry/operator -run '^TestRegisteredOperator$' -count=1`.

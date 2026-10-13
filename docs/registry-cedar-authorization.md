@@ -277,7 +277,8 @@ clearing. Inspect unresolved receipt outcomes offline or restore the verified ba
 
 These are deployment-owner checklist questions, not unresolved implementation choices
 or automatic exposure approval. The separate operator same-name cross-kind identity
-choice remains pending user agreement; see the [acceptance matrix](registry-embedding-validation.md).
+limitation is preserved and characterized; identity redesign is out of scope. See the
+[acceptance matrix](registry-embedding-validation.md).
 
 - Does whole-catalog operation permission meet the intended use, or is per-entry privacy required?
 - Is the first deployment private or publicly browsable, and who needs publisher versus operator access?

@@ -3,8 +3,9 @@
 This is the executable acceptance map for #906/#915 atop the schema-30 cleanup.
 The CLI already uses public constructors; this slice adds validation/documentation,
 not another runtime, authorization framework or production backend. The operator
-same-name cross-kind identity choice remains **pending user decision**, including
-different versions. No issue closure, human approval or merge is implied.
+same-name cross-kind identity limitation is preserved and characterized, including
+different versions; no collision redesign is in scope. No issue closure, human approval
+or merge is implied.
 
 ## Executable assemblies
 
@@ -59,7 +60,7 @@ not by supplying an ambient or production DSN to the external module.
 | Every selected persistence capability replaceable | Public Sources/Views/Reconciler, EntryReader/SnapshotWriter/ManagedPublisher, ViewEntryReader, EntryDiagnostics and Jobs; `TestMemoryConformance`, `TestMemoryEntries`, `TestMemoryJobs`, `TestMemoryViewEntries`, diagnostic/publication conformance and corresponding PostgreSQL suites. |
 | Host-provided HTTP service and already-selected pages | `TestExternalHTTPAssemblyAndImportGraph` → `TestHostMountsReplacementApplication`, `TestHostMountsIndependentAdminApplications`, `TestHostAdmissionAndAuditAssembly`; combined external `TestCompletePublicAssembly`. |
 | Standalone uses the same public construction contracts | CLI `TestServeSelectsCatalogPreparationAndPropagatesListenerFailure`, `TestDefaultServeOAuthCatalogAndRetiredRoutes`; app `TestCatalogCompleteHTTPPostgresAndConsumedRestart`, `TestCatalogPreparationMandatoryPhases`. `internal/app` owns standalone preparation, not an alternate catalog implementation. |
-| PostgreSQL manual publish/remove and operator discovery | Combined fixture; `TestAdminHTTPPostgres`, publication conformance; operator `TestRegisteredOperator` in isolated envtest and app `TestCatalogOperatorEmptyStartupAndAPIScopeCRUD`. |
+| PostgreSQL manual publish/remove and operator discovery | Combined fixture; `TestAdminHTTPPostgres`, publication conformance; operator `TestRegisteredOperator` in isolated envtest; and app `TestCatalogOperatorPostgresHTTPOwnershipAndScopeChange`, which deliberately combines a fake Kubernetes API with real PostgreSQL, the actual standalone supervisor/runner and bound OAuth HTTP. It covers all three CR kinds over two namespaces, source-local managed publication/removal and persisted scope shrink. It is not a single live-Kubernetes-plus-PostgreSQL assembly. |
 | Ownership, atomic replacement, latest/version and pagination specified/tested | Shared entries/publication/jobs/view conformance; identical `httpapi/conformance.RunConsumer` in `TestConsumerHTTPMemory` and `TestConsumerHTTPPostgres`; [persistence](registry-persistence.md), [jobs](registry-persistence-jobs.md), [consumer reads](registry-consumer-reads.md). Duration-equivalent update/reconcile retains lease/baseline; real duration changes fence both backends. |
 | Shared contracts free of user/tenant/claims/policy abstractions | Combined parent negative transitive import assertions for model/formats/persistence/catalog/httpapi, existing external graph tests, policy-free public contracts; standalone Cedar stays in `internal/authorization`. |
 | Remove old claims/RBAC with explicit retired config/data handling | Removed service/factories/routers/unleased runtime; config presence tests, app `TestCatalogMissingAndStaleReceiptsLeaveDatabaseUntouched`, CLI `TestOneFinalBinaryOfflineUpgrade`, migrations 27–30 and database cleanup tests. No silent claims stripping/approval. |
@@ -85,7 +86,7 @@ an identity-aware persistence contract.
 | Upgrade exposure, backups, API/config changes and rollback | [Offline guide](registry-exposure-migration.md): single final binary stops at 29, inventory/acknowledge/explicit retire/finalize, then upgrade to 30. CLI `TestOneFinalBinaryOfflineUpgrade`, target-continuity and migration refusal tests. No downgrade or automatic archive restoration at 30. |
 | Superseded assembly and claims/RBAC remnants removed | Current CLI and public services/routers only; private version-1 fingerprint/raw-history tooling intentionally retained for immutable receipt compatibility. Archives/receipts are evidence, not live resource-authorization metadata. |
 | Compatibility/versioning and module split decision | Release notes and measured import-graph decision below; public DTO contracts and independent wire fixtures. |
-| Every #906 done item verified | Requirement-by-requirement table above; only the explicit operator identity decision remains unresolved technical/product scope here. This does not grant deployment exposure consent or replace release/security review. |
+| Every #906 done item verified | Requirement-by-requirement table above, including the bounded fake-Kubernetes/real-PostgreSQL/OAuth app assembly and separate isolated-envtest manager path. The preserved cross-kind identity limitation is characterized and deliberately excluded from redesign scope. This does not grant deployment exposure consent or replace release/security review. |
 
 ## One Go module: measured boundary, not efficiency promise
 
@@ -174,23 +175,21 @@ not CI for this unpublished slice. Local validation uses disposable PostgreSQL a
 pinned Kubernetes 1.33.0 envtest with `USE_EXISTING_CLUSTER=false`, never a user's DB
 or cluster. Release publication/review and live deployment validation are separate.
 
-**Remaining decision:** `TestHistoricalCrossKindNameIdentityNotRewritten` retains
+**Preserved limitation:** `TestHistoricalCrossKindNameIdentityNotRewritten` retains
 rejection of duplicate exact `(kind,name,version)` snapshots and shared-name projection
-for distinct exported CRD kinds with differing versions. It does not choose new IDs,
-resolve those collisions, or approve that model. The pending user answer is required
-before describing the whole epic as complete.
+for distinct exported CRD kinds with differing versions. It does not choose new IDs or
+resolve those collisions; identity redesign remains out of scope and is not a completion
+blocker for this acceptance slice.
 
 ## Local validation of this slice
 
-Completed against disposable PostgreSQL and installed Kubernetes 1.33.0 assets:
+- `task gen`, `task lint-fix` (zero issues) and `task build` passed.
+- `GOWORK=off go test -race -count=1 ./internal/app -run '^TestCatalogOperatorPostgresHTTPOwnershipAndScopeChange$'` and the complete `./internal/app` race suite passed against disposable PostgreSQL.
+- `codespell --check-filenames --check-hidden --skip .git .` passed.
+- `USE_EXISTING_CLUSTER=false KUBEBUILDER_ASSETS=/var/home/jaosorior/.local/share/kubebuilder-envtest/k8s/1.33.0-linux-amd64 GOWORK=off go test -p 2 -race -tags integration -count=1 ./...` passed. It used disposable PostgreSQL and pinned Kubernetes 1.33.0 envtest, never a user's database or cluster.
 
-- `task gen`, `task lint-fix` (zero lint issues), `task build`, `go vet -p 2 ./...`.
-- `USE_EXISTING_CLUSTER=false KUBEBUILDER_ASSETS=/path/to/1.33.0-linux-amd64 GOWORK=off go test -p 2 -race -tags integration -count=1 ./...`: passed, including real registered operator/envtest and all PostgreSQL/CLI migration acceptance.
-- External modules: parent tests use `GOWORK=off -mod=readonly`; independent `go vet -mod=readonly ./...` also passed in all seven fixtures, including the combined module.
-- Official pinned Rust generator: executed, then reproduced `results.json` byte-for-byte with `--locked`; Go parity passed for all 17 cases.
-- CLI and OpenAPI: regenerated into verified-absent temporary paths using the pinned Swag revision; byte comparisons passed. OpenAPI's output directory retained the `thv-registry-api` basename to preserve the generated Go package name. No recursive-deletion docs task was run.
-- Affected-document relative links, codespell, Helm lint and both Compose configurations (`config --quiet`) passed. No chart installation or live-cluster/database operation was performed locally.
-
-The first full-suite invocation hit the tool's two-minute wall-clock limit; the
-subsequent full run with a sufficient allowance completed successfully. This is
-local evidence only; nothing was committed or published.
+These are local results, not CI, human approval, publication or production rollout.
+A bounded migration review retains the offline 29 → finalization → 30 phases, endpoint
+binding and custom migration driver. Under the documented offline same-endpoint procedure,
+no correctness blocker was demonstrated. Relocation support or phase consolidation remains
+optional deferred work, not a new acceptance requirement.
