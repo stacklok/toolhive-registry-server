@@ -39,8 +39,9 @@ Do not introduce configurable public-path bypasses or mount operational routes p
 `CatalogOptions` injects storage, operator, fetcher and reconciliation dependencies;
 HTTP options retain shared audit, telemetry, middleware and timeout helpers.
 Storage must implement all preparation phases, with no legacy fallback: final config,
-frozen Cedar, open, read-only historical/source/operator preflight, schema-29 receipt
-consumption, then atomic reconciliation/repair and guarded services/HTTP.
+frozen Cedar, open, read-only historical/source/operator preflight, receipt consumption
+(offline finalization at 29, serving at clean 30), then atomic reconciliation/repair
+and guarded services/HTTP.
 Constructors start no application workers/listeners. Start/Wait/Stop must join all owned
 and inline work before closing storage/audit resources. Borrowed resources stay borrowed.
 Never recreate `RegistryService`, the old app/storage factories or unleased coordinator.

@@ -12,6 +12,7 @@ import (
 )
 
 // JobsFactory creates isolated definitions, entries and jobs per test.
+// Sources must also implement persistence.Reconciler for configuration cases.
 type JobsFactory func(*testing.T) (persistence.Sources, persistence.Entries, persistence.Jobs)
 
 // JobsPairFactory creates distinct job handles sharing a fresh backend.
@@ -139,6 +140,60 @@ func RunJobs(t *testing.T, factory JobsFactory) {
 			t.Fatal("genuine definition change retained generation")
 		}
 		want(t, jobs.Complete(ctx, fresh, result), persistence.ErrConflict)
+	})
+	t.Run("equivalent schedule spelling retains lease and baseline", func(t *testing.T) {
+		t.Parallel()
+		for _, config := range []bool{false, true} {
+			sources, _, jobs := factory(t)
+			ctx := t.Context()
+			desired := persistence.SourceDefinition{Name: "schedule", API: &persistence.APISpec{Endpoint: "https://schedule.example.org"}, Schedule: "1h"}
+			write := func() {
+				t.Helper()
+				if config {
+					must(t, sources.(persistence.Reconciler).Reconcile(ctx, []persistence.SourceDefinition{desired}, nil))
+				} else {
+					_, err := sources.UpdateSource(ctx, desired.Name, desired)
+					must(t, err)
+				}
+			}
+			if config {
+				write()
+			} else {
+				_, err := sources.CreateSource(ctx, desired)
+				must(t, err)
+			}
+			first, err := jobs.Acquire(ctx, desired.Name, time.Minute)
+			must(t, err)
+			result := persistence.SyncResult{Hash: "schedule-hash", FilterHash: "schedule-filter"}
+			must(t, jobs.CommitSnapshot(ctx, first, result, model.Snapshot{}))
+			active, err := jobs.Acquire(ctx, desired.Name, time.Minute)
+			must(t, err)
+			desired.Schedule = "60m"
+			write()
+			renewed, err := jobs.Renew(ctx, active, time.Minute)
+			must(t, err)
+			if renewed.Generation != active.Generation {
+				t.Fatal("equivalent duration changed generation")
+			}
+			status, err := jobs.Status(ctx, desired.Name)
+			must(t, err)
+			if !status.BaselineValid || status.LastHash != result.Hash {
+				t.Fatal("equivalent duration invalidated applied baseline")
+			}
+			must(t, jobs.Complete(ctx, renewed, result))
+			active, err = jobs.Acquire(ctx, desired.Name, time.Minute)
+			must(t, err)
+			desired.Schedule = "2h"
+			write()
+			_, err = jobs.Renew(ctx, active, time.Minute)
+			want(t, err, persistence.ErrStale)
+			fresh, err := jobs.Acquire(ctx, desired.Name, time.Minute)
+			must(t, err)
+			if fresh.Generation <= active.Generation {
+				t.Fatal("changed duration retained generation")
+			}
+			want(t, jobs.Complete(ctx, fresh, result), persistence.ErrConflict)
+		}
 	})
 	t.Run("reconfiguration and direct writes", func(t *testing.T) {
 		t.Parallel()

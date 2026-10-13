@@ -57,7 +57,8 @@ cancel and join old workers and inline work before closing owned resources.
 ## Offline cutover
 
 Stop/drain old-binary readers and writers, back up and follow
-[exposure review and explicit retirement](registry-exposure-migration.md). Schema 29
-retains private historical claims plumbing, archives and receipts until the final
-forward cleanup; runtime startup never supplies existing-data consent or clears
-claims automatically. Do not co-own sources with an old unfenced binary.
+[exposure review and explicit retirement](registry-exposure-migration.md). The same
+final binary finalizes historical evidence at schema 29, then applies forward cleanup
+to 30. Live claims columns are removed; archives and receipts remain. Runtime startup
+never supplies existing-data consent or clears claims automatically. Do not co-own
+sources with an old unfenced binary.

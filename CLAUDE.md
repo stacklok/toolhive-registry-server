@@ -54,8 +54,9 @@ internal/
 ```
 
 `app.NewCatalogApp(ctx, CatalogOptions{...})` enforces final config, frozen policy,
-open, read-only historical/source/operator preflight, schema-29 exposure consumption,
-then atomic definition reconciliation/latest repair and guarded HTTP. Constructors
+open, read-only historical/source/operator preflight, receipt consumption (offline
+finalization at 29, serving at clean 30), then atomic definition reconciliation/latest
+repair and guarded HTTP. Constructors
 start no application work; Start/Wait/Stop own listeners/workers and join inline
 work before closing owned resources. Inject CatalogFactory, operator, fetcher and
 reconciliation capabilities rather than recreate a monolithic RegistryService.
@@ -66,8 +67,9 @@ default; enabled admin requires OAuth. Internal probes/metrics have no auth/audi
 
 The old app, service, routers, claims matcher/roles and unfenced sync/controller
 runtime are removed. Private config structures/raw history and version-1 fingerprint
-JSON remain unchanged because schema-29 pending receipts bind them. Claims columns,
-archives, receipts and mutation guards remain until the final forward schema slice.
+JSON remain unchanged because schema-29 pending receipts bind them. Schema 30 removes
+live claims columns and guards only after explicit offline finalization at 29;
+archives, receipts and immutable historical migrations remain.
 Never rewrite historical migrations, infer consent from empty data, silently clear
 claims or let old/new binaries co-own sources. See the
 [offline migration guide](docs/registry-exposure-migration.md).

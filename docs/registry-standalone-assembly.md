@@ -168,13 +168,14 @@ not indexed. CLI and public app tests exercise selected startup; the old
 `NewRegistryApp` and legacy claims/RBAC characterization suites are removed. See
 [contract coverage](registry-contract-tests.md) for the old-to-current acceptance mapping.
 
-Actual ct install with newly built images and remote CI must still be validated
-before release. This local change does not publish a new production image/chart;
-select an image containing it explicitly (the chart requires that value rather
-than falling back to a legacy image). Physical cleanup is implemented at schema 30;
-combined external-module final validation and actual image/ct install remain the next
-release gates. The same-name cross-kind operator identity decision is still pending
-user agreement; collision behavior is unchanged.
+Actual image/chart installation belongs to isolated release/CI validation. Parent
+#942's 14 checks, including actual-image Helm fresh startup through 0 → 30, passed
+at `4f9fa8bc0e6a827c0fa96f6615d8d1550058ef9d`; this is not evidence for an unpublished
+head or a user's deployment. Select an image containing the final binary explicitly
+(the chart requires it instead of falling back to a legacy image). The combined
+external-module workflow and shared HTTP/backend suite are mapped in
+[final embedding validation](registry-embedding-validation.md). The same-name cross-kind
+operator identity decision remains pending user agreement; collision behavior is unchanged.
 
 Embedding applications continue to import the public packages and own their admission,
 personalized selection (if needed) and dependencies. Existing separate-module executable

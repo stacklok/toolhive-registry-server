@@ -148,7 +148,7 @@ func (m *memory) UpdateSource(ctx context.Context, name string, s persistence.So
 		s.Origin = old.Origin
 		// Match the DB trigger: timestamp metadata is not ingestion configuration.
 		s.CreatedAt, s.UpdatedAt = old.CreatedAt, old.UpdatedAt
-		if !reflect.DeepEqual(old, s) {
+		if !sameGenerationDefinition(old, s) {
 			n.generations[s.ID]++
 		}
 		s.UpdatedAt = n.clock().UTC()
@@ -332,7 +332,7 @@ func (m *memory) Reconcile(ctx context.Context, sources []persistence.SourceDefi
 			s.Origin = persistence.OriginConfig
 			if !ok {
 				n.generations[s.ID] = 1
-			} else if !reflect.DeepEqual(old, s) {
+			} else if !sameGenerationDefinition(old, s) {
 				n.generations[s.ID]++
 			}
 			s.UpdatedAt = n.clock().UTC()
@@ -378,6 +378,22 @@ func (m *memory) Reconcile(ctx context.Context, sources []persistence.SourceDefi
 		return nil
 	})
 }
+func sameGenerationDefinition(a, b persistence.SourceDefinition) bool {
+	// PostgreSQL compares interval values, not their original spelling. Normalize
+	// comparison copies only; keep the host's submitted definition unchanged.
+	if a.Schedule != "" {
+		if d, err := time.ParseDuration(a.Schedule); err == nil {
+			a.Schedule = d.String()
+		}
+	}
+	if b.Schedule != "" {
+		if d, err := time.ParseDuration(b.Schedule); err == nil {
+			b.Schedule = d.String()
+		}
+	}
+	return reflect.DeepEqual(a, b)
+}
+
 func fileLocation(f *persistence.FileSpec) string {
 	if f.Path != "" {
 		return "path"

@@ -50,8 +50,9 @@ binds pending receipts: do not remove/rename fields or change serialization in r
 cleanup. The current serve path rejects retired authz/roles/publicPaths and resource claims
 by presence, including null/empty aliases/environment. Standalone operator preflight rejects
 retired export annotations before conversion. No active matcher or claim-stamping returns.
-Physical claims-column cleanup requires the separately reviewed final forward schema slice;
-never rewrite historical migrations or erase archives/receipts.
+Schema 30 removes live claims columns only after explicit offline finalization at 29;
+ordinary writes require clean 30. Preserve historical migrations, archives and receipts;
+never infer consent or rewrite version-1 fingerprint serialization.
 See `docs/registry-exposure-migration.md` and `docs/registry-standalone-assembly.md`.
 
 ## 5. Frozen Preparation
