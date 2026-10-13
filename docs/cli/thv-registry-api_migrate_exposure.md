@@ -20,9 +20,10 @@ Stop and drain all registry readers, writers and controllers before acknowledgin
 These commands connect to an already migrated database; they never migrate,
 initialize sources, repair latest pointers, fetch sources or start controllers.
 An acknowledgement is NOT a cutover or proof that old processes are offline.
-Only retire-claims explicitly archives and clears claims. After retirement remain
-OFFLINE until a runtime cutover release or an offline backup restore.
---yes does not imply exposure consent. Runtime claims/RBAC guards are unchanged.
+Only retire-claims archives and clears historical claims. Finalize consumes the
+reviewed receipt after final config, frozen Cedar and full compatibility preflight.
+Remain OFFLINE until finalize and forward schema cleanup both succeed.
+--yes confirms schema migration only; it does not imply exposure consent.
 
 ### Options
 
@@ -36,14 +37,15 @@ OFFLINE until a runtime cutover release or an offline backup restore.
       --config string    Path to configuration file (YAML format, required)
       --debug            Enable debug mode
   -n, --num-steps uint   Number of steps to migrate (0 = all)
-  -y, --yes              Answer yes to all questions
+  -y, --yes              Confirm schema migrations only; never exposure consent
 ```
 
 ### SEE ALSO
 
 * [thv-registry-api migrate](thv-registry-api_migrate.md)	 - Database migration tool
 * [thv-registry-api migrate exposure acknowledge](thv-registry-api_migrate_exposure_acknowledge.md)	 - Record whole-catalog approval; legacy protections unchanged
+* [thv-registry-api migrate exposure finalize](thv-registry-api_migrate_exposure_finalize.md)	 - Consume or verify offline exposure evidence before schema cleanup
 * [thv-registry-api migrate exposure initialize-empty](thv-registry-api_migrate_exposure_initialize-empty.md)	 - Record an explicit empty-install marker before reconciliation
 * [thv-registry-api migrate exposure inventory](thv-registry-api_migrate_exposure_inventory.md)	 - Emit safe JSON inventory and review digest without writing
-* [thv-registry-api migrate exposure retire-claims](thv-registry-api_migrate_exposure_retire-claims.md)	 - Archive and clear claims OFFLINE; runtime cutover not yet available
+* [thv-registry-api migrate exposure retire-claims](thv-registry-api_migrate_exposure_retire-claims.md)	 - Archive and clear claims OFFLINE before finalize and schema cleanup
 

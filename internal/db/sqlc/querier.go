@@ -33,8 +33,6 @@ type Querier interface {
 	CreateTempRemoteTable(ctx context.Context) error
 	// Temp Server Table Operations
 	CreateTempServerTable(ctx context.Context) error
-	DefBlockedSources(ctx context.Context, dollar_1 []string) (bool, error)
-	DefBlockedViews(ctx context.Context, dollar_1 []string) (bool, error)
 	DefDeleteAPISource(ctx context.Context, dollar_1 uuid.UUID) error
 	DefDeleteAPIView(ctx context.Context, name string) error
 	DefDeleteConfigLinks(ctx context.Context) error
@@ -50,14 +48,12 @@ type Querier interface {
 	DefLockView(ctx context.Context, name string) (DefLockViewRow, error)
 	DefPruneSources(ctx context.Context, dollar_1 []string) error
 	DefPruneViews(ctx context.Context, dollar_1 []string) error
-	DefSourceClaims(ctx context.Context, name string) (bool, error)
 	DefSourceRaw(ctx context.Context, name string) (DefSourceRawRow, error)
 	DefSourceUsed(ctx context.Context, dollar_1 uuid.UUID) (bool, error)
 	DefTouchAPIView(ctx context.Context, dollar_1 uuid.UUID) error
 	DefUpdateSource(ctx context.Context, arg DefUpdateSourceParams) error
 	DefUpsertConfigSource(ctx context.Context, arg DefUpsertConfigSourceParams) (int64, error)
 	DefUpsertConfigView(ctx context.Context, name string) (string, error)
-	DefViewClaims(ctx context.Context, name string) (bool, error)
 	DefViewID(ctx context.Context, name string) (string, error)
 	DefViewSources(ctx context.Context, name string) ([]string, error)
 	// Unlink only CONFIG views before removing obsolete managed CONFIG sources.
@@ -99,7 +95,6 @@ type Querier interface {
 	EntryDeleteEmptyNames(ctx context.Context, sourceID uuid.UUID) error
 	EntryDeleteVersion(ctx context.Context, arg EntryDeleteVersionParams) (int64, error)
 	EntryDropLatest(ctx context.Context, arg EntryDropLatestParams) error
-	EntryHasClaims(ctx context.Context, sourceID uuid.UUID) (bool, error)
 	EntryList(ctx context.Context, arg EntryListParams) ([]EntryListRow, error)
 	EntryManagedSource(ctx context.Context) (uuid.UUID, error)
 	EntrySource(ctx context.Context, sourceID uuid.UUID) (EntrySourceRow, error)
@@ -120,7 +115,7 @@ type Querier interface {
 	// source_name and version are required; registry filtering is not applied.
 	GetPluginVersionBySourceName(ctx context.Context, arg GetPluginVersionBySourceNameParams) (GetPluginVersionBySourceNameRow, error)
 	GetRegistryByName(ctx context.Context, name string) (Registry, error)
-	GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (GetRegistryEntryByNameRow, error)
+	GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (uuid.UUID, error)
 	GetServerIDsByRegistryNameVersion(ctx context.Context, sourceID uuid.UUID) ([]GetServerIDsByRegistryNameVersionRow, error)
 	// Despite the name, this query returns multiple rows. The actual number of
 	// records is bounded by the number of sources that provide the same name and
@@ -212,15 +207,11 @@ type Querier interface {
 	ListSourceSyncs(ctx context.Context) ([]ListSourceSyncsRow, error)
 	ListSourceSyncsByLastUpdate(ctx context.Context) ([]ListSourceSyncsByLastUpdateRow, error)
 	ListSources(ctx context.Context, arg ListSourcesParams) ([]ListSourcesRow, error)
-	// Update all registry entries for a source to match the source's current claims.
-	// Used during initialization to fix drift when source claims change without data change.
-	PropagateSourceClaimsToEntries(ctx context.Context, arg PropagateSourceClaimsToEntriesParams) error
 	RepairListVersions(ctx context.Context) ([]RepairListVersionsRow, error)
 	RepairPruneLatest(ctx context.Context) error
 	RepairSetLatest(ctx context.Context, arg RepairSetLatestParams) error
 	UnlinkAllRegistrySources(ctx context.Context, registryID uuid.UUID) error
 	UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySourceParams) error
-	UpdateRegistryEntryClaims(ctx context.Context, arg UpdateRegistryEntryClaimsParams) (int64, error)
 	// Update an existing source. Go callers guard against modifying wrong creation_type.
 	UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error)
 	UpdateSourceSync(ctx context.Context, arg UpdateSourceSyncParams) error

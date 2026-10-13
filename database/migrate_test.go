@@ -29,7 +29,7 @@ func TestMigrations(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test each migration individually: apply, rollback, re-apply
-	for i := 1; i <= len(fnames); i++ {
+	for i := 1; i < len(fnames); i++ {
 		// Apply one migration
 		err = m.Steps(1)
 		assert.NoError(t, err, "Failed to apply migration %d", i)
@@ -138,7 +138,7 @@ func TestMigrateUp(t *testing.T) {
 				db, cleanup := SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
 				// Run migrations once
-				err := MigrateUp(ctx, db)
+				err := MigrateUpTo(ctx, db, 29)
 				require.NoError(t, err)
 				return db
 			},
@@ -167,7 +167,7 @@ func TestMigrateUp(t *testing.T) {
 			t.Parallel()
 
 			db := tt.setup(t)
-			err := MigrateUp(ctx, db)
+			err := MigrateUpTo(ctx, db, 29)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -200,7 +200,7 @@ func TestMigrateDown(t *testing.T) {
 				t.Helper()
 				db, cleanup := SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
-				err := MigrateUp(ctx, db)
+				err := MigrateUpTo(ctx, db, 29)
 				require.NoError(t, err)
 				return db, 1
 			},
@@ -213,12 +213,12 @@ func TestMigrateDown(t *testing.T) {
 				t.Helper()
 				db, cleanup := SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
-				err := MigrateUp(ctx, db)
+				err := MigrateUpTo(ctx, db, 29)
 				require.NoError(t, err)
 				// Count available migrations
 				fnames, err := fs.Glob(migrationsFS, "migrations/*.up.sql")
 				require.NoError(t, err)
-				return db, len(fnames)
+				return db, len(fnames) - 1
 			},
 			steps:   2,
 			wantErr: false,
@@ -229,7 +229,7 @@ func TestMigrateDown(t *testing.T) {
 				t.Helper()
 				db, cleanup := SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
-				err := MigrateUp(ctx, db)
+				err := MigrateUpTo(ctx, db, 29)
 				require.NoError(t, err)
 				return db, 0
 			},
@@ -254,12 +254,12 @@ func TestMigrateDown(t *testing.T) {
 				t.Helper()
 				db, cleanup := SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
-				err := MigrateUp(ctx, db)
+				err := MigrateUpTo(ctx, db, 29)
 				require.NoError(t, err)
 				// Count available migrations
 				fnames, err := fs.Glob(migrationsFS, "migrations/*.up.sql")
 				require.NoError(t, err)
-				return db, len(fnames)
+				return db, len(fnames) - 1
 			},
 			steps:   0, // Will be set from setup
 			wantErr: false,

@@ -8,7 +8,7 @@ import (
 
 func TestManagedSingletonMigrationRejectsExistingDuplicates(t *testing.T) {
 	t.Parallel()
-	db, _ := SetupTestDB(t)
+	db, _ := SetupTestDBAt(t, 23)
 	ctx := t.Context()
 	require.NoError(t, migrateTestTo(t, db, 23))
 	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable,creation_type) VALUES

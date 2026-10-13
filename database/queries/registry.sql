@@ -1,36 +1,36 @@
 -- Queries for the new lightweight registry table and registry_source junction.
 
 -- name: ListRegistries :many
-SELECT id, name, claims, creation_type, created_at, updated_at
+SELECT id, name, creation_type, created_at, updated_at
 FROM registry
 WHERE (sqlc.narg(cursor)::text IS NULL OR name > sqlc.narg(cursor))
 ORDER BY name
 LIMIT sqlc.arg(size)::bigint;
 
 -- name: GetRegistryByName :one
-SELECT id, name, claims, creation_type, created_at, updated_at
+SELECT id, name, creation_type, created_at, updated_at
 FROM registry WHERE name = sqlc.arg(name);
 
 -- name: GetAPIRegistriesByNames :many
-SELECT id, name, claims, creation_type, created_at, updated_at
+SELECT id, name, creation_type, created_at, updated_at
 FROM registry
 WHERE name = ANY(sqlc.arg(names)::text[])
   AND creation_type = 'API';
 
 -- name: UpsertConfigRegistry :one
 -- Insert or update a CONFIG registry without overwriting API-owned rows.
-INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
-VALUES (sqlc.arg(name), sqlc.narg(claims), 'CONFIG', sqlc.arg(created_at), sqlc.arg(updated_at))
-ON CONFLICT (name) DO UPDATE SET claims = EXCLUDED.claims, updated_at = EXCLUDED.updated_at
+INSERT INTO registry (name, creation_type, created_at, updated_at)
+VALUES (sqlc.arg(name), 'CONFIG', sqlc.arg(created_at), sqlc.arg(updated_at))
+ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
 WHERE registry.creation_type = 'CONFIG'
 RETURNING *;
 
 -- name: UpsertRegistry :one
 -- Insert or update a registry. The creation_type is passed as a parameter.
 -- Business logic in Go guards against cross-type overwrites.
-INSERT INTO registry (name, claims, creation_type, created_at, updated_at)
-VALUES (sqlc.arg(name), sqlc.narg(claims), sqlc.arg(creation_type), sqlc.arg(created_at), sqlc.arg(updated_at))
-ON CONFLICT (name) DO UPDATE SET claims = EXCLUDED.claims, updated_at = EXCLUDED.updated_at
+INSERT INTO registry (name, creation_type, created_at, updated_at)
+VALUES (sqlc.arg(name), sqlc.arg(creation_type), sqlc.arg(created_at), sqlc.arg(updated_at))
+ON CONFLICT (name) DO UPDATE SET updated_at = EXCLUDED.updated_at
 RETURNING *;
 
 -- name: DeleteRegistry :execrows

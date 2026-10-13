@@ -10,7 +10,10 @@ starts a poller/listener nor closes the pool. Construct `NewEntries` once after
 the **offline** migration/repair barrier described in
 [registry persistence](registry-persistence.md#entries-and-atomic-source-snapshots-second-slice)
 before serving reads;
-construct `NewJobs` independently. Migration 000026 adds durable
+construct `NewJobs` independently. Every PostgreSQL job mutation requires clean
+schema 30; historical, dirty or newer schemas return `ErrUnavailable`, not a
+skipped claimed source. Follow the [offline upgrade workflow](registry-exposure-migration.md).
+Migration 000026 adds durable
 `source.definition_generation` and lease/observed-generation columns to the
 existing `registry_sync` row (not a second catalog). Existing standalone sync
 rows work without leases; they are not fenced. PostgreSQL's definition trigger
@@ -21,12 +24,12 @@ catalog at the current definition. Source IDs prevent delete/recreate retargetin
 A successful unfenced `ReplaceSnapshot` refuses a current live lease, bumps
 generation and clears the old hashes/counts/applied baseline in the same
 transaction; its catalog is retained. It is for exclusive standalone/manual ownership, not a way to
-complete a leased job. The old coordinator/writer remains an **exclusive**
-source owner until it is replaced in #911/#914; do not run both on one source.
+complete a leased job. The legacy coordinator/writer is removed. Never run old
+and new binaries against the same source.
 
 `ClaimNext(ctx, duration)` atomically picks one due scheduled git/API/file
-source. It skips managed, Kubernetes, inline-file, unsupported legacy and
-claimed sources and source rows locked by another transaction, returning
+source. It skips managed, Kubernetes, inline-file, unsupported legacy sources
+and source rows locked by another transaction, returning
 `(Job{}, false, nil)` when no eligible source is available.
 `Acquire(ctx, sourceName, duration)` explicitly
 starts any **non-managed** source (including Kubernetes operator and inline-file

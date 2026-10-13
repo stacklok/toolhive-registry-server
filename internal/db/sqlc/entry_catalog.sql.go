@@ -65,17 +65,6 @@ func (q *Queries) EntryDropLatest(ctx context.Context, arg EntryDropLatestParams
 	return err
 }
 
-const entryHasClaims = `-- name: EntryHasClaims :one
-SELECT EXISTS(SELECT 1 FROM registry_entry WHERE source_id=$1::uuid AND claims IS NOT NULL)
-`
-
-func (q *Queries) EntryHasClaims(ctx context.Context, sourceID uuid.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, entryHasClaims, sourceID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const entryList = `-- name: EntryList :many
 SELECT v.id::text AS id, e.name, v.version, v.title, v.description,
  v.created_at, v.updated_at, coalesce(l.latest_version_id = v.id, false)::boolean AS is_latest,
@@ -207,7 +196,7 @@ func (q *Queries) EntryManagedSource(ctx context.Context) (uuid.UUID, error) {
 }
 
 const entrySource = `-- name: EntrySource :one
-SELECT id, name, source_type, (claims IS NOT NULL)::boolean AS has_claims
+SELECT id, name, source_type
 FROM source WHERE id=$1::uuid FOR UPDATE
 `
 
@@ -215,18 +204,12 @@ type EntrySourceRow struct {
 	ID         uuid.UUID `json:"id"`
 	Name       string    `json:"name"`
 	SourceType string    `json:"source_type"`
-	HasClaims  bool      `json:"has_claims"`
 }
 
 func (q *Queries) EntrySource(ctx context.Context, sourceID uuid.UUID) (EntrySourceRow, error) {
 	row := q.db.QueryRow(ctx, entrySource, sourceID)
 	var i EntrySourceRow
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.SourceType,
-		&i.HasClaims,
-	)
+	err := row.Scan(&i.ID, &i.Name, &i.SourceType)
 	return i, err
 }
 

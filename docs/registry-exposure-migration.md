@@ -2,12 +2,15 @@
 
 This guide documents offline review and explicit archive-and-clear commands.
 `serve` now selects [`internal/app.NewCatalogApp`](registry-standalone-assembly.md):
-final config/policy validation precedes migrations, then read-only compatibility
-preflight and schema-29 receipt consumption precede reconciliation, repair, both
-listeners and leased writers. No schema migration, `--yes`, empty/unlabeled data,
-old authorization flag or builder call grants existing-data consent. The obsolete
-runtime is removed; private offline config compatibility, claims columns, archives and
-receipts remain at schema 29. Do not restart old binaries against a retired catalog.
+final config/policy validation precedes migrations and read-only compatibility
+preflight. Historical evidence is finalized offline at schema 29 before forward
+cleanup to schema 30; ordinary serving and every public PostgreSQL write require
+clean schema 30. No schema migration, `--yes`, empty/unlabeled data, old authorization
+flag or builder call grants existing-data consent. **One final binary provides all
+commands below; no unreleased intermediate binary is required.** Migration 30 drops
+only the live source/view/entry claims columns and their dependent objects, preserving
+logical identity, historical archives and receipts. Never restart an old binary
+against a retired catalog.
 
 ## New, entirely empty installs only
 
@@ -52,37 +55,30 @@ Base Compose does not initialize implicitly; neither command removes existing vo
    controllers, including old binaries and embedding applications. Prevent restarts
    and background reconciliation. Take and verify a database/config/policy backup.
    A digest or absence of a live lease cannot prove old processes are offline.
-2. Apply schema migrations separately, with the existing migration configuration:
+2. Prepare the **FINAL deployment config, mounted Cedar policy and operator export
+   annotations first**. Remove retired fields by presence, including explicit nulls
+   and environment overrides. Preserve the same effective YAML/environment, policy
+   contents and database host spelling throughout review and finalization. Materialize
+   exposure-relevant `serve` CLI overrides in YAML/environment for offline commands.
+   Migration commands accept valid final inline source definitions; they do not use
+   obsolete runtime source validation.
+3. With this final binary, stop at the historical review schema explicitly:
 
    ```sh
-   thv-registry-api migrate up --config /etc/registry/config.yaml --yes
+   thv-registry-api migrate up --config /etc/registry/config.yaml --to-version 29 --yes
    ```
 
-   Migration 000027 creates only a stable logical database UUID and an empty
-   acknowledgement row. Migration 000028 adds empty internal archive and transition
-   state. Migration 000029 adds a nullable consumed-target digest and enforces that
-   it and `consumed_at` are either both NULL or both populated with a valid digest.
-   It refuses unsupported pre-existing consumption without target evidence; it
-   never manufactures or backfills consent. None grants consent, clears claims
-   or changes catalog data/generations.
-   `migrate up` retains its ordinary configuration validation; exposure inspection
-   separately permits inspecting retired security fields.
-3. Prepare the **FINAL deployment config and policy first**, removing retired fields
-   (`auth.authz`, `auth.roles`, `auth.publicPaths`, and source/view `claims`, including
-   explicit nulls and environment overrides). Do not remove them from the review
-   fingerprint or reinterpret an old acknowledgement. The historical database still
-   has its old claims for inventory. Use this same final effective configuration,
-   including environment overrides and mounted policy contents, for inventory,
-   acknowledgement, retirement and eventual cutover startup. Resolve legacy operator
-   annotations before that future startup; this command does not contact a cluster.
+   `up` rejects a target below the existing version; it never downgrades. Default
+   `up` from an older schema first reaches 29 and checks cleanup eligibility **before**
+   golang-migrate marks 30 dirty. Known refusals leave clean 29 and give the offline
+   procedure. `--yes` confirms schema migration only, never exposure consent.
+   Schemas 27–29 introduce identity/receipt/archive bookkeeping only, without
+   manufacturing approval or clearing claims. A pending retired receipt must resume
+   at **finalize**, not inventory/re-acknowledgement/retirement. An already-consumed
+   receipt can be verified at finalize, then upgraded.
 
-   Materialize any exposure-relevant `serve` CLI overrides in YAML/environment for
-   review; offline commands load `--config` and environment only. Startup revalidates
-   final overrides and freezes Cedar once for evaluation and the receipt fingerprint. Inventory
-   and acknowledgement support clean schemas 27, 28 and 29; retirement requires
-   28 or 29.
-   They never auto-migrate, initialize sources, repair latest pointers, fetch sources
-   or start controllers:
+   Use the final effective config for all review commands. They never migrate,
+   initialize definitions, repair latest pointers, fetch sources or start controllers:
 
    ```sh
    thv-registry-api migrate exposure inventory --config /etc/registry/config.yaml
@@ -142,15 +138,70 @@ Base Compose does not initialize implicitly; neither command removes existing vo
    have no retired fields. A changed config/policy requires fresh inventory and
    acknowledgement **before** clearing; arbitrary rebinding is never accepted.
    `initialize-empty` already has valid new-install evidence and needs no archive
-   or retirement command. It can be consumed by the new `serve` after preflight.
+   or retirement command. The historical retirement JSON message remains unchanged
+   for compatibility; it is **not** permission to serve. After successful retirement
+   remain offline and continue:
 
-   The historical retirement command still reports **"metadata retired; runtime cutover not
-   yet available in this slice"** for compatibility. With this binary, after inspecting
-   successful receipt delivery, cut over using `serve --config /etc/registry/config.yaml`
-   (without `--initialize-empty`). Never restart legacy binaries or embeddings. If JSON receipt
-   delivery fails after the command reports **"claim metadata retirement committed;
-   remain offline; inspect stored receipt"**, the database transaction already
-   committed: remain offline and use the recovery inspection below rather than retrying.
+   ```sh
+   thv-registry-api migrate exposure finalize \
+     --config /etc/registry/config.yaml --confirm-offline
+   thv-registry-api migrate up --config /etc/registry/config.yaml --yes
+   thv-registry-api serve --config /etc/registry/config.yaml
+   ```
+
+   Finalize reuses mandatory preparation: final config/retired-presence rejection,
+   one frozen Cedar load, read-only historical sources/all views and full-scope
+   operator compatibility preflight, then serialized consumption at 29. It **stops
+   before** CONFIG reconciliation, latest repair, ingestion, workers or listeners.
+   `--confirm-offline` is mandatory; consent comes from the existing exact pending
+   acknowledgement/retirement, not `--yes` or a new approval shortcut. Empty pending
+   mode must still have zero rows in every catalog table. A consumed same-target
+   receipt is verified without rewriting any historical fields.
+
+   Migration 30 refuses any live non-SQL-NULL claims (including JSON null and `{}`),
+   unconsumed review/retirement, nonempty unapproved catalog, any archive evidence
+   without consumed state, and every DB-time live lease, including stale generations.
+   A virgin entirely empty identity can undergo **structural cleanup only**, with no
+   acknowledgement: fresh installs still require explicit `--initialize-empty`.
+   Archives are not a full backup. Keep backups and sensitive archives restricted.
+   On lost commit responses or output failure, remain offline and inspect stored
+   receipts; never assume rollback, re-acknowledge or silently rebind evidence.
+
+   The runner serializes its entire staged workflow across final-binary replicas;
+   per-step migration locks alone would let another pod reach 30 before a delayed
+   `Migrate(29)` and inadvertently attempt a downgrade. Direct raw migrators do not
+   participate in this runner lock: no raw migration or other database writer may
+   run concurrently with offline upgrade. Preflight and the SQL guard are separate
+   transactions. A race/direct raw migrator
+   can still mark 30 dirty before its authoritative locked SQL guard refuses and
+   rolls back DDL. Do not auto-force a version or claim that this race stays clean:
+   remain offline, close the raw migrator/connection to release its aborted
+   transaction and session lock, then independently inspect schema/receipt state
+   and restore a verified backup or perform explicitly reviewed database recovery. Known
+   cleanup eligibility refusals at 29 and the supported schema-30 `migrate down`
+   refusal happen before the dirty mark; historical down guards do not share that guarantee.
+
+   The owned migration connection computes a fresh host/port/current-database/logical-ID
+   fingerprint under the receipt lock and installs it as transaction-local verification
+   context. SQL compares it to the consumed receipt before DDL and fails closed if it
+   is absent. No stored digest
+   is copied into that context or rebound. Virgin structural cleanup needs no receipt
+   or target context. Runner cancellation reaches acquisition, version reads and DDL.
+   The executing migration backend itself holds the whole-workflow session lock until
+   it exits, so closing or losing the caller/control session cannot unlock a still-running
+   migration. Queries are joined, the owned connection is closed with bounded cleanup,
+   and server exit is observed using the original PID and backend start time captured
+   while the owned connection was live. Cleanup never signals a numeric PID: a reused
+   PID belongs to a different session. Repeated close returns the cached cleanup result.
+   An unconfirmed cleanup error means the original backend may still hold the workflow
+   lock until server exit; it requires offline inspection and is not permission to resume
+   migration or serving. Cancellation during schema-30 cleanup rolls back its DDL and
+   preserves archives/receipts, but may leave version 30 dirty from the prior dirty mark;
+   recover offline as described above, never auto-force the version.
+
+   The migration driver's `Drop` operation intentionally refuses whole-database
+   destruction to protect catalog data and historical evidence. It is not an upgrade
+   or recovery mechanism; use a verified offline backup and reviewed recovery instead.
 
 ## What recording does (and does not do)
 
@@ -243,9 +294,12 @@ backup offline if necessary. There is no restore or automatic rebinding command.
 
 ## Receipt consumption and target continuity
 
-`internal/db.ConsumeExposure` requires clean schema 29. It is not a separate
-command or permission to bypass preparation. The default `app.NewCatalogApp`
-composition calls it only after validating final effective config, rejecting
+`internal/db.ConsumeExposure` supports clean schemas 29 and 30. The explicit offline
+`migrate exposure finalize` command reuses the same preparation barrier as
+`app.NewCatalogApp`, stopping immediately after consumption/target verification.
+Normal serving uses schema 30; historical pending format-1 decisions must be
+finalized while schema 29 still has its live claims columns. The default composition
+calls consumption only after validating final effective config, rejecting
 retired-field presence, freezing the actual loaded Cedar engine and completing
 read-only compatibility preflight over all final configured and persisted sources
 and operator scopes. See the [assembly guide](registry-standalone-assembly.md).
@@ -299,10 +353,35 @@ The config loader retains retired-field and environment fingerprint inputs from
 the same raw YAML/environment snapshot used to decode the effective config.
 `Config.ExposureReview(engine.Revision())` uses final in-memory CLI overrides and
 the exact bytes frozen in the loaded Cedar engine, never rereading either file.
-Offline fingerprints retain format 1. Changes before policy load invalidate pending
+Offline config fingerprints retain format 1. Catalog inventory remains byte-compatible
+format 1 at schemas 27–29. Schema 30 uses claims-free catalog format 2 for new empty
+reviews; historical consumed format-1 receipts are preserved verbatim, never relabeled.
+Pending format-1 evidence cannot be activated or rebound at 30. Changes before policy
+load invalidate pending
 review; changes after load cannot silently bind consent to a different evaluator.
 
 ## Rollback
+
+Schema 30 downgrade is always unsupported: `migrate down --config
+/etc/registry/config.yaml --num-steps 1 --yes` refuses before marking a version dirty.
+The raw down SQL guard also refuses, but a raw migrator can already have marked the
+previous version dirty. Neither command reconstructs claims from NULL/archive data.
+Keep all processes offline and restore the complete verified pre-retirement backup.
+For example, with operator-owned libpq service definitions targeting the stopped
+source and a **separate empty restore database** (never an online catalog):
+
+```sh
+pg_dump --dbname='service=registry-offline' --format=custom \
+  --file=/backups/registry-pre-retirement.dump
+pg_restore --list /backups/registry-pre-retirement.dump
+# Verify an actual disposable restore before approving retirement.
+pg_restore --dbname='service=registry-offline-restore' --exit-on-error \
+  /backups/registry-pre-retirement.dump
+```
+
+Restore config/policy/backups together; the archive contains claims evidence, not
+all payloads or a full backup. A different host spelling/database endpoint needs a
+pre-retirement restore and fresh explicit review, never a receipt rebind.
 
 Before consumption, 000029 can be downgraded to 000028 without changing pending
 acknowledgement or retirement evidence. It refuses to discard any consumed timestamp
@@ -311,7 +390,9 @@ its archive is empty, preserving pending acknowledgement evidence in 000027. It 
 lose any retirement, consumption or archive data. The unchanged 000027 downgrade
 still refuses to discard any acknowledgement, even invalidated state. Before any
 acknowledgement, downgrading/reapplying 000027 creates a new database identity and
-requires fresh review. Do not delete evidence to bypass these refusals.
+requires fresh review. These historical/raw guard refusals may mark the attempted
+version dirty; only the supported runner's known schema-30 downgrade refusal is
+guaranteed clean. Do not delete evidence to bypass these refusals.
 
 After clearing, restore a verified complete backup **offline** for rollback; an old
 binary cannot safely recreate the retired metadata. Preserve migration state and

@@ -135,7 +135,6 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       e.claims,
        rs.source_id,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
@@ -190,7 +189,6 @@ type GetServerVersionRow struct {
 	RepositoryID        *string    `json:"repository_id"`
 	RepositorySubfolder *string    `json:"repository_subfolder"`
 	RepositoryType      *string    `json:"repository_type"`
-	Claims              []byte     `json:"claims"`
 	SourceID            uuid.UUID  `json:"source_id"`
 	Position            int32      `json:"position"`
 }
@@ -234,7 +232,6 @@ func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionPara
 			&i.RepositoryID,
 			&i.RepositorySubfolder,
 			&i.RepositoryType,
-			&i.Claims,
 			&i.SourceID,
 			&i.Position,
 		); err != nil {
@@ -265,7 +262,6 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       e.claims,
        0::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
@@ -300,7 +296,6 @@ type GetServerVersionBySourceNameRow struct {
 	RepositoryID        *string    `json:"repository_id"`
 	RepositorySubfolder *string    `json:"repository_subfolder"`
 	RepositoryType      *string    `json:"repository_type"`
-	Claims              []byte     `json:"claims"`
 	Position            int32      `json:"position"`
 }
 
@@ -326,7 +321,6 @@ func (q *Queries) GetServerVersionBySourceName(ctx context.Context, arg GetServe
 		&i.RepositoryID,
 		&i.RepositorySubfolder,
 		&i.RepositoryType,
-		&i.Claims,
 		&i.Position,
 	)
 	return i, err
@@ -687,7 +681,6 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       e.claims,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
        COALESCE(rs.position, 32767)::integer AS position
@@ -749,7 +742,6 @@ type ListServersRow struct {
 	RepositoryID        *string    `json:"repository_id"`
 	RepositorySubfolder *string    `json:"repository_subfolder"`
 	RepositoryType      *string    `json:"repository_type"`
-	Claims              []byte     `json:"claims"`
 	Position            int32      `json:"position"`
 }
 
@@ -793,7 +785,6 @@ func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]Lis
 			&i.RepositoryID,
 			&i.RepositorySubfolder,
 			&i.RepositoryType,
-			&i.Claims,
 			&i.Position,
 		); err != nil {
 			return nil, err

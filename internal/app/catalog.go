@@ -81,6 +81,106 @@ type CatalogApp struct {
 	cleanup          sync.Once
 }
 
+// FinalizeExposure runs the mandatory preparation barrier offline, stopping
+// immediately after receipt consumption. It never initializes or starts work.
+func FinalizeExposure(ctx context.Context, options CatalogOptions) error {
+	if options.Config == nil || options.InitializeEmpty || len(options.Overrides) != 0 {
+		return errors.New("finalize requires final config and existing offline evidence")
+	}
+	prepared, err := prepareCatalog(ctx, options.Config.Clone(), options)
+	if err != nil {
+		return err
+	}
+	prepared.store.Close()
+	return nil
+}
+
+type preparedCatalog struct {
+	store     storage.CatalogStorage
+	sources   []persistence.SourceDefinition
+	views     []persistence.ViewDefinition
+	engine    *authorization.Engine
+	operators CatalogOperator
+	preflight func(context.Context, persistence.SourceDefinition) error
+}
+
+//nolint:gocyclo // The same ordered barrier is mandatory for startup and offline finalization.
+func prepareCatalog(ctx context.Context, cfg *config.Config, options CatalogOptions) (_ *preparedCatalog, err error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := cfg.ValidateCatalogCutover(); err != nil {
+		return nil, err
+	}
+	sources, views, err := catalogDefinitions(cfg)
+	if err != nil {
+		return nil, err
+	}
+	engine, err := authorization.Load(cfg.Authorization.PolicyFile)
+	if err != nil {
+		return nil, err
+	}
+	review, err := cfg.ExposureReview(engine.Revision())
+	if err != nil {
+		return nil, err
+	}
+	factory := options.Storage
+	if factory == nil {
+		factory = storage.CatalogPostgres{}
+	}
+	store, err := factory.Open(ctx, cfg)
+	if err != nil {
+		if store != nil {
+			store.Close()
+		}
+		return nil, err
+	}
+	if store == nil {
+		return nil, errors.New("catalog storage factory returned nil preparation capability")
+	}
+	defer func() {
+		if err != nil {
+			store.Close()
+		}
+	}()
+	persisted, err := store.Preflight(ctx, sources, views, cfg.WatchNamespace)
+	if err != nil {
+		return nil, err
+	}
+	operators := options.Operator
+	if operators == nil {
+		operators = &kubernetes.StandaloneFactory{}
+	}
+	preflight := func(ctx context.Context, d persistence.SourceDefinition) error {
+		if err := catalogSourcePreflight(d); err != nil {
+			return err
+		}
+		if d.Kubernetes != nil {
+			return operators.Preflight(ctx, d)
+		}
+		return ctx.Err()
+	}
+	for _, d := range append(sources, persisted...) {
+		if err := preflight(ctx, d); err != nil {
+			return nil, err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if options.InitializeEmpty {
+		err = store.ConsumeEmpty(ctx, review.Revision)
+	} else {
+		err = store.Consume(ctx, review.Revision)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("catalog exposure preparation: %w; see docs/registry-exposure-migration.md", err)
+	}
+	return &preparedCatalog{
+		store: store, sources: sources, views: views, engine: engine, operators: operators, preflight: preflight,
+	}, nil
+}
+
 // NewCatalogApp enforces preparation order even for direct calls and injected
 // factories: final config -> frozen policy -> open -> read-only preflight ->
 // serialized receipt consumption -> reconcile/repair -> guarded services/HTTP.
@@ -124,76 +224,18 @@ func NewCatalogApp(ctx context.Context, options CatalogOptions) (_ *CatalogApp, 
 		return nil, errors.New("shutdown timeout must be positive")
 	}
 	b.config = cfg
-	if err = cfg.ValidateCatalogCutover(); err != nil {
-		return nil, err
-	}
-	sources, views, err := catalogDefinitions(cfg)
+	prepared, err := prepareCatalog(ctx, cfg, options)
 	if err != nil {
 		return nil, err
 	}
-	engine, err := authorization.Load(cfg.Authorization.PolicyFile)
-	if err != nil {
-		return nil, err
-	}
-	review, err := cfg.ExposureReview(engine.Revision())
-	if err != nil {
-		return nil, err
-	}
-	factory := options.Storage
-	if factory == nil {
-		factory = storage.CatalogPostgres{}
-	}
-	store, err := factory.Open(ctx, cfg)
-	if err != nil {
-		if store != nil {
-			store.Close()
-		}
-		return nil, err
-	}
-	if store == nil {
-		return nil, errors.New("catalog storage factory returned nil preparation capability")
-	}
+	store, sources, views := prepared.store, prepared.sources, prepared.views
+	engine, operators, preflight := prepared.engine, prepared.operators, prepared.preflight
 	owned := true
 	defer func() {
 		if owned {
 			store.Close()
 		}
 	}()
-	persisted, err := store.Preflight(ctx, sources, views, cfg.WatchNamespace)
-	if err != nil {
-		return nil, err
-	}
-	operators := options.Operator
-	if operators == nil {
-		operators = &kubernetes.StandaloneFactory{}
-	}
-	preflight := func(
-		ctx context.Context, d persistence.SourceDefinition,
-	) error {
-		if err := catalogSourcePreflight(d); err != nil {
-			return err
-		}
-		if d.Kubernetes != nil {
-			return operators.Preflight(ctx, d)
-		}
-		return ctx.Err()
-	}
-	for _, d := range append(sources, persisted...) {
-		if err := preflight(ctx, d); err != nil {
-			return nil, err
-		}
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if options.InitializeEmpty {
-		err = store.ConsumeEmpty(ctx, review.Revision)
-	} else {
-		err = store.Consume(ctx, review.Revision)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("catalog exposure preparation: %w; see docs/registry-exposure-migration.md", err)
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

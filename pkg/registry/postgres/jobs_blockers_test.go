@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -196,7 +197,7 @@ func TestJobCompleteExpiredWhileWaitingForFence(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	if _, err = tx.Exec(t.Context(), `LOCK TABLE registry_entry IN ACCESS EXCLUSIVE MODE`); err != nil {
+	if _, err = tx.Exec(t.Context(), `SELECT id FROM source WHERE id=$1 FOR UPDATE`, s.ID); err != nil {
 		t.Fatal(err)
 	}
 	finished := make(chan error, 1)
@@ -234,58 +235,43 @@ func TestJobCompleteExpiredWhileWaitingForFence(t *testing.T) {
 
 func TestJobCompleteRejectsLegacyClaims(t *testing.T) {
 	t.Parallel()
-	for _, claimed := range []string{"source before acquire", "source during lease", "entry before acquire", "entry during lease"} {
-		t.Run(claimed, func(t *testing.T) {
+	for _, schema := range []struct {
+		version int
+		dirty   bool
+	}{{29, false}, {30, true}, {31, false}} {
+		t.Run(fmt.Sprintf("schema-%d-dirty-%t", schema.version, schema.dirty), func(t *testing.T) {
 			t.Parallel()
 			d, pool := newBackend(t)
 			jobs, err := postgres.NewJobs(pool, 65536)
 			if err != nil {
 				t.Fatal(err)
 			}
-			s, err := d.CreateSource(t.Context(), persistence.SourceDefinition{Name: "claims-job", API: &persistence.APISpec{Endpoint: "https://example.org"}, Schedule: "1h"})
+			s, err := d.CreateSource(t.Context(), persistence.SourceDefinition{Name: "schema-job", API: &persistence.APISpec{Endpoint: "https://example.org"}, Schedule: "1h"})
 			if err != nil {
 				t.Fatal(err)
-			}
-			snap := model.Snapshot{}
-			snap.Data.Servers = []model.Server{{Schema: "https://example.org/schema.json", Name: "com.example/server", Version: "1", Description: "server"}}
-			first, err := jobs.Acquire(t.Context(), s.Name, time.Minute)
-			if err != nil {
-				t.Fatal(err)
-			}
-			result := persistence.SyncResult{Hash: "H", FilterHash: "F"}
-			if err = jobs.CommitSnapshot(t.Context(), first, result, snap); err != nil {
-				t.Fatal(err)
-			}
-			addClaims := func() {
-				var query string
-				if claimed == "source before acquire" || claimed == "source during lease" {
-					query = `UPDATE source SET claims='{"role":"reader"}'::jsonb WHERE id=$1`
-				} else {
-					query = `UPDATE registry_entry SET claims='{"role":"reader"}'::jsonb WHERE source_id=$1`
-				}
-				if _, e := pool.Exec(t.Context(), query, s.ID); e != nil {
-					t.Fatal(e)
-				}
-			}
-			if claimed == "source before acquire" || claimed == "entry before acquire" {
-				addClaims()
 			}
 			j, err := jobs.Acquire(t.Context(), s.Name, time.Minute)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if claimed == "source during lease" || claimed == "entry during lease" {
-				addClaims()
+			if _, err := pool.Exec(t.Context(), `UPDATE schema_migrations SET version=$1,dirty=$2`, schema.version, schema.dirty); err != nil {
+				t.Fatal(err)
 			}
-			if err = jobs.Complete(t.Context(), j, result); !errors.Is(err, persistence.ErrConflict) {
-				t.Fatalf("claimed source advanced: %v", err)
+			for _, operation := range []func() error{
+				func() error { _, _, err := jobs.ClaimNext(t.Context(), time.Minute); return err },
+				func() error { _, err := jobs.Acquire(t.Context(), s.Name, time.Minute); return err },
+				func() error { _, err := jobs.Renew(t.Context(), j, time.Minute); return err },
+				func() error { return jobs.Complete(t.Context(), j, persistence.SyncResult{}) },
+				func() error { return jobs.CommitSnapshot(t.Context(), j, persistence.SyncResult{}, model.Snapshot{}) },
+				func() error { return jobs.Fail(t.Context(), j, persistence.FailureValidation) },
+			} {
+				if err := operation(); !errors.Is(err, persistence.ErrUnavailable) {
+					t.Fatalf("incompatible schema mutation: %v", err)
+				}
 			}
-			state, err := jobs.Status(t.Context(), s.Name)
-			if err != nil || state.LastHash != "H" || state.Phase != persistence.JobInProgress {
-				t.Fatalf("metadata: %+v %v", state, err)
-			}
-			if err = jobs.Fail(t.Context(), j, persistence.FailureValidation); err != nil {
-				t.Fatalf("cannot end claimed attempt: %v", err)
+			status, err := jobs.Status(t.Context(), s.Name)
+			if err != nil || status.Phase != persistence.JobInProgress {
+				t.Fatalf("metadata changed: %+v / %v", status, err)
 			}
 		})
 	}
@@ -303,15 +289,11 @@ func TestJobClaimNextSkipsLegacyCandidates(t *testing.T) {
 		{"a-inline", "file", `{"data":"{}"}`},
 		{"b-unknown", "api", `{"endpoint":"https://example.org","legacy":true}`},
 		{"c-invalid", "api", `{"endpoint":""}`},
-		{"d-claimed", "api", `{"endpoint":"https://example.org"}`},
 	} {
 		_, err = pool.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable,sync_schedule) VALUES($1,$2,$3::jsonb,true,interval '1 hour')`, row.name, row.kind, row.config)
 		if err != nil {
 			t.Fatal(err)
 		}
-	}
-	if _, err = pool.Exec(ctx, `UPDATE source SET claims='{"role":"reader"}'::jsonb WHERE name='d-claimed'`); err != nil {
-		t.Fatal(err)
 	}
 	valid, err := d.CreateSource(ctx, persistence.SourceDefinition{Name: "z-valid", API: &persistence.APISpec{Endpoint: "https://example.org"}, Schedule: "1h"})
 	if err != nil {

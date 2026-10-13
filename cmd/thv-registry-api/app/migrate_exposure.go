@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
 
+	registryapp "github.com/stacklok/toolhive-registry-server/internal/app"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/db"
 )
@@ -26,9 +27,10 @@ Stop and drain all registry readers, writers and controllers before acknowledgin
 These commands connect to an already migrated database; they never migrate,
 initialize sources, repair latest pointers, fetch sources or start controllers.
 An acknowledgement is NOT a cutover or proof that old processes are offline.
-Only retire-claims explicitly archives and clears claims. After retirement remain
-OFFLINE until a runtime cutover release or an offline backup restore.
---yes does not imply exposure consent. Runtime claims/RBAC guards are unchanged.`,
+Only retire-claims archives and clears historical claims. Finalize consumes the
+reviewed receipt after final config, frozen Cedar and full compatibility preflight.
+Remain OFFLINE until finalize and forward schema cleanup both succeed.
+--yes confirms schema migration only; it does not imply exposure consent.`,
 	}
 	for _, mode := range []string{
 		exposureInventoryCommand, exposureAcknowledgeCommand, exposureInitializeEmptyCommand, exposureRetireClaimsCommand,
@@ -42,14 +44,14 @@ OFFLINE until a runtime cutover release or an offline backup restore.
 			command.Short = "Record whole-catalog approval; legacy protections unchanged"
 			command.Flags().Bool("approve-whole-catalog", false, "Explicitly approve historical whole-catalog exposure")
 		case exposureRetireClaimsCommand:
-			command.Short = "Archive and clear claims OFFLINE; runtime cutover not yet available"
+			command.Short = "Archive and clear claims OFFLINE before finalize and schema cleanup"
 			command.Long = `Dangerous offline-only metadata transition, not runtime activation.
 Prepare the FINAL config and policy without retired fields BEFORE inventory and
 acknowledgement. Match that pending acknowledgement ID and its post-fence digest.
 Back up and stop/drain ALL readers, writers and controllers. Archive ALL source,
 view and entry claims, clear them to SQL NULL and fence old jobs atomically.
-Remain OFFLINE afterward: this slice cannot safely restart the legacy runtime.
-Restore a verified backup offline or wait for the runtime cutover release.
+Remain OFFLINE afterward: finalize the existing receipt, then migrate up to 30.
+Never restart a legacy runtime against retired metadata.
 Repeats are rejected without changes; a lost response or receipt output failure
 requires remaining offline and inspecting stored retirement state as documented in
 docs/registry-exposure-migration.md, not re-acknowledging or rebinding evidence.`
@@ -70,6 +72,34 @@ docs/registry-exposure-migration.md, not re-acknowledging or rebinding evidence.
 		}
 		group.AddCommand(command)
 	}
+	finalize := &cobra.Command{
+		Use: "finalize", Short: "Consume or verify offline exposure evidence before schema cleanup",
+		Args: cobra.NoArgs, SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			offline, _ := cmd.Flags().GetBool("confirm-offline")
+			if !offline {
+				return errors.New("finalize requires --confirm-offline; --yes is not consent")
+			}
+			path, _ := cmd.Flags().GetString("config")
+			cfg, err := config.LoadCatalogConfig(config.WithConfigPath(path))
+			if err != nil {
+				return errors.New("final exposure configuration unavailable or invalid")
+			}
+			if err := registryapp.FinalizeExposure(cmd.Context(), registryapp.CatalogOptions{Config: cfg}); err != nil {
+				return err
+			}
+			if err := json.NewEncoder(cmd.OutOrStdout()).Encode(struct {
+				Message string `json:"message"`
+			}{
+				"exposure finalized; remain offline until schema cleanup completes",
+			}); err != nil {
+				return errors.New("exposure finalization committed or verified; remain offline; inspect stored receipt")
+			}
+			return nil
+		},
+	}
+	finalize.Flags().Bool("confirm-offline", false, "Confirm all readers, writers and controllers are stopped and drained")
+	group.AddCommand(finalize)
 	return group
 }
 
