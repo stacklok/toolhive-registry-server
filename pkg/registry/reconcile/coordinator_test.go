@@ -128,7 +128,7 @@ func TestFailureCategories(t *testing.T) {
 func TestRenewAndCancellation(t *testing.T) {
 	t.Parallel()
 	for _, phase := range []string{"fetch", "commit"} {
-		for _, mode := range []string{"cancel", "renew fails", "renew stale", "renew succeeds"} {
+		for _, mode := range []string{"cancel", "renew fails", "renew mixed", "renew stale", "renew succeeds"} {
 			t.Run(phase+"/"+mode, func(t *testing.T) {
 				t.Parallel()
 				ctrl := gomock.NewController(t)
@@ -143,6 +143,9 @@ func TestRenewAndCancellation(t *testing.T) {
 				renewErr := error(nil)
 				if mode == "renew fails" {
 					renewErr = persistence.ErrUnavailable
+				}
+				if mode == "renew mixed" {
+					renewErr = errors.Join(context.Canceled, persistence.ErrUnavailable)
 				}
 				if mode == "renew stale" {
 					renewErr = persistence.ErrStale
@@ -181,7 +184,7 @@ func TestRenewAndCancellation(t *testing.T) {
 						return nil
 					})
 				}
-				if mode == "cancel" || mode == "renew fails" {
+				if mode == "cancel" || mode == "renew fails" || mode == "renew mixed" {
 					category := persistence.FailureStorage
 					if mode == "cancel" {
 						category = persistence.FailureCancelled

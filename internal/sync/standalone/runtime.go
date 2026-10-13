@@ -1,5 +1,5 @@
-// Package standalone prepares leased ingestion for standalone cutover. It is not
-// selected by production assembly and must never co-own legacy sources.
+// Package standalone supervises leased ingestion for the opt-in CatalogApp.
+// The CLI default still uses legacy assembly; never co-own its sources.
 package standalone
 
 import (
@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/stacklok/toolhive-registry-server/internal/shutdown"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile"
@@ -21,6 +22,8 @@ import (
 type Sources interface {
 	ListSources(context.Context) ([]persistence.SourceDefinition, error)
 }
+
+//go:generate mockgen -destination=mocks/worker.go -package=mocks . Worker
 
 // Worker borrows its dependencies and joins its own work before Run returns.
 type Worker interface {
@@ -155,20 +158,21 @@ func (r *Runtime) Run(ctx context.Context) (err error) {
 	r.mu.Unlock()
 	defer func() { r.mu.Lock(); r.running = false; close(r.done); r.mu.Unlock() }()
 	work, cancel := context.WithCancel(ctx)
+	var pollDone chan error
 	defer func() {
 		r.ready.Store(false)
 		cancel()
-		r.stopAll()
-		if ctx.Err() != nil {
-			err = nil
+		err = shutdown.Result(err)
+		if pollDone != nil {
+			err = errors.Join(err, shutdown.Result(<-pollDone))
 		}
+		err = errors.Join(err, r.stopAll())
 	}()
 	if err := r.replace(work, work, true, nil, cancel); err != nil {
 		return err
 	}
-	pollDone := make(chan error, 1)
+	pollDone = make(chan error, 1)
 	go func() { pollDone <- r.coordinator.Run(work) }()
-	defer func() { cancel(); <-pollDone }()
 	ticker := time.NewTicker(r.options.Reconcile.PollInterval)
 	defer ticker.Stop()
 	for {
@@ -224,8 +228,8 @@ func (r *Runtime) definitions(ctx context.Context, preflight bool) ([]persistenc
 // Only discovery runs concurrently; ownership changes stay on Run's goroutine.
 // A terminal event cancels the whole run before joining the pending discovery.
 func (r *Runtime) discover(
-	ctx context.Context, preflight bool, pollDone chan error, cancel context.CancelFunc,
-) ([]persistence.SourceDefinition, error) {
+	ctx, lifetime context.Context, preflight bool, pollDone chan error, cancel context.CancelFunc,
+) (_ []persistence.SourceDefinition, result error) {
 	ctx, discoveryCancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	var definitions []persistence.SourceDefinition
@@ -234,7 +238,11 @@ func (r *Runtime) discover(
 		defer close(done)
 		definitions, err = r.definitions(ctx, preflight)
 	}()
-	defer func() { discoveryCancel(); <-done }()
+	defer func() {
+		discoveryCancel()
+		<-done
+		result = errors.Join(result, err)
+	}()
 	for {
 		select {
 		case <-ctx.Done():
@@ -244,16 +252,16 @@ func (r *Runtime) discover(
 			cancel()
 			return nil, failure
 		case <-r.wake:
-			if failure := r.workerError(); failure != nil && !ownershipError(failure) {
+			if failure := r.workerError(lifetime); failure != nil && !ownershipError(failure) {
 				cancel()
 				return nil, failure
 			}
 		case <-done:
-			if failure := r.workerError(); failure != nil && !ownershipError(failure) {
+			if failure := r.workerError(lifetime); failure != nil && !ownershipError(failure) {
 				cancel()
 				return nil, failure
 			}
-			return definitions, err
+			return definitions, nil
 		}
 	}
 }
@@ -261,7 +269,7 @@ func (r *Runtime) discover(
 func (r *Runtime) replace(
 	ctx, lifetime context.Context, preflight bool, pollDone chan error, cancel context.CancelFunc,
 ) error {
-	definitions, err := r.discover(ctx, preflight, pollDone, cancel)
+	definitions, err := r.discover(ctx, lifetime, preflight, pollDone, cancel)
 	if err != nil {
 		return err
 	}
@@ -281,7 +289,7 @@ func (r *Runtime) replace(
 		delete(r.workers, name)
 		r.mu.Unlock()
 		old.cancel()
-		if err := <-old.done; err != nil && !ownershipError(err) {
+		if err := shutdown.Result(<-old.done); err != nil && !ownershipError(err) {
 			return err
 		}
 	}
@@ -317,6 +325,22 @@ func (r *Runtime) replace(
 }
 
 func ownershipError(err error) bool {
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		matched := false
+		for _, child := range joined.Unwrap() {
+			if shutdown.Result(child) == nil {
+				continue
+			}
+			if !ownershipError(child) {
+				return false
+			}
+			matched = true
+		}
+		return matched
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok && wrapped.Unwrap() != nil {
+		return ownershipError(wrapped.Unwrap())
+	}
 	return errors.Is(err, persistence.ErrInvalid) || errors.Is(err, persistence.ErrStale) || errors.Is(err, persistence.ErrNotFound)
 }
 
@@ -334,23 +358,27 @@ func sameOwner(a, b persistence.SourceDefinition) bool {
 }
 
 func (r *Runtime) checkWorkers(ctx context.Context, pollDone chan error, cancel context.CancelFunc) error {
-	err := r.workerError()
+	err := r.workerError(ctx)
 	// A public runner can observe a changed fence before discovery does.
 	// Re-read ownership once before treating that mismatch as terminal.
 	if ownershipError(err) {
 		if err = r.replace(ctx, ctx, false, pollDone, cancel); err == nil {
-			err = r.workerError()
+			err = r.workerError(ctx)
 		}
 	}
 	return err
 }
 
-func (r *Runtime) workerError() error {
+func (r *Runtime) workerError(lifetime context.Context) error {
 	var mismatch error
 	for _, w := range r.workers {
 		select {
 		case err := <-w.done:
 			if err == nil {
+				if lifetime.Err() != nil {
+					w.done <- nil
+					continue
+				}
 				err = persistence.ErrUnavailable
 			}
 			w.done <- err
@@ -364,7 +392,7 @@ func (r *Runtime) workerError() error {
 	return mismatch
 }
 
-func (r *Runtime) stopAll() {
+func (r *Runtime) stopAll() error {
 	r.mu.Lock()
 	workers := r.workers
 	r.workers = make(map[string]*owned)
@@ -372,9 +400,11 @@ func (r *Runtime) stopAll() {
 	for _, w := range workers {
 		w.cancel()
 	}
+	var err error
 	for _, w := range workers {
-		<-w.done
+		err = errors.Join(err, shutdown.Result(<-w.done))
 	}
+	return err
 }
 
 type inlineFetcher struct {
@@ -404,6 +434,17 @@ type inlineWorker struct {
 }
 
 func retryInline(err error) bool {
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, child := range joined.Unwrap() {
+			if !retryInline(child) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok && wrapped.Unwrap() != nil {
+		return retryInline(wrapped.Unwrap())
+	}
 	return err == nil || ownershipError(err) || errors.Is(err, persistence.ErrBusy) || errors.Is(err, ingest.ErrFetch)
 }
 
@@ -425,7 +466,7 @@ func (w *inlineWorker) Run(ctx context.Context) error {
 			}
 		}
 		if ctx.Err() != nil {
-			return nil
+			return shutdown.Result(err)
 		}
 		if !retryInline(err) {
 			return err

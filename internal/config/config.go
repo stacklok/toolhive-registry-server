@@ -771,6 +771,8 @@ func resolvePgpassPassword(host string, port int, database, user string) string 
 // LoadConfig loads and parses configuration from a YAML file with environment variable support.
 // Configuration values can be overridden using environment variables with the THV_REGISTRY_ prefix.
 // Nested keys use underscores as separators (e.g., THV_REGISTRY_DATABASE_HOST for database.host).
+//
+//nolint:gocyclo // Keep same-snapshot decoding and the explicit legacy versus cutover/offline validation modes together.
 func LoadConfig(opts ...Option) (*Config, error) {
 	loaderCfg := &loaderConfig{}
 	for _, opt := range opts {
@@ -797,7 +799,10 @@ func LoadConfig(opts ...Option) (*Config, error) {
 
 	// Enable automatic environment variable binding
 	// This allows any config value to be overridden via environment variables
-	v.AutomaticEnv()
+	// Cutover/offline decoding binds a single environment snapshot below.
+	if loaderCfg.exposureData == nil {
+		v.AutomaticEnv()
+	}
 
 	// Replace dots with underscores for nested keys
 	// e.g., database.host becomes THV_REGISTRY_DATABASE_HOST
@@ -823,6 +828,11 @@ func LoadConfig(opts ...Option) (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
+	var environment []string
+	if loaderCfg.exposureData != nil {
+		environment = os.Environ()
+		freezeCatalogEnvironment(v, environment)
+	}
 	// Unmarshal into struct
 	var config Config
 	if err := v.Unmarshal(&config); err != nil {
@@ -830,14 +840,18 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	}
 
 	config.exposureRetired = retired
-	config.exposureEnv = exposureEnvironment()
+	if loaderCfg.exposureData != nil {
+		config.exposureEnv = exposureEnvironmentFrom(environment)
+	} else {
+		config.exposureEnv = exposureEnvironment()
+	}
 
 	if config.Auth != nil && config.Auth.Mode == "" {
 		config.Auth.Mode = DefaultAuthMode
 	}
 
 	_, publicPathsPresent := retired["auth.publicpaths"]
-	_, publicPathsEnvPresent := os.LookupEnv(EnvPrefix + "_AUTH_PUBLICPATHS")
+	_, publicPathsEnvPresent := config.exposureEnv["AUTH_PUBLICPATHS"]
 	config.publicPathsPresent = publicPathsPresent || publicPathsEnvPresent || v.InConfig("auth.publicPaths")
 
 	// Set insecureAllowHTTP from environment variable (THV_REGISTRY_INSECURE_URL)

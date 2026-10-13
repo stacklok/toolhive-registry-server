@@ -15,6 +15,7 @@ import (
 	"github.com/gobwas/glob"
 
 	"github.com/stacklok/toolhive-registry-server/internal/filtering"
+	"github.com/stacklok/toolhive-registry-server/internal/shutdown"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
@@ -75,17 +76,17 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		job, ok, err := c.jobs.ClaimNext(ctx, c.options.LeaseDuration)
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil
+				return shutdown.Result(err)
 			}
 			return err
 		}
 		c.ready.Store(true)
 		if ok {
 			retry, err := c.execute(ctx, job)
+			if ctx.Err() != nil {
+				return shutdown.Result(err)
+			}
 			if err != nil && !retry {
-				if ctx.Err() != nil {
-					return nil
-				}
 				return err
 			}
 		}
@@ -121,24 +122,46 @@ func (c *Coordinator) execute(ctx context.Context, job persistence.Job) (bool, e
 	cancel() // unblock a Renew waiting behind CommitSnapshot's source-row lock
 	renewErr := <-renewDone
 	if err == nil {
+		if renewErr != nil && !staleOnly(renewErr) {
+			return false, shutdown.Result(renewErr)
+		}
 		return false, nil
-	} // committed: cancellation of a blocked Renew is expected
+	} // committed: cancellation or a stale fence from a blocked Renew is expected
 	if ctx.Err() != nil {
-		err = ctx.Err()
+		err = errors.Join(err, ctx.Err(), shutdown.Result(renewErr))
 		category = persistence.FailureCancelled
-	} else if renewErr != nil && !errors.Is(renewErr, context.Canceled) {
-		err = renewErr
+	} else if renewErr != nil && (!errors.Is(renewErr, context.Canceled) || shutdown.Result(renewErr) != nil) {
+		err = errors.Join(err, renewErr)
 		category = persistence.FailureStorage
 	}
-	if errors.Is(err, persistence.ErrStale) {
+	if errors.Is(err, persistence.ErrStale) && staleOnly(err) {
 		return true, err
 	}
 	cleanup, done := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer done()
-	if failErr := c.jobs.Fail(cleanup, job, category); failErr != nil && !errors.Is(failErr, persistence.ErrStale) {
-		return false, failErr
+	if failErr := c.jobs.Fail(cleanup, job, category); failErr != nil &&
+		(!errors.Is(failErr, persistence.ErrStale) || !staleOnly(failErr)) {
+		return false, errors.Join(err, failErr)
 	}
 	return category == persistence.FailureFetch || category == persistence.FailureValidation, err
+}
+
+func staleOnly(err error) bool {
+	if shutdown.Result(err) == nil {
+		return true
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, child := range joined.Unwrap() {
+			if !staleOnly(child) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok && wrapped.Unwrap() != nil {
+		return staleOnly(wrapped.Unwrap())
+	}
+	return errors.Is(err, persistence.ErrStale)
 }
 
 func (c *Coordinator) renew(ctx context.Context, cancel context.CancelFunc, job persistence.Job) error {
@@ -163,14 +186,15 @@ func (c *Coordinator) renew(ctx context.Context, cancel context.CancelFunc, job 
 	}
 }
 
+//nolint:gocyclo // Keep snapshot decisions and cancellation-aware failure classification in one attempt.
 func (c *Coordinator) apply(ctx context.Context, job persistence.Job) (persistence.FailureCategory, error) {
 	fetched, err := c.fetcher.Fetch(ctx, job.Source)
 	if err != nil {
+		if ctx.Err() != nil {
+			return persistence.FailureCancelled, errors.Join(ctx.Err(), err)
+		}
 		if errors.Is(err, persistence.ErrInvalid) {
 			return persistence.FailureValidation, persistence.ErrInvalid
-		}
-		if ctx.Err() != nil {
-			return persistence.FailureCancelled, ctx.Err()
 		}
 		return persistence.FailureFetch, ingest.ErrFetch
 	}
@@ -187,6 +211,9 @@ func (c *Coordinator) apply(ctx context.Context, job persistence.Job) (persisten
 	}
 	result := persistence.SyncResult{Hash: fetched.Hash, FilterHash: filterHash}
 	status, err := c.jobs.Status(ctx, job.Source.Name)
+	if err != nil && ctx.Err() != nil {
+		return persistence.FailureCancelled, err
+	}
 	if errors.Is(err, persistence.ErrNotFound) {
 		return persistence.FailureStorage, persistence.ErrStale
 	}
@@ -199,12 +226,12 @@ func (c *Coordinator) apply(ctx context.Context, job persistence.Job) (persisten
 	if status.BaselineValid &&
 		status.LastHash == result.Hash && status.LastFilterHash == result.FilterHash {
 		err = c.jobs.Complete(ctx, job, result)
-		if !errors.Is(err, persistence.ErrConflict) {
+		if !errors.Is(err, persistence.ErrConflict) || ctx.Err() != nil {
 			return persistence.FailureStorage, err
 		}
 	}
 	err = c.jobs.CommitSnapshot(ctx, job, result, snapshot)
-	if errors.Is(err, persistence.ErrInvalid) {
+	if errors.Is(err, persistence.ErrInvalid) && ctx.Err() == nil {
 		return persistence.FailureValidation, persistence.ErrInvalid
 	}
 	return persistence.FailureStorage, err

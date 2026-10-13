@@ -80,6 +80,48 @@ func TestAdmissionIdentityEvidence(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestCatalogProjectionPreservesClaimsAndRejectsUnverifiedAttribution(t *testing.T) {
+	t.Parallel()
+	claims := map[string]any{"iss": "https://issuer", "sub": "private-sub", "name": "private-name", "email": "private-email", "team": []string{"ops"}}
+	validator := mocks.NewMocktokenValidatorInterface(gomock.NewController(t))
+	validator.EXPECT().ValidateToken(gomock.Any(), "opaque").Return(claims, nil)
+	cfg := &config.AuthConfig{Mode: config.AuthModeOAuth, OAuth: &config.OAuthConfig{Providers: []config.OAuthProviderConfig{{Name: "one", IssuerURL: "https://issuer", Audience: "registry"}}}}
+	mw, _, err := NewCatalogAuthMiddleware(t.Context(), cfg, true,
+		func(context.Context, thvauth.TokenValidatorConfig) (tokenValidatorInterface, error) {
+			return validator, nil
+		})
+	require.NoError(t, err)
+	outer := WithIdentityHolder(t.Context())
+	handler := mw(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		identity, verified := VerifiedIdentityFromContext(r.Context())
+		require.True(t, verified)
+		if identity.Anonymous {
+			sub, name := IdentityFromContext(r.Context())
+			require.Equal(t, AnonymousSubject, sub)
+			require.Empty(t, name)
+			return
+		}
+		require.Equal(t, "private-sub", identity.Subject)
+		require.Equal(t, claims, map[string]any(ClaimsFromContext(r.Context())))
+		sub, name := IdentityFromContext(r.Context())
+		require.Equal(t, PrincipalID(identity), sub)
+		require.Len(t, sub, len("authenticated:")+64)
+		require.Empty(t, name)
+	}))
+	request := httptest.NewRequest("GET", "/", nil).WithContext(outer)
+	request.Header.Set("Authorization", "Bearer opaque")
+	handler.ServeHTTP(httptest.NewRecorder(), request)
+	sub, name := IdentityFromContext(outer)
+	require.True(t, len(sub) == len("authenticated:")+64)
+	require.Empty(t, name)
+	request = httptest.NewRequest("GET", "/", nil)
+	request.Header.Set("X-Subject", "private-sub")
+	request.Header.Set("X-Actor", sub)
+	handler.ServeHTTP(httptest.NewRecorder(), request)
+	require.Equal(t, "private-sub", claims["sub"])
+	require.Equal(t, "private-name", claims["name"])
+}
+
 func TestAdmissionInsufficientVerifiedIdentity(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
