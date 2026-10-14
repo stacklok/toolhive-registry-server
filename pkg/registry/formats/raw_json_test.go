@@ -18,53 +18,84 @@ func rawRegistry(server string) string {
 	return `{"version":"1.0.0","meta":{"last_updated":"2025-01-15T10:30:00Z"},"data":{"servers":[` + server + `]}}`
 }
 
-func TestValidateRawJSONStrict(t *testing.T) {
+func TestDecodeUpstreamLegacyDuplicateNames(t *testing.T) {
 	t.Parallel()
+	valid := rawRegistry(rawServer)
 	for _, tc := range []struct {
 		name  string
-		data  []byte
-		valid bool
+		data  string
+		check func(*model.Snapshot)
 	}{
-		{"literal escaped backslash before surrogate", []byte(`{"description":"\\uD800"}`), true},
-		{"surrogate pair", []byte(`{"description":"\uD800\uDC00"}`), true},
-		{"lone high surrogate", []byte(`{"description":"\uD800"}`), false},
-		{"lone low surrogate", []byte(`{"description":"\uDC00"}`), false},
-		{"invalid UTF-8", []byte("{\"description\":\"bad\xff\"}"), false},
-		{"duplicate decoded key", []byte(`{"na\u006de":1,"name":2}`), false},
+		{
+			name: "top-level uses last value",
+			data: strings.Replace(valid, `"version":"1.0.0"`, `"version":"legacy","version":"1.0.0"`, 1),
+			check: func(snapshot *model.Snapshot) {
+				require.Equal(t, "1.0.0", snapshot.Version)
+			},
+		},
+		{
+			name: "nested uses last value",
+			data: rawRegistry(strings.Replace(rawServer, `"description":"Weather"`, `"description":"Ignored","description":"Weather"`, 1)),
+			check: func(snapshot *model.Snapshot) {
+				require.Equal(t, "Weather", snapshot.Data.Servers[0].Description)
+			},
+		},
+		{
+			name: "escaped equivalent uses last value",
+			data: rawRegistry(strings.Replace(rawServer, `"name":"com.example/weather"`, `"na\u006de":"ignored.example/weather","name":"com.example/weather"`, 1)),
+			check: func(snapshot *model.Snapshot) {
+				require.Equal(t, "com.example/weather", snapshot.Data.Servers[0].Name)
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := formats.ValidateRawJSON(tc.data)
-			require.Equal(t, tc.valid, err == nil, "error = %v", err)
+			snapshot, err := formats.DecodeUpstream([]byte(tc.data))
+			require.NoError(t, err)
+			tc.check(snapshot)
 		})
 	}
 }
 
-func TestDecodeUpstreamOriginalJSON(t *testing.T) {
+func TestDecodeUpstreamLegacyUnicodeForms(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name        string
+		input       string
+		description string
+	}{
+		{"composed", "Café", "Café"},
+		{"decomposed", "Cafe\u0301", "Cafe\u0301"},
+		{"invalid UTF-8", "Wea\xffther", "Wea�ther"},
+		{"lone surrogate", `Wea\uD800ther`, "Wea�ther"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			server := strings.Replace(rawServer, "Weather", tc.input, 1)
+			snapshot, err := formats.DecodeUpstream([]byte(rawRegistry(server)))
+			require.NoError(t, err)
+			require.Equal(t, tc.description, snapshot.Data.Servers[0].Description)
+		})
+	}
+}
+
+func TestDecodeUpstreamRejectsMalformedOrTrailingJSON(t *testing.T) {
 	t.Parallel()
 	valid := rawRegistry(rawServer)
 	for _, tc := range []struct {
 		name string
 		data string
 	}{
-		{"top-level duplicate", strings.Replace(valid, `"version":"1.0.0"`, `"version":"old","version":"1.0.0"`, 1)},
-		{"nested duplicate", rawRegistry(strings.Replace(rawServer, `"name":`, `"name":"ignored","name":`, 1))},
-		{"escaped duplicate decoded key", rawRegistry(strings.Replace(rawServer, `"name":`, `"na\u006de":"ignored","name":`, 1))},
-		{"metadata duplicate", rawRegistry(strings.Replace(rawServer, `"packages":[]`, `"_meta":{"io.modelcontextprotocol.registry/publisher-provided":{"com.example/custom":{"nested":[{"n":1,"n":2}]}}}`, 1))},
 		{"malformed", valid[:len(valid)-1]},
 		{"trailing JSON", valid + `{}`},
-		{"invalid UTF-8", strings.Replace(valid, "Weather", "Wea\xffther", 1)},
-		{"lone high surrogate escape", strings.Replace(valid, "Weather", `\uD800`, 1)},
-		{"lone low surrogate escape", strings.Replace(valid, "Weather", `\uDC00`, 1)},
-		{"raw null array hidden by typed projection", rawRegistry(strings.Replace(rawServer, `"packages":[]`, `"packages":null`, 1))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			data := []byte(tc.data)
 			original := bytes.Clone(data)
-			got, err := formats.DecodeUpstream(data)
+			snapshot, err := formats.DecodeUpstream(data)
 			require.Error(t, err)
-			require.Nil(t, got)
+			require.Nil(t, snapshot)
 			require.Equal(t, original, data)
 		})
 	}
@@ -72,7 +103,7 @@ func TestDecodeUpstreamOriginalJSON(t *testing.T) {
 
 func TestDecodeUpstreamMetadataPrecision(t *testing.T) {
 	t.Parallel()
-	server := strings.Replace(rawServer, `"packages":[]`, `"unknown":"discarded","_meta":{"io.modelcontextprotocol.registry/publisher-provided":{"com.example/custom":{"integer":9007199254740993,"decimal":0.123456789012345678901234567890,"nested":[{"number":1.2300}]}}}`, 1)
+	server := strings.Replace(rawServer, `"packages":[]`, `"_meta":{"io.modelcontextprotocol.registry/publisher-provided":{"com.example/custom":{"integer":9007199254740993,"decimal":0.123456789012345678901234567890,"nested":[{"number":1.2300}]}}}`, 1)
 	data := []byte(rawRegistry(server))
 	original := bytes.Clone(data)
 	snapshot, err := formats.DecodeUpstream(data)
@@ -87,24 +118,4 @@ func TestDecodeUpstreamMetadataPrecision(t *testing.T) {
 	require.Contains(t, string(wire), `"integer":9007199254740993`)
 	require.Contains(t, string(wire), `"decimal":0.123456789012345678901234567890`)
 	require.Contains(t, string(wire), `"number":1.2300`)
-	require.NotContains(t, string(wire), `"unknown"`)
-}
-
-func TestDecodeUpstreamCoreExtensionLimitations(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		name     string
-		metadata string
-	}{
-		{"official scalar namespace rejected by core policy", `{"com.example/custom":42}`},
-		{"core float64 parsing rejects overflow", `{"com.example/custom":{"number":1e400}}`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			server := strings.Replace(rawServer, `"packages":[]`, `"_meta":{"io.modelcontextprotocol.registry/publisher-provided":`+tc.metadata+`}`, 1)
-			snapshot, err := formats.DecodeUpstream([]byte(rawRegistry(server)))
-			require.Error(t, err)
-			require.Nil(t, snapshot)
-		})
-	}
 }

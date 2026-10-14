@@ -12,7 +12,6 @@ import (
 	v0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 
 	"github.com/stacklok/toolhive-registry-server/internal/registry"
-	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
@@ -57,10 +56,9 @@ func (h *Upstream) Validate(ctx context.Context, endpoint string) error {
 }
 
 // Fetch retrieves every server page, failing rather than returning partial data.
-// Original pages must be strict JSON with unique object names and valid UTF-8.
 // Dynamic publisher metadata numbers decode as json.Number before normalization;
-// unknown fields are dropped. This is not original-raw server schema validation.
-// The upstream MCP API supplies servers only; file/Git snapshots support all kinds.
+// unknown fields are dropped. The upstream MCP API supplies servers only; file/Git
+// snapshots support all kinds.
 func (h *Upstream) Fetch(ctx context.Context, endpoint string) (model.Snapshot, error) {
 	var snapshot model.Snapshot
 	snapshot.Schema = registry.UpstreamRegistrySchemaURL
@@ -81,7 +79,7 @@ func (h *Upstream) Fetch(ctx context.Context, endpoint string) (model.Snapshot, 
 		if err != nil {
 			return model.Snapshot{}, err
 		}
-		if formats.ValidateRawJSON(data) != nil {
+		if !json.Valid(data) {
 			return model.Snapshot{}, fmt.Errorf("failed to parse response page")
 		}
 		var response v0.ServerListResponse
