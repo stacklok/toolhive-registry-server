@@ -82,8 +82,8 @@ func (*apiRegistryHandler) newUpstreamHandler(regCfg *config.SourceConfig) (*ups
 	return NewUpstreamAPIHandler(httpclient.NewDefaultClient(timeout)), nil
 }
 
-// validateUpstreamFormat validates the endpoint speaks the upstream MCP Registry format
-// (by checking /openapi.yaml via the given handler)
+// validateUpstreamFormat validates the endpoint speaks the upstream MCP Registry v0.1 API
+// (by probing /v0.1/servers via the given handler)
 func (h *apiRegistryHandler) validateUpstreamFormat(
 	ctx context.Context,
 	handler *upstreamAPIHandler,
@@ -92,8 +92,7 @@ func (h *apiRegistryHandler) validateUpstreamFormat(
 	endpoint := h.getBaseURL(regCfg)
 
 	if err := handler.Validate(ctx, endpoint); err != nil {
-		slog.Debug("Upstream format validation failed", "error", err.Error())
-		return fmt.Errorf("unable to validate Upstream format")
+		return fmt.Errorf("unable to validate Upstream format: %w", err)
 	}
 
 	slog.Info("Validated as upstream MCP Registry format")

@@ -14,188 +14,98 @@ import (
 )
 
 const (
-	upstreamOpenapiPath = "/openapi.yaml"
-	serversAPIPath      = "/v0.1/servers"
+	serversAPIPath = "/v0.1/servers"
 )
 
 func TestUpstreamAPIHandler_Validate(t *testing.T) {
 	t.Parallel()
 
+	// serveServers returns a handler that answers /v0.1/servers with body and
+	// 404s everything else, recording the query of the probe request.
+	serveServers := func(body string, gotQuery *string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != serversAPIPath {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			if gotQuery != nil {
+				*gotQuery = r.URL.RawQuery
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		}
+	}
+
 	tests := []struct {
 		name          string
-		setupServer   func() *httptest.Server
+		handler       http.HandlerFunc
 		expectError   bool
 		errorContains string
 	}{
 		{
-			name: "valid upstream MCP registry API",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == upstreamOpenapiPath {
-						w.Header().Set("Content-Type", "application/x-yaml")
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`
-openapi: 3.1.0
-info:
-  title: Official MCP Registry
-  description: |
-    A community driven registry service for Model Context Protocol (MCP) servers.
-
-    [GitHub repository](https://github.com/modelcontextprotocol/registry) | [Documentation](https://github.com/modelcontextprotocol/registry/tree/main/docs)
-  version: 1.0.0
-paths:
-  /v0/servers:
-    get:
-      summary: List servers
-`))
-					} else {
-						w.WriteHeader(http.StatusNotFound)
-					}
-				}))
-			},
-			expectError: false,
+			// No /openapi.yaml is served: non-official implementations (including
+			// ToolHive Registry Server) must be accepted on API behavior alone.
+			name: "valid v0.1 server list",
+			handler: serveServers(`{
+				"servers": [{"server": {"name": "io.example/a", "description": "d", "version": "1.0.0"}, "_meta": {}}],
+				"metadata": {"nextCursor": "abc", "count": 1}
+			}`, nil),
 		},
 		{
-			name: "missing /openapi.yaml endpoint",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.WriteHeader(http.StatusNotFound)
-				}))
-			},
-			expectError:   true,
-			errorContains: "failed to fetch /openapi.yaml",
+			name:    "empty server list",
+			handler: serveServers(`{"servers": [], "metadata": {"count": 0}}`, nil),
 		},
 		{
-			name: "invalid YAML in /openapi.yaml",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == upstreamOpenapiPath {
-						w.Header().Set("Content-Type", "application/x-yaml")
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`{invalid: yaml: [unclosed`))
-					}
-				}))
+			name: "endpoint returns 404",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
 			},
 			expectError:   true,
-			errorContains: "failed to parse /openapi.yaml",
+			errorContains: "failed to fetch /v0.1/servers",
 		},
 		{
-			name: "missing info section in OpenAPI spec",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == upstreamOpenapiPath {
-						w.Header().Set("Content-Type", "application/x-yaml")
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`
-openapi: 3.1.0
-paths:
-  /v0/servers:
-    get:
-      summary: List servers
-`))
-					}
-				}))
+			name: "endpoint returns 500",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
 			},
 			expectError:   true,
-			errorContains: "missing 'info' section",
+			errorContains: "HTTP 500",
 		},
 		{
-			name: "missing version field in info section",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == upstreamOpenapiPath {
-						w.Header().Set("Content-Type", "application/x-yaml")
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`
-openapi: 3.1.0
-info:
-  title: Some Registry
-  description: A registry without version
-`))
-					}
-				}))
-			},
+			name:          "non-JSON response",
+			handler:       serveServers(`<html>not a registry</html>`, nil),
 			expectError:   true,
-			errorContains: "missing 'version' field",
+			errorContains: "did not return a JSON object",
 		},
 		{
-			name: "wrong version (not 1.0.0)",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == upstreamOpenapiPath {
-						w.Header().Set("Content-Type", "application/x-yaml")
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`
-openapi: 3.1.0
-info:
-  title: Some Registry
-  description: Contains GitHub URL https://github.com/modelcontextprotocol/registry
-  version: 2.0.0
-`))
-					}
-				}))
-			},
+			name:          "JSON array instead of object",
+			handler:       serveServers(`[]`, nil),
 			expectError:   true,
-			errorContains: "version is 2.0.0, expected 1.0.0",
+			errorContains: "did not return a JSON object",
 		},
 		{
-			name: "missing description field in info section",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == upstreamOpenapiPath {
-						w.Header().Set("Content-Type", "application/x-yaml")
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`
-openapi: 3.1.0
-info:
-  title: Some Registry
-  version: 1.0.0
-`))
-					}
-				}))
-			},
+			name:          "object without servers field",
+			handler:       serveServers(`{"items": [], "metadata": {"count": 0}}`, nil),
 			expectError:   true,
-			errorContains: "missing 'description' field",
+			errorContains: "missing a 'servers' array",
 		},
 		{
-			name: "description without expected GitHub URL",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == upstreamOpenapiPath {
-						w.Header().Set("Content-Type", "application/x-yaml")
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`
-openapi: 3.1.0
-info:
-  title: Some Registry
-  description: A registry without the expected GitHub URL
-  version: 1.0.0
-`))
-					}
-				}))
-			},
+			name:          "servers is null",
+			handler:       serveServers(`{"servers": null}`, nil),
 			expectError:   true,
-			errorContains: "does not contain expected GitHub URL",
+			errorContains: "missing a 'servers' array",
 		},
 		{
-			name: "version as number instead of string (YAML parses 1.0 as float)",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == upstreamOpenapiPath {
-						w.Header().Set("Content-Type", "application/x-yaml")
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`
-openapi: 3.1.0
-info:
-  title: Some Registry
-  description: Contains https://github.com/modelcontextprotocol/registry
-  version: 1.0
-`))
-					}
-				}))
-			},
+			name:          "servers is not an array",
+			handler:       serveServers(`{"servers": {"name": "x"}}`, nil),
 			expectError:   true,
-			errorContains: "missing 'version' field",
+			errorContains: "missing a 'servers' array",
+		},
+		{
+			name:          "server entries have the wrong shape",
+			handler:       serveServers(`{"servers": ["io.example/a"]}`, nil),
+			expectError:   true,
+			errorContains: "not a valid server list",
 		},
 	}
 
@@ -203,14 +113,11 @@ info:
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockServer := tt.setupServer()
+			mockServer := httptest.NewServer(tt.handler)
 			defer mockServer.Close()
 
-			httpClient := httpclient.NewDefaultClient(0)
-			handler := NewUpstreamAPIHandler(httpClient)
-			ctx := context.Background()
-
-			err := handler.Validate(ctx, mockServer.URL)
+			handler := NewUpstreamAPIHandler(httpclient.NewDefaultClient(0))
+			err := handler.Validate(context.Background(), mockServer.URL)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -220,6 +127,18 @@ info:
 			}
 		})
 	}
+
+	t.Run("probes a single-item page", func(t *testing.T) {
+		t.Parallel()
+
+		var gotQuery string
+		mockServer := httptest.NewServer(serveServers(`{"servers": []}`, &gotQuery))
+		defer mockServer.Close()
+
+		handler := NewUpstreamAPIHandler(httpclient.NewDefaultClient(0))
+		require.NoError(t, handler.Validate(context.Background(), mockServer.URL))
+		assert.Equal(t, "limit=1", gotQuery)
+	})
 }
 
 func TestUpstreamAPIHandler_FetchRegistry(t *testing.T) {
