@@ -14,10 +14,6 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 )
 
-const (
-	openapiPath = "/openapi.yaml"
-)
-
 func TestAPIRegistryHandler_FetchRegistry(t *testing.T) {
 	t.Parallel()
 
@@ -35,19 +31,6 @@ func TestAPIRegistryHandler_FetchRegistry(t *testing.T) {
 			setupServer: func() *httptest.Server {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					switch r.URL.Path {
-					case openapiPath:
-						w.Header().Set("Content-Type", "application/x-yaml")
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`
-info:
-  title: Official MCP Registry
-  description: |
-    A community driven registry service for Model Context Protocol (MCP) servers.
-
-    [GitHub repository](https://github.com/modelcontextprotocol/registry)
-  version: 1.0.0
-openapi: 3.1.0
-`))
 					case "/v0.1/servers":
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
@@ -155,19 +138,6 @@ func TestAPIRegistryHandler_MultipleServers(t *testing.T) {
 
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case openapiPath:
-			w.Header().Set("Content-Type", "application/x-yaml")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`
-info:
-  title: Official MCP Registry
-  description: |
-    A community driven registry service for Model Context Protocol (MCP) servers.
-
-    [GitHub repository](https://github.com/modelcontextprotocol/registry)
-  version: 1.0.0
-openapi: 3.1.0
-`))
 		case "/v0.1/servers":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -263,19 +233,6 @@ func newUpstreamMockServer(delay time.Duration) *httptest.Server {
 			time.Sleep(delay)
 		}
 		switch r.URL.Path {
-		case openapiPath:
-			w.Header().Set("Content-Type", "application/x-yaml")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`
-info:
-  title: Official MCP Registry
-  description: |
-    A community driven registry service for Model Context Protocol (MCP) servers.
-
-    [GitHub repository](https://github.com/modelcontextprotocol/registry)
-  version: 1.0.0
-openapi: 3.1.0
-`))
 		case "/v0.1/servers":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)

@@ -10,17 +10,16 @@ package sources
 // See: https://github.com/stacklok/toolhive-registry-server/issues/XXX (create issue)
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"strings"
 	"time"
 
 	v0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
-	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
@@ -37,8 +36,7 @@ const (
 )
 
 // upstreamAPIHandler handles registry data from upstream MCP Registry API endpoints
-// API Format: /v0/servers (paginated list), /v0/servers/{name}/versions, /openapi.yaml
-// Phase 2 implementation - currently validates format but does not fetch data
+// API Format: /v0.1/servers (paginated list)
 type upstreamAPIHandler struct {
 	httpClient httpclient.Client
 	validator  RegistryDataValidator
@@ -52,46 +50,33 @@ func NewUpstreamAPIHandler(httpClient httpclient.Client) *upstreamAPIHandler {
 	}
 }
 
-// Validate validates that the endpoint is an upstream MCP Registry
-// by checking /openapi.yaml for expected version and description
+// Validate validates that the endpoint speaks the upstream MCP Registry v0.1 API
+// by requesting a single-item page of /v0.1/servers and checking that the response
+// is a server list. This probes the exact behavior FetchRegistry depends on, so any
+// compliant implementation is accepted, not just the official registry.
 func (h *upstreamAPIHandler) Validate(ctx context.Context, endpoint string) error {
-	openapiURL := endpoint + "/openapi.yaml"
+	probeURL := endpoint + "/v0.1/servers?limit=1"
 
-	data, err := h.httpClient.Get(ctx, openapiURL)
+	data, err := h.httpClient.Get(ctx, probeURL)
 	if err != nil {
-		return fmt.Errorf("failed to fetch /openapi.yaml: %w", err)
+		return fmt.Errorf("failed to fetch /v0.1/servers: %w", err)
 	}
 
-	// Parse YAML into a map
-	var openapiSpec map[string]any
-	if err := yaml.Unmarshal(data, &openapiSpec); err != nil {
-		return fmt.Errorf("failed to parse /openapi.yaml: %w", err)
+	// Check the 'servers' field explicitly: unmarshalling arbitrary JSON objects
+	// into ServerListResponse would succeed with an empty list.
+	var probe struct {
+		Servers json.RawMessage `json:"servers"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return fmt.Errorf("/v0.1/servers did not return a JSON object: %w", err)
+	}
+	if !bytes.HasPrefix(bytes.TrimSpace(probe.Servers), []byte("[")) {
+		return fmt.Errorf("/v0.1/servers response is missing a 'servers' array")
 	}
 
-	// Check for 'info' section
-	info, ok := openapiSpec["info"].(map[string]any)
-	if !ok {
-		return fmt.Errorf("/openapi.yaml missing 'info' section")
-	}
-
-	// Check version is 1.0.0
-	version, ok := info["version"].(string)
-	if !ok {
-		return fmt.Errorf("/openapi.yaml info section missing 'version' field")
-	}
-	if version != "1.0.0" {
-		return fmt.Errorf("/openapi.yaml version is %s, expected 1.0.0", version)
-	}
-
-	// Check description contains GitHub URL
-	description, ok := info["description"].(string)
-	if !ok {
-		return fmt.Errorf("/openapi.yaml info section missing 'description' field")
-	}
-
-	expectedGitHubURL := "https://github.com/modelcontextprotocol/registry"
-	if !strings.Contains(description, expectedGitHubURL) {
-		return fmt.Errorf("/openapi.yaml description does not contain expected GitHub URL: %s", expectedGitHubURL)
+	var response v0.ServerListResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return fmt.Errorf("/v0.1/servers response is not a valid server list: %w", err)
 	}
 
 	return nil
