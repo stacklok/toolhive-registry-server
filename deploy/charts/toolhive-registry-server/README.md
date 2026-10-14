@@ -104,7 +104,7 @@ rather than through the Service.
 | extraVolumes | list | `[]` | Additional Kubernetes volumes available to the Registry Server pod. Mount them with `extraVolumeMounts` or an init container's `volumeMounts`. |
 | fullnameOverride | string | `""` | Override the generated name of the Deployment, Service, and related resources. |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy for the Registry Server container. |
-| image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v1.5.2"` | Registry Server container image reference, including the tag or digest. |
+| image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v1.5.3"` | Registry Server container image reference, including the tag or digest. |
 | imagePullSecrets | list | `[]` | References to Secrets in the release namespace used to pull private container images. |
 | initContainers | list | `[]` | Init container specifications run before the Registry Server container. Each init container defines its own volume mounts and can mount volumes declared in `extraVolumes`, for example to prepare a PostgreSQL password file. |
 | livenessProbe | object | `{"httpGet":{"path":"/health","port":"internal-http"},"initialDelaySeconds":30,"periodSeconds":10}` | Kubernetes liveness probe for the Registry Server container. |

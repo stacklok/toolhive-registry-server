@@ -6,7 +6,7 @@ replicaCount: 1
 
 image:
   # -- Registry Server container image reference, including the tag or digest.
-  registryServerUrl: "ghcr.io/stacklok/thv-registry-api:v1.5.2"
+  registryServerUrl: "ghcr.io/stacklok/thv-registry-api:v1.5.3"
 
   # -- Image pull policy for the Registry Server container.
   pullPolicy: IfNotPresent
