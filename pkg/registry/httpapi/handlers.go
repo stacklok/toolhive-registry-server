@@ -20,14 +20,19 @@ import (
 )
 
 //nolint:gocyclo // Route-specific validation and error exits stay at the HTTP boundary.
-func serveConsumer(pages ConsumerPages, route RouteDescriptor, w http.ResponseWriter, r *http.Request) {
+func serveConsumer(pages ConsumerPages, options ConsumerOptions, route RouteDescriptor, w http.ResponseWriter, r *http.Request) {
+	values, err := consumerQuery(r, route, options)
+	if err != nil {
+		writeError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	view, err := pathParam(r, registryNameParam)
 	if err != nil {
 		writeError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if route.Operation == List {
-		query, err := listQuery(r, route.Kind)
+		query, err := consumerListQuery(r, route, options, values)
 		if err != nil {
 			writeError(w, err.Error(), http.StatusBadRequest)
 			return
@@ -38,7 +43,7 @@ func serveConsumer(pages ConsumerPages, route RouteDescriptor, w http.ResponseWr
 		}
 		page, err := pages.List(r.Context(), view, query)
 		if err != nil {
-			writeServiceError(w, err)
+			writeApplicationError(w, r, route, options.MapError, err)
 			return
 		}
 		writePage(w, route.Kind, page, query.Limit)
@@ -50,25 +55,28 @@ func serveConsumer(pages ConsumerPages, route RouteDescriptor, w http.ResponseWr
 		return
 	}
 	if route.Operation == ListVersions {
-		limit := 30
-		if route.Kind == persistence.ServerKind {
-			limit = 1000
+		request, err := historyRequest(route.Kind, values, options.PaginateHistory)
+		if err != nil {
+			writeError(w, err.Error(), http.StatusBadRequest)
+			return
 		}
-		query := catalog.Query{Kind: name.Kind, Name: name.Name, Namespace: name.Namespace, Limit: limit}
+		query := catalog.Query{
+			Kind: name.Kind, Name: name.Name, Namespace: name.Namespace, Limit: request.Limit, Cursor: request.Cursor,
+		}
 		if err := query.Validate(view); err != nil {
 			writeServiceError(w, err)
 			return
 		}
-		page, err := pages.ListVersions(r.Context(), view, name, catalog.PageRequest{Limit: limit})
+		page, err := pages.ListVersions(r.Context(), view, name, request)
 		if err != nil {
-			writeServiceError(w, err)
+			writeApplicationError(w, r, route, options.MapError, err)
 			return
 		}
-		// Server history has no wire continuation; extension history retains it.
-		if route.Kind == persistence.ServerKind {
+		// Legacy server history has no wire continuation.
+		if route.Kind == persistence.ServerKind && !options.PaginateHistory {
 			page.NextCursor = ""
 		}
-		writePage(w, route.Kind, page, limit)
+		writePage(w, route.Kind, page, request.Limit)
 		return
 	}
 	selector := catalog.VersionSelector{Latest: true}
@@ -86,7 +94,7 @@ func serveConsumer(pages ConsumerPages, route RouteDescriptor, w http.ResponseWr
 	}
 	entry, err := pages.Get(r.Context(), view, name, selector)
 	if err != nil {
-		writeServiceError(w, err)
+		writeApplicationError(w, r, route, options.MapError, err)
 		return
 	}
 	if !validPayload(route.Kind, entry) {
@@ -247,6 +255,25 @@ func writePage(w http.ResponseWriter, kind persistence.EntryKind, page catalog.P
 	case persistence.PluginKind:
 		writeJSON(w, formats.PluginPage(plugins, page.NextCursor), http.StatusOK)
 	}
+}
+
+func writeApplicationError(w http.ResponseWriter, r *http.Request, route RouteDescriptor,
+	mapper func(*http.Request, RouteDescriptor, error) ErrorMapping, err error,
+) {
+	if mapper == nil {
+		writeServiceError(w, err)
+		return
+	}
+	mapping := mapper(r, route, err)
+	if mapping.Status == 0 && mapping.Body == nil {
+		writeServiceError(w, err)
+		return
+	}
+	if mapping.Status < 400 || mapping.Status > 599 || isNil(mapping.Body) {
+		writeError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, mapping.Body, mapping.Status)
 }
 
 func writeServiceError(w http.ResponseWriter, err error) {

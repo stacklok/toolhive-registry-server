@@ -9,7 +9,10 @@ the focused guides below describe each public contract.
 Start with the [runnable mTLS catalog tutorial](../examples/embedding/README.md)
 to mount the default reader over an existing schema-30 PostgreSQL catalog. It shows
 host authentication/admission, request cancellation and pool/listener shutdown.
-The fixtures below are verification examples, not application onboarding.
+The separate-module [replacement ConsumerPages fixture](../pkg/registry/httpapi/testdata/external/README.md)
+shows a host-selected application without PostgreSQL, configuration, ingestion or
+bundled authentication. Its runnable test/example uses explicitly synthetic contexts;
+it is not a production authentication recipe.
 
 ## Choose a composition
 
@@ -18,7 +21,7 @@ The fixtures below are verification examples, not application onboarding.
 | Validate or serialize payloads only | [Models/formats](registry-formats.md); [external format example](../pkg/registry/formats/testdata/external/consumer_test.go). No backend or listener. |
 | Use a different backend | Implement the [persistence capabilities](registry-persistence.md) you consume; see the [contract import example](../pkg/registry/persistence/testdata/external/consumer_test.go) and [independent backend/catalog example](../pkg/registry/catalog/testdata/external/consumer_test.go). Run the shared conformance suites against fresh isolated state. |
 | Ingest without serving HTTP | [Fetcher and coordinator](registry-ingestion.md#source-adapters-and-host-coordinators); [external reconciliation example](../pkg/registry/ingest/testdata/external/consumer_test.go) uses generated Jobs expectations without a database. Replace I/O through `ingest.Options`, or replace `reconcile.Fetcher` itself. |
-| Serve a host-selected catalog | [Consumer HTTP](registry-consumer-http.md) over `httpapi.ConsumerPages`; [replacement application example](../pkg/registry/httpapi/testdata/external/http_test.go). Supply coherent list, get/latest and version-history operations. |
+| Serve a host-selected catalog | [Consumer HTTP](registry-consumer-http.md) over `httpapi.ConsumerPages`; [replacement application example](../pkg/registry/httpapi/testdata/external/pages.go) and [HTTP tests](../pkg/registry/httpapi/testdata/external/pages_test.go). Supply coherent list, get/latest and version-history operations; no persistence implementation is required. |
 | Add administration | [Admin HTTP](registry-admin-http.md) with separate source, view, publisher and diagnostic capabilities; [host assembly example](../pkg/registry/httpapi/testdata/external/assembly_test.go). Consumer mounting does not enable admin. |
 | Export ToolHive Kubernetes resources | [Optional operator](registry-ingestion.md#optional-toolhive-operator); [external runner example](../pkg/registry/operator/testdata/external/consumer_test.go). Supply clients and, if used, a host-owned manager. |
 | Combine PostgreSQL, ingestion, catalog and HTTP | [Complete external assembly](../pkg/registry/postgres/testdata/external/assembly_test.go) constructs public adapters and both routers, then substitutes fetcher and reader implementations. Run it through its parent test as shown below. |
@@ -61,6 +64,27 @@ package graphs exclude PostgreSQL, Kubernetes and registry-internal configuratio
 Ingestion/reconciliation reuse low-level internal helpers; the optional PostgreSQL and
 operator adapters bring their respective driver/client dependencies. Package isolation
 does not make the module's dependency download set lightweight.
+
+## Replacement application conformance
+
+[`httpapi/conformance/pages.Run`](../pkg/registry/httpapi/conformance/pages/pages.go)
+takes a small setup callback returning a ready `ConsumerPages`, host context,
+ordered expected server records and host-owned selection/admission change callbacks.
+It directly checks all three methods, exact/latest, search, list/history continuation,
+current selection and admission between pages, not-found classification and canceled
+contexts. It does not require definitions, sources, views, snapshots, jobs, ingestion
+or `catalog.NewReader`. Its separate package keeps backend test support out of a
+replacement host's import graph. Existing `httpapi/conformance.RunConsumer` remains
+the backend/default-reader suite.
+
+The external fixture also checks real HTTP shapes independently of production DTOs,
+1003-version history traversal, exact host order and opaque cursor preservation,
+`json.Number` metadata fidelity for `9007199254740993`, generic missing/inaccessible
+responses, sanitized defaults and custom dependency-503 errors. The host applies
+`Cache-Control: private, no-store` to successes and errors, including denied requests.
+Query/fixture cursor binding is integrity checking, **not authorization**; selection
+and admission are reevaluated on continuations. A loopback listener test cancels and
+joins in-flight List/Get/ListVersions before releasing host resources, without a DB.
 
 ## Run the examples
 

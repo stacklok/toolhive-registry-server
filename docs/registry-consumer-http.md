@@ -58,6 +58,12 @@ ordinary middleware here. Standalone maps domain operations to fixed actions and
 requires the **whole** manifest; this library
 exports no authorization action, principal or entity schema.
 
+`ConsumerServerRouter(pages, options)` uses the same implementation and host
+contracts but registers only `ConsumerServerRoutes()`: server list, history and
+version detail (exactly three descriptors). It excludes every skills/plugins route.
+The full router still registers all 13 routes; standalone manifest guards and
+OpenAPI remain unchanged.
+
 ## Replacement applications
 
 Any host application can structurally implement `ConsumerPages.List`, `Get` and
@@ -75,7 +81,10 @@ An invalid host result or unencodable payload gets a sanitized 500, not a partia
 success. Cache headers, including personalized-cache restrictions, belong to the
 host; the router adds none.
 
-## Compatibility at the HTTP edge
+## Default compatibility at the HTTP edge
+
+With zero-value `ConsumerOptions`, the adapter retains the upstream v1.8.1
+history behavior and legacy ToolHive controls independently of the opt-ins below.
 
 | Route | Request bound and selection | Response cursor |
 | --- | --- | --- |
@@ -105,7 +114,60 @@ belongs to the application, not to HTTP; malformed/mismatched backend cursors
 must return `persistence.ErrInvalid`. There is no shared decoding policy that
 would reject an otherwise valid personalized host token.
 
-Errors retain the existing JSON shape (`{"error":"..."}`). `ErrInvalid`, including
+## Opt-in controls
+
+Each option is independent and defaults to false:
+
+- **`PaginateHistory`** accepts validated `limit` and opaque `cursor` on every
+  history route and preserves the application's `NextCursor`, including servers.
+  Defaults are server 1000 and extension 30; explicit limits must be decimal
+  integers in server 1..1000 or extension 1..100. Empty, duplicate (including
+  percent-decoded equivalent names), oversized or malformed controls fail before
+  application calls, even when `StrictQueries` is false. Other parameters are
+  ignored unless strict mode is enabled. This is **host-specific paginated
+  history**, not upstream v1.8.1 history compatibility. HTTP does not sort, filter
+  or refill these pages.
+- **`StrictQueries`** accepts only the route-specific inventory below. It rejects
+  unknown keys, duplicate decoded keys, invalid encoding, invalid UTF-8/NUL,
+  oversized raw queries and empty present controls. Lists retain search and cursor
+  exactly after URL decoding, without extension trimming. Server list limits above
+  1000 fail rather than being capped. Nonempty whitespace in opaque search/cursor
+  values is preserved; version and name selectors cannot contain whitespace.
+- **`AllowExactName`** enables a **nonstandard** `name` list selector, forwarded
+  unchanged to `Query.Name` after validation. Server names use
+  `formats.ValidateServerName`; extension names use the nonempty, no-whitespace,
+  UTF-8/NUL and 4096-byte name checks (no invented namespace syntax). This flag
+  works with or without strict mode and never silently ignores a supplied name.
+  Duplicate or invalid names fail in both modes. When disabled, permissive mode
+  ignores `name` and strict mode rejects it.
+- **`AllowUpdatedSince`** permits the existing RFC3339 `updated_since` filter on
+  strict server lists. Without strict mode, legacy server forwarding and extension
+  ignoring remain unchanged regardless of this flag. This filter is not full MCP
+  synchronization: `include_deleted` is unsupported, there is no deletion-aware
+  feed, and the adapter provides no cross-page snapshot guarantee.
+
+### Complete query inventory
+
+| Route family (all GET) | Permissive default | Strict mode |
+| --- | --- | --- |
+| Server list | `limit`, `cursor`, `search`, `version`, `updated_since`; other keys ignored | `limit`, `cursor`, `search`, `version`; `updated_since` only with `AllowUpdatedSince`, `name` only with `AllowExactName` |
+| Skills/plugins lists, including both `/` aliases | `limit`, `cursor`, `search`; other keys ignored | `limit`, `cursor`, `search`; `name` only with `AllowExactName` |
+| Server history | All query parameters ignored | No controls unless `PaginateHistory`, then only `limit`, `cursor` |
+| Skills/plugins history | All query parameters ignored | No controls unless `PaginateHistory`, then only `limit`, `cursor` |
+| Server version detail | All query parameters ignored | No query controls |
+| Skills/plugins unversioned detail | All query parameters ignored | No query controls |
+| Skills/plugins version detail | All query parameters ignored | No query controls |
+
+In permissive mode, `PaginateHistory` enables only history `limit`/`cursor` and
+`AllowExactName` enables only list `name`; neither changes unrelated legacy list
+controls or detail behavior. Permissive list duplicates still use the first value
+except for opted-in `name`. Strict mode rejects `include_deleted` for any value,
+including `false`. Query and cursor size bounds apply to strict routes (including
+otherwise query-free details) and opted-in history, not just legacy lists.
+
+## Application error mapping
+
+Errors retain the existing JSON shape (`{"error":"..."}`) by default. `ErrInvalid`, including
 invalid cursors, maps to 400 (the deliberate correction from legacy cursor 500).
 `ErrNotFound` maps to 404 `not found`: current narrow persistence errors cannot
 distinguish a missing registry from a missing entry, so both use that generic
@@ -115,13 +177,33 @@ legacy sanitized 500 `internal server error`. Host error text is neither returne
 nor logged. A disconnected client may not receive a response; the supplied
 request context is still canceled normally.
 
+`ConsumerOptions.MapError` optionally receives the original request, actual
+`RouteDescriptor` and error returned by `List`, `Get` or `ListVersions`. It returns
+`httpapi.ErrorMapping{Status: ..., Body: ...}`, not a writer. Nil hook or exactly
+`ErrorMapping{}` selects the sanitized default. Other mappings require status
+400..599 and a non-nil, JSON-marshalable body; invalid status, typed-nil body or
+encoding failure yields one sanitized 500 response, with no partial success.
+The body is the complete JSON response and is not sanitized automatically: the
+host must keep secrets and backend diagnostics out of custom bodies. For example,
+a host can classify its own dependency error as 503 with a public error code.
+
+Only **application-returned errors** reach this hook. Input validation, supplied
+page/payload invariant failures and authorization denial never do; admission
+still runs before the application and cannot be bypassed by an error mapper.
+HTTP marshals before sending headers. Headers, cache policy, authentication,
+admission and audit remain separate host middleware responsibilities. Applications
+and their host-owned persistence own selection, opaque cursor interpretation,
+stability across pages and any identity/cursor binding; the adapter adds none.
+
 The default reader's winner-before-filter selection,
 backend cursor format and literal-substring search semantics are unchanged; see
 [consumer reads](registry-consumer-reads.md). HTTP does not retrofit legacy SQL
 wildcard semantics or identity binding onto that reader.
 
 Tests cover every registration/decorator, custom selected order and cursor with
-one application call, request validation and errors, an external-module host
-without DB/config/auth/Kubernetes imports, and real HTTP over catalog/PostgreSQL
-with whole-name source priority, latest/history, cursors and below/at/above route
-history bounds.
+one application call, strict and permissive query inventories, independent opt-ins,
+exact traversal of more than 1000 host-ordered versions with page counts and opaque
+continuations, sanitized/custom error mapping and authorization isolation. Existing
+external-module hosts verify importability without DB/config/auth/Kubernetes
+imports. Real HTTP over catalog/PostgreSQL covers whole-name source priority,
+latest/history, cursors and below/at/above default route history bounds.

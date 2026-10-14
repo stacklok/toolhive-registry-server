@@ -14,8 +14,8 @@ import (
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
-// This is a replacement application, not a persistence implementation. Its
-// chosen order and cursor can reflect host-owned context and visibility.
+// application is a small admission/pass-through test double. The complete,
+// coherent replacement ConsumerPages example is replacement in pages.go.
 type application struct{ calls int }
 
 var _ httpapi.ConsumerPages = (*application)(nil)
@@ -62,7 +62,7 @@ func TestHostMountsReplacementApplication(t *testing.T) {
 	defer res.Body.Close()
 	var wire struct {
 		Servers []struct {
-			Server model.Server `json:"server"`
+			Server wireServer `json:"server"`
 		} `json:"servers"`
 		Metadata struct {
 			Count  int    `json:"count"`
