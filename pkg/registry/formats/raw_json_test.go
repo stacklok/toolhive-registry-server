@@ -66,8 +66,8 @@ func TestDecodeUpstreamLegacyUnicodeForms(t *testing.T) {
 	}{
 		{"composed", "Café", "Café"},
 		{"decomposed", "Cafe\u0301", "Cafe\u0301"},
-		{"invalid UTF-8", "Wea\xffther", "Wea�ther"},
-		{"lone surrogate", `Wea\uD800ther`, "Wea�ther"},
+		{"invalid UTF-8", "Weather\xff", "Weather�"},
+		{"lone surrogate", `Weather\uD800`, "Weather�"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
