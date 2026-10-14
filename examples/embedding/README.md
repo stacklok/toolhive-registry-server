@@ -7,7 +7,7 @@ and the public `httpapi.Authorizer` seam for admission. It imports no registry
 
 ## Prerequisites
 
-- Go 1.26 or later; run commands below from the repository root.
+- Go 1.27 or later; run commands below from the repository root.
 - An existing PostgreSQL database at **clean schema 30**, with a named view such
   as `default` and its source definitions already present. Prepare a new catalog
   through [database setup](../../docs/database.md#setup-guide), or upgrade existing
@@ -54,7 +54,7 @@ curl --fail-with-body \
 
 Replace `default` with an existing view name. An existing empty view returns an
 empty page; a missing view returns 404. Skills/plugins use the same
-[consumer routes](../../docs/registry-consumer-http.md#compatibility-at-the-http-edge).
+[consumer routes](../../docs/registry-consumer-http.md#default-compatibility-at-the-http-edge).
 Run `go run ./examples/embedding -help` for flags, including `-listen`.
 An external host can copy `main.go` into its own Go module and depend on this
 module at its chosen version; the source uses only public constructors.
@@ -106,3 +106,10 @@ first run may download the suite's embedded PostgreSQL binaries. Running against
 your own prepared database still requires the prerequisites above. See the
 [embedding guide](../../docs/registry-embedding-validation.md) for focused contracts
 and separate-module backend/HTTP conformance tests.
+
+For a **replacement application rather than PostgreSQL/default catalog**, use the
+[independent ConsumerPages fixture](../../pkg/registry/httpapi/testdata/external/README.md).
+It implements all three operations and exercises host-selected visibility, opaque
+continuations, direct conformance, HTTP errors and listener cancellation/joining.
+It needs no database and uses clearly synthetic contexts, not production credential
+verification. This mTLS PostgreSQL tutorial remains the runnable database-backed host.

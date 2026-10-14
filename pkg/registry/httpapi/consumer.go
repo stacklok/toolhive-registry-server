@@ -63,6 +63,38 @@ type RouteDescriptor struct {
 type ConsumerOptions struct {
 	Middleware []func(http.Handler) http.Handler
 	Decorate   func(RouteDescriptor, http.Handler) http.Handler
+	// PaginateHistory accepts limit/cursor on history routes and preserves the
+	// application's continuation. Defaults are server 1000, extension 30;
+	// accepted bounds are server 1..1000, extension 1..100, even without StrictQueries.
+	// This is a host-specific extension, not upstream v1.8.1 history compatibility.
+	PaginateHistory bool
+	// StrictQueries rejects unknown, duplicate, malformed, oversized and empty
+	// query controls on each route. Details accept no controls; history accepts
+	// only limit/cursor when PaginateHistory is enabled. Lists preserve opaque
+	// search/cursor values and reject out-of-range limits rather than capping them.
+	StrictQueries bool
+	// AllowExactName enables the nonstandard list selector name, forwarded to
+	// Query.Name after validation, with or without StrictQueries. When disabled,
+	// legacy queries ignore it and strict queries reject it.
+	AllowExactName bool
+	// AllowUpdatedSince permits updated_since on strict server lists. It does
+	// not enable deletion-aware synchronization. Without StrictQueries, legacy
+	// server forwarding (and extension ignoring) remains unchanged.
+	AllowUpdatedSince bool
+	// MapError maps only errors returned by ConsumerPages operations, never
+	// validation, result invariants or Authorize failures. Nil uses sanitized
+	// defaults. The zero ErrorMapping also requests the default; any other
+	// mapping must have status 400..599 and a non-nil JSON-marshalable body,
+	// otherwise a sanitized 500 is written. Hosts own headers via middleware.
+	MapError func(*http.Request, RouteDescriptor, error) ErrorMapping
+}
+
+// ErrorMapping is an application error response, not a response writer.
+// Body must encode the entire JSON response; raw error text is not sanitized.
+// Hosts must not expose secrets or backend diagnostics in custom bodies.
+type ErrorMapping struct {
+	Status int
+	Body   any
 }
 
 const (
@@ -74,18 +106,7 @@ const (
 // ConsumerRoutes returns a fresh inventory of every registered method/template:
 // eleven canonical routes and two extension list trailing-slash aliases.
 func ConsumerRoutes() []RouteDescriptor {
-	prefix := "/{registryName}/v0.1"
-	routes := []RouteDescriptor{
-		{Method: http.MethodGet, Template: prefix + "/servers", Kind: persistence.ServerKind,
-			Operation: List, AuditEvent: "server.list", ResourceType: serverResourceType,
-			ResourceParam: serverNameParam, RegistryParam: registryNameParam},
-		{Method: http.MethodGet, Template: prefix + "/servers/{serverName}/versions", Kind: persistence.ServerKind,
-			Operation: ListVersions, AuditEvent: "server.versions.list", ResourceType: serverResourceType,
-			ResourceParam: serverNameParam, RegistryParam: registryNameParam},
-		{Method: http.MethodGet, Template: prefix + "/servers/{serverName}/versions/{version}", Kind: persistence.ServerKind,
-			Operation: Get, AuditEvent: "server.version.read", ResourceType: serverResourceType,
-			ResourceParam: serverNameParam, RegistryParam: registryNameParam},
-	}
+	routes := ConsumerServerRoutes()
 	for _, family := range []struct {
 		path, resource string
 		kind           persistence.EntryKind
@@ -103,7 +124,7 @@ func ConsumerRoutes() []RouteDescriptor {
 			{"/{namespace}/{name}/versions/{version}", Get, ".version.read"},
 		} {
 			routes = append(routes, RouteDescriptor{Method: http.MethodGet,
-				Template: prefix + "/x/dev.toolhive/" + family.path + route.suffix,
+				Template: "/{registryName}/v0.1/x/dev.toolhive/" + family.path + route.suffix,
 				Kind:     family.kind, Operation: route.operation, AuditEvent: family.resource + route.event,
 				ResourceType: family.resource, ResourceParam: nameParam, RegistryParam: registryNameParam, NamespaceParam: "namespace"})
 		}
@@ -117,6 +138,33 @@ func ConsumerRoutes() []RouteDescriptor {
 // no admin or operational routes and extracts no authentication/claims data.
 // Dependencies must be initialized; nil (including typed nil) is rejected.
 func ConsumerRouter(pages ConsumerPages, options ConsumerOptions) (http.Handler, error) {
+	return consumerRouter(pages, options, ConsumerRoutes())
+}
+
+// ConsumerServerRoutes returns a fresh inventory of exactly the three MCP server
+// list, history and version-detail registrations, relative to /registry.
+func ConsumerServerRoutes() []RouteDescriptor {
+	prefix := "/{registryName}/v0.1/servers"
+	return []RouteDescriptor{
+		{Method: http.MethodGet, Template: prefix, Kind: persistence.ServerKind,
+			Operation: List, AuditEvent: "server.list", ResourceType: serverResourceType,
+			ResourceParam: serverNameParam, RegistryParam: registryNameParam},
+		{Method: http.MethodGet, Template: prefix + "/{serverName}/versions", Kind: persistence.ServerKind,
+			Operation: ListVersions, AuditEvent: "server.versions.list", ResourceType: serverResourceType,
+			ResourceParam: serverNameParam, RegistryParam: registryNameParam},
+		{Method: http.MethodGet, Template: prefix + "/{serverName}/versions/{version}", Kind: persistence.ServerKind,
+			Operation: Get, AuditEvent: "server.version.read", ResourceType: serverResourceType,
+			ResourceParam: serverNameParam, RegistryParam: registryNameParam},
+	}
+}
+
+// ConsumerServerRouter has the same contracts as ConsumerRouter but registers
+// only ConsumerServerRoutes. It does not change the full standalone manifest.
+func ConsumerServerRouter(pages ConsumerPages, options ConsumerOptions) (http.Handler, error) {
+	return consumerRouter(pages, options, ConsumerServerRoutes())
+}
+
+func consumerRouter(pages ConsumerPages, options ConsumerOptions, routes []RouteDescriptor) (http.Handler, error) {
 	if isNil(pages) {
 		return nil, persistence.ErrInvalid
 	}
@@ -127,9 +175,9 @@ func ConsumerRouter(pages ConsumerPages, options ConsumerOptions) (http.Handler,
 		}
 		r.Use(mw)
 	}
-	for _, route := range ConsumerRoutes() {
+	for _, route := range routes {
 		var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			serveConsumer(pages, route, w, req)
+			serveConsumer(pages, options, route, w, req)
 		})
 		if options.Decorate != nil {
 			handler = options.Decorate(route, handler)

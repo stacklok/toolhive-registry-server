@@ -17,7 +17,8 @@ func TestFormatOnlyConsumer(t *testing.T) {
 		"$schema":"https://raw.githubusercontent.com/stacklok/toolhive-core/main/registry/types/data/upstream-registry.schema.json",
 		"version":"1.0.0","meta":{"last_updated":"2025-01-15T10:30:00Z"},
 		"data":{"servers":[{"$schema":"https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-		"name":"com.example/weather","description":"Weather","version":"1.0","packages":[]}]}
+		"name":"com.example/weather","description":"Weather","version":"1.0","packages":[],
+		"_meta":{"io.modelcontextprotocol.registry/publisher-provided":{"com.example/custom":{"integer":9007199254740993,"decimal":0.123456789012345678901234567890}}}}]}
 	}`))
 	if err != nil {
 		t.Fatal(err)
@@ -25,6 +26,10 @@ func TestFormatOnlyConsumer(t *testing.T) {
 	server := &snapshot.Data.Servers[0]
 	if server.Name != name {
 		t.Fatalf("decoded server name = %q, want %q", server.Name, name)
+	}
+	metadata := server.Meta.PublisherProvided["com.example/custom"].(map[string]any)
+	if metadata["integer"] != json.Number("9007199254740993") || metadata["decimal"] != json.Number("0.123456789012345678901234567890") {
+		t.Fatalf("metadata numbers were not preserved: %v", metadata)
 	}
 	skill := &model.Skill{
 		Namespace: "com.example", Name: "forecast", Version: "rev1", Description: "Forecast",
@@ -57,7 +62,7 @@ func TestFormatOnlyConsumer(t *testing.T) {
 		value any
 		want  string
 	}{
-		{"server", formats.ServerPage([]*model.Server{server}, "host-cursor"), `{"servers":[{"server":{"$schema":"https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json","name":"com.example/weather","description":"Weather","version":"1.0"},"_meta":{}}],"metadata":{"nextCursor":"host-cursor","count":1}}`},
+		{"server", formats.ServerPage([]*model.Server{server}, "host-cursor"), `{"servers":[{"server":{"$schema":"https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json","name":"com.example/weather","description":"Weather","version":"1.0","_meta":{"io.modelcontextprotocol.registry/publisher-provided":{"com.example/custom":{"decimal":0.123456789012345678901234567890,"integer":9007199254740993}}}},"_meta":{}}],"metadata":{"nextCursor":"host-cursor","count":1}}`},
 		{"skill", formats.SkillPage([]*model.Skill{skill}, "host-cursor"), `{"skills":[{"namespace":"com.example","name":"forecast","description":"Forecast","version":"rev1","packages":[{"registryType":"oci","identifier":"ghcr.io/example/forecast","digest":"sha256:abc"}]}],"metadata":{"count":1,"nextCursor":"host-cursor"}}`},
 		{"plugin", formats.PluginPage([]*model.Plugin{plugin}, ""), `{"plugins":[{"namespace":"com.example","name":"client","description":"Client","version":"rev1","packages":[{"registryType":"git","url":"https://github.com/example/client","commit":"abc123","subfolder":"plugin"}]}],"metadata":{"count":1}}`},
 	} {

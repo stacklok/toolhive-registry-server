@@ -29,6 +29,8 @@ func TestExternalHTTPAssemblyAndImportGraph(t *testing.T) {
 			"github.com/stacklok/toolhive-registry-server/pkg/registry/postgres",
 			"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest",
 			"github.com/stacklok/toolhive-registry-server/pkg/registry/operator",
+			"github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile",
+			"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence/conformance",
 			"github.com/cedar-policy/", "github.com/golang-jwt/",
 			"github.com/jackc/pgx", "github.com/spf13/viper", "k8s.io/", "sigs.k8s.io/controller-runtime",
 		} {
