@@ -8,15 +8,19 @@ migration guidance, use the configuration guide.
 
 ## Admission model
 
-Cedar permits an operation on the singleton
-`Registry::Instance::"catalog"`; it does not select or filter entries, sources,
-or named views. A successful `catalog.read` admission therefore returns the same
-nonpersonalized result for a given view, query and catalog state. Embedders own
-any personalized selection and admission they require.
+Cedar permits `catalog.read` on `Registry::View::"<canonical view name>"` and all
+other actions on the singleton `Registry::Instance::"catalog"`. One decision before
+catalog IO admits the whole requested view; it does not filter entries. A successful
+read returns the same nonpersonalized result for a given view, query and catalog state.
+Views are not storage tenants: overlapping admitted views expose the same entries.
+There is no consumer discovery endpoint or filtered admin view discovery. Embedders
+own any personalized selection and admission they require.
 
 The standalone server registers every public route with a closed action and
-requires verified route evidence before the guarded catalog capability calls a
-service. An absent or inconsistent evidence record is an internal failure, not
+requires verified route evidence bound to the canonical requested view, operation
+and entry kind before the guarded catalog capability calls a service. Evidence is
+checked on each call, even after a permit, so it cannot authorize a different view
+or capability. An absent or inconsistent evidence record is an internal failure, not
 an anonymous request. Admin routes additionally require enabled admin and an
 authenticated identity. The only anonymous-eligible actions are `catalog.read`
 and `metadata.read`; an invalid credential is never converted to anonymous.
@@ -50,7 +54,8 @@ Each evaluation has:
 
 - a `Registry::Principal` principal;
 - a `Registry::Action` from the closed action set;
-- `Registry::Instance::"catalog"` as its resource; and
+- `Registry::View::"<canonical view name>"` for `catalog.read`, otherwise
+  `Registry::Instance::"catalog"`; and
 - an empty context record.
 
 The principal has required `authenticated`, `issuer` and `subject` attributes;

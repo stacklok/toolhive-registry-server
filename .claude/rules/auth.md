@@ -18,6 +18,10 @@ project only hashed verified identity, never raw tokens, claims, names or policy
 
 ## 2. Fixed-Action Cedar, Not RBAC
 
+Standalone `catalog.read` admits the canonical requested `Registry::View` before any
+catalog IO, without per-entry filtering. All other actions use `Registry::Instance`.
+Views are not storage tenants: entries exposed through any admitted overlapping view
+remain readable. Public components stay policy-free and identity-free.
 Standalone always uses frozen, strictly validated nonempty Cedar and a closed action set.
 Omitted `authorization.policyFile` loads built-in allow-all Cedar through the actual
 evaluator; an explicit custom file replaces it entirely and fails startup if unavailable
@@ -67,7 +71,9 @@ See `docs/registry-exposure-migration.md` and `docs/registry-standalone-assembly
 
 Bind exposure review to the actual `Engine.Revision`, never reread policy bytes after
 loading. Offline review resolves omitted policy to the same built-in bytes, never an
-`absent` sentinel. Explicit-file version-1 serialization and receipts remain compatible.
+`absent` sentinel. Explicit-file version-1 serialization remains unchanged. Current review revisions
+additionally bind view-scoped admission semantics outside that encoding; pending
+instance-scoped reviews fail revision matching and must never silently rebind.
 Read-only historical sources and authoritative full-scope operator preflight
 precede schema-29 consumption, writes or serving. Old and new binaries must not co-own
 sources: stop/drain all historical readers/writers before offline review and cutover.

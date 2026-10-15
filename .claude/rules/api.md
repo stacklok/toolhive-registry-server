@@ -36,7 +36,8 @@ page, not a guessed global total. Personalized selection/caching belongs to a ho
 
 `api.NewCatalogServer` validates every actual descriptor against the closed method/template/
 domain-operation/action/audit manifest. Every capability checks private verified identity
-and matching fixed-action evidence. No old routers, monolithic facade or role middleware.
+and matching fixed-action evidence. Consumer evidence also binds the canonical requested
+view, operation and entry kind; it cannot be reused for another view or capability.
 Admin is opt-in and authenticated. `/v1/me` and GET/PUT claims are audited authenticated
 static 410 tombstones. Operational probes/metrics stay only on the internal server.
 Committed callbacks determine truthful create/update audit events, including 503 committed

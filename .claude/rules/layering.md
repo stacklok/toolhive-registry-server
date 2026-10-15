@@ -10,6 +10,8 @@ paths:
 ## 1. Sources → Entry Pool → Views
 
 Sources own entry versions; named registries are ordered consumer views, not tenants.
+Standalone Cedar admits catalog reads per requested view; overlapping views can expose
+the same entries. This boundary never changes public selection or storage contracts.
 Admin definitions, filters and jobs must not leak into upstream consumer payloads.
 Public model/formats/persistence/catalog contracts contain no identity, resource claims,
 visibility policy or authorization scope. Personalized selection belongs to a host service.

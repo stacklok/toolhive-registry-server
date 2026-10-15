@@ -28,9 +28,9 @@ func TestUpstreamValidateProbesServerList(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          string
-		body          string
-		expectError   string
+		name        string
+		body        string
+		expectError string
 	}{
 		{
 			name: "accepts a v0.1 server list without OpenAPI",

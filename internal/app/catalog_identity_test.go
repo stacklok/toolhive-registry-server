@@ -76,7 +76,7 @@ func TestCatalogAuthenticationAccessAndRouteAuditProjectOnlyVerifiedActor(t *tes
 	for _, code := range []string{`"status":200`, `"status":403`, `"status":410`, `"status":401`} {
 		require.Contains(t, access, code)
 	}
-	for _, marker := range []string{"sources.read", "views.read", "authorization.admission", "success", "denied", "auth.unauthenticated"} {
+	for _, marker := range []string{"sources.read", "views.read", "authorization.admission", "success", "denied", "auth.unauthenticated", `Registry::View::\"public\"`, `Registry::Instance::\"catalog\"`} {
 		require.Contains(t, string(auditData), marker)
 	}
 	for _, line := range strings.Split(access, "\n") {
@@ -84,6 +84,40 @@ func TestCatalogAuthenticationAccessAndRouteAuditProjectOnlyVerifiedActor(t *tes
 			require.NotContains(t, line, actor, "unverified actor headers must not establish attribution")
 		}
 	}
+}
+
+func TestCatalogViewScopedGroupsWithVerifiedJWT(t *testing.T) {
+	t.Parallel()
+	cfg := catalogTestConfig(t)
+	conn, pool := catalogPG(t, cfg)
+	issuer, sign := catalogJWKS(t)
+	cfg.Auth = &config.AuthConfig{Mode: config.AuthModeOAuth, InsecureAllowHTTP: true, OAuth: &config.OAuthConfig{Providers: []config.OAuthProviderConfig{{Name: "test", IssuerURL: issuer.URL, Audience: "catalog-test", JwksUrl: issuer.URL + "/jwks", AllowPrivateIP: true}}}}
+	cfg.Authorization.AllowAnonymousCatalog = false
+	cfg.Authorization.IdentityMappings = []config.IdentityMapping{{Issuer: issuer.URL, Groups: &config.AttributeMapping{Claim: "team", Format: "space-delimited"}}}
+	cfg.Registries[0].Name = "engineering"
+	cfg.Registries = append(cfg.Registries, config.RegistryConfig{Name: "finance", Sources: cfg.Registries[0].Sources})
+	require.NoError(t, os.WriteFile(cfg.Authorization.PolicyFile, []byte(`permit(principal is Registry::Principal,
+ action == Registry::Action::"catalog.read", resource == Registry::View::"engineering")
+ when { principal.authenticated && principal has groups && principal.groups.contains("engineering") };`), 0600))
+	approveCatalog(t, conn, cfg, true)
+	app := constructCatalog(t, cfg, pool, nil)
+	require.NoError(t, app.Start())
+	public, _ := app.Addresses()
+	for _, view := range []string{"engineering", "eng%69neering", "finance"} {
+		status := 200
+		if view == "finance" {
+			status = 403
+		}
+		path := "/registry/" + view + "/v0.1/servers"
+		catalogRequest(t, public, "GET", path, "", sign("engineering"), status)
+		catalogRequest(t, public, "GET", path, "", sign("finance"), 403)
+		catalogRequest(t, public, "GET", path, "", "", 401)
+	}
+	for _, suffix := range []string{"io.example%2Fserver/versions", "io.example%2Fserver/versions/1.0.0", "io.example%2Fserver/versions/latest"} {
+		catalogRequest(t, public, "GET", "/registry/finance/v0.1/servers/"+suffix, "", sign("engineering"), 403)
+	}
+	catalogRequest(t, public, "GET", "/v1/registries", "", sign("engineering"), 404)
+	require.NoError(t, app.Stop())
 }
 
 type catalogLogBuffer struct {

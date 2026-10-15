@@ -42,7 +42,9 @@ Replace its fixture credentials with your host verifier in production.
   application calls. Omitting decoration leaves the low-level routers policy-free.
   Borrowed authorizers must be concurrency-safe and honor request cancellation.
 - **Selection belongs to the application.** The default catalog is nonpersonalized;
-  named views are not privacy boundaries. HTTP serializes bounded host-selected
+  named views are not storage tenants; overlapping admitted views can expose the
+  same entries. Standalone Cedar admits reads per requested view, without changing
+  these public contracts. HTTP serializes bounded host-selected
   pages without sorting, filtering or refilling. Hosts own personalized cursors,
   cache restrictions and audit attribution. See [consumer HTTP](registry-consumer-http.md)
   for route-specific bounds and continuation limits.

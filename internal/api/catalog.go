@@ -52,7 +52,7 @@ func NewCatalogServer(reader catalog.Reader, adminOps httpapi.AdminOperations, r
 			}
 			delete(manifest, key)
 			wrapped := catalogAudit(d, h)
-			wrapped, err = registrar.DecorateCatalog(d.Method, template, expected.action, wrapped, authenticate)
+			wrapped, err = registrar.DecorateCatalog(d, template, expected.action, wrapped, authenticate)
 			if err != nil {
 				decorationErr = err
 				return h

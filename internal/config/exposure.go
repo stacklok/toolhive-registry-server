@@ -46,7 +46,7 @@ func LoadExposureConfig(path string) (*Config, ExposureConfig, error) {
 			return nil, ExposureConfig{}, err
 		}
 	}
-	review, err := cfg.fingerprintExposure(policyRevision)
+	review, err := cfg.currentExposureReview(policyRevision)
 	return cfg, review, err
 }
 
@@ -62,7 +62,19 @@ func (c *Config) ExposureReview(loadedPolicyRevision string) (ExposureConfig, er
 	if _, err := hex.DecodeString(strings.TrimPrefix(loadedPolicyRevision, "sha256:")); err != nil {
 		return ExposureConfig{}, errors.New("invalid loaded exposure policy revision")
 	}
-	return c.fingerprintExposure(loadedPolicyRevision)
+	return c.currentExposureReview(loadedPolicyRevision)
+}
+
+func (c *Config) currentExposureReview(policyRevision string) (ExposureConfig, error) {
+	review, err := c.fingerprintExposure(policyRevision)
+	if err != nil {
+		return ExposureConfig{}, err
+	}
+	// Preserve the v1 producer encoding, but do not consume pending reviews made
+	// under instance-scoped read semantics: unchanged forbids can change meaning.
+	digest := sha256.Sum256([]byte("registry-exposure:view-scoped-catalog-read:v2\n" + review.Revision))
+	review.Revision = fmt.Sprintf("sha256:%x", digest)
+	return review, nil
 }
 
 func (c *Config) fingerprintExposure(policyRevision string) (ExposureConfig, error) {

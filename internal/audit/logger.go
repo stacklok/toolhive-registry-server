@@ -68,7 +68,7 @@ func (l *Logger) Slog() *slog.Logger {
 }
 
 // Admission records a policy decision, not the outcome of a later operation.
-func (l *Logger) Admission(ctx context.Context, request *http.Request, actor, action, revision, decision string) {
+func (l *Logger) Admission(ctx context.Context, request *http.Request, actor, action, resource, revision, decision string) {
 	outcome := audit.OutcomeDenied
 	if decision == "allow" {
 		outcome = audit.OutcomeSuccess
@@ -79,7 +79,7 @@ func (l *Logger) Admission(ctx context.Context, request *http.Request, actor, ac
 	event := audit.NewAuditEvent("authorization.admission",
 		audit.EventSource{Type: audit.SourceTypeNetwork, Value: request.RemoteAddr},
 		outcome, map[string]string{"actor": actor}, ComponentRegistryAPI,
-	).WithTarget(map[string]string{"action": action, "resource": `Registry::Instance::"catalog"`})
+	).WithTarget(map[string]string{"action": action, "resource": resource})
 	event.Metadata.Extra = map[string]any{"decision": decision, "policy_revision": revision}
 	event.LogTo(ctx, l.Slog(), audit.LevelAudit)
 }

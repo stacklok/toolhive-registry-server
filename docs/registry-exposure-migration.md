@@ -64,8 +64,14 @@ Base Compose does not initialize implicitly; neither command removes existing vo
    annotations first**. Omitted policy resolves to the same built-in bytes for inventory,
    acknowledgement, retirement, finalize and startup, not an `absent` sentinel. A custom
    file replaces the default entirely; explicitly configured unavailable or invalid files
-   fail startup. The independent version-1 fingerprint format and explicit-file pending
-   receipts remain unchanged. Remove retired fields by presence, including explicit nulls
+   fail startup. The independent version-1 fingerprint JSON remains unchanged, but
+   current review digests additionally bind view-scoped admission semantics. Old pending
+   instance-scoped reviews cannot be consumed even with unchanged policy bytes: before
+   retirement, review and acknowledge again with this binary; after retirement, remain
+   offline and restore a verified pre-retirement backup for fresh review, never rebind
+   the receipt. Already-consumed same-target receipts remain valid immutable history.
+   Review old policies explicitly: instance-scoped forbids may no longer match reads.
+   Remove retired fields by presence, including explicit nulls
    and environment overrides. Preserve the same effective YAML/environment, policy
    contents and database host spelling throughout review and finalization. Materialize
    exposure-relevant `serve` CLI overrides in YAML/environment for offline commands.
@@ -82,9 +88,10 @@ Base Compose does not initialize implicitly; neither command removes existing vo
    golang-migrate marks 30 dirty. Known refusals leave clean 29 and give the offline
    procedure. `--yes` confirms schema migration only, never exposure consent.
    Schemas 27–29 introduce identity/receipt/archive bookkeeping only, without
-   manufacturing approval or clearing claims. A pending retired receipt must resume
-   at **finalize**, not inventory/re-acknowledgement/retirement. An already-consumed
-   receipt can be verified at finalize, then upgraded.
+   manufacturing approval or clearing claims. A pending retired receipt with a matching
+   current review revision must resume at **finalize**, not inventory/re-acknowledgement/
+   retirement. Old instance-scoped pending receipts require the backup recovery described
+   in step 2. An already-consumed receipt can be verified at finalize, then upgraded.
 
    Use the final effective config for all review commands. They never migrate,
    initialize definitions, repair latest pointers, fetch sources or start controllers:

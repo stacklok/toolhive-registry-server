@@ -85,7 +85,9 @@ Operator/fetcher and telemetry providers are borrowed; their hosts retain owners
 2. Load and strictly validate immutable Cedar. Bind `Config.ExposureReview` to the
    actual `Engine.Revision`, never reread the policy/config file during preparation.
    Offline inventory/acknowledge/retire hash the same default bytes on omission; the
-   version-1 projection and explicit-file pending receipt protocol are unchanged.
+   version-1 projection remains unchanged, with a domain-separated outer digest for
+   view-scoped admission. Old pending instance-scoped reviews fail revision matching;
+   see the offline guide before retirement or upgrade.
 3. The CLI storage factory applies schema migrations only now, under the final
    validated config/frozen policy; migrations never supply consent. The default Go
    storage factory opens storage without migrations. Neither initializes definitions,

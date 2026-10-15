@@ -2,7 +2,8 @@
 
 The standalone server requires PostgreSQL 16+ for definitions, payloads, latest
 pointers, sync state, leases and exposure receipts. Named views are not databases
-or privacy boundaries. Deployment workflows are in
+or storage tenants. Standalone read admission is view-scoped, but overlapping admitted
+views can expose the same entries. Deployment workflows are in
 [Compose](deployment-docker.md) and [Helm/Kubernetes](deployment-kubernetes.md).
 
 ## Configuration fields

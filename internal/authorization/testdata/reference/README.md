@@ -10,7 +10,7 @@ shared-cache repair was needed. `Cargo.lock` pins the generator's dependency clo
 
 The generator reads the actual shipped `schema.cedarschema` and every Cedar block
 in the current authorization guide, strictly validates policies, constructs
-schema-checked entities/requests and calls the reference `Authorizer`. The 17 cases
+schema-checked entities/requests and calls the reference `Authorizer`. The 19 cases
 cover the guide's reader/publisher/operator grant matrix, default deny, disjoint
 anonymous behavior, issuer distinctions, missing optional groups, explicit forbid,
 and raw Allow with diagnostic errors. Authentication's 401, mapped identity UID
@@ -40,11 +40,12 @@ this procedure in a `dev` shell. Updating policy examples, schema or cases requi
 actual regeneration with the pinned reference, not hand-adjusted expected results.
 SHA-256 provenance binds all three inputs; routine Go CI needs no Rust build.
 
-Issue #944 changed omission/default resolution only. The referenced guide Cedar
-blocks, schema and 17 cases remain unchanged; the new built-in allow-all policy is
-covered by Go evaluator/boundary tests, not this Rust fixture matrix. No Rust
-regeneration was performed or is claimed for that default change. Rust remains a
-reference-validation tool only, never a runtime dependency.
+## View-scoped read upgrade
+
+The current schema and examples were regenerated with the pinned official reference
+for view-scoped `catalog.read`. Engineering is allowed in engineering and denied in
+finance; all other actions remain instance-scoped. This replaces the earlier fixture
+set. Rust remains reference-validation tooling only, never a runtime dependency.
 
 This is bounded evidence for the shipped policies/schema and cases, **not universal
 language/validator equivalence**. The official cedar-go v1.8.0

@@ -31,7 +31,7 @@ type guardedCatalog struct {
 }
 
 func (s *guardedCatalog) List(ctx context.Context, v string, q catalog.Query) (catalog.Page, error) {
-	if err := s.registrar.admit(ctx, CatalogRead); err != nil {
+	if err := s.registrar.admitCatalog(ctx, v, httpapi.List, q.Kind); err != nil {
 		return catalog.Page{}, err
 	}
 	return s.reader.List(ctx, v, q)
@@ -39,7 +39,7 @@ func (s *guardedCatalog) List(ctx context.Context, v string, q catalog.Query) (c
 func (s *guardedCatalog) Get(
 	ctx context.Context, v string, n catalog.EntryName, q catalog.VersionSelector,
 ) (persistence.Entry, error) {
-	if err := s.registrar.admit(ctx, CatalogRead); err != nil {
+	if err := s.registrar.admitCatalog(ctx, v, httpapi.Get, n.Kind); err != nil {
 		return persistence.Entry{}, err
 	}
 	return s.reader.Get(ctx, v, n, q)
@@ -47,7 +47,7 @@ func (s *guardedCatalog) Get(
 func (s *guardedCatalog) ListVersions(
 	ctx context.Context, v string, n catalog.EntryName, q catalog.PageRequest,
 ) (catalog.Page, error) {
-	if err := s.registrar.admit(ctx, CatalogRead); err != nil {
+	if err := s.registrar.admitCatalog(ctx, v, httpapi.ListVersions, n.Kind); err != nil {
 		return catalog.Page{}, err
 	}
 	return s.reader.ListVersions(ctx, v, n, q)
@@ -150,8 +150,10 @@ func (s *guardedCatalog) Status(ctx context.Context, n string) (persistence.JobS
 // DecorateCatalog validates a descriptor at the actual registration site and
 // installs evidence. It does not infer authority from a raw request URL.
 func (g *Registrar) DecorateCatalog(
-	method, template string, action Action, handler http.Handler, authenticate func(http.Handler) http.Handler,
+	descriptor httpapi.RouteDescriptor, template string, action Action,
+	handler http.Handler, authenticate func(http.Handler) http.Handler,
 ) (http.Handler, error) {
+	method := descriptor.Method
 	if handler == nil || authenticate == nil || !known(action) {
 		return nil, ErrEvidence
 	}
@@ -160,5 +162,5 @@ func (g *Registrar) DecorateCatalog(
 		return nil, ErrEvidence
 	}
 	g.routes[key] = true
-	return authenticate(g.wrap(method, template, action, handler)), nil
+	return authenticate(g.wrap(method, template, action, descriptor, handler)), nil
 }

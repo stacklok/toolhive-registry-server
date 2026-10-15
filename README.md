@@ -14,11 +14,11 @@
 
 **Discover, govern, and control access to MCP servers, skills, and plugins across your organization**
 
-The ToolHive Registry Server aggregates MCP servers, skills, and plugins from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs. OAuth verifies identity and Cedar grants whole-instance operations. Standalone evaluates built-in allow-all Cedar by default; an optional custom file replaces it entirely. Every verified identity can use every enabled operation, including admin if explicitly enabled (admin is off by default). Permitted readers of the same view receive the same catalog; views are not privacy boundaries. Use separate instances or host-owned personalized services when audiences must see different data.
+The ToolHive Registry Server aggregates MCP servers, skills, and plugins from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs. OAuth verifies identity and Cedar admits consumer reads per requested view and other operations instance-wide. Standalone evaluates built-in allow-all Cedar by default; an optional custom file replaces it entirely. Every verified identity can use every enabled operation, including admin if explicitly enabled (admin is off by default). Permitted readers of the same view receive the same catalog; views are not storage tenants, and overlapping admitted views can expose the same entries. Use separate instances or host-owned personalized services when audiences must see different data.
 
 It implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). If you're not familiar with MCP: it's an open protocol that lets AI assistants connect to external tools and data sources. This server is the governance layer that sits between your MCP infrastructure and the teams consuming it.
 
-**Why ToolHive Registry Server?** Most MCP setups start with a flat list of servers and no access control. As adoption grows, you need to govern who sees what, aggregate servers from multiple sources, and audit access -- without locking into a proprietary registry. The ToolHive Registry Server is open source, implements the official MCP Registry API spec, and plugs into your existing identity provider, combining whole-instance Cedar authorization, multi-source aggregation, and SIEM-compliant audit logging in a single service.
+**Why ToolHive Registry Server?** Most MCP setups start with a flat list of servers and no access control. As adoption grows, you need to govern who sees what, aggregate servers from multiple sources, and audit access -- without locking into a proprietary registry. The ToolHive Registry Server is open source, implements the official MCP Registry API spec, and plugs into your existing identity provider, combining view-scoped Cedar read admission, instance-scoped administration, multi-source aggregation, and SIEM-compliant audit logging in a single service.
 
 [Learn more about the ToolHive platform →](https://stacklok.com/platform)
 
@@ -40,7 +40,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 
 ### Governance and access control
 
-- **Cedar admission**: Evaluated built-in allow-all after authentication; optional custom policies replace it entirely to restrict consumer read, publication and administration. No per-entry/view claim filtering.
+- **Cedar admission**: Evaluated built-in allow-all after authentication; optional custom policies replace it entirely to restrict consumer read, publication and administration. No per-entry claim filtering; consumer admission is per requested view.
 - **OAuth 2.0/OIDC authentication**: Plug in your existing identity provider (Okta, Auth0, Azure AD). OAuth is the default; anonymous mode is available for development.
 - **Explicit administration**: Admin is disabled by default; enabled endpoints always require authenticated identity and a matching Cedar action permit.
 - **SIEM-compliant audit logging**: Structured log covering all API operations with NIST SP 800-53 AU-3 compliant fields, dedicated file output, and configurable event filtering.
@@ -48,7 +48,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 ### Aggregate from anywhere
 
 - **Five source types**: Pull entries from Git repos, upstream MCP registries, local files, Kubernetes clusters, or publish them via the Admin API.
-- **Compose catalogs from multiple sources**: Each registry aggregates sources in order of precedence. Views are catalog compositions, not privacy or authorization boundaries.
+- **Compose catalogs from multiple sources**: Each registry aggregates sources in order of precedence. Views are catalog compositions, not storage tenants; read admission does not isolate overlapping entries.
 - **Background sync**: Sources are polled on configurable intervals with retry logic. Registries stay current without manual intervention.
 
 ### Kubernetes and observability

@@ -1,4 +1,4 @@
-// Package authorization owns standalone instance admission, outside raw catalog contracts.
+// Package authorization owns standalone admission, outside raw catalog contracts.
 package authorization
 
 import (
@@ -36,7 +36,10 @@ const (
 	EntriesDelete  Action = "entries.delete"
 )
 
-const maxPolicyBytes = 1 << 20
+const (
+	maxPolicyBytes = 1 << 20
+	viewType       = "Registry::View"
+)
 
 //go:embed schema.cedarschema
 var schemaBytes []byte
@@ -133,16 +136,17 @@ func known(action Action) bool {
 	return false
 }
 
-func (e *Engine) evaluate(principal types.Entity, action Action) error {
+func (e *Engine) evaluate(principal types.Entity, action Action, resource types.EntityUID) error {
 	if e == nil || e.policies == nil {
 		return ErrEvaluation
 	}
-	if !known(action) {
+	if !known(action) || action == CatalogRead && (resource.Type != viewType || resource.ID == "") ||
+		action != CatalogRead && resource != instance {
 		return ErrEvidence
 	}
-	entities := types.EntityMap{principal.UID: principal, instance: {UID: instance}}
+	entities := types.EntityMap{principal.UID: principal, resource: {UID: resource}}
 	decision, diagnostic := cedar.Authorize(e.policies, entities, cedar.Request{
-		Principal: principal.UID, Action: types.EntityUID{Type: "Registry::Action", ID: types.String(action)}, Resource: instance,
+		Principal: principal.UID, Action: types.EntityUID{Type: "Registry::Action", ID: types.String(action)}, Resource: resource,
 	})
 	if len(diagnostic.Errors) != 0 {
 		return ErrEvaluation
