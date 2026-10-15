@@ -11,19 +11,17 @@ SELECT * FROM registry_entry
 
 -- name: UpsertRegistryEntriesFromTemp :many
 INSERT INTO registry_entry (
-    id, source_id, entry_type, name, claims, created_at, updated_at
+    id, source_id, entry_type, name, created_at, updated_at
 )
 SELECT id,
        source_id,
        entry_type,
        name,
-       claims,
        created_at,
        updated_at
   FROM temp_registry_entry
     ON CONFLICT (source_id, entry_type, name)
     DO UPDATE SET
-      claims = EXCLUDED.claims,
       updated_at = EXCLUDED.updated_at
 RETURNING id, source_id, entry_type, name;
 
@@ -71,7 +69,7 @@ SELECT * FROM mcp_server
 -- name: UpsertServersFromTemp :exec
 INSERT INTO mcp_server (
     version_id, website, upstream_meta, server_meta,
-    repository_url, repository_id, repository_subfolder, repository_type
+    repository_url, repository_id, repository_subfolder, repository_type, schema_url
 )
 SELECT version_id,
        website,
@@ -80,7 +78,8 @@ SELECT version_id,
        repository_url,
        repository_id,
        repository_subfolder,
-       repository_type
+       repository_type,
+       schema_url
 FROM temp_mcp_server
   ON CONFLICT (version_id)
   DO UPDATE SET
@@ -90,7 +89,8 @@ FROM temp_mcp_server
     repository_url = EXCLUDED.repository_url,
     repository_id = EXCLUDED.repository_id,
     repository_subfolder = EXCLUDED.repository_subfolder,
-    repository_type = EXCLUDED.repository_type;
+    repository_type = EXCLUDED.repository_type,
+    schema_url = EXCLUDED.schema_url;
 
 -- Temp Package Table Operations
 
@@ -103,12 +103,12 @@ SELECT * FROM mcp_server_package
 INSERT INTO mcp_server_package (
     server_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version,
     runtime_hint, runtime_arguments, package_arguments, env_vars, sha256_hash,
-    transport, transport_url, transport_headers
+    transport, transport_url, transport_headers, transport_variables
 )
 SELECT
     server_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version,
     runtime_hint, runtime_arguments, package_arguments, env_vars, sha256_hash,
-    transport, transport_url, transport_headers
+    transport, transport_url, transport_headers, transport_variables
 FROM temp_mcp_server_package
 ON CONFLICT (server_id, registry_type, pkg_identifier, transport)
 DO UPDATE SET
@@ -120,13 +120,14 @@ DO UPDATE SET
     env_vars = EXCLUDED.env_vars,
     sha256_hash = EXCLUDED.sha256_hash,
     transport_url = EXCLUDED.transport_url,
-    transport_headers = EXCLUDED.transport_headers;
+    transport_headers = EXCLUDED.transport_headers,
+    transport_variables = EXCLUDED.transport_variables;
 
 -- name: DeleteOrphanedPackages :exec
 DELETE FROM mcp_server_package
 WHERE server_id = ANY(sqlc.slice(server_ids)::UUID[])
-  AND (server_id, pkg_identifier, transport) NOT IN (
-    SELECT server_id, pkg_identifier, transport FROM temp_mcp_server_package
+  AND (server_id, registry_type, pkg_identifier, transport) NOT IN (
+    SELECT server_id, registry_type, pkg_identifier, transport FROM temp_mcp_server_package
   );
 
 -- Temp Remote Table Operations
@@ -137,11 +138,12 @@ SELECT * FROM mcp_server_remote
   WITH NO DATA;
 
 -- name: UpsertRemotesFromTemp :exec
-INSERT INTO mcp_server_remote (server_id, transport, transport_url, transport_headers)
-SELECT server_id, transport, transport_url, transport_headers
+INSERT INTO mcp_server_remote (server_id, transport, transport_url, transport_headers, transport_variables)
+SELECT server_id, transport, transport_url, transport_headers, transport_variables
 FROM temp_mcp_server_remote
 ON CONFLICT (server_id, transport, transport_url)
-DO UPDATE SET transport_headers = EXCLUDED.transport_headers;
+DO UPDATE SET transport_headers = EXCLUDED.transport_headers,
+              transport_variables = EXCLUDED.transport_variables;
 
 -- name: DeleteOrphanedRemotes :exec
 DELETE FROM mcp_server_remote
@@ -158,11 +160,11 @@ SELECT * FROM mcp_server_icon
   WITH NO DATA;
 
 -- name: UpsertIconsFromTemp :exec
-INSERT INTO mcp_server_icon (server_id, source_uri, mime_type, theme)
-SELECT server_id, source_uri, mime_type, theme::icon_theme
+INSERT INTO mcp_server_icon (server_id, source_uri, mime_type, theme, sizes, theme_present)
+SELECT server_id, source_uri, mime_type, theme::icon_theme, sizes, theme_present
 FROM temp_mcp_server_icon
 ON CONFLICT (server_id, source_uri, mime_type, theme)
-DO NOTHING;
+DO UPDATE SET sizes=EXCLUDED.sizes,theme_present=EXCLUDED.theme_present;
 
 -- name: DeleteOrphanedIcons :exec
 DELETE FROM mcp_server_icon

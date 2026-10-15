@@ -1,0 +1,5 @@
+# Explicitly authorized fresh installs only. Never use this override to approve
+# existing data; follow docs/registry-exposure-migration.md instead.
+services:
+  registry-api:
+    command: ["serve", "--config", "/examples/${CONFIG_FILE:-config-docker.yaml}", "--address", ":8080", "--initialize-empty"]

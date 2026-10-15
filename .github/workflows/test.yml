@@ -21,8 +21,8 @@ jobs:
         include:
           - name: db-sqlc
             packages: ./internal/db/sqlc
-          - name: service-db
-            packages: ./internal/service/db
+          - name: postgres-adapter
+            packages: ./pkg/registry/postgres
           - name: sync-writer
             packages: ./internal/sync/writer
           - name: misc
@@ -76,7 +76,7 @@ jobs:
         ./cmd/thv-registry-api/app
         ./internal/app/storage
         ./internal/db/sqlc
-        ./internal/service/db
+        ./pkg/registry/postgres
         ./internal/sync/writer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -169,5 +169,20 @@ jobs:
           go-version: 'stable'
           cache: true
 
-      - name: Run integration tests
-        run: go test -tags integration -v -count=1 ./internal/authz/
+      - name: Run standalone HTTP and Cedar acceptance with race detector
+        run: go test -race -tags integration -v -count=1 ./cmd/thv-registry-api/app ./internal/app ./internal/api ./internal/auth ./internal/authorization
+
+      - name: Install pinned envtest tool and assets
+        run: |
+          go install sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.0.0-20260125163108-a19ec76a3c5d
+          # Pin the metadata source: the controller-tools default index follows main.
+          ENVTEST_RELEASES_INDEX="https://raw.githubusercontent.com/kubernetes-sigs/controller-tools/1031496fc98a4f51010c3bdfdeb57b5d67bea7bd/envtest-releases.yaml"
+          assets="$("$(go env GOPATH)/bin/setup-envtest" use 1.33.0 --index "$ENVTEST_RELEASES_INDEX" -p path)"
+          test -x "$assets/kube-apiserver"
+          test -x "$assets/etcd"
+          printf 'KUBEBUILDER_ASSETS=%s\n' "$assets" >> "$GITHUB_ENV"
+
+      - name: Run Kubernetes manager acceptance with race detector
+        env:
+          USE_EXISTING_CLUSTER: 'false'
+        run: go test -p 2 -race -tags integration -count=1 ./pkg/registry/operator -run '^TestRegisteredOperator$' -v

@@ -8,12 +8,26 @@ The ToolHive Registry API server supports OAuth 2.0/OIDC authentication to prote
 - [Authentication Modes](#authentication-modes)
 - [Multi-Provider Support](#multi-provider-support)
 - [Configuration](#configuration)
-- [Default Public Paths](#default-public-paths)
+- [Public endpoints](#public-endpoints)
 - [Provider Configuration](#provider-configuration)
 - [RFC 9728 Support](#rfc-9728-protected-resource-metadata)
 - [Examples](#examples)
 
 ## Overview
+
+Standalone serving always evaluates Cedar and requires a valid exposure receipt.
+Omitted `authorization.policyFile` loads built-in allow-all Cedar: every verified
+identity gets every enabled operation, including admin if explicitly enabled.
+Admin stays off by default and requires verified OAuth; anonymous catalog access
+requires explicit opt-in. Invalid supplied credentials never become anonymous.
+A custom file replaces the default entirely; invalid specified files fail startup.
+Cedar replaces legacy roles/resource claims in the selected
+runtime; permitted readers receive the same nonpersonalized catalog. See the
+[Cedar guide](registry-cedar-authorization.md) and
+[offline exposure procedure](registry-exposure-migration.md) before upgrading.
+The authentication snippets below are not complete standalone configurations.
+`auth.authz`, `auth.roles`, `auth.publicPaths`, and resource `claims` are retired
+and rejected (including empty/null values).
 
 The server defaults to **OAuth mode** for security-by-default. For development environments, you can explicitly set `mode: anonymous`.
 
@@ -23,7 +37,7 @@ The server defaults to **OAuth mode** for security-by-default. For development e
 - Multiple provider support with sequential fallback
 - Kubernetes service account integration
 - RFC 9728 Protected Resource Metadata
-- Per-endpoint public path configuration
+- Explicit anonymous-catalog opt-in, subject to Cedar policy
 
 ## Authentication Modes
 
@@ -41,6 +55,12 @@ To disable authentication for local development:
 ```yaml
 auth:
   mode: anonymous
+admin:
+  enabled: false
+authorization:
+  # Optional custom replacement; omission evaluates built-in allow-all Cedar.
+  # policyFile: /etc/registry/policies.cedar
+  allowAnonymousCatalog: true
 ```
 
 ## Multi-Provider Support
@@ -71,6 +91,7 @@ auth:
         issuerUrl: https://kubernetes.default.svc
         audience: https://kubernetes.default.svc
         caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        allowPrivateIP: true # Explicit trust of this private cluster issuer.
 ```
 
 This configuration allows both:
@@ -104,12 +125,6 @@ auth:
 auth:
   mode: oauth
 
-  # Additional paths that bypass authentication (optional)
-  # These extend the default public paths listed below
-  publicPaths:
-    - /custom/public
-    - /metrics
-
   # OAuth/OIDC configuration
   oauth:
     # URL identifying this protected resource (RFC 9728)
@@ -130,18 +145,21 @@ auth:
         issuerUrl: https://kubernetes.default.svc
         audience: https://kubernetes.default.svc
         caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        allowPrivateIP: true # Explicit trust of this private cluster issuer.
 ```
 
-## Default Public Paths
+## Public endpoints
 
-The following endpoints are always accessible without authentication:
+Operational endpoints are unauthenticated only on the internal listener (default
+`:8081`): `/health`, `/readiness`, `/version`, and `/metrics` when enabled. Do not
+expose that listener publicly.
 
-- `/health` - Health check endpoint
-- `/readiness` - Readiness probe endpoint
-- `/version` - Version information
-- `/.well-known/*` - OAuth discovery endpoints (RFC 9728)
-
-Additional public paths can be configured using the `publicPaths` option.
+On the public listener (default `:8080`), only exact
+`GET /.well-known/oauth-protected-resource` is an OAuth credential-bootstrap
+exemption. `/openapi.json` requires Cedar `metadata.read`; consumer routes require
+`catalog.read`. There is no configurable public-path bypass. Anonymous catalog
+access requires explicit opt-in **and** a matching Cedar permit; enabled admin
+routes always require OAuth authentication. Legacy `auth.authz` is rejected by presence.
 
 ## Provider Configuration
 
@@ -229,6 +247,12 @@ This endpoint allows OAuth clients to automatically discover authentication requ
 ```yaml
 auth:
   mode: anonymous
+admin:
+  enabled: false
+authorization:
+  # Optional custom replacement; omission evaluates built-in allow-all Cedar.
+  # policyFile: /etc/registry/policies.cedar
+  allowAnonymousCatalog: true
 ```
 
 ### Production with Single IDP
@@ -262,6 +286,7 @@ auth:
         issuerUrl: https://kubernetes.default.svc
         audience: https://kubernetes.default.svc
         caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        allowPrivateIP: true # Explicit trust of this private cluster issuer.
 ```
 
 ### Multi-Region Setup
@@ -283,27 +308,27 @@ auth:
 
 ## Testing Authentication
 
-### Using curl with Bearer Token
+### Using curl with a private bearer header
 
-```bash
-# Get token from your IDP (example)
-TOKEN="your-jwt-token-here"
+Obtain a token for the configured trusted issuer and audience. Store the line
+`Authorization: Bearer <access-token>` in a private mode-0600 file outside the
+repository and set `AUTH_HEADER_FILE` to its absolute path. Use a configured view
+name (`default` in the examples), not an unnamed `/registry/v0.1` path:
 
-# Make authenticated request
-curl -H "Authorization: Bearer $TOKEN" \
-  https://registry.example.com/registry/v0.1/servers
+```sh
+curl --fail-with-body --header "@${AUTH_HEADER_FILE:?Set private header file path}" \
+  https://registry.example.com/registry/default/v0.1/servers
 ```
 
-### Using kubectl with Service Account
+For Kubernetes service-account authentication, obtain a short-lived token with the
+configured audience through your approved token provisioning mechanism and use
+the same private header-file pattern. The provider's issuer must match the token's
+actual issuer; private cluster API issuers need provider-local `allowPrivateIP: true`
+and a trusted CA. Do not print tokens or put them in shell history/process arguments.
 
-```bash
-# Get service account token
-TOKEN=$(kubectl get secret <service-account-token> -o jsonpath='{.data.token}' | base64 -d)
-
-# Make authenticated request
-curl -H "Authorization: Bearer $TOKEN" \
-  https://registry.example.com/registry/v0.1/servers
-```
+Probes are separate, unauthenticated operations on **internal 8081 only**. Check
+`http://localhost:8081/health` and `/readiness` through a loopback mapping or port
+forward; never route that port through the public TLS ingress.
 
 ## Security Best Practices
 
@@ -336,10 +361,11 @@ Check:
 
 ### Token Validation Failures
 
-Enable debug logging to see detailed error messages:
+Enable debug logging with `THV_REGISTRY_LOG_LEVEL=debug` to inspect sanitized
+validation/startup messages:
 
 ```bash
-thv-registry-api serve --config config.yaml --debug
+THV_REGISTRY_LOG_LEVEL=debug thv-registry-api serve --config config.yaml --internal-address 127.0.0.1:8081
 ```
 
 ## See Also

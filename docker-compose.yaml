@@ -1,13 +1,12 @@
 # ToolHive Registry API Server - Docker Compose Configuration
 #
 # Services:
-# 1. postgres - PostgreSQL 18 database
-# 2. registry-api - Main API server (runs migrations on startup)
+# 1. postgres - PostgreSQL 18 development database (fixed test credentials)
+# 2. registry-api - Current-source API; guarded startup requires exposure evidence
 #
-# Startup flow:
-# postgres (healthy) -> registry-api (runs migrations automatically on startup)
-#
-# Migrations are embedded in the binary and run automatically on startup.
+# New empty catalog: explicitly add docker-compose.initialize-empty.yaml.
+# Existing catalog: follow docs/registry-exposure-migration.md offline before serving.
+# This file never initializes existing data or removes persistent volumes.
 #
 # Two-User Security Model:
 # This setup uses two separate database users for security:
@@ -38,7 +37,7 @@ services:
       # legacy path so the existing volume layout keeps working.
       PGDATA: /var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres-init.sh:/docker-entrypoint-initdb.d/init.sh:ro
@@ -59,19 +58,20 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8081:8081"
     volumes:
       # Mount entire examples directory - all configs and registry files available
       - ./examples:/examples:ro
+      # Optional custom Cedar mounts belong in a Compose override; see configuration docs.
       - registry_data:/app/data
       # pgpass file is now built into the container image
     # Use CONFIG_FILE env var to switch between configs (defaults to config-docker.yaml)
-    # Examples: CONFIG_FILE=config-docker-okta.yaml docker compose up
+    # Example: CONFIG_FILE=config-docker-multiple.yaml docker compose up
     command: ["serve", "--config", "/examples/${CONFIG_FILE:-config-docker.yaml}", "--address", ":8080"]
     environment:
       - LOG_LEVEL=debug
       - PGPASSFILE=/home/appuser/.pgpass
-      - THV_REGISTRY_INSECURE_URL=true
     networks:
       - registry-network
     restart: unless-stopped

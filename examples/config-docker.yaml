@@ -5,7 +5,7 @@
 #
 # Prerequisites:
 #   - Docker and Docker Compose installed
-#   - pgpass file mounted at /root/.pgpass with credentials for both users
+#   - Development pgpass baked into the Compose image at /home/appuser/.pgpass
 #
 # Usage:
 #   docker-compose up
@@ -18,7 +18,7 @@
 #   - db_app: Application user with limited privileges (SELECT, INSERT, UPDATE, DELETE)
 #   - db_migrator: Migration user with elevated privileges (CREATE, ALTER, DROP)
 #
-# Password management via pgpass file (mounted at /root/.pgpass):
+# Password management via the development image's /home/appuser/.pgpass:
 #   postgres:5432:registry:db_app:app_password
 #   postgres:5432:registry:db_migrator:migration_password
 
@@ -41,8 +41,20 @@ registries:
   - name: default
     sources: ["local-file"]
 
+admin:
+  enabled: false
+authorization:
+  # Omit policyFile for built-in allow-all Cedar after authentication.
+  # policyFile: /etc/registry/policies.cedar # Optional custom replacement; mount read-only.
+  allowAnonymousCatalog: false
+  identityMappings: [] # Built-in Cedar needs no group/scope projection.
 auth:
-  mode: anonymous
+  mode: oauth
+  oauth:
+    providers:
+      - name: company
+        issuerUrl: https://id.example.org
+        audience: registry-api
 
 # PostgreSQL database configuration
 # Uses two-user security model: separate users for operations and migrations

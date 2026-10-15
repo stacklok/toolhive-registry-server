@@ -19,7 +19,6 @@ SELECT src.source_type AS registry_type,
        p.icons,
        p.metadata,
        p.extension_meta,
-       e.claims,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
        COALESCE(rs.position, 32767)::integer AS position
@@ -68,7 +67,6 @@ SELECT src.source_type AS registry_type,
        p.icons,
        p.metadata,
        p.extension_meta,
-       e.claims,
        rs.source_id,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
@@ -115,7 +113,6 @@ SELECT src.source_type AS registry_type,
        p.icons,
        p.metadata,
        p.extension_meta,
-       e.claims,
        0::integer AS position
   FROM plugin p
   JOIN entry_version v ON p.version_id = v.id
@@ -172,15 +169,17 @@ RETURNING version_id;
 -- name: UpsertLatestPluginVersion :one
 INSERT INTO latest_entry_version (
     source_id,
+    entry_type,
     name,
     version,
     latest_version_id
 ) VALUES (
     sqlc.arg(source_id),
+    'PLUGIN',
     sqlc.arg(name),
     sqlc.arg(version),
     sqlc.arg(version_id)
-) ON CONFLICT (source_id, name)
+) ON CONFLICT (source_id, entry_type, name)
   DO UPDATE SET
     version = sqlc.arg(version),
     latest_version_id = sqlc.arg(version_id)
@@ -269,7 +268,8 @@ INSERT INTO plugin (
 )
 ON CONFLICT (version_id)
 DO UPDATE SET
-    status = COALESCE(sqlc.narg(status)::plugin_status, plugin.status),
+    namespace = EXCLUDED.namespace,
+    status = EXCLUDED.status,
     license = sqlc.narg(license),
     repository = sqlc.narg(repository),
     icons = sqlc.narg(icons),

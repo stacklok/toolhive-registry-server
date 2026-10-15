@@ -1,0 +1,54 @@
+package database
+
+import (
+	"testing"
+
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/require"
+)
+
+func TestJobsMigrationLegacyRowsHaveNoAppliedBaseline(t *testing.T) {
+	t.Parallel()
+	db, _ := SetupTestDBAt(t, 29)
+	ctx := t.Context()
+	require.NoError(t, migrateTestTo(t, db, 25))
+	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable) VALUES('legacy-jobs','api','{}',true)`)
+	require.NoError(t, err)
+	_, err = db.Exec(ctx, `INSERT INTO registry_sync(source_id,sync_status,last_sync_hash,last_applied_filter_hash,server_count)
+ SELECT id,'COMPLETED','old-hash','old-filter',7 FROM source WHERE name='legacy-jobs'`)
+	require.NoError(t, err)
+	require.NoError(t, MigrateUpTo(ctx, db, 29))
+	var hash string
+	var applied *int64
+	require.NoError(t, db.QueryRow(ctx, `SELECT last_sync_hash,applied_generation FROM registry_sync
+ WHERE source_id=(SELECT id FROM source WHERE name='legacy-jobs')`).Scan(&hash, &applied))
+	require.Equal(t, "old-hash", hash)
+	require.Nil(t, applied)
+}
+
+func TestJobsMigrationDownRefusesActiveLease(t *testing.T) {
+	t.Parallel()
+	db, _ := SetupTestDBAt(t, 29)
+	ctx := t.Context()
+	_, err := db.Exec(ctx, `INSERT INTO source(name,source_type,source_config,syncable) VALUES('leased','api','{}',true)`)
+	require.NoError(t, err)
+	_, err = db.Exec(ctx, `INSERT INTO registry_sync(source_id,sync_status,lease_id,lease_expires_at,lease_generation)
+ SELECT id,'IN_PROGRESS',gen_random_uuid(),clock_timestamp()+interval '1 hour',definition_generation
+ FROM source WHERE name='leased'`)
+	require.NoError(t, err)
+	require.ErrorContains(t, migrateTestTo(t, db, 25), "drain active sync jobs")
+}
+
+func migrateTestTo(t *testing.T, db *pgx.Conn, version uint) error {
+	t.Helper()
+	m, err := GetMigrate(db.Config().ConnString())
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+	if err := m.Migrate(version); err != nil && err != migrate.ErrNoChange {
+		return err
+	}
+	return nil
+}

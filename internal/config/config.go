@@ -2,6 +2,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
 // SourceType represents the type of registry data source
@@ -58,7 +60,8 @@ type Option func(*loaderConfig) error
 
 // loaderConfig defines the configuration for loading a configuration
 type loaderConfig struct {
-	path string
+	path         string
+	exposureData *[]byte
 }
 
 // WithConfigPath loads configuration from a YAML file
@@ -135,12 +138,17 @@ func (a *AuditConfig) GetMaxDataSize() int {
 
 // Config represents the root configuration structure
 type Config struct {
-	Sources    []SourceConfig    `yaml:"sources"`
-	Registries []RegistryConfig  `yaml:"registries,omitempty"`
-	Database   *DatabaseConfig   `yaml:"database,omitempty"`
-	Auth       *AuthConfig       `yaml:"auth,omitempty"`
-	Telemetry  *telemetry.Config `yaml:"telemetry,omitempty"`
-	Audit      *AuditConfig      `yaml:"audit,omitempty"`
+	Sources            []SourceConfig       `yaml:"sources"`
+	Registries         []RegistryConfig     `yaml:"registries,omitempty"`
+	Database           *DatabaseConfig      `yaml:"database,omitempty"`
+	Auth               *AuthConfig          `yaml:"auth,omitempty"`
+	Telemetry          *telemetry.Config    `yaml:"telemetry,omitempty"`
+	Audit              *AuditConfig         `yaml:"audit,omitempty"`
+	Authorization      *AuthorizationConfig `yaml:"authorization"`
+	Admin              AdminConfig          `yaml:"admin"`
+	publicPathsPresent bool
+	exposureRetired    map[string]any
+	exposureEnv        map[string]string
 
 	// insecureAllowHTTP allows HTTP URLs for OAuth issuer URLs (development only)
 	// Can be set via THV_REGISTRY_INSECURE_URL environment variable
@@ -183,8 +191,8 @@ type SourceConfig struct {
 	// Note: Not applicable for non-synced sources (managed and kubernetes) - will be ignored if set
 	Filter *FilterConfig `yaml:"filter,omitempty"`
 
-	// Claims are key-value pairs attached to this source for authorization purposes
-	// Values must be string or []string
+	// Claims is private offline compatibility input. Its JSON-null encoding is
+	// frozen for schema-29 v1 receipts; active catalog preparation rejects it.
 	Claims map[string]any `yaml:"claims,omitempty"`
 }
 
@@ -193,8 +201,8 @@ type RegistryConfig struct {
 	// Name is the identifier for this registry
 	Name string `yaml:"name"`
 
-	// Claims are key-value pairs attached to this registry for authorization purposes
-	// Values must be string or []string
+	// Claims is private offline compatibility input, retained for v1 fingerprints.
+	// Active catalog preparation rejects the field by presence.
 	Claims map[string]any `yaml:"claims,omitempty"`
 
 	// Sources is an ordered list of source names that feed this registry
@@ -327,8 +335,7 @@ type ManagedConfig struct {
 
 // KubernetesConfig defines configuration for Kubernetes-based registries.
 // Kubernetes registries discover MCP servers from running Kubernetes resources.
-// Per-entry claims are set directly on CRDs via the toolhive.stacklok.dev/authz-claims
-// JSON annotation, which is merged with the source's base claims.
+// Retired claims annotation presence is rejected by standalone preflight.
 type KubernetesConfig struct {
 	// Namespaces is a list of Kubernetes namespaces to watch for MCP servers
 	// If empty, watches the namespace configured via WatchNamespace environment variable
@@ -346,17 +353,11 @@ type FilterConfig struct {
 	Tags  *TagFilterConfig  `yaml:"tags,omitempty" json:"tags,omitempty"`
 }
 
-// NameFilterConfig defines name-based filtering
-type NameFilterConfig struct {
-	Include []string `yaml:"include,omitempty" json:"include,omitempty"`
-	Exclude []string `yaml:"exclude,omitempty" json:"exclude,omitempty"`
-}
+// NameFilterConfig defines name-based filtering.
+type NameFilterConfig = persistence.NameFilter
 
-// TagFilterConfig defines tag-based filtering
-type TagFilterConfig struct {
-	Include []string `yaml:"include,omitempty" json:"include,omitempty"`
-	Exclude []string `yaml:"exclude,omitempty" json:"exclude,omitempty"`
-}
+// TagFilterConfig defines tag-based filtering.
+type TagFilterConfig = persistence.NameFilter
 
 // AuthMode represents the authentication mode
 type AuthMode string
@@ -393,16 +394,15 @@ type AuthConfig struct {
 	// Use "anonymous" to explicitly disable authentication for development.
 	Mode AuthMode `yaml:"mode,omitempty"`
 
-	// PublicPaths defines additional paths that bypass authentication
-	// These extend the default public paths (health, docs, swagger, well-known)
-	// Example: ["/custom/public", "/metrics"]
+	// PublicPaths is retired offline compatibility input; it never bypasses auth.
+	// Preserve its v1 JSON encoding, including null when absent.
 	PublicPaths []string `yaml:"publicPaths,omitempty"`
 
 	// OAuth contains OAuth/OIDC specific configuration
 	// Required when Mode is "oauth"
 	OAuth *OAuthConfig `yaml:"oauth,omitempty"`
 
-	// Authz contains authorization configuration for role-based access control
+	// Authz is retired private offline compatibility input for v1 fingerprints.
 	Authz *AuthzConfig `yaml:"authz,omitempty"`
 
 	// InsecureAllowHTTP allows HTTP issuer URLs for development/testing.
@@ -769,6 +769,8 @@ func resolvePgpassPassword(host string, port int, database, user string) string 
 // LoadConfig loads and parses configuration from a YAML file with environment variable support.
 // Configuration values can be overridden using environment variables with the THV_REGISTRY_ prefix.
 // Nested keys use underscores as separators (e.g., THV_REGISTRY_DATABASE_HOST for database.host).
+//
+//nolint:gocyclo // Keep same-snapshot decoding and the explicit legacy versus cutover/offline validation modes together.
 func LoadConfig(opts ...Option) (*Config, error) {
 	loaderCfg := &loaderConfig{}
 	for _, opt := range opts {
@@ -795,7 +797,10 @@ func LoadConfig(opts ...Option) (*Config, error) {
 
 	// Enable automatic environment variable binding
 	// This allows any config value to be overridden via environment variables
-	v.AutomaticEnv()
+	// Cutover/offline decoding binds a single environment snapshot below.
+	if loaderCfg.exposureData == nil {
+		v.AutomaticEnv()
+	}
 
 	// Replace dots with underscores for nested keys
 	// e.g., database.host becomes THV_REGISTRY_DATABASE_HOST
@@ -807,17 +812,49 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	// THV_REGISTRY_DATABASE_MIGRATIONPASSWORD would be silently ignored.
 	v.SetDefault("database.password", "")
 	v.SetDefault("database.migrationPassword", "")
+	// Register the optional policy key so env overrides work even when YAML omits it.
+	if err := v.BindEnv("authorization.policyFile"); err != nil {
+		return nil, fmt.Errorf("failed to bind policy environment override: %w", err)
+	}
 
-	// Read config file
-	if err := v.ReadInConfig(); err != nil {
+	// Use one file snapshot for Viper and presence checks: Viper discards nulls.
+	data, err := os.ReadFile(loaderCfg.path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+	retired, err := retiredExposureFields(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+	if err := v.ReadConfig(bytes.NewReader(data)); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
+	var environment []string
+	if loaderCfg.exposureData != nil {
+		environment = os.Environ()
+		freezeCatalogEnvironment(v, environment)
+	}
 	// Unmarshal into struct
 	var config Config
 	if err := v.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+
+	config.exposureRetired = retired
+	if loaderCfg.exposureData != nil {
+		config.exposureEnv = exposureEnvironmentFrom(environment)
+	} else {
+		config.exposureEnv = exposureEnvironment()
+	}
+
+	if config.Auth != nil && config.Auth.Mode == "" {
+		config.Auth.Mode = DefaultAuthMode
+	}
+
+	_, publicPathsPresent := retired["auth.publicpaths"]
+	_, publicPathsEnvPresent := config.exposureEnv["AUTH_PUBLICPATHS"]
+	config.publicPathsPresent = publicPathsPresent || publicPathsEnvPresent || v.InConfig("auth.publicPaths")
 
 	// Set insecureAllowHTTP from environment variable (THV_REGISTRY_INSECURE_URL)
 	// This is not loaded from YAML - environment variable only for security
@@ -841,8 +878,15 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	// This is not loaded from YAML - environment variable only
 	config.LeaderElectionID = v.GetString("leader_election_id")
 
-	// Validate the config
-	if err := config.validate(); err != nil {
+	// Offline exposure inspection validates connection settings only. Retired
+	// security fields must remain inspectable without starting the application.
+	validate := config.validate
+	if loaderCfg.exposureData != nil {
+		*loaderCfg.exposureData = data
+		validate = config.validateStorageConfig
+	}
+
+	if err := validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 

@@ -12,15 +12,20 @@ A Helm chart for deploying the ToolHive Registry Server - the central metadata h
 
 ## TL;DR
 
+Prepare a complete operator-owned values file using the authoritative
+[Kubernetes deployment guide](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/deployment-kubernetes.md).
+It covers PostgreSQL roles, readable credentials, a current-runtime image, trusted
+OAuth, optional custom Cedar and separate new/existing catalog procedures. Defaults
+alone are not a deployable database/authentication configuration.
+
+From the matching source checkout:
+
 ```console
-helm upgrade -i toolhive-registry-server oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server -n toolhive-system --create-namespace
+helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server -n toolhive-system --create-namespace --values operator-values.yaml
 ```
 
-Or for a custom values file:
-
-```consoleCustom
-helm upgrade -i toolhive-registry-server oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server -n toolhive-system --create-namespace --values values-custom.yaml
-```
+For a published chart, pin a chart version compatible with your selected runtime
+image; do not assume a historical published chart/image includes this runtime.
 
 ## Prerequisites
 
@@ -29,22 +34,61 @@ helm upgrade -i toolhive-registry-server oci://ghcr.io/stacklok/toolhive-registr
 
 ## Usage
 
+### Cedar admission defaults and custom overrides
+
+Configure trusted OAuth issuers/audiences before starting. With no custom file,
+standalone evaluates built-in allow-all Cedar: every verified identity may use every
+enabled operation, including admin if enabled. Defaults remain private OAuth and
+admin disabled; anonymous catalog access needs explicit opt-in. Invalid supplied
+credentials never become anonymous, and route/evidence/evaluation failures deny.
+
+Optionally create a ConfigMap with a custom `policies.cedar` key and set
+`policy.existingConfigMap`: the chart mounts it read-only at
+`/etc/registry-policies/policies.cedar` and sets `config.authorization.policyFile`
+automatically. An incompatible explicit path is rejected. A separately mounted
+absolute custom path is also valid without `policy.existingConfigMap`. The custom
+file replaces the built-in policy entirely; unavailable/empty/invalid specified
+files fail startup, never fall back. Map verified groups/scopes with
+`config.authorization.identityMappings` if the custom policy uses them.
+Retired `auth.authz`, roles/publicPaths and
+resource claims are rejected. Existing catalogs require offline review and explicit
+claims retirement before the new runtime consumes the receipt; no startup flag approves
+existing data.
+
+For a genuinely new, entirely empty database only, explicitly set
+`initializeEmptyCatalog: true` (default false). This adds `serve --initialize-empty`;
+it authorizes empty-install preparation after policy/config and source/operator
+preflight, not permission to browse. The flag may remain on same-target replicas
+and restarts without resetting or rebinding a consumed receipt. Pending existing-data
+review must follow the manual chain, with this flag omitted for first consumption.
+`image.registryServerUrl` is explicitly required and defaults to empty: select a
+build/release containing this startup path. The chart never silently falls back to
+an older published binary that ignores Cedar/admin/receipt settings. Historical
+images do not implement the new flag or preparation barrier.
+
+Policy edits require a rollout/restart of every replica; an externally supplied
+ConfigMap does not automatically change the running evaluator. Drain old replicas
+when revoking access. See the
+[Cedar guide](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-cedar-authorization.md)
+and [offline exposure procedure](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/registry-exposure-migration.md)
+before upgrading. Policy is not exposure consent.
+
 ### Installing from the Chart
 
 Install one of the available versions:
 
 ```shell
-helm upgrade -i <release_name> oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server --version=<version> -n toolhive-system --create-namespace
+helm upgrade -i <release_name> oci://ghcr.io/stacklok/toolhive-registry-server/toolhive-registry-server --version=<version> -n toolhive-system --create-namespace --values operator-values.yaml
 ```
 
-> **Tip**: List all releases using `helm list`
+> **Tip**: List releases in this namespace using `helm list -n toolhive-system`
 
 ### Uninstalling the Chart
 
 To uninstall/delete the `toolhive-registry-server` deployment:
 
 ```console
-helm uninstall <release_name>
+helm uninstall <release_name> -n toolhive-system
 ```
 
 The command removes all the Kubernetes components associated with the chart and deletes the release. You will have to delete the namespace manually if you used Helm to create it.
@@ -60,14 +104,19 @@ scrapers only.
 This does not expose the internal port outside the cluster (the default Service `type`
 is `ClusterIP`), but with the default Service type any pod elsewhere in the cluster can
 reach it, not just the registry server's own pod. If your cluster does not already treat
-all in-cluster workloads as equally trusted, restrict the internal port to your metrics
-scraper and probe traffic with a NetworkPolicy, e.g.:
+all in-cluster workloads as equally trusted, restrict ingress with a NetworkPolicy.
+Ingress isolation applies to **all ports**, so a standalone policy must allow 8080
+clients separately from 8081 monitoring. Customize namespace/pod labels for your
+actual ingress controller and scraper; this example allows only those callers.
+Kubelet probes reach the pod directly; confirm your CNI's node/probe behavior.
+Other policies selecting these pods can add permissions (policies are additive).
 
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: toolhive-registry-server-internal
+  name: toolhive-registry-server-ingress
+  namespace: toolhive-system
 spec:
   podSelector:
     matchLabels:
@@ -78,7 +127,20 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: controller
+      ports:
+        - port: 8080
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
               kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
       ports:
         - port: 8081
           protocol: TCP
@@ -96,37 +158,55 @@ rather than through the Service.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| affinity | object | `{}` | Node and pod affinity rules for scheduling Registry Server pods. |
-| config | object | `{"auth":{"mode":"anonymous"},"database":{"database":"toolhive_registry","host":"","port":5432,"sslMode":"require","user":"thv_user"},"registries":[{"name":"default","sources":["toolhive"]}],"sources":[{"git":{"branch":"main","path":"pkg/catalog/toolhive/data/registry-upstream.json","repository":"https://github.com/stacklok/toolhive-catalog.git"},"name":"toolhive","syncPolicy":{"interval":"30m"}}]}` | Registry Server application configuration rendered as `config.yaml` in a Kubernetes ConfigMap. Accepts any valid Registry Server configuration field. See [Configuration](https://github.com/stacklok/toolhive-registry-server/blob/main/docs/configuration.md). Supply database passwords through Secret-backed environment variables in `extraEnv`, a PostgreSQL password file, or dynamic authentication. |
-| extraEnv | list | `[]` | Additional environment variables for the Registry Server container. Use `valueFrom.secretKeyRef` to supply passwords from Kubernetes Secrets. |
-| extraEnvFrom | list | `[]` | ConfigMap or Secret references whose keys become environment variables in the Registry Server container. |
-| extraVolumeMounts | list | `[]` | Additional volume mounts for the Registry Server container, referencing volumes declared in `extraVolumes`. |
-| extraVolumes | list | `[]` | Additional Kubernetes volumes available to the Registry Server pod. Mount them with `extraVolumeMounts` or an init container's `volumeMounts`. |
-| fullnameOverride | string | `""` | Override the generated name of the Deployment, Service, and related resources. |
-| image.pullPolicy | string | `"IfNotPresent"` | Image pull policy for the Registry Server container. |
-| image.registryServerUrl | string | `"ghcr.io/stacklok/thv-registry-api:v1.5.3"` | Registry Server container image reference, including the tag or digest. |
-| imagePullSecrets | list | `[]` | References to Secrets in the release namespace used to pull private container images. |
-| initContainers | list | `[]` | Init container specifications run before the Registry Server container. Each init container defines its own volume mounts and can mount volumes declared in `extraVolumes`, for example to prepare a PostgreSQL password file. |
-| livenessProbe | object | `{"httpGet":{"path":"/health","port":"internal-http"},"initialDelaySeconds":30,"periodSeconds":10}` | Kubernetes liveness probe for the Registry Server container. |
-| nameOverride | string | `""` | Override the chart name used in resource labels and generated names. |
-| nodeSelector | object | `{}` | Node labels that Registry Server pods require for scheduling. |
-| podAnnotations | object | `{}` | Additional annotations on Registry Server pods. |
-| podLabels | object | `{}` | Additional labels on Registry Server pods. |
-| podSecurityContext | object | `{}` | Kubernetes security context applied to Registry Server pods. |
-| rbac | object | `{"allowedNamespaces":[],"scope":"cluster"}` | Kubernetes role-based access control (RBAC) settings for watching ToolHive resources and Services. |
-| rbac.allowedNamespaces | list | `[]` | Namespaces to watch when `rbac.scope` is `namespace`. This list must be nonempty for namespace scope and empty for cluster scope. |
-| rbac.scope | string | `"cluster"` | Scope of permissions to watch ToolHive resources and Services. `cluster` creates a ClusterRoleBinding for all namespaces. `namespace` creates a RoleBinding in each namespace listed in `rbac.allowedNamespaces` and restricts the server's watches to those namespaces. |
-| readinessProbe | object | `{"httpGet":{"path":"/readiness","port":"internal-http"},"initialDelaySeconds":5,"periodSeconds":5}` | Kubernetes readiness probe for the Registry Server container. |
-| replicaCount | int | `1` | Number of Registry Server pod replicas. |
-| resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | CPU and memory requests and limits for the Registry Server container. |
-| securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"runAsUser":65535,"seccompProfile":{"type":"RuntimeDefault"}}` | Kubernetes security context applied to the Registry Server container. |
-| service.annotations | object | `{}` | Annotations on the Registry Server Service. |
-| service.exposeInternalPort | bool | `true` | Publish the internal listener through the Service. This listener serves health checks and metrics without authentication, audit logging, or rate limiting. Set to false to omit it from the Service; Kubernetes probes still reach the container directly. With an externally accessible Service type, enabling this setting also exposes the internal listener externally. |
-| service.internalPort | int | `8081` | Service port forwarding to the internal listener on container port 8081. Applies when `service.exposeInternalPort` is true. Changing this value changes the Service port; the container port stays at 8081 with the default listener settings. |
-| service.port | int | `8080` | Service port for the Registry Server API, forwarding to container port 8080. |
-| service.type | string | `"ClusterIP"` | Kubernetes Service type. External Service types also expose the internal port when `service.exposeInternalPort` is true. |
-| serviceAccount.annotations | object | `{}` | Annotations on the ServiceAccount created by this chart. |
-| serviceAccount.create | bool | `true` | Create the ServiceAccount named by `serviceAccount.name`. Set to false to use an existing ServiceAccount. |
-| serviceAccount.name | string | `"toolhive-registry-server"` | ServiceAccount name used by the pods and RBAC bindings. When `serviceAccount.create` is false, this account must already exist in the release namespace. |
-| tolerations | list | `[]` | Tolerations that allow Registry Server pods to be scheduled on tainted nodes. |
+| affinity | object | `{}` | Affinity rules for pod scheduling |
+| config.admin.enabled | bool | `false` |  |
+| config.auth.mode | string | `"oauth"` |  |
+| config.auth.oauth.providers | list | `[]` |  |
+| config.authorization.allowAnonymousCatalog | bool | `false` |  |
+| config.authorization.identityMappings | list | `[]` |  |
+| config.database.database | string | `"toolhive_registry"` |  |
+| config.database.host | string | `""` |  |
+| config.database.port | int | `5432` |  |
+| config.database.sslMode | string | `"require"` |  |
+| config.database.user | string | `"thv_user"` |  |
+| config.registries[0].name | string | `"default"` |  |
+| config.registries[0].sources[0] | string | `"toolhive"` |  |
+| config.sources[0].git.branch | string | `"main"` |  |
+| config.sources[0].git.path | string | `"pkg/catalog/toolhive/data/registry-upstream.json"` |  |
+| config.sources[0].git.repository | string | `"https://github.com/stacklok/toolhive-catalog.git"` |  |
+| config.sources[0].name | string | `"toolhive"` |  |
+| config.sources[0].syncPolicy.interval | string | `"30m"` |  |
+| extraEnv | list | `[]` | Additional environment variables to add to the container Use this for secrets, feature flags, or runtime configuration |
+| extraEnvFrom | list | `[]` | Additional environment variables from ConfigMap or Secret references |
+| extraVolumeMounts | list | `[]` | Additional volume mounts to add to the container |
+| extraVolumes | list | `[]` | Additional volumes to add to the pod |
+| fullnameOverride | string | `""` | Override the full name of the chart |
+| image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
+| image.registryServerUrl | string | `""` | Required image containing catalog startup/receipt enforcement. No legacy image fallback. |
+| imagePullSecrets | list | `[]` | Image pull secrets for private registries |
+| initContainers | list | `[]` | Init containers to run before the main container Use this for setup tasks like preparing pgpass files, waiting for dependencies, etc. Init containers share the same volumes as the main container (extraVolumes) |
+| initializeEmptyCatalog | bool | `false` | Explicit new-install authorization for an entirely empty catalog only. Existing catalogs require offline inventory/acknowledgement/retirement. Safe to retain on same-target restarts; never rebinds a consumed receipt. |
+| livenessProbe | object | `{"httpGet":{"path":"/health","port":"internal-http"},"initialDelaySeconds":30,"periodSeconds":10}` | Liveness probe configuration |
+| nameOverride | string | `""` | Override the name of the chart |
+| nodeSelector | object | `{}` | Node selector for pod scheduling |
+| podAnnotations | object | `{}` | Annotations to add to the pod |
+| podLabels | object | `{}` | Labels to add to the pod |
+| podSecurityContext | object | `{}` | Pod security context |
+| policy.existingConfigMap | string | `""` | Optional ConfigMap containing a custom policies.cedar key, replacing the built-in allow-all Cedar policy. |
+| rbac | object | `{"allowedNamespaces":[],"scope":"cluster"}` | RBAC configuration for the registry server |
+| rbac.allowedNamespaces | list | `[]` | List of namespaces that the registry server is allowed to watch. Only used if scope is set to "namespace". |
+| rbac.scope | string | `"cluster"` | Scope of the RBAC configuration. - cluster: The registry server will have cluster-wide permissions via ClusterRole and ClusterRoleBinding. - namespace: The registry server will have permissions to watch resources in the namespaces specified in `allowedNamespaces`.   The registry server will have a ClusterRole and RoleBinding for each namespace in `allowedNamespaces`. |
+| readinessProbe | object | `{"httpGet":{"path":"/readiness","port":"internal-http"},"initialDelaySeconds":5,"periodSeconds":5}` | Readiness probe configuration |
+| replicaCount | int | `1` | Number of replicas |
+| resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | Resource requests and limits (matching operator defaults) |
+| securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"runAsUser":65535,"seccompProfile":{"type":"RuntimeDefault"}}` | Container security context |
+| service.annotations | object | `{}` | Service annotations |
+| service.exposeInternalPort | bool | `true` | Whether the Service publishes service.internalPort at all. The internal port carries no authentication, audit logging, or rate limiting by design (see "Internal Port Exposure" below); if service.type is set to anything other than the default ClusterIP, that Service publishes the internal port externally too, since there is no per-port guard. Set this to false to keep the internal port pod-local (reachable only via port-forward) if you change service.type and don't want that. |
+| service.internalPort | int | `8081` | Internal service port (health checks, metrics). The container always listens on 8081 regardless of this value — this only changes the port the Service publishes that listener on, the same as service.port above. Only takes effect when service.exposeInternalPort is true. |
+| service.port | int | `8080` | Service port |
+| service.type | string | `"ClusterIP"` | Service type |
+| serviceAccount.annotations | object | `{}` | Annotations to add to the service account |
+| serviceAccount.create | bool | `true` | Specifies whether a service account should be created |
+| serviceAccount.name | string | `"toolhive-registry-server"` | The name of the service account to use |
+| tolerations | list | `[]` | Tolerations for pod scheduling |
 

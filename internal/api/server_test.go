@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -11,20 +12,20 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/api"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
-	"github.com/stacklok/toolhive-registry-server/internal/service/mocks"
 	registryversions "github.com/stacklok/toolhive-registry-server/internal/versions"
 )
 
+type testReadiness struct{ err error }
+
+func (r *testReadiness) CheckReadiness(context.Context) error { return r.err }
+
 func TestHealthEndpoint(t *testing.T) {
 	t.Parallel()
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
 
-	mockSvc := mocks.NewMockRegistryService(ctrl)
+	mockSvc := &testReadiness{}
 	// No expectations needed - health check doesn't call service
 	server := api.NewInternalServer(mockSvc, nil)
 
@@ -48,22 +49,22 @@ func TestReadinessEndpoint(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		setupMock      func(*mocks.MockRegistryService)
+		setupMock      func(*testReadiness)
 		expectedStatus int
 		expectedBody   string
 	}{
 		{
 			name: "service ready",
-			setupMock: func(m *mocks.MockRegistryService) {
-				m.EXPECT().CheckReadiness(gomock.Any()).Return(nil)
+			setupMock: func(m *testReadiness) {
+				m.err = nil
 			},
 			expectedStatus: http.StatusOK,
 			expectedBody:   "ready",
 		},
 		{
 			name: "service not ready",
-			setupMock: func(m *mocks.MockRegistryService) {
-				m.EXPECT().CheckReadiness(gomock.Any()).Return(fmt.Errorf("service not initialized"))
+			setupMock: func(m *testReadiness) {
+				m.err = fmt.Errorf("service not initialized")
 			},
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedBody:   "error",
@@ -73,10 +74,8 @@ func TestReadinessEndpoint(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ctrl := gomock.NewController(t)
-			t.Cleanup(ctrl.Finish)
 
-			mockSvc := mocks.NewMockRegistryService(ctrl)
+			mockSvc := &testReadiness{}
 			tt.setupMock(mockSvc)
 
 			server := api.NewInternalServer(mockSvc, nil)
@@ -105,10 +104,8 @@ func TestReadinessEndpoint(t *testing.T) {
 
 func TestVersionEndpoint(t *testing.T) {
 	t.Parallel()
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
 
-	mockSvc := mocks.NewMockRegistryService(ctrl)
+	mockSvc := &testReadiness{}
 	// No expectations needed - version check doesn't call service
 	server := api.NewInternalServer(mockSvc, nil)
 
@@ -151,9 +148,7 @@ func TestVersionEndpointUsesRegistryServerBuildInfo(t *testing.T) {
 	registryversions.Commit = "registry-server-test-commit"
 	registryversions.BuildDate = "registry-server-test-build-date"
 
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-	server := api.NewInternalServer(mocks.NewMockRegistryService(ctrl), nil)
+	server := api.NewInternalServer(&testReadiness{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/version", nil)
 	rr := httptest.NewRecorder()
@@ -173,14 +168,12 @@ func TestInternalServer_MetricsEndpoint(t *testing.T) {
 
 	t.Run("mounted when handler is provided", func(t *testing.T) {
 		t.Parallel()
-		ctrl := gomock.NewController(t)
-		t.Cleanup(ctrl.Finish)
 
 		const body = "# metrics\n"
 		handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte(body))
 		})
-		server := api.NewInternalServer(mocks.NewMockRegistryService(ctrl), handler)
+		server := api.NewInternalServer(&testReadiness{}, handler)
 
 		req, err := http.NewRequest("GET", "/metrics", nil)
 		require.NoError(t, err)
@@ -194,10 +187,8 @@ func TestInternalServer_MetricsEndpoint(t *testing.T) {
 
 	t.Run("absent when handler is nil", func(t *testing.T) {
 		t.Parallel()
-		ctrl := gomock.NewController(t)
-		t.Cleanup(ctrl.Finish)
 
-		server := api.NewInternalServer(mocks.NewMockRegistryService(ctrl), nil)
+		server := api.NewInternalServer(&testReadiness{}, nil)
 
 		req, err := http.NewRequest("GET", "/metrics", nil)
 		require.NoError(t, err)
@@ -207,46 +198,6 @@ func TestInternalServer_MetricsEndpoint(t *testing.T) {
 
 		assert.Equal(t, http.StatusNotFound, rr.Code)
 	})
-}
-
-func TestOpenAPIEndpoint(t *testing.T) {
-	t.Parallel()
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-
-	mockSvc := mocks.NewMockRegistryService(ctrl)
-	server := api.NewServer(mockSvc)
-
-	req, err := http.NewRequest("GET", "/openapi.json", nil)
-	require.NoError(t, err)
-
-	rr := httptest.NewRecorder()
-	server.ServeHTTP(rr, req)
-
-	// Should return 200 OK with OpenAPI spec
-	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
-
-	// Validate the response is valid JSON and contains OpenAPI spec fields
-	var spec map[string]any
-	err = json.Unmarshal(rr.Body.Bytes(), &spec)
-	require.NoError(t, err)
-
-	// Check for required OpenAPI 3.1.0 fields
-	assert.Equal(t, "3.1.0", spec["openapi"])
-	assert.Contains(t, spec, "info")
-	assert.Contains(t, spec, "paths")
-
-	// Verify info section
-	info, ok := spec["info"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "ToolHive Registry API", info["title"])
-	assert.Equal(t, "0.1", info["version"])
-
-	// Verify paths section contains our endpoint
-	paths, ok := spec["paths"].(map[string]any)
-	require.True(t, ok)
-	assert.Contains(t, paths, "/openapi.json")
 }
 
 // captureSlog redirects slog output to a buffer for the duration of fn,

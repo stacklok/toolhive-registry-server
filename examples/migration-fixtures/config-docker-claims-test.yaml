@@ -1,0 +1,54 @@
+# Claims inheritance test configuration
+# Tests that source-level claims flow to entries during sync
+sources:
+  - name: trusted-source
+    file:
+      path: /examples/upstream-registry.json
+    syncPolicy:
+      interval: "30s"
+    claims:
+      org: "acme-corp"
+      tier: "premium"
+
+  - name: community-source
+    file:
+      path: /examples/upstream-registry-overlap.json
+    syncPolicy:
+      interval: "30s"
+    claims:
+      org: "community"
+      tier: "free"
+
+  - name: no-claims-source
+    managed: {}
+
+registries:
+  - name: default
+    sources: ["trusted-source", "community-source", "no-claims-source"]
+
+admin:
+  enabled: false
+authorization:
+  policyFile: /etc/registry/policies.cedar # Author and mount explicitly; no implicit grants.
+  allowAnonymousCatalog: false
+  identityMappings:
+    - issuer: https://id.example.org
+      groups: {claim: groups, format: string-array}
+auth:
+  mode: oauth
+  oauth:
+    providers:
+      - name: company
+        issuerUrl: https://id.example.org
+        audience: registry-api
+
+database:
+  host: postgres
+  port: 5432
+  user: db_app
+  migrationUser: db_migrator
+  database: registry
+  sslMode: disable
+  maxOpenConns: 10
+  maxIdleConns: 2
+  connMaxLifetime: "30m"

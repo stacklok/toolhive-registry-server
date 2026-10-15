@@ -7,6 +7,12 @@ metadata:
 data:
   config.yaml: |
     {{- $cfg := .Values.config | deepCopy }}
+    {{- if .Values.policy.existingConfigMap }}
+    {{-   if and $cfg.authorization.policyFile (ne $cfg.authorization.policyFile "/etc/registry-policies/policies.cedar") }}
+    {{-     fail "policy.existingConfigMap requires config.authorization.policyFile to be omitted or /etc/registry-policies/policies.cedar" }}
+    {{-   end }}
+    {{-   $_ := set $cfg.authorization "policyFile" "/etc/registry-policies/policies.cedar" }}
+    {{- end }}
     {{- $gp := dict }}
     {{- if .Values.global }}
     {{-   $gp = .Values.global.postgres | default dict }}

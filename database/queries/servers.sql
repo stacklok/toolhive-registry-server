@@ -20,7 +20,6 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       e.claims,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
        COALESCE(rs.position, 32767)::integer AS position
@@ -75,7 +74,6 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       e.claims,
        rs.source_id,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
@@ -121,7 +119,6 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       e.claims,
        0::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
@@ -155,7 +152,8 @@ SELECT p.server_id,
 SELECT r.server_id,
        r.transport,
        r.transport_url,
-       r.transport_headers
+       r.transport_headers,
+       r.transport_variables
   FROM mcp_server_remote r
   JOIN mcp_server s ON r.server_id = s.version_id
  WHERE s.version_id = ANY(sqlc.slice(version_ids)::UUID[])
@@ -186,15 +184,17 @@ RETURNING version_id;
 -- name: UpsertLatestServerVersion :one
 INSERT INTO latest_entry_version (
     source_id,
+    entry_type,
     name,
     version,
     latest_version_id
 ) VALUES (
     sqlc.arg(source_id),
+    'MCP',
     sqlc.arg(name),
     sqlc.arg(version),
     sqlc.arg(version_id)
-) ON CONFLICT (source_id, name)
+) ON CONFLICT (source_id, entry_type, name)
   DO UPDATE SET
     version = sqlc.arg(version),
     latest_version_id = sqlc.arg(version_id)

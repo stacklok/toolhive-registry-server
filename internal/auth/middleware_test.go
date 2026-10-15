@@ -71,7 +71,7 @@ func TestMultiProviderMiddleware_Middleware(t *testing.T) {
 			authHeader: "Bearer valid-token",
 			setupMock: func(m *mocks.MocktokenValidatorInterface) {
 				m.EXPECT().ValidateToken(gomock.Any(), "valid-token").
-					Return(map[string]any{"sub": "user"}, nil)
+					Return(map[string]any{"iss": "https://issuer.example.com", "sub": "user"}, nil)
 			},
 			wantStatus: http.StatusOK,
 			wantCalled: true,
@@ -149,7 +149,7 @@ func TestMultiProviderMiddleware_SequentialFallback(t *testing.T) {
 		keycloakMock.EXPECT().ValidateToken(gomock.Any(), "token").
 			Return(nil, errors.New("invalid issuer")),
 		googleMock.EXPECT().ValidateToken(gomock.Any(), "token").
-			Return(map[string]any{"sub": "user@google.com"}, nil),
+			Return(map[string]any{"iss": "https://accounts.google.com", "sub": "user@google.com"}, nil),
 	)
 
 	providers := []providerConfig{
@@ -311,52 +311,6 @@ func TestMultiProviderMiddleware_WWWAuthenticate(t *testing.T) {
 	}
 }
 
-func TestWrapWithPublicPaths(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name           string
-		path           string
-		publicPaths    []string
-		expectAuthCall bool
-	}{
-		// Public paths bypass auth
-		{"exact public path bypasses auth", "/health", []string{"/health"}, false},
-		{"sub-path of public bypasses auth", "/health/check", []string{"/health"}, false},
-		{"well-known bypasses auth", "/.well-known/oauth", []string{"/.well-known"}, false},
-
-		// Protected paths require auth
-		{"protected path requires auth", "/v0/servers", []string{"/health"}, true},
-		{"similar prefix still requires auth", "/healthcheck", []string{"/health"}, true},
-		{"empty public paths requires auth", "/health", []string{}, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			authCalled := false
-			mockAuthMw := func(next http.Handler) http.Handler {
-				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					authCalled = true
-					next.ServeHTTP(w, r)
-				})
-			}
-
-			mw := WrapWithPublicPaths(mockAuthMw, tt.publicPaths)
-			handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			}))
-
-			req, _ := http.NewRequest(http.MethodGet, tt.path, nil)
-			rr := httptest.NewRecorder()
-			handler.ServeHTTP(rr, req)
-
-			assert.Equal(t, tt.expectAuthCall, authCalled)
-		})
-	}
-}
-
 // TestMultiProviderMiddleware_LogsIdentity verifies that on successful
 // authentication the middleware emits sub/user fields (not the legacy
 // "subject" field that returned null in v1.1.2 — the symptom in #731).
@@ -372,6 +326,7 @@ func TestMultiProviderMiddleware_LogsIdentity(t *testing.T) {
 	mockValidator := mocks.NewMocktokenValidatorInterface(ctrl)
 	mockValidator.EXPECT().ValidateToken(gomock.Any(), "valid-token").
 		Return(map[string]any{
+			"iss":                "https://issuer.example.com",
 			"sub":                "f1c2d3e4-5678-90ab-cdef-1234567890ab",
 			"name":               "Alice Example",
 			"preferred_username": "alice",
@@ -454,6 +409,7 @@ func TestMultiProviderMiddleware_LogsIdentity_PreferredUsernameFallback(t *testi
 	mockValidator := mocks.NewMocktokenValidatorInterface(ctrl)
 	mockValidator.EXPECT().ValidateToken(gomock.Any(), "tok").
 		Return(map[string]any{
+			"iss":                "https://issuer.example.com",
 			"sub":                "u-1",
 			"preferred_username": "alice",
 		}, nil)

@@ -26,9 +26,9 @@ const maxVersionLength = 255
 // matches versions exactly, and an entry's version should stay equal to the package
 // version it was derived from.
 //
-// Build metadata is rejected: semver comparison ignores it, so two versions differing
-// only in metadata would be distinct rows that sort equal, and "+" decodes as a space
-// in `?version=` for clients that do not percent-encode it.
+// Build metadata is rejected because "+" decodes as a space in `?version=` for
+// clients that do not percent-encode it. Metadata spellings share semantic
+// precedence, but the catalog's total order breaks ties by raw spelling.
 func IsPublishable(v string) bool {
 	if v == "" || len(v) > maxVersionLength {
 		return false

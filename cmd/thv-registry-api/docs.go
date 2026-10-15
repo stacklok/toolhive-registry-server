@@ -2,9 +2,9 @@
 //
 //	@title			ToolHive Registry API
 //	@version		0.1
-//	@description	API for accessing MCP server registry data and deployed server information
-//	@description	This API provides endpoints to query the MCP (Model Context Protocol) server registry,
-//	@description	get information about available servers, and check the status of deployed servers.
+//	@description	API for discovering MCP servers, skills and plugins in nonpersonalized named views.
+//	@description	Cedar grants whole-instance operations; admin is optional and always authenticated.
+//	@description	Existing catalogs require explicit offline exposure review before activation.
 //	@description
 //	@description	Authentication is required by default. Use Bearer token authentication with a valid
 //	@description	OAuth/OIDC access token. The /.well-known/oauth-protected-resource endpoint provides
@@ -25,9 +25,6 @@
 //
 //	@tag.name	servers
 //	@tag.description	Server discovery and metadata
-//
-//	@tag.name	deployed-servers
-//	@tag.description	Deployed server status and information
 //
 //	@tag.name	system
 //	@tag.description	System health and version information

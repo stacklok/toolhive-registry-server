@@ -1,379 +1,152 @@
 # Observability
 
-The ToolHive Registry Server provides comprehensive observability through OpenTelemetry (OTEL), supporting both distributed tracing and metrics collection via OTLP exporters.
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     Registry Server                                  │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                 │
-│  │   HTTP      │  │   Sync      │  │  Registry   │                 │
-│  │ Middleware  │  │  Metrics    │  │  Metrics    │                 │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘                 │
-│         │                │                │                         │
-│         └────────────────┼────────────────┘                         │
-│                          │                                          │
-│                   ┌──────▼──────┐                                   │
-│                   │  Telemetry  │                                   │
-│                   │   Facade    │                                   │
-│                   └──────┬──────┘                                   │
-│                          │                                          │
-│         ┌────────────────┼────────────────┐                         │
-│         │                │                │                         │
-│  ┌──────▼──────┐  ┌──────▼──────┐  ┌──────▼──────┐                 │
-│  │   Tracer    │  │    Meter    │  │   Resource  │                 │
-│  │  Provider   │  │  Provider   │  │  Attributes │                 │
-│  └──────┬──────┘  └──────┬──────┘  └─────────────┘                 │
-│         │                │                                          │
-│         └────────┬───────┘                                          │
-│                  │ OTLP HTTP                                        │
-└──────────────────┼──────────────────────────────────────────────────┘
-                   │
-                   ▼
-          ┌────────────────┐
-          │      OTEL      │
-          │   Collector    │
-          └───────┬────────┘
-                  │
-        ┌─────────┼─────────┐
-        │         │         │
-        ▼         ▼         ▼
-   ┌────────┐ ┌────────┐ ┌────────┐
-   │ Jaeger │ │Promethe│ │ Grafana│
-   │        │ │   us   │ │        │
-   └────────┘ └────────┘ └────────┘
-```
-
-## Package Structure
-
-The telemetry implementation is located in `internal/telemetry/`:
-
-| File | Responsibility |
-|------|----------------|
-| `telemetry.go` | Main facade orchestrating tracer and meter providers |
-| `config.go` | Configuration types with validation and defaults |
-| `tracer.go` | TracerProvider setup with OTLP HTTP exporter |
-| `meter.go` | MeterProvider setup with OTLP HTTP exporter |
-| `metrics.go` | Application-specific metrics (registry and sync) |
-| `middleware.go` | HTTP metrics middleware for Chi router |
-| `tracing_middleware.go` | HTTP tracing middleware for distributed tracing |
+Standalone exports OpenTelemetry traces/metrics via OTLP HTTP and, when metrics are
+enabled, serves Prometheus metrics on **internal 8081 only**. Public 8080 serves
+consumer/admin HTTP. Never proxy unauthenticated `/health`, `/readiness`, `/version`
+or `/metrics` through the public endpoint.
 
 ## Configuration
-
-Telemetry is configured via the main application config file:
 
 ```yaml
 telemetry:
   enabled: true
-  serviceName: "thv-registry-api"
-  serviceVersion: "1.0.0"
-  endpoint: "otel-collector:4318"
-  insecure: true
+  serviceName: thv-registry-api
+  endpoint: otel-collector:4318
+  insecure: false
   tracing:
     enabled: true
-    sampling: 0.05  # 5% of traces sampled
+    sampling: 0.05
   metrics:
     enabled: true
 ```
 
-### Configuration Options
+The collector must be reachable from the server and accept OTLP HTTP. `insecure:
+false` uses TLS; `true` is only for trusted local development. Traces and metrics
+can be enabled independently, but both require top-level `enabled: true`.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `enabled` | bool | `false` | Enable/disable all telemetry |
-| `serviceName` | string | `"thv-registry-api"` | Service name in telemetry data |
-| `serviceVersion` | string | `""` | Service version in telemetry data |
-| `endpoint` | string | `"localhost:4318"` | OTLP HTTP endpoint |
-| `insecure` | bool | `false` | Use insecure connection (no TLS) |
-| `tracing.enabled` | bool | `false` | Enable distributed tracing |
-| `tracing.sampling` | float64 | `0.05` | Trace sampling ratio (0.0-1.0) |
-| `metrics.enabled` | bool | `false` | Enable metrics collection |
+| Setting | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Initialize telemetry providers |
+| `serviceName` | `thv-registry-api` | Resource service name |
+| `serviceVersion` | `unknown` | Resource service version when omitted |
+| `endpoint` | `localhost:4318` | Collector host:port; OTLP paths added automatically |
+| `insecure` | `false` | Use HTTP rather than HTTPS for OTLP |
+| `tracing.enabled` | `false` | Enable spans |
+| `tracing.sampling` | `0.05` | Sampling ratio; when enabled must be >0 and <=1 |
+| `metrics.enabled` | `false` | Enable OTLP and direct Prometheus readers |
 
-## Metrics Reference
+OTLP metrics export every 60 seconds; traces use batch export. Disabling telemetry
+uses no-op providers. To disable tracing, set its `enabled: false`, not sampling 0.
 
-Registry-specific metrics are prefixed with `stacklok_registry_` to distinguish them from
-other metrics in the system. The two HTTP server metrics that have a direct OpenTelemetry
-semantic-convention equivalent (`http.server.request.duration`, `http.server.active_requests`)
-keep their unprefixed spec names instead, so they stay joinable with the same metric emitted
-by any other semconv-instrumented service — see the metrics-standardization RFC's decision
-rule: a metric whose name comes from an external semantic convention keeps the spec name
-verbatim, with no `stacklok.*` prefix.
+## Probes and scraping
 
-When `metrics.enabled` is `true`, the same metrics are also directly scrapable at
-`/metrics` on the internal server (default port `8081`), independent of the OTLP export
-path described above. That endpoint carries no authentication, consistent with the other
-internal-server routes (`/health`, `/readiness`, `/version`) — keep port `8081` restricted
-to trusted scrapers at the network level.
+For repository Compose, loopback 8081 is already mapped. For Kubernetes, the chart
+probes pod port `internal-http` (8081); no public/internal Service exposure is
+required for those probes. Use a pod scraper or an intentionally restricted
+ClusterIP port for metrics. See [deployment networking](deployment-kubernetes.md#verify-and-operate)
+and the [chart ingress policy](../deploy/charts/toolhive-registry-server/README.md#internal-port-exposure).
 
-Every series additionally carries the constant labels `stacklok_component="registry"` and
-`stacklok_product` (the D8 ownership labels), promoted from OTel resource attributes.
-
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `http_server_request_duration_seconds` | Histogram | `http_request_method`, `url_scheme`, `http_route`, `http_response_status_code` | Duration of HTTP requests (OTel semconv `http.server.request.duration`) |
-| `stacklok_registry_http_requests_total` | Counter | `http_request_method`, `url_scheme`, `http_route`, `http_response_status_code` | Total number of HTTP requests |
-| `http_server_active_requests` | UpDownCounter | `http_request_method`, `url_scheme` | Number of in-flight requests (OTel semconv `http.server.active_requests`) |
-| `stacklok_registry_servers` | Gauge | `source` | Number of distinct servers in each source |
-| `stacklok_registry_skills` | Gauge | `source` | Number of distinct skills in each source |
-| `stacklok_registry_plugins` | Gauge | `source` | Number of distinct plugins in each source |
-| `stacklok_registry_sync_duration_seconds` | Histogram | `source`, `outcome` | Duration of sync operations (`outcome` is `success` or `error`) |
-| `stacklok_registry_errors_total` | Counter | `error_type`, `area` | Additive error-by-type classification for the sync (`area="sync"`) and HTTP (`area="http"`) paths — supplementary detail, not a replacement for the `outcome` label on `stacklok_registry_sync_duration_seconds` or `http_response_status_code` on `stacklok_registry_http_requests_total` |
-| `stacklok_build_info_ratio` | Gauge | `component`, `version`, `commit` | Always `1`; build identity carried on labels. The OTel Prometheus exporter appends `_ratio` to gauges with unit `1`. Registered once per process and never unregistered — `RegistryMetrics.Unregister()` does not tear this gauge down, so it keeps observing for the life of the meter provider |
-
-### Histogram Buckets
-
-- **HTTP metrics:** 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10 seconds
-- **Sync metrics:** 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 180, 300 seconds
-
-## Distributed Tracing
-
-The Registry Server implements distributed tracing across three layers: HTTP, Service, and Sync operations. Traces provide end-to-end visibility into request flows and background operations.
-
-### Trace Hierarchy
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│ HTTP Request Span (root)                                            │
-│ Name: "GET /registry/v0.1/servers"                                  │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ Service Span (child)                                            │ │
-│ │ Name: "dbService.ListServers"                                   │ │
-│ │  - Attributes: registry.name, pagination.limit, result.count    │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│ Background Sync Span                                                │
-│ Name: "sync.performRegistrySync"                                    │
-│  - Attributes: registry.name, registry.type, sync.success,         │
-│                sync.duration_seconds, sync.server_count             │
-└─────────────────────────────────────────────────────────────────────┘
+```sh
+curl --fail http://localhost:8081/health
+curl --fail http://localhost:8081/readiness
+curl --fail http://localhost:8081/metrics
 ```
 
-### Span Reference
+The last command requires telemetry and metrics enabled. These internal routes
+have **no public HTTP metrics or tracing middleware**, authentication, audit or
+rate limiting. Use the scraper's availability/latency metrics and probe results to
+monitor them; `http_server_request_duration_seconds` does not measure probes.
+A healthy process does not prove catalog access is authorized or every source is
+fresh. Readiness checks database and runtime readiness, including initial operator
+snapshot readiness. Failed refreshes retain last good snapshots.
 
-#### HTTP Layer Spans
+For a Prometheus setup that discovers pods via annotations, chart values can add:
 
-| Span Name | Kind | Description |
-|-----------|------|-------------|
-| `{METHOD} {route}` | Server | Root span for all HTTP requests |
-
-**Attributes:**
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `http.request.method` | string | HTTP method (GET, POST, etc.) |
-| `http.route` | string | Route pattern (e.g., `/registry/v0.1/servers/{serverName}`) |
-| `url.path` | string | Actual URL path |
-| `user_agent.original` | string | Client user agent |
-| `http.response.status_code` | int | Response status code |
-
-**Excluded Endpoints:**
-
-The following endpoints are intentionally excluded from tracing:
-
-| Endpoint | Reason for Exclusion |
-|----------|---------------------|
-| `/health` | Health check endpoint |
-| `/readiness` | Readiness probe endpoint |
-
-**Rationale for excluding health and readiness endpoints:**
-
-1. **High frequency, low diagnostic value**: Health and readiness probes are typically called every 5-30 seconds by Kubernetes or load balancers. This generates a high volume of nearly identical spans that provide minimal insight into application behavior.
-
-2. **Trace storage costs**: Each span consumes storage in your tracing backend (e.g., Jaeger, Tempo). Health check spans can account for 50-90% of total span volume while providing almost no diagnostic value, significantly increasing storage costs.
-
-3. **Signal-to-noise ratio**: When investigating issues, health check spans clutter trace views and make it harder to find meaningful application traces. Excluding them improves the signal-to-noise ratio for debugging.
-
-4. **Predictable behavior**: Health and readiness endpoints have simple, predictable behavior (return 200 OK or error). Unlike business logic endpoints, they rarely need trace-level debugging—HTTP metrics are sufficient for monitoring their behavior.
-
-5. **Industry best practice**: Most observability frameworks and guidelines recommend excluding infrastructure endpoints from tracing. The OpenTelemetry community generally advises filtering out health checks at the instrumentation level.
-
-If you need to debug health check issues, HTTP metrics (`http_server_request_duration_seconds`) still capture latency and error rates for these endpoints.
-
-#### Service Layer Spans
-
-| Span Name | Description |
-|-----------|-------------|
-| `dbService.ListServers` | List servers with optional filtering |
-| `dbService.ListServerVersions` | List versions of a specific server |
-| `dbService.GetServerVersion` | Get a specific server version |
-| `dbService.PublishServerVersion` | Publish a new server version |
-| `dbService.DeleteServerVersion` | Delete a server version |
-| `dbService.ListRegistries` | List all registries |
-| `dbService.GetRegistryByName` | Get a specific registry |
-| `dbService.CreateRegistry` | Create a new registry |
-| `dbService.UpdateRegistry` | Update an existing registry |
-| `dbService.DeleteRegistry` | Delete a registry |
-
-**Common Attributes:**
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `registry.name` | string | Name of the registry |
-| `server.name` | string | Name of the server |
-| `server.version` | string | Version of the server |
-| `pagination.limit` | int | Page size limit |
-| `pagination.has_cursor` | bool | Whether pagination cursor is used |
-| `result.count` | int | Number of results returned |
-| `registry.type` | string | Type of registry (git, api, file, managed) |
-
-#### Sync Operation Spans
-
-| Span Name | Description |
-|-----------|-------------|
-| `sync.performRegistrySync` | Sync a registry from its source |
-
-**Attributes:**
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `registry.name` | string | Name of the registry being synced |
-| `registry.type` | string | Type of registry source |
-| `sync.success` | bool | Whether sync completed successfully |
-| `sync.duration_seconds` | float64 | Duration of the sync operation |
-| `sync.server_count` | int | Number of servers synced (on success) |
-
-### Example Traces
-
-#### Successful API Request
-
-```
-Trace ID: abc123def456...
-
-[12ms] GET /registry/v0.1/servers
-├── http.request.method: GET
-├── http.route: /registry/v0.1/servers
-├── http.response.status_code: 200
-│
-└── [10ms] dbService.ListServers
-    ├── registry.name: upstream
-    ├── pagination.limit: 50
-    ├── pagination.has_cursor: false
-    └── result.count: 25
+```yaml
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8081"
+  prometheus.io/path: /metrics
 ```
 
-#### Background Sync Operation
+Annotations do nothing without a scraper configured to honor them. Restrict 8081
+to trusted scrapers; do not use public ingress for metrics. Alternatively scrape
+the collector's configured Prometheus exporter endpoint after OTLP ingestion.
 
-```
-Trace ID: xyz789abc...
+## Metrics reference
 
-[30.5s] sync.performRegistrySync
-├── registry.name: upstream
-├── registry.type: git
-├── sync.success: true
-├── sync.duration_seconds: 30.5
-└── sync.server_count: 42
-```
+These are direct Prometheus series names; OTLP uses dotted instrument names.
+HTTP metrics cover public HTTP, not internal probes. Counts are distinct names per
+source, not per view/version, so overlapping sources can count the same name.
 
-#### Failed Request with Error
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `http_server_request_duration_seconds` | Histogram | `http_request_method`, `url_scheme`, `http_route`, `http_response_status_code` | Public request duration |
+| `stacklok_registry_http_requests_total` | Counter | Same HTTP labels | Public request count |
+| `http_server_active_requests` | UpDownCounter | `http_request_method`, `url_scheme` | In-flight public requests |
+| `stacklok_registry_servers` | Gauge | `source` | Distinct server names |
+| `stacklok_registry_skills` | Gauge | `source` | Distinct skill names |
+| `stacklok_registry_plugins` | Gauge | `source` | Distinct plugin names |
+| `stacklok_registry_sync_duration_seconds` | Histogram | `source`, `outcome` | Complete leased attempt duration, outcome `success` or `error` |
+| `stacklok_registry_errors_total` | Counter | `error_type`, `area` | Classified HTTP/sync failures; supplementary to status/outcome |
+| `stacklok_build_info_ratio` | Gauge | `component`, `version`, `commit` | Constant 1 with binary build identity |
 
-```
-Trace ID: err456def...
+Series include `stacklok_component="registry"` and `stacklok_product` resource
+ownership labels. HTTP metric names derived from OpenTelemetry semantic conventions
+are not product-prefixed. Route labels use templates rather than actual IDs.
 
-[5ms] GET /registry/v0.1/servers/unknown/versions/1.0.0
-├── http.request.method: GET
-├── http.route: /registry/v0.1/servers/{serverName}/versions/{version}
-├── http.response.status_code: 404
-│
-└── [3ms] dbService.GetServerVersion
-    ├── server.name: unknown
-    ├── server.version: 1.0.0
-    ├── status: ERROR
-    └── exception.message: server not found: unknown@1.0.0
-```
+- HTTP histogram bounds: 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10 seconds.
+- Sync histogram bounds: 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 180, 300 seconds.
 
-### Tracer Names
+Sync instrumentation starts at successful lease acquisition and finishes on
+successful commit/completion or failure. It measures fetch plus persistence, not
+just remote IO; stale/unfinished attempts are not synthetic successful samples.
+Counts are collected from the catalog via a cached DB aggregate (30-second success
+TTL). On refresh failure, last successful counts can remain visible; monitor the
+sanitized degradation/recovery logs, not merely a flat gauge, for freshness.
 
-Each component uses a unique tracer name for identification:
+## Distributed tracing
 
-| Component | Tracer Name |
-|-----------|-------------|
-| HTTP Middleware | `github.com/stacklok/toolhive-registry-server/http` |
-| Database Service | `github.com/stacklok/toolhive-registry-server/service/db` |
-| Sync Coordinator | `github.com/stacklok/toolhive-registry-server/sync/coordinator` |
+The current standalone instrumentation emits:
 
-### Context Propagation
+| Span | Tracer | Attributes and scope |
+|---|---|---|
+| `{METHOD} {route-template}` | `github.com/stacklok/toolhive-registry-server/http` | Public HTTP server span; `http.request.method`, `http.route`, `url.path`, bounded `user_agent.original`, `http.response.status_code` |
+| `catalog.fetch` | `catalog.ingestion` | Source fetch/validation span with `source`; generic error status `source fetch failed` |
 
-The Registry Server supports W3C Trace Context propagation. Incoming requests with `traceparent` headers will have their trace context extracted and used as the parent for all child spans. This enables distributed tracing across multiple services.
+Example route template: `GET /registry/{registryName}/v0.1/servers`.
+Incoming W3C `traceparent` context is extracted for public HTTP. Background
+scheduled ingestion has its own context; do not assume it is a child of a previous
+consumer request. Logs carrying valid span context include `trace_id` and `span_id`.
+HTTP 5xx marks a span error; 4xx leaves status unset rather than marking a server
+failure. Fetch errors do not attach raw remote/backend causes to the span.
 
-### Future Tracing Enhancements
-
-The following components are not yet instrumented but are planned for future tracing coverage:
-
-| Component | Description | Potential Value |
-|-----------|-------------|-----------------|
-| Sync Writer | Database write operations during sync | Diagnose write performance bottlenecks |
-| State Service | Sync state tracking operations | Debug sync state management issues |
-
-These additions would provide deeper visibility into sync operations, particularly useful for diagnosing performance issues in large-scale deployments.
-
-## Implementation Details
-
-### Graceful Degradation
-
-The telemetry implementation handles disabled or missing components gracefully:
-
-- When telemetry is disabled, no-op providers are used (zero overhead)
-- Metrics and tracing can be independently enabled/disabled
-- Nil provider checks prevent panics if metrics are not configured
-
-### Route Pattern Extraction
-
-The HTTP middleware extracts Chi route patterns (e.g., `/registry/v0.1/servers/{serverName}`) instead of actual URLs (e.g., `/registry/v0.1/servers/my-server`) to prevent metric cardinality explosion.
-
-### Resource Attributes
-
-All telemetry data includes these resource attributes:
-
-| Attribute | Description |
-|-----------|-------------|
-| `service.name` | Service name from config |
-| `service.version` | Service version from config |
-| `host.name` | Hostname of the running instance |
-| `telemetry.sdk.name` | "opentelemetry" |
-| `telemetry.sdk.language` | "go" |
-| `telemetry.sdk.version` | OTEL SDK version |
-
-### OTLP Export
-
-Both traces and metrics are exported via OTLP HTTP (port 4318 by default):
-
-- Traces use batch processing for efficiency
-- Metrics use a periodic reader with 60-second intervals
+`catalog.fetch` covers fetching/validation, **not** the complete leased commit;
+use the sync duration metric for complete attempts. No per-query/write spans are
+promised. Internal probe/scrape requests do not emit HTTP spans or HTTP metrics.
 
 ## Troubleshooting
 
-### No Metrics Appearing
+- **No metrics endpoint:** enable both `telemetry.enabled` and `metrics.enabled`,
+  then reach internal 8081 through a trusted path, not public 8080.
+- **Direct scrape works but OTLP is missing:** check collector host/port, TLS,
+  receiver/exporter configuration and server egress. Allow at least one metrics
+  export interval before diagnosing a gap.
+- **No traces:** check both enable flags, sampling, collector trace pipeline and
+  whether the operation is actually instrumented. Probes intentionally have none.
+- **Stale counts:** inspect metric-count refresh degradation and recovery logs and
+  DB availability. Last-good fallback is not proof of current catalog size.
+- **Unexpected high cardinality:** use registered route templates; avoid dynamic
+  IDs in custom metric labels. Treat raw URL paths/user agents in trace storage as
+  potentially sensitive and restrict access/retention.
 
-1. Verify telemetry is enabled in config:
-   ```yaml
-   telemetry:
-     enabled: true
-     metrics:
-       enabled: true
-   ```
+Structured logs use `THV_REGISTRY_LOG_LEVEL` (fallback `LOG_LEVEL`); audit is a
+separate [configuration](configuration.md) concern. Do not dump tokens, credentials,
+policy contents, raw claims or environment variables into debugging output.
 
-2. Check the OTEL endpoint is reachable from the registry server
+## See also
 
-3. Verify the OTEL Collector is configured to receive OTLP and export to Prometheus
-
-4. Check Prometheus is scraping the OTEL Collector's metrics endpoint (default port 8889)
-
-### High Cardinality Warnings
-
-If you see high cardinality warnings, check for:
-
-- Custom routes not registered with Chi (will show as `unknown_route`)
-- Dynamic path segments not using Chi parameters
-
-### Missing Traces
-
-1. Verify tracing is enabled:
-   ```yaml
-   telemetry:
-     tracing:
-       enabled: true
-   ```
-
-2. Check sampling rate - default is 5% (`sampling: 0.05`)
-
-3. Verify Jaeger or trace backend is configured in OTEL Collector
+- [Compose deployment](deployment-docker.md)
+- [Kubernetes deployment](deployment-kubernetes.md)
+- [Leased ingestion and reconciliation](registry-sync.md)
+- [Persistence jobs and fencing](registry-persistence-jobs.md)

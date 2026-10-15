@@ -1,9 +1,16 @@
 # CI test values for chart-testing with PostgreSQL
 # Image built with ko and loaded into KIND cluster
 
+# Known-empty disposable CI database only; deny-all policy grants no exposure.
+initializeEmptyCatalog: true
+
 image:
   registryServerUrl: ko.local/thv-registry-api:ci-test
   pullPolicy: Never
+
+# Readiness-only CI fixture; never grants access to catalog or admin operations.
+policy:
+  existingConfigMap: registry-ci-deny-all
 
 # Use minimal resources for CI testing
 resources:
@@ -95,6 +102,9 @@ config:
     maxOpenConns: 5
     maxIdleConns: 2
     connMaxLifetime: "10m"
+
+  authorization:
+    allowAnonymousCatalog: true
 
   auth:
     mode: anonymous

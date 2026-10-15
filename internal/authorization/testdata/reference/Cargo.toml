@@ -1,0 +1,10 @@
+[package]
+name = "registry-cedar-reference"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+cedar-policy = "=4.13.0"
+serde_json = "1"
+sha2 = "=0.10.9"
