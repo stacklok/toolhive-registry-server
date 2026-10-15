@@ -332,6 +332,43 @@ func TestExposureConsumptionFencesOldWorkAndRequiresNewBaseline(t *testing.T) {
 	require.NoError(t, jobs.CommitSnapshot(t.Context(), current, result, model.Snapshot{}))
 }
 
+func TestExposureReadScopeUpgradePreservesReceiptSafety(t *testing.T) {
+	t.Parallel()
+	for _, consumed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("consumed=%t", consumed), func(t *testing.T) {
+			t.Parallel()
+			conn, _ := database.SetupTestDBAt(t, 29)
+			seedExposure(t, conn)
+			engine, err := authorization.Load("")
+			require.NoError(t, err)
+			// Frozen v1 producer encoding for an empty effective config. Identical
+			// policy bytes do not imply identical resource/admission semantics.
+			oldJSON := fmt.Sprintf(`{"Version":1,"Sources":null,"Views":null,"Auth":null,"Authorization":null,"Admin":{"Enabled":false},"Namespace":"","Retired":{},"Environment":{},"Policy":"%s"}`, engine.Revision())
+			oldRevision := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(oldJSON)))
+			current, err := (&config.Config{}).ExposureReview(engine.Revision())
+			require.NoError(t, err)
+			require.NotEqual(t, oldRevision, current.Revision)
+			inventory, err := registrydb.InventoryExposure(t.Context(), conn, oldRevision)
+			require.NoError(t, err)
+			ack, err := registrydb.AcknowledgeExposure(t.Context(), conn, oldRevision, inventory.Digest, true, true, false)
+			require.NoError(t, err)
+			_, err = registrydb.RetireExposureClaims(t.Context(), conn, oldRevision, ack.ID, ack.PostFenceDigest, true, true)
+			require.NoError(t, err)
+			if consumed {
+				require.NoError(t, registrydb.ConsumeExposure(t.Context(), conn, oldRevision))
+			}
+			before := consumptionState(t, conn)
+			err = registrydb.ConsumeExposure(t.Context(), conn, current.Revision)
+			if consumed {
+				require.NoError(t, err, "consumed evidence binds target continuity, not historical policy semantics")
+			} else {
+				require.ErrorContains(t, err, "config/policy revision mismatch")
+			}
+			require.Equal(t, before, consumptionState(t, conn), "never rewrite or rebind historical evidence")
+		})
+	}
+}
+
 func TestExposureConsumptionBindsActualLoadedPolicy(t *testing.T) {
 	t.Parallel()
 	for _, timing := range []string{"before-load", "after-load"} {
@@ -343,7 +380,7 @@ func TestExposureConsumptionBindsActualLoadedPolicy(t *testing.T) {
 			policy := filepath.Join(dir, "policy.cedar")
 			path := filepath.Join(dir, "config.yaml")
 			require.NoError(t, os.WriteFile(policy, []byte(`permit(principal is Registry::Principal,
- action == Registry::Action::"catalog.read", resource == Registry::Instance::"catalog");`), 0600))
+ action == Registry::Action::"catalog.read", resource == Registry::View::"engineering");`), 0600))
 			require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`database:
  host: localhost
  port: 5432

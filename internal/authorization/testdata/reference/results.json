@@ -1,9 +1,21 @@
 {
   "reference": "cedar-policy 4.13.0",
-  "schema_sha256": "0e8ce137bd8f6b29b1026dd470b741168ec0bc4e3bd5824aa5dc0637a28a1e51",
-  "examples_sha256": "d4c22b5a097225d25194df0104c67a06464349b496db1c36f380d620d1284e1a",
-  "cases_sha256": "96766f27831e27f12aa341b4275123154db5040df404193debe7ddf1dbee843d",
+  "schema_sha256": "94c068aa2916bfcbfeaf9e74530567fa69b162d9ef77e39b2c32640c33084415",
+  "examples_sha256": "e2a3c4d67ac1d067f4fdb99cb167f5bf618e8deb9ef9b66e8b3669ee92458fea",
+  "cases_sha256": "c473522481cc9214a5d7f574f322d4e5d44bbeecb6ed9174970fbd5d17f693be",
   "results": [
+    {
+      "name": "engineering cannot read finance",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "finance without grant",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
     {
       "name": "reader permit",
       "valid": true,

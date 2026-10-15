@@ -90,16 +90,19 @@ func TestCatalogEveryMethodFailsClosedWithoutOwnActionEvidence(t *testing.T) {
 	require.NoError(t, err)
 	router := chi.NewRouter()
 	// Private route evidence can be generated only after explicit identity evidence.
-	require.NoError(t, gate.Register(router, "GET", "/alternate", CatalogRead, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for _, tc := range calls {
-			if tc.action != CatalogRead {
-				require.ErrorIs(t, tc.call(r.Context()), ErrEvidence, tc.name)
+	alternate, err := gate.DecorateCatalog(httpapi.RouteDescriptor{Method: "GET", RegistryParam: "registryName", Operation: httpapi.List, Kind: persistence.ServerKind},
+		"/{registryName}/alternate", CatalogRead, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			for _, tc := range calls {
+				if tc.action != CatalogRead {
+					require.ErrorIs(t, tc.call(r.Context()), ErrEvidence, tc.name)
+				}
 			}
-		}
-		http.Error(w, "must not overwrite rejection", 200)
-	}), mw))
+			http.Error(w, "must not overwrite rejection", 200)
+		}), mw)
+	require.NoError(t, err)
+	router.Method("GET", "/{registryName}/alternate", alternate)
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest("GET", "/alternate", nil))
+	router.ServeHTTP(response, httptest.NewRequest("GET", "/engineering/alternate", nil))
 	require.Equal(t, 500, response.Code)
 	require.NotContains(t, response.Body.String(), "overwrite")
 	require.NoError(t, gate.Register(router, "GET", "/wrong-consumer", MetadataRead, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {

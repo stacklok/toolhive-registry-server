@@ -52,7 +52,8 @@ incarnation/generation and leases fence reconfiguration/deletion/recreation.
 ## 6. Source Names and Views
 
 Validate source DNS names at write boundaries. Views reference ordered source names and
-are not authorization/privacy boundaries. Select the whole-name winning source before
+are not storage tenants. Standalone may admit reads of a named view through Cedar;
+that does not isolate entries also exposed through another admitted view. Select the whole-name winning source before
 search, version/latest selection or pagination; never merge different source histories.
 Diagnostics deliberately show complete source/view versions, including shadowed duplicates.
 

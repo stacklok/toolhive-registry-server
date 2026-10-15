@@ -5,7 +5,9 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/cedar-policy/cedar-go/types"
 	"github.com/go-chi/chi/v5"
@@ -13,6 +15,8 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/audit"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/httpapi"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
 type evidenceKey struct{}
@@ -24,6 +28,9 @@ type evidence struct {
 	request   *http.Request
 	response  *admissionResponse
 	admitted  bool
+	resource  types.EntityUID
+	operation httpapi.Operation
+	kind      persistence.EntryKind
 }
 
 // Registrar is mandatory for standalone route construction. Only it creates route evidence.
@@ -53,11 +60,13 @@ func (g *Registrar) Register(router chi.Router, method, template string, action 
 		return ErrEvidence
 	}
 	g.routes[key] = true
-	router.Method(method, template, authenticate(g.wrap(method, template, action, handler)))
+	router.Method(method, template, authenticate(g.wrap(method, template, action, httpapi.RouteDescriptor{}, handler)))
 	return nil
 }
 
-func (g *Registrar) wrap(method, template string, action Action, handler http.Handler) http.Handler {
+func (g *Registrar) wrap(
+	method, template string, action Action, descriptor httpapi.RouteDescriptor, handler http.Handler,
+) http.Handler {
 	expected := strings.TrimSuffix(template, "/") // Chi's RoutePattern removes trailing slashes.
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != method || chi.RouteContext(r.Context()).RoutePattern() != expected {
@@ -79,7 +88,23 @@ func (g *Registrar) wrap(method, template string, action Action, handler http.Ha
 			return
 		}
 		response := &admissionResponse{ResponseWriter: w}
-		ev := &evidence{principal: p, action: action, route: expected, method: method, request: r, response: response}
+		ev := &evidence{principal: p, action: action, route: expected, method: method, request: r, response: response,
+			resource: instance, operation: descriptor.Operation, kind: descriptor.Kind}
+		if action == CatalogRead {
+			if descriptor.RegistryParam == "" {
+				http.Error(w, "authorization wiring failure", http.StatusInternalServerError)
+				return
+			}
+			view, err := requestedView(r, descriptor.RegistryParam)
+			if err != nil {
+				http.Error(w, "invalid registry name", http.StatusBadRequest)
+				return
+			}
+			ev.resource = types.EntityUID{Type: viewType, ID: types.String(view)}
+		}
+		if ev.operation == httpapi.GetLatest {
+			ev.operation = httpapi.Get
+		}
 		ctx := context.WithValue(r.Context(), evidenceKey{}, ev)
 		if action == MetadataRead {
 			if err := g.admit(ctx, MetadataRead); err != nil {
@@ -90,13 +115,33 @@ func (g *Registrar) wrap(method, template string, action Action, handler http.Ha
 	})
 }
 
+func requestedView(r *http.Request, param string) (string, error) {
+	// Match the public HTTP adapter's decoding and validation; never normalize names.
+	view, err := url.PathUnescape(chi.URLParam(r, param))
+	if err != nil || strings.TrimSpace(view) == "" || strings.ContainsAny(view, " \t\n\r") ||
+		len(view) > 4096 || !utf8.ValidString(view) || strings.ContainsRune(view, 0) {
+		return "", persistence.ErrInvalid
+	}
+	return view, nil
+}
+
 func (g *Registrar) admit(ctx context.Context, action Action) error {
+	return g.admitResource(ctx, action, instance, "", "")
+}
+
+func (g *Registrar) admitCatalog(
+	ctx context.Context, view string, operation httpapi.Operation, kind persistence.EntryKind,
+) error {
+	return g.admitResource(ctx, CatalogRead, types.EntityUID{Type: viewType, ID: types.String(view)}, operation, kind)
+}
+
+func (g *Registrar) admitResource(ctx context.Context, action Action, resource types.EntityUID,
+	operation httpapi.Operation, kind persistence.EntryKind) error {
 	ev, ok := ctx.Value(evidenceKey{}).(*evidence)
-	if !ok || ev == nil {
+	if !ok || ev == nil || ev.response.rejected {
 		return ErrEvidence
 	}
-	if ev.action != action || ev.method != ev.request.Method ||
-		ev.route != chi.RouteContext(ctx).RoutePattern() {
+	if !ev.matches(ctx, action, resource, operation, kind) {
 		g.logDecision(ctx, ev, action, "error")
 		http.Error(ev.response.ResponseWriter, "authorization wiring failure", http.StatusInternalServerError)
 		ev.response.rejected = true
@@ -105,7 +150,7 @@ func (g *Registrar) admit(ctx context.Context, action Action) error {
 	if ev.admitted {
 		return nil
 	}
-	err := g.engine.evaluate(ev.principal, action)
+	err := g.engine.evaluate(ev.principal, action, resource)
 	decision := "deny"
 	if err == nil {
 		decision = "allow"
@@ -130,14 +175,22 @@ func (g *Registrar) admit(ctx context.Context, action Action) error {
 	return nil
 }
 
+func (ev *evidence) matches(ctx context.Context, action Action, resource types.EntityUID,
+	operation httpapi.Operation, kind persistence.EntryKind) bool {
+	return ev.action == action && ev.method == ev.request.Method && ev.resource == resource &&
+		(action != CatalogRead || ev.operation == operation && ev.kind == kind) &&
+		ev.route == chi.RouteContext(ctx).RoutePattern()
+}
+
 func (g *Registrar) logDecision(ctx context.Context, ev *evidence, action Action, decision string) {
 	if g.auditLogger != nil {
-		g.auditLogger.Admission(ctx, ev.request, string(ev.principal.UID.ID), string(action), g.engine.revision, decision)
+		g.auditLogger.Admission(ctx, ev.request, string(ev.principal.UID.ID), string(action),
+			ev.resource.String(), g.engine.revision, decision)
 		return
 	}
 	slog.InfoContext(ctx, "Cedar admission", "event_type", "authorization.admission",
 		"actor", string(ev.principal.UID.ID), "action", string(action),
-		"decision", decision, "policy_revision", g.engine.revision)
+		"decision", decision, "resource", ev.resource.String(), "policy_revision", g.engine.revision)
 }
 
 type admissionResponse struct {

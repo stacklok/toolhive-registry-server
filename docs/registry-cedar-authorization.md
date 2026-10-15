@@ -2,16 +2,16 @@
 
 ## A private catalog for consumer readers, publishers and operators
 
-Suppose only members of your IdP's `registry-readers` group may browse the
-registry's consumer API. Members of `registry-publishers` may also publish and
+Suppose only members of your IdP's `engineering` group may browse the
+engineering registry's consumer API, but not finance. Members of `registry-publishers` may also publish and
 delete entry versions. Members of `registry-operators` administer sources and
 named catalog views. These are separate grants: publishers and operators who
-need to browse must also belong to `registry-readers`; no role automatically
+need to browse must also belong to `engineering`; no role automatically
 inherits consumer-read access.
 
 Cedar applies to both the consumer and admin APIs. `catalog.read` admits a caller
-to every consumer list, get, version-list and latest-version endpoint in every named
-view. It is an endpoint admission decision, not per-view access or per-entry filtering.
+to list, get, version-list and latest-version endpoints in the requested named view.
+It is a view-scoped admission decision, never per-entry filtering.
 
 Permitted readers receive the same nonpersonalized catalog. Existing data requires
 the explicit [offline exposure procedure](registry-exposure-migration.md); startup
@@ -35,11 +35,12 @@ missing evidence and evaluation diagnostics/errors deny. There is no standalone
 alternate engine/provider/plugin option and no policy editor or API.
 
 For the group-restricted catalog described here, explicitly supply the custom policy
-below: it replaces the default entirely, never unions with it. Whole-instance
-admission provides no per-entry privacy: finance and engineering readers querying
-the same view see the same catalog. If their data
-must remain separate, use host-owned personalized services or separate instances,
-not another Cedar group rule. See the [technical reference](registry-cedar-authorization-reference.md)
+below: it replaces the default entirely, never unions with it. View admission
+provides no per-entry privacy or storage tenancy: readers querying the same admitted
+view see the same catalog. An entry exposed through both engineering and finance
+is readable through engineering even when finance is denied. Keep source/view
+composition consistent with the intended exposure, or use host-owned personalized
+services or separate instances for stronger isolation. See the [technical reference](registry-cedar-authorization-reference.md)
 for the implemented route/action boundary, identity projection and evaluation failures.
 
 ## Configure authorization
@@ -109,23 +110,36 @@ are rejected. No provider attributes are inferred from unverified JWT parsing.
 
 A principal is the caller, with identity attributes established by authentication.
 An action is the requested operation, such as browsing or publishing.
-The resource is the entire registry instance, always `Registry::Instance::"catalog"`,
-not an entry, source or view. These names are defined by the embedded registry schema.
+For `catalog.read`, the resource is `Registry::View::"engineering"` for the canonical
+view named `engineering`. Admission uses exactly the validated HTTP name, after Chi
+path routing and the adapter's `PathUnescape`, with no further decoding or case folding.
+Every other action uses `Registry::Instance::"catalog"`,
+not an entry or source. These types are defined by the embedded registry schema.
 
-Put all three blocks in `policies.cedar`. Replace the issuer and group
+Put all blocks in `policies.cedar`. Replace the issuer and group
 names with your IdP's exact values. Permits add grants; without a matching permit,
 access is denied. An explicit Cedar `forbid` takes precedence over any permit.
 
 ```cedar
-// Readers may use every consumer endpoint in every named view. This does not
-// grant entry-write or admin access, and it is not a per-view or per-entry rule.
+// Engineering readers may use every consumer endpoint in engineering, not finance.
+// This grants neither entry-write nor admin/diagnostic access.
 permit (
     principal is Registry::Principal,
-    action in [Registry::Action::"catalog.read", Registry::Action::"metadata.read"],
+    action == Registry::Action::"catalog.read",
+    resource == Registry::View::"engineering"
+) when {
+    principal.authenticated && principal.issuer == "https://id.example.org" &&
+    principal has groups && principal.groups.contains("engineering")
+};
+
+// OpenAPI metadata is a separate instance-scoped grant.
+permit (
+    principal is Registry::Principal,
+    action == Registry::Action::"metadata.read",
     resource == Registry::Instance::"catalog"
 ) when {
     principal.authenticated && principal.issuer == "https://id.example.org" &&
-    principal has groups && principal.groups.contains("registry-readers")
+    principal has groups && principal.groups.contains("engineering")
 };
 
 // Publishers may publish or delete any entry version in the managed source.
@@ -161,10 +175,13 @@ permit (
 | `/registry/{registryName}/v0.1/x/dev.toolhive/skills` | List skills, fetch a skill's latest version, list versions, fetch an exact version |
 | `/registry/{registryName}/v0.1/x/dev.toolhive/plugins` | List plugins, fetch a plugin's latest version, list versions, fetch an exact version |
 
-This includes each family's nested entry and version routes, for every named
-view selected by `{registryName}`. The singleton `Registry::Instance::"catalog"`
-cannot express grants for individual views or entries. Once admitted, callers
-receive the same consumer response for that view.
+This includes every nested detail and history route. Each call authorizes the actual
+canonical `{registryName}` before catalog IO, including direct requests that did not
+first list the view. Private evidence binds the view, operation and entry kind; a
+permit cannot be reused for a different view or capability. Once admitted, callers
+receive the same consumer response and unchanged pagination/cursors for that view.
+`catalog.read` grants no source access, admin view discovery or diagnostics; those
+remain separate instance-scoped actions. No consumer discovery endpoint is added.
 
 The issuer check prevents a same-named group from another provider granting access.
 `principal has groups` safely handles tokens without that optional attribute.
@@ -181,18 +198,18 @@ No legacy roles or resource claim filters participate in either selected path.
 
 With admin explicitly enabled and the example policies, the expected results are:
 
-| Caller | Browse catalog | Publish/delete entry | Administer sources/views |
+| Caller | Browse engineering / finance | Publish/delete entry | Administer sources/views |
 | --- | --- | --- | --- |
-| Authenticated reader, `registry-readers` only | Allowed | 403 | 403 |
-| Publisher, `registry-readers` + `registry-publishers` | Allowed | Allowed | 403 |
-| Operator, `registry-readers` + `registry-operators` | Allowed | 403 | Allowed |
-| Publisher or operator without `registry-readers` | 403 | Its separate grant, if any | Its separate grant, if any |
+| Authenticated reader, `engineering` only | Allowed / 403 | 403 | 403 |
+| Publisher, `engineering` + `registry-publishers` | Allowed / 403 | Allowed | 403 |
+| Operator, `engineering` + `registry-operators` | Allowed / 403 | 403 | Allowed |
+| Publisher or operator without `engineering` | 403 | Its separate grant, if any | Its separate grant, if any |
 | Anonymous, no token | 401 | 401 | 401 |
 
 "Allowed" still requires normal payload validation, ownership and storage checks.
 A 401 means authentication is missing or invalid; a 403 means a valid caller lacks
-permission. Permitted readers receive the same pages/cursors; there is no per-entry
-or per-view Cedar grant.
+permission. Permitted readers receive the same pages/cursors for an admitted view;
+there is no per-entry Cedar grant.
 
 With admin enabled, `/v1/me` and both GET/PUT
 `/v1/entries/{type}/{name}/claims` are authenticated static 410 tombstones, with
@@ -210,7 +227,8 @@ A missing, empty or invalid **explicitly configured policy file** prevents start
 from serving catalog/admin traffic. No matching grant denies the operation without
 calling the catalog service. Server-side evaluation failure returns a safe generic error
 (503 for evaluator unavailability, 500 for wiring faults), never partial data.
-Cedar admission decision events contain actor, action, decision and policy revision,
+Cedar admission decision events contain hashed actor, action, canonical resource,
+decision and policy revision,
 not raw tokens, claims or policy contents. This is not a guarantee about all logs:
 the opt-in `audit.includeRequestData` captures request bodies, including
 resource claims and any sensitive payload values, even on Cedar denials. Leave it
@@ -247,6 +265,18 @@ data: it was also default-denied under legacy authorization. No claims does not 
 safe to expose. Decide whether the whole catalog can be shared with admitted readers
 or requires host-owned personalization or separate instances; resource claims cannot
 be automatically translated to equivalent whole-instance permissions.
+
+Legacy instance-scoped policies must be reviewed for `Registry::View` reads: an
+explicit `catalog.read`/`Instance` policy fails strict validation, while a broad
+instance-scoped `forbid` may still validate for other actions but no longer deny reads.
+Do not simply retain old policy bytes. The current review digest domain-separates
+view-scoped admission from the unchanged private v1 fingerprint JSON and policy-byte
+revision. Old **pending** reviews therefore fail revision matching, even if policy
+bytes are unchanged. Before retirement, take fresh inventory and acknowledgement
+with this binary. After retirement, remain offline and restore a verified
+pre-retirement backup for a new review; never clear or rebind the receipt. Already
+consumed same-target receipts remain valid immutable history and are not rewritten.
+No historical SQL or schema migration changes are needed for this admission change.
 
 Prepare final config/policy and remediate retired fields and exported operator
 annotations before review. A changed pending review requires fresh inventory and

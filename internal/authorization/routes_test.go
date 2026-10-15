@@ -35,15 +35,18 @@ func TestHTTPAdmissionDiagnosticFailsClosed(t *testing.T) {
 	mw, _, err := auth.NewAdmissionAuthMiddleware(context.Background(), &config.AuthConfig{Mode: config.AuthModeAnonymous}, true, auth.DefaultValidatorFactory)
 	require.NoError(t, err)
 	router := chi.NewRouter()
-	require.NoError(t, gate.Register(router, "GET", "/servers", CatalogRead, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := guarded.List(r.Context(), "public", catalog.Query{})
-		require.ErrorIs(t, err, ErrEvaluation)
-		// Even a handler that attempts to write its own error cannot overwrite the
-		// fail-closed response or expose a diagnostic after the facade rejects it.
-		http.Error(w, "SECRET diagnostic", 500)
-	}), mw))
+	handler, err := gate.DecorateCatalog(httpapi.RouteDescriptor{Method: "GET", RegistryParam: "registryName", Operation: httpapi.List, Kind: "server"},
+		"/{registryName}/servers", CatalogRead, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := guarded.List(r.Context(), "engineering", catalog.Query{Kind: "server"})
+			require.ErrorIs(t, err, ErrEvaluation)
+			// Even a handler that attempts to write its own error cannot overwrite the
+			// fail-closed response or expose a diagnostic after the facade rejects it.
+			http.Error(w, "SECRET diagnostic", 500)
+		}), mw)
+	require.NoError(t, err)
+	router.Method("GET", "/{registryName}/servers", handler)
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest("GET", "/servers", nil))
+	router.ServeHTTP(response, httptest.NewRequest("GET", "/engineering/servers", nil))
 	require.Equal(t, 503, response.Code)
 	require.NotContains(t, response.Body.String(), "SECRET")
 	require.NotContains(t, response.Body.String(), "missing")

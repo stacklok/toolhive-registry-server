@@ -35,8 +35,8 @@ func TestOfficialReferenceParity(t *testing.T) {
 	require.NoError(t, json.Unmarshal(read("testdata/reference/results.json"), &reference))
 	require.Equal(t, "cedar-policy 4.13.0", reference.Reference)
 	var inputs []struct {
-		Name, Policy, Action string
-		Attributes           json.RawMessage
+		Name, Policy, Action, View string
+		Attributes                 json.RawMessage
 	}
 	cases := read("testdata/reference/cases.json")
 	require.NoError(t, json.Unmarshal(cases, &inputs))
@@ -67,8 +67,13 @@ func TestOfficialReferenceParity(t *testing.T) {
 			var entities types.EntityMap
 			require.NoError(t, json.Unmarshal([]byte(`[{"uid":{"type":"Registry::Principal","id":"fixture"},"attrs":`+string(input.Attributes)+`,"parents":[]},{"uid":{"type":"Registry::Instance","id":"catalog"},"attrs":{},"parents":[]}]`), &entities))
 			uid := types.EntityUID{Type: "Registry::Principal", ID: "fixture"}
+			resource := testResource(Action(input.Action))
+			if input.View != "" {
+				resource.ID = types.String(input.View)
+			}
+			entities[resource] = types.Entity{UID: resource}
 			decision, diagnostic := cedar.Authorize(policies, entities, cedar.Request{Principal: uid,
-				Action: types.EntityUID{Type: "Registry::Action", ID: types.String(input.Action)}, Resource: instance})
+				Action: types.EntityUID{Type: "Registry::Action", ID: types.String(input.Action)}, Resource: resource})
 			want := cedar.Deny
 			if golden.Decision == "Allow" {
 				want = cedar.Allow
@@ -84,11 +89,11 @@ func TestOfficialReferenceParity(t *testing.T) {
 			}
 			switch {
 			case golden.Errors != 0:
-				require.ErrorIs(t, engine.evaluate(entities[uid], Action(input.Action)), ErrEvaluation)
+				require.ErrorIs(t, engine.evaluate(entities[uid], Action(input.Action), resource), ErrEvaluation)
 			case want == cedar.Deny:
-				require.ErrorIs(t, engine.evaluate(entities[uid], Action(input.Action)), ErrDenied)
+				require.ErrorIs(t, engine.evaluate(entities[uid], Action(input.Action), resource), ErrDenied)
 			default:
-				require.NoError(t, engine.evaluate(entities[uid], Action(input.Action)))
+				require.NoError(t, engine.evaluate(entities[uid], Action(input.Action), resource))
 			}
 		})
 	}

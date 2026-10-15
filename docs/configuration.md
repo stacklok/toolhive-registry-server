@@ -65,7 +65,9 @@ authorization:
 ```
 
 Configure matching OAuth issuer/audience. `serve` selects `NewCatalogApp`: Cedar
-is whole-instance admission, not a per-entry or per-view privacy filter. Remove
+is view-scoped admission for consumer reads and instance-scoped admission for all
+other actions, never per-entry filtering. Overlapping admitted views can expose the
+same entries; views are not storage tenants. Remove
 `auth.authz`, `auth.roles`, `auth.publicPaths`, and source/view `claims`; their
 presence (even empty/null or environment-injected values) is rejected. Admin is
 off by default and requires OAuth when enabled. OpenAPI requires `metadata.read`;

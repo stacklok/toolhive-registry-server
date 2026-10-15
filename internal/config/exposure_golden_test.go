@@ -22,9 +22,14 @@ func TestSchema29ConfigFingerprintGolden(t *testing.T) {
 		exposureRetired: map[string]any{"auth.publicpaths": nil, "sources[0].claims": nil},
 		exposureEnv:     map[string]string{"AUTH_PUBLICPATHS": "[]"},
 	}
-	review, err := cfg.ExposureReview("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	review, err := cfg.fingerprintExposure("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	require.NoError(t, err)
 	require.Equal(t, fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(exposureV1Golden))), review.Revision)
 	require.Equal(t, []string{"auth.publicpaths", "env.auth.publicpaths", "sources[0].claims"}, review.RetiredFields)
+	current, err := cfg.ExposureReview("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	require.NoError(t, err)
+	require.NotEqual(t, review.Revision, current.Revision, "pending instance-scoped reviews cannot authorize view-scoped policy semantics")
+	require.Equal(t, fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("registry-exposure:view-scoped-catalog-read:v2\n"+review.Revision))), current.Revision)
+	require.Equal(t, review.RetiredFields, current.RetiredFields)
 	require.Error(t, cfg.ValidateCatalogCutover(), "compatibility decoding never activates retired input")
 }

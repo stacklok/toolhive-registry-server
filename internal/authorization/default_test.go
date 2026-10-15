@@ -23,9 +23,9 @@ func TestDefaultPolicyAndCustomReplacement(t *testing.T) {
 		p, err := principal(identity, nil)
 		require.NoError(t, err)
 		for _, action := range []Action{CatalogRead, MetadataRead, SourcesRead, SourcesWrite, SourcesDelete, ViewsRead, ViewsWrite, ViewsDelete, EntriesPublish, EntriesDelete} {
-			require.NoError(t, engine.evaluate(p, action))
+			require.NoError(t, engine.evaluate(p, action, testResource(action)))
 		}
-		require.ErrorIs(t, engine.evaluate(p, "unknown"), ErrEvidence)
+		require.ErrorIs(t, engine.evaluate(p, "unknown", instance), ErrEvidence)
 	}
 	path := filepath.Join(t.TempDir(), "restrictive.cedar")
 	require.NoError(t, os.WriteFile(path, []byte(permitCatalog), 0600))
@@ -33,6 +33,6 @@ func TestDefaultPolicyAndCustomReplacement(t *testing.T) {
 	require.NoError(t, err)
 	p, err := principal(auth.VerifiedIdentity{Anonymous: true}, nil)
 	require.NoError(t, err)
-	require.NoError(t, custom.evaluate(p, CatalogRead))
-	require.ErrorIs(t, custom.evaluate(p, SourcesWrite), ErrDenied, "permit-only custom policy must replace, not union with, default")
+	require.NoError(t, custom.evaluate(p, CatalogRead, testResource(CatalogRead)))
+	require.ErrorIs(t, custom.evaluate(p, SourcesWrite, instance), ErrDenied, "permit-only custom policy must replace, not union with, default")
 }

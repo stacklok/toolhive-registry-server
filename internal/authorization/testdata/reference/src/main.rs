@@ -34,7 +34,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let validation = validator.validate(&policies, ValidationMode::Strict);
         let valid = validation.validation_passed();
         let principal = EntityUid::from_str("Registry::Principal::\"fixture\"")?;
-        let resource = EntityUid::from_str("Registry::Instance::\"catalog\"")?;
+        let (resource_type, resource_id) = if input["action"] == "catalog.read" {
+            ("Registry::View", input["view"].as_str().unwrap_or("engineering"))
+        } else {
+            ("Registry::Instance", "catalog")
+        };
+        let resource = EntityUid::from_str(&format!("{resource_type}::\"{resource_id}\""))?;
         let action = EntityUid::from_str(&format!(
             "Registry::Action::\"{}\"",
             input["action"].as_str().ok_or("action")?
@@ -42,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let entities = Entities::from_json_value(
             json!([
                 {"uid": {"type": "Registry::Principal", "id": "fixture"}, "attrs": input["attributes"], "parents": []},
-                {"uid": {"type": "Registry::Instance", "id": "catalog"}, "attrs": {}, "parents": []}
+                {"uid": {"type": resource_type, "id": resource_id}, "attrs": {}, "parents": []}
             ]),
             Some(&schema),
         )?;

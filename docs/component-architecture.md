@@ -1,8 +1,9 @@
 # Registry component architecture
 
 The registry separates source-owned server, skill and plugin versions from named
-consumer views. A view is an ordered selection of sources, not a tenant or privacy
-boundary. Public components provide nonpersonalized catalog operations; a host owns
+consumer views. A view is an ordered selection of sources, not a storage tenant.
+Standalone Cedar admits reads per requested view, but overlapping admitted views
+can expose the same entries. Public components provide nonpersonalized catalog operations; a host owns
 identity, admission and any personalized selection.
 
 ## Packages and dependency direction

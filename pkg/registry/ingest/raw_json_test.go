@@ -16,7 +16,6 @@ import (
 )
 
 const apiRawServer = `{"$schema":"https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json","name":"com.example/weather","description":"Weather","version":"1.0","packages":[]}`
-const apiOpenAPI = "info:\n  version: 1.0.0\n  description: https://github.com/modelcontextprotocol/registry\n"
 
 func apiRawPage(server string) string {
 	return `{"servers":[{"server":` + server + `}],"metadata":{"count":1}}`
@@ -96,7 +95,7 @@ func TestUpstreamRejectsInvalidPageWithoutPartialSnapshot(t *testing.T) {
 			require.Equal(t, model.Snapshot{}, snapshot)
 			require.Equal(t, "failed to parse response page", err.Error())
 
-			client.EXPECT().Get(gomock.Any(), "https://example.org/openapi.yaml").Return([]byte(apiOpenAPI), nil)
+			client.EXPECT().Get(gomock.Any(), "https://example.org/v0.1/servers?limit=1").Return([]byte(apiRawPage(apiRawServer)), nil)
 			result, err := ingest.New(ingest.Options{HTTP: client}).Fetch(t.Context(), persistence.SourceDefinition{
 				Name: "api", API: &persistence.APISpec{Endpoint: "https://example.org"}, Schedule: "1h",
 			})
@@ -110,7 +109,7 @@ func TestAPIMetadataPrecision(t *testing.T) {
 	t.Parallel()
 	server := strings.Replace(apiRawServer, `"packages":[]`, `"_meta":{"io.modelcontextprotocol.registry/publisher-provided":{"com.example/custom":{"integer":9007199254740993,"decimal":0.123456789012345678901234567890,"nested":[1.2300]}}}`, 1)
 	client := mocks.NewMockHTTPClient(gomock.NewController(t))
-	client.EXPECT().Get(gomock.Any(), "https://example.org/openapi.yaml").Return([]byte(apiOpenAPI), nil)
+	client.EXPECT().Get(gomock.Any(), "https://example.org/v0.1/servers?limit=1").Return([]byte(apiRawPage(apiRawServer)), nil)
 	client.EXPECT().Get(gomock.Any(), "https://example.org/v0.1/servers?limit=100").Return([]byte(apiRawPage(server)), nil).Times(2)
 	upstream, err := ingest.NewUpstream(client)
 	require.NoError(t, err)

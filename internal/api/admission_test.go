@@ -41,7 +41,7 @@ func admissionTestAuth(t *testing.T) (func(http.Handler) http.Handler, *config.A
 	var issuer string
 	provider := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, r.ParseForm())
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"active": r.Form.Get("token") == "valid", "iss": issuer, "sub": "operator", "roles": []string{"superAdmin", "manageSources", "manageRegistries", "manageEntries"}, "aud": "registry", "exp": time.Now().Add(time.Hour).Unix()}))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"active": r.Form.Get("token") == "valid", "iss": issuer, "sub": "operator", "scope": "engineering", "roles": []string{"superAdmin", "manageSources", "manageRegistries", "manageEntries"}, "aud": "registry", "exp": time.Now().Add(time.Hour).Unix()}))
 	}))
 	t.Cleanup(provider.Close)
 	issuer = provider.URL

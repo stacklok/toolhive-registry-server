@@ -7,7 +7,10 @@ namespace Registry {
   scopes?: Set<String>
  };
  entity Instance;
- action "catalog.read", "metadata.read", "sources.read", "sources.write",
+ entity View;
+ action "catalog.read"
+ appliesTo { principal: Principal, resource: View, context: {} };
+ action "metadata.read", "sources.read", "sources.write",
   "sources.delete", "views.read", "views.write", "views.delete",
   "entries.publish", "entries.delete"
  appliesTo { principal: Principal, resource: Instance, context: {} };
