@@ -1,6 +1,7 @@
 package validators_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/modelcontextprotocol/registry/pkg/model"
@@ -121,7 +122,16 @@ func TestArgumentsRoundTrip(t *testing.T) {
 			require.NoError(t, err)
 
 			got := validators.DeserializeArguments(data)
-			assert.Equal(t, tt.arguments, got)
+
+			// model.Argument tracks JSON field presence in unexported fields
+			// (valuePresent, valueHintPresent) that Unmarshal sets, so compare
+			// the wire form rather than the structs.
+			want, err := json.Marshal(tt.arguments)
+			require.NoError(t, err)
+			gotJSON, err := json.Marshal(got)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(want), string(gotJSON))
+			assert.Len(t, got, len(tt.arguments))
 		})
 	}
 }
