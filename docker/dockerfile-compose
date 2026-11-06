@@ -1,5 +1,5 @@
 # This Dockerfile is intended for docker-compose only.
-FROM index.docker.io/library/golang@sha256:9048d5e7751706200eb1719c7dae0436950d362f29a1da91fa05e5c63867c60f AS builder
+FROM index.docker.io/library/golang@sha256:e519d3b0a5b285e5aa53ab9eef02bc6bbb9cb04608389b743a136a9ce75f0d1e AS builder
 
 USER root
 
@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 LDFLAGS="-s -w \
 GOOS=linux go build -ldflags "${LDFLAGS}" -o main ./cmd/thv-registry-api/main.go
 
 # Use minimal base image to package the binary
-FROM index.docker.io/library/alpine@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+FROM index.docker.io/library/alpine@sha256:3f4d6b32e26703c6082839234f43769d5046b3ac7c910033911d1e71d8cd630a
 
 COPY --from=builder /workspace/main /thv-registry-api
 COPY LICENSE /licenses/LICENSE
