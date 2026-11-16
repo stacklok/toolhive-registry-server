@@ -37,14 +37,14 @@ thv-registry-api serve [flags]
       --address string            Address to listen on (default ":8080")
       --auth-mode string          Override auth mode from config (anonymous or oauth)
       --config string             Path to configuration file (YAML format, required)
-  -h, --help                      help for serve
+  -h, --help[=true|false]         help for serve
       --internal-address string   Address to listen on for internal endpoints (health, readiness, version) (default ":8081")
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --debug   Enable debug mode
+      --debug[=true|false]   Enable debug mode
 ```
 
 ### SEE ALSO

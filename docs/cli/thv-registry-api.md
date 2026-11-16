@@ -25,8 +25,8 @@ thv-registry-api [flags]
 ### Options
 
 ```
-      --debug   Enable debug mode
-  -h, --help    help for thv-registry-api
+      --debug[=true|false]   Enable debug mode
+  -h, --help[=true|false]    help for thv-registry-api
 ```
 
 ### SEE ALSO
