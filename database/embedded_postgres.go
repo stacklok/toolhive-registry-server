@@ -5,16 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
 
-	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
-	"github.com/gofrs/flock"
+	embeddedpostgres "github.com/fergusstrange/embedded-postgres/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
@@ -94,53 +90,29 @@ func testCleanupContext(t *testing.T) context.Context {
 }
 
 func startTestPostgres(runtimePath string) (*embeddedpostgres.EmbeddedPostgres, embeddedpostgres.Config, error) {
-	binariesPath, err := testPostgresBinariesPath()
-	if err != nil {
-		return nil, embeddedpostgres.Config{}, err
-	}
-	binaryLock := flock.New(binariesPath + ".lock")
-
-	const maxPortAttempts = 3
-	var lastErr error
-	for range maxPortAttempts {
-		port, err := freePort()
-		if err != nil {
-			return nil, embeddedpostgres.Config{}, err
-		}
-
-		cfg := embeddedpostgres.DefaultConfig().
-			Version(embeddedpostgres.V16).
-			Database(DBName).
-			Username(DBUser).
-			Password(DBPass).
-			Port(port).
-			RuntimePath(runtimePath).
-			BinariesPath(binariesPath).
-			Logger(io.Discard).
-			StartParameters(map[string]string{
-				"fsync":         "off",
-				"log_statement": "all",
-			})
-		postgres := embeddedpostgres.NewDatabase(cfg)
-		if err := binaryLock.Lock(); err != nil {
-			return nil, embeddedpostgres.Config{}, fmt.Errorf("lock embedded PostgreSQL binaries: %w", err)
-		}
-		startErr := postgres.Start()
-		unlockErr := binaryLock.Unlock()
-		if startErr == nil && unlockErr == nil {
-			return postgres, cfg, nil
-		}
-		if startErr == nil {
-			_ = postgres.Stop()
-			return nil, embeddedpostgres.Config{}, fmt.Errorf("unlock embedded PostgreSQL binaries: %w", unlockErr)
-		}
-		lastErr = startErr
-		if !isPortConflict(startErr) {
-			break
-		}
+	// Port(0) lets the library pick a free port and retry on bind conflicts.
+	// Binaries are downloaded once into the library's shared cache under
+	// os.UserCacheDir(), which it guards with its own file lock.
+	cfg := embeddedpostgres.DefaultConfig().
+		Version(embeddedpostgres.V16).
+		Database(DBName).
+		Username(DBUser).
+		Password(DBPass).
+		Port(0).
+		RuntimePath(runtimePath).
+		Logger(io.Discard).
+		StartParameters(map[string]string{
+			"fsync":         "off",
+			"log_statement": "all",
+		})
+	postgres := embeddedpostgres.NewDatabase(cfg)
+	if err := postgres.Start(); err != nil {
+		return nil, embeddedpostgres.Config{}, fmt.Errorf("start embedded PostgreSQL: %w", err)
 	}
 
-	return nil, embeddedpostgres.Config{}, fmt.Errorf("start embedded PostgreSQL: %w", lastErr)
+	// Pin the chosen port so derived configs (other databases on the same
+	// server) produce working connection URLs.
+	return postgres, cfg.Port(postgres.GetPort()), nil
 }
 
 type sharedTestPostgres struct {
@@ -276,42 +248,6 @@ func releaseSharedTestDB(
 	return errors.Join(closeErr, dropErr, instance.postgres.Stop(), os.RemoveAll(instance.runtimePath))
 }
 
-func testPostgresBinariesPath() (string, error) {
-	cacheDir, err := os.UserCacheDir()
-	if err != nil {
-		return "", fmt.Errorf("locate user cache directory: %w", err)
-	}
-	parent := filepath.Join(cacheDir, "toolhive-registry-server", "embedded-postgres")
-	if err := os.MkdirAll(parent, 0o750); err != nil {
-		return "", fmt.Errorf("create embedded PostgreSQL cache directory: %w", err)
-	}
-	return filepath.Join(
-		parent,
-		string(embeddedpostgres.V16)+"-"+runtime.GOOS+"-"+runtime.GOARCH,
-	), nil
-}
-
 func testConnectionURL(cfg embeddedpostgres.Config) string {
-	return strings.Replace(cfg.GetConnectionURL(), "postgresql://", "postgres://", 1) + "?sslmode=disable"
-}
-
-func isPortConflict(err error) bool {
-	message := err.Error()
-	return strings.Contains(message, "process already listening on port") ||
-		strings.Contains(message, "Address already in use") ||
-		strings.Contains(message, "could not bind")
-}
-
-func freePort() (uint32, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, fmt.Errorf("allocate test database port: %w", err)
-	}
-	defer listener.Close()
-
-	address, ok := listener.Addr().(*net.TCPAddr)
-	if !ok {
-		return 0, fmt.Errorf("test database listener has unexpected address type %T", listener.Addr())
-	}
-	return uint32(address.Port), nil //nolint:gosec // TCP ports are bounded to uint16.
+	return cfg.GetConnectionURL()
 }
