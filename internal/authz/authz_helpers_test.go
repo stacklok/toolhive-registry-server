@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stretchr/testify/assert"
@@ -178,28 +179,17 @@ func authzRolesConfig() *config.AuthzConfig {
 	}
 }
 
-func dbConfigFromConnStr(t *testing.T, connStr string) *config.DatabaseConfig {
-	t.Helper()
-	// Connection string format: postgres://user:pass@host:port/db?sslmode=disable
-	// Parse manually to extract components
-	connStr = strings.TrimPrefix(connStr, "postgres://")
-	userPass, rest, _ := strings.Cut(connStr, "@")
-	user, password, _ := strings.Cut(userPass, ":")
-	hostPort, dbAndParams, _ := strings.Cut(rest, "/")
-	host, portStr, _ := strings.Cut(hostPort, ":")
-	dbName, _, _ := strings.Cut(dbAndParams, "?")
-
-	port := 5432
-	if portStr != "" {
-		_, _ = fmt.Sscanf(portStr, "%d", &port)
-	}
-
+// dbConfigFromConn builds the app's database config from an open test
+// connection, reusing pgx's already-parsed settings rather than re-parsing
+// the URL (whose scheme differs between embedded-postgres versions).
+func dbConfigFromConn(db *pgx.Conn) *config.DatabaseConfig {
+	cc := db.Config()
 	return &config.DatabaseConfig{
-		Host:     host,
-		Port:     port,
-		User:     user,
-		Password: password,
-		Database: dbName,
+		Host:     cc.Host,
+		Port:     int(cc.Port),
+		User:     cc.User,
+		Password: cc.Password,
+		Database: cc.Database,
 		SSLMode:  "disable",
 	}
 }
@@ -232,8 +222,7 @@ func setupEnvCustom(t *testing.T, authCfg *config.AuthConfig, sources []config.S
 	db, cleanup := database.SetupTestDB(t)
 	t.Cleanup(cleanup)
 
-	connStr := db.Config().ConnString()
-	dbCfg := dbConfigFromConnStr(t, connStr)
+	dbCfg := dbConfigFromConn(db)
 
 	var oidcServer *mockOIDCServer
 	if authCfg != nil && authCfg.Mode == config.AuthModeOAuth {
