@@ -41,7 +41,7 @@ You can trigger the release workflow in two ways:
 
 **Option A: GitHub Actions UI**
 
-1. Go to [Actions > Create Release PR](../../actions/workflows/create-release-pr.yml)
+1. Go to [Actions > Create Release PR](https://github.com/stacklok/toolhive-registry-server/actions/workflows/create-release-pr.yml)
 2. Click "Run workflow"
 3. Select the version bump type (patch, minor, or major)
 4. Click "Run workflow"

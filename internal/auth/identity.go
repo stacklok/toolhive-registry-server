@@ -2,7 +2,12 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -63,6 +68,31 @@ func SetIdentity(ctx context.Context, sub, user string) {
 	}
 }
 
+type catalogProjectionKey struct{}
+
+// PrincipalID is the bounded Cedar/audit identifier for a verified identity.
+// The JSON tuple prevents issuer/subject delimiter collisions.
+func PrincipalID(identity VerifiedIdentity) string {
+	if identity.Anonymous {
+		return AnonymousSubject
+	}
+	for _, value := range []string{identity.Issuer, identity.Subject} {
+		if value == "" || len(value) > 4096 || !utf8.ValidString(value) || strings.ContainsAny(value, "\x00\r\n") {
+			return ""
+		}
+	}
+	if identity.Claims["iss"] != identity.Issuer || identity.Claims["sub"] != identity.Subject {
+		return ""
+	}
+	tuple, _ := json.Marshal([]string{identity.Issuer, identity.Subject})
+	return fmt.Sprintf("authenticated:%x", sha256.Sum256(tuple))
+}
+
+func catalogProjection(ctx context.Context) bool {
+	project, _ := ctx.Value(catalogProjectionKey{}).(bool)
+	return project
+}
+
 // IdentityFromContext returns the authenticated subject (`sub` claim) and
 // display name for the request. Resolution order:
 //  1. The identity holder, if populated — visible to outer middleware.
@@ -71,6 +101,13 @@ func SetIdentity(ctx context.Context, sub, user string) {
 // Returns ("", "") when no identity is available. Use AnonymousSubject when
 // emitting log fields so the schema stays uniform.
 func IdentityFromContext(ctx context.Context) (sub, user string) {
+	if catalogProjection(ctx) {
+		identity, ok := VerifiedIdentityFromContext(ctx)
+		if !ok {
+			return "", ""
+		}
+		return PrincipalID(identity), ""
+	}
 	if h, ok := ctx.Value(identityHolderKey{}).(*identityHolder); ok && h != nil {
 		if sub, user, set := h.load(); set {
 			return sub, user

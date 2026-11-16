@@ -11,6 +11,17 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
+func TestRetiredClaimsFixtureIsNotADeploymentExample(t *testing.T) {
+	t.Parallel()
+	cfg, err := config.LoadCatalogConfig(config.WithConfigPath("migration-fixtures/config-docker-claims-test.yaml"))
+	if err != nil {
+		t.Fatalf("Decode historical migration fixture: %v", err)
+	}
+	if err := cfg.ValidateCatalogCutover(); err == nil {
+		t.Fatal("Historical resource claims must be rejected by selected startup")
+	}
+}
+
 func TestConfigFiles(t *testing.T) {
 	t.Parallel()
 
@@ -50,9 +61,13 @@ func TestConfigFiles(t *testing.T) {
 			}
 
 			// Load and validate configuration using LoadConfig
-			cfg, err := config.LoadConfig(config.WithConfigPath(tmpFile.Name()))
+			cfg, err := config.LoadCatalogConfig(config.WithConfigPath(tmpFile.Name()))
 			if err != nil {
 				t.Fatalf("Failed to load configuration: %v", err)
+			}
+
+			if err := cfg.ValidateCatalogCutover(); err != nil {
+				t.Fatalf("Invalid standalone admission configuration: %v", err)
 			}
 
 			// Ensure config is not nil (LoadConfig validates internally)

@@ -1,0 +1,531 @@
+package operator
+
+import (
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"strings"
+
+	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
+	model "github.com/modelcontextprotocol/registry/pkg/model"
+	mcp "github.com/stacklok/toolhive-core/mcpcompat/mcp"
+	registry "github.com/stacklok/toolhive-core/registry/types"
+	mcpv1beta1 "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
+
+	"github.com/stacklok/toolhive-registry-server/internal/versions"
+)
+
+const (
+	// defaultServerVersion is the fallback entry version when the resource carries
+	// neither a usable registry-version annotation nor a semantically versioned
+	// container image tag.
+	defaultServerVersion = "1.0.0"
+	// defaultServerStatus is the registry.ServerExtensions.Status value used
+	// for entries derived from running Kubernetes resources.
+	defaultServerStatus = "active"
+	// defaultImageVersion is returned by parseImageTagOrDigest when no tag or
+	// digest can be extracted from the container image reference.
+	defaultImageVersion = "latest"
+	// maxLoggedValueLength bounds how much of an untrusted annotation value is
+	// written to the logs. A publishable version is at most 255 characters, so this
+	// is enough to identify the mistake in a rejected one.
+	maxLoggedValueLength = 64
+)
+
+// extractServer converts an MCPServer to a ServerJSON object
+//
+//nolint:unparam
+func extractServer(mcpServer *mcpv1beta1.MCPServer) (*upstreamv0.ServerJSON, error) {
+	// Generate reverse-DNS formatted server name
+	serverName, err := generateServerName(mcpServer.Namespace, mcpServer.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate server name: %w", err)
+	}
+
+	// Build the ServerJSON from MCPServer spec
+	// Note: MCPServer is a Kubernetes deployment resource, so we extract
+	// what information is available and create a minimal ServerJSON
+	serverJSON := &upstreamv0.ServerJSON{
+		Schema: model.CurrentSchemaURL,
+		Name:   serverName,
+	}
+
+	// Extract packages from MCPServer spec (using the container image)
+	packages := extractPackages(mcpServer)
+	serverJSON.Packages = packages
+
+	annotations := mcpServer.GetAnnotations()
+	if annotations == nil {
+		return nil, fmt.Errorf("annotations not found")
+	}
+
+	serverJSON.Version = resolveServerVersion(annotations, mcpServer.Spec.Image, mcpServer.Name, mcpServer.Namespace)
+
+	desc, ok := annotations[defaultRegistryDescriptionAnnotation]
+	if !ok {
+		return nil, fmt.Errorf("description not found in annotations")
+	}
+	serverJSON.Description = desc
+
+	if title, ok := annotations[defaultRegistryTitleAnnotation]; ok {
+		serverJSON.Title = title
+	}
+
+	applyRegistryIcon(serverJSON, annotations)
+
+	transportURL, ok := annotations[defaultRegistryURLAnnotation]
+	if !ok {
+		return nil, fmt.Errorf("URL not found in annotations")
+	}
+	serverJSON.Remotes = []model.Transport{
+		{
+			Type: model.TransportTypeStreamableHTTP,
+			URL:  transportURL,
+		},
+	}
+
+	// Initialize metadata
+	serverJSON.Meta = &upstreamv0.ServerMeta{
+		PublisherProvided: make(map[string]any),
+	}
+
+	// Create ServerExtensions with Kubernetes metadata
+	extensions := &registry.ServerExtensions{
+		Status: defaultServerStatus, // Default status
+		Metadata: &registry.Metadata{
+			Kubernetes: &registry.KubernetesMetadata{
+				Kind:      mcpServer.Kind,
+				Namespace: mcpServer.Namespace,
+				Name:      mcpServer.Name,
+				Image:     mcpServer.Spec.Image,
+				UID:       string(mcpServer.UID),
+				Transport: mcpServer.Spec.Transport,
+			},
+		},
+	}
+
+	// Add tool definitions if present
+	if toolDefs := extractToolDefinitions(annotations, mcpServer.Name, mcpServer.Namespace); toolDefs != nil {
+		extensions.ToolDefinitions = toolDefs
+	}
+
+	// Add tools if present
+	if tools := extractTools(annotations, mcpServer.Name, mcpServer.Namespace); tools != nil {
+		extensions.Tools = tools
+	}
+
+	applyRegistryCategory(extensions, annotations)
+
+	// Convert extensions struct to map[string]any for JSON serialization
+	extensionsMap, err := structToMap(extensions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert extensions to map: %w", err)
+	}
+
+	serverJSON.Meta.PublisherProvided[registry.ToolHivePublisherNamespace] = map[string]any{
+		transportURL: extensionsMap,
+	}
+
+	return serverJSON, nil
+}
+
+// extractVirtualMCPServer converts a VirtualMCPServer to a ServerJSON object
+//
+//nolint:unparam
+func extractVirtualMCPServer(virtualMCPServer *mcpv1beta1.VirtualMCPServer) (*upstreamv0.ServerJSON, error) {
+	// Generate reverse-DNS formatted server name
+	serverName, err := generateServerName(virtualMCPServer.Namespace, virtualMCPServer.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate server name: %w", err)
+	}
+
+	// Build the ServerJSON from VirtualMCPServer spec
+	// Note: VirtualMCPServer is a Kubernetes deployment resource, so we extract
+	// what information is available and create a minimal ServerJSON
+	serverJSON := &upstreamv0.ServerJSON{
+		Schema: model.CurrentSchemaURL,
+		Name:   serverName,
+	}
+
+	annotations := virtualMCPServer.GetAnnotations()
+	if annotations == nil {
+		return nil, fmt.Errorf("annotations not found")
+	}
+
+	// VirtualMCPServer has no container image to derive a version from.
+	serverJSON.Version = resolveServerVersion(annotations, "", virtualMCPServer.Name, virtualMCPServer.Namespace)
+
+	desc, ok := annotations[defaultRegistryDescriptionAnnotation]
+	if !ok {
+		return nil, fmt.Errorf("description not found in annotations")
+	}
+	serverJSON.Description = desc
+
+	if title, ok := annotations[defaultRegistryTitleAnnotation]; ok {
+		serverJSON.Title = title
+	}
+
+	applyRegistryIcon(serverJSON, annotations)
+
+	transportURL, ok := annotations[defaultRegistryURLAnnotation]
+	if !ok {
+		return nil, fmt.Errorf("URL not found in annotations")
+	}
+	serverJSON.Remotes = []model.Transport{
+		{
+			Type: model.TransportTypeStreamableHTTP,
+			URL:  transportURL,
+		},
+	}
+
+	// Initialize metadata
+	serverJSON.Meta = &upstreamv0.ServerMeta{
+		PublisherProvided: make(map[string]any),
+	}
+
+	// Create ServerExtensions with Kubernetes metadata
+	extensions := &registry.ServerExtensions{
+		Status: defaultServerStatus, // Default status
+		Metadata: &registry.Metadata{
+			Kubernetes: &registry.KubernetesMetadata{
+				Kind:      virtualMCPServer.Kind,
+				Namespace: virtualMCPServer.Namespace,
+				Name:      virtualMCPServer.Name,
+				UID:       string(virtualMCPServer.UID),
+			},
+		},
+	}
+
+	// Add tool definitions if present
+	if toolDefs := extractToolDefinitions(annotations, virtualMCPServer.Name, virtualMCPServer.Namespace); toolDefs != nil {
+		extensions.ToolDefinitions = toolDefs
+	}
+
+	// Add tools if present
+	if tools := extractTools(annotations, virtualMCPServer.Name, virtualMCPServer.Namespace); tools != nil {
+		extensions.Tools = tools
+	}
+
+	applyRegistryCategory(extensions, annotations)
+
+	// Convert extensions struct to map[string]any for JSON serialization
+	extensionsMap, err := structToMap(extensions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert extensions to map: %w", err)
+	}
+
+	serverJSON.Meta.PublisherProvided[registry.ToolHivePublisherNamespace] = map[string]any{
+		transportURL: extensionsMap,
+	}
+
+	return serverJSON, nil
+}
+
+// extractMCPRemoteProxy converts a MCPRemoteProxy to a ServerJSON object
+//
+//nolint:unparam
+func extractMCPRemoteProxy(mcpRemoteProxy *mcpv1beta1.MCPRemoteProxy) (*upstreamv0.ServerJSON, error) {
+	// Generate reverse-DNS formatted server name
+	serverName, err := generateServerName(mcpRemoteProxy.Namespace, mcpRemoteProxy.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate server name: %w", err)
+	}
+
+	// Build the ServerJSON from MCPRemoteProxy spec
+	// Note: MCPRemoteProxy is a Kubernetes deployment resource, so we extract
+	// what information is available and create a minimal ServerJSON
+	serverJSON := &upstreamv0.ServerJSON{
+		Schema: model.CurrentSchemaURL,
+		Name:   serverName,
+	}
+
+	annotations := mcpRemoteProxy.GetAnnotations()
+	if annotations == nil {
+		return nil, fmt.Errorf("annotations not found")
+	}
+
+	// MCPRemoteProxy has no container image to derive a version from.
+	serverJSON.Version = resolveServerVersion(annotations, "", mcpRemoteProxy.Name, mcpRemoteProxy.Namespace)
+
+	desc, ok := annotations[defaultRegistryDescriptionAnnotation]
+	if !ok {
+		return nil, fmt.Errorf("description not found in annotations")
+	}
+	serverJSON.Description = desc
+
+	if title, ok := annotations[defaultRegistryTitleAnnotation]; ok {
+		serverJSON.Title = title
+	}
+
+	applyRegistryIcon(serverJSON, annotations)
+
+	transportURL, ok := annotations[defaultRegistryURLAnnotation]
+	if !ok {
+		return nil, fmt.Errorf("URL not found in annotations")
+	}
+	serverJSON.Remotes = []model.Transport{
+		{
+			Type: model.TransportTypeStreamableHTTP,
+			URL:  transportURL,
+		},
+	}
+
+	// Initialize metadata
+	serverJSON.Meta = &upstreamv0.ServerMeta{
+		PublisherProvided: make(map[string]any),
+	}
+
+	// Create ServerExtensions with Kubernetes metadata
+	extensions := &registry.ServerExtensions{
+		Status: defaultServerStatus, // Default status
+		Metadata: &registry.Metadata{
+			Kubernetes: &registry.KubernetesMetadata{
+				Kind:      mcpRemoteProxy.Kind,
+				Namespace: mcpRemoteProxy.Namespace,
+				Name:      mcpRemoteProxy.Name,
+				UID:       string(mcpRemoteProxy.UID),
+			},
+		},
+	}
+
+	// Add tool definitions if present
+	if toolDefs := extractToolDefinitions(annotations, mcpRemoteProxy.Name, mcpRemoteProxy.Namespace); toolDefs != nil {
+		extensions.ToolDefinitions = toolDefs
+	}
+
+	// Add tools if present
+	if tools := extractTools(annotations, mcpRemoteProxy.Name, mcpRemoteProxy.Namespace); tools != nil {
+		extensions.Tools = tools
+	}
+
+	applyRegistryCategory(extensions, annotations)
+
+	// Convert extensions struct to map[string]any for JSON serialization
+	extensionsMap, err := structToMap(extensions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert extensions to map: %w", err)
+	}
+
+	serverJSON.Meta.PublisherProvided[registry.ToolHivePublisherNamespace] = map[string]any{
+		transportURL: extensionsMap,
+	}
+
+	return serverJSON, nil
+}
+
+// extractToolDefinitions extracts and parses tool definitions from annotations.
+// It validates JSON syntax but does not validate the schema (operator's responsibility).
+// Returns nil if the annotation is not present, empty, or contains invalid JSON.
+func extractToolDefinitions(annotations map[string]string, name, namespace string) []mcp.Tool {
+	toolDefsStr, ok := annotations[defaultRegistryToolDefinitionsAnnotation]
+	if !ok || toolDefsStr == "" {
+		return nil
+	}
+
+	var toolDefs []mcp.Tool
+	if err := json.Unmarshal([]byte(toolDefsStr), &toolDefs); err != nil {
+		slog.Warn("tool_definitions annotation is not valid JSON, skipping",
+			"error", err,
+			"server", name,
+			"namespace", namespace)
+		return nil
+	}
+
+	return toolDefs
+}
+
+// extractTools extracts and parses tools from annotations.
+// It expects a JSON array of strings (tool names).
+// Returns nil if the annotation is not present, empty, or contains invalid JSON.
+func extractTools(annotations map[string]string, name, namespace string) []string {
+	toolsStr, ok := annotations[defaultRegistryToolsAnnotation]
+	if !ok || toolsStr == "" {
+		return nil
+	}
+
+	var tools []string
+	if err := json.Unmarshal([]byte(toolsStr), &tools); err != nil {
+		slog.Warn("tools annotation is not valid JSON, skipping",
+			"error", err,
+			"server", name,
+			"namespace", namespace)
+		return nil
+	}
+
+	return tools
+}
+
+// applyRegistryIcon sets the server's icon from the registry-icon annotation
+// when present. Icons are a first-class field of the upstream server.json, so
+// the annotation value (a single icon source URL) is placed there directly.
+func applyRegistryIcon(serverJSON *upstreamv0.ServerJSON, annotations map[string]string) {
+	if icon, ok := annotations[defaultRegistryIconAnnotation]; ok && icon != "" {
+		serverJSON.Icons = []model.Icon{{Src: icon}}
+	}
+}
+
+// applyRegistryCategory records the registry-category annotation as a ToolHive
+// tag when present. Category is not an upstream server.json field; ToolHive's
+// Tags extension is the categorization and filtering mechanism, so the category
+// is carried there.
+func applyRegistryCategory(extensions *registry.ServerExtensions, annotations map[string]string) {
+	if category, ok := annotations[defaultRegistryCategoryAnnotation]; ok && category != "" {
+		extensions.Tags = append(extensions.Tags, category)
+	}
+}
+
+// extractPackages extracts packages from MCPServer spec
+// MCPServer uses container images, so we create an OCI package from the image
+func extractPackages(mcpServer *mcpv1beta1.MCPServer) []model.Package {
+	var packages []model.Package
+
+	transportType := mcpServer.Spec.Transport
+	if transportType == "" {
+		transportType = model.TransportTypeStreamableHTTP
+	}
+
+	if transportType == model.TransportTypeStdio {
+		if mcpServer.Spec.ProxyMode != "" {
+			transportType = mcpServer.Spec.ProxyMode
+		} else {
+			transportType = model.TransportTypeStreamableHTTP
+		}
+	}
+
+	version := parseImageTagOrDigest(mcpServer.Spec.Image)
+	packageModel := model.Package{
+		RegistryType: model.RegistryTypeOCI,
+		Identifier:   mcpServer.Spec.Image,
+		Version:      version,
+		Transport: model.Transport{
+			Type: transportType,
+		},
+	}
+	packages = append(packages, packageModel)
+
+	return packages
+}
+
+// resolveServerVersion determines the version of a registry entry derived from a
+// Kubernetes resource. Precedence: the registry-version annotation, then the
+// container image tag, then defaultServerVersion. Resources that run no image pass
+// an empty image reference.
+//
+// Both candidates are attacker-controlled free-form strings — annotation values are
+// unconstrained, and MCPServerSpec.Image has no format validation — and nothing
+// downstream validates an entry version, so a candidate that versions.IsPublishable
+// rejects is skipped rather than published. That removes the need to special-case
+// image references carrying no usable version: "latest", channel tags, and bare
+// digests all fail the check and fall through to the default.
+func resolveServerVersion(annotations map[string]string, image, name, namespace string) string {
+	annotated := strings.TrimSpace(annotations[defaultRegistryVersionAnnotation])
+	if annotated != "" && versions.IsPublishable(annotated) {
+		return annotated
+	}
+
+	resolved := defaultServerVersion
+	if tag := strings.TrimSpace(parseImageTag(image)); versions.IsPublishable(tag) {
+		resolved = tag
+	}
+
+	// A rejected annotation is always an operator mistake, so it is worth a warning.
+	// A rejected image tag is routine ("latest", "stable", a digest) and is not. The
+	// value is truncated because it is unbounded and this runs on every reconcile.
+	if annotated != "" {
+		slog.Warn("ignoring unusable registry entry version annotation, using resolved version instead",
+			"annotation", defaultRegistryVersionAnnotation,
+			"value", truncateForLog(annotated),
+			"value_length", len(annotated),
+			"resolved_version", resolved,
+			"server", name,
+			"namespace", namespace)
+	}
+
+	return resolved
+}
+
+// truncateForLog bounds an untrusted annotation value on its way to the logs.
+// Kubernetes allows roughly 256KiB of annotations per object and the reconciler runs
+// on every update, so echoing a value verbatim would let one oversized annotation
+// amplify into the log volume that the publishing length limit exists to prevent.
+// Truncation is trimmed back to a rune boundary so the log line stays valid UTF-8.
+func truncateForLog(value string) string {
+	if len(value) <= maxLoggedValueLength {
+		return value
+	}
+	return strings.ToValidUTF8(value[:maxLoggedValueLength], "") + "…"
+}
+
+// parseImageTag returns the tag from a container image reference, or an empty string
+// when the reference carries none.
+//
+// Unlike parseImageTagOrDigest it never returns a digest, because a digest is not a
+// version: it does not order, and it changes on every image rebuild. A reference may
+// carry both ("db:1.4.2@sha256:..." is the canonical way to pin an image while keeping
+// the tag readable), and in that case the tag is the version the operator means.
+//
+// It also declines to mistake a registry port for a tag. A colon that appears before
+// the last "/" belongs to a host:port, so "registry.internal:5000/db" has no tag.
+func parseImageTag(image string) string {
+	// A digest suffix is not a tag; drop it before looking for one.
+	if at := strings.Index(image, "@"); at != -1 {
+		image = image[:at]
+	}
+
+	colon := strings.LastIndex(image, ":")
+	if colon == -1 || strings.LastIndex(image, "/") > colon {
+		return ""
+	}
+
+	return image[colon+1:]
+}
+
+// parseImageTagOrDigest is a rudimentary parser that parses the tag or digest
+// from an image string. It returns the tag or digest, or an error if the image
+// is invalid.
+func parseImageTagOrDigest(image string) string {
+	var potentialTag string
+	var potentialDigest string
+
+	parts := strings.Split(image, ":")
+	if len(parts) >= 2 {
+		potentialTag = parts[len(parts)-1]
+	}
+	parts = strings.Split(image, "@")
+	if len(parts) >= 2 {
+		potentialDigest = parts[len(parts)-1]
+
+	}
+
+	if potentialDigest != "" {
+		return potentialDigest
+	}
+	if potentialTag != "" {
+		return potentialTag
+	}
+
+	return defaultImageVersion
+}
+
+// structToMap converts a struct to map[string]any using JSON marshaling.
+// This is needed to convert typed structs (like ServerExtensions) into the generic map
+// structure expected by the PublisherProvided field, while preserving proper JSON serialization.
+//
+// Note: JSON numbers unmarshal to float64 in map[string]any. This is fine for the current
+// use case (only string fields are set from Kubernetes metadata), but callers should be
+// aware that any integer fields (e.g., ProxyPort, Stars) will become float64 in the result.
+func structToMap(v any) (map[string]any, error) {
+	// Marshal the struct to JSON
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal struct: %w", err)
+	}
+
+	// Unmarshal JSON into map[string]any
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal into map: %w", err)
+	}
+
+	return result, nil
+}

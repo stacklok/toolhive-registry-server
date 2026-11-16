@@ -1,10 +1,10 @@
-// Package writer contains the SyncWriter interface and implementations
+// Package writer implements transactional PostgreSQL payload staging.
+// Callers own fencing, mutation guards and transaction commit.
 package writer
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -13,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
 	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
@@ -38,80 +37,57 @@ const (
 	skillRegistryTypeGit = "git"
 )
 
-// dbSyncWriter is a SyncWriter implementation that persists data to a database
+// dbSyncWriter stages payloads within a caller-owned transaction.
 type dbSyncWriter struct {
-	pool        *pgxpool.Pool
 	maxMetaSize int
 }
 
-// NewDBSyncWriter creates a new dbSyncWriter with the given connection pool.
-// The caller is responsible for closing the pool when done.
-// maxMetaSize specifies the maximum allowed size in bytes for publisher-provided
-// metadata extensions and must be greater than zero.
-func NewDBSyncWriter(pool *pgxpool.Pool, maxMetaSize int) (SyncWriter, error) {
-	if pool == nil {
-		return nil, fmt.Errorf("pgx pool is required")
-	}
-	return &dbSyncWriter{pool: pool, maxMetaSize: maxMetaSize}, nil
-}
-
-// Store saves a UpstreamRegistry instance to database storage for a specific registry.
-//
-// This method performs an efficient bulk sync using temporary tables and COPY operations:
-//  1. Validates the registry exists
-//  2. Upserts registry entries (one per name), entry versions (one per name+version),
-//     and mcp_server rows via temp tables and COPY to preserve existing UUIDs
-//  3. Deletes orphaned servers that no longer exist in upstream (CASCADE cleans related data)
-//  4. For packages/remotes/icons: creates temp tables, copies data, bulk upserts, deletes orphans
-//  5. Updates the latest_entry_version table for each unique server name
-//
-// The operation is performed within a serializable transaction to ensure consistency.
-// Temp tables are automatically dropped at transaction end (ON COMMIT DROP).
-//
-//nolint:gocyclo
-func (d *dbSyncWriter) Store(
-	ctx context.Context,
-	registryName string,
-	reg *toolhivetypes.UpstreamRegistry,
-	opts ...StoreOption,
+// StoreSourceTx writes a complete source snapshot in the caller's transaction.
+// This internal adapter seam lets a future job acknowledge a fenced result in
+// the same transaction; transaction types never enter the public contract.
+func StoreSourceTx(
+	ctx context.Context, tx pgx.Tx, sourceID uuid.UUID,
+	reg *toolhivetypes.UpstreamRegistry, maxMetaSize int,
 ) error {
-	if reg == nil {
-		return fmt.Errorf("registry data is required")
-	}
-
-	// Begin transaction with serializable isolation level for consistency
-	tx, err := d.pool.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   pgx.Serializable,
-		AccessMode: pgx.ReadWrite,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
-			// Log rollback error in production; here we just ignore it
-			_ = rollbackErr
-		}
-	}()
-
-	querier := sqlc.New(tx)
-
-	// Step 1: Validate registry exists and get registry ID
-	registry, err := querier.GetSourceByName(ctx, registryName)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("registry not found: %s", registryName)
-		}
-		return fmt.Errorf("failed to get registry: %w", err)
-	}
-
-	storeOpts, err := parseStoreOptions(opts)
-	if err != nil {
+	if err := (&dbSyncWriter{maxMetaSize: maxMetaSize}).storeSourceTx(ctx, tx, sourceID, reg); err != nil {
 		return err
 	}
+	return sqlc.New(tx).EntryDeleteEmptyNames(ctx, sourceID)
+}
 
+// PublishSourceTx upserts exactly one version without replacing other versions.
+// The caller owns the transaction and must check managed ownership and conflicts.
+func PublishSourceTx(
+	ctx context.Context, tx pgx.Tx, sourceID uuid.UUID,
+	reg *toolhivetypes.UpstreamRegistry, maxMetaSize int,
+) error {
+	d := &dbSyncWriter{maxMetaSize: maxMetaSize}
+	q := sqlc.New(tx)
+	if len(reg.Data.Servers) == 1 {
+		ids, err := d.storeSyncInTempTables(ctx, tx, sourceID, reg.Data.Servers)
+		if err != nil {
+			return err
+		}
+		if err = dropEntryTempTables(ctx, q); err != nil {
+			return err
+		}
+		if err = d.insertRelatedData(ctx, tx, ids, reg.Data.Servers); err != nil {
+			return err
+		}
+		return d.updateLatestVersions(ctx, q, sourceID, ids, reg.Data.Servers)
+	}
+	if len(reg.Data.Skills) == 1 {
+		return d.storeSkills(ctx, tx, sourceID, reg.Data.Skills, false)
+	}
+	return d.storePlugins(ctx, tx, sourceID, reg.Data.Plugins, false)
+}
+
+func (d *dbSyncWriter) storeSourceTx(
+	ctx context.Context, tx pgx.Tx, sourceID uuid.UUID, reg *toolhivetypes.UpstreamRegistry,
+) error {
+	querier := sqlc.New(tx)
 	// Step 2: Upsert all servers using temp table and COPY, collect their IDs
-	serverIDMap, err := d.storeSyncInTempTables(ctx, tx, registry.ID, reg.Data.Servers, registry.Claims, storeOpts.PerEntryClaims)
+	serverIDMap, err := d.storeSyncInTempTables(ctx, tx, sourceID, reg.Data.Servers)
 	if err != nil {
 		return fmt.Errorf("failed to upsert servers: %w", err)
 	}
@@ -122,7 +98,7 @@ func (d *dbSyncWriter) Store(
 	}
 
 	// Step 3: Delete orphaned servers (servers that no longer exist in upstream)
-	if err := d.deleteOrphanedEntries(ctx, tx, registry.ID, sqlc.EntryTypeMCP, collectValues(serverIDMap)); err != nil {
+	if err := d.deleteOrphanedEntries(ctx, tx, sourceID, sqlc.EntryTypeMCP, collectValues(serverIDMap)); err != nil {
 		return fmt.Errorf("failed to delete orphaned servers: %w", err)
 	}
 
@@ -132,25 +108,22 @@ func (d *dbSyncWriter) Store(
 	}
 
 	// Step 5: Update latest_server_version table
-	if err := d.updateLatestVersions(ctx, querier, registry.ID, serverIDMap, reg.Data.Servers); err != nil {
+	if err := d.updateLatestVersions(ctx, querier, sourceID, serverIDMap, reg.Data.Servers); err != nil {
 		return fmt.Errorf("failed to update latest versions: %w", err)
 	}
 
 	// Step 6: Store skills
-	if err := d.storeSkills(ctx, tx, registry.ID, reg.Data.Skills, registry.Claims); err != nil {
+	if err := d.storeSkills(ctx, tx, sourceID, reg.Data.Skills, true); err != nil {
 		return fmt.Errorf("failed to store skills: %w", err)
+	}
+	if err := dropEntryTempTables(ctx, querier); err != nil {
+		return err
 	}
 
 	// Step 7: Store plugins
-	if err := d.storePlugins(ctx, tx, registry.ID, reg.Data.Plugins, registry.Claims); err != nil {
+	if err := d.storePlugins(ctx, tx, sourceID, reg.Data.Plugins, true); err != nil {
 		return fmt.Errorf("failed to store plugins: %w", err)
 	}
-
-	// Commit transaction
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return nil
 }
 
@@ -167,8 +140,6 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 	tx pgx.Tx,
 	registryID uuid.UUID,
 	servers []upstreamv0.ServerJSON,
-	claims []byte,
-	perEntryClaims map[string][]byte,
 ) (map[string]uuid.UUID, error) {
 	if len(servers) == 0 {
 		return make(map[string]uuid.UUID), nil
@@ -177,7 +148,7 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 	querier := sqlc.New(tx)
 
 	// 1. Upsert registry entries (one per unique name)
-	entryMap, err := sqlCopyEntries(ctx, tx, registryID, servers, claims, perEntryClaims)
+	entryMap, err := sqlCopyEntries(ctx, tx, registryID, servers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to copy entries: %w", err)
 	}
@@ -361,6 +332,10 @@ func bulkInsertPackages(
 			if err != nil {
 				return fmt.Errorf("failed to serialize package arguments for %s: %w", pkg.Identifier, err)
 			}
+			variablesJSON, err := marshalJSONOrNil(pkg.Transport.Variables)
+			if err != nil {
+				return fmt.Errorf("failed to serialize transport variables: %w", err)
+			}
 
 			packageRows = append(packageRows, []any{
 				serverID,
@@ -376,6 +351,7 @@ func bulkInsertPackages(
 				pkg.Transport.Type,
 				nilIfEmpty(pkg.Transport.URL),
 				serializeKeyValueInputs(pkg.Transport.Headers),
+				variablesJSON,
 			})
 		}
 	}
@@ -395,7 +371,7 @@ func bulkInsertPackages(
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_package"},
 		[]string{colServerID, "registry_type", "pkg_registry_url", "pkg_identifier", "pkg_version",
 			"runtime_hint", "runtime_arguments", "package_arguments", "env_vars", "sha256_hash",
-			"transport", "transport_url", "transport_headers"},
+			"transport", "transport_url", "transport_headers", "transport_variables"},
 		pgx.CopyFromRows(packageRows))
 	if err != nil {
 		return fmt.Errorf("failed to copy packages: %w", err)
@@ -459,12 +435,17 @@ func bulkInsertRemotes(
 				continue
 			}
 			seenRemotes[key] = true
+			variablesJSON, err := marshalJSONOrNil(remote.Variables)
+			if err != nil {
+				return fmt.Errorf("failed to serialize remote variables: %w", err)
+			}
 
 			remoteRows = append(remoteRows, []any{
 				serverID,
 				remote.Type,
 				remote.URL,
 				serializeKeyValueInputs(remote.Headers),
+				variablesJSON,
 			})
 		}
 	}
@@ -488,7 +469,7 @@ func bulkInsertRemotes(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_remote"},
-		[]string{colServerID, "transport", "transport_url", "transport_headers"},
+		[]string{colServerID, "transport", "transport_url", "transport_headers", "transport_variables"},
 		pgx.CopyFromRows(remoteRows))
 	if err != nil {
 		return fmt.Errorf("failed to copy remotes: %w", err)
@@ -555,6 +536,8 @@ func bulkInsertIcons(
 				icon.Src,
 				mimeType,
 				theme,
+				icon.Sizes,
+				icon.Theme != nil,
 			})
 		}
 	}
@@ -572,7 +555,7 @@ func bulkInsertIcons(
 
 	// COPY into temp table
 	_, err := tx.CopyFrom(ctx, pgx.Identifier{"temp_mcp_server_icon"},
-		[]string{colServerID, "source_uri", "mime_type", "theme"},
+		[]string{colServerID, "source_uri", "mime_type", "theme", "sizes", "theme_present"},
 		pgx.CopyFromRows(iconRows))
 	if err != nil {
 		return fmt.Errorf("failed to copy icons: %w", err)
@@ -684,7 +667,7 @@ func copyAndUpsertEntries(ctx context.Context, tx pgx.Tx, entryRows [][]any) (ma
 	entryCopyCount, err := tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"temp_registry_entry"},
-		[]string{"id", "source_id", "entry_type", "name", "claims", "created_at", "updated_at"},
+		[]string{"id", "source_id", "entry_type", "name", "created_at", "updated_at"},
 		pgx.CopyFromRows(entryRows),
 	)
 	if err != nil {
@@ -714,8 +697,6 @@ func sqlCopyEntries(
 	tx pgx.Tx,
 	registryID uuid.UUID,
 	servers []upstreamv0.ServerJSON,
-	claims []byte,
-	perEntryClaims map[string][]byte,
 ) (map[string]uuid.UUID, error) {
 	// Deduplicate by name — one registry_entry per unique server name
 	seen := make(map[string]bool, len(servers))
@@ -732,18 +713,11 @@ func sqlCopyEntries(
 			return nil, fmt.Errorf("failed to generate entry ID: %w", err)
 		}
 
-		// Use per-entry claims if available, otherwise fall back to source-level claims
-		entryClaims := claims
-		if ec, ok := perEntryClaims[server.Name]; ok {
-			entryClaims = ec
-		}
-
 		entryRows = append(entryRows, []any{
 			entryID,
 			registryID,
 			sqlc.EntryTypeMCP,
 			server.Name,
-			entryClaims,
 			&now,
 			&now,
 		})
@@ -876,6 +850,7 @@ func sqlCopyServers(
 			repoID,
 			repoSubfolder,
 			repoType,
+			server.Schema,
 		})
 	}
 
@@ -883,7 +858,7 @@ func sqlCopyServers(
 		ctx,
 		pgx.Identifier{"temp_mcp_server"},
 		[]string{"version_id", "website", "upstream_meta", "server_meta",
-			"repository_url", "repository_id", "repository_subfolder", "repository_type"},
+			"repository_url", "repository_id", "repository_subfolder", "repository_type", "schema_url"},
 		pgx.CopyFromRows(mcpRows),
 	)
 	if err != nil {
@@ -910,17 +885,22 @@ func skillKey(namespace, name, version string) string {
 // It follows the same bulk-sync pattern as server storage: temp tables with COPY,
 // followed by upserts and orphan cleanup. Reuses the shared copyAndUpsertEntries
 // and copyAndUpsertEntryVersions functions.
+//
+//nolint:gocyclo // The existing COPY pipeline coordinates staging, cleanup, and latest pointers.
 func (d *dbSyncWriter) storeSkills(
 	ctx context.Context,
 	tx pgx.Tx,
 	registryID uuid.UUID,
 	skills []toolhivetypes.Skill,
-	claims []byte,
+	replace bool,
 ) error {
 	querier := sqlc.New(tx)
 
 	// If no skills, clean up any previously synced skills and return
 	if len(skills) == 0 {
+		if !replace {
+			return nil
+		}
 		return querier.DeleteSkillsByRegistry(ctx, registryID)
 	}
 
@@ -945,7 +925,6 @@ func (d *dbSyncWriter) storeSkills(
 			registryID,
 			sqlc.EntryTypeSKILL,
 			skill.Name,
-			claims,
 			&now,
 			&now,
 		})
@@ -1019,8 +998,10 @@ func (d *dbSyncWriter) storeSkills(
 	}
 
 	// 4. Delete orphaned skills that no longer exist in upstream
-	if err := d.deleteOrphanedEntries(ctx, tx, registryID, sqlc.EntryTypeSKILL, keepIDs); err != nil {
-		return fmt.Errorf("failed to delete orphaned skills: %w", err)
+	if replace {
+		if err := d.deleteOrphanedEntries(ctx, tx, registryID, sqlc.EntryTypeSKILL, keepIDs); err != nil {
+			return fmt.Errorf("failed to delete orphaned skills: %w", err)
+		}
 	}
 
 	// 5. Update latest skill versions
@@ -1084,6 +1065,10 @@ func upsertSingleSkillVersion(
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("failed to marshal extension meta for skill %s: %w", key, err)
 	}
+	provenanceJSON, err := marshalJSONOrNil(skill.Provenance)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal provenance for skill %s: %w", key, err)
+	}
 
 	status := sqlc.NullSkillStatus{}
 	if skill.Status != "" {
@@ -1104,6 +1089,7 @@ func upsertSingleSkillVersion(
 		Icons:         iconsJSON,
 		Metadata:      metadataJSON,
 		ExtensionMeta: extMetaJSON,
+		Provenance:    provenanceJSON,
 	})
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("failed to upsert skill version for %s: %w", key, err)
@@ -1212,17 +1198,22 @@ func pluginKey(namespace, name, version string) string {
 // It follows the same bulk-sync pattern as skill storage: temp tables with COPY,
 // followed by upserts and orphan cleanup. Reuses the shared copyAndUpsertEntries
 // and copyAndUpsertEntryVersions functions.
+//
+//nolint:gocyclo // The existing COPY pipeline coordinates staging, cleanup, and latest pointers.
 func (d *dbSyncWriter) storePlugins(
 	ctx context.Context,
 	tx pgx.Tx,
 	registryID uuid.UUID,
 	plugins []toolhivetypes.Plugin,
-	claims []byte,
+	replace bool,
 ) error {
 	querier := sqlc.New(tx)
 
 	// If no plugins, clean up any previously synced plugins and return
 	if len(plugins) == 0 {
+		if !replace {
+			return nil
+		}
 		return querier.DeletePluginsByRegistry(ctx, registryID)
 	}
 
@@ -1247,7 +1238,6 @@ func (d *dbSyncWriter) storePlugins(
 			registryID,
 			sqlc.EntryTypePLUGIN,
 			plugin.Name,
-			claims,
 			&now,
 			&now,
 		})
@@ -1321,8 +1311,10 @@ func (d *dbSyncWriter) storePlugins(
 	}
 
 	// 4. Delete orphaned plugins that no longer exist in upstream
-	if err := d.deleteOrphanedEntries(ctx, tx, registryID, sqlc.EntryTypePLUGIN, keepIDs); err != nil {
-		return fmt.Errorf("failed to delete orphaned plugins: %w", err)
+	if replace {
+		if err := d.deleteOrphanedEntries(ctx, tx, registryID, sqlc.EntryTypePLUGIN, keepIDs); err != nil {
+			return fmt.Errorf("failed to delete orphaned plugins: %w", err)
+		}
 	}
 
 	// 5. Update latest plugin versions

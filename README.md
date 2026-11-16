@@ -14,11 +14,11 @@
 
 **Discover, govern, and control access to MCP servers, skills, and plugins across your organization**
 
-The ToolHive Registry Server aggregates MCP servers, skills, and plugins from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs that your teams and AI clients can query. Each catalog has its own access control and audit trail, so you decide which entries are visible to which users -- and have a record of who accessed what.
+The ToolHive Registry Server aggregates MCP servers, skills, and plugins from Git repos, Kubernetes clusters, upstream registries, and internal APIs into named catalogs. OAuth verifies identity and Cedar admits consumer reads per requested view and other operations instance-wide. Standalone evaluates built-in allow-all Cedar by default; an optional custom file replaces it entirely. Every verified identity can use every enabled operation, including admin if explicitly enabled (admin is off by default). Permitted readers of the same view receive the same catalog; views are not storage tenants, and overlapping admitted views can expose the same entries. Use separate instances or host-owned personalized services when audiences must see different data.
 
 It implements the official [Model Context Protocol (MCP) Registry API specification](https://modelcontextprotocol.io/development/roadmap#registry). If you're not familiar with MCP: it's an open protocol that lets AI assistants connect to external tools and data sources. This server is the governance layer that sits between your MCP infrastructure and the teams consuming it.
 
-**Why ToolHive Registry Server?** Most MCP setups start with a flat list of servers and no access control. As adoption grows, you need to govern who sees what, aggregate servers from multiple sources, and audit access -- without locking into a proprietary registry. The ToolHive Registry Server is open source, implements the official MCP Registry API spec, and plugs into your existing identity provider, combining multi-tenant claim-based authorization, multi-source aggregation, and SIEM-compliant audit logging in a single service.
+**Why ToolHive Registry Server?** Most MCP setups start with a flat list of servers and no access control. As adoption grows, you need to govern who sees what, aggregate servers from multiple sources, and audit access -- without locking into a proprietary registry. The ToolHive Registry Server is open source, implements the official MCP Registry API spec, and plugs into your existing identity provider, combining view-scoped Cedar read admission, instance-scoped administration, multi-source aggregation, and SIEM-compliant audit logging in a single service.
 
 [Learn more about the ToolHive platform →](https://stacklok.com/platform)
 
@@ -32,6 +32,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 - [API Endpoints](#api-endpoints)
 - [Configuration](#configuration)
 - [The ToolHive Platform](#the-toolhive-platform)
+- [Embedding](#embedding)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 
@@ -39,23 +40,23 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 
 ### Governance and access control
 
-- **JWT claim-based visibility**: Control which MCP servers, skills, and plugins each user or team can see, per registry. A "production" registry can expose only vetted entries while a "dev-team" registry shows everything.
+- **Cedar admission**: Evaluated built-in allow-all after authentication; optional custom policies replace it entirely to restrict consumer read, publication and administration. No per-entry claim filtering; consumer admission is per requested view.
 - **OAuth 2.0/OIDC authentication**: Plug in your existing identity provider (Okta, Auth0, Azure AD). OAuth is the default; anonymous mode is available for development.
-- **Role-based administration**: Separate roles for managing sources, registries, and entries. Scope each role to specific JWT claims so teams manage their own resources.
+- **Explicit administration**: Admin is disabled by default; enabled endpoints always require authenticated identity and a matching Cedar action permit.
 - **SIEM-compliant audit logging**: Structured log covering all API operations with NIST SP 800-53 AU-3 compliant fields, dedicated file output, and configurable event filtering.
 
 ### Aggregate from anywhere
 
 - **Five source types**: Pull entries from Git repos, upstream MCP registries, local files, Kubernetes clusters, or publish them via the Admin API.
-- **Compose catalogs from multiple sources**: Each registry aggregates one or more sources, listed in order of precedence. One source can feed multiple registries, so the same internal catalog can serve different teams with different visibility rules.
+- **Compose catalogs from multiple sources**: Each registry aggregates sources in order of precedence. Views are catalog compositions, not storage tenants; read admission does not isolate overlapping entries.
 - **Background sync**: Sources are polled on configurable intervals with retry logic. Registries stay current without manual intervention.
 
 ### Kubernetes and observability
 
-- **Kubernetes-native discovery**: A built-in reconciler watches for MCP server CRDs across namespaces and syncs them into the registry automatically. Per-entry access control via CRD annotations, multi-namespace support, and leader election for HA.
+- **Kubernetes-native discovery**: Export-opted-in CRDs are ingested through fenced leased writers over the configured namespace scope. Retired claims annotations block preflight.
 - **OpenTelemetry**: Distributed tracing and metrics out of the box.
 - **Standards-compliant**: Implements the official MCP Registry API specification. Clients that speak the spec work out of the box.
-- **PostgreSQL backend**: Database storage with automatic migrations.
+- **PostgreSQL backend**: Guarded forward migrations, with explicit offline review/finalization for existing catalogs.
 
 ## Quickstart
 
@@ -71,32 +72,54 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 # Build the binary
 task build
 
-# Run with Git source
-thv-registry-api serve --config examples/config-git.yaml
+# After configuring PostgreSQL and trusted OAuth (custom Cedar mount optional):
+# Existing catalog: complete the linked offline procedure before serving.
+./bin/thv-registry-api serve --config examples/config-git.yaml
 
-# Run with local file
-thv-registry-api serve --config examples/config-file.yaml
+# New, entirely empty database only (explicit opt-in):
+./bin/thv-registry-api serve --config examples/config-file.yaml --initialize-empty
 ```
 
-The server starts on `http://localhost:8080` by default.
+Configure trusted OAuth and PostgreSQL in the selected example first. If changing
+an issuer, also update or remove its `authorization.identityMappings` entry; the
+built-in policy needs no group/scope mappings. Omit
+`authorization.policyFile` for built-in allow-all Cedar, or explicitly mount a custom
+restriction read-only (invalid specified files fail startup, never default fallback).
+Anonymous catalog access requires explicit opt-in; invalid credentials never become
+anonymous. Existing catalogs require the
+[offline exposure procedure](docs/registry-exposure-migration.md); even unlabeled
+data is not an empty install. Then start with `thv-registry-api serve --config config.yaml`.
+Only for a genuinely new, entirely empty database, explicitly add `--initialize-empty`.
+It grants no policy permission and never approves existing data.
+
+The public listener defaults to `:8080`; probes/metrics use the separate `:8081`.
 
 ### Docker quickstart
 
+Configure your OAuth issuer/audience in `examples/config-docker.yaml`. No external
+policy mount is required by default; see [configuration](docs/configuration.md) for an
+optional custom policy override. The base Compose configuration has no implicit
+initialization or anonymous grant:
+
 ```bash
-# Using Task (recommended - ensures fresh state)
-task docker-up
-
-# Or detached mode
-task docker-up-detached
-
-# Access the API
-curl http://localhost:8080/registry/default/v0.1/servers
-
-# Stop and clean up
-task docker-down
+docker compose up --build
+# New, entirely empty database only; explicit empty-install authorization:
+docker compose -f docker-compose.yaml -f docker-compose.initialize-empty.yaml up --build
 ```
 
-> **Note:** The `task docker-up` command ensures a fresh start by rebuilding the image and clearing all volumes (database + registry data). This prevents stale state issues.
+Neither invocation deletes existing volumes. Keep production policy/config mounts
+read-only and use TLS or trusted TLS ingress.
+
+## Embedding
+
+Start with the [runnable Go embedding tutorial](examples/embedding/README.md):
+serve an existing PostgreSQL catalog through the public consumer router with
+host-owned mTLS authentication and clean shutdown. Hosts own admission, selection,
+pools and listeners; importing the library does not enable standalone OAuth/Cedar
+or administration.
+
+Use the [embedding guide](docs/registry-embedding-validation.md) to choose focused
+components and find contract/conformance tests.
 
 ## Core concepts
 
@@ -112,9 +135,9 @@ A **source** is a connection to where MCP server, skill, and plugin entries live
 | **Git**        | Clones entries from a Git repo      | A version-controlled internal catalog                        | Auto         |
 | **File**       | Reads from the local filesystem     | A curated `registry.json` on disk                            | Auto         |
 | **Managed**    | Entries published via the Admin API | Dynamically registered internal servers                      | On-demand    |
-| **Kubernetes** | Discovers deployed MCP servers      | Servers running in your K8s clusters                         | On-demand    |
+| **Kubernetes** | Discovers deployed MCP servers      | Servers running in your K8s clusters                         | Watch + periodic reconcile |
 
-A **registry** is a named catalog that aggregates one or more sources into a single consumer-facing endpoint. Each registry can pull from different sources and enforce its own access control via JWT claims. Sources are listed in order -- when the same entry appears in multiple sources, the first source in the list wins.
+A **registry** is a named catalog that aggregates one or more sources into a single consumer-facing endpoint. Each registry aggregates sources into an organizational view, not a separate access-control boundary. Sources are listed in order -- when the same entry appears in multiple sources, the first source in the list wins.
 
 **Why they are separate**: Sources and registries have a many-to-many relationship. One source can feed multiple registries, and one registry can pull from multiple sources. This lets you compose different catalogs for different audiences from the same underlying data:
 
@@ -175,7 +198,7 @@ Fully compatible with the upstream MCP Registry API specification:
 
 ToolHive-specific endpoints for managing sources, registries, and entries:
 
-**Source management** (requires `manageSources` role):
+**Source management** (Cedar `sources.read/write/delete`; authenticated admin):
 
 - `GET /v1/sources` - List all configured sources
 - `GET /v1/sources/{name}` - Get a source by name
@@ -183,19 +206,19 @@ ToolHive-specific endpoints for managing sources, registries, and entries:
 - `DELETE /v1/sources/{name}` - Delete a source
 - `GET /v1/sources/{name}/entries` - List entries for a source
 
-**Registry management** (reads: authenticated; writes require `manageRegistries` role):
+**Registry management** (Cedar `views.read/write/delete`; authenticated admin):
 
 - `GET /v1/registries` - List all configured registries with status
 - `GET /v1/registries/{name}` - Get registry details and sync status
-- `GET /v1/registries/{name}/entries` - List entries for a registry (requires `manageRegistries` role)
+- `GET /v1/registries/{name}/entries` - Complete diagnostics from all linked sources, including shadowed duplicate versions
 - `PUT /v1/registries/{name}` - Create or update a registry
 - `DELETE /v1/registries/{name}` - Delete a registry
 
-**Entry management** (requires `manageEntries` role):
+**Entry management** (Cedar `entries.publish/delete`; authenticated admin):
 
 - `POST /v1/entries` - Publish a server, skill, or plugin entry
 - `DELETE /v1/entries/{type}/{name}/versions/{version}` - Delete a published entry
-- `PUT /v1/entries/{type}/{name}/claims` - Update entry claims
+- `GET/PUT /v1/entries/{type}/{name}/claims` - Authenticated retired-endpoint tombstones (410)
 
 ### Skills extension API (ToolHive-specific)
 
@@ -220,7 +243,7 @@ Read-only endpoints for discovering plugins within a registry:
 - `GET /health` - Health check
 - `GET /readiness` - Readiness check
 - `GET /version` - Version information
-- `GET /v1/me` - Returns the caller's identity and roles
+- `GET /v1/me` - Authenticated retired-endpoint tombstone (410), when admin is enabled
 - `GET /.well-known/oauth-protected-resource` - OAuth discovery (RFC 9728)
 
 ### Use cases
@@ -241,6 +264,8 @@ sources:
   - name: local
     file:
       path: /data/registry.json
+    syncPolicy:
+      interval: "5m"
 
 registries:
   - name: my-registry
@@ -248,7 +273,19 @@ registries:
       - local
 
 auth:
-  mode: anonymous # Use "oauth" for production
+  mode: oauth
+  oauth:
+    providers:
+      - name: company
+        issuerUrl: https://id.example.org
+        audience: registry-api
+admin:
+  enabled: false
+authorization:
+  # Omit policyFile to evaluate built-in allow-all Cedar after authentication.
+  # For a custom restriction, mount the file read-only and set its absolute path:
+  # policyFile: /etc/registry/policies.cedar
+  allowAnonymousCatalog: false
 
 database:
   host: localhost
@@ -256,13 +293,6 @@ database:
   user: registry
   database: registry
 ```
-
-### Complete guides
-
-- **[Configuration reference](docs/configuration.md)** - Complete configuration options
-- **[Environment variables](docs/environment-variables.md)** - Using environment variables for configuration
-- **[Database setup](docs/database.md)** - PostgreSQL configuration, migrations, and security
-- **[Authentication](docs/authentication.md)** - OAuth/OIDC setup and security
 
 ## The ToolHive platform
 
@@ -277,17 +307,18 @@ See the [ToolHive documentation](https://docs.stacklok.com/toolhive/) for the co
 
 ## Documentation
 
-- **[Configuration reference](docs/configuration.md)** - All configuration options
-- **[Environment variables](docs/environment-variables.md)** - Environment variable overrides
-- **[Database setup](docs/database.md)** - PostgreSQL setup and migrations
-- **[Authentication](docs/authentication.md)** - OAuth/OIDC security
-- **[Observability](docs/observability.md)** - OpenTelemetry tracing and metrics
-- **[Registry sync](docs/registry-sync.md)** - How background sync works
-- **[Kubernetes deployment](docs/deployment-kubernetes.md)** - K8s deployment and HA
-- **[Docker deployment](docs/deployment-docker.md)** - Docker Compose setup
-- **[API documentation](docs/thv-registry-api/)** - Auto-generated OpenAPI docs
-- **[CLI reference](docs/cli/)** - Command-line interface docs
-- **[Examples](examples/)** - Working configuration examples
+| Task | Start here | Focused references |
+| --- | --- | --- |
+| Deploy a new instance | [Docker/Compose](docs/deployment-docker.md) or [Kubernetes/Helm](docs/deployment-kubernetes.md) | [Database setup](docs/database.md), [configuration](docs/configuration.md), [environment overrides](docs/environment-variables.md), [configuration examples](examples/README.md) |
+| Upgrade an existing catalog | [Offline exposure migration](docs/registry-exposure-migration.md) | [Standalone preparation and lifecycle](docs/registry-standalone-assembly.md), [CLI reference](docs/cli/thv-registry-api.md) |
+| Call the HTTP API | [OpenAPI reference](docs/thv-registry-api/swagger.yaml) | [OAuth authentication](docs/authentication.md), [Cedar admission](docs/registry-cedar-authorization.md), [consumer HTTP](docs/registry-consumer-http.md), [admin HTTP](docs/registry-admin-http.md) |
+| Embed in a Go host | [Runnable mTLS catalog tutorial](examples/embedding/README.md), then [composition guide](docs/registry-embedding-validation.md) | [Architecture](docs/component-architecture.md), [models/formats](docs/registry-formats.md), [consumer reads](docs/registry-consumer-reads.md), [persistence](docs/registry-persistence.md), [leased jobs](docs/registry-persistence-jobs.md), [ingestion/operator](docs/registry-ingestion.md), [definition administration](docs/registry-definition-administration.md), [publication/diagnostics](docs/registry-publication-diagnostics.md) |
+| Operate and troubleshoot | [Observability](docs/observability.md) | [Background synchronization](docs/registry-sync.md), [database operation](docs/database.md) |
+| Develop and verify | [Contributing](CONTRIBUTING.md) | [Contract tests and isolated acceptance](docs/registry-contract-tests.md) |
+
+Generate code before tests: `task gen`, then `task test`. To compile and smoke-test
+the embedding tutorial without a database, run `go test -race ./examples/embedding`
+after generation.
 
 ## Contributing
 

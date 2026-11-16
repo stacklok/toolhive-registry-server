@@ -12,7 +12,7 @@ var migrateCmd = &cobra.Command{
 }
 
 func init() {
-	migrateCmd.PersistentFlags().BoolP("yes", "y", false, "Answer yes to all questions")
+	migrateCmd.PersistentFlags().BoolP("yes", "y", false, "Confirm schema migrations only; never exposure consent")
 	migrateCmd.PersistentFlags().UintP("num-steps", "n", 0, "Number of steps to migrate (0 = all)")
 	migrateCmd.PersistentFlags().String("config", "", "Path to configuration file (YAML format, required)")
 
@@ -21,6 +21,8 @@ func init() {
 	}
 
 	// Add subcommands
+	migrateUpCmd.Flags().Uint("to-version", 0, "Explicit forward schema target (29 for offline exposure review; default latest)")
 	migrateCmd.AddCommand(migrateUpCmd)
 	migrateCmd.AddCommand(migrateDownCmd)
+	migrateCmd.AddCommand(newMigrateExposureCmd())
 }

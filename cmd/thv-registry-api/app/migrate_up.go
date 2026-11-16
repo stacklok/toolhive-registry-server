@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 
@@ -22,22 +21,32 @@ and apply all migrations that haven't been run yet.`,
 	RunE:         runMigrateUp,
 }
 
-func runMigrateUp(cmd *cobra.Command, _ []string) error {
-	ctx := context.Background()
-
-	// Get flags
-	configPath, err := cmd.Flags().GetString("config")
+func parseMigrateUpFlags(cmd *cobra.Command) (string, bool, uint, error) {
+	path, err := cmd.Flags().GetString("config")
 	if err != nil {
-		return fmt.Errorf("failed to get config flag: %w", err)
+		return "", false, 0, err
 	}
-
 	yes, err := cmd.Flags().GetBool("yes")
 	if err != nil {
-		return fmt.Errorf("failed to get yes flag: %w", err)
+		return "", false, 0, err
+	}
+	target, err := cmd.Flags().GetUint("to-version")
+	if !cmd.Flags().Changed("to-version") {
+		target = 30
+	}
+	return path, yes, target, err
+}
+
+func runMigrateUp(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+
+	configPath, yes, target, err := parseMigrateUpFlags(cmd)
+	if err != nil {
+		return err
 	}
 
 	// Load configuration
-	cfg, err := config.LoadConfig(config.WithConfigPath(configPath))
+	cfg, err := config.LoadCatalogConfig(config.WithConfigPath(configPath))
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
@@ -83,12 +92,12 @@ func runMigrateUp(cmd *cobra.Command, _ []string) error {
 
 	// Run migrations
 	slog.Info("Applying database migrations")
-	if err := database.MigrateUp(ctx, conn); err != nil {
+	if err := database.MigrateUpTo(ctx, conn, target); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	// Get current version
-	version, dirty, err := database.GetVersion(connString)
+	version, dirty, err := database.GetVersionContext(ctx, connString)
 	if err != nil {
 		slog.Warn("Unable to get migration version", "error", err)
 	} else if dirty {

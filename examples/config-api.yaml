@@ -35,8 +35,22 @@ registries:
   - name: default
     sources: ["mcp-upstream"]
 
+admin:
+  enabled: false
+authorization:
+  # Omit policyFile for built-in allow-all Cedar after authentication.
+  # policyFile: /etc/registry/policies.cedar # Optional custom replacement; mount read-only.
+  allowAnonymousCatalog: false
+  identityMappings:
+    - issuer: https://id.example.org
+      groups: {claim: groups, format: string-array}
 auth:
-  mode: anonymous
+  mode: oauth
+  oauth:
+    providers:
+      - name: company
+        issuerUrl: https://id.example.org
+        audience: registry-api
 
 # PostgreSQL database configuration
 # Store registry data in database instead of local files

@@ -1,0 +1,122 @@
+{
+  "reference": "cedar-policy 4.13.0",
+  "schema_sha256": "94c068aa2916bfcbfeaf9e74530567fa69b162d9ef77e39b2c32640c33084415",
+  "examples_sha256": "e2a3c4d67ac1d067f4fdb99cb167f5bf618e8deb9ef9b66e8b3669ee92458fea",
+  "cases_sha256": "c473522481cc9214a5d7f574f322d4e5d44bbeecb6ed9174970fbd5d17f693be",
+  "results": [
+    {
+      "name": "engineering cannot read finance",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "finance without grant",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "reader permit",
+      "valid": true,
+      "decision": "Allow",
+      "errors": 0
+    },
+    {
+      "name": "publisher permit",
+      "valid": true,
+      "decision": "Allow",
+      "errors": 0
+    },
+    {
+      "name": "operator permit",
+      "valid": true,
+      "decision": "Allow",
+      "errors": 0
+    },
+    {
+      "name": "no inherited reader grant",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "reader cannot publish",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "reader cannot administer",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "publisher with reader group",
+      "valid": true,
+      "decision": "Allow",
+      "errors": 0
+    },
+    {
+      "name": "publisher cannot administer",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "operator with reader group",
+      "valid": true,
+      "decision": "Allow",
+      "errors": 0
+    },
+    {
+      "name": "operator cannot publish",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "publisher without reader group",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "anonymous default deny",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "issuer distinction",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "missing groups",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "explicit anonymous permit",
+      "valid": true,
+      "decision": "Allow",
+      "errors": 0
+    },
+    {
+      "name": "forbid wins",
+      "valid": true,
+      "decision": "Deny",
+      "errors": 0
+    },
+    {
+      "name": "allow with diagnostics boundary denies",
+      "valid": false,
+      "decision": "Allow",
+      "errors": 1
+    }
+  ]
+}

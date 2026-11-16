@@ -18,11 +18,19 @@ tasks:
     cmds:
       - rm -rf docs/cli/*
       - go run cmd/help/main.go --dir docs/cli
-      # NOTE: check out .swaggo file in the root of the project
-      # NOTE: We suppress the output to avoid "go/build" messages, it might
-      #       drop messages we care about.
+      - task: api-docs
+        vars:
+          SWAG_OUTPUT_DIR: '{{.SWAG_OUTPUT_DIR}}'
+
+  api-docs:
+    desc: Generate OpenAPI from the selected public HTTP adapters
+    vars:
+      SWAG_OUTPUT_DIR: '{{.SWAG_OUTPUT_DIR | default "docs/thv-registry-api"}}'
+    cmds:
       - |
-        swag init -q -g cmd/thv-registry-api/docs.go \
+        swag init -q -g docs.go \
+          --dir cmd/thv-registry-api,pkg/registry/httpapi,internal/api,internal/auth \
+          --exclude cmd/thv-registry-api/app,cmd/thv-registry-api/docs \
           --v3.1 --output {{.SWAG_OUTPUT_DIR}} \
           --parseDependencyLevel 1 2>/dev/null
 
@@ -40,7 +48,7 @@ tasks:
   install-swagger:
     desc: Install the swag tool for OpenAPI/Swagger generation
     cmds:
-      - go install github.com/swaggo/swag/v2/cmd/swag@latest
+      - go install github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc6.0.20260930063839-a709527da209
 
   install-mock:
     desc: Install the mockgen tool for mock generation
@@ -241,26 +249,20 @@ tasks:
         go run ./cmd/thv-registry-api migrate down --config {{.CONFIG}} --num-steps {{.NUM_STEPS}} --yes
 
   docker-up:
-    desc: Start docker compose with fresh state (rebuilds image, clears all volumes)
+    desc: Build and start docker compose, preserving volumes
     cmds:
-      - echo "Stopping and removing all containers and volumes..."
-      - docker compose down -v
-      - echo "Building fresh image and starting services..."
       - docker compose up --build
 
   docker-up-detached:
-    desc: Start docker compose in detached mode with fresh state
+    desc: Build and start docker compose in detached mode, preserving volumes
     cmds:
-      - echo "Stopping and removing all containers and volumes..."
-      - docker compose down -v
-      - echo "Building fresh image and starting services in background..."
       - docker compose up --build -d
       - echo "Services started. View logs with task docker-logs"
 
   docker-down:
-    desc: Stop docker compose and remove all containers and volumes
+    desc: Stop docker compose and remove containers, preserving volumes
     cmds:
-      - docker compose down -v
+      - docker compose down
 
   docker-logs:
     desc: View docker compose logs (use FOLLOW=true for tail -f behavior)
@@ -298,25 +300,47 @@ tasks:
       - rm -f kconfig.yaml
 
   registry-server-install-latest:
-    desc: Install latest built registry server image from Github to the K8s cluster
-    cmds:
-      - helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server --namespace toolhive-system --create-namespace --kubeconfig kconfig.yaml
-
-  registry-server-install-local:
-    desc: Build the ToolHive Registry Server image locally and install it to the K8s cluster.
+    desc: Install an explicitly selected catalog-capable release image (requires REGISTRY_SERVER_IMAGE and VALUES)
     vars:
-      CLUSTER_NAME: '{{.CLUSTER_NAME | default "thv-registry"}}'
-      REGISTRY_SERVER_IMAGE:
-        sh: KO_DOCKER_REPO=kind.local ko build --local -B ./cmd/thv-registry-api | tail -n 1
+      NAMESPACE: '{{.NAMESPACE | default "toolhive-system"}}'
+    requires:
+      vars: [REGISTRY_SERVER_IMAGE, VALUES]
+    preconditions:
+      - sh: 'test -n {{.REGISTRY_SERVER_IMAGE | shellQuote}} && case {{.REGISTRY_SERVER_IMAGE | shellQuote}} in *[!a-zA-Z0-9./:@_-]*) exit 1;; esac'
+        msg: REGISTRY_SERVER_IMAGE must be a catalog-capable OCI image reference without whitespace or Helm separators
+      - sh: 'test -f {{.VALUES | shellQuote}}'
+        msg: VALUES must name an operator-prepared Helm values file with database, OAuth and optional custom policy configuration
     cmds:
-      - echo "Loading toolhive-registry-server image {{.REGISTRY_SERVER_IMAGE}} into kind..."
-      - kind load docker-image {{.REGISTRY_SERVER_IMAGE}} --name {{.CLUSTER_NAME}}
       - |
         helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server \
-        --namespace toolhive-system \
+        --namespace {{.NAMESPACE | shellQuote}} --create-namespace --kubeconfig kconfig.yaml \
+        --values {{.VALUES | shellQuote}} \
+        --set-string {{printf "image.registryServerUrl=%s" .REGISTRY_SERVER_IMAGE | shellQuote}}
+
+  registry-server-install-local:
+    desc: Build the catalog-capable image locally and install it (requires VALUES).
+    requires:
+      vars: [VALUES]
+    vars:
+      CLUSTER_NAME: '{{.CLUSTER_NAME | default "thv-registry"}}'
+      NAMESPACE: '{{.NAMESPACE | default "toolhive-system"}}'
+    preconditions:
+      - sh: 'test -f {{.VALUES | shellQuote}}'
+        msg: VALUES must name an operator-prepared Helm values file with database, OAuth and optional custom policy configuration
+    cmds:
+      - |
+        set -e
+        REGISTRY_SERVER_IMAGE=$(KO_DOCKER_REPO=kind.local ko build --local -B ./cmd/thv-registry-api)
+        case "$REGISTRY_SERVER_IMAGE" in
+          ''|*[!a-zA-Z0-9./:@_-]*) echo "Error: Local build must produce a valid OCI image reference"; exit 1 ;;
+        esac
+        kind load docker-image "$REGISTRY_SERVER_IMAGE" --name {{.CLUSTER_NAME | shellQuote}}
+        helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server \
+        --namespace {{.NAMESPACE | shellQuote}} \
         --create-namespace \
         --kubeconfig kconfig.yaml \
-        --set image.registryServerUrl={{.REGISTRY_SERVER_IMAGE}} \
+        --values {{.VALUES | shellQuote}} \
+        --set-string "image.registryServerUrl=$REGISTRY_SERVER_IMAGE" \
         --set image.pullPolicy=Never
 
   kind-with-registry-server*:
@@ -331,6 +355,6 @@ tasks:
     desc: Uninstall registry server from kind
     vars:
       CLUSTER_NAME: '{{.CLUSTER_NAME | default "thv-registry"}}'
-      NAMESPACE: '{{.NAMESPACE | default "thv-registry"}}'
+      NAMESPACE: '{{.NAMESPACE | default "toolhive-system"}}'
     cmds:
-      - helm uninstall toolhive-registry-server --namespace {{.NAMESPACE}} --kubeconfig kconfig.yaml
+      - helm uninstall toolhive-registry-server --namespace {{.NAMESPACE | shellQuote}} --kubeconfig kconfig.yaml

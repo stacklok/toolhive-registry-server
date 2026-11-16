@@ -17,7 +17,7 @@ sources:
     file:
       # Path to the registry.json file (absolute or relative)
       # Can be a mounted ConfigMap, downloaded file, or any JSON file
-      path: ./data/registry.json
+      path: ./examples/upstream-registry.json
 
     # Per-registry automatic synchronization policy
     syncPolicy:
@@ -47,8 +47,22 @@ registries:
   - name: default
     sources: ["local-file"]
 
+admin:
+  enabled: false
+authorization:
+  # Omit policyFile for built-in allow-all Cedar after authentication.
+  # policyFile: /etc/registry/policies.cedar # Optional custom replacement; mount read-only.
+  allowAnonymousCatalog: false
+  identityMappings:
+    - issuer: https://id.example.org
+      groups: {claim: groups, format: string-array}
 auth:
-  mode: anonymous
+  mode: oauth
+  oauth:
+    providers:
+      - name: company
+        issuerUrl: https://id.example.org
+        audience: registry-api
 
 # PostgreSQL database configuration (required)
 # Passwords are managed via PostgreSQL's pgpass file (~/.pgpass or $PGPASSFILE)
@@ -57,6 +71,7 @@ database:
   host: localhost
   port: 5432
   user: thv_user
+  migrationUser: thv_migrator
   database: toolhive_registry
   # For development, disable SSL (NOT for production!)
   sslMode: disable

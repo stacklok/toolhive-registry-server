@@ -1,259 +1,214 @@
-# Database Configuration
+# Database configuration and operation
 
-The ToolHive Registry API server requires PostgreSQL for storing registry state and metadata.
+The standalone server requires PostgreSQL 16+ for definitions, payloads, latest
+pointers, sync state, leases and exposure receipts. Named views are not databases
+or storage tenants. Standalone read admission is view-scoped, but overlapping admitted
+views can expose the same entries. Deployment workflows are in
+[Compose](deployment-docker.md) and [Helm/Kubernetes](deployment-kubernetes.md).
 
-## Table of Contents
+## Configuration fields
 
-- [Configuration Fields](#configuration-fields)
-- [Password Security](#password-security)
-- [Connection Pooling](#connection-pooling)
-- [Database Migrations](#database-migrations)
-- [Setup Guide](#setup-guide)
-- [Kubernetes Deployment](#kubernetes-deployment)
+| Field | Default | Purpose |
+|---|---|---|
+| `host`, `port`, `database`, `user` | Required | Connection target and limited runtime login |
+| `migrationUser` | `user` | Schema-owning migration login; use a separate role |
+| `password` | Unset | Runtime password, alternative to pgpass |
+| `migrationPassword` | `password` only when migration/runtime user match | Migration password, alternative to pgpass |
+| `sslMode` | `require` | Use `verify-full` with a trusted CA and hostname-valid certificate in production |
+| `maxOpenConns` | `25` | Connection pool limit per process |
+| `maxIdleConns` | `5` | Idle pool size |
+| `connMaxLifetime` | `5m` | Connection reuse lifetime |
 
-## Configuration Fields
+Do not place passwords in committed YAML or the chart's `config` values (rendered
+to a ConfigMap). `dynamicAuth` (AWS RDS IAM) and configured static passwords are
+mutually exclusive. If configured, static passwords take precedence over pgpass;
+`THV_REGISTRY_DATABASE_PASSWORD`/`THV_REGISTRY_DATABASE_MIGRATIONPASSWORD` are
+available escape hatches, not the preferred secret interface. Provision suitable
+IAM permissions and DB grants separately when choosing dynamic authentication.
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `host` | string | Yes | - | Database server hostname or IP address |
-| `port` | int | Yes | - | Database server port |
-| `user` | string | Yes | - | Database username for normal operations |
-| `migrationUser` | string | No | `user` | Database username for running migrations (should have elevated privileges) |
-| `password` | string | No | - | Database password for the application user. Alternative to pgpass. Mutually exclusive with `dynamicAuth`. |
-| `migrationPassword` | string | No | - | Database password for the migration user. Defaults to `password` when `migrationUser` equals `user`. Mutually exclusive with `dynamicAuth`. |
-| `database` | string | Yes | - | Database name |
-| `sslMode` | string | No | `require` | SSL mode (`disable`, `require`, `verify-ca`, `verify-full`) |
-| `maxOpenConns` | int | No | `25` | Maximum number of open connections to the database |
-| `maxIdleConns` | int | No | `5` | Maximum number of idle connections in the pool |
-| `connMaxLifetime` | string | No | `5m` | Maximum lifetime of a connection (e.g., "1h", "30m") |
+## Password security
 
-## Password Security
+### pgpass file
 
-The server supports three methods for providing database passwords, in order of precedence:
+Prepare a private deployment-owned file outside the repository with one entry per
+login. The shape is:
 
-1. **Dynamic auth** (e.g., AWS RDS IAM) — short-lived tokens generated automatically via the `dynamicAuth` config block
-2. **Config field / environment variable** — set `password` and `migrationPassword` in config YAML, or use `THV_REGISTRY_DATABASE_PASSWORD` and `THV_REGISTRY_DATABASE_MIGRATIONPASSWORD` environment variables
-3. **pgpass file** — PostgreSQL's standard `~/.pgpass` or `$PGPASSFILE` mechanism (used when no password is configured via methods 1 or 2)
-
-The `password`/`migrationPassword` fields and `dynamicAuth` are mutually exclusive — the server rejects configurations that set both.
-
-### pgpass File
-
-The pgpass file approach supports secure credential handling with separate passwords for normal operations and migrations.
-
-### Password File Format
-
-**pgpass file format:**
-```
+```text
 hostname:port:database:username:password
 ```
 
-**Example pgpass file with two users:**
-```bash
-# Create pgpass file with credentials for both users
-cat > ~/.pgpass <<EOF
-localhost:5432:toolhive_registry:db_app:app_password
-localhost:5432:toolhive_registry:db_migrator:migration_password
-EOF
+For [config-database-dev.yaml](../examples/config-database-dev.yaml), the two tuples
+are `localhost:5432:toolhive_registry:thv_user` and
+`localhost:5432:toolhive_registry:thv_migrator`; supply their real passwords through
+your secret manager or a private editor, not shell command arguments/history.
+Escape `:` and `\` in fields per the
+[PostgreSQL pgpass rules](https://www.postgresql.org/docs/current/libpq-pgpass.html).
+Use the host spelling configured by the client: a file for `postgres-service` does
+not match a config pointing at `postgres`.
 
-# Set secure permissions (REQUIRED - pgx will ignore files with wrong permissions)
-chmod 600 ~/.pgpass
+Set mode **0600** and ownership to the UID running the client; parent directories
+must be traversable by that UID. Set `PGPASSFILE` to its absolute path or use the
+client's `~/.pgpass`. Never make it group/other-readable. In containers, a root-owned
+0600 Secret or `/root/.pgpass` is not readable by the application. Follow the
+[UID-1001 container pattern](deployment-docker.md#images-and-standalone-containers)
+or [UID-65535 init-copy pattern](deployment-kubernetes.md#prepare-operator-valuesyaml)
+instead of widening final pgpass permissions.
+
+```sh
+chmod 600 "$PGPASSFILE"
+thv-registry-api serve --config /etc/registry/config.yaml
 ```
 
-### Custom pgpass Location
+The serving command assumes a prepared current catalog; new empty initialization
+and existing-data migration differ as described below.
 
-By default, the pgx driver looks for `~/.pgpass`. To use a custom location, set the `PGPASSFILE` environment variable:
+### Password rotation
 
-```bash
-# Use PGPASSFILE environment variable for custom location
-export PGPASSFILE=/run/secrets/pgpass
-thv-registry-api serve --config config.yaml
-```
+Changing a credential file, Helm Secret or `POSTGRES_PASSWORD` does **not** change
+an existing PostgreSQL role's password. Through an authorized administrative
+connection, use interactive psql `\password thv_user` and
+`\password thv_migrator` (substitute your actual role names). This changes the roles
+without putting password literals in SQL history. Arrange consumer downtime or
+an explicitly planned credential cutover; existing sessions may persist while new
+connections fail with old credentials.
 
-### Two-User Security Model
+Securely update the matching pgpass entries, mount/reload the new file and restart
+consumers. For Helm's prepared emptyDir file, recreate pods after updating the
+Secret; for a single-file bind mount, recreate the container if the secret was
+replaced atomically on the host. Check new connections succeed without logging
+passwords. `prime-db` does not rotate an existing user's password. The development
+Compose image embeds fixed test credentials and is not a production rotation
+mechanism.
 
-The server supports separate database users for different privilege levels:
+## Setup guide
 
-- **Application user** (`user` config field): Limited privileges for normal operations (SELECT, INSERT, UPDATE, DELETE)
-- **Migration user** (`migrationUser` config field): Elevated privileges for schema changes (CREATE, ALTER, DROP)
+Provision a database and two distinct logins before serving:
 
-Both users' passwords are provided via the pgpass file - one entry per user.
+- `thv_user`: non-superuser, member of `toolhive_registry_server`; normal catalog
+  DML, sequence use and schema usage, not schema ownership/DDL.
+- `thv_migrator`: non-superuser, member of that role and owner of the catalog schema
+  objects; requires schema CREATE and database access for migrations. Existing
+  installations must preserve/arrange ownership of existing objects, not simply
+  grant CREATE to a new login.
 
-### Security Best Practices
+The migration SQL grants current/default table and sequence privileges to the
+`toolhive_registry_server` role. Do not use a PostgreSQL superuser as runtime
+`database.user`. Runtime is not read-only: reconciliation and leases require writes.
 
-- Use separate users for migrations (with elevated privileges) and normal operations (read-only or limited)
-- Never commit passwords directly in configuration files
-- Use password files with restricted permissions (e.g., `chmod 400`)
-- In Kubernetes, mount passwords from Secrets
-- Rotate passwords regularly
+### Bootstrap a new development database
 
-## Connection Pooling
-
-The server uses connection pooling for efficient database resource management:
-
-- **MaxOpenConns**: Limits concurrent database connections to prevent overwhelming the database
-- **MaxIdleConns**: Maintains idle connections for faster query execution
-- **ConnMaxLifetime**: Automatically closes and recreates connections to prevent connection leaks
-
-### Tuning Guidelines
-
-- **High-traffic scenarios**: Increase `maxOpenConns` and `maxIdleConns`
-- **Resource-constrained environments**: Decrease pool sizes
-- **Long-running services**: Set shorter `connMaxLifetime` (e.g., "1h")
-
-## Database Migrations
-
-The server includes built-in database migration support to manage the database schema.
-
-### Automatic Migrations on Startup
-
-When you start the server with `serve`, database migrations run automatically on startup. This ensures your database schema is always up to date.
-
-### Manual Migration Commands
-
-You can also run migrations manually using the CLI commands:
-
-```bash
-# Apply all pending migrations
-thv-registry-api migrate up --config config.yaml
-
-# Apply migrations non-interactively (useful for CI/CD)
-thv-registry-api migrate up --config config.yaml --yes
-
-# Revert last migration (requires --num-steps for safety)
-thv-registry-api migrate down --config config.yaml --num-steps 1
-
-# View migration help
-thv-registry-api migrate --help
-```
-
-### Running Migrations with Task
-
-```bash
-# Apply migrations (development)
-# Ensure ~/.pgpass file contains database credentials
-task migrate-up CONFIG=examples/config-database-dev.yaml
-
-# Revert migrations (specify number of steps for safety)
-task migrate-down CONFIG=examples/config-database-dev.yaml NUM_STEPS=1
-```
-
-### Safety Features
-
-- `migrate down` requires `--num-steps` flag to prevent accidental full rollback
-- Interactive confirmation prompts (bypass with `--yes` flag)
-- Strong warnings displayed for destructive operations
-- Configuration validation before connecting to database
-
-## Setup Guide
-
-### Prerequisites
-
-The server requires that the database user has the `toolhive_registry_server` role granted.
-
-### Option 1: Using prime-db Command (Recommended)
-
-The `prime-db` subcommand configures a user with the correct role:
-
-```bash
-# Interactive mode (prompts for password)
-thv-registry-api prime-db --config examples/config-database-dev.yaml
-
-# Pipe password via stdin
-echo "mypassword" | thv-registry-api prime-db --config examples/config-database-dev.yaml
-
-# Dry run (print SQL without executing)
-thv-registry-api prime-db --config examples/config-database-dev.yaml --dry-run
-```
-
-### Option 2: Manual SQL Setup
-
-Execute this SQL to create the role and user:
+Connect interactively as an authorized DB administrator with psql, targeting a
+maintenance database (using a private pgpass or an interactive password prompt).
+For a **new** database/roles only:
 
 ```sql
-BEGIN;
-
-DO $$
-DECLARE
-  username TEXT := 'thvr_user';
-  password TEXT := 'custom-password';
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
-    CREATE ROLE toolhive_registry_server;
-    RAISE NOTICE 'Role toolhive_registry_server created';
-  END IF;
-
-  IF NOT EXISTS (SELECT FROM pg_user WHERE usename = username) THEN
-    EXECUTE format('CREATE USER %I WITH PASSWORD %L', username, password);
-    RAISE NOTICE 'User % created', username;
-  END IF;
-
-  EXECUTE format('GRANT toolhive_registry_server TO %I', username);
-  RAISE NOTICE 'Role toolhive_registry_server granted to %', username;
-END
-$$;
-
-COMMIT;
+CREATE ROLE toolhive_registry_server NOLOGIN;
+CREATE ROLE thv_user LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE;
+CREATE ROLE thv_migrator LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE;
+\password thv_user
+\password thv_migrator
+CREATE DATABASE toolhive_registry OWNER thv_migrator;
+\connect toolhive_registry
+GRANT CONNECT ON DATABASE toolhive_registry TO thv_user;
+GRANT USAGE ON SCHEMA public TO thv_user;
+GRANT USAGE, CREATE ON SCHEMA public TO thv_migrator;
+GRANT toolhive_registry_server TO thv_user, thv_migrator;
 ```
 
-### Migration Workflow
+Database/schema ownership supplies migration DDL privileges without making either
+login a superuser. On managed PostgreSQL, ask the provider administrator to supply
+equivalent ownership/grants. Do not execute CREATE commands blindly against an
+existing deployment.
 
-1. **Configure database**: Create a config file with database settings (see `examples/config-database-dev.yaml`)
-2. **Set up pgpass file**: Create `~/.pgpass` file with database credentials (see [Password Security](#password-security))
-3. **Start server**: Run `serve` command - migrations will run automatically
+Prepare pgpass for both roles; customize trusted OAuth in the selected config.
+If changing its issuer, update/remove the corresponding `identityMappings` entry;
+the built-in policy needs no group/scopes. Keep admin off. Then use the new-empty
+or existing-data path below. The root Compose setup provisions different role names
+(`db_app`/`db_migrator`) and database (`registry`) with development-only passwords;
+do not combine its credentials with the `thv_*` example unchanged.
 
-## Examples
+### Using prime-db
 
-### Local Development Setup
+Alternatively, `prime-db` creates the shared role and a login if missing, then grants
+role membership. It requires the positional **USER** and an administrative connection
+configured through `database.migrationUser` (or `user` if omitted). Prepare a
+separate bootstrap config with that administrator and its private connection
+credentials; do not turn the final runtime login into an administrator.
 
-```bash
-# 1. Start PostgreSQL (example with Docker)
-docker run -d --name postgres \
-  -e POSTGRES_USER=thv_user \
-  -e POSTGRES_PASSWORD=devpassword \
-  -e POSTGRES_DB=toolhive_registry \
-  -p 5432:5432 \
-  postgres:18-alpine
-
-# 2. Create pgpass file with credentials
-cat > ~/.pgpass <<EOF
-localhost:5432:toolhive_registry:thv_user:devpassword
-EOF
-chmod 600 ~/.pgpass
-
-# 3. Start the server (migrations run automatically)
-thv-registry-api serve --config examples/config-database-dev.yaml
+```sh
+thv-registry-api prime-db thv_user --config /private/bootstrap.yaml
+thv-registry-api prime-db thv_migrator --config /private/bootstrap.yaml
 ```
 
-### Production Deployment
+Each command reads the new user's password from a hidden terminal prompt, or stdin
+redirected from a protected secret file. It does **not** create the database, grant
+schema ownership/CREATE/USAGE/CONNECT, or change existing passwords. Apply the
+remaining database/schema grants from the bootstrap SQL above as administrator.
+`--dry-run` prints password-bearing SQL: do not use it with real credentials or
+capture its output in logs. A role grant alone is not a complete migration setup.
 
-```bash
-# 1. Create pgpass file with secure credentials
-cat > /run/secrets/pgpass <<EOF
-db.example.com:5432:toolhive_registry:db_app:app_secure_password
-db.example.com:5432:toolhive_registry:db_migrator:migration_secure_password
-EOF
-chmod 400 /run/secrets/pgpass
+## Database migrations
 
-# 2. Export PGPASSFILE environment variable
-export PGPASSFILE=/run/secrets/pgpass
+### New empty catalog
 
-# 3. Start the server (migrations run automatically)
-thv-registry-api serve --config examples/config-database-prod.yaml
+With final config, trusted authentication and a virgin entirely empty catalog:
+
+```sh
+thv-registry-api serve --config /etc/registry/config.yaml --initialize-empty
 ```
 
-## Kubernetes Deployment
+Startup validates final config and frozen Cedar, applies guarded forward schema
+migrations, performs read-only source/operator preflight, consumes empty-install
+evidence, then reconciles definitions and serves at clean schema 30. The flag is
+explicit consent for **empty installation only** and never approves existing data.
+It may remain on same-target restarts without resetting receipts.
 
-For complete Kubernetes deployment examples with database, see [Kubernetes Deployment Guide](deployment-kubernetes.md#database-configuration).
+### Existing catalog
 
-## Configuration Examples
+Do not treat automatic startup migrations or `migrate up --yes` as an upgrade
+plan. Stop/drain all readers, writers, controllers and embedding applications and
+prevent restarts; take/verify full backups first. Use the final binary/config and
+the [offline exposure procedure](registry-exposure-migration.md#maintenance-procedure):
 
-For complete configuration examples, see:
-- [examples/config-database-dev.yaml](../examples/config-database-dev.yaml) - Development configuration
-- [examples/config-database-prod.yaml](../examples/config-database-prod.yaml) - Production configuration
+1. `migrate up --to-version 29` stops at the historical review schema.
+2. Inventory and explicitly acknowledge whole-catalog exposure, then retire claims.
+3. `migrate exposure finalize --confirm-offline` consumes evidence **at 29**.
+4. Only then migrate forward to 30 and start the new runtime.
 
-## See Also
+Follow the linked procedure for exact digest-bound commands, pending-receipt resume
+rules and operator preflight; do not improvise consent or re-acknowledge retired
+state. Even unlabeled or currently unlinked data is existing data. Old and new
+writers must never overlap during this transition. Default forward migration may
+stop cleanly at 29 awaiting finalization; it does not always bring a catalog to the
+latest schema automatically.
 
-- [Configuration Guide](configuration.md) - Complete configuration reference
-- [Kubernetes Deployment](deployment-kubernetes.md) - Deploy with database on Kubernetes
-- [Docker Deployment](deployment-docker.md) - Docker Compose with PostgreSQL
+For a current-runtime DB with clean schema 30 and a consumed same-target receipt,
+normal restarts need no new exposure acknowledgement. Assess future schema/image
+compatibility before upgrades. **Schema 30 has no supported downgrade.**
+`migrate down --num-steps ...`, a Task rollback or Helm rollback cannot undo claims
+retirement or reconstruct dropped columns; do not restart old binaries there.
+
+### Backup and recovery
+
+Before offline cutover, take a consistent full PostgreSQL backup plus global
+roles/grants, final config, secret provisioning and policy files; verify restoration
+on an isolated target. Use your managed backup service or authorized `pg_dump` /
+`pg_dumpall --globals-only` connections with file-based credentials. Protect backup
+files: they contain catalog payloads and potentially sensitive migration archives
+and role hashes. Archives/receipts are evidence, **not** a complete backup.
+
+For recovery, remain offline, restore a verified full pre-cutover backup and its
+matching config/policy/roles into an operator-controlled target, and review target
+continuity before serving. Restoring to another DB target is not permission to
+silently rebind a receipt. On uncertain commit responses or dirty schema state,
+inspect evidence using the offline guide; never auto-force migration versions,
+clear receipts, delete data or retry retirement blindly.
+
+## Connection pooling and monitoring
+
+Budget `maxOpenConns` across replicas plus migration/offline connections. Tune
+against PostgreSQL's actual capacity and request/ingestion load; a larger pool is
+not automatically faster. `connMaxLifetime` limits connection reuse, not query time.
+Use internal 8081 probes and [telemetry](observability.md) to monitor readiness,
+HTTP errors and complete leased sync attempts. Keep PostgreSQL and internal
+operational listeners off the public network.

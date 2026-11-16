@@ -35,18 +35,7 @@ UPDATE registry_sync SET
 WHERE id = sqlc.arg(id);
 
 -- name: GetSourceSyncByName :one
-SELECT rs.id,
-       rs.source_id,
-       rs.sync_status,
-       rs.error_msg,
-       rs.started_at,
-       rs.ended_at,
-       rs.attempt_count,
-       rs.last_sync_hash,
-       rs.last_applied_filter_hash,
-       rs.server_count,
-       rs.skill_count,
-       rs.plugin_count
+SELECT rs.*
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id
 WHERE s.name = sqlc.arg(name);
@@ -128,7 +117,7 @@ INSERT INTO registry_sync (
 )
 SELECT
     unnest(sqlc.arg(source_ids)::uuid[]),
-    unnest(sqlc.arg(sync_statuses)::sync_status[]),
+    unnest(sqlc.arg(sync_statuses)::text[])::sync_status,
     unnest(sqlc.arg(error_msgs)::text[])
 ON CONFLICT (source_id) DO NOTHING;
 

@@ -81,23 +81,25 @@ const getLatestEntryVersion = `-- name: GetLatestEntryVersion :one
 SELECT l.version
   FROM latest_entry_version l
  WHERE l.name = $1
-   AND l.source_id = $2
+   AND l.entry_type = $2
+   AND l.source_id = $3
 `
 
 type GetLatestEntryVersionParams struct {
-	Name     string    `json:"name"`
-	SourceID uuid.UUID `json:"source_id"`
+	Name      string    `json:"name"`
+	EntryType EntryType `json:"entry_type"`
+	SourceID  uuid.UUID `json:"source_id"`
 }
 
 func (q *Queries) GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error) {
-	row := q.db.QueryRow(ctx, getLatestEntryVersion, arg.Name, arg.SourceID)
+	row := q.db.QueryRow(ctx, getLatestEntryVersion, arg.Name, arg.EntryType, arg.SourceID)
 	var version string
 	err := row.Scan(&version)
 	return version, err
 }
 
 const getRegistryEntryByName = `-- name: GetRegistryEntryByName :one
-SELECT id, claims
+SELECT id
   FROM registry_entry
  WHERE source_id = $1
    AND entry_type = $2
@@ -110,16 +112,11 @@ type GetRegistryEntryByNameParams struct {
 	Name      string    `json:"name"`
 }
 
-type GetRegistryEntryByNameRow struct {
-	ID     uuid.UUID `json:"id"`
-	Claims []byte    `json:"claims"`
-}
-
-func (q *Queries) GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (GetRegistryEntryByNameRow, error) {
+func (q *Queries) GetRegistryEntryByName(ctx context.Context, arg GetRegistryEntryByNameParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getRegistryEntryByName, arg.SourceID, arg.EntryType, arg.Name)
-	var i GetRegistryEntryByNameRow
-	err := row.Scan(&i.ID, &i.Claims)
-	return i, err
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const insertEntryVersion = `-- name: InsertEntryVersion :one
@@ -172,7 +169,6 @@ INSERT INTO registry_entry (
     source_id,
     entry_type,
     name,
-    claims,
     created_at,
     updated_at
 ) VALUES (
@@ -180,8 +176,7 @@ INSERT INTO registry_entry (
     $2,
     $3,
     $4,
-    $5,
-    $6
+    $5
 ) RETURNING id
 `
 
@@ -189,7 +184,6 @@ type InsertRegistryEntryParams struct {
 	SourceID  uuid.UUID  `json:"source_id"`
 	EntryType EntryType  `json:"entry_type"`
 	Name      string     `json:"name"`
-	Claims    []byte     `json:"claims"`
 	CreatedAt *time.Time `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`
 }
@@ -199,7 +193,6 @@ func (q *Queries) InsertRegistryEntry(ctx context.Context, arg InsertRegistryEnt
 		arg.SourceID,
 		arg.EntryType,
 		arg.Name,
-		arg.Claims,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -271,7 +264,6 @@ func (q *Queries) ListEntriesByRegistry(ctx context.Context, registryID uuid.UUI
 const listEntriesBySource = `-- name: ListEntriesBySource :many
 SELECT e.entry_type,
        e.name,
-       e.claims,
        v.version,
        v.title,
        v.description,
@@ -286,7 +278,6 @@ SELECT e.entry_type,
 type ListEntriesBySourceRow struct {
 	EntryType   EntryType  `json:"entry_type"`
 	Name        string     `json:"name"`
-	Claims      []byte     `json:"claims"`
 	Version     string     `json:"version"`
 	Title       *string    `json:"title"`
 	Description *string    `json:"description"`
@@ -306,7 +297,6 @@ func (q *Queries) ListEntriesBySource(ctx context.Context, sourceID uuid.UUID) (
 		if err := rows.Scan(
 			&i.EntryType,
 			&i.Name,
-			&i.Claims,
 			&i.Version,
 			&i.Title,
 			&i.Description,
@@ -353,53 +343,4 @@ func (q *Queries) ListEntryVersions(ctx context.Context, entryID uuid.UUID) ([]L
 		return nil, err
 	}
 	return items, nil
-}
-
-const propagateSourceClaimsToEntries = `-- name: PropagateSourceClaimsToEntries :exec
-UPDATE registry_entry
-   SET claims = $1,
-       updated_at = NOW()
- WHERE source_id = $2
-   AND (claims IS DISTINCT FROM $1)
-`
-
-type PropagateSourceClaimsToEntriesParams struct {
-	Claims   []byte    `json:"claims"`
-	SourceID uuid.UUID `json:"source_id"`
-}
-
-// Update all registry entries for a source to match the source's current claims.
-// Used during initialization to fix drift when source claims change without data change.
-func (q *Queries) PropagateSourceClaimsToEntries(ctx context.Context, arg PropagateSourceClaimsToEntriesParams) error {
-	_, err := q.db.Exec(ctx, propagateSourceClaimsToEntries, arg.Claims, arg.SourceID)
-	return err
-}
-
-const updateRegistryEntryClaims = `-- name: UpdateRegistryEntryClaims :execrows
-UPDATE registry_entry
-   SET claims = $1,
-       updated_at = NOW()
- WHERE source_id = $2
-   AND entry_type = $3
-   AND name = $4
-`
-
-type UpdateRegistryEntryClaimsParams struct {
-	Claims    []byte    `json:"claims"`
-	SourceID  uuid.UUID `json:"source_id"`
-	EntryType EntryType `json:"entry_type"`
-	Name      string    `json:"name"`
-}
-
-func (q *Queries) UpdateRegistryEntryClaims(ctx context.Context, arg UpdateRegistryEntryClaimsParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateRegistryEntryClaims,
-		arg.Claims,
-		arg.SourceID,
-		arg.EntryType,
-		arg.Name,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
 }

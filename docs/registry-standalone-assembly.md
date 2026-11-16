@@ -1,0 +1,197 @@
+# Standalone public-component assembly
+
+[`internal/app.NewCatalogApp`](../internal/app/catalog.go) is the CLI's `serve`
+composition. It assembles public PostgreSQL definitions/jobs/entries, catalog reader,
+definition administration, publisher and diagnostics, consumer/admin HTTP adapters,
+a leased supervisor and the standalone operator boundary. The operator uses the
+public runner with a direct Kubernetes client, not a Kubernetes manager.
+
+Defaults are private OAuth, admin disabled and mandatory evaluated built-in allow-all
+Cedar. Every verified identity can use every enabled operation, including admin if
+enabled. A custom policy replaces the built-in policy entirely; invalid custom policy
+fails startup. Anonymous catalog access requires explicit opt-in and a Cedar permit.
+See [Cedar authorization](registry-cedar-authorization.md) for configuration.
+
+Ordinary writes require clean schema 30. Existing catalogs need explicit offline
+review/finalization at schema 29 before migration to 30; archives, receipts and private
+historical-input compatibility remain available for that procedure. Stop/drain all old
+readers and writers before review; never co-own sources with old binaries. Follow the
+[offline migration guide](registry-exposure-migration.md#maintenance-procedure), not
+empty-install initialization, for existing data.
+
+## Direct use
+
+Within this repository, load configuration, apply final overrides through
+`CatalogOptions.Overrides`, and call `NewCatalogApp` after storage preparation.
+`LoadCatalogConfig` and offline inspection use the same decoded YAML/environment
+snapshot. Public inline definitions are supported; final source/admission validation
+happens after overrides in `NewCatalogApp`. The loader validates database settings **before**
+`CatalogOptions.Overrides`; even an alternate storage factory requires valid loader
+DB settings when using `LoadCatalogConfig`. It is not a decode-only loader.
+The CLI uses `LoadCatalogConfig` and applies `--auth-mode` as a final override.
+Cedar is loaded exactly once before the CLI storage factory applies schema migrations;
+its frozen revision is the review binding and its engine is the actual evaluator.
+Omission selects built-in allow-all Cedar, never an authentication/evidence bypass;
+an invalid explicitly configured file fails startup, with no default fallback.
+Neither default nor custom policy grants automatic existing-data consent. Direct constructors
+retain the mandatory guard. `CatalogOptions.InitializeEmpty` is explicit empty-install
+authorization only and invokes the internal `ConsumeEmpty` preparation method after
+all source/operator preflight; no public persistence contract gains consent fields:
+
+```go
+cfg, err := config.LoadCatalogConfig(config.WithConfigPath(configPath))
+if err != nil { return err }
+application, err := app.NewCatalogApp(ctx, app.CatalogOptions{
+    Config: cfg,
+    HTTP: []app.RegistryAppOptions{
+        app.WithAddress(":8080"),
+        app.WithInternalAddress(":8081"),
+        app.WithMeterProvider(meterProvider),
+        app.WithTracerProvider(tracerProvider),
+        app.WithMetricsHandler(metricsHandler),
+    },
+})
+if err != nil { return err }
+if err := application.Start(); err != nil { return err }
+// Wait reports a terminal worker/listener error and automatically drains/joins.
+// On operator-requested shutdown call Stop; it also waits for the final result.
+return application.Wait()
+```
+
+`Run` is `Start` followed by `Wait`. The supplied lifetime context cancels serving.
+`Stop` is safe before Start and after termination. Instances are single-use: do not
+restart a stopped instance. `Addresses` returns actual bound addresses after Start.
+`SyncInline(ctx, persistedSourceName)` is the tracked manual ingestion seam; it cannot
+be used before Start or after shutdown admission closes. No raw HTTP services/runtime
+or unguarded router is exposed by the application.
+
+`storage.CatalogPostgres{BorrowedPool: pool}` explicitly borrows a migrated pool;
+application cleanup never closes it. With the default factory the application owns the
+opened pool. Injected `CatalogFactory` implementations **must** return the preparation
+interface: `Preflight`, `Consume`, `ConsumeEmpty`, `Initialize`, `Close`. There is no optional assertion
+or legacy fallback. Returned storage transfers cleanup even alongside an error; when
+returning nil storage, the factory cleans its own partially opened resources. Fake/host
+resources remain borrowed only if their Close implementation declares that behavior.
+Operator/fetcher and telemetry providers are borrowed; their hosts retain ownership.
+
+## Mandatory preparation order
+
+1. Copy the decoded config, apply final overrides, reject retired fields **by presence**,
+   and validate admission/storage/public source definitions and lifecycle options.
+   Retired fields include explicit null/empty/case/dotted YAML, merges/aliases and
+   reserved environment prefixes (including empty values): `auth.authz`, `auth.roles`,
+   `auth.publicPaths`, source/registry `claims`. Direct non-nil struct fields are rejected
+   too. Raw-key/environment evidence is retained from loading, not reread at startup.
+2. Load and strictly validate immutable Cedar. Bind `Config.ExposureReview` to the
+   actual `Engine.Revision`, never reread the policy/config file during preparation.
+   Offline inventory/acknowledge/retire hash the same default bytes on omission; the
+   version-1 projection remains unchanged, with a domain-separated outer digest for
+   view-scoped admission. Old pending instance-scoped reviews fail revision matching;
+   see the offline guide before retirement or upgrade.
+3. The CLI storage factory applies schema migrations only now, under the final
+   validated config/frozen policy; migrations never supply consent. The default Go
+   storage factory opens storage without migrations. Neither initializes definitions,
+   repairs latest pointers or starts workers during Open.
+4. Read-only compatibility preflight over **all** historical definitions (CONFIG/API,
+   linked/unlinked and CONFIG rows about to be replaced) and all final definitions.
+   Unsupported historical fields/ingestion flags, invalid names, incompatible inline
+   payloads and non-synced schedules/filters fail
+   with explicit remediation instructions; none are silently discarded. Inline filters
+   are not erased or translated: explicitly remediate the unsupported definition before
+   review. Operator preflight authoritatively lists the entire namespace scope and all
+   three CRD kinds. Exact export opt-in followed by retired-annotation presence rejects
+   the whole snapshot, even when conversion would otherwise skip an object.
+5. Serialize `ConsumeExposure` at clean schema **30** for ordinary serving; offline
+   `migrate exposure finalize` uses the same barrier at **29** and stops before
+   reconciliation, repair, ingestion or HTTP. Missing/stale/pending unretired
+   evidence cannot be bypassed by empty/unlabeled data, auth mode or admin enablement. A pending
+   receipt checks final config/policy, target and full persisted catalog. Once consumed,
+   only target continuity is a restart binding: legitimate catalog/config/policy edits
+   do not require matching a historical catalog hash.
+6. Atomically reconcile CONFIG definitions and repair latest pointers via `NewEntries`.
+   Construct public services, mandatory fixed-action guarded capabilities and HTTP.
+   Provider validation/refresh initialization is deferred until an authenticated request;
+   preparing an application starts no application workers/listeners.
+7. Only `Start` binds **two** servers and starts the exclusive leased runtime. Pool
+   housekeeping is owned by the pool, not an ingestion worker. Terminal failures are
+   returned by Wait/Run/Stop, not swallowed as log-only events.
+
+Use the [offline exposure procedure](registry-exposure-migration.md) against an isolated
+or explicitly authorized deployment: inventory, exact-digest acknowledgement and explicit
+retirement for historical state; inventory and **initialize-empty** for a fresh database
+before any definitions are reconciled. The existing offline commands alone archive/clear
+claims. Neither `migrate up --yes`, an empty schema nor application construction supplies
+consent. An error after successful consumption/initialization does not roll back the
+recorded exposure transition: inspect the receipt and retry the same target, never clear
+or rebind evidence automatically. The explicit `serve --initialize-empty` new-install
+alternative atomically records empty-mode evidence and consumes it under the same
+catalog/receipt/schema/archive locks after preflight. It never activates pending
+existing-data evidence or silently resets changed pending review; consumed same-target
+restarts do not re-acknowledge even when another replica has already reconciled data.
+
+## Namespace and lifecycle ownership
+
+Effective namespace precedence is explicit source scope, then global watch scope, then
+all namespaces. CONFIG and new/updated API definitions store the canonical effective
+scope (trimmed, sorted, deduplicated); preflight, acquired Jobs and operator runners use
+that stored scope. Historical API sources with an empty scope and a nonempty global
+fallback fail preflight until the intended scope is explicitly materialized in storage.
+There is no client-only narrowing of an all-namespace Jobs definition.
+
+Operator names are `com.toolhive.k8s.<namespace>/<name>` and do not include CRD kind.
+Exported resources of different kinds with the same namespace/name therefore share
+one catalog identity when versions differ. Equal versions reject the entire snapshot
+as duplicate entries, leaving the last good snapshot visible. Use distinct resource
+names when they represent distinct catalog servers.
+
+Source mutations persist first. Inline-file create/update synchronously invokes
+leased sync; every successful source mutation notifies the runtime to refresh.
+Follow-up failures return **503 committed** responses; audit records the actual creation
+or update event and `mutation_committed`, not a guessed event based on HTTP status.
+Periodic rediscovery recovers missed refresh notifications. Every source origin is
+included, independent of view links; managed publication never acquires a sync lease.
+Shutdown closes admission, cancels requests/explicit inline calls, drains HTTP and joins
+background and caller-owned work before closing owned storage/audit resources. HTTP
+shutdown timeout is not permission to close a pool under an active operation. Source
+counts, leased-attempt metrics, HTTP metrics/traces, request limits, transport timeouts,
+secure Git secret-file resolution and OAuth resource metadata remain available.
+
+## Admission and routes
+
+Consumer mounting remains `/registry`; admin remains `/v1`. Each of the 13 consumer and
+12 retained admin descriptors is checked against the closed action/audit manifest at
+registration. Every guarded service method requires private verified identity and route
+evidence matching its own fixed action; broad permits do not make omitted middleware,
+an alternate handler or a mislabeled operation safe. No legacy roles/resource claims
+participate. Permitted identities receive the same page/cursor. Anonymous catalog access
+requires explicit opt-in **and** a Cedar read permit. Admin is absent by default and,
+when enabled, always authenticated. Bearer challenges also protect metadata. `/v1/me`
+and GET/PUT claims routes are authenticated static 410 tombstones, never legacy calls.
+Operational probes/metrics are only on the separate internal server. The sole fixed
+unauthenticated OAuth bootstrap is the protected-resource metadata GET.
+
+Audit/admission logs never include raw token, claims, policy or callback error values.
+The existing optional full request-body audit capture is a separate opt-in: publication
+metadata and inline administrative configuration may contain secrets. Leave it off unless
+its exposure and retention have been separately reviewed.
+
+## Deployment and embedding
+
+Build with `task build` and run `./bin/thv-registry-api serve --config /path/to/config.yaml`.
+The Helm chart requires an explicit `image.registryServerUrl`; select a binary
+compatible with the catalog schema. `policy.existingConfigMap` optionally supplies
+a custom policy file. Omission evaluates built-in allow-all Cedar, not a bypass of
+OAuth or admin enablement.
+
+For a new, entirely empty catalog only, opt into `serve --initialize-empty`, Helm
+`initializeEmptyCatalog: true`, or the Compose `docker-compose.initialize-empty.yaml`
+override. These options default off and cannot approve existing catalogs. Keep
+configuration and custom policy mounts read-only and use TLS or trusted TLS ingress.
+OpenAPI describes public HTTP DTOs/routes and protected 410 tombstones; operational
+probes remain internal.
+
+External applications use [public components and examples](registry-embedding-validation.md),
+not `internal/app`. Library hosts own admission and may use a non-Cedar
+`httpapi.Authorizer` through `Middleware`/`Decorate`; this standalone composition
+always uses Cedar. See [contract tests](registry-contract-tests.md) for local
+verification commands and the boundaries of the PostgreSQL and Kubernetes suites.

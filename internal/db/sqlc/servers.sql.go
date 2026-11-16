@@ -135,7 +135,6 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       e.claims,
        rs.source_id,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
@@ -190,7 +189,6 @@ type GetServerVersionRow struct {
 	RepositoryID        *string    `json:"repository_id"`
 	RepositorySubfolder *string    `json:"repository_subfolder"`
 	RepositoryType      *string    `json:"repository_type"`
-	Claims              []byte     `json:"claims"`
 	SourceID            uuid.UUID  `json:"source_id"`
 	Position            int32      `json:"position"`
 }
@@ -234,7 +232,6 @@ func (q *Queries) GetServerVersion(ctx context.Context, arg GetServerVersionPara
 			&i.RepositoryID,
 			&i.RepositorySubfolder,
 			&i.RepositoryType,
-			&i.Claims,
 			&i.SourceID,
 			&i.Position,
 		); err != nil {
@@ -265,7 +262,6 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       e.claims,
        0::integer AS position
   FROM mcp_server s
   JOIN entry_version v ON s.version_id = v.id
@@ -300,7 +296,6 @@ type GetServerVersionBySourceNameRow struct {
 	RepositoryID        *string    `json:"repository_id"`
 	RepositorySubfolder *string    `json:"repository_subfolder"`
 	RepositoryType      *string    `json:"repository_type"`
-	Claims              []byte     `json:"claims"`
 	Position            int32      `json:"position"`
 }
 
@@ -326,7 +321,6 @@ func (q *Queries) GetServerVersionBySourceName(ctx context.Context, arg GetServe
 		&i.RepositoryID,
 		&i.RepositorySubfolder,
 		&i.RepositoryType,
-		&i.Claims,
 		&i.Position,
 	)
 	return i, err
@@ -636,7 +630,8 @@ const listServerRemotes = `-- name: ListServerRemotes :many
 SELECT r.server_id,
        r.transport,
        r.transport_url,
-       r.transport_headers
+       r.transport_headers,
+       r.transport_variables
   FROM mcp_server_remote r
   JOIN mcp_server s ON r.server_id = s.version_id
  WHERE s.version_id = ANY($1::UUID[])
@@ -657,6 +652,7 @@ func (q *Queries) ListServerRemotes(ctx context.Context, versionIds []uuid.UUID)
 			&i.Transport,
 			&i.TransportUrl,
 			&i.TransportHeaders,
+			&i.TransportVariables,
 		); err != nil {
 			return nil, err
 		}
@@ -685,7 +681,6 @@ SELECT src.source_type as registry_type,
        s.repository_id,
        s.repository_subfolder,
        s.repository_type,
-       e.claims,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
        COALESCE(rs.position, 32767)::integer AS position
@@ -747,7 +742,6 @@ type ListServersRow struct {
 	RepositoryID        *string    `json:"repository_id"`
 	RepositorySubfolder *string    `json:"repository_subfolder"`
 	RepositoryType      *string    `json:"repository_type"`
-	Claims              []byte     `json:"claims"`
 	Position            int32      `json:"position"`
 }
 
@@ -791,7 +785,6 @@ func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]Lis
 			&i.RepositoryID,
 			&i.RepositorySubfolder,
 			&i.RepositoryType,
-			&i.Claims,
 			&i.Position,
 		); err != nil {
 			return nil, err
@@ -807,15 +800,17 @@ func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]Lis
 const upsertLatestServerVersion = `-- name: UpsertLatestServerVersion :one
 INSERT INTO latest_entry_version (
     source_id,
+    entry_type,
     name,
     version,
     latest_version_id
 ) VALUES (
     $1,
+    'MCP',
     $2,
     $3,
     $4
-) ON CONFLICT (source_id, name)
+) ON CONFLICT (source_id, entry_type, name)
   DO UPDATE SET
     version = $3,
     latest_version_id = $4

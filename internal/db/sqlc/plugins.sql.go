@@ -66,7 +66,6 @@ SELECT src.source_type AS registry_type,
        p.icons,
        p.metadata,
        p.extension_meta,
-       e.claims,
        rs.source_id,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
@@ -123,7 +122,6 @@ type GetPluginVersionRow struct {
 	Icons           []byte       `json:"icons"`
 	Metadata        []byte       `json:"metadata"`
 	ExtensionMeta   []byte       `json:"extension_meta"`
-	Claims          []byte       `json:"claims"`
 	SourceID        uuid.UUID    `json:"source_id"`
 	Position        int32        `json:"position"`
 }
@@ -169,7 +167,6 @@ func (q *Queries) GetPluginVersion(ctx context.Context, arg GetPluginVersionPara
 			&i.Icons,
 			&i.Metadata,
 			&i.ExtensionMeta,
-			&i.Claims,
 			&i.SourceID,
 			&i.Position,
 		); err != nil {
@@ -201,7 +198,6 @@ SELECT src.source_type AS registry_type,
        p.icons,
        p.metadata,
        p.extension_meta,
-       e.claims,
        0::integer AS position
   FROM plugin p
   JOIN entry_version v ON p.version_id = v.id
@@ -237,7 +233,6 @@ type GetPluginVersionBySourceNameRow struct {
 	Icons           []byte       `json:"icons"`
 	Metadata        []byte       `json:"metadata"`
 	ExtensionMeta   []byte       `json:"extension_meta"`
-	Claims          []byte       `json:"claims"`
 	Position        int32        `json:"position"`
 }
 
@@ -264,7 +259,6 @@ func (q *Queries) GetPluginVersionBySourceName(ctx context.Context, arg GetPlugi
 		&i.Icons,
 		&i.Metadata,
 		&i.ExtensionMeta,
-		&i.Claims,
 		&i.Position,
 	)
 	return i, err
@@ -529,7 +523,6 @@ SELECT src.source_type AS registry_type,
        p.icons,
        p.metadata,
        p.extension_meta,
-       e.claims,
        -- Sources not linked to the requested registry have no position; default to max int16
        -- so they sort after all explicitly positioned sources (lower position = higher priority).
        COALESCE(rs.position, 32767)::integer AS position
@@ -584,7 +577,6 @@ type ListPluginsRow struct {
 	Icons         []byte       `json:"icons"`
 	Metadata      []byte       `json:"metadata"`
 	ExtensionMeta []byte       `json:"extension_meta"`
-	Claims        []byte       `json:"claims"`
 	Position      int32        `json:"position"`
 }
 
@@ -627,7 +619,6 @@ func (q *Queries) ListPlugins(ctx context.Context, arg ListPluginsParams) ([]Lis
 			&i.Icons,
 			&i.Metadata,
 			&i.ExtensionMeta,
-			&i.Claims,
 			&i.Position,
 		); err != nil {
 			return nil, err
@@ -643,15 +634,17 @@ func (q *Queries) ListPlugins(ctx context.Context, arg ListPluginsParams) ([]Lis
 const upsertLatestPluginVersion = `-- name: UpsertLatestPluginVersion :one
 INSERT INTO latest_entry_version (
     source_id,
+    entry_type,
     name,
     version,
     latest_version_id
 ) VALUES (
     $1,
+    'PLUGIN',
     $2,
     $3,
     $4
-) ON CONFLICT (source_id, name)
+) ON CONFLICT (source_id, entry_type, name)
   DO UPDATE SET
     version = $3,
     latest_version_id = $4
@@ -699,7 +692,8 @@ INSERT INTO plugin (
 )
 ON CONFLICT (version_id)
 DO UPDATE SET
-    status = COALESCE($3::plugin_status, plugin.status),
+    namespace = EXCLUDED.namespace,
+    status = EXCLUDED.status,
     license = $4,
     repository = $5,
     icons = $6,

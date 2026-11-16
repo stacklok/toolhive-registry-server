@@ -1,5 +1,4 @@
-// Package kubernetes provides a Kubernetes controller that watches MCPServer
-// resources and syncs them to the registry. It includes utilities for converting
-// Kubernetes MCPServer, VirtualMCPServer, and MCPRemoteProxy resources to the MCP
-// registry ServerJSON format.
+// Package kubernetes provides the standalone client and retired-export preflight
+// boundary around the public leased operator runner. Conversion lives in
+// pkg/registry/operator; this package neither constructs nor starts an old controller.
 package kubernetes

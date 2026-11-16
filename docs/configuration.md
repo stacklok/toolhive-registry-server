@@ -6,7 +6,7 @@ Complete configuration reference for the ToolHive Registry API server.
 
 - [Overview](#overview)
 - [Configuration File Structure](#configuration-file-structure)
-- [Registry Configuration](#registry-configuration)
+- [Sources and views](#source-configuration)
 - [Data Sources](#data-sources)
 - [Sync Policy](#sync-policy)
 - [Filtering](#filtering)
@@ -29,7 +29,78 @@ thv-registry-api serve --config config.yaml
 |------|-------------|----------|---------|
 | `--config` | Path to YAML configuration file | Yes | - |
 | `--address` | Server listen address | No | `:8080` |
+| `--internal-address` | Internal probes/metrics listen address | No | `:8081` |
+| `--initialize-empty` | Explicit empty-install authorization only; never approve existing data | No | `false` |
 | `--auth-mode` | Override auth mode (anonymous or oauth) | No | - |
+
+## Standalone Cedar admission (required)
+
+Every standalone deployment evaluates Cedar. Omit `authorization.policyFile` (or
+leave the optional path empty) to load built-in allow-all Cedar: every verified
+identity may use **every enabled operation**, including administration if explicitly
+enabled. This is actual policy evaluation, not an auth bypass. Admin remains off by
+default and requires verified OAuth when enabled; anonymous catalog access requires
+explicit opt-in. Invalid credentials never become anonymous; unknown/mismatched
+routes and evaluation errors/diagnostics deny.
+
+An optional absolute `authorization.policyFile` replaces the built-in policy entirely,
+never concatenates with it. Missing/unreadable/empty/comment-only/invalid explicitly
+configured files fail startup with no fallback. The bounded plain Cedar policy is
+parsed and strictly schema-validated with pinned cedar-go v1.8.0 before migrations,
+writers or serving. Effective auth configuration is validated after CLI overrides.
+Policy changes take effect only after restarting every replica.
+
+```yaml
+admin:
+  enabled: false
+authorization:
+  # Optional custom restriction; omit for evaluated built-in allow-all Cedar.
+  # policyFile: /etc/registry/policies.cedar
+  allowAnonymousCatalog: false
+  identityMappings:
+    - issuer: https://id.example.org
+      groups:
+        claim: groups
+        format: string-array
+```
+
+Configure matching OAuth issuer/audience. `serve` selects `NewCatalogApp`: Cedar
+is view-scoped admission for consumer reads and instance-scoped admission for all
+other actions, never per-entry filtering. Overlapping admitted views can expose the
+same entries; views are not storage tenants. Remove
+`auth.authz`, `auth.roles`, `auth.publicPaths`, and source/view `claims`; their
+presence (even empty/null or environment-injected values) is rejected. Admin is
+off by default and requires OAuth when enabled. OpenAPI requires `metadata.read`;
+only exact GET credential-bootstrap metadata is exempt. Internal probes remain
+on their separate port.
+
+Every pre-existing catalog, including unlabeled data, requires the explicit
+[offline inventory/acknowledgement/retirement procedure](registry-exposure-migration.md).
+For a new, entirely empty database only, `serve --initialize-empty --config config.yaml`
+explicitly authorizes empty-install preparation after final config, frozen policy
+and read-only source/operator preflight. This default-false flag does not grant
+policy permissions or approve existing data; it is safe to retain for same-target
+replicas/restarts without resetting or rebinding the receipt.
+
+See the [Cedar guide](registry-cedar-authorization.md) for typechecked policies,
+identity mapping/introspection constraints, retirement tombstones and transition
+instructions. Snippets below illustrate particular settings and must include the
+trusted authentication configuration and explicit anonymous opt-in when needed to serve traffic.
+
+Compose no longer requires an external policy mount. To use a custom policy, add a
+Compose override and set the optional path in the selected config (or use
+`THV_REGISTRY_AUTHORIZATION_POLICYFILE`):
+
+```yaml
+services:
+  registry-api:
+    volumes:
+      - /absolute/operator/policies.cedar:/etc/registry/policies.cedar:ro
+    environment:
+      THV_REGISTRY_AUTHORIZATION_POLICYFILE: /etc/registry/policies.cedar
+```
+
+Keep the override/path identical throughout offline exposure review and finalization.
 
 ## Configuration File Structure
 
@@ -122,7 +193,7 @@ Sources define where registry data comes from. Multiple sources can be configure
 | `kubernetes` | object | No* | Kubernetes resource configuration |
 | `syncPolicy` | object | Yes† | Sync policy configuration |
 | `filter` | object | No | Server filtering rules |
-| `claims` | map | No | Key-value pairs for authorization purposes |
+| `claims` | retired | Rejected by presence, including null; use the offline exposure guide |
 
 \* Exactly one data source must be configured per source entry
 † Required for synced sources (git, api, file); not applicable for managed or kubernetes sources
@@ -135,7 +206,7 @@ The `registries:` block aggregates sources into named registry views. At least o
 |-------|------|----------|-------------|
 | `name` | string | Yes | Unique name for this registry |
 | `sources` | array | Yes | Ordered list of source names that feed this registry |
-| `claims` | map | No | Key-value pairs for authorization purposes |
+| `claims` | retired | Rejected by presence, including null; use the offline exposure guide |
 
 ## Data Sources
 
@@ -246,18 +317,11 @@ kubernetes:
 |-------|------|----------|-------------|
 | `namespaces` | array | No | Kubernetes namespaces to watch (empty = uses `THV_REGISTRY_WATCH_NAMESPACE` env var) |
 
-**Per-entry claims:** CRDs can carry per-entry authorization claims via the
-`toolhive.stacklok.dev/authz-claims` JSON annotation. The annotation value uses the same
-`map[string]any` format as source claims (strings or arrays of strings). Source claims are
-**not** merged — entries get exactly the claims from the annotation. Entries without the
-annotation have no claims and are invisible when authz is configured (default-deny).
-
-```yaml
-# Example CRD annotation for per-entry claims:
-metadata:
-  annotations:
-    toolhive.stacklok.dev/authz-claims: '{"team": "platform"}'
-```
+**Retired annotations:** an export-opted-in CRD carrying
+`toolhive.stacklok.dev/authz-claims` is rejected during read-only startup preflight,
+including empty/null/malformed values. Explicitly remediate live objects before
+exposure review/cutover; the new operator never parses or propagates resource claims.
+Export still requires exact `toolhive.stacklok.dev/registry-export: "true"`.
 
 **Per-entry version:** the entry version is resolved in this order:
 
@@ -291,9 +355,9 @@ metadata:
 ```
 
 **Features:**
-- Queries running Kubernetes resources
-- No background synchronization (on-demand only)
-- Requires in-cluster service account or kubeconfig
+- Watches export-opted-in MCPServer, VirtualMCPServer and MCPRemoteProxy resources
+- Periodically reconciles full-scope snapshots through fenced database leases
+- Requires in-cluster service account or kubeconfig; consumer reads use persisted data
 
 **Does NOT support:**
 - Sync policy configuration
@@ -316,7 +380,7 @@ syncPolicy:
 
 **Not applicable for:**
 - Managed registries (no sync)
-- Kubernetes registries (no sync)
+- Kubernetes sources (watch plus periodic reconciliation, not configured by `syncPolicy`)
 
 ## Filtering
 
@@ -353,7 +417,7 @@ filter:
 
 **Not applicable for:**
 - Managed registries (controlled via API)
-- Kubernetes registries (use labelSelector instead)
+- Kubernetes sources (selection uses namespace scope and export opt-in annotations)
 
 ## Authentication
 
@@ -364,8 +428,7 @@ See detailed [Authentication Guide](authentication.md).
 ```yaml
 auth:
   mode: oauth                    # "oauth" (default) or "anonymous"
-  publicPaths:                   # Optional: additional public paths
-    - /metrics
+  # publicPaths is rejected; metrics/probes use the internal listener.
   oauth:
     resourceUrl: https://registry.example.com
     realm: mcp-registry          # Optional
@@ -428,21 +491,42 @@ See [Database Configuration](database.md#password-security) for password managem
 
 | Variable | Description |
 |----------|-------------|
-| `CONFIG_FILE` | Override config file path |
+| `CONFIG_FILE` | Compose-only filename under `/examples`; direct CLI uses `--config` |
 | `THV_REGISTRY_INSECURE_URL` | Allow HTTP URLs for development (default: false) |
 
 ## Examples
 
 ### Development (Local File)
 
+Save the following as `config-local.yaml`. Bind **both** standalone listeners to
+loopback explicitly; the CLI defaults listen on all interfaces, and anonymous
+mode does not restrict the bind address:
+
+```sh
+thv-registry-api serve --config config-local.yaml \
+  --address 127.0.0.1:8080 --internal-address 127.0.0.1:8081
+```
+
+For a genuinely new empty database only, add `--initialize-empty`; existing data
+requires the offline exposure procedure before serving.
+
 ```yaml
 sources:
   - name: local
     file:
-      path: ./examples/registry-sample.json
-
+      path: ./examples/upstream-registry.json
+    syncPolicy:
+      interval: "5m"
+registries:
+  - name: default
+    sources: [local]
+admin:
+  enabled: false
+authorization:
+  allowAnonymousCatalog: true
+  identityMappings: []
 auth:
-  mode: anonymous
+  mode: anonymous # Loopback-only development, with built-in Cedar permit.
 
 database:
   host: localhost
@@ -542,6 +626,8 @@ auth:
       - name: kubernetes
         issuerUrl: https://kubernetes.default.svc
         audience: https://kubernetes.default.svc
+        caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        allowPrivateIP: true # Explicit trust of this private cluster issuer.
 
 database:
   host: postgres
@@ -562,10 +648,10 @@ The configuration is validated on startup. Common validation errors:
 - **Invalid filter patterns**: Check glob pattern syntax
 - **Database connection**: Verify connection parameters
 
-Run with `--debug` flag for detailed validation output:
+Enable sanitized debug logging with `THV_REGISTRY_LOG_LEVEL=debug`:
 
 ```bash
-thv-registry-api serve --config config.yaml --debug
+THV_REGISTRY_LOG_LEVEL=debug thv-registry-api serve --config config.yaml
 ```
 
 ## See Also

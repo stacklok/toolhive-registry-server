@@ -6,7 +6,6 @@ SELECT id,
        source_config,
        filter_config,
        sync_schedule,
-       claims,
        created_at,
        updated_at
   FROM source
@@ -29,7 +28,6 @@ SELECT id,
        source_config,
        filter_config,
        sync_schedule,
-       claims,
        created_at,
        updated_at
   FROM source
@@ -43,7 +41,6 @@ SELECT id,
        source_config,
        filter_config,
        sync_schedule,
-       claims,
        created_at,
        updated_at
   FROM source
@@ -64,7 +61,6 @@ INSERT INTO source (
     filter_config,
     sync_schedule,
     syncable,
-    claims,
     created_at,
     updated_at
 ) VALUES (
@@ -75,7 +71,6 @@ INSERT INTO source (
     sqlc.narg(filter_config),
     sqlc.narg(sync_schedule),
     sqlc.arg(syncable),
-    sqlc.narg(claims),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 )
@@ -85,7 +80,6 @@ ON CONFLICT (name) DO UPDATE SET
     filter_config = EXCLUDED.filter_config,
     sync_schedule = EXCLUDED.sync_schedule,
     syncable = EXCLUDED.syncable,
-    claims = EXCLUDED.claims,
     updated_at = EXCLUDED.updated_at
 RETURNING id;
 
@@ -99,7 +93,6 @@ INSERT INTO source (
     filter_config,
     sync_schedule,
     syncable,
-    claims,
     created_at,
     updated_at
 )
@@ -111,7 +104,6 @@ SELECT
     unnest(sqlc.arg(filter_configs)::jsonb[]),
     unnest(sqlc.arg(sync_schedules)::interval[]),
     unnest(sqlc.arg(syncables)::boolean[]),
-    unnest(sqlc.arg(claims)::jsonb[]),
     unnest(sqlc.arg(created_ats)::timestamp with time zone[]),
     unnest(sqlc.arg(updated_ats)::timestamp with time zone[])
 ON CONFLICT (name) DO UPDATE SET
@@ -120,10 +112,14 @@ ON CONFLICT (name) DO UPDATE SET
     filter_config = EXCLUDED.filter_config,
     sync_schedule = EXCLUDED.sync_schedule,
     syncable = EXCLUDED.syncable,
-    claims = EXCLUDED.claims,
     updated_at = EXCLUDED.updated_at
 WHERE source.creation_type = 'CONFIG'
 RETURNING id, name;
+
+-- name: DeleteObsoleteConfigManagedSources :exec
+DELETE FROM source
+WHERE creation_type = 'CONFIG' AND source_type = 'managed'
+  AND name != ALL(sqlc.arg(keep_names)::text[]);
 
 -- name: DeleteConfigSourcesNotInList :exec
 -- Delete CONFIG sources not in the provided list (for config file sync)
@@ -150,7 +146,6 @@ INSERT INTO source (
     filter_config,
     sync_schedule,
     syncable,
-    claims,
     created_at,
     updated_at
 ) VALUES (
@@ -161,7 +156,6 @@ INSERT INTO source (
     sqlc.narg(filter_config),
     sqlc.narg(sync_schedule),
     sqlc.arg(syncable),
-    sqlc.narg(claims),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 ) RETURNING *;
@@ -174,7 +168,6 @@ UPDATE source SET
     filter_config = sqlc.narg(filter_config),
     sync_schedule = sqlc.narg(sync_schedule),
     syncable = sqlc.arg(syncable),
-    claims = sqlc.narg(claims),
     updated_at = sqlc.arg(updated_at)
 WHERE name = sqlc.arg(name)
 RETURNING *;
@@ -190,7 +183,6 @@ SELECT id,
        source_config,
        filter_config,
        sync_schedule,
-       claims,
        created_at,
        updated_at
 FROM source
@@ -198,5 +190,5 @@ WHERE name = ANY(sqlc.arg(names)::text[])
   AND creation_type = 'API';
 
 -- name: GetManagedSources :many
-SELECT id, name, source_type, creation_type, claims, created_at, updated_at
+SELECT id, name, source_type, creation_type, created_at, updated_at
 FROM source WHERE source_type = 'managed';

@@ -15,6 +15,11 @@ type protectedResourceMetadata struct {
 }
 
 // newProtectedResourceHandler creates an RFC 9728 compliant handler.
+// @Summary OAuth protected-resource metadata
+// @Description Fixed unauthenticated OAuth bootstrap. Scopes are not legacy role names.
+// @Produce json
+// @Success 200 {object} protectedResourceMetadata
+// @Router /.well-known/oauth-protected-resource [get]
 // Returns an error if required parameters are missing per RFC 9728:
 // - resourceURL must not be empty
 // - authorizationServers must contain at least one entry

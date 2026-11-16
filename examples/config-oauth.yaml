@@ -37,15 +37,24 @@ registries:
   - name: default
     sources: ["toolhive"]
 
+# Additional standalone admission restriction; author and mount this file explicitly.
+admin:
+  enabled: false
+authorization:
+  # Optional custom restriction replaces built-in allow-all Cedar entirely.
+  # policyFile: /etc/registry/policies.cedar # Mount read-only when specified.
+  allowAnonymousCatalog: false
+  identityMappings:
+    - issuer: https://idp.example.com
+      groups:
+        claim: groups
+        format: string-array
+
 # OAuth/OIDC authentication configuration
 auth:
   mode: oauth
 
-  # Additional paths that bypass authentication (optional)
-  # These extend the default public paths (health, docs, swagger, well-known)
-  # publicPaths:
-  #   - /custom/public
-  #   - /metrics
+  # publicPaths is rejected; only exact credential-bootstrap metadata is exempt.
 
   # OAuth/OIDC specific configuration
   oauth:
@@ -75,6 +84,7 @@ auth:
       - name: kubernetes
         issuerUrl: https://kubernetes.default.svc
         audience: https://kubernetes.default.svc
+        allowPrivateIP: true
         # Path to CA certificate for verifying Kubernetes API server TLS
         caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
@@ -85,6 +95,7 @@ database:
   host: localhost
   port: 5432
   user: thv_user
+  migrationUser: thv_migrator
   database: toolhive_registry
   sslMode: require
 

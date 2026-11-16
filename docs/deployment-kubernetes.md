@@ -1,653 +1,258 @@
-# Kubernetes Deployment
+# Kubernetes deployment
 
-This guide covers deploying the ToolHive Registry API server to Kubernetes.
+Use the [repository Helm chart](../deploy/charts/toolhive-registry-server/README.md).
+It deploys the standalone catalog API, not a sidecar, and does **not** provision
+PostgreSQL. The following is the authoritative install/upgrade path; commands are
+for an operator to run in a deliberately selected cluster context.
 
-## Table of Contents
+## Prepare database, image and credentials
 
-- [Overview](#overview)
-- [Prerequisites](#prerequisites)
-- [Basic Deployment](#basic-deployment)
-- [Database Configuration](#database-configuration)
-- [Authentication Setup](#authentication-setup)
-- [Production Considerations](#production-considerations)
-- [Complete Examples](#complete-examples)
+Prerequisites: Kubernetes 1.25+, Helm 3.10+, kubectl, a PostgreSQL 16+ endpoint,
+and a trusted HTTPS OAuth issuer/audience. Use the chart from this checkout and
+an image built from this branch, or a pinned release verified to implement its
+catalog startup/receipt enforcement. Published binary images live at
+`ghcr.io/stacklok/thv-registry-api`; do not assume released `latest` includes this
+runtime. See [source image builds](deployment-docker.md#images-and-standalone-containers).
+A local image must be loaded into the selected cluster's nodes or made available
+in an operator-managed registry; building locally alone does not make it pullable.
 
-## Overview
+1. Provision PostgreSQL and the **two non-superuser roles** in
+   [database setup](database.md#setup-guide): `thv_user` for runtime,
+   `thv_migrator` for migrations. For an existing DB preserve schema ownership
+   and use its existing credentials. This guide uses
+   `postgres.database.svc.cluster.local:5432`, database `toolhive_registry`;
+   replace that host consistently in values and pgpass.
+2. Prepare a private pgpass file with those two role passwords using
+   [the credential format](database.md#pgpass-file). Do not put passwords in
+   Helm values: `config` is rendered into a ConfigMap.
+3. In your selected context, create the namespace and Secret from the private
+   file (set `PGPASS_PATH` to its absolute path). Do not print its contents:
 
-The Registry API is designed to run as a sidecar container alongside the ToolHive Operator's MCPRegistry controller, but it can also run standalone.
+   ```sh
+   kubectl create namespace toolhive-system
+   kubectl -n toolhive-system create secret generic registry-db-pgpass \
+     --from-file="pgpass=${PGPASS_PATH:?Set private pgpass file path}"
+   ```
 
-### Key Features
+## Prepare operator-values.yaml
 
-- Automatic database migrations on startup
-- Health and readiness probes
-- Graceful shutdown (30-second timeout)
-- ConfigMap-based configuration
-- Secret-based credential management
-
-## Prerequisites
-
-- Kubernetes cluster (1.24+)
-- `kubectl` configured to access your cluster
-- PostgreSQL database (required)
-- Container image: `ghcr.io/stacklok/toolhive/thv-registry-api:latest`
-
-## Basic Deployment
-
-### Minimal Example (File-based Registry)
+Save the following as an operator-owned `operator-values.yaml`. Replace the image
+placeholder with your exact current-runtime image and customize the DB and OAuth
+provider. Built-in Cedar needs no group/scope mappings. If a custom policy uses
+attributes, add mappings whose issuer exactly matches the trusted provider.
+Keep admin off unless deliberately granting every authenticated user all enabled
+admin operations with the default policy.
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: registry-api-config
-  namespace: toolhive
-data:
-  config.yaml: |
-    sources:
-      - name: toolhive
-        git:
-          repository: https://github.com/stacklok/toolhive-catalog.git
-          branch: main
-          path: pkg/catalog/toolhive/data/registry-upstream.json
-        syncPolicy:
-          interval: "15m"
-    registries:
-      - name: default
-        sources: ["toolhive"]
-    auth:
-      mode: anonymous  # For development only!
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: registry-api
-  namespace: toolhive
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: registry-api
-  template:
-    metadata:
-      labels:
-        app: registry-api
-    spec:
-      containers:
-      - name: registry-api
-        image: ghcr.io/stacklok/toolhive/thv-registry-api:latest
-        args:
-        - serve
-        - --config=/etc/registry/config.yaml
-        ports:
-        - name: http
-          containerPort: 8080
-          protocol: TCP
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 10
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /readiness
-            port: http
-          initialDelaySeconds: 5
-          periodSeconds: 5
-        volumeMounts:
-        - name: config
-          mountPath: /etc/registry
-          readOnly: true
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
-      volumes:
-      - name: config
-        configMap:
-          name: registry-api-config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: registry-api
-  namespace: toolhive
-spec:
-  selector:
-    app: registry-api
-  ports:
-  - name: http
-    port: 80
-    targetPort: http
-    protocol: TCP
+image:
+  registryServerUrl: REPLACE_WITH_CURRENT_RUNTIME_IMAGE
+  pullPolicy: IfNotPresent
+initializeEmptyCatalog: false
+service:
   type: ClusterIP
+  exposeInternalPort: false # Probes still reach the pod's 8081 listener.
+podSecurityContext:
+  fsGroup: 65535
+config:
+  admin:
+    enabled: false
+  authorization:
+    allowAnonymousCatalog: false
+    identityMappings: []
+  auth:
+    mode: oauth
+    oauth:
+      resourceUrl: https://registry.example.com
+      providers:
+        - name: company
+          issuerUrl: https://id.example.com
+          audience: registry-api
+  database:
+    host: postgres.database.svc.cluster.local
+    port: 5432
+    database: toolhive_registry
+    user: thv_user
+    migrationUser: thv_migrator
+    sslMode: verify-full
+  sources:
+    - name: toolhive
+      git:
+        repository: https://github.com/stacklok/toolhive-catalog.git
+        branch: main
+        path: pkg/catalog/toolhive/data/registry-upstream.json
+      syncPolicy:
+        interval: "30m"
+  registries:
+    - name: default
+      sources: [toolhive]
+extraEnv:
+  - name: PGPASSFILE
+    value: /run/registry-credentials/pgpass
+initContainers:
+  - name: prepare-pgpass
+    image: cgr.dev/chainguard/busybox:latest # Pin an approved digest for production.
+    command:
+      - sh
+      - -c
+      - cp /credential-input/pgpass /credential-output/pgpass && chmod 600 /credential-output/pgpass
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65535
+      runAsGroup: 65535
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+    volumeMounts:
+      - name: pgpass-secret
+        mountPath: /credential-input
+        readOnly: true
+      - name: pgpass-prepared
+        mountPath: /credential-output
+extraVolumes:
+  - name: pgpass-secret
+    secret:
+      secretName: registry-db-pgpass
+      defaultMode: 0440
+  - name: pgpass-prepared
+    emptyDir:
+      medium: Memory
+extraVolumeMounts:
+  - name: pgpass-prepared
+    mountPath: /run/registry-credentials
+    readOnly: true
 ```
 
-Apply the manifests:
+The init container runs as the chart's application UID 65535. `fsGroup` permits
+reading the root-owned Secret input and writing the emptyDir; the copied file is
+owned by UID 65535 with mode **0600**. Mounting a root-owned 0600 Secret directly
+is unreadable by that UID. Making the final pgpass group-readable (0640) is not a
+solution: PostgreSQL pgpass requires no group/other access. No root init container
+or broad pod capabilities are needed. Secret changes require recreating pods to
+copy new credentials; the prepared file is not a live Secret projection.
 
-```bash
-kubectl create namespace toolhive
-kubectl apply -f deployment.yaml
-```
+For `verify-full`, PostgreSQL must present a certificate valid for the configured
+host and trusted by the client. Mount the provider's CA file and set `PGSSLROOTCERT`
+via `extraEnv` if it is not already trusted. Do not disable TLS for production.
 
-Verify the deployment:
+### Optional custom admission and Kubernetes sources
 
-```bash
-kubectl -n toolhive get pods
-kubectl -n toolhive logs -l app=registry-api
-```
+Create an external ConfigMap containing a reviewed `policies.cedar` key, then set
+`policy.existingConfigMap` in values. The chart mounts it and selects the absolute
+policy path. A specified missing/invalid file fails startup; it replaces the
+built-in allow-all policy entirely. Follow the
+[Cedar guide](registry-cedar-authorization.md#write-a-policy). Roll out every replica
+after external policy edits; drain old replicas for revocations.
 
-## Database Configuration
+Kubernetes sources watch opted-in MCPServer, VirtualMCPServer and MCPRemoteProxy
+resources and periodically reconcile full-scope snapshots through DB leases.
+They do not query the cluster on each consumer request. Follow the
+[operator configuration](configuration.md#kubernetes) and chart RBAC values for
+namespace scope; the configured scope must be readable for all three kinds.
+Mounting config/Secrets alone does not require granting API access to Secrets.
 
-### Database Secret (pgpass file)
-
-The Registry Server uses PostgreSQL's pgpass file for database authentication. Create a secret containing the pgpass file:
-
-**Create pgpass file:**
-
-```bash
-# Create pgpass file with credentials for both users
-cat > pgpass <<EOF
-postgres-service.database.svc.cluster.local:5432:toolhive_registry:db_app:your-secure-app-password
-postgres-service.database.svc.cluster.local:5432:toolhive_registry:db_migrator:your-secure-migration-password
-EOF
-
-chmod 600 pgpass
-```
-
-**Create Kubernetes secret:**
-
-```bash
-kubectl -n toolhive create secret generic registry-db-pgpass \
-  --from-file=pgpass=pgpass
-
-# Clean up local file
-rm pgpass
-```
-
-Or using YAML:
+If accepting Kubernetes service-account OAuth tokens, use the cluster's actual
+issuer/audience and CA. For an issuer that resolves to the private cluster API,
+explicitly set **that provider's** `allowPrivateIP: true`, for example:
 
 ```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: registry-db-pgpass
-  namespace: toolhive
-type: Opaque
-data:
-  pgpass: <base64-encoded-pgpass-content>
+# Additional auth.oauth.providers entry; use the actual cluster issuer/audience.
+- name: kubernetes
+  issuerUrl: https://kubernetes.default.svc
+  audience: https://kubernetes.default.svc
+  caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  allowPrivateIP: true
 ```
 
-### ConfigMap with Database
+This opt-in does not disable TLS verification and should not be enabled globally
+for unrelated external providers.
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: registry-api-config
-  namespace: toolhive
-data:
-  config.yaml: |
-    sources:
-      - name: toolhive
-        git:
-          repository: https://github.com/stacklok/toolhive-catalog.git
-          branch: main
-          path: pkg/catalog/toolhive/data/registry-upstream.json
-        syncPolicy:
-          interval: "15m"
-    registries:
-      - name: default
-        sources: ["toolhive"]
-    auth:
-      mode: oauth
-      oauth:
-        resourceUrl: https://registry.example.com
-        providers:
-          - name: kubernetes
-            issuerUrl: https://kubernetes.default.svc
-            audience: https://kubernetes.default.svc
-            caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-    database:
-      host: postgres.database.svc.cluster.local
-      port: 5432
-      user: db_app
-      migrationUser: db_migrator
-      database: toolhive_registry
-      sslMode: require
-      maxOpenConns: 25
-      maxIdleConns: 5
-      connMaxLifetime: "5m"
+## New, entirely empty database
+
+Set `initializeEmptyCatalog: true` in the prepared values **only** for a genuinely
+new empty catalog. It authorizes empty-install preparation, not consumer access;
+it never approves existing data. The chart supplies `serve --initialize-empty`.
+It is safe to retain on same-target restarts once the receipt is consumed.
+
+Render and inspect before installing (these first two commands are local only):
+
+```sh
+helm lint deploy/charts/toolhive-registry-server -f operator-values.yaml
+helm template toolhive-registry-server deploy/charts/toolhive-registry-server \
+  -n toolhive-system -f operator-values.yaml > rendered-registry.yaml
+helm upgrade --install toolhive-registry-server deploy/charts/toolhive-registry-server \
+  -n toolhive-system -f operator-values.yaml --wait
 ```
 
-**Note**: Database passwords are provided via the pgpass file mounted from the secret, not in the config.
+The Service exposes only 8080 with these values. Provide trusted TLS ingress to
+that port for clients; do not forward 8081 through public ingress/load balancers.
 
-### Deployment with Database
+## Existing database and upgrades
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: registry-api
-  namespace: toolhive
-spec:
-  replicas: 2  # Can scale horizontally with database backend
-  selector:
-    matchLabels:
-      app: registry-api
-  template:
-    metadata:
-      labels:
-        app: registry-api
-    spec:
-      serviceAccountName: registry-api
-      containers:
-      - name: registry-api
-        image: ghcr.io/stacklok/toolhive/thv-registry-api:latest
-        args:
-        - serve
-        - --config=/etc/registry/config.yaml
-        ports:
-        - name: http
-          containerPort: 8080
-          protocol: TCP
-        env:
-        - name: PGPASSFILE
-          value: /secrets/pgpass
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /readiness
-            port: http
-          initialDelaySeconds: 5
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 3
-        volumeMounts:
-        - name: config
-          mountPath: /etc/registry
-          readOnly: true
-        - name: pgpass
-          mountPath: /secrets
-          readOnly: true
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 1000m
-            memory: 1Gi
-      volumes:
-      - name: config
-        configMap:
-          name: registry-api-config
-      - name: pgpass
-        secret:
-          secretName: registry-db-pgpass
-          defaultMode: 0600
+An existing current-runtime catalog with a consumed same-target receipt and clean
+schema 30 can use the same install command with `initializeEmptyCatalog: false`.
+For a historical catalog, do **not** install a new serving replica or run a generic
+migration Job alongside old writers:
+
+1. Stop/drain every reader, writer, controller, sync worker and embedding host,
+   including replicas outside this Helm release. Prevent automatic restarts.
+2. Take/verify a full DB/roles/config/policy backup. Prepare the final effective
+   config and frozen policy, including operator exports and credential mounts.
+3. Run the [offline exposure procedure](registry-exposure-migration.md#maintenance-procedure)
+   with this binary and that exact config/DB host: stop at schema 29, inventory,
+   explicitly acknowledge, retire claims, **finalize at 29**, then migrate to 30.
+   Use an operator-controlled offline CLI environment with the same network,
+   credential files, policy and Kubernetes scope as the deployment. The chart
+   does not implement these review commands or infer consent.
+4. Install the final chart/image with initialization false. Never restart an old
+   binary against schema 30; `migrate down` cannot undo this transition. Recovery
+   requires the verified full backup while everything remains offline.
+
+Do not promise zero-downtime upgrades across this boundary. RollingUpdate,
+`maxUnavailable: 0`, and Helm rollback do not make mixed old/new writers safe.
+For later compatible updates, assess schema/config compatibility before selecting
+an ordinary rolling strategy; a chart rollback does not roll back DB state.
+
+## Verify and operate
+
+```sh
+kubectl -n toolhive-system rollout status deployment/toolhive-registry-server
+kubectl -n toolhive-system logs deployment/toolhive-registry-server
+kubectl -n toolhive-system port-forward deployment/toolhive-registry-server \
+  --address 127.0.0.1 8080:8080 8081:8081
 ```
 
-### Optional: Pre-Migration Job
+In another terminal, use a private mode-0600 header file containing
+`Authorization: Bearer <access-token>` from the configured IdP:
 
-Run migrations as a separate Job before deployment:
-
-```yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: registry-migrate
-  namespace: toolhive
-spec:
-  backoffLimit: 3
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-      - name: migrate
-        image: ghcr.io/stacklok/toolhive/thv-registry-api:latest
-        args:
-        - migrate
-        - up
-        - --config=/etc/registry/config.yaml
-        - --yes
-        env:
-        - name: PGPASSFILE
-          value: /secrets/pgpass
-        volumeMounts:
-        - name: config
-          mountPath: /etc/registry
-          readOnly: true
-        - name: pgpass
-          mountPath: /secrets
-          readOnly: true
-      volumes:
-      - name: config
-        configMap:
-          name: registry-api-config
-      - name: pgpass
-        secret:
-          secretName: registry-db-pgpass
-          defaultMode: 0600
+```sh
+curl --fail http://localhost:8081/health
+curl --fail http://localhost:8081/readiness
+curl --fail-with-body --header "@${AUTH_HEADER_FILE:?Set private header file path}" \
+  http://localhost:8080/registry/default/v0.1/servers
 ```
 
-## Authentication Setup
+Probes and enabled `/metrics` exist only on internal 8081 and have no auth/audit or
+HTTP telemetry middleware. The chart's liveness/readiness probes already target
+`internal-http`. Enable telemetry as in [observability](observability.md); configure
+a trusted scraper to reach pod port 8081, or deliberately enable the internal
+ClusterIP port and restrict it with the
+[chart NetworkPolicy example](../deploy/charts/toolhive-registry-server/README.md#internal-port-exposure).
 
-### Service Account
+NetworkPolicy ingress isolation applies to **all ports** of selected pods: allow
+public-client/ingress-controller traffic to 8080 separately from trusted monitoring
+to 8081. With egress isolation, allow DNS (UDP/TCP), the exact DB endpoint/port,
+OAuth discovery/JWKS/introspection, configured Git/API/file URLs, the Kubernetes
+API for operator sources, and OTLP if enabled. `namespaceSelector: {}` selects
+cluster pods, **not external HTTPS services**. Standard NetworkPolicy has no FQDN
+rules: use approved destination CIDRs, an egress gateway/proxy, or CNI-supported
+FQDN policy accounting for DNS/address changes. Do not blindly allow all internet
+egress to compensate for an incorrect pod selector.
 
-Create a service account for the registry API:
-
-```yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: registry-api
-  namespace: toolhive
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: registry-api
-  namespace: toolhive
-rules:
-- apiGroups: [""]
-  resources: ["configmaps", "secrets"]
-  verbs: ["get", "list"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: registry-api
-  namespace: toolhive
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: registry-api
-subjects:
-- kind: ServiceAccount
-  name: registry-api
-  namespace: toolhive
-```
-
-### OAuth with Kubernetes Service Accounts
-
-Configuration for accepting both external OAuth and Kubernetes service account tokens:
-
-```yaml
-auth:
-  mode: oauth
-  oauth:
-    resourceUrl: https://registry.example.com
-    providers:
-      # External OAuth provider
-      - name: company-sso
-        issuerUrl: https://auth.company.com
-        audience: api://toolhive-registry
-
-      # Kubernetes service accounts
-      - name: kubernetes
-        issuerUrl: https://kubernetes.default.svc
-        audience: https://kubernetes.default.svc
-        caCertPath: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-```
-
-## Production Considerations
-
-### High Availability
-
-```yaml
-spec:
-  replicas: 3  # Multiple replicas for HA
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
-```
-
-> **Note:** `maxUnavailable: 0` keeps old pods serving until a new pod is ready, which
-> is what makes upgrades zero-downtime. One migration is incompatible with that — see
-> [Upgrading across migration 000023](#upgrading-across-migration-000023).
-
-### Upgrading across migration 000023
-
-Migration `000023` changes `mcp_server_package.runtime_arguments` and
-`.package_arguments` from `TEXT[]` to `JSONB` in place, so that argument values are no
-longer discarded on ingest. Migrations run automatically when the server starts, before
-it serves traffic.
-
-**This one upgrade requires downtime.** Binaries older than `000023` expect `[]string`
-for these columns, so old and new replicas cannot both run against the migrated schema:
-
-- An old replica **reading** a migrated row cannot scan JSONB objects into `[]string`.
-  Its package-list queries fail.
-- An old replica **writing** arguments stores a bare JSON string array. Newer readers
-  salvage the flag names, but the values are lost. If that write also restores
-  `last_sync_hash`, the source then looks unchanged and stays degraded until its
-  upstream content changes.
-
-Scale to zero before upgrading, then scale back up:
-
-```bash
-kubectl scale deployment/registry-api --replicas=0 -n toolhive
-# deploy the new version, then:
-kubectl scale deployment/registry-api --replicas=3 -n toolhive
-```
-
-Setting `strategy: {type: Recreate}` for the upgrade works too. Either way, do not use
-`maxUnavailable: 0` for this upgrade — it guarantees the unsafe overlap.
-
-Two things to know afterwards:
-
-- Existing rows keep only their flag names; values were never stored and cannot be
-  recovered by the migration. Synced sources re-ingest complete arguments on the next
-  sync cycle, which the migration triggers by clearing `last_sync_hash`.
-- Servers published through the API into a managed source have no upstream to re-read.
-  Recover each affected version by deleting and re-publishing it — publishing the same
-  `name@version` returns HTTP 409, so the delete is required. The version is absent
-  from the registry between the two calls:
-
-  ```bash
-  curl -X DELETE "$REGISTRY/v1/entries/server/$(printf %s "$NAME" | jq -sRr @uri)/versions/$VERSION"
-  curl -X POST "$REGISTRY/v1/entries" -H 'Content-Type: application/json' --data @server.json
-  ```
-
-### Pod Disruption Budget
-
-```yaml
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: registry-api-pdb
-  namespace: toolhive
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app: registry-api
-```
-
-### Horizontal Pod Autoscaler
-
-```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: registry-api-hpa
-  namespace: toolhive
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: registry-api
-  minReplicas: 2
-  maxReplicas: 10
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
-```
-
-### Network Policy
-
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: registry-api-netpol
-  namespace: toolhive
-spec:
-  podSelector:
-    matchLabels:
-      app: registry-api
-  policyTypes:
-  - Ingress
-  - Egress
-  ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          name: toolhive
-    ports:
-    - protocol: TCP
-      port: 8080
-  egress:
-  # Allow DNS
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          name: kube-system
-    ports:
-    - protocol: UDP
-      port: 53
-  # Allow database
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          name: database
-    ports:
-    - protocol: TCP
-      port: 5432
-  # Allow HTTPS (for Git sync, OAuth, etc.)
-  - to:
-    - namespaceSelector: {}
-    ports:
-    - protocol: TCP
-      port: 443
-```
-
-### Resource Limits
-
-Recommended resource requests and limits:
-
-```yaml
-resources:
-  requests:
-    cpu: 100m      # Minimum required
-    memory: 256Mi  # With database backend
-  limits:
-    cpu: 1000m     # Burst capacity
-    memory: 1Gi    # Maximum memory
-```
-
-Adjust based on:
-- Number of registries configured
-- Sync frequency
-- Database connection pool size
-- Expected request rate
-
-### Monitoring
-
-Add Prometheus annotations:
-
-```yaml
-template:
-  metadata:
-    annotations:
-      prometheus.io/scrape: "true"
-      prometheus.io/port: "8080"
-      prometheus.io/path: "/metrics"  # If metrics endpoint is added
-```
-
-## Complete Examples
-
-### Production-Ready Deployment
-
-See [examples/kubernetes/](../examples/kubernetes/) directory for complete, production-ready manifests including:
-
-- Namespace setup
-- ConfigMaps and Secrets
-- Deployment with HA configuration
-- Service and Ingress
-- RBAC configuration
-- Network policies
-- Monitoring setup
-
-### Helm Chart
-
-A Helm chart is planned for future releases. Track progress in [issue #XXX](https://github.com/stacklok/toolhive-registry-server/issues).
-
-## Troubleshooting
-
-### Pod Not Starting
-
-Check logs:
-```bash
-kubectl -n toolhive logs -l app=registry-api
-```
-
-Common issues:
-- ConfigMap not found or malformed
-- Secret not found or missing keys
-- Database connection failure
-- Invalid authentication configuration
-
-### Database Connection Issues
-
-Verify:
-```bash
-# Check if database is reachable
-kubectl -n toolhive exec -it deployment/registry-api -- \
-  nc -zv postgres.database.svc.cluster.local 5432
-
-# Check environment variables
-kubectl -n toolhive exec -it deployment/registry-api -- env | grep -E 'THV_REGISTRY_|PGPASSFILE'
-```
-
-### Migration Failures
-
-View migration job logs:
-```bash
-kubectl -n toolhive logs job/registry-migrate
-```
-
-Manually run migrations:
-```bash
-kubectl -n toolhive exec -it deployment/registry-api -- \
-  thv-registry-api migrate up --config /etc/registry/config.yaml
-```
-
-## See Also
-
-- [Configuration Guide](configuration.md) - Complete configuration reference
-- [Database Setup](database.md) - Database configuration and migrations
-- [Authentication](authentication.md) - OAuth and security configuration
-- [Docker Deployment](deployment-docker.md) - Docker and Docker Compose
+On failures, inspect startup/probe and init-container logs, config validity, file
+ownership and exact credential tuples without dumping secrets or environments.
+A healthy probe does not prove a token or Cedar policy admits API requests. For
+dirty schema/receipt failures remain offline and follow the recovery procedure,
+never auto-force a version or retry empty initialization against existing data.
