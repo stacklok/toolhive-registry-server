@@ -26,17 +26,17 @@ thv-registry-api migrate up [flags]
 ### Options
 
 ```
-  -h, --help              help for up
-      --to-version uint   Explicit forward schema target (29 for offline exposure review; default latest)
+  -h, --help[=true|false]   help for up
+      --to-version uint     Explicit forward schema target (29 for offline exposure review; default latest)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string    Path to configuration file (YAML format, required)
-      --debug            Enable debug mode
-  -n, --num-steps uint   Number of steps to migrate (0 = all)
-  -y, --yes              Confirm schema migrations only; never exposure consent
+      --config string        Path to configuration file (YAML format, required)
+      --debug[=true|false]   Enable debug mode
+  -n, --num-steps uint       Number of steps to migrate (0 = all)
+  -y, --yes[=true|false]     Confirm schema migrations only; never exposure consent
 ```
 
 ### SEE ALSO

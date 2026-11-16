@@ -20,19 +20,19 @@ thv-registry-api migrate exposure acknowledge [flags]
 ### Options
 
 ```
-      --approve-whole-catalog   Explicitly approve historical whole-catalog exposure
-      --confirm-offline         Confirm all readers, writers and controllers are stopped and drained
-      --digest string           Exact sha256: reviewed inventory digest (post-fence digest for retire-claims)
-  -h, --help                    help for acknowledge
+      --approve-whole-catalog[=true|false]   Explicitly approve historical whole-catalog exposure
+      --confirm-offline[=true|false]         Confirm all readers, writers and controllers are stopped and drained
+      --digest string                        Exact sha256: reviewed inventory digest (post-fence digest for retire-claims)
+  -h, --help[=true|false]                    help for acknowledge
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string    Path to configuration file (YAML format, required)
-      --debug            Enable debug mode
-  -n, --num-steps uint   Number of steps to migrate (0 = all)
-  -y, --yes              Confirm schema migrations only; never exposure consent
+      --config string        Path to configuration file (YAML format, required)
+      --debug[=true|false]   Enable debug mode
+  -n, --num-steps uint       Number of steps to migrate (0 = all)
+  -y, --yes[=true|false]     Confirm schema migrations only; never exposure consent
 ```
 
 ### SEE ALSO

@@ -20,16 +20,16 @@ thv-registry-api migrate exposure inventory [flags]
 ### Options
 
 ```
-  -h, --help   help for inventory
+  -h, --help[=true|false]   help for inventory
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string    Path to configuration file (YAML format, required)
-      --debug            Enable debug mode
-  -n, --num-steps uint   Number of steps to migrate (0 = all)
-  -y, --yes              Confirm schema migrations only; never exposure consent
+      --config string        Path to configuration file (YAML format, required)
+      --debug[=true|false]   Enable debug mode
+  -n, --num-steps uint       Number of steps to migrate (0 = all)
+  -y, --yes[=true|false]     Confirm schema migrations only; never exposure consent
 ```
 
 ### SEE ALSO
