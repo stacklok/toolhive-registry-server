@@ -32,15 +32,15 @@ thv-registry-api prime-db [username] [flags]
 ### Options
 
 ```
-      --config string   Path to configuration file (YAML format, required)
-      --dry-run         Print the SQL that would be executed to standard output
-  -h, --help            help for prime-db
+      --config string          Path to configuration file (YAML format, required)
+      --dry-run[=true|false]   Print the SQL that would be executed to standard output
+  -h, --help[=true|false]      help for prime-db
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --debug   Enable debug mode
+      --debug[=true|false]   Enable debug mode
 ```
 
 ### SEE ALSO

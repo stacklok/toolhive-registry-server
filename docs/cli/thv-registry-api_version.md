@@ -20,14 +20,14 @@ thv-registry-api version [flags]
 ### Options
 
 ```
-      --format string   Output format (json)
-  -h, --help            help for version
+      --format string       Output format (json)
+  -h, --help[=true|false]   help for version
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --debug   Enable debug mode
+      --debug[=true|false]   Enable debug mode
 ```
 
 ### SEE ALSO
