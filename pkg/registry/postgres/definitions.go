@@ -544,6 +544,9 @@ func decodeSource(
 	if e != nil {
 		return s, fmt.Errorf("%w: unreadable stored definition", persistence.ErrInvalid)
 	}
+	// Older servers stored a schedule or filter on sources that cannot use it;
+	// such a row must still load.
+	s, _ = s.WithoutUnusableSync()
 	return s, nil
 }
 

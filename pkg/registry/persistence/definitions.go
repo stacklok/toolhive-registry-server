@@ -120,6 +120,34 @@ type SourceDefinition struct {
 	Filter     *Filter         `json:"filter,omitempty"`
 }
 
+// WithoutUnusableSync returns s without the settings its kind cannot use: a
+// schedule on a managed, kubernetes or inline file source, and a filter on
+// such a source when validation rejects it there. v1.5.4 accepted and stored
+// them, so storage reads and admin request decoding drop them instead of
+// rejecting the source. dropped names what was removed, for a warning.
+func (s SourceDefinition) WithoutUnusableSync() (out SourceDefinition, dropped []string) {
+	inline := s.File != nil && s.File.Data != ""
+	unscheduled := s.Managed != nil || s.Kubernetes != nil || inline
+	if !unscheduled {
+		return s, nil
+	}
+	if s.Schedule != "" {
+		s.Schedule = ""
+		dropped = append(dropped, "schedule")
+	}
+	if s.Filter != nil {
+		if _, err := s.Kind(); err != nil {
+			without := s
+			without.Filter = nil
+			if _, err := without.Kind(); err == nil {
+				s = without
+				dropped = append(dropped, "filter")
+			}
+		}
+	}
+	return s, dropped
+}
+
 // ViewDefinition is a named, ordered set of source names. Names and origins are immutable.
 // Timestamps follow the same storage-assigned metadata contract as SourceDefinition.
 type ViewDefinition struct {
