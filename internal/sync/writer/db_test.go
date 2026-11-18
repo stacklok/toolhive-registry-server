@@ -3,7 +3,6 @@ package writer
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 )
 
@@ -41,7 +40,7 @@ func setupTestDB(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDB(t)
+	db, cleanupFunc := dbtest.SetupTestDB(t)
 	t.Cleanup(cleanupFunc)
 
 	// Get connection string from the db connection
@@ -288,8 +287,8 @@ func createFullTestServer(name, version string) upstreamv0.ServerJSON {
 	}
 }
 
-// TestNewDBSyncWriter tests the constructor
-func TestNewDBSyncWriter(t *testing.T) {
+// TestSnapshotFixture tests the constructor
+func TestSnapshotFixture(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -315,7 +314,7 @@ func TestNewDBSyncWriter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			writer, err := NewDBSyncWriter(tt.pool, 0)
+			writer, err := newSnapshotFixture(tt.pool, 0)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -802,10 +801,10 @@ func TestDbSyncWriter_Store(t *testing.T) {
 
 			tt.setupFunc(t, pool)
 
-			writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+			writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 			require.NoError(t, err)
 
-			err = writer.Store(context.Background(), tt.registryName, tt.registry)
+			err = writer.store(context.Background(), tt.registryName, tt.registry)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -1097,7 +1096,7 @@ func TestDbSyncWriter_Store_ContextCancellation(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	// Create a cancelled context
@@ -1108,7 +1107,7 @@ func TestDbSyncWriter_Store_ContextCancellation(t *testing.T) {
 		createTestServer("test.org/server", "1.0.0"),
 	})
 
-	err = writer.Store(ctx, "test-registry", registry)
+	err = writer.store(ctx, "test-registry", registry)
 	require.Error(t, err)
 }
 
@@ -1121,7 +1120,7 @@ func TestDbSyncWriter_Store_IconThemes(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	// Create server with various icon themes
@@ -1156,7 +1155,7 @@ func TestDbSyncWriter_Store_IconThemes(t *testing.T) {
 
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
 
-	err = writer.Store(context.Background(), "test-registry", registry)
+	err = writer.store(context.Background(), "test-registry", registry)
 	require.NoError(t, err)
 
 	// Verify servers were created
@@ -1178,7 +1177,7 @@ func TestDbSyncWriter_Store_PackageAcrossServers(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	// Create multiple server versions, each with their own package
@@ -1227,7 +1226,7 @@ func TestDbSyncWriter_Store_PackageAcrossServers(t *testing.T) {
 
 	registry := createTestUpstreamRegistry(servers)
 
-	err = writer.Store(context.Background(), "test-registry", registry)
+	err = writer.store(context.Background(), "test-registry", registry)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1258,7 +1257,7 @@ func TestDbSyncWriter_Store_MultipleRemotes(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	server := createTestServer("test.org/server", "1.0.0")
@@ -1279,7 +1278,7 @@ func TestDbSyncWriter_Store_MultipleRemotes(t *testing.T) {
 
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
 
-	err = writer.Store(context.Background(), "test-registry", registry)
+	err = writer.store(context.Background(), "test-registry", registry)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1352,7 +1351,7 @@ func TestDbSyncWriter_Store_LatestVersionDetermination(t *testing.T) {
 
 			createTestRegistry(t, pool, tt.registryName)
 
-			writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+			writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 			require.NoError(t, err)
 
 			servers := make([]upstreamv0.ServerJSON, len(tt.versions))
@@ -1361,7 +1360,7 @@ func TestDbSyncWriter_Store_LatestVersionDetermination(t *testing.T) {
 			}
 
 			registry := createTestUpstreamRegistry(servers)
-			err = writer.Store(context.Background(), tt.registryName, registry)
+			err = writer.store(context.Background(), tt.registryName, registry)
 			require.NoError(t, err)
 
 			ctx := context.Background()
@@ -1399,7 +1398,7 @@ func TestDbSyncWriter_Store_UUIDStability(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1413,7 +1412,7 @@ func TestDbSyncWriter_Store_UUIDStability(t *testing.T) {
 	})
 
 	// First sync
-	err = writer.Store(ctx, "test-registry", registry)
+	err = writer.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Query DB and record server UUIDs and created_at timestamps
@@ -1444,7 +1443,7 @@ func TestDbSyncWriter_Store_UUIDStability(t *testing.T) {
 	originalCreatedAtB := serverB1.CreatedAt
 
 	// Second sync with exact same data
-	err = writer.Store(ctx, "test-registry", registry)
+	err = writer.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Query DB again and verify UUIDs are identical
@@ -1491,7 +1490,7 @@ func TestDbSyncWriter_Store_UpdatePreservesUUID(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1504,7 +1503,7 @@ func TestDbSyncWriter_Store_UpdatePreservesUUID(t *testing.T) {
 	server.Title = "Old Title"
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
 
-	err = writer.Store(ctx, "test-registry", registry)
+	err = writer.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Query and record original UUID and description
@@ -1531,7 +1530,7 @@ func TestDbSyncWriter_Store_UpdatePreservesUUID(t *testing.T) {
 	serverUpdated.Title = "New Title"
 	registryUpdated := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverUpdated})
 
-	err = writer.Store(ctx, "test-registry", registryUpdated)
+	err = writer.store(ctx, "test-registry", registryUpdated)
 	require.NoError(t, err)
 
 	// Query and verify UUID is the same but description is updated
@@ -1571,7 +1570,7 @@ func TestDbSyncWriter_Store_OrphanedServerCleanup(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1585,7 +1584,7 @@ func TestDbSyncWriter_Store_OrphanedServerCleanup(t *testing.T) {
 		createTestServer("test.org/server-c", "1.0.0"),
 	})
 
-	err = writer.Store(ctx, "test-registry", registry)
+	err = writer.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Verify all 3 servers exist
@@ -1611,7 +1610,7 @@ func TestDbSyncWriter_Store_OrphanedServerCleanup(t *testing.T) {
 		createTestServer("test.org/server-c", "1.0.0"),
 	})
 
-	err = writer.Store(ctx, "test-registry", registryUpdated)
+	err = writer.store(ctx, "test-registry", registryUpdated)
 	require.NoError(t, err)
 
 	// Verify only server-a and server-c exist
@@ -1663,7 +1662,7 @@ func TestDbSyncWriter_Store_PackageCleanup(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1684,7 +1683,7 @@ func TestDbSyncWriter_Store_PackageCleanup(t *testing.T) {
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
 
 	// First sync
-	err = writer.Store(ctx, "test-registry", registry)
+	err = writer.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Verify package exists
@@ -1712,7 +1711,7 @@ func TestDbSyncWriter_Store_PackageCleanup(t *testing.T) {
 	}
 	registryUpdated := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverUpdated})
 
-	err = writer.Store(ctx, "test-registry", registryUpdated)
+	err = writer.store(ctx, "test-registry", registryUpdated)
 	require.NoError(t, err)
 
 	// Verify server UUID is preserved
@@ -1739,7 +1738,7 @@ func TestDbSyncWriter_Store_PackageCleanup(t *testing.T) {
 	serverNoPackages.Packages = nil
 	registryNoPackages := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverNoPackages})
 
-	err = writer.Store(ctx, "test-registry", registryNoPackages)
+	err = writer.store(ctx, "test-registry", registryNoPackages)
 	require.NoError(t, err)
 
 	// Verify server UUID is still preserved
@@ -1770,7 +1769,7 @@ func TestDbSyncWriter_Store_RemoteCleanup(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1792,7 +1791,7 @@ func TestDbSyncWriter_Store_RemoteCleanup(t *testing.T) {
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
 
 	// First sync
-	err = writer.Store(ctx, "test-registry", registry)
+	err = writer.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Verify 2 remotes exist
@@ -1816,7 +1815,7 @@ func TestDbSyncWriter_Store_RemoteCleanup(t *testing.T) {
 	}
 	registryUpdated := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverUpdated})
 
-	err = writer.Store(ctx, "test-registry", registryUpdated)
+	err = writer.store(ctx, "test-registry", registryUpdated)
 	require.NoError(t, err)
 
 	// Verify server UUID is preserved
@@ -1848,7 +1847,7 @@ func TestDbSyncWriter_Store_IconCleanup(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1876,7 +1875,7 @@ func TestDbSyncWriter_Store_IconCleanup(t *testing.T) {
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
 
 	// First sync
-	err = writer.Store(ctx, "test-registry", registry)
+	err = writer.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Verify server created
@@ -1903,7 +1902,7 @@ func TestDbSyncWriter_Store_IconCleanup(t *testing.T) {
 	}
 	registryUpdated := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverUpdated})
 
-	err = writer.Store(ctx, "test-registry", registryUpdated)
+	err = writer.store(ctx, "test-registry", registryUpdated)
 	require.NoError(t, err)
 
 	// Verify server UUID is preserved
@@ -1940,7 +1939,7 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	regIDA := idsA.registryID
 	regIDB := idsB.registryID
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -1959,10 +1958,10 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	})
 
 	// Step 4-5: Call Store() for both registries
-	err = writer.Store(ctx, "registry-A", registryA)
+	err = writer.store(ctx, "registry-A", registryA)
 	require.NoError(t, err)
 
-	err = writer.Store(ctx, "registry-B", registryB)
+	err = writer.store(ctx, "registry-B", registryB)
 	require.NoError(t, err)
 
 	// Step 6: Query DB and verify all 4 servers exist (2 per registry)
@@ -2033,7 +2032,7 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 	})
 
 	// Step 9: Call Store() for registry-A with the new data
-	err = writer.Store(ctx, "registry-A", registryAUpdated)
+	err = writer.store(ctx, "registry-A", registryAUpdated)
 	require.NoError(t, err)
 
 	// Step 10: Query DB and verify registry isolation
@@ -2107,7 +2106,7 @@ func TestDbSyncWriter_Store_RegistryIsolation(t *testing.T) {
 		// server-4 removed
 	})
 
-	err = writer.Store(ctx, "registry-B", registryBUpdated)
+	err = writer.store(ctx, "registry-B", registryBUpdated)
 	require.NoError(t, err)
 
 	// Verify registry-A is unaffected
@@ -2171,7 +2170,7 @@ func TestDbSyncWriter_Store_ServerWithMultiplePackages(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -2221,7 +2220,7 @@ func TestDbSyncWriter_Store_ServerWithMultiplePackages(t *testing.T) {
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
 
 	// First sync
-	err = writer.Store(ctx, "test-registry", registry)
+	err = writer.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Verify all 3 packages exist
@@ -2253,7 +2252,7 @@ func TestDbSyncWriter_Store_MultiplePackagesOrphanedCleanup(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -2287,7 +2286,7 @@ func TestDbSyncWriter_Store_MultiplePackagesOrphanedCleanup(t *testing.T) {
 	}
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
 
-	err = writer.Store(ctx, "test-registry", registry)
+	err = writer.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Verify all 3 packages exist
@@ -2327,7 +2326,7 @@ func TestDbSyncWriter_Store_MultiplePackagesOrphanedCleanup(t *testing.T) {
 	}
 	registryUpdated := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverUpdated})
 
-	err = writer.Store(ctx, "test-registry", registryUpdated)
+	err = writer.store(ctx, "test-registry", registryUpdated)
 	require.NoError(t, err)
 
 	// Verify server UUID is preserved
@@ -2362,7 +2361,7 @@ func TestDbSyncWriter_Store_MultiplePackagesOrphanedCleanup(t *testing.T) {
 	serverNoPackages.Packages = nil
 	registryNoPackages := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverNoPackages})
 
-	err = writer.Store(ctx, "test-registry", registryNoPackages)
+	err = writer.store(ctx, "test-registry", registryNoPackages)
 	require.NoError(t, err)
 
 	// Verify no packages exist
@@ -2381,7 +2380,7 @@ func TestDbSyncWriter_Store_PackageUpdate(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -2402,7 +2401,7 @@ func TestDbSyncWriter_Store_PackageUpdate(t *testing.T) {
 	}
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{server})
 
-	err = writer.Store(ctx, "test-registry", registry)
+	err = writer.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Verify package exists with version 1.0.0
@@ -2432,7 +2431,7 @@ func TestDbSyncWriter_Store_PackageUpdate(t *testing.T) {
 	}
 	registryUpdated := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverUpdated})
 
-	err = writer.Store(ctx, "test-registry", registryUpdated)
+	err = writer.store(ctx, "test-registry", registryUpdated)
 	require.NoError(t, err)
 
 	// Verify package was updated in place
@@ -2453,7 +2452,7 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 
 	createTestRegistry(t, pool, "test-registry")
 
-	writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	writer, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -2496,7 +2495,7 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 
 	registry := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverA, serverB, serverC})
 
-	err = writer.Store(ctx, "test-registry", registry)
+	err = writer.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Record all UUIDs
@@ -2564,7 +2563,7 @@ func TestDbSyncWriter_Store_ComplexSyncScenario(t *testing.T) {
 
 	registryUpdated := createTestUpstreamRegistry([]upstreamv0.ServerJSON{serverAUpdated, serverCUnchanged, serverD})
 
-	err = writer.Store(ctx, "test-registry", registryUpdated)
+	err = writer.store(ctx, "test-registry", registryUpdated)
 	require.NoError(t, err)
 
 	// Verify results
@@ -2822,7 +2821,7 @@ func TestDbSyncWriter_Store_Skills(t *testing.T) {
 				ids := createTestRegistry(t, pool, "test-registry")
 
 				// Pre-populate with 2 skills via an initial Store call
-				w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+				w, err := newSnapshotFixture(pool, testMaxMetaSize)
 				require.NoError(t, err)
 				initialRegistry := createTestUpstreamRegistryWithSkills(
 					nil,
@@ -2831,7 +2830,7 @@ func TestDbSyncWriter_Store_Skills(t *testing.T) {
 						createTestSkill("io.github.test", "skill-remove", "1.0.0"),
 					},
 				)
-				err = w.Store(context.Background(), "test-registry", initialRegistry)
+				err = w.store(context.Background(), "test-registry", initialRegistry)
 				require.NoError(t, err)
 
 				// Verify both skills exist before the test's Store call
@@ -2879,7 +2878,7 @@ func TestDbSyncWriter_Store_Skills(t *testing.T) {
 				createTestRegistry(t, pool, "test-registry")
 
 				// Pre-populate with original skill
-				w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+				w, err := newSnapshotFixture(pool, testMaxMetaSize)
 				require.NoError(t, err)
 
 				originalSkill := createTestSkill("io.github.test", "update-skill", "1.0.0")
@@ -2891,7 +2890,7 @@ func TestDbSyncWriter_Store_Skills(t *testing.T) {
 					nil,
 					[]toolhivetypes.Skill{originalSkill},
 				)
-				err = w.Store(context.Background(), "test-registry", initialRegistry)
+				err = w.store(context.Background(), "test-registry", initialRegistry)
 				require.NoError(t, err)
 			},
 			// Store again with updated fields
@@ -3021,10 +3020,10 @@ func TestDbSyncWriter_Store_Skills(t *testing.T) {
 				tt.setupFunc(t, pool)
 			}
 
-			w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+			w, err := newSnapshotFixture(pool, testMaxMetaSize)
 			require.NoError(t, err)
 
-			err = w.Store(context.Background(), tt.registryName, tt.registry)
+			err = w.store(context.Background(), tt.registryName, tt.registry)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -3051,7 +3050,7 @@ func TestDbSyncWriter_Store_RepeatedMixedSync(t *testing.T) {
 	ctx := context.Background()
 	createTestRegistry(t, pool, "test-registry")
 
-	w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	w, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	queries := sqlc.New(pool)
@@ -3071,7 +3070,7 @@ func TestDbSyncWriter_Store_RepeatedMixedSync(t *testing.T) {
 		},
 	)
 
-	err = w.Store(ctx, "test-registry", firstRegistry)
+	err = w.store(ctx, "test-registry", firstRegistry)
 	require.NoError(t, err)
 
 	// Validate first sync: 2 servers
@@ -3109,7 +3108,7 @@ func TestDbSyncWriter_Store_RepeatedMixedSync(t *testing.T) {
 		},
 	)
 
-	err = w.Store(ctx, "test-registry", secondRegistry)
+	err = w.store(ctx, "test-registry", secondRegistry)
 	require.NoError(t, err)
 
 	// Validate second sync: 2 servers (server-a, server-c; server-b orphaned)
@@ -3166,7 +3165,7 @@ func TestDbSyncWriter_Store_SkillMultiVersionLatest(t *testing.T) {
 	ctx := context.Background()
 	createTestRegistry(t, pool, "test-registry")
 
-	w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	w, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	queries := sqlc.New(pool)
@@ -3183,7 +3182,7 @@ func TestDbSyncWriter_Store_SkillMultiVersionLatest(t *testing.T) {
 		},
 	)
 
-	err = w.Store(ctx, "test-registry", registry)
+	err = w.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Validate: 3 skill rows exist (one per version)
@@ -3205,204 +3204,35 @@ func TestDbSyncWriter_Store_SkillMultiVersionLatest(t *testing.T) {
 	assert.Equal(t, "3.0.0", latestVersion, "latest_entry_version should point to v3.0.0")
 }
 
-// TestDbSyncWriter_Store_PerEntryClaims tests that WithPerEntryClaims overrides
-// source-level claims for specific entries while other entries fall back to source claims.
-func TestDbSyncWriter_Store_PerEntryClaims(t *testing.T) {
+// TestStoreSourceTxWritesNoClaims verifies that the transactional library
+// path never stamps claims, even when the source row carries claims. Claims
+// are written only by the standalone Store path.
+func TestStoreSourceTxWritesNoClaims(t *testing.T) {
 	t.Parallel()
 
-	// Helper to marshal claims JSON for test inputs
-	mustMarshal := func(t *testing.T, v any) []byte {
-		t.Helper()
-		b, err := json.Marshal(v)
-		require.NoError(t, err)
-		return b
-	}
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
 
-	type entryExpectation struct {
-		name      string
-		claimsNil bool
-		claimsMap map[string]string
-	}
+	ctx := context.Background()
+	ids := createTestRegistry(t, pool, "claims-free-tx")
+	_, err := pool.Exec(ctx, "UPDATE source SET claims = $1 WHERE id = $2", []byte(`{"org":"acme"}`), ids.sourceID)
+	require.NoError(t, err)
 
-	tests := []struct {
-		name           string
-		registryName   string
-		servers        []upstreamv0.ServerJSON
-		sourceClaims   []byte // nil means no source-level claims
-		perEntryClaims map[string][]byte
-		useOption      bool // whether to pass WithPerEntryClaims at all
-		expectations   []entryExpectation
-	}{
-		{
-			name:         "per-entry claims override source claims",
-			registryName: "per-entry-override",
-			servers: []upstreamv0.ServerJSON{
-				createTestServer("test.org/server1", "1.0.0"),
-				createTestServer("test.org/server2", "1.0.0"),
-			},
-			sourceClaims: mustMarshal(t, map[string]string{"org": "acme"}),
-			perEntryClaims: map[string][]byte{
-				"test.org/server1": mustMarshal(t, map[string]string{"org": "acme", "team": "platform"}),
-			},
-			useOption: true,
-			expectations: []entryExpectation{
-				{
-					name:      "test.org/server1",
-					claimsMap: map[string]string{"org": "acme", "team": "platform"},
-				},
-				{
-					name:      "test.org/server2",
-					claimsMap: map[string]string{"org": "acme"},
-				},
-			},
-		},
-		{
-			name:         "per-entry claims with no source claims",
-			registryName: "per-entry-no-source",
-			servers: []upstreamv0.ServerJSON{
-				createTestServer("test.org/server1", "1.0.0"),
-				createTestServer("test.org/server2", "1.0.0"),
-			},
-			sourceClaims: nil,
-			perEntryClaims: map[string][]byte{
-				"test.org/server1": mustMarshal(t, map[string]string{"team": "data"}),
-			},
-			useOption: true,
-			expectations: []entryExpectation{
-				{
-					name:      "test.org/server1",
-					claimsMap: map[string]string{"team": "data"},
-				},
-				{
-					name:      "test.org/server2",
-					claimsNil: true,
-				},
-			},
-		},
-		{
-			name:         "all entries have per-entry claims",
-			registryName: "per-entry-all",
-			servers: []upstreamv0.ServerJSON{
-				createTestServer("test.org/server1", "1.0.0"),
-				createTestServer("test.org/server2", "1.0.0"),
-			},
-			sourceClaims: mustMarshal(t, map[string]string{"org": "acme"}),
-			perEntryClaims: map[string][]byte{
-				"test.org/server1": mustMarshal(t, map[string]string{"team": "alpha"}),
-				"test.org/server2": mustMarshal(t, map[string]string{"team": "beta"}),
-			},
-			useOption: true,
-			expectations: []entryExpectation{
-				{
-					name:      "test.org/server1",
-					claimsMap: map[string]string{"team": "alpha"},
-				},
-				{
-					name:      "test.org/server2",
-					claimsMap: map[string]string{"team": "beta"},
-				},
-			},
-		},
-		{
-			name:         "empty per-entry claims map uses source claims",
-			registryName: "per-entry-empty-map",
-			servers: []upstreamv0.ServerJSON{
-				createTestServer("test.org/server1", "1.0.0"),
-				createTestServer("test.org/server2", "1.0.0"),
-			},
-			sourceClaims:   mustMarshal(t, map[string]string{"org": "acme"}),
-			perEntryClaims: map[string][]byte{},
-			useOption:      true,
-			expectations: []entryExpectation{
-				{
-					name:      "test.org/server1",
-					claimsMap: map[string]string{"org": "acme"},
-				},
-				{
-					name:      "test.org/server2",
-					claimsMap: map[string]string{"org": "acme"},
-				},
-			},
-		},
-		{
-			name:         "no StoreOption uses source claims",
-			registryName: "per-entry-no-option",
-			servers: []upstreamv0.ServerJSON{
-				createTestServer("test.org/server1", "1.0.0"),
-				createTestServer("test.org/server2", "1.0.0"),
-			},
-			sourceClaims:   mustMarshal(t, map[string]string{"org": "acme"}),
-			perEntryClaims: nil,
-			useOption:      false,
-			expectations: []entryExpectation{
-				{
-					name:      "test.org/server1",
-					claimsMap: map[string]string{"org": "acme"},
-				},
-				{
-					name:      "test.org/server2",
-					claimsMap: map[string]string{"org": "acme"},
-				},
-			},
-		},
-	}
+	reg := createTestUpstreamRegistry([]upstreamv0.ServerJSON{
+		createTestServer("test.org/server1", "1.0.0"),
+		createTestServer("test.org/server2", "1.0.0"),
+	})
+	tx, err := pool.Begin(ctx)
+	require.NoError(t, err)
+	defer tx.Rollback(context.Background())
+	require.NoError(t, StoreSourceTx(ctx, tx, ids.sourceID, reg, testMaxMetaSize))
+	require.NoError(t, tx.Commit(ctx))
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			pool, cleanup := setupTestDB(t)
-			defer cleanup()
-
-			ctx := context.Background()
-			ids := createTestRegistry(t, pool, tt.registryName)
-
-			// Set source-level claims if provided
-			if tt.sourceClaims != nil {
-				_, err := pool.Exec(ctx, "UPDATE source SET claims = $1 WHERE id = $2", tt.sourceClaims, ids.sourceID)
-				require.NoError(t, err)
-			}
-
-			writer, err := NewDBSyncWriter(pool, testMaxMetaSize)
-			require.NoError(t, err)
-
-			reg := createTestUpstreamRegistry(tt.servers)
-
-			// Call Store with or without the option
-			var storeOpts []StoreOption
-			if tt.useOption {
-				storeOpts = append(storeOpts, WithPerEntryClaims(tt.perEntryClaims))
-			}
-			err = writer.Store(ctx, tt.registryName, reg, storeOpts...)
-			require.NoError(t, err)
-
-			// Read back entries and verify claims
-			queries := sqlc.New(pool)
-			entries, err := queries.ListEntriesBySource(ctx, ids.sourceID)
-			require.NoError(t, err)
-
-			// Build a map of entry name -> claims for easy lookup
-			entryClaims := make(map[string][]byte, len(entries))
-			for _, entry := range entries {
-				entryClaims[entry.Name] = entry.Claims
-			}
-
-			for _, exp := range tt.expectations {
-				claims, ok := entryClaims[exp.name]
-				require.True(t, ok, "entry %q should exist", exp.name)
-
-				if exp.claimsNil {
-					assert.Nil(t, claims, "entry %q should have nil claims", exp.name)
-				} else {
-					require.NotNil(t, claims, "entry %q should have non-nil claims", exp.name)
-					var got map[string]string
-					err := json.Unmarshal(claims, &got)
-					require.NoError(t, err, "entry %q claims should be valid JSON", exp.name)
-					assert.Equal(t, exp.claimsMap, got, "entry %q claims mismatch", exp.name)
-				}
-			}
-		})
-	}
+	var total, claimed int
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT count(*), count(claims) FROM registry_entry WHERE source_id = $1`, ids.sourceID).Scan(&total, &claimed))
+	require.Equal(t, 2, total)
+	require.Zero(t, claimed)
 }
 
 // --- Plugin sync test helpers ---
@@ -3592,7 +3422,7 @@ func TestDbSyncWriter_Store_Plugins(t *testing.T) {
 				ids := createTestRegistry(t, pool, "test-registry")
 
 				// Pre-populate with 2 plugins via an initial Store call
-				w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+				w, err := newSnapshotFixture(pool, testMaxMetaSize)
 				require.NoError(t, err)
 				initialRegistry := createTestUpstreamRegistryWithPlugins(
 					nil,
@@ -3601,7 +3431,7 @@ func TestDbSyncWriter_Store_Plugins(t *testing.T) {
 						createTestPlugin("io.github.test", "plugin-remove", "1.0.0"),
 					},
 				)
-				err = w.Store(context.Background(), "test-registry", initialRegistry)
+				err = w.store(context.Background(), "test-registry", initialRegistry)
 				require.NoError(t, err)
 
 				// Verify both plugins exist before the test's Store call
@@ -3649,7 +3479,7 @@ func TestDbSyncWriter_Store_Plugins(t *testing.T) {
 				createTestRegistry(t, pool, "test-registry")
 
 				// Pre-populate with original plugin
-				w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+				w, err := newSnapshotFixture(pool, testMaxMetaSize)
 				require.NoError(t, err)
 
 				originalPlugin := createTestPlugin("io.github.test", "update-plugin", "1.0.0")
@@ -3661,7 +3491,7 @@ func TestDbSyncWriter_Store_Plugins(t *testing.T) {
 					nil,
 					[]toolhivetypes.Plugin{originalPlugin},
 				)
-				err = w.Store(context.Background(), "test-registry", initialRegistry)
+				err = w.store(context.Background(), "test-registry", initialRegistry)
 				require.NoError(t, err)
 			},
 			// Store again with updated fields
@@ -3791,10 +3621,10 @@ func TestDbSyncWriter_Store_Plugins(t *testing.T) {
 				tt.setupFunc(t, pool)
 			}
 
-			w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+			w, err := newSnapshotFixture(pool, testMaxMetaSize)
 			require.NoError(t, err)
 
-			err = w.Store(context.Background(), tt.registryName, tt.registry)
+			err = w.store(context.Background(), tt.registryName, tt.registry)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -3819,7 +3649,7 @@ func TestDbSyncWriter_Store_RepeatedMixedSync_Plugins(t *testing.T) {
 	ctx := context.Background()
 	createTestRegistry(t, pool, "test-registry")
 
-	w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	w, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	queries := sqlc.New(pool)
@@ -3839,7 +3669,7 @@ func TestDbSyncWriter_Store_RepeatedMixedSync_Plugins(t *testing.T) {
 		},
 	)
 
-	err = w.Store(ctx, "test-registry", firstRegistry)
+	err = w.store(ctx, "test-registry", firstRegistry)
 	require.NoError(t, err)
 
 	// Validate first sync: 2 servers
@@ -3877,7 +3707,7 @@ func TestDbSyncWriter_Store_RepeatedMixedSync_Plugins(t *testing.T) {
 		},
 	)
 
-	err = w.Store(ctx, "test-registry", secondRegistry)
+	err = w.store(ctx, "test-registry", secondRegistry)
 	require.NoError(t, err)
 
 	// Validate second sync: 2 servers (server-a, server-c; server-b orphaned)
@@ -3934,7 +3764,7 @@ func TestDbSyncWriter_Store_PluginMultiVersionLatest(t *testing.T) {
 	ctx := context.Background()
 	createTestRegistry(t, pool, "test-registry")
 
-	w, err := NewDBSyncWriter(pool, testMaxMetaSize)
+	w, err := newSnapshotFixture(pool, testMaxMetaSize)
 	require.NoError(t, err)
 
 	queries := sqlc.New(pool)
@@ -3951,7 +3781,7 @@ func TestDbSyncWriter_Store_PluginMultiVersionLatest(t *testing.T) {
 		},
 	)
 
-	err = w.Store(ctx, "test-registry", registry)
+	err = w.store(ctx, "test-registry", registry)
 	require.NoError(t, err)
 
 	// Validate: 3 plugin rows exist (one per version)

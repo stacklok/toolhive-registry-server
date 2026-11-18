@@ -17,6 +17,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/database"
 	registryapp "github.com/stacklok/toolhive-registry-server/internal/app"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
@@ -251,6 +252,10 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("failed to commit migration transaction: %w", err)
 	}
 
+	if err := repairLatestPointers(ctx, conn); err != nil {
+		return err
+	}
+
 	// Get and log new version.
 	// Note: This reuses the same connString (and embedded auth token) from above.
 	// AWS RDS IAM tokens are valid for 15 minutes, so this is safe for typical
@@ -290,4 +295,17 @@ func resolveAuthMode(cfg *config.Config, override string) {
 		cfg.Auth.Mode = config.DefaultAuthMode
 		slog.Info("Auth mode defaulting", "mode", config.DefaultAuthMode)
 	}
+}
+
+// repairLatestPointers runs the one-time latest-pointer rebuild that migration
+// 25 schedules. After it has run once this only reads the repair mark.
+func repairLatestPointers(ctx context.Context, conn *pgx.Conn) error {
+	repaired, err := db.RepairPendingLatestVersions(ctx, conn)
+	if err != nil {
+		return fmt.Errorf("failed to repair latest version pointers: %w", err)
+	}
+	if repaired {
+		slog.Info("Rebuilt latest version pointers after schema upgrade")
+	}
+	return nil
 }

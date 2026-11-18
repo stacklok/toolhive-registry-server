@@ -9,13 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 )
 
 func TestNewSyncWriter(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDBContainer(t, ctx)
+	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
 
 	// Migrate database for tests that need schema

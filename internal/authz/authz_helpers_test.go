@@ -27,7 +27,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 	registryapp "github.com/stacklok/toolhive-registry-server/internal/app"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
@@ -219,7 +219,7 @@ func setupEnvCustom(t *testing.T, authCfg *config.AuthConfig, sources []config.S
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(func() { slog.SetDefault(orig) })
 
-	db, cleanup := database.SetupTestDB(t)
+	db, cleanup := dbtest.SetupTestDB(t)
 	t.Cleanup(cleanup)
 
 	dbCfg := dbConfigFromConn(db)

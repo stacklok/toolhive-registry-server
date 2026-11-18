@@ -1,4 +1,7 @@
-package database
+// Package dbtest starts embedded PostgreSQL databases for tests. It is kept
+// apart from package database so that importing the migrations does not link
+// testing, testify or embedded-postgres into a program.
+package dbtest
 
 import (
 	"context"
@@ -14,6 +17,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
+
+	"github.com/stacklok/toolhive-registry-server/database"
 )
 
 const (
@@ -67,8 +72,14 @@ func SetupTestDBContainer(t *testing.T, ctx context.Context) (*pgx.Conn, func())
 // SetupTestDB returns an isolated, migrated database on a package-shared Postgres process.
 func SetupTestDB(t *testing.T) (*pgx.Conn, func()) {
 	t.Helper()
+	return SetupTestDBAt(t, database.LatestSchemaVersion)
+}
 
-	db, release, err := acquireSharedTestDB(t.Context())
+// SetupTestDBAt creates an isolated fixture at an explicit historical schema.
+func SetupTestDBAt(t *testing.T, version uint) (*pgx.Conn, func()) {
+	t.Helper()
+
+	db, release, err := acquireSharedTestDB(t.Context(), version)
 	require.NoError(t, err)
 
 	var once sync.Once
@@ -127,7 +138,7 @@ var sharedTestDB struct {
 	instance *sharedTestPostgres
 }
 
-func acquireSharedTestDB(ctx context.Context) (*pgx.Conn, func(context.Context) error, error) {
+func acquireSharedTestDB(ctx context.Context, version uint) (*pgx.Conn, func(context.Context) error, error) {
 	sharedTestDB.Lock()
 	defer sharedTestDB.Unlock()
 
@@ -166,7 +177,7 @@ func acquireSharedTestDB(ctx context.Context) (*pgx.Conn, func(context.Context) 
 			discardUnusedSharedTestPostgres(instance),
 		)
 	}
-	if err := MigrateUp(ctx, db); err != nil {
+	if err := database.MigrateUpTo(ctx, db, version); err != nil {
 		return nil, nil, errors.Join(
 			err,
 			db.Close(ctx),
@@ -174,7 +185,7 @@ func acquireSharedTestDB(ctx context.Context) (*pgx.Conn, func(context.Context) 
 			discardUnusedSharedTestPostgres(instance),
 		)
 	}
-	if err := RegisterEnumArrayCodecs(ctx, db); err != nil {
+	if err := database.RegisterEnumArrayCodecs(ctx, db); err != nil {
 		return nil, nil, errors.Join(
 			err,
 			db.Close(ctx),

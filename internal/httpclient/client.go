@@ -95,7 +95,6 @@ func (c *defaultClient) Get(ctx context.Context, url string) ([]byte, error) {
 	}
 
 	slog.DebugContext(ctx, "HTTP client request completed",
-		"url", url,
 		"status", resp.StatusCode,
 		"duration_ms", time.Since(start).Milliseconds(),
 		"response_bytes", len(body),

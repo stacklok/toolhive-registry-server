@@ -63,6 +63,23 @@ func MigrateUp(_ context.Context, db *pgx.Conn) error {
 	return nil
 }
 
+// LatestSchemaVersion is the newest embedded migration version.
+const LatestSchemaVersion uint = 27
+
+// MigrateUpTo applies pending migrations up to and including target.
+func MigrateUpTo(_ context.Context, db *pgx.Conn, target uint) error {
+	m, err := GetMigrate(db.Config().ConnString())
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+
+	if err := m.Migrate(target); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("failed to run migrations to version %d: %w", target, err)
+	}
+	return nil
+}
+
 // MigrateDown reverts the last migration
 func MigrateDown(_ context.Context, db *pgx.Conn, steps int) error {
 	// Get connection string from the connection

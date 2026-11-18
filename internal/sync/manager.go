@@ -14,6 +14,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/sources"
 	"github.com/stacklok/toolhive-registry-server/internal/status"
 	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
 // Result contains the result of a successful sync operation
@@ -441,7 +442,7 @@ func (s *defaultSyncManager) applyFilteringIfConfigured(
 			"hasTagFilters", regCfg.Filter.Tags != nil)
 
 		// Apply filtering to UpstreamRegistry
-		filteredServerReg, err := s.filterService.ApplyFilters(ctx, fetchResult.Registry, regCfg.Filter)
+		filteredServerReg, err := s.filterService.ApplyFilters(ctx, fetchResult.Registry, toPersistenceFilter(regCfg.Filter))
 		if err != nil {
 			slog.Error("Registry filtering failed", "error", err)
 			return &Error{
@@ -489,4 +490,20 @@ func (s *defaultSyncManager) storeRegistryData(
 	slog.Info("Registry data stored successfully", "registryName", regCfg.Name)
 
 	return nil
+}
+
+// toPersistenceFilter converts the YAML filter configuration into the shared
+// filter shape used by the filtering service.
+func toPersistenceFilter(cfg *config.FilterConfig) *persistence.Filter {
+	if cfg == nil {
+		return nil
+	}
+	out := &persistence.Filter{}
+	if cfg.Names != nil {
+		out.Names = &persistence.NameFilter{Include: cfg.Names.Include, Exclude: cfg.Names.Exclude}
+	}
+	if cfg.Tags != nil {
+		out.Tags = &persistence.NameFilter{Include: cfg.Tags.Include, Exclude: cfg.Tags.Exclude}
+	}
+	return out
 }

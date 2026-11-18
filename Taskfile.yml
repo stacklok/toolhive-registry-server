@@ -24,6 +24,7 @@ tasks:
       - |
         swag init -q -g cmd/thv-registry-api/docs.go \
           --v3.1 --output {{.SWAG_OUTPUT_DIR}} \
+          --exclude pkg/registry \
           --parseDependencyLevel 1 2>/dev/null
 
   helm-docs:
@@ -184,7 +185,7 @@ tasks:
       - task: install-gotestfmt
         silent: true
     cmds:
-      - go test -count 1 -json ./database -run '^TestSetupTestDBContainer$' | gotestfmt -hide "all"
+      - go test -count 1 -json ./database/dbtest -run '^TestSetupTestDBContainer$' | gotestfmt -hide "all"
 
   test:
     desc: Run registry API tests

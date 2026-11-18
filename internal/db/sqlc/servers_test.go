@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 )
 
 const (
@@ -268,7 +268,7 @@ func TestInsertServerVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -448,7 +448,7 @@ func TestListServersByName(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -806,7 +806,7 @@ func TestListServers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -949,7 +949,7 @@ func TestUpsertLatestServerVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1083,7 +1083,7 @@ func TestInsertServerIcon(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1208,7 +1208,7 @@ func TestInsertServerPackage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1341,7 +1341,7 @@ func TestInsertServerRemote(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1536,7 +1536,7 @@ func TestListServerPackages(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1731,7 +1731,7 @@ func TestListServerRemotes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1986,7 +1986,7 @@ func TestGetServerVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)

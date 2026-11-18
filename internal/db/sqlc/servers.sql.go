@@ -636,7 +636,8 @@ const listServerRemotes = `-- name: ListServerRemotes :many
 SELECT r.server_id,
        r.transport,
        r.transport_url,
-       r.transport_headers
+       r.transport_headers,
+       r.transport_variables
   FROM mcp_server_remote r
   JOIN mcp_server s ON r.server_id = s.version_id
  WHERE s.version_id = ANY($1::UUID[])
@@ -657,6 +658,7 @@ func (q *Queries) ListServerRemotes(ctx context.Context, versionIds []uuid.UUID)
 			&i.Transport,
 			&i.TransportUrl,
 			&i.TransportHeaders,
+			&i.TransportVariables,
 		); err != nil {
 			return nil, err
 		}
@@ -807,15 +809,17 @@ func (q *Queries) ListServers(ctx context.Context, arg ListServersParams) ([]Lis
 const upsertLatestServerVersion = `-- name: UpsertLatestServerVersion :one
 INSERT INTO latest_entry_version (
     source_id,
+    entry_type,
     name,
     version,
     latest_version_id
 ) VALUES (
     $1,
+    'MCP',
     $2,
     $3,
     $4
-) ON CONFLICT (source_id, name)
+) ON CONFLICT (source_id, entry_type, name)
   DO UPDATE SET
     version = $3,
     latest_version_id = $4
