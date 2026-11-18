@@ -33,8 +33,20 @@ The first `postgres.NewEntries` after upgrading across migration 25 rebuilds
 every latest-version pointer once, holding write locks on the entry tables
 for the length of one scan. Later calls only read a marker row.
 
-The standalone server does not use these packages yet. Running the server and a
-library host against the same database at the same time is not supported.
+The standalone server is built on these packages. Running the server and a
+library host against the same database at the same time is not supported: the
+server keeps authorization claims in columns the library never writes.
+
+## Keeping host data in step with writes
+
+A host that stores its own per-entry data (the server stores authorization
+claims) passes `postgres.WithEntryWriteHook` to `NewEntries` and `NewJobs`.
+The hook's `BeforeEntryWrite` and `AfterEntryWrite` run inside the adapter's
+serializable write transaction for every snapshot, publish and delete, so the
+host's data commits or rolls back with the entries. A hook error aborts the
+write and is returned unchanged; a serialization failure retries the whole
+transaction, so a hook may run more than once and must act only through the
+transaction it is given.
 
 ## Importability
 

@@ -18,14 +18,19 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/app/storage"
 	auditmw "github.com/stacklok/toolhive-registry-server/internal/audit"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
+	"github.com/stacklok/toolhive-registry-server/internal/claims"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	"github.com/stacklok/toolhive-registry-server/internal/sources"
-	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
+	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
+	"github.com/stacklok/toolhive-registry-server/internal/sync/standalone"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/catalog"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/httpapi"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile"
 )
 
 const (
@@ -49,9 +54,12 @@ type registryAppConfig struct {
 	config *config.Config
 
 	// Optional component overrides (primarily for testing)
-	registryHandlerFactory sources.RegistryHandlerFactory
-	syncManager            pkgsync.Manager
-	storageFactory         storage.Factory // Replaces: storageManager, statusPersistence, registryProvider
+	storageFactory storage.Factory
+	fetcher        reconcile.Fetcher
+	operator       catalogOperator
+	reconcile      reconcile.Options
+	// managedSourceIDs is set by buildCatalog for the consumer API's shapes.
+	managedSourceIDs api.ManagedSourceIDs
 
 	// HTTP server options
 	address         string
@@ -70,10 +78,18 @@ type registryAppConfig struct {
 	meterProvider  metric.MeterProvider
 	tracerProvider trace.TracerProvider
 	metricsHandler http.Handler
-
-	// Coordinator options (primarily for testing)
-	coordinatorOpts []coordinator.Option
 }
+
+// catalogOperator builds the leased workers of Kubernetes sources.
+type catalogOperator interface {
+	Preflight(context.Context, persistence.SourceDefinition) error
+	Worker(persistence.Jobs, persistence.SourceDefinition, reconcile.Options) (standalone.Worker, error)
+}
+
+const (
+	defaultSyncPollInterval  = time.Second
+	defaultSyncLeaseDuration = time.Minute
+)
 
 type registryMetricsReaderFactory interface {
 	CreateRegistryMetricsReader(ctx context.Context) (telemetry.RegistryMetricReader, error)
@@ -87,6 +103,9 @@ func baseConfig(opts ...RegistryAppOptions) (*registryAppConfig, error) {
 		readTimeout:     defaultReadTimeout,
 		writeTimeout:    defaultWriteTimeout,
 		idleTimeout:     defaultIdleTimeout,
+		reconcile: reconcile.Options{
+			PollInterval: defaultSyncPollInterval, LeaseDuration: defaultSyncLeaseDuration,
+		},
 	}
 
 	// Apply options
@@ -122,14 +141,13 @@ func NewRegistryApp(
 		}
 	}()
 
-	// Build sync components using factory
-	syncCoordinator, err := buildSyncComponents(ctx, cfg)
+	built, err := buildCatalog(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build sync components: %w", err)
+		return nil, fmt.Errorf("failed to build catalog: %w", err)
 	}
 
-	// Build service components using factory
-	registryService, err := buildServiceComponents(ctx, cfg)
+	registryService, err := cfg.storageFactory.CreateRegistryService(ctx, built.catalog.Entries,
+		database.WithSourcesChanged(built.sync.runtime.Refresh))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build service components: %w", err)
 	}
@@ -150,7 +168,7 @@ func NewRegistryApp(
 	}
 
 	// Build HTTP server
-	httpServer, err := buildHTTPServer(ctx, cfg, registryService, auditLogger)
+	httpServer, err := buildHTTPServer(ctx, cfg, registryService, built.pages, auditLogger)
 	if err != nil {
 		if auditLogger != nil {
 			_ = auditLogger.Close()
@@ -180,7 +198,7 @@ func NewRegistryApp(
 	return &RegistryApp{
 		config: cfg.config,
 		components: &AppComponents{
-			SyncCoordinator: syncCoordinator,
+			Sync:            built.sync,
 			RegistryService: registryService,
 		},
 		httpServer:         httpServer,
@@ -266,14 +284,6 @@ func WithMiddlewares(mw ...func(http.Handler) http.Handler) RegistryAppOptions {
 	}
 }
 
-// WithRegistryHandlerFactory allows injecting a custom registry handler factory (for testing)
-func WithRegistryHandlerFactory(f sources.RegistryHandlerFactory) RegistryAppOptions {
-	return func(cfg *registryAppConfig) error {
-		cfg.registryHandlerFactory = f
-		return nil
-	}
-}
-
 // WithStorageFactory allows injecting a custom storage factory (for testing)
 func WithStorageFactory(f storage.Factory) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
@@ -282,18 +292,24 @@ func WithStorageFactory(f storage.Factory) RegistryAppOptions {
 	}
 }
 
-// WithSyncManager allows injecting a custom sync manager (for testing)
-func WithSyncManager(sm pkgsync.Manager) RegistryAppOptions {
+// WithFetcher replaces the source fetcher (for testing).
+func WithFetcher(f reconcile.Fetcher) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
-		cfg.syncManager = sm
+		cfg.fetcher = f
 		return nil
 	}
 }
 
-// WithCoordinatorOptions sets additional coordinator options (e.g., for testing).
-func WithCoordinatorOptions(opts ...coordinator.Option) RegistryAppOptions {
+// WithReconcileOptions sets the sync poll interval and lease duration (for testing).
+func WithReconcileOptions(o reconcile.Options) RegistryAppOptions {
 	return func(cfg *registryAppConfig) error {
-		cfg.coordinatorOpts = append(cfg.coordinatorOpts, opts...)
+		if o.PollInterval <= 0 {
+			return fmt.Errorf("sync poll interval must be positive")
+		}
+		if err := persistence.ValidateLeaseDuration(o.LeaseDuration); err != nil {
+			return fmt.Errorf("invalid sync lease duration: %w", err)
+		}
+		cfg.reconcile = o
 		return nil
 	}
 }
@@ -324,111 +340,127 @@ func WithMetricsHandler(h http.Handler) RegistryAppOptions {
 	}
 }
 
-// buildSyncComponents builds sync manager, coordinator, and related components
-func buildSyncComponents(
-	ctx context.Context,
-	b *registryAppConfig,
-) (coordinator.Coordinator, error) {
-	slog.Info("Initializing sync components")
+// builtCatalog is the server's library-backed core.
+type builtCatalog struct {
+	catalog *storage.Catalog
+	sync    *syncRunner
+	pages   catalog.Reader
+}
 
-	// Build registry handler factory (storage-agnostic)
-	if b.registryHandlerFactory == nil {
-		b.registryHandlerFactory = sources.NewRegistryHandlerFactory()
-	}
-
-	// Create state service using storage factory
-	stateService, err := b.storageFactory.CreateStateService(ctx)
+// buildCatalog opens the library adapters, reconciles the config file's
+// sources and registries into them, stores config claims, and prepares the
+// sync runtime. Nothing runs until Start.
+//
+//nolint:gocyclo // Each step is a distinct, ordered preparation stage.
+func buildCatalog(ctx context.Context, b *registryAppConfig) (*builtCatalog, error) {
+	slog.Info("Initializing catalog components")
+	sources, views, err := catalogDefinitions(b.config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create state service: %w", err)
+		return nil, fmt.Errorf("invalid sources or registries: %w", err)
 	}
-
-	// Build sync manager using storage factory
-	if b.syncManager == nil {
-		syncWriter, err := b.storageFactory.CreateSyncWriter(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create sync writer: %w", err)
+	authzOn := b.config.Auth != nil && b.config.Auth.Authz != nil
+	var annotations *kubernetes.AnnotationClaims
+	if authzOn {
+		annotations = kubernetes.NewAnnotationClaims()
+	}
+	operator := b.operator
+	if operator == nil {
+		operator = &kubernetes.StandaloneFactory{Claims: annotations}
+	}
+	var overrides interface {
+		EntryClaims(string) map[string][]byte
+	}
+	if annotations != nil {
+		overrides = annotations
+	}
+	cat, err := b.storageFactory.CreateCatalog(ctx, overrides)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open catalog storage: %w", err)
+	}
+	preflight := func(ctx context.Context, d persistence.SourceDefinition) error {
+		if err := sourcePreflight(d); err != nil {
+			return err
 		}
-
-		b.syncManager = pkgsync.NewDefaultSyncManager(
-			b.registryHandlerFactory,
-			syncWriter,
-		)
-
-		// Setup Kubernetes reconciler if any registry uses Kubernetes source
-		if err := setupKubernetesReconciler(ctx, b.config, syncWriter); err != nil {
+		if d.Kubernetes != nil {
+			return operator.Preflight(ctx, d)
+		}
+		return ctx.Err()
+	}
+	for _, d := range sources {
+		if err := preflight(ctx, d); err != nil {
 			return nil, err
 		}
 	}
+	if err := cat.Definitions.Reconcile(ctx, sources, views); err != nil {
+		return nil, fmt.Errorf("failed to apply config sources and registries: %w", err)
+	}
+	if err := applyConfigClaims(ctx, cat.Pool, b.config); err != nil {
+		return nil, err
+	}
 
-	// Create coordinator options for metrics
-	var coordOpts []coordinator.Option
-
-	// Create sync metrics if meter provider is configured
+	var jobs persistence.Jobs = cat.Jobs
 	if b.meterProvider != nil {
 		syncMetrics, err := telemetry.NewSyncMetrics(b.meterProvider)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create sync metrics: %w", err)
 		}
 		if syncMetrics != nil {
-			coordOpts = append(coordOpts, coordinator.WithSyncMetrics(syncMetrics))
+			jobs = newMeasuredJobs(jobs, syncMetrics)
 			slog.Info("Sync metrics enabled")
 		}
-
 		if readerFactory, ok := b.storageFactory.(registryMetricsReaderFactory); ok {
-			registryMetricsReader, err := readerFactory.CreateRegistryMetricsReader(ctx)
+			metricsReader, err := readerFactory.CreateRegistryMetricsReader(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create registry metrics reader: %w", err)
 			}
-
-			registryMetrics, err := telemetry.NewRegistryMetrics(b.meterProvider, registryMetricsReader)
-			if err != nil {
+			if _, err := telemetry.NewRegistryMetrics(b.meterProvider, metricsReader); err != nil {
 				return nil, fmt.Errorf("failed to create registry metrics: %w", err)
 			}
-			if registryMetrics != nil {
-				coordOpts = append(coordOpts, coordinator.WithRegistryMetrics(registryMetrics))
-				slog.Info("Registry metrics enabled")
-			}
-		} else {
-			slog.Debug("Registry metrics disabled: storage factory does not provide a registry metrics reader")
 		}
 	}
-
-	// Add tracing if tracer provider is configured
+	fetcher := b.fetcher
+	if fetcher == nil {
+		fetcher = ingest.New(ingest.Options{LoadSecret: config.LoadSecret})
+	}
 	if b.tracerProvider != nil {
-		tracer := b.tracerProvider.Tracer(coordinator.CoordinatorTracerName)
-		coordOpts = append(coordOpts, coordinator.WithTracer(tracer))
-		slog.Info("Sync coordinator tracing enabled")
+		fetcher = tracedFetcher{raw: fetcher, tracer: b.tracerProvider.Tracer("registry.sync")}
 	}
-
-	// Append any externally provided coordinator options (e.g., polling interval for tests)
-	coordOpts = append(coordOpts, b.coordinatorOpts...)
-
-	// Create coordinator (storage-agnostic)
-	syncCoordinator := coordinator.New(b.syncManager, stateService, b.config, coordOpts...)
-	slog.Info("Sync components initialized successfully")
-
-	return syncCoordinator, nil
-}
-
-// buildServiceComponents builds registry service and providers
-func buildServiceComponents(
-	ctx context.Context,
-	b *registryAppConfig,
-) (service.RegistryService, error) {
-	slog.Info("Initializing service components")
-
-	if b.config == nil {
-		return nil, fmt.Errorf("config cannot be nil")
-	}
-
-	// Use storage factory to create the service
-	svc, err := b.storageFactory.CreateRegistryService(ctx)
+	runtime, err := standalone.New(cat.Definitions, jobs, fetcher, standalone.Options{
+		Reconcile: b.reconcile,
+		Operator: func(d persistence.SourceDefinition) (standalone.Worker, error) {
+			return operator.Worker(jobs, d, b.reconcile)
+		},
+		Preflight: preflight,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create registry service: %w", err)
+		return nil, fmt.Errorf("failed to create sync runtime: %w", err)
 	}
 
-	slog.Info("Service components initialized successfully")
-	return svc, nil
+	var entryReader persistence.ViewEntryReader = cat.Entries
+	if authzOn {
+		entryReader, err = claims.NewReader(cat.Entries, sqlc.New(cat.Pool))
+		if err != nil {
+			return nil, err
+		}
+	}
+	pages, err := catalog.NewReader(entryReader)
+	if err != nil {
+		return nil, err
+	}
+	queries := sqlc.New(cat.Pool)
+	b.managedSourceIDs = func(ctx context.Context) (map[string]bool, error) {
+		rows, err := queries.GetManagedSources(ctx)
+		if err != nil {
+			return nil, err
+		}
+		ids := make(map[string]bool, len(rows))
+		for _, row := range rows {
+			ids[row.ID.String()] = true
+		}
+		return ids, nil
+	}
+	slog.Info("Catalog components initialized")
+	return &builtCatalog{catalog: cat, sync: &syncRunner{runtime: runtime}, pages: pages}, nil
 }
 
 // buildHTTPServer builds the HTTP server with router and middleware
@@ -438,6 +470,7 @@ func buildHTTPServer(
 	_ context.Context,
 	b *registryAppConfig,
 	svc service.RegistryService,
+	pages httpapi.ConsumerPages,
 	auditLogger *auditmw.Logger,
 ) (*http.Server, error) {
 	slog.Info("Initializing HTTP server")
@@ -507,11 +540,15 @@ func buildHTTPServer(
 
 	serverOpts := []api.ServerOption{
 		api.WithMiddlewares(b.middlewares...),
+		api.WithManagedSourceIDs(b.managedSourceIDs),
 		api.WithAuthInfoHandler(b.authInfoHandler),
 		api.WithAuthConfig(authCfg),
 	}
 	// Create router with middlewares
-	router := api.NewServer(svc, serverOpts...)
+	router, err := api.NewServer(svc, pages, serverOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build router: %w", err)
+	}
 
 	// Create HTTP server
 	server := &http.Server{
@@ -602,48 +639,6 @@ func buildAuditLogger(cfg *config.Config) (*auditmw.Logger, error) {
 		logFile = cfg.Audit.LogFile
 	}
 	return auditmw.NewLogger(logFile)
-}
-
-// setupKubernetesReconciler creates a Kubernetes reconciler if any registry uses the Kubernetes source type.
-func setupKubernetesReconciler(ctx context.Context, cfg *config.Config, syncWriter writer.SyncWriter) error {
-	for _, reg := range cfg.Sources {
-		if reg.GetType() != config.SourceTypeKubernetes {
-			continue
-		}
-
-		opts := []kubernetes.Option{
-			kubernetes.WithSyncWriter(syncWriter),
-			kubernetes.WithRegistryName(reg.Name),
-		}
-
-		// Use namespaces from source config if set, otherwise fall back to global WatchNamespace
-		if reg.Kubernetes != nil && len(reg.Kubernetes.Namespaces) > 0 {
-			opts = append(opts, kubernetes.WithNamespaces(reg.Kubernetes.Namespaces...))
-		} else if cfg.WatchNamespace != "" {
-			namespaces := strings.Split(cfg.WatchNamespace, ",")
-			opts = append(opts, kubernetes.WithNamespaces(namespaces...))
-		}
-
-		// Each K8s source needs a unique leader election ID to avoid lease conflicts.
-		// Source names are validated as unique (config validation rejects duplicates),
-		// so appending the source name is sufficient for uniqueness. We intentionally
-		// do NOT include namespace names: since both source names and namespaces use
-		// the DNS label charset (lowercase alphanumeric + hyphens), joining them with
-		// a hyphen would create ambiguous boundaries (e.g. source "foo-bar" + ns "baz"
-		// would collide with source "foo" + ns "bar-baz").
-		leaderID := cfg.LeaderElectionID
-		if leaderID == "" {
-			leaderID = "toolhive-registry-server-leader-election"
-		}
-		leaseID := fmt.Sprintf("%s-%s", leaderID, reg.Name)
-		opts = append(opts, kubernetes.WithLeaderElectionID(leaseID))
-
-		_, err := kubernetes.NewMCPServerReconciler(ctx, opts...)
-		if err != nil {
-			return fmt.Errorf("failed to create kubernetes reconciler for source %s: %w", reg.Name, err)
-		}
-	}
-	return nil
 }
 
 // securityHeadersMiddleware sets baseline security response headers on every request.

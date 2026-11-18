@@ -13,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	upstreamv0 "github.com/modelcontextprotocol/registry/pkg/api/v0"
 	"github.com/modelcontextprotocol/registry/pkg/model"
 	toolhivetypes "github.com/stacklok/toolhive-core/registry/types"
@@ -38,24 +37,15 @@ const (
 	skillRegistryTypeGit = "git"
 )
 
-// dbSyncWriter stages payloads within a transaction. The claims fields are
-// set only by the standalone Store path; transactional library callers write
-// entries without claims.
+// dbSyncWriter stages payloads within a transaction. It writes entries
+// without claims; the server's claims mode stores them through the library's
+// entry write hook in the same transaction.
 type dbSyncWriter struct {
-	pool           *pgxpool.Pool
-	maxMetaSize    int
-	sourceClaims   []byte
-	perEntryClaims map[string][]byte
+	maxMetaSize int
 }
 
-// entryClaims returns the claims stamped on a server entry: per-entry claims
-// when provided, otherwise the source-level claims.
-func (d *dbSyncWriter) entryClaims(name string) []byte {
-	if c, ok := d.perEntryClaims[name]; ok {
-		return c
-	}
-	return d.sourceClaims
-}
+// noClaims is the claims column the writer stages for every entry.
+func noClaims(string) []byte { return nil }
 
 // StoreSourceTx writes a complete source snapshot in the caller's transaction.
 // This internal adapter seam lets a future job acknowledge a fenced result in
@@ -163,7 +153,7 @@ func (d *dbSyncWriter) storeSyncInTempTables(
 	querier := sqlc.New(tx)
 
 	// 1. Upsert registry entries (one per unique name)
-	entryMap, err := sqlCopyEntries(ctx, tx, registryID, servers, d.entryClaims)
+	entryMap, err := sqlCopyEntries(ctx, tx, registryID, servers, noClaims)
 	if err != nil {
 		return nil, fmt.Errorf("failed to copy entries: %w", err)
 	}
@@ -942,7 +932,7 @@ func (d *dbSyncWriter) storeSkills(
 			registryID,
 			sqlc.EntryTypeSKILL,
 			skill.Name,
-			d.sourceClaims,
+			nil,
 			&now,
 			&now,
 		})
@@ -1256,7 +1246,7 @@ func (d *dbSyncWriter) storePlugins(
 			registryID,
 			sqlc.EntryTypePLUGIN,
 			plugin.Name,
-			d.sourceClaims,
+			nil,
 			&now,
 			&now,
 		})

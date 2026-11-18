@@ -26,8 +26,9 @@ func TestUpdateEntryClaims_Success(t *testing.T) {
 	// Publish a server with claims {"org": "acme"}
 	_, err := svc.PublishServerVersion(ctx,
 		service.WithServerData(&upstreamv0.ServerJSON{
-			Name:    "com.test/uec-success",
-			Version: "1.0.0",
+			Name:        "com.test/uec-success",
+			Version:     "1.0.0",
+			Description: "test description",
 		}),
 		service.WithClaims(map[string]any{"org": "acme"}),
 		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{"eng", "ops"}}),
@@ -58,8 +59,9 @@ func TestUpdateEntryClaims_CallerMustCoverExistingClaims(t *testing.T) {
 	// Publish a server with claims {"org": "acme"}
 	_, err := svc.PublishServerVersion(ctx,
 		service.WithServerData(&upstreamv0.ServerJSON{
-			Name:    "com.test/uec-cover-existing",
-			Version: "1.0.0",
+			Name:        "com.test/uec-cover-existing",
+			Version:     "1.0.0",
+			Description: "test description",
 		}),
 		service.WithClaims(map[string]any{"org": "acme"}),
 		service.WithJWTClaims(map[string]any{"org": "acme"}),
@@ -90,8 +92,9 @@ func TestUpdateEntryClaims_CallerMustCoverNewClaims(t *testing.T) {
 	// Publish a server with claims {"org": "acme"}
 	_, err := svc.PublishServerVersion(ctx,
 		service.WithServerData(&upstreamv0.ServerJSON{
-			Name:    "com.test/uec-cover-new",
-			Version: "1.0.0",
+			Name:        "com.test/uec-cover-new",
+			Version:     "1.0.0",
+			Description: "test description",
 		}),
 		service.WithClaims(map[string]any{"org": "acme"}),
 		service.WithJWTClaims(map[string]any{"org": "acme"}),
@@ -122,8 +125,9 @@ func TestUpdateEntryClaims_NilJWTSkipsValidation(t *testing.T) {
 	// Publish a server with claims {"org": "acme"}
 	_, err := svc.PublishServerVersion(ctx,
 		service.WithServerData(&upstreamv0.ServerJSON{
-			Name:    "com.test/uec-nil-jwt",
-			Version: "1.0.0",
+			Name:        "com.test/uec-nil-jwt",
+			Version:     "1.0.0",
+			Description: "test description",
 		}),
 		service.WithClaims(map[string]any{"org": "acme"}),
 	)
@@ -173,8 +177,9 @@ func TestUpdateEntryClaims_ClearClaims(t *testing.T) {
 	// Publish a server with claims {"org": "acme"}
 	_, err := svc.PublishServerVersion(ctx,
 		service.WithServerData(&upstreamv0.ServerJSON{
-			Name:    "com.test/uec-clear",
-			Version: "1.0.0",
+			Name:        "com.test/uec-clear",
+			Version:     "1.0.0",
+			Description: "test description",
 		}),
 		service.WithClaims(map[string]any{"org": "acme"}),
 	)
@@ -219,8 +224,9 @@ func TestUpdateEntryClaims_SuperAdminBypass(t *testing.T) {
 	// Publish a server with claims {"org": "acme"}
 	_, err := svc.PublishServerVersion(ctx,
 		service.WithServerData(&upstreamv0.ServerJSON{
-			Name:    "com.test/uec-superadmin",
-			Version: "1.0.0",
+			Name:        "com.test/uec-superadmin",
+			Version:     "1.0.0",
+			Description: "test description",
 		}),
 		service.WithClaims(map[string]any{"org": "acme"}),
 	)
@@ -251,10 +257,11 @@ func TestUpdateEntryClaims_SkillType(t *testing.T) {
 
 	// Publish a skill with claims {"org": "acme"}
 	skill := &service.Skill{
-		Namespace: "com.test",
-		Name:      "uec-skill",
-		Version:   "1.0.0",
-		Title:     "Test Skill",
+		Namespace:   "com.test",
+		Name:        "uec-skill",
+		Version:     "1.0.0",
+		Title:       "Test Skill",
+		Description: "test description",
 	}
 	_, err := svc.PublishSkill(ctx, skill,
 		service.WithClaims(map[string]any{"org": "acme"}),

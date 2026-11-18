@@ -3,6 +3,7 @@ paths:
   - "internal/config/**/*.go"
   - "internal/service/**/*.go"
   - "internal/sources/**/*.go"
+  - "internal/claims/**/*.go"
   - "database/**/*.sql"
   - "database/**/*.go"
 ---
@@ -98,17 +99,28 @@ API). Max 63 chars, lowercase alphanumeric + hyphens, no leading/trailing hyphen
 **Breaks if violated:** leader election silently fails; operators see "no leader" instead
 of a validation error.
 
-## 7. No JSONB Operators in Production SQL
+## 7. One Sanctioned JSONB Claims Check in SQL; Everything Else in Go
 
-Claims come out of the DB as raw bytes and are filtered in Go. No `@>`, `->>`, or GIN
-indexes on claim columns.
+The claims-mode consumer list must filter entries **before** it picks each name's winning
+source (`api.md` §5), inside a bounded, index-ordered page walk. That cannot be done by
+filtering rows after the query, so the shared list query `ViewEntryList`
+(`database/queries/view_entries.sql`) takes an optional `caller` and applies the SQL
+function `claims_visible(caller, record)` (migration 28). This is the only place SQL
+evaluates claims. No `@>`, `->>`, or GIN indexes on claim columns anywhere.
 
-**Detect**: new SQL queries using `@>`, `->>`, `jsonb_path_query`; migrations creating GIN
-indexes on `claims` columns; service code that expects SQL to do containment filtering.
+**What must hold:**
+- `claims_visible` and the Go read rule (`internal/claims.Visible` / `VisibleJSON`) agree
+  on every input. The shared case table in `internal/claims/claims_test.go` runs each case
+  against both; extend it whenever either side changes.
+- Only the server's claims mode sets `caller`, through the module-internal context key
+  `internal/db.WithViewCaller`. The library (`pkg/registry`) never knows about claims, and
+  external embedders cannot enable the filter.
+- Single-resource gates (registry gate, admin reads, publish, delete, claims updates) stay
+  in Go (`internal/service/db/claims_filter.go`, `internal/claims`).
 
-**Instead**: filtering happens in `RecordFilter` chains in `internal/service/db/` during
-row streaming. The DB returns candidates; Go code decides visibility. Moving to SQL-level
-filtering is a migration, not a drop-in change — authz tests assume app-level semantics.
+**Detect**: a second query evaluating claims in SQL; `claims_visible` or the Go rule changed
+without the shared case table; `pkg/registry` code that reads or writes claim columns.
 
-**Why**: for current data volumes (hundreds to low thousands of distinct names), streaming
-+ Go filtering is simpler than JSONB + GIN and keeps all auth logic in one place.
+**Why**: Go-side filtering after a paged, deduplicated query either hides names whose
+winner the caller cannot see or returns short pages. Keeping one SQL function, pinned to
+the Go rule by tests, preserves a single matching algorithm.

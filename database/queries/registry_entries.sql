@@ -120,3 +120,22 @@ UPDATE registry_entry
  WHERE source_id = sqlc.arg(source_id)
    AND entry_type = sqlc.arg(entry_type)
    AND name = sqlc.arg(name);
+
+-- name: SetSourceEntryClaimsFromSource :exec
+-- Gives every entry of a synced source the source's claims, inside the
+-- library's snapshot transaction (claims mode only).
+UPDATE registry_entry e
+   SET claims = s.claims
+  FROM source s
+ WHERE s.id = sqlc.arg(source_id)::uuid
+   AND e.source_id = s.id
+   AND e.claims IS DISTINCT FROM s.claims;
+
+-- name: SetEntryClaims :exec
+-- Sets one entry name's claims inside a library write transaction (claims mode only).
+UPDATE registry_entry
+   SET claims = sqlc.narg(claims)
+ WHERE source_id = sqlc.arg(source_id)::uuid
+   AND entry_type = sqlc.arg(entry_type)
+   AND name = sqlc.arg(name)
+   AND claims IS DISTINCT FROM sqlc.narg(claims);

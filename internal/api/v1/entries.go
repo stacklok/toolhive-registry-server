@@ -113,7 +113,7 @@ func (routes *Routes) publishEntry(w http.ResponseWriter, r *http.Request) {
 
 // writePublishError maps service-layer publish errors to HTTP responses.
 func writePublishError(w http.ResponseWriter, r *http.Request, err error) {
-	if errors.Is(err, service.ErrInvalidServerName) {
+	if errors.Is(err, service.ErrInvalidServerName) || errors.Is(err, service.ErrInvalidEntryPayload) {
 		common.WriteErrorResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}

@@ -130,8 +130,8 @@ func (s *dbService) GetRegistryByName(ctx context.Context, name string) (*servic
 	return registryToInfo(reg, sources), nil
 }
 
-// CreateRegistry creates a new lightweight registry (name + ordered sources).
-func (s *dbService) CreateRegistry(
+// createRegistry creates a new lightweight registry (name + ordered sources).
+func (s *dbService) createRegistry(
 	ctx context.Context, name string, req *service.RegistryCreateRequest,
 ) (*service.RegistryInfo, error) {
 	ctx, span := s.startSpan(ctx, "dbService.CreateRegistry")
@@ -229,8 +229,8 @@ func (s *dbService) CreateRegistry(
 	return newRegistryInfo(inserted, req.Sources), nil
 }
 
-// UpdateRegistry updates an existing lightweight registry.
-func (s *dbService) UpdateRegistry(
+// updateRegistry updates an existing lightweight registry.
+func (s *dbService) updateRegistry(
 	ctx context.Context, name string, req *service.RegistryCreateRequest,
 ) (*service.RegistryInfo, error) {
 	ctx, span := s.startSpan(ctx, "dbService.UpdateRegistry")
@@ -322,8 +322,8 @@ func (s *dbService) UpdateRegistry(
 	return newRegistryInfo(upserted, req.Sources), nil
 }
 
-// DeleteRegistry deletes a lightweight registry.
-func (s *dbService) DeleteRegistry(ctx context.Context, name string) error {
+// deleteRegistry deletes a lightweight registry.
+func (s *dbService) deleteRegistry(ctx context.Context, name string) error {
 	ctx, span := s.startSpan(ctx, "dbService.DeleteRegistry")
 	defer span.End()
 	start := time.Now()

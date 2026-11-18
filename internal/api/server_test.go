@@ -215,7 +215,8 @@ func TestOpenAPIEndpoint(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 
 	mockSvc := mocks.NewMockRegistryService(ctrl)
-	server := api.NewServer(mockSvc)
+	server, err := api.NewServer(mockSvc, stubPages{})
+	require.NoError(t, err)
 
 	req, err := http.NewRequest("GET", "/openapi.json", nil)
 	require.NoError(t, err)

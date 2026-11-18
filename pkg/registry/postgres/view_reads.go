@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
@@ -81,6 +82,9 @@ func (d *Entries) ListViewEntries(ctx context.Context, view string, query persis
 	if err != nil {
 		return persistence.EntryPage{}, err
 	}
+	// Set only by the server's claims mode, through a module-internal context
+	// key; library callers always read unfiltered.
+	params.Caller = db.ViewCaller(ctx)
 	rows, err := q.ViewEntryList(ctx, params)
 	if err != nil {
 		return persistence.EntryPage{}, viewReadError(err)
@@ -131,6 +135,9 @@ func viewListParams(id uuid.UUID, query persistence.ViewQuery, binding string) (
 			return sqlc.ViewEntryListParams{}, err
 		}
 		params.CursorName, params.CursorVersion = &cur.AfterName, &cur.AfterVersion
+		if cur.AfterNamespace != "" {
+			params.CursorNamespace = &cur.AfterNamespace
+		}
 	}
 	return params, nil
 }
@@ -168,7 +175,8 @@ func decodeViewPage(rows []sqlc.ViewEntryListRow, query persistence.ViewQuery, b
 	}
 	if more {
 		last := rows[len(rows)-1]
-		data, e := json.Marshal(viewCursor{Version: 1, Binding: binding, AfterName: last.Name, AfterVersion: last.Version})
+		data, e := json.Marshal(viewCursor{Version: 1, Binding: binding, AfterName: last.Name, AfterVersion: last.Version,
+			AfterNamespace: last.Namespace})
 		if e != nil {
 			return persistence.EntryPage{}, persistence.ErrUnavailable
 		}
@@ -185,6 +193,9 @@ type viewCursor struct {
 	Binding      string
 	AfterName    string
 	AfterVersion string
+	// AfterNamespace breaks name/version ties between skills or plugins of
+	// different namespaces; empty for servers and for older cursors.
+	AfterNamespace string `json:",omitempty"`
 }
 
 func viewBinding(view, incarnation string, sources []string, query persistence.ViewQuery) string {

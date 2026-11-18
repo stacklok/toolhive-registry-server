@@ -70,11 +70,15 @@ var (
 	ErrInvalidEntryType = errors.New("invalid entry type")
 	// ErrInvalidServerName is returned when a server name fails format validation
 	ErrInvalidServerName = errors.New("invalid server name")
+	// ErrInvalidEntryPayload is returned when a published entry does not
+	// satisfy its upstream schema (for example, a server without a description)
+	ErrInvalidEntryPayload = errors.New("invalid entry payload")
 )
 
 //go:generate mockgen -destination=mocks/mock_service.go -package=mocks -source=service.go Service
 
-// RegistryService defines the interface for registry operations
+// RegistryService defines the admin registry operations behind /v1. Consumer
+// reads under /registry are served by the pkg/registry library directly.
 type RegistryService interface {
 
 	// ********** COMMON OPERATIONS **********
@@ -83,15 +87,6 @@ type RegistryService interface {
 	CheckReadiness(ctx context.Context) error
 
 	// ********** MCP OPERATIONS **********
-
-	// ListServers returns all servers in the registry with pagination info
-	ListServers(ctx context.Context, opts ...Option) (*ListServersResult, error)
-
-	// ListServerVersions returns all versions of a specific server
-	ListServerVersions(ctx context.Context, opts ...Option) ([]*upstreamv0.ServerJSON, error)
-
-	// GetServerVersion returns a specific server version by name
-	GetServerVersion(ctx context.Context, opts ...Option) (*upstreamv0.ServerJSON, error)
 
 	// PublishServerVersion publishes a server version to a managed registry
 	PublishServerVersion(ctx context.Context, opts ...Option) (*upstreamv0.ServerJSON, error)
@@ -139,17 +134,7 @@ type RegistryService interface {
 	// ListRegistryEntries returns all entries across a registry's linked sources (unshadowed, lightweight)
 	ListRegistryEntries(ctx context.Context, registryName string) ([]RegistryEntryInfo, error)
 
-	// ProcessInlineSourceData processes inline data for a managed/file registry
-	ProcessInlineSourceData(ctx context.Context, name string, data string) error
-
 	// ********** SKILL OPERATIONS **********
-
-	// ListSkills lists skills in a registry with cursor-based pagination
-	ListSkills(ctx context.Context, opts ...Option) (*ListSkillsResult, error)
-
-	// GetSkillVersion gets a specific skill version. If the version is
-	// "latest", the latest version will be returned.
-	GetSkillVersion(ctx context.Context, opts ...Option) (*Skill, error)
 
 	// PublishSkill publishes a skill
 	PublishSkill(ctx context.Context, skill *Skill, opts ...Option) (*Skill, error)
@@ -158,13 +143,6 @@ type RegistryService interface {
 	DeleteSkillVersion(ctx context.Context, opts ...Option) error
 
 	// ********** PLUGIN OPERATIONS **********
-
-	// ListPlugins lists plugins in a registry with cursor-based pagination
-	ListPlugins(ctx context.Context, opts ...Option) (*ListPluginsResult, error)
-
-	// GetPluginVersion gets a specific plugin version. If the version is
-	// "latest", the latest version will be returned.
-	GetPluginVersion(ctx context.Context, opts ...Option) (*Plugin, error)
 
 	// PublishPlugin publishes a plugin
 	PublishPlugin(ctx context.Context, plugin *Plugin, opts ...Option) (*Plugin, error)

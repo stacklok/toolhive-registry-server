@@ -1,41 +1,48 @@
 // Package storage provides factory functions for creating storage-dependent components.
-// It implements the Abstract Factory pattern to ensure related components (state service,
-// sync writer, registry service) are created with compatible storage backends.
+// It implements the Abstract Factory pattern so the library adapters and the
+// registry service share one storage backend and connection pool.
 package storage
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/postgres"
 )
 
 //go:generate mockgen -destination=mocks/mock_factory.go -package=mocks -source=factory.go Factory
 
-// Factory creates storage-dependent components as a family.
-// Implementations ensure all components are compatible with each other.
-//
-// The factory encapsulates the creation of:
-// - RegistryStateService: Tracks sync status
-// - SyncWriter: Writes synced registry data
-// - RegistryService: Serves registry API requests
-//
-// It also manages the lifecycle of storage resources (e.g., database connections).
+// Catalog groups the pkg/registry adapters the server runs on. All of them
+// borrow the factory's pool; the factory's Cleanup closes it.
+type Catalog struct {
+	Pool        *pgxpool.Pool
+	Definitions *postgres.Definitions
+	// Entries and Jobs carry the claims hook, so library writes keep
+	// registry_entry.claims in step.
+	Entries *postgres.Entries
+	Jobs    *postgres.Jobs
+}
+
+// Factory creates storage-dependent components as a family and manages the
+// lifecycle of storage resources (e.g., database connections).
 type Factory interface {
-	// CreateStateService creates a state service for sync status tracking.
-	CreateStateService(ctx context.Context) (state.RegistryStateService, error)
+	// CreateCatalog opens the library adapters. overrides supplies per-entry
+	// claims for Kubernetes sources and may be nil.
+	CreateCatalog(ctx context.Context, overrides database.EntryClaimsProvider) (*Catalog, error)
 
-	// CreateSyncWriter creates a writer for storing synced registry data.
-	CreateSyncWriter(ctx context.Context) (writer.SyncWriter, error)
-
-	// CreateRegistryService creates the main registry service.
-	CreateRegistryService(ctx context.Context) (service.RegistryService, error)
+	// CreateRegistryService creates the admin registry service. publisher
+	// performs managed publish and delete writes; opts add optional wiring
+	// such as database.WithSourcesChanged.
+	CreateRegistryService(
+		ctx context.Context, publisher persistence.ManagedPublisher, opts ...database.Option,
+	) (service.RegistryService, error)
 
 	// Cleanup releases any resources held by this factory.
 	// For database factories, this closes the connection pool.

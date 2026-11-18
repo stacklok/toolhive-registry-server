@@ -13,9 +13,10 @@ import (
 	context "context"
 	reflect "reflect"
 
+	storage "github.com/stacklok/toolhive-registry-server/internal/app/storage"
 	service "github.com/stacklok/toolhive-registry-server/internal/service"
-	state "github.com/stacklok/toolhive-registry-server/internal/sync/state"
-	writer "github.com/stacklok/toolhive-registry-server/internal/sync/writer"
+	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
+	persistence "github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -55,47 +56,37 @@ func (mr *MockFactoryMockRecorder) Cleanup() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Cleanup", reflect.TypeOf((*MockFactory)(nil).Cleanup))
 }
 
-// CreateRegistryService mocks base method.
-func (m *MockFactory) CreateRegistryService(ctx context.Context) (service.RegistryService, error) {
+// CreateCatalog mocks base method.
+func (m *MockFactory) CreateCatalog(ctx context.Context, overrides database.EntryClaimsProvider) (*storage.Catalog, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateRegistryService", ctx)
+	ret := m.ctrl.Call(m, "CreateCatalog", ctx, overrides)
+	ret0, _ := ret[0].(*storage.Catalog)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateCatalog indicates an expected call of CreateCatalog.
+func (mr *MockFactoryMockRecorder) CreateCatalog(ctx, overrides any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateCatalog", reflect.TypeOf((*MockFactory)(nil).CreateCatalog), ctx, overrides)
+}
+
+// CreateRegistryService mocks base method.
+func (m *MockFactory) CreateRegistryService(ctx context.Context, publisher persistence.ManagedPublisher, opts ...database.Option) (service.RegistryService, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, publisher}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CreateRegistryService", varargs...)
 	ret0, _ := ret[0].(service.RegistryService)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateRegistryService indicates an expected call of CreateRegistryService.
-func (mr *MockFactoryMockRecorder) CreateRegistryService(ctx any) *gomock.Call {
+func (mr *MockFactoryMockRecorder) CreateRegistryService(ctx, publisher any, opts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRegistryService", reflect.TypeOf((*MockFactory)(nil).CreateRegistryService), ctx)
-}
-
-// CreateStateService mocks base method.
-func (m *MockFactory) CreateStateService(ctx context.Context) (state.RegistryStateService, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateStateService", ctx)
-	ret0, _ := ret[0].(state.RegistryStateService)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateStateService indicates an expected call of CreateStateService.
-func (mr *MockFactoryMockRecorder) CreateStateService(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateStateService", reflect.TypeOf((*MockFactory)(nil).CreateStateService), ctx)
-}
-
-// CreateSyncWriter mocks base method.
-func (m *MockFactory) CreateSyncWriter(ctx context.Context) (writer.SyncWriter, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateSyncWriter", ctx)
-	ret0, _ := ret[0].(writer.SyncWriter)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateSyncWriter indicates an expected call of CreateSyncWriter.
-func (mr *MockFactoryMockRecorder) CreateSyncWriter(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSyncWriter", reflect.TypeOf((*MockFactory)(nil).CreateSyncWriter), ctx)
+	varargs := append([]any{ctx, publisher}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRegistryService", reflect.TypeOf((*MockFactory)(nil).CreateRegistryService), varargs...)
 }

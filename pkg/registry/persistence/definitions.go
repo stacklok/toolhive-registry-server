@@ -250,8 +250,11 @@ func (s SourceDefinition) Kind() (string, error) {
 			}
 		}
 	}
-	if kind == managedKind || kind == "kubernetes" || (s.File != nil && s.File.Data != "") {
-		if s.Schedule != "" || s.Filter != nil {
+	inline := s.File != nil && s.File.Data != ""
+	if kind == managedKind || kind == "kubernetes" || inline {
+		// Inline data is synced once per definition, so it takes no schedule,
+		// but a filter still applies to it, as it always has in the server.
+		if s.Schedule != "" || (s.Filter != nil && !inline) {
 			return "", fmt.Errorf("%w: non-synced source cannot have schedule/filter", ErrInvalid)
 		}
 	} else {

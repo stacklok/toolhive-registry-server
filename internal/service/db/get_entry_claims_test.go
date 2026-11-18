@@ -29,8 +29,9 @@ func TestGetEntryClaims_ReturnsClaims(t *testing.T) {
 
 	_, err := svc.PublishServerVersion(ctx,
 		service.WithServerData(&upstreamv0.ServerJSON{
-			Name:    "com.test/gec-claims",
-			Version: "1.0.0",
+			Name:        "com.test/gec-claims",
+			Version:     "1.0.0",
+			Description: "test description",
 		}),
 		service.WithClaims(map[string]any{"org": "acme", "team": "platform"}),
 		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{"platform", "ops"}}),
@@ -58,8 +59,9 @@ func TestGetEntryClaims_EmptyClaimsReturnsNonNilMap(t *testing.T) {
 	// Publish a server with no claims (anonymous mode).
 	_, err := svc.PublishServerVersion(ctx,
 		service.WithServerData(&upstreamv0.ServerJSON{
-			Name:    "com.test/gec-empty",
-			Version: "1.0.0",
+			Name:        "com.test/gec-empty",
+			Version:     "1.0.0",
+			Description: "test description",
 		}),
 	)
 	require.NoError(t, err)
@@ -86,8 +88,9 @@ func TestGetEntryClaims_ClaimsInsufficient(t *testing.T) {
 	// Publish an entry scoped to team=data.
 	_, err := svc.PublishServerVersion(ctx,
 		service.WithServerData(&upstreamv0.ServerJSON{
-			Name:    "com.test/gec-insufficient",
-			Version: "1.0.0",
+			Name:        "com.test/gec-insufficient",
+			Version:     "1.0.0",
+			Description: "test description",
 		}),
 		service.WithClaims(map[string]any{"org": "acme", "team": teamDataClaim}),
 		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{teamDataClaim}}),
@@ -116,8 +119,9 @@ func TestGetEntryClaims_SuperAdminBypassesSubsetCheck(t *testing.T) {
 	// Publish an entry scoped to team=data with JWT claims that cover it.
 	_, err := svc.PublishServerVersion(ctx,
 		service.WithServerData(&upstreamv0.ServerJSON{
-			Name:    "com.test/gec-superadmin",
-			Version: "1.0.0",
+			Name:        "com.test/gec-superadmin",
+			Version:     "1.0.0",
+			Description: "test description",
 		}),
 		service.WithClaims(map[string]any{"org": "acme", "team": teamDataClaim}),
 		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{teamDataClaim}}),
@@ -148,8 +152,9 @@ func TestGetEntryClaims_ClaimsSufficient(t *testing.T) {
 
 	_, err := svc.PublishServerVersion(ctx,
 		service.WithServerData(&upstreamv0.ServerJSON{
-			Name:    "com.test/gec-sufficient",
-			Version: "1.0.0",
+			Name:        "com.test/gec-sufficient",
+			Version:     "1.0.0",
+			Description: "test description",
 		}),
 		service.WithClaims(map[string]any{"org": "acme", "team": "platform"}),
 		service.WithJWTClaims(map[string]any{"org": "acme", "team": []string{"platform"}}),
@@ -196,8 +201,9 @@ func TestGetEntryClaims_WrongTypeReturnsNotFound(t *testing.T) {
 	// Publish a server, then try to fetch it as a skill.
 	_, err := svc.PublishServerVersion(ctx,
 		service.WithServerData(&upstreamv0.ServerJSON{
-			Name:    "com.test/gec-wrong-type",
-			Version: "1.0.0",
+			Name:        "com.test/gec-wrong-type",
+			Version:     "1.0.0",
+			Description: "test description",
 		}),
 		service.WithClaims(map[string]any{"org": "acme"}),
 	)
@@ -236,10 +242,11 @@ func TestGetEntryClaims_SkillType(t *testing.T) {
 	ctx := context.Background()
 
 	skill := &service.Skill{
-		Namespace: "com.test",
-		Name:      "gec-skill",
-		Version:   "1.0.0",
-		Title:     "Test Skill",
+		Namespace:   "com.test",
+		Name:        "gec-skill",
+		Version:     "1.0.0",
+		Title:       "Test Skill",
+		Description: "test description",
 	}
 	_, err := svc.PublishSkill(ctx, skill,
 		service.WithClaims(map[string]any{"org": "acme"}),

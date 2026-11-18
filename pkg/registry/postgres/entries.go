@@ -24,6 +24,7 @@ import (
 type Entries struct {
 	pool        *pgxpool.Pool
 	maxMetaSize int
+	options     options
 }
 
 var _ persistence.Entries = (*Entries)(nil)
@@ -32,9 +33,13 @@ var _ persistence.Entries = (*Entries)(nil)
 // schema version. If the migrations left the one-time latest-pointer repair
 // pending, it runs it before returning; otherwise it only reads the mark. It never migrates the schema or
 // closes the pool. The host controls the pool's lifetime.
-func NewEntries(ctx context.Context, pool *pgxpool.Pool, maxMetaSize int) (*Entries, error) {
+func NewEntries(ctx context.Context, pool *pgxpool.Pool, maxMetaSize int, opts ...Option) (*Entries, error) {
 	if pool == nil || maxMetaSize <= 0 {
 		return nil, fmt.Errorf("%w: pool and positive metadata limit required", persistence.ErrInvalid)
+	}
+	o, err := applyOptions(opts)
+	if err != nil {
+		return nil, err
 	}
 	// writeTx checks the schema version first. Table locks are taken only
 	// while a repair is pending, so later starts do not block writers.
@@ -48,7 +53,7 @@ func NewEntries(ctx context.Context, pool *pgxpool.Pool, maxMetaSize int) (*Entr
 	}); err != nil {
 		return nil, err
 	}
-	return &Entries{pool: pool, maxMetaSize: maxMetaSize}, nil
+	return &Entries{pool: pool, maxMetaSize: maxMetaSize, options: o}, nil
 }
 
 // ReplaceSnapshot atomically replaces all three kinds, including an empty set.
@@ -89,8 +94,8 @@ func (d *Entries) ReplaceSnapshot(ctx context.Context, source persistence.Source
 		if !allowed {
 			return persistence.ErrBusy
 		}
-		if e = writer.StoreSourceTx(ctx, tx, id, &snapshot, d.maxMetaSize); e != nil {
-			return classify(e)
+		if e = storeSnapshotTx(ctx, tx, d.options, id, row.Name, &snapshot, d.maxMetaSize); e != nil {
+			return e
 		}
 		if e = q.JobInvalidateSnapshot(ctx, id); e != nil {
 			return classify(e)
@@ -119,6 +124,15 @@ func (d *Entries) Publish(ctx context.Context, entry persistence.Entry) (persist
 		if e != nil {
 			return classify(e)
 		}
+		src, e := q.EntrySource(ctx, id)
+		if e != nil {
+			return classify(e)
+		}
+		write := EntryWrite{Op: EntryWritePublish, SourceID: id.String(), SourceName: src.Name,
+			Entry: &entry, Kind: entry.Kind, Name: entry.Name, Version: entry.Version}
+		if e = d.options.before(ctx, tx, write); e != nil {
+			return e
+		}
 		exists, e := q.EntryVersionExists(ctx, sqlc.EntryVersionExistsParams{
 			SourceID: id, EntryType: sqlc.EntryType(entry.Kind), Name: entry.Name, Version: entry.Version,
 		})
@@ -132,6 +146,9 @@ func (d *Entries) Publish(ctx context.Context, entry persistence.Entry) (persist
 			return classify(e)
 		}
 		if e = repointLatest(ctx, q, id, entry.Kind, entry.Name); e != nil {
+			return e
+		}
+		if e = d.options.after(ctx, tx, write); e != nil {
 			return e
 		}
 		rows, e := q.EntryList(ctx, sqlc.EntryListParams{SourceID: id, EntryType: sqlc.EntryType(entry.Kind),
@@ -169,6 +186,15 @@ func (d *Entries) DeleteManaged(ctx context.Context, kind persistence.EntryKind,
 		if e != nil {
 			return classify(e)
 		}
+		src, e := q.EntrySource(ctx, id)
+		if e != nil {
+			return classify(e)
+		}
+		write := EntryWrite{Op: EntryWriteDelete, SourceID: id.String(), SourceName: src.Name,
+			Kind: kind, Name: name, Version: version}
+		if e = d.options.before(ctx, tx, write); e != nil {
+			return e
+		}
 		count, e := q.EntryDeleteVersion(ctx, sqlc.EntryDeleteVersionParams{
 			SourceID: id, EntryType: sqlc.EntryType(kind), Name: name, Version: version,
 		})
@@ -181,7 +207,10 @@ func (d *Entries) DeleteManaged(ctx context.Context, kind persistence.EntryKind,
 		if e = q.EntryDeleteEmptyNames(ctx, id); e != nil {
 			return classify(e)
 		}
-		return repointLatest(ctx, q, id, kind, name)
+		if e = repointLatest(ctx, q, id, kind, name); e != nil {
+			return e
+		}
+		return d.options.after(ctx, tx, write)
 	})
 }
 
@@ -229,4 +258,20 @@ func publicationSnapshot(entry persistence.Entry) (model.Snapshot, error) {
 		snapshot.Data.Plugins = []thvregistry.Plugin{formats.PluginPayload(entry.Plugin)}
 	}
 	return snapshot, nil
+}
+
+// storeSnapshotTx replaces a source's entries inside tx, running the entry
+// write hook around the write.
+func storeSnapshotTx(
+	ctx context.Context, tx pgx.Tx, o options, id uuid.UUID, sourceName string,
+	snapshot *model.Snapshot, maxMetaSize int,
+) error {
+	write := EntryWrite{Op: EntryWriteSnapshot, SourceID: id.String(), SourceName: sourceName, Snapshot: snapshot}
+	if err := o.before(ctx, tx, write); err != nil {
+		return err
+	}
+	if err := writer.StoreSourceTx(ctx, tx, id, snapshot, maxMetaSize); err != nil {
+		return classify(err)
+	}
+	return o.after(ctx, tx, write)
 }

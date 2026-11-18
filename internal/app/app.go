@@ -28,10 +28,10 @@ type RegistryApp struct {
 // Start starts the application components (HTTP server and background sync)
 // This method blocks until the HTTP server stops or encounters an error
 func (app *RegistryApp) Start() error {
-	// Start sync coordinator in background
+	// Start source synchronization in background
 	go func() {
-		if err := app.components.SyncCoordinator.Start(app.ctx); err != nil {
-			slog.Error("Sync coordinator failed", "error", err)
+		if err := app.components.Sync.Start(app.ctx); err != nil {
+			slog.Error("Source synchronization failed", "error", err)
 		}
 	}()
 
@@ -57,9 +57,9 @@ func (app *RegistryApp) Start() error {
 func (app *RegistryApp) Stop(timeout time.Duration) error {
 	slog.Info("Shutting down server")
 
-	// Stop sync coordinator first
-	if err := app.components.SyncCoordinator.Stop(); err != nil {
-		slog.Error("Failed to stop sync coordinator", "error", err)
+	// Stop source synchronization first
+	if err := app.components.Sync.Stop(); err != nil {
+		slog.Error("Failed to stop source synchronization", "error", err)
 	}
 
 	// Cancel the application context

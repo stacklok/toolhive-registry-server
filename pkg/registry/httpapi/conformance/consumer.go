@@ -57,8 +57,11 @@ func RunConsumer(t *testing.T, defs persistence.Definitions, store ConsumerBacke
 		for _, version := range []string{"2", "3"} {
 			appendVersion(&winning, kind, "item", version, "com.example", "winner")
 		}
+		// Skills and plugins compete per namespace, so the losing versions sit
+		// in the winner's namespace (see the persistence conformance suite for
+		// separate namespaces).
 		for _, version := range []string{"1", "9"} {
-			appendVersion(&losing, kind, "item", version, "org.loser", "lower-only")
+			appendVersion(&losing, kind, "item", version, "com.example", "lower-only")
 		}
 		for _, version := range []string{"1", "latest"} {
 			appendVersion(&winning, kind, "literal", version, "com.example", "literal %_ bracket[")

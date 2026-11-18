@@ -14,10 +14,9 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	mocksvc "github.com/stacklok/toolhive-registry-server/internal/service/mocks"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
 )
 
-// mockCoordinator implements the coordinator.Coordinator interface for testing
+// mockCoordinator implements BackgroundSync for testing
 type mockCoordinator struct {
 	mu          sync.Mutex
 	startCalled bool
@@ -89,7 +88,7 @@ func createTestApp(t *testing.T, ctrl *gomock.Controller, addr string) *Registry
 		authMiddleware:  func(next http.Handler) http.Handler { return next },
 	}
 
-	server, err := buildHTTPServer(ctx, appCfg, mockSvc, nil)
+	server, err := buildHTTPServer(ctx, appCfg, mockSvc, emptyPages{}, nil)
 	require.NoError(t, err)
 
 	internalServer := buildInternalHTTPServer(appCfg, mockSvc)
@@ -97,7 +96,7 @@ func createTestApp(t *testing.T, ctrl *gomock.Controller, addr string) *Registry
 	return &RegistryApp{
 		config: cfg,
 		components: &AppComponents{
-			SyncCoordinator: mockCoord,
+			Sync:            mockCoord,
 			RegistryService: mockSvc,
 		},
 		httpServer:         server,
@@ -177,7 +176,7 @@ func TestRegistryApp_Start(t *testing.T) {
 				if addr == ":0" || addr == "127.0.0.1:0" {
 					// For ephemeral ports, we need to check differently
 					// The server should be running
-					mockCoord := app.components.SyncCoordinator.(*mockCoordinator)
+					mockCoord := app.components.Sync.(*mockCoordinator)
 					assert.True(t, mockCoord.wasStartCalled(), "sync coordinator should be started")
 				}
 			}
@@ -242,7 +241,7 @@ func TestRegistryApp_StartWithListener(t *testing.T) {
 	}
 
 	// Verify sync coordinator was started
-	mockCoord := app.components.SyncCoordinator.(*mockCoordinator)
+	mockCoord := app.components.Sync.(*mockCoordinator)
 	assert.True(t, mockCoord.wasStartCalled(), "sync coordinator should be started")
 
 	// Stop the server
@@ -278,7 +277,7 @@ func TestRegistryApp_Stop(t *testing.T) {
 			wantErr: false,
 			verifyFn: func(t *testing.T, app *RegistryApp) {
 				t.Helper()
-				mockCoord := app.components.SyncCoordinator.(*mockCoordinator)
+				mockCoord := app.components.Sync.(*mockCoordinator)
 				assert.True(t, mockCoord.wasStopCalled(), "sync coordinator Stop should be called")
 			},
 		},
@@ -292,7 +291,7 @@ func TestRegistryApp_Stop(t *testing.T) {
 			wantErr: false,
 			verifyFn: func(t *testing.T, app *RegistryApp) {
 				t.Helper()
-				mockCoord := app.components.SyncCoordinator.(*mockCoordinator)
+				mockCoord := app.components.Sync.(*mockCoordinator)
 				assert.True(t, mockCoord.wasStopCalled(), "sync coordinator Stop should be called")
 			},
 		},
@@ -306,7 +305,7 @@ func TestRegistryApp_Stop(t *testing.T) {
 			wantErr: false,
 			verifyFn: func(t *testing.T, app *RegistryApp) {
 				t.Helper()
-				mockCoord := app.components.SyncCoordinator.(*mockCoordinator)
+				mockCoord := app.components.Sync.(*mockCoordinator)
 				assert.True(t, mockCoord.wasStopCalled(), "sync coordinator Stop should be called even without Start")
 			},
 		},
@@ -452,4 +451,4 @@ func TestRegistryApp_StartError_InvalidAddress(t *testing.T) {
 }
 
 // Verify that Coordinator interface is properly defined
-var _ coordinator.Coordinator = (*mockCoordinator)(nil)
+var _ BackgroundSync = (*mockCoordinator)(nil)

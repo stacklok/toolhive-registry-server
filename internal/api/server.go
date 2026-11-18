@@ -3,6 +3,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -13,12 +14,15 @@ import (
 
 	// Import generated docs package to register OpenAPI spec via init()
 	_ "github.com/stacklok/toolhive-registry-server/docs/thv-registry-api"
-	v01 "github.com/stacklok/toolhive-registry-server/internal/api/registry/v01"
 	apiv1 "github.com/stacklok/toolhive-registry-server/internal/api/v1"
+	auditmw "github.com/stacklok/toolhive-registry-server/internal/audit"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
+	"github.com/stacklok/toolhive-registry-server/internal/claims"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	"github.com/stacklok/toolhive-registry-server/internal/versions"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/httpapi"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
 // ServerOption configures the registry API server
@@ -31,6 +35,7 @@ type serverConfig struct {
 	middlewares     []func(http.Handler) http.Handler
 	authInfoHandler http.Handler
 	authConfig      *config.AuthConfig
+	managedSources  ManagedSourceIDs
 }
 
 // WithMiddlewares adds middleware to the server
@@ -56,8 +61,18 @@ func WithAuthConfig(authCfg *config.AuthConfig) ServerOption {
 	}
 }
 
-// NewServer creates and configures the HTTP router with the given service and options
-func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
+// WithManagedSourceIDs supplies the managed source lookup that keeps
+// managed skills' and plugins' v1.5.4 response shape.
+func WithManagedSourceIDs(f ManagedSourceIDs) ServerOption {
+	return func(cfg *serverConfig) {
+		cfg.managedSources = f
+	}
+}
+
+// NewServer creates and configures the HTTP router. Consumer routes under
+// /registry are served by the library's consumer router reading pages;
+// admin routes under /v1 by svc.
+func NewServer(svc service.RegistryService, pages httpapi.ConsumerPages, opts ...ServerOption) (*chi.Mux, error) {
 	// Initialize configuration with defaults
 	cfg := &serverConfig{
 		middlewares: []func(http.Handler) http.Handler{},
@@ -83,11 +98,41 @@ func NewServer(svc service.RegistryService, opts ...ServerOption) *chi.Mux {
 		r.Handle("/.well-known/oauth-protected-resource", cfg.authInfoHandler)
 	}
 
-	// Mount MCP Registry API v0.1 routes
-	r.Mount("/registry", v01.Router(svc))
+	consumer, err := httpapi.ConsumerRouter(compatPages{next: pages, managed: cfg.managedSources},
+		httpapi.ConsumerOptions{MapError: mapConsumerError, Decorate: auditConsumerRoute})
+	if err != nil {
+		return nil, err
+	}
+	r.Mount("/registry", consumer)
 	r.Mount("/v1", apiv1.Router(svc, cfg.authConfig))
 
-	return r
+	return r, nil
+}
+
+// auditConsumerRoute records each consumer read with v1.5.4's audit event
+// types and targets; the library's route descriptors carry the same names.
+func auditConsumerRoute(route httpapi.RouteDescriptor, next http.Handler) http.Handler {
+	switch route.Kind {
+	case persistence.ServerKind:
+		return auditmw.AuditedServer(route.AuditEvent, next.ServeHTTP)
+	case persistence.SkillKind:
+		return auditmw.AuditedSkill(route.AuditEvent, next.ServeHTTP)
+	case persistence.PluginKind:
+		return auditmw.AuditedPlugin(route.AuditEvent, next.ServeHTTP)
+	default:
+		return next
+	}
+}
+
+// mapConsumerError keeps v1.5.4's 403 for a registry the caller's claims do
+// not reach; every other error uses the library's sanitized defaults.
+func mapConsumerError(_ *http.Request, _ httpapi.RouteDescriptor, err error) httpapi.ErrorMapping {
+	if errors.Is(err, claims.ErrRegistryForbidden) {
+		return httpapi.ErrorMapping{
+			Status: http.StatusForbidden, Body: httpapi.ErrorResponse{Error: claims.ErrRegistryForbidden.Error()},
+		}
+	}
+	return httpapi.ErrorMapping{}
 }
 
 // NewInternalServer creates a minimal HTTP router for internal operational

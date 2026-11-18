@@ -161,6 +161,29 @@ func (q *Queries) ListRegistrySources(ctx context.Context, registryID uuid.UUID)
 	return items, nil
 }
 
+const setConfigRegistryClaims = `-- name: SetConfigRegistryClaims :execrows
+UPDATE registry
+   SET claims = $1
+ WHERE name = $2
+   AND creation_type = 'CONFIG'
+   AND claims IS DISTINCT FROM $1
+`
+
+type SetConfigRegistryClaimsParams struct {
+	Claims []byte `json:"claims"`
+	Name   string `json:"name"`
+}
+
+// Stores a config-file registry's claims after the library reconciled the
+// definitions; the claims-free library never writes registry claims.
+func (q *Queries) SetConfigRegistryClaims(ctx context.Context, arg SetConfigRegistryClaimsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setConfigRegistryClaims, arg.Claims, arg.Name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const unlinkAllRegistrySources = `-- name: UnlinkAllRegistrySources :exec
 DELETE FROM registry_source WHERE registry_id = $1
 `

@@ -6,15 +6,15 @@ import (
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/stacklok/toolhive-core/postgres"
+	corepg "github.com/stacklok/toolhive-core/postgres"
 	"go.opentelemetry.io/otel/trace"
 
 	schemadb "github.com/stacklok/toolhive-registry-server/database"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/postgres"
 )
 
 // DatabaseFactory creates database-backed storage components.
@@ -60,8 +60,8 @@ func NewDatabaseFactory(ctx context.Context, cfg *config.Config, opts ...Databas
 		return nil, fmt.Errorf("failed to build database configuration: %w", err)
 	}
 
-	pool, err := postgres.NewPool(ctx, corePgCfg,
-		postgres.WithAfterConnect(schemadb.RegisterEnumArrayCodecs),
+	pool, err := corepg.NewPool(ctx, corePgCfg,
+		corepg.WithAfterConnect(schemadb.RegisterEnumArrayCodecs),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database connection pool: %w", err)
@@ -69,7 +69,7 @@ func NewDatabaseFactory(ctx context.Context, cfg *config.Config, opts ...Databas
 
 	// Emit periodic pool statistics at DEBUG using the package defaults
 	// (60s cadence, slog.Default()).
-	postgres.StartPoolStatsLogger(ctx, pool, nil, 0)
+	corepg.StartPoolStatsLogger(ctx, pool, nil, 0)
 
 	factory := &DatabaseFactory{
 		config: cfg,
@@ -84,30 +84,37 @@ func NewDatabaseFactory(ctx context.Context, cfg *config.Config, opts ...Databas
 	return factory, nil
 }
 
-// CreateStateService creates a database-backed state service for sync status tracking.
-func (d *DatabaseFactory) CreateStateService(_ context.Context) (state.RegistryStateService, error) {
-	slog.Debug("Creating database-backed state service")
-	return state.NewStateService(d.pool)
-}
-
-// CreateSyncWriter creates a database-backed sync writer for storing registry data.
-func (d *DatabaseFactory) CreateSyncWriter(_ context.Context) (writer.SyncWriter, error) {
-	slog.Debug("Creating database-backed sync writer")
-	return writer.NewSyncWriter(d.pool, d.config.Database.GetMaxMetaSize())
+// CreateCatalog opens the library adapters over the factory's pool. It
+// checks the schema version and runs a pending latest-pointer repair.
+func (d *DatabaseFactory) CreateCatalog(ctx context.Context, overrides database.EntryClaimsProvider) (*Catalog, error) {
+	maxMeta := d.config.Database.GetMaxMetaSize()
+	hook := postgres.WithEntryWriteHook(database.NewClaimsHook(overrides))
+	definitions, err := postgres.NewDefinitions(d.pool)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open definitions: %w", err)
+	}
+	entries, err := postgres.NewEntries(ctx, d.pool, maxMeta, hook)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open entries: %w", err)
+	}
+	jobs, err := postgres.NewJobs(d.pool, maxMeta, hook)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open sync jobs: %w", err)
+	}
+	return &Catalog{Pool: d.pool, Definitions: definitions, Entries: entries, Jobs: jobs}, nil
 }
 
 // CreateRegistryService creates a database-backed registry service.
-// The service reads and writes registry data directly to PostgreSQL.
-func (d *DatabaseFactory) CreateRegistryService(_ context.Context) (service.RegistryService, error) {
+func (d *DatabaseFactory) CreateRegistryService(
+	_ context.Context, publisher persistence.ManagedPublisher, extra ...database.Option,
+) (service.RegistryService, error) {
 	slog.Debug("Creating database-backed registry service")
 
-	// Build database service options
 	opts := []database.Option{
 		database.WithConnectionPool(d.pool),
 		database.WithMaxMetaSize(d.config.Database.GetMaxMetaSize()),
+		database.WithPublisher(publisher),
 	}
-
-	// Add tracer if configured
 	if d.tracer != nil {
 		opts = append(opts, database.WithTracer(d.tracer))
 		slog.Debug("Database service tracing enabled")
@@ -120,7 +127,7 @@ func (d *DatabaseFactory) CreateRegistryService(_ context.Context) (service.Regi
 		opts = append(opts, database.WithSkipAuthz())
 	}
 
-	return database.New(opts...)
+	return database.New(append(opts, extra...)...)
 }
 
 // Cleanup releases resources held by the database factory.

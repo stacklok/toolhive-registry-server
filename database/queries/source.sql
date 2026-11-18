@@ -200,3 +200,19 @@ WHERE name = ANY(sqlc.arg(names)::text[])
 -- name: GetManagedSources :many
 SELECT id, name, source_type, creation_type, claims, created_at, updated_at
 FROM source WHERE source_type = 'managed';
+
+-- name: SetConfigSourceClaims :execrows
+-- Stores a config-file source's claims after the library reconciled the
+-- definitions; the claims-free library never writes source claims.
+UPDATE source
+   SET claims = sqlc.narg(claims)
+ WHERE name = sqlc.arg(name)
+   AND creation_type = 'CONFIG'
+   AND claims IS DISTINCT FROM sqlc.narg(claims);
+
+-- name: InvalidateSourceSyncBaseline :exec
+-- Forces the next sync of a source to commit a full snapshot, so entry claims
+-- are recomputed even when the fetched data is unchanged.
+UPDATE registry_sync
+   SET applied_generation = NULL
+ WHERE source_id = (SELECT id FROM source WHERE name = sqlc.arg(name));

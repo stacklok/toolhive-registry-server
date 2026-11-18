@@ -134,28 +134,6 @@ func rowToPlugin(r pluginRow) *Plugin {
 	return resp
 }
 
-// ListPluginsRowToPlugin maps a sqlc ListPluginsRow to a service Plugin.
-func ListPluginsRowToPlugin(row sqlc.ListPluginsRow) *Plugin {
-	return rowToPlugin(pluginRow{
-		ID:              row.VersionID,
-		Name:            row.Name,
-		Version:         row.Version,
-		IsLatest:        row.IsLatest,
-		CreatedAt:       row.CreatedAt,
-		UpdatedAt:       row.UpdatedAt,
-		Description:     row.Description,
-		Title:           row.Title,
-		PluginVersionID: row.VersionID,
-		Namespace:       row.Namespace,
-		Status:          row.Status,
-		License:         row.License,
-		Repository:      row.Repository,
-		Icons:           row.Icons,
-		Metadata:        row.Metadata,
-		ExtensionMeta:   row.ExtensionMeta,
-	})
-}
-
 // GetPluginVersionRowToPlugin maps a sqlc GetPluginVersionRow to a service Plugin.
 func GetPluginVersionRowToPlugin(row sqlc.GetPluginVersionRow) *Plugin {
 	return rowToPlugin(pluginRow{
