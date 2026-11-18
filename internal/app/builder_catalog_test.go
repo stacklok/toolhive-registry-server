@@ -190,7 +190,7 @@ func TestNewRegistryApp_CreateCatalogFails(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	factory := mocks.NewMockFactory(ctrl)
 	storageErr := errors.New("connection refused")
-	factory.EXPECT().CreateCatalog(gomock.Any(), nil).Return(nil, storageErr)
+	factory.EXPECT().CreateCatalog(gomock.Any(), gomock.Any()).Return(nil, storageErr)
 	factory.EXPECT().Cleanup().Times(1)
 
 	app, err := NewRegistryApp(context.Background(),

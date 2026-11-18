@@ -86,18 +86,21 @@ func NewDatabaseFactory(ctx context.Context, cfg *config.Config, opts ...Databas
 
 // CreateCatalog opens the library adapters over the factory's pool. It
 // checks the schema version and runs a pending latest-pointer repair.
-func (d *DatabaseFactory) CreateCatalog(ctx context.Context, overrides database.EntryClaimsProvider) (*Catalog, error) {
+func (d *DatabaseFactory) CreateCatalog(ctx context.Context, hook postgres.EntryWriteHook) (*Catalog, error) {
 	maxMeta := d.config.Database.GetMaxMetaSize()
-	hook := postgres.WithEntryWriteHook(database.NewClaimsHook(overrides))
+	var opts []postgres.Option
+	if hook != nil {
+		opts = append(opts, postgres.WithEntryWriteHook(hook))
+	}
 	definitions, err := postgres.NewDefinitions(d.pool)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open definitions: %w", err)
 	}
-	entries, err := postgres.NewEntries(ctx, d.pool, maxMeta, hook)
+	entries, err := postgres.NewEntries(ctx, d.pool, maxMeta, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open entries: %w", err)
 	}
-	jobs, err := postgres.NewJobs(d.pool, maxMeta, hook)
+	jobs, err := postgres.NewJobs(d.pool, maxMeta, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sync jobs: %w", err)
 	}
@@ -123,7 +126,9 @@ func (d *DatabaseFactory) CreateRegistryService(
 	// When authz is not configured, skip per-entry claims filtering and
 	// registry-level claims gating (auth-only mode).
 	if d.config.Auth == nil || d.config.Auth.Authz == nil {
-		slog.Warn("Authorization not configured, per-entry claims filtering disabled (auth-only mode)")
+		if d.config.AuthorizationMode() == config.AuthorizationModeClaims {
+			slog.Warn("Authorization not configured, per-entry claims filtering disabled (auth-only mode)")
+		}
 		opts = append(opts, database.WithSkipAuthz())
 	}
 

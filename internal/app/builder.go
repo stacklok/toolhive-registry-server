@@ -20,6 +20,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/claims"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
+	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -27,9 +28,11 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/sync/standalone"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/catalog"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/cedar"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/httpapi"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/postgres"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile"
 )
 
@@ -60,6 +63,12 @@ type registryAppConfig struct {
 	reconcile      reconcile.Options
 	// managedSourceIDs is set by buildCatalog for the consumer API's shapes.
 	managedSourceIDs api.ManagedSourceIDs
+	// admin is set by buildCatalog in Cedar mode when admin is enabled.
+	admin *httpapi.AdminOperations
+	// policy is the Cedar policy, loaded by buildCatalog in Cedar mode before
+	// the database's mode is recorded, so a broken policy file cannot tie a
+	// fresh database to Cedar mode.
+	policy *cedar.Engine
 
 	// HTTP server options
 	address         string
@@ -345,11 +354,15 @@ type builtCatalog struct {
 	catalog *storage.Catalog
 	sync    *syncRunner
 	pages   catalog.Reader
+	// admin is the library admin API for Cedar mode; nil in claims mode,
+	// whose /v1 handlers run over the registry service.
+	admin *httpapi.AdminOperations
 }
 
-// buildCatalog opens the library adapters, reconciles the config file's
-// sources and registries into them, stores config claims, and prepares the
-// sync runtime. Nothing runs until Start.
+// buildCatalog opens the library adapters, checks the database's
+// authorization mode, reconciles the config file's sources and registries,
+// stores config claims (claims mode), and prepares the sync runtime. Nothing
+// runs until Start.
 //
 //nolint:gocyclo // Each step is a distinct, ordered preparation stage.
 func buildCatalog(ctx context.Context, b *registryAppConfig) (*builtCatalog, error) {
@@ -358,7 +371,8 @@ func buildCatalog(ctx context.Context, b *registryAppConfig) (*builtCatalog, err
 	if err != nil {
 		return nil, fmt.Errorf("invalid sources or registries: %w", err)
 	}
-	authzOn := b.config.Auth != nil && b.config.Auth.Authz != nil
+	claimsMode := b.config.AuthorizationMode() == config.AuthorizationModeClaims
+	authzOn := claimsMode && b.config.Auth != nil && b.config.Auth.Authz != nil
 	var annotations *kubernetes.AnnotationClaims
 	if authzOn {
 		annotations = kubernetes.NewAnnotationClaims()
@@ -367,15 +381,27 @@ func buildCatalog(ctx context.Context, b *registryAppConfig) (*builtCatalog, err
 	if operator == nil {
 		operator = &kubernetes.StandaloneFactory{Claims: annotations}
 	}
-	var overrides interface {
-		EntryClaims(string) map[string][]byte
+	if !claimsMode {
+		if b.policy, err = cedar.Load(b.config.Authorization.PolicyFile); err != nil {
+			return nil, fmt.Errorf("failed to load authorization policy: %w", err)
+		}
 	}
-	if annotations != nil {
-		overrides = annotations
+	// Claims mode keeps registry_entry.claims in step with library writes;
+	// Cedar mode never reads or writes claims.
+	var hook postgres.EntryWriteHook
+	if claimsMode {
+		var overrides database.EntryClaimsProvider
+		if annotations != nil {
+			overrides = annotations
+		}
+		hook = database.NewClaimsHook(overrides)
 	}
-	cat, err := b.storageFactory.CreateCatalog(ctx, overrides)
+	cat, err := b.storageFactory.CreateCatalog(ctx, hook)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open catalog storage: %w", err)
+	}
+	if err := db.EnsureAuthorizationMode(ctx, cat.Pool, string(b.config.AuthorizationMode())); err != nil {
+		return nil, err
 	}
 	preflight := func(ctx context.Context, d persistence.SourceDefinition) error {
 		if err := sourcePreflight(d); err != nil {
@@ -394,8 +420,10 @@ func buildCatalog(ctx context.Context, b *registryAppConfig) (*builtCatalog, err
 	if err := cat.Definitions.Reconcile(ctx, sources, views); err != nil {
 		return nil, fmt.Errorf("failed to apply config sources and registries: %w", err)
 	}
-	if err := applyConfigClaims(ctx, cat.Pool, b.config); err != nil {
-		return nil, err
+	if claimsMode {
+		if err := applyConfigClaims(ctx, cat.Pool, b.config); err != nil {
+			return nil, err
+		}
 	}
 
 	var jobs persistence.Jobs = cat.Jobs
@@ -459,8 +487,42 @@ func buildCatalog(ctx context.Context, b *registryAppConfig) (*builtCatalog, err
 		}
 		return ids, nil
 	}
-	slog.Info("Catalog components initialized")
-	return &builtCatalog{catalog: cat, sync: &syncRunner{runtime: runtime}, pages: pages}, nil
+	built := &builtCatalog{catalog: cat, sync: &syncRunner{runtime: runtime}, pages: pages}
+	if !claimsMode && b.config.AdminEnabled() {
+		if built.admin, err = libraryAdmin(cat, runtime, b.config.WatchNamespace, preflight); err != nil {
+			return nil, err
+		}
+		b.admin = built.admin
+	}
+	slog.Info("Catalog components initialized", "authorization_mode", b.config.AuthorizationMode())
+	return built, nil
+}
+
+// libraryAdmin assembles the library's admin operations for Cedar mode.
+// Definition changes refresh the sync runtime, and inline sources sync
+// immediately, as the library's admin API expects.
+func libraryAdmin(
+	cat *storage.Catalog, runtime *standalone.Runtime, watch string,
+	preflight func(context.Context, persistence.SourceDefinition) error,
+) (*httpapi.AdminOperations, error) {
+	scoped := &scopedSources{Sources: cat.Definitions, watch: watch, preflight: preflight}
+	definitions, err := catalog.NewDefinitionAdmin(scoped, cat.Definitions, catalog.DefinitionAdminOptions{
+		SyncInline: runtime.SyncInline, NotifyRefresh: runtime.Refresh,
+	})
+	if err != nil {
+		return nil, err
+	}
+	publisher, err := catalog.NewPublisher(cat.Entries)
+	if err != nil {
+		return nil, err
+	}
+	diagnostics, err := catalog.NewDiagnostics(cat.Entries, cat.Jobs)
+	if err != nil {
+		return nil, err
+	}
+	return &httpapi.AdminOperations{
+		Sources: definitions, Views: definitions, Publisher: publisher, Diagnostics: diagnostics,
+	}, nil
 }
 
 // buildHTTPServer builds the HTTP server with router and middleware
@@ -513,6 +575,10 @@ func buildHTTPServer(
 	// critical for SIEM visibility into failed authentication attempts.
 	b.middlewares = append(b.middlewares, auditmw.AuthFailureMiddleware(auditCfg, auditLogger))
 
+	if b.config != nil && b.config.AuthorizationMode() == config.AuthorizationModeCedar {
+		return buildCedarHTTPServer(b, pages, auditCfg, auditLogger)
+	}
+
 	authMw := auth.WrapWithPublicPaths(b.authMiddleware, publicPaths)
 	b.middlewares = append(b.middlewares, authMw)
 
@@ -561,6 +627,83 @@ func buildHTTPServer(
 
 	slog.Info("HTTP server configured", "address", b.address)
 	return server, nil
+}
+
+// buildCedarHTTPServer finishes the public server for Cedar mode: anonymous
+// admission and authentication, the audit middleware, and the library's
+// routers behind the Cedar authorizer. No roles are resolved.
+func buildCedarHTTPServer(
+	b *registryAppConfig, pages httpapi.ConsumerPages, auditCfg *config.AuditConfig, auditLogger *auditmw.Logger,
+) (*http.Server, error) {
+	cfg := b.config
+	authMw := auth.WithAnonymousAdmission(auth.WrapWithPublicPaths(b.authMiddleware, []string{"/.well-known"}),
+		cfg.Auth.Mode, cfg.Authorization.AllowAnonymousCatalog)
+	b.middlewares = append(b.middlewares, authMw, auditmw.Middleware(auditCfg, auditLogger))
+
+	engine := b.policy
+	if engine == nil {
+		var err error
+		if engine, err = cedar.Load(cfg.Authorization.PolicyFile); err != nil {
+			return nil, fmt.Errorf("failed to load authorization policy: %w", err)
+		}
+	}
+	if cfg.Authorization.PolicyFile == "" && cfg.AdminEnabled() {
+		slog.Warn("No authorization policy file: the built-in policy lets every authenticated caller use the admin API")
+	}
+	opts := cedar.Options{
+		Identity: cedarIdentity, Mappings: cfg.Authorization.CedarMappings(), Challenge: auth.AnonymousChallenge(cfg.Auth),
+	}
+	if auditLogger != nil {
+		opts.OnDecision = admissionAudit(auditLogger)
+	}
+	authorizer, err := cedar.NewAuthorizer(engine, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build authorizer: %w", err)
+	}
+	router, err := api.NewCedarServer(pages, b.admin, authorizer,
+		api.WithMiddlewares(b.middlewares...),
+		api.WithManagedSourceIDs(b.managedSourceIDs),
+		api.WithAuthInfoHandler(b.authInfoHandler),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build router: %w", err)
+	}
+	slog.Info("HTTP server configured", "address", b.address, "authorization_mode", config.AuthorizationModeCedar,
+		"policy_revision", engine.Revision(), "admin_enabled", b.admin != nil)
+	return &http.Server{
+		Addr: b.address, Handler: router,
+		ReadTimeout: b.readTimeout, WriteTimeout: b.writeTimeout, IdleTimeout: b.idleTimeout,
+	}, nil
+}
+
+// cedarIdentity is the caller Cedar evaluates: anonymous when admitted
+// without a token, otherwise the verified token's issuer, subject and claims.
+func cedarIdentity(r *http.Request) (cedar.Identity, bool) {
+	ctx := r.Context()
+	if auth.IsAnonymous(ctx) {
+		return cedar.Identity{Anonymous: true}, true
+	}
+	jwt := auth.ClaimsFromContext(ctx)
+	if jwt == nil {
+		return cedar.Identity{}, false
+	}
+	issuer, _ := jwt["iss"].(string)
+	subject, _ := jwt["sub"].(string)
+	return cedar.Identity{Issuer: issuer, Subject: subject, Claims: map[string]any(jwt)}, true
+}
+
+// admissionAudit records each Cedar decision as an audit event.
+func admissionAudit(logger *auditmw.Logger) func(*http.Request, cedar.Decision) {
+	return func(r *http.Request, d cedar.Decision) {
+		decision := "deny"
+		switch {
+		case d.Err != nil:
+			decision = "error"
+		case d.Allowed:
+			decision = "allow"
+		}
+		logger.Admission(r.Context(), r, d.Principal, string(d.Action), d.Resource, d.Revision, decision)
+	}
 }
 
 // buildInternalHTTPServer builds the internal HTTP server for health, readiness, version, and metrics endpoints

@@ -1,9 +1,11 @@
 package audit
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -63,6 +65,24 @@ func NewLogger(logFile string) (*Logger, error) {
 // Slog returns the underlying *slog.Logger for use with AuditEvent.LogTo().
 func (l *Logger) Slog() *slog.Logger {
 	return l.logger
+}
+
+// Admission records a Cedar authorization decision (allow, deny or error) for
+// a request, separately from the request's own audit event.
+func (l *Logger) Admission(ctx context.Context, request *http.Request, actor, action, resource, revision, decision string) {
+	outcome := audit.OutcomeDenied
+	switch decision {
+	case "allow":
+		outcome = audit.OutcomeSuccess
+	case "error":
+		outcome = audit.OutcomeError
+	}
+	event := audit.NewAuditEvent("authorization.admission",
+		audit.EventSource{Type: audit.SourceTypeNetwork, Value: request.RemoteAddr},
+		outcome, map[string]string{"actor": actor}, ComponentRegistryAPI,
+	).WithTarget(map[string]string{"action": action, "resource": resource})
+	event.Metadata.Extra = map[string]any{"decision": decision, "policy_revision": revision}
+	event.LogTo(ctx, l.Slog(), audit.LevelAudit)
 }
 
 // Close releases any resources held by the logger (e.g., open file handles).

@@ -142,6 +142,12 @@ type Config struct {
 	Telemetry  *telemetry.Config `yaml:"telemetry,omitempty"`
 	Audit      *AuditConfig      `yaml:"audit,omitempty"`
 
+	// Authorization selects Cedar mode and configures it. Without it the
+	// server runs in claims mode (auth.authz roles plus claims).
+	Authorization *AuthorizationConfig `yaml:"authorization,omitempty"`
+	// Admin controls the /v1 admin API in Cedar mode.
+	Admin *AdminConfig `yaml:"admin,omitempty"`
+
 	// insecureAllowHTTP allows HTTP URLs for OAuth issuer URLs (development only)
 	// Can be set via THV_REGISTRY_INSECURE_URL environment variable
 	// Not loaded from YAML file - environment variable only
@@ -841,6 +847,18 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	// This is not loaded from YAML - environment variable only
 	config.LeaderElectionID = v.GetString("leader_election_id")
 
+	// An empty block (authorization: {}) unmarshals to nil, but its presence
+	// alone selects Cedar mode.
+	if config.Authorization == nil && v.InConfig("authorization") {
+		config.Authorization = &AuthorizationConfig{}
+	}
+	if config.Admin == nil && v.InConfig("admin") {
+		config.Admin = &AdminConfig{}
+	}
+	if err := config.applyAuthorizationEnv(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+
 	// Validate the config
 	if err := config.validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
@@ -920,18 +938,22 @@ func (c *Config) validate() error {
 		return err
 	}
 
-	// Validate storage configuration
+	return c.validateSettings()
+}
+
+// validateSettings validates the storage, audit, authentication and
+// authorization settings.
+func (c *Config) validateSettings() error {
 	if err := c.validateStorageConfig(); err != nil {
 		return err
 	}
-
-	// Validate audit configuration if present
 	if err := c.validateAudit(); err != nil {
 		return err
 	}
-
-	// Validate auth configuration if present
-	return c.validateAuth()
+	if err := c.validateAuth(); err != nil {
+		return err
+	}
+	return c.ValidateAuthorizationMode()
 }
 
 // validateSourceConfig validates a single source configuration

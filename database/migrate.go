@@ -64,7 +64,7 @@ func MigrateUp(_ context.Context, db *pgx.Conn) error {
 }
 
 // LatestSchemaVersion is the newest embedded migration version.
-const LatestSchemaVersion uint = 28
+const LatestSchemaVersion uint = 29
 
 // MigrateUpTo applies pending migrations up to and including target.
 func MigrateUpTo(_ context.Context, db *pgx.Conn, target uint) error {

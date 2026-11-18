@@ -98,6 +98,7 @@ type Querier interface {
 	EntryVersionExists(ctx context.Context, arg EntryVersionExistsParams) (bool, error)
 	EntryVersionsForName(ctx context.Context, arg EntryVersionsForNameParams) ([]EntryVersionsForNameRow, error)
 	GetAPISourcesByNames(ctx context.Context, names []string) ([]GetAPISourcesByNamesRow, error)
+	GetAuthorizationMode(ctx context.Context) (string, error)
 	GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error)
 	GetManagedSources(ctx context.Context) ([]GetManagedSourcesRow, error)
 	// Despite the name, this query returns multiple rows. The actual number of
@@ -208,6 +209,8 @@ type Querier interface {
 	// Update all registry entries for a source to match the source's current claims.
 	// Used during initialization to fix drift when source claims change without data change.
 	PropagateSourceClaimsToEntries(ctx context.Context, arg PropagateSourceClaimsToEntriesParams) error
+	// Records the mode on a database that has none yet; a recorded mode is kept.
+	RecordAuthorizationMode(ctx context.Context, mode string) error
 	RepairListVersions(ctx context.Context) ([]RepairListVersionsRow, error)
 	RepairPruneLatest(ctx context.Context) error
 	RepairSetLatest(ctx context.Context, arg RepairSetLatestParams) error

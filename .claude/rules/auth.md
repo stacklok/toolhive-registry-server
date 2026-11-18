@@ -205,3 +205,29 @@ that bypasses scheme checks; test fixtures that set `http://` issuer URLs withou
 
 **Instead**: propagate `insecureAllowHTTP` from `Config.insecureAllowHTTP` →
 `AuthConfig.InsecureAllowHTTP` → the token validator, as currently wired.
+
+## 8. Two Authorization Modes, Never Mixed
+
+The server runs in **claims mode** (§1–§6: roles plus claims) or **Cedar mode** (a Cedar
+policy in `pkg/registry/cedar` admits each route). The `authorization` config block selects
+Cedar; without it the server is in claims mode.
+
+**What must hold:**
+- A deployment keeps one mode for life. `db.EnsureAuthorizationMode` records it on first
+  start (migration 29 stamps pre-existing catalogs as `claims`) and refuses to start with
+  the other mode. Switching means a new database.
+- Each mode rejects the other's config: Cedar rejects `auth.authz`, `auth.publicPaths` and
+  resource `claims`; claims mode rejects `admin`. Re-run `Config.ValidateAuthorizationMode`
+  after any auth override (the `--auth-mode` flag).
+- Cedar mode installs no claims hook or claims reader and never reads or writes claim
+  columns. Its `/v1` is the library's admin router, mounted only with `admin.enabled`
+  (OAuth required); `/v1/me` and the entry-claims endpoints do not exist.
+- Cedar is route-level only: `catalog.read` on the requested view, instance actions for
+  admin. It never filters entries.
+- Anonymous Cedar callers exist only with `allowAnonymousCatalog`; a request carrying a
+  token is always validated, and anonymous callers never reach admin actions.
+
+**Detect**: claims logic reachable in Cedar mode (or Cedar in claims mode); a config path
+that changes mode without the database guard; role checks in Cedar routes; per-entry
+filtering added to the Cedar authorizer.
+
