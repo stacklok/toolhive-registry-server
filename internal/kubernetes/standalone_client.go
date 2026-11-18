@@ -19,8 +19,8 @@ import (
 // client on first preflight. It owns no manager or background work.
 type StandaloneFactory struct {
 	API client.WithWatch
-	// Claims receives the authz-claims annotations the workers observe; nil
-	// when authorization is off.
+	// Claims receives the authz-claims annotations the workers observe. The
+	// server always sets it; nil disables annotation claims.
 	Claims *AnnotationClaims
 	mu     sync.Mutex
 }

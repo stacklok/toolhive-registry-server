@@ -59,7 +59,10 @@ The library's runtime owns all ingestion. There is no second writer for synced d
   error right after one, stop source sync; ownership errors still go to the runtime.
 - `managed` sources are written only by the publish/delete/claim-update handlers.
 - A `syncPolicy` or `filter` on a source that cannot use it is ignored with a warning, as
-  in v1.5.4 — not rejected (`internal/app/catalog.go`).
+  in v1.5.4 — not rejected: config sources in `internal/app/catalog.go`, admin requests and
+  stored definitions through `persistence.SourceDefinition.WithoutUnusableSync`.
+- One invalid stored definition is logged and skipped; it never stops sync for the other
+  sources (`standalone.Runtime`).
 
 **Detect**: code that writes synced entries outside `postgres.Jobs`/`Entries`; a new
 polling loop or leader election outside the runtime; config validation that rejects

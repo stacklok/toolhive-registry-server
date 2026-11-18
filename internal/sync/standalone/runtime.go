@@ -5,6 +5,7 @@ package standalone
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -65,6 +66,10 @@ type Runtime struct {
 	refresh     chan refreshRequest
 	done        chan struct{}
 	wake        chan struct{}
+	// skipped records the invalid definitions already reported, keyed by name
+	// and update time, so each version is logged once.
+	skippedMu sync.Mutex
+	skipped   map[string]bool
 }
 
 // New validates only; it performs no list, fetch, lease, watch or database work.
@@ -216,10 +221,17 @@ func (r *Runtime) definitions(ctx context.Context, preflight bool) ([]persistenc
 	if err != nil {
 		return nil, err
 	}
+	valid := make([]persistence.SourceDefinition, 0, len(definitions))
 	for _, d := range definitions {
 		if _, err := d.Kind(); err != nil {
-			return nil, err
+			// One unusable definition must not stop sync for every other source.
+			r.reportSkipped(ctx, d, err)
+			continue
 		}
+		valid = append(valid, d)
+	}
+	definitions = valid
+	for _, d := range definitions {
 		if d.ID == "" {
 			return nil, persistence.ErrInvalid
 		}
@@ -230,6 +242,22 @@ func (r *Runtime) definitions(ctx context.Context, preflight bool) ([]persistenc
 		}
 	}
 	return definitions, nil
+}
+
+// reportSkipped logs a definition that cannot be synced, once per version.
+func (r *Runtime) reportSkipped(ctx context.Context, d persistence.SourceDefinition, err error) {
+	key := d.Name + "@" + d.UpdatedAt.String()
+	r.skippedMu.Lock()
+	defer r.skippedMu.Unlock()
+	if r.skipped == nil {
+		r.skipped = map[string]bool{}
+	}
+	if r.skipped[key] {
+		return
+	}
+	r.skipped[key] = true
+	slog.ErrorContext(ctx, "Skipping source with an invalid definition; other sources keep syncing",
+		"source", d.Name, "error", err)
 }
 
 // Only discovery runs concurrently; ownership changes stay on Run's goroutine.

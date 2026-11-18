@@ -179,8 +179,8 @@ func (j *syncedJobs) CommitSnapshot(
 
 // NewStandaloneOperator constructs the leased operator worker for one
 // Kubernetes source; it restarts the runner when a watch ends. The
-// authoritative client remains caller-owned. claims may be nil when
-// authorization is off.
+// authoritative client remains caller-owned. claims may be nil, which disables
+// annotation claims.
 func NewStandaloneOperator(
 	api client.WithWatch, jobs persistence.Jobs, definition persistence.SourceDefinition,
 	options reconcile.Options, claims *AnnotationClaims,

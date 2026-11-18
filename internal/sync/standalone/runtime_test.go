@@ -98,10 +98,13 @@ func TestDormantConstructionAndReadOnlyPreflight(t *testing.T) {
 	sources.EXPECT().ListSources(gomock.Any()).Return(defs, nil)
 	require.NoError(t, r.Preflight(t.Context()))
 	require.Equal(t, defs, checked)
-	// A filter on a managed source is invalid (inline data may carry one).
+	// A filter on a managed source is invalid (inline data may carry one). The
+	// invalid source is skipped; every other source is still checked.
 	defs[3].Filter = &persistence.Filter{}
+	checked = nil
 	sources.EXPECT().ListSources(gomock.Any()).Return(defs, nil)
-	require.ErrorIs(t, r.Preflight(t.Context()), persistence.ErrInvalid)
+	require.NoError(t, r.Preflight(t.Context()))
+	require.Equal(t, defs[:3], checked)
 	require.ErrorIs(t, r.Refresh(t.Context()), persistence.ErrBusy)
 }
 

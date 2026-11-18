@@ -359,21 +359,14 @@ func buildCatalog(ctx context.Context, b *registryAppConfig) (*builtCatalog, err
 		return nil, fmt.Errorf("invalid sources or registries: %w", err)
 	}
 	authzOn := b.config.Auth != nil && b.config.Auth.Authz != nil
-	var annotations *kubernetes.AnnotationClaims
-	if authzOn {
-		annotations = kubernetes.NewAnnotationClaims()
-	}
+	// Claims are stored with or without auth.authz, as v1.5.4 did, so
+	// Kubernetes annotation claims are always recorded.
+	annotations := kubernetes.NewAnnotationClaims()
 	operator := b.operator
 	if operator == nil {
 		operator = &kubernetes.StandaloneFactory{Claims: annotations}
 	}
-	var overrides interface {
-		EntryClaims(string) map[string][]byte
-	}
-	if annotations != nil {
-		overrides = annotations
-	}
-	cat, err := b.storageFactory.CreateCatalog(ctx, overrides)
+	cat, err := b.storageFactory.CreateCatalog(ctx, annotations)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open catalog storage: %w", err)
 	}
