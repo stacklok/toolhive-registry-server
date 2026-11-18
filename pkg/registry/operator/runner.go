@@ -20,22 +20,47 @@ import (
 // Details are deliberately not logged; the host decides restart/backoff policy.
 var ErrWatch = errors.New("operator watch failed")
 
+// DefaultResyncInterval is how often an idle runner re-lists its whole scope
+// when no option sets it.
+const DefaultResyncInterval = 5 * time.Minute
+
 // Runner owns only its watches and reconciliation loop, never the client or
 // manager. It uses authoritative API lists, not a possibly incomplete cache.
 type Runner struct {
 	client      client.WithWatch
 	fetcher     *Fetcher
 	coordinator *reconcile.Coordinator
-	interval    time.Duration
+	retry       time.Duration
+	resync      time.Duration
 	running     atomic.Bool
 	ready       atomic.Bool
 }
 
+// RunnerOption configures a Runner.
+type RunnerOption func(*Runner) error
+
+// WithResyncInterval sets how often a runner whose last sync succeeded re-lists
+// its whole scope to catch anything its watches missed (default
+// DefaultResyncInterval). Watch events sync immediately and failed syncs retry
+// at PollInterval; neither waits for it. A non-positive interval is
+// persistence.ErrInvalid.
+func WithResyncInterval(d time.Duration) RunnerOption {
+	return func(r *Runner) error {
+		if d <= 0 {
+			return persistence.ErrInvalid
+		}
+		r.resync = d
+		return nil
+	}
+}
+
 // NewRunner constructs a fixed-scope operator source runner. Supply a direct
-// client.WithWatch (client.NewWithWatch), not a cache facade. PollInterval is also
-// the bounded retry/resync interval, so missed events are eventually reconciled.
+// client.WithWatch (client.NewWithWatch), not a cache facade. Watch events
+// trigger a sync; a failed sync retries at PollInterval, and a successful one
+// is repeated at the resync interval so missed events are eventually reconciled.
 func NewRunner(
 	api client.WithWatch, jobs persistence.Jobs, definition persistence.SourceDefinition, options reconcile.Options,
+	opts ...RunnerOption,
 ) (*Runner, error) {
 	fetcher, err := NewFetcher(api, definition)
 	if err != nil {
@@ -45,7 +70,16 @@ func NewRunner(
 	if err != nil {
 		return nil, err
 	}
-	return &Runner{client: api, fetcher: fetcher, coordinator: coordinator, interval: options.PollInterval}, nil
+	r := &Runner{
+		client: api, fetcher: fetcher, coordinator: coordinator,
+		retry: options.PollInterval, resync: DefaultResyncInterval,
+	}
+	for _, opt := range opts {
+		if err := opt(r); err != nil {
+			return nil, err
+		}
+	}
+	return r, nil
 }
 
 // Register adds this runner to a caller-owned manager. The host starts/stops the
@@ -67,7 +101,9 @@ func (r *Runner) Ready() bool { return r.ready.Load() }
 
 // Run starts all watches then performs a full refresh, even with zero resources.
 // Initial access/list/commit failures and any watch failure return to the host;
-// subsequent refresh errors retry at PollInterval. Reconfigured scope/incarnation
+// subsequent refresh errors retry at PollInterval. Watches end routinely (the
+// API server times them out), so a long-lived host restarts Run when it
+// returns ErrWatch; each Run begins with a full refresh. Reconfigured scope/incarnation
 // requires a new runner. Cancellation stops watches, cancels work, and joins it.
 //
 //nolint:gocyclo // One lifecycle owns watch startup, refresh, cancellation and joined cleanup.
@@ -108,8 +144,8 @@ func (r *Runner) Run(ctx context.Context) error {
 			go func() { defer workers.Done(); pump(work, cancel, w, wake, fatal) }()
 		}
 	}
-	ticker := time.NewTicker(r.interval)
-	defer ticker.Stop()
+	timer := time.NewTimer(r.resync)
+	defer timer.Stop()
 	for {
 		err := r.coordinator.Sync(work, r.fetcher.definition.Name)
 		select {
@@ -126,13 +162,19 @@ func (r *Runner) Run(ctx context.Context) error {
 			(!r.ready.Load() && !errors.Is(err, persistence.ErrBusy)) {
 			return err
 		}
+		// An idle runner relies on its watches; only a failed sync retries soon.
+		next := r.resync
+		if err != nil {
+			next = r.retry
+		}
+		timer.Reset(next)
 		select {
 		case <-ctx.Done():
 			return nil
 		case err := <-fatal:
 			return err
 		case <-wake:
-		case <-ticker.C:
+		case <-timer.C:
 		}
 	}
 }
