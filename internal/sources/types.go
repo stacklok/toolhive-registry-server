@@ -13,7 +13,6 @@ type RegistryDataValidator interface {
 	ValidateData(data []byte) (*toolhivetypes.UpstreamRegistry, error)
 }
 
-
 // defaultRegistryDataValidator is the default implementation of RegistryDataValidator
 type defaultRegistryDataValidator struct{}
 
