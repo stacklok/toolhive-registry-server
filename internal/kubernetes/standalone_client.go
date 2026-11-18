@@ -19,8 +19,8 @@ import (
 // client on first preflight. It owns no manager or background work.
 type StandaloneFactory struct {
 	API client.WithWatch
-	// Claims receives the authz-claims annotations the workers observe; nil
-	// when authorization is off.
+	// Claims receives the authz-claims annotations the workers observe; set in
+	// claims mode (with or without auth.authz), nil in Cedar mode.
 	Claims *AnnotationClaims
 	// IgnoreClaimAnnotations leaves authz-claims annotations unread, for
 	// Cedar mode: claims carry no meaning there, so a malformed annotation must

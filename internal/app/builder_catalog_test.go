@@ -190,7 +190,8 @@ func TestNewRegistryApp_CreateCatalogFails(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	factory := mocks.NewMockFactory(ctrl)
 	storageErr := errors.New("connection refused")
-	factory.EXPECT().CreateCatalog(gomock.Any(), gomock.Any()).Return(nil, storageErr)
+	// Annotation claims are recorded with or without auth.authz, as in v1.5.4.
+	factory.EXPECT().CreateCatalog(gomock.Any(), gomock.Not(gomock.Nil())).Return(nil, storageErr)
 	factory.EXPECT().Cleanup().Times(1)
 
 	app, err := NewRegistryApp(context.Background(),
@@ -202,7 +203,7 @@ func TestNewRegistryApp_CreateCatalogFails(t *testing.T) {
 	assert.ErrorIs(t, err, storageErr)
 }
 
-func TestNewRegistryApp_CreateCatalogReceivesAnnotationOverridesWithAuthz(t *testing.T) {
+func TestNewRegistryApp_CreateCatalogReceivesAnnotationOverrides(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	factory := mocks.NewMockFactory(ctrl)

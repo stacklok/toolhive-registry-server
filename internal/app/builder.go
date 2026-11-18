@@ -373,8 +373,10 @@ func buildCatalog(ctx context.Context, b *registryAppConfig) (*builtCatalog, err
 	}
 	claimsMode := b.config.AuthorizationMode() == config.AuthorizationModeClaims
 	authzOn := claimsMode && b.config.Auth != nil && b.config.Auth.Authz != nil
+	// Claims mode stores claims with or without auth.authz, as v1.5.4 did, so
+	// Kubernetes annotation claims are recorded whenever claims are in use.
 	var annotations *kubernetes.AnnotationClaims
-	if authzOn {
+	if claimsMode {
 		annotations = kubernetes.NewAnnotationClaims()
 	}
 	operator := b.operator
