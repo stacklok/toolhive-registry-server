@@ -1,11 +1,15 @@
 package httpapi_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/httpapi"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
 func TestAdminRetiredClaimsPresenceAndRobustBodies(t *testing.T) {
@@ -53,8 +57,6 @@ func TestAdminValidationBeforeCapabilities(t *testing.T) {
 		{"PUT", "/v1/sources/item", `{"git":{"repository":"https://example.org"}}`},
 		{"PUT", "/v1/sources/item", `{"git":{"repository":"https://example.org","branch":"main","tag":"v1"},"syncPolicy":{"interval":"1h"}}`},
 		{"PUT", "/v1/sources/item", `{"git":{"repository":"https://example.org","auth":{"username":"user","passwordFile":"relative"}},"syncPolicy":{"interval":"1h"}}`},
-		{"PUT", "/v1/sources/item", `{"managed":{},"syncPolicy":{"interval":"1h"}}`},
-		{"PUT", "/v1/sources/item", `{"managed":{},"filter":{}}`},
 		{"PUT", "/v1/sources/item", `{"api":{"endpoint":""},"syncPolicy":{"interval":"1h"}}`},
 		{"PUT", "/v1/sources/item", `{"file":{"url":"file:///registry.json"},"syncPolicy":{"interval":"1h"}}`},
 		{"PUT", "/v1/sources/item", `{"file":{"data":"not JSON"}}`},
@@ -92,6 +94,40 @@ func TestAdminValidationBeforeCapabilities(t *testing.T) {
 			f := newAdminFixture(t)
 			w := adminResponse(t, mountAdmin(t, f.ops, httpapi.AdminOptions{}), tc.method, tc.path, tc.body)
 			if w.Code != 400 {
+				t.Fatal(w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+// As in v1.5.4, a syncPolicy or filter a source cannot use is ignored rather
+// than rejected; it never reaches storage.
+func TestAdminIgnoresUnusableSourceSettings(t *testing.T) {
+	t.Parallel()
+	const registry = `{"version":"1.0.0","meta":{"last_updated":"2025-01-01T00:00:00Z"},"data":{"servers":[` +
+		`{"$schema":"https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",` +
+		`"name":"com.example/inline","version":"1.0.0","description":"inline server"}]}}`
+	quoted, err := json.Marshal(registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		body string
+		want persistence.SourceDefinition
+	}{
+		{`{"managed":{},"syncPolicy":{"interval":"1h"}}`, persistence.SourceDefinition{Name: "item", Managed: &persistence.ManagedSpec{}}},
+		{`{"managed":{},"filter":{}}`, persistence.SourceDefinition{Name: "item", Managed: &persistence.ManagedSpec{}}},
+		{`{"kubernetes":{"Namespaces":["team"]},"syncPolicy":{"interval":"1h"},"filter":{}}`,
+			persistence.SourceDefinition{Name: "item", Kubernetes: &persistence.KubernetesSpec{Namespaces: []string{"team"}}}},
+		{`{"file":{"data":` + string(quoted) + `},"syncPolicy":{"interval":"7s"}}`,
+			persistence.SourceDefinition{Name: "item", File: &persistence.FileSpec{Data: registry}}},
+	} {
+		t.Run(tc.body[:min(len(tc.body), 60)], func(t *testing.T) {
+			t.Parallel()
+			f := newAdminFixture(t)
+			f.sources.EXPECT().CreateSource(gomock.Any(), tc.want).Return(tc.want, nil)
+			w := adminResponse(t, mountAdmin(t, f.ops, httpapi.AdminOptions{}), "PUT", "/v1/sources/item", tc.body)
+			if w.Code != http.StatusCreated {
 				t.Fatal(w.Code, w.Body.String())
 			}
 		})

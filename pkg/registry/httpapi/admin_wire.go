@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -152,6 +153,12 @@ func (req sourceRequest) definition(name string) persistence.SourceDefinition {
 	}
 	if req.SyncPolicy != nil {
 		s.Schedule = req.SyncPolicy.Interval
+	}
+	// As in v1.5.4, a syncPolicy or filter the source cannot use is ignored
+	// with a warning rather than rejected.
+	s, dropped := s.WithoutUnusableSync()
+	if len(dropped) > 0 {
+		slog.Warn("Ignoring source settings this source type cannot use", "source", name, "settings", dropped)
 	}
 	return s
 }
