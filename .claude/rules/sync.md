@@ -51,6 +51,12 @@ The library's runtime owns all ingestion. There is no second writer for synced d
   concurrent replicas.
 - Inline `file.data` sources and `kubernetes` sources run as dedicated workers started by
   `standalone.Runtime`; the runtime refreshes them when definitions change.
+- A `kubernetes` worker syncs on watch events and otherwise re-lists only every
+  `operator.DefaultResyncInterval`; a failed sync retries at the poll interval. The API
+  server ends watches routinely, so `internal/kubernetes.OperatorWorker` restarts the
+  runner (with backoff) when it returns `operator.ErrWatch`, and — once the source has
+  synced — on any other non-ownership failure too. Never let a watch ending, or a transient
+  error right after one, stop source sync; ownership errors still go to the runtime.
 - `managed` sources are written only by the publish/delete/claim-update handlers.
 - A `syncPolicy` or `filter` on a source that cannot use it is ignored with a warning, as
   in v1.5.4 — not rejected (`internal/app/catalog.go`).
@@ -74,6 +80,13 @@ claims when present and the source's claims otherwise; the server keeps that beh
   log — it is not fatal for the source.
 - A change to a Kubernetes source's config claims forces a full resync, so annotated
   entries keep their own claims.
+- Annotations are recorded per namespace and kind (reset when the worker is rebuilt), and only
+  for resources the fetcher exports, so a multi-namespace source keeps every namespace's
+  overrides. The snapshot hash covers server data only, so `annotationJobs` stores a digest
+  of the written annotation claims with the sync result and forces a full commit when the
+  current digest differs; otherwise an annotation-only change would complete as unchanged
+  and the claims hook would never run. The digest lives in storage, not process memory, so
+  every replica compares against what was actually written.
 
 **Detect**: CRD ingestion that proceeds on a malformed annotation; claims written for K8s
 entries outside the claims hook.

@@ -189,3 +189,238 @@ func TestStandaloneLaterNamespaceKindAndIncompleteListsNeverCommit(t *testing.T)
 		}
 	}
 }
+
+func TestStandaloneRecordsAnnotationClaimsAcrossNamespaces(t *testing.T) {
+	t.Parallel()
+	annotated := func(namespace, claims string) client.Object {
+		obj := exportObject("MCPServer", map[string]string{
+			exportKey: "true", retiredKey: claims,
+			"toolhive.stacklok.dev/registry-url":         "https://example.org/mcp",
+			"toolhive.stacklok.dev/registry-description": "description",
+		})
+		obj.SetNamespace(namespace)
+		return obj
+	}
+	api := fake.NewClientBuilder().WithScheme(standaloneScheme(t)).
+		WithObjects(annotated("one", `{"team":"one"}`), annotated("two", `{"team":"two"}`)).Build()
+	d := standaloneDefinition()
+	claims := kubernetes.NewAnnotationClaims()
+	jobs := mocks.NewMockJobs(gomock.NewController(t))
+	job := persistence.Job{Source: d, LeaseID: "lease", Generation: 1}
+	jobs.EXPECT().Acquire(gomock.Any(), d.Name, time.Minute).Return(job, nil)
+	jobs.EXPECT().Status(gomock.Any(), d.Name).Return(persistence.JobStatus{SourceID: d.ID}, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	jobs.EXPECT().CommitSnapshot(gomock.Any(), job, gomock.Any(), gomock.Any()).DoAndReturn(
+		func(context.Context, persistence.Job, persistence.SyncResult, model.Snapshot) error {
+			cancel()
+			return nil
+		})
+	runner, err := kubernetes.NewStandaloneOperator(api, jobs, d, standaloneOptions(), claims)
+	require.NoError(t, err)
+	require.NoError(t, runner.Run(ctx))
+	// The later namespace's list must not erase the earlier one's annotations.
+	recorded := claims.EntryClaims(d.Name)
+	require.Len(t, recorded, 2)
+	var values []string
+	for _, v := range recorded {
+		values = append(values, string(v))
+	}
+	require.ElementsMatch(t, []string{`{"team":"one"}`, `{"team":"two"}`}, values)
+}
+
+// An annotation-only change leaves the snapshot hash unchanged, so the
+// coordinator would complete the sync without committing and the claims hook
+// would never run. The claims store must force a commit for it, and only then.
+func TestStandaloneAnnotationChangeForcesCommit(t *testing.T) {
+	t.Parallel()
+	obj := exportObject("MCPServer", map[string]string{
+		exportKey: "true", retiredKey: `{"team":"a"}`,
+		"toolhive.stacklok.dev/registry-url":         "https://example.org/mcp",
+		"toolhive.stacklok.dev/registry-description": "description",
+	})
+	quiet := exportObject("VirtualMCPServer", nil) // not exported; updating it only wakes the runner
+	api := fake.NewClientBuilder().WithScheme(standaloneScheme(t)).WithObjects(obj, quiet).Build()
+	d := standaloneDefinition()
+	claims := kubernetes.NewAnnotationClaims()
+	jobs := mocks.NewMockJobs(gomock.NewController(t))
+	job := persistence.Job{Source: d, LeaseID: "lease", Generation: 1}
+	jobs.EXPECT().Acquire(gomock.Any(), d.Name, time.Minute).AnyTimes().Return(job, nil)
+	var last atomic.Pointer[persistence.SyncResult]
+	jobs.EXPECT().Status(gomock.Any(), d.Name).AnyTimes().DoAndReturn(func(context.Context, string) (persistence.JobStatus, error) {
+		status := persistence.JobStatus{SourceID: d.ID}
+		if r := last.Load(); r != nil {
+			status.BaselineValid, status.LastHash, status.LastFilterHash = true, r.Hash, r.FilterHash
+		}
+		return status, nil
+	})
+	events := make(chan string, 10)
+	jobs.EXPECT().CommitSnapshot(gomock.Any(), job, gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+		func(_ context.Context, _ persistence.Job, result persistence.SyncResult, _ model.Snapshot) error {
+			last.Store(&result)
+			events <- "commit"
+			return nil
+		})
+	jobs.EXPECT().Complete(gomock.Any(), job, gomock.Any()).AnyTimes().DoAndReturn(
+		func(context.Context, persistence.Job, persistence.SyncResult) error { events <- "complete"; return nil })
+	ctx, cancel := context.WithCancel(t.Context())
+	runner, err := kubernetes.NewStandaloneOperator(api, jobs, d, standaloneOptions(), claims)
+	require.NoError(t, err)
+	done := make(chan error, 1)
+	go func() { done <- runner.Run(ctx) }()
+	next := func() string {
+		t.Helper()
+		select {
+		case e := <-events:
+			return e
+		case <-time.After(10 * time.Second):
+			require.FailNow(t, "no sync")
+			return ""
+		}
+	}
+	require.Equal(t, "commit", next(), "startup commits")
+	update := func(o client.Object, mutate func(map[string]string)) {
+		t.Helper()
+		require.NoError(t, api.Get(t.Context(), client.ObjectKeyFromObject(o), o))
+		a := o.GetAnnotations()
+		if a == nil {
+			a = map[string]string{}
+		}
+		mutate(a)
+		o.SetAnnotations(a)
+		require.NoError(t, api.Update(t.Context(), o))
+	}
+	update(quiet, func(a map[string]string) { a["touch"] = "1" })
+	require.Equal(t, "complete", next(), "nothing changed: no commit")
+	update(obj, func(a map[string]string) { a[retiredKey] = `{"team":"b"}` })
+	require.Equal(t, "commit", next(), "annotation-only change commits")
+	require.Equal(t, map[string][]byte{"com.toolhive.k8s.two/mcpserver": []byte(`{"team":"b"}`)}, claims.EntryClaims(d.Name))
+	update(quiet, func(a map[string]string) { a["touch"] = "2" })
+	require.Equal(t, "complete", next(), "after the commit, unchanged again")
+	cancel()
+	require.NoError(t, <-done)
+}
+
+// syncOnce runs a fresh worker (as another replica or a restarted process
+// would) with its own claims store against a shared stored sync result, and
+// reports whether its startup sync committed or completed.
+func syncOnce(t *testing.T, api client.WithWatch, stored *atomic.Pointer[persistence.SyncResult]) string {
+	t.Helper()
+	d := standaloneDefinition()
+	jobs := mocks.NewMockJobs(gomock.NewController(t))
+	job := persistence.Job{Source: d, LeaseID: "lease", Generation: 1}
+	jobs.EXPECT().Acquire(gomock.Any(), d.Name, time.Minute).Return(job, nil)
+	jobs.EXPECT().Status(gomock.Any(), d.Name).DoAndReturn(func(context.Context, string) (persistence.JobStatus, error) {
+		status := persistence.JobStatus{SourceID: d.ID}
+		if r := stored.Load(); r != nil {
+			status.BaselineValid, status.LastHash, status.LastFilterHash = true, r.Hash, r.FilterHash
+		}
+		return status, nil
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var outcome string
+	jobs.EXPECT().CommitSnapshot(gomock.Any(), job, gomock.Any(), gomock.Any()).MaxTimes(1).DoAndReturn(
+		func(_ context.Context, _ persistence.Job, result persistence.SyncResult, _ model.Snapshot) error {
+			stored.Store(&result)
+			outcome = "commit"
+			cancel()
+			return nil
+		})
+	jobs.EXPECT().Complete(gomock.Any(), job, gomock.Any()).MaxTimes(1).DoAndReturn(
+		func(_ context.Context, _ persistence.Job, result persistence.SyncResult) error {
+			require.Equal(t, stored.Load().FilterHash, result.FilterHash, "an unchanged sync stores the same digest")
+			outcome = "complete"
+			cancel()
+			return nil
+		})
+	worker, err := kubernetes.NewStandaloneOperator(api, jobs, d, standaloneOptions(), kubernetes.NewAnnotationClaims())
+	require.NoError(t, err)
+	require.NoError(t, worker.Run(ctx))
+	return outcome
+}
+
+// The decision to rewrite claims compares against what the database holds, not
+// against what one process last saw, so it holds across replicas and restarts.
+func TestStandaloneClaimsDigestIsSharedThroughStorage(t *testing.T) {
+	t.Parallel()
+	obj := exportObject("MCPServer", map[string]string{
+		exportKey: "true", retiredKey: `{"team":"a"}`,
+		"toolhive.stacklok.dev/registry-url":         "https://example.org/mcp",
+		"toolhive.stacklok.dev/registry-description": "description",
+	})
+	api := fake.NewClientBuilder().WithScheme(standaloneScheme(t)).WithObjects(obj).Build()
+	var stored atomic.Pointer[persistence.SyncResult]
+	stored.Store(&persistence.SyncResult{Hash: "written-before-the-digest-existed"})
+	require.Equal(t, "commit", syncOnce(t, api, &stored), "no stored digest: claims are written once")
+	require.Contains(t, stored.Load().FilterHash, "|claims=")
+	require.Equal(t, "complete", syncOnce(t, api, &stored), "another process with the same annotations writes nothing")
+	require.NoError(t, api.Get(t.Context(), client.ObjectKeyFromObject(obj), obj))
+	obj.GetAnnotations()[retiredKey] = `{"team":"b"}`
+	require.NoError(t, api.Update(t.Context(), obj))
+	require.Equal(t, "commit", syncOnce(t, api, &stored), "a changed annotation is written by any process")
+}
+
+func TestStandaloneRebuiltWorkerForgetsOldScopes(t *testing.T) {
+	t.Parallel()
+	obj := exportObject("MCPServer", map[string]string{
+		exportKey: "true", retiredKey: `{"team":"a"}`,
+		"toolhive.stacklok.dev/registry-url":         "https://example.org/mcp",
+		"toolhive.stacklok.dev/registry-description": "description",
+	})
+	api := fake.NewClientBuilder().WithScheme(standaloneScheme(t)).WithObjects(obj).Build()
+	d := standaloneDefinition()
+	claims := kubernetes.NewAnnotationClaims()
+	jobs := mocks.NewMockJobs(gomock.NewController(t))
+	job := persistence.Job{Source: d, LeaseID: "lease", Generation: 1}
+	jobs.EXPECT().Acquire(gomock.Any(), d.Name, time.Minute).Return(job, nil)
+	jobs.EXPECT().Status(gomock.Any(), d.Name).Return(persistence.JobStatus{SourceID: d.ID}, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	jobs.EXPECT().CommitSnapshot(gomock.Any(), job, gomock.Any(), gomock.Any()).DoAndReturn(
+		func(context.Context, persistence.Job, persistence.SyncResult, model.Snapshot) error {
+			cancel()
+			return nil
+		})
+	worker, err := kubernetes.NewStandaloneOperator(api, jobs, d, standaloneOptions(), claims)
+	require.NoError(t, err)
+	require.NoError(t, worker.Run(ctx))
+	require.Len(t, claims.EntryClaims(d.Name), 1)
+	// The source is redefined to watch only namespace "one"; the scope it no
+	// longer lists must not keep applying its annotation.
+	d.Kubernetes.Namespaces = []string{"one"}
+	_, err = kubernetes.NewStandaloneOperator(api, jobs, d, standaloneOptions(), claims)
+	require.NoError(t, err)
+	require.Empty(t, claims.EntryClaims(d.Name))
+}
+
+func TestStandaloneIgnoresClaimsOfUnexportedResources(t *testing.T) {
+	t.Parallel()
+	// Exported, but without the URL annotation the fetcher requires: its claims
+	// (even malformed ones) are neither recorded nor reported.
+	for _, annotation := range []string{`{"team":"a"}`, "{malformed"} {
+		obj := exportObject("MCPServer", map[string]string{
+			exportKey: "true", retiredKey: annotation,
+			"toolhive.stacklok.dev/registry-description": "description",
+		})
+		api := fake.NewClientBuilder().WithScheme(standaloneScheme(t)).WithObjects(obj).Build()
+		d := standaloneDefinition()
+		claims := kubernetes.NewAnnotationClaims()
+		jobs := mocks.NewMockJobs(gomock.NewController(t))
+		job := persistence.Job{Source: d, LeaseID: "lease", Generation: 1}
+		jobs.EXPECT().Acquire(gomock.Any(), d.Name, time.Minute).Return(job, nil)
+		jobs.EXPECT().Status(gomock.Any(), d.Name).Return(persistence.JobStatus{SourceID: d.ID}, nil)
+		ctx, cancel := context.WithCancel(t.Context())
+		jobs.EXPECT().CommitSnapshot(gomock.Any(), job, gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ persistence.Job, _ persistence.SyncResult, snapshot model.Snapshot) error {
+				require.Empty(t, snapshot.Data.Servers)
+				cancel()
+				return nil
+			})
+		worker, err := kubernetes.NewStandaloneOperator(api, jobs, d, standaloneOptions(), claims)
+		require.NoError(t, err)
+		require.NoError(t, worker.Run(ctx))
+		require.Empty(t, claims.EntryClaims(d.Name), annotation)
+		cancel()
+	}
+}

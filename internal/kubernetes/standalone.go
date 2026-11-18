@@ -1,11 +1,18 @@
 package kubernetes
 
 import (
+	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
+	"strings"
 	"sync"
+	"sync/atomic"
 
 	mcp "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -14,14 +21,17 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/db"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/operator"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile"
 )
 
 const (
-	exportAnnotation = "toolhive.stacklok.dev/registry-export"
-	claimsAnnotation = "toolhive.stacklok.dev/authz-claims"
+	exportAnnotation      = "toolhive.stacklok.dev/registry-export"
+	urlAnnotation         = "toolhive.stacklok.dev/registry-url"
+	descriptionAnnotation = "toolhive.stacklok.dev/registry-description"
+	claimsAnnotation      = "toolhive.stacklok.dev/authz-claims"
 )
 
 // AnnotationClaims records, per Kubernetes source, the claims each exported
@@ -30,57 +40,168 @@ const (
 // claims for that entry, as in v1.5.4. It is safe for concurrent use.
 type AnnotationClaims struct {
 	mu sync.Mutex
-	// bySource maps source name → resource kind → server name → claims JSON.
-	bySource map[string]map[string]map[string][]byte
+	// bySource maps source name → list scope (namespace and kind) → server
+	// name → claims JSON. Each list covers one namespace and one kind.
+	bySource map[string]map[listScope]map[string][]byte
 }
+
+type listScope struct{ namespace, kind string }
 
 // NewAnnotationClaims returns an empty store.
 func NewAnnotationClaims() *AnnotationClaims {
-	return &AnnotationClaims{bySource: map[string]map[string]map[string][]byte{}}
+	return &AnnotationClaims{bySource: map[string]map[listScope]map[string][]byte{}}
 }
 
-// EntryClaims returns the recorded per-server claims of a source.
+// EntryClaims returns the recorded per-server claims of a source. Scopes are
+// merged in a fixed order, so a name annotated in two scopes resolves the same
+// way every time.
 func (a *AnnotationClaims) EntryClaims(sourceName string) map[string][]byte {
 	if a == nil {
 		return nil
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	scopes := slices.SortedFunc(maps.Keys(a.bySource[sourceName]), func(x, y listScope) int {
+		return cmp.Or(cmp.Compare(x.namespace, y.namespace), cmp.Compare(x.kind, y.kind))
+	})
 	out := map[string][]byte{}
-	for _, byName := range a.bySource[sourceName] {
-		for name, claims := range byName {
-			out[name] = claims
-		}
+	for _, scope := range scopes {
+		maps.Copy(out, a.bySource[sourceName][scope])
 	}
 	return out
 }
 
-// replace swaps one resource kind's recorded claims for a source. Each list
-// of a kind is complete, so a removed annotation drops out.
-func (a *AnnotationClaims) replace(sourceName, kind string, byName map[string][]byte) {
+// replace swaps the recorded claims of one namespace and kind for a source.
+// Each such list is complete, so a removed annotation drops out.
+func (a *AnnotationClaims) replace(sourceName string, scope listScope, byName map[string][]byte) {
 	if a == nil {
 		return
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.bySource[sourceName] == nil {
-		a.bySource[sourceName] = map[string]map[string][]byte{}
+		a.bySource[sourceName] = map[listScope]map[string][]byte{}
 	}
-	a.bySource[sourceName][kind] = byName
+	a.bySource[sourceName][scope] = byName
 }
 
-// NewStandaloneOperator constructs the leased operator runner for one
-// Kubernetes source. The authoritative client remains caller-owned. claims
-// may be nil when authorization is off.
+// reset forgets a source's recorded claims. A rebuilt worker may watch other
+// namespaces, and scopes it no longer lists must not keep applying.
+func (a *AnnotationClaims) reset(sourceName string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.bySource, sourceName)
+}
+
+// digest summarizes a source's recorded claims.
+func (a *AnnotationClaims) digest(sourceName string) string {
+	claims := a.EntryClaims(sourceName)
+	h := sha256.New()
+	for _, name := range slices.Sorted(maps.Keys(claims)) {
+		h.Write([]byte(name))
+		h.Write([]byte{0})
+		h.Write(claims[name])
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// claimsDigestSeparator joins the library's filter hash and the annotation
+// claims digest in the stored sync result.
+const claimsDigestSeparator = "|claims="
+
+// annotationJobs makes a sync commit its full snapshot, and so run the claims
+// hook, whenever the source's annotation claims differ from the ones last
+// written. The snapshot hash covers server data only, so otherwise a change
+// to an annotation alone would complete as an unchanged sync.
+//
+// The digest of the written claims is stored with the sync result, appended
+// to the filter hash, so every replica compares against the database rather
+// than its own memory. Status strips it again and reports the baseline as
+// invalid when it differs; the coordinator then calls CommitSnapshot.
+type annotationJobs struct {
+	persistence.Jobs
+	source string
+	claims *AnnotationClaims
+}
+
+func (j *annotationJobs) Status(ctx context.Context, sourceName string) (persistence.JobStatus, error) {
+	status, err := j.Jobs.Status(ctx, sourceName)
+	if err != nil {
+		return status, err
+	}
+	filterHash, digest, _ := strings.Cut(status.LastFilterHash, claimsDigestSeparator)
+	status.LastFilterHash = filterHash
+	if digest != j.claims.digest(j.source) {
+		status.BaselineValid = false
+	}
+	return status, nil
+}
+
+func (j *annotationJobs) Complete(ctx context.Context, job persistence.Job, result persistence.SyncResult) error {
+	result.FilterHash += claimsDigestSeparator + j.claims.digest(j.source)
+	return j.Jobs.Complete(ctx, job, result)
+}
+
+func (j *annotationJobs) CommitSnapshot(
+	ctx context.Context, job persistence.Job, result persistence.SyncResult, snapshot model.Snapshot,
+) error {
+	result.FilterHash += claimsDigestSeparator + j.claims.digest(j.source)
+	return j.Jobs.CommitSnapshot(ctx, job, result, snapshot)
+}
+
+// syncedJobs records that the source has synced at least once.
+type syncedJobs struct {
+	persistence.Jobs
+	synced *atomic.Bool
+}
+
+func (j *syncedJobs) Complete(ctx context.Context, job persistence.Job, result persistence.SyncResult) error {
+	err := j.Jobs.Complete(ctx, job, result)
+	if err == nil {
+		j.synced.Store(true)
+	}
+	return err
+}
+
+func (j *syncedJobs) CommitSnapshot(
+	ctx context.Context, job persistence.Job, result persistence.SyncResult, snapshot model.Snapshot,
+) error {
+	err := j.Jobs.CommitSnapshot(ctx, job, result, snapshot)
+	if err == nil {
+		j.synced.Store(true)
+	}
+	return err
+}
+
+// NewStandaloneOperator constructs the leased operator worker for one
+// Kubernetes source; it restarts the runner when a watch ends. The
+// authoritative client remains caller-owned. claims may be nil when
+// authorization is off.
 func NewStandaloneOperator(
 	api client.WithWatch, jobs persistence.Jobs, definition persistence.SourceDefinition,
 	options reconcile.Options, claims *AnnotationClaims,
-) (*operator.Runner, error) {
+) (*OperatorWorker, error) {
 	if api == nil {
 		return nil, persistence.ErrInvalid
 	}
-	return operator.NewRunner(&standaloneExportClient{WithWatch: api, source: definition.Name, claims: claims},
+	if claims != nil {
+		// The runtime stops the previous worker before building this one.
+		claims.reset(definition.Name)
+		jobs = &annotationJobs{Jobs: jobs, source: definition.Name, claims: claims}
+	}
+	worker := &OperatorWorker{source: definition.Name}
+	jobs = &syncedJobs{Jobs: jobs, synced: &worker.synced}
+	runner, err := operator.NewRunner(&standaloneExportClient{WithWatch: api, source: definition.Name, claims: claims},
 		jobs, definition, options)
+	if err != nil {
+		return nil, err
+	}
+	worker.runner = runner
+	return worker, nil
 }
 
 // PreflightStandaloneOperator lists all persisted effective namespaces/kinds.
@@ -153,7 +274,9 @@ func (c *standaloneExportClient) List(ctx context.Context, list client.ObjectLis
 			return persistence.ErrInvalid
 		}
 	}
-	c.claims.replace(c.source, kind, byName)
+	listOptions := &client.ListOptions{}
+	listOptions.ApplyOptions(opts)
+	c.claims.replace(c.source, listScope{namespace: listOptions.Namespace, kind: kind}, byName)
 	return nil
 }
 
@@ -168,7 +291,11 @@ func exportedClaims(ctx context.Context, kind string, items []runtime.Object) ([
 			return nil, nil, persistence.ErrInvalid
 		}
 		annotations := object.GetAnnotations()
-		if annotations[exportAnnotation] != "true" {
+		_, hasURL := annotations[urlAnnotation]
+		_, hasDescription := annotations[descriptionAnnotation]
+		if annotations[exportAnnotation] != "true" || !hasURL || !hasDescription {
+			// The fetcher does not export it, so its claims must not apply to
+			// another resource of the same name.
 			kept = append(kept, obj)
 			continue
 		}
