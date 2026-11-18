@@ -185,7 +185,16 @@ func NewStandaloneOperator(
 	api client.WithWatch, jobs persistence.Jobs, definition persistence.SourceDefinition,
 	options reconcile.Options, claims *AnnotationClaims,
 ) (*OperatorWorker, error) {
-	if api == nil {
+	return newStandaloneOperator(api, jobs, definition, options, claims, false)
+}
+
+// newStandaloneOperator is NewStandaloneOperator with ignoreClaims, which
+// leaves authz-claims annotations unread (Cedar mode). It excludes claims.
+func newStandaloneOperator(
+	api client.WithWatch, jobs persistence.Jobs, definition persistence.SourceDefinition,
+	options reconcile.Options, claims *AnnotationClaims, ignoreClaims bool,
+) (*OperatorWorker, error) {
+	if api == nil || (ignoreClaims && claims != nil) {
 		return nil, persistence.ErrInvalid
 	}
 	if claims != nil {
@@ -195,8 +204,8 @@ func NewStandaloneOperator(
 	}
 	worker := &OperatorWorker{source: definition.Name}
 	jobs = &syncedJobs{Jobs: jobs, synced: &worker.synced}
-	runner, err := operator.NewRunner(&standaloneExportClient{WithWatch: api, source: definition.Name, claims: claims},
-		jobs, definition, options)
+	exportClient := &standaloneExportClient{WithWatch: api, source: definition.Name, claims: claims, ignoreClaims: ignoreClaims}
+	runner, err := operator.NewRunner(exportClient, jobs, definition, options)
 	if err != nil {
 		return nil, err
 	}
@@ -207,13 +216,19 @@ func NewStandaloneOperator(
 // PreflightStandaloneOperator lists all persisted effective namespaces/kinds.
 // It does not watch, lease or write.
 func PreflightStandaloneOperator(ctx context.Context, api client.WithWatch, definition persistence.SourceDefinition) error {
+	return preflightStandaloneOperator(ctx, api, definition, false)
+}
+
+func preflightStandaloneOperator(
+	ctx context.Context, api client.WithWatch, definition persistence.SourceDefinition, ignoreClaims bool,
+) error {
 	if api == nil {
 		return persistence.ErrInvalid
 	}
 	if definition.ID == "" {
 		definition.ID = "preflight"
 	}
-	checked := &standaloneExportClient{WithWatch: api}
+	checked := &standaloneExportClient{WithWatch: api, ignoreClaims: ignoreClaims}
 	if _, err := operator.NewFetcher(checked, definition); err != nil {
 		return err
 	}
@@ -238,6 +253,9 @@ type standaloneExportClient struct {
 	client.WithWatch
 	source string
 	claims *AnnotationClaims
+	// ignoreClaims leaves authz-claims annotations unread, so a malformed one
+	// never drops a resource. Cedar mode sets it: claims carry no meaning there.
+	ignoreClaims bool
 }
 
 func (c *standaloneExportClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
@@ -249,6 +267,9 @@ func (c *standaloneExportClient) List(ctx context.Context, list client.ObjectLis
 	}
 	if list.GetContinue() != "" {
 		return ingest.ErrFetch
+	}
+	if c.ignoreClaims {
+		return nil
 	}
 	var kind string
 	switch list.(type) {

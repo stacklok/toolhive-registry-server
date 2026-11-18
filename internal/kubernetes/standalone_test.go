@@ -424,3 +424,60 @@ func TestStandaloneIgnoresClaimsOfUnexportedResources(t *testing.T) {
 		cancel()
 	}
 }
+
+// Cedar mode never uses claims, so an authz-claims annotation, however
+// malformed, must not keep a resource out of the registry. Claims mode keeps
+// v1.5.4's behaviour and skips the resource even without authorization.
+func TestStandaloneFactoryClaimAnnotationHandling(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		ignore bool
+		synced bool
+	}{
+		{name: "cedar mode ignores the annotation", ignore: true, synced: true},
+		{name: "claims mode without authz skips the resource", ignore: false, synced: false},
+	} {
+		for _, annotation := range []string{"{malformed", `{"team":{"nested":"value"}}`} {
+			t.Run(tc.name+"/"+annotation, func(t *testing.T) {
+				t.Parallel()
+				obj := exportObject("MCPServer", map[string]string{
+					exportKey: "true", retiredKey: annotation,
+					"toolhive.stacklok.dev/registry-url":         "https://example.org/mcp",
+					"toolhive.stacklok.dev/registry-description": "description",
+				})
+				api := fake.NewClientBuilder().WithScheme(standaloneScheme(t)).WithObjects(obj).Build()
+				factory := &kubernetes.StandaloneFactory{API: api, IgnoreClaimAnnotations: tc.ignore}
+				d := standaloneDefinition()
+				require.NoError(t, factory.Preflight(t.Context(), d))
+				jobs := mocks.NewMockJobs(gomock.NewController(t))
+				job := persistence.Job{Source: d, LeaseID: "lease", Generation: 1}
+				jobs.EXPECT().Acquire(gomock.Any(), d.Name, time.Minute).Return(job, nil)
+				jobs.EXPECT().Status(gomock.Any(), d.Name).Return(persistence.JobStatus{SourceID: d.ID}, nil)
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				jobs.EXPECT().CommitSnapshot(gomock.Any(), job, gomock.Any(), gomock.Any()).DoAndReturn(
+					func(_ context.Context, _ persistence.Job, _ persistence.SyncResult, snapshot model.Snapshot) error {
+						if tc.synced {
+							require.Len(t, snapshot.Data.Servers, 1)
+						} else {
+							require.Empty(t, snapshot.Data.Servers)
+						}
+						cancel()
+						return nil
+					})
+				worker, err := factory.Worker(jobs, d, standaloneOptions())
+				require.NoError(t, err)
+				require.NoError(t, worker.Run(ctx))
+			})
+		}
+	}
+}
+
+func TestStandaloneFactoryRejectsClaimsWithIgnoredAnnotations(t *testing.T) {
+	t.Parallel()
+	api := fake.NewClientBuilder().WithScheme(standaloneScheme(t)).Build()
+	factory := &kubernetes.StandaloneFactory{API: api, Claims: kubernetes.NewAnnotationClaims(), IgnoreClaimAnnotations: true}
+	_, err := factory.Worker(mocks.NewMockJobs(gomock.NewController(t)), standaloneDefinition(), standaloneOptions())
+	require.ErrorIs(t, err, persistence.ErrInvalid)
+}

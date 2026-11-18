@@ -73,7 +73,9 @@ admin:
 
 In Cedar mode the server rejects claims-mode settings: `auth.authz`,
 `auth.publicPaths`, and `claims` on sources or registries. Claims mode rejects
-the `admin` block.
+the `admin` block. Kubernetes `toolhive.stacklok.dev/authz-claims` annotations
+are not read in Cedar mode, so even a malformed one does not keep a resource
+out of the registry (claims mode skips such a resource, as v1.5.4 did).
 
 | Setting | Meaning |
 | --- | --- |

@@ -379,7 +379,8 @@ func buildCatalog(ctx context.Context, b *registryAppConfig) (*builtCatalog, err
 	}
 	operator := b.operator
 	if operator == nil {
-		operator = &kubernetes.StandaloneFactory{Claims: annotations}
+		// Cedar mode never uses claims, so annotations are not even read.
+		operator = &kubernetes.StandaloneFactory{Claims: annotations, IgnoreClaimAnnotations: !claimsMode}
 	}
 	if !claimsMode {
 		if b.policy, err = cedar.Load(b.config.Authorization.PolicyFile); err != nil {

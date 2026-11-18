@@ -220,7 +220,9 @@ Cedar; without it the server is in claims mode.
   resource `claims`; claims mode rejects `admin`. Re-run `Config.ValidateAuthorizationMode`
   after any auth override (the `--auth-mode` flag).
 - Cedar mode installs no claims hook or claims reader and never reads or writes claim
-  columns. Its `/v1` is the library's admin router, mounted only with `admin.enabled`
+  columns. It does not read Kubernetes `authz-claims` annotations either
+  (`StandaloneFactory.IgnoreClaimAnnotations`), so a malformed one never hides a resource.
+  Its `/v1` is the library's admin router, mounted only with `admin.enabled`
   (OAuth required); `/v1/me` and the entry-claims endpoints do not exist.
 - Cedar is route-level only: `catalog.read` on the requested view, instance actions for
   admin. It never filters entries.
