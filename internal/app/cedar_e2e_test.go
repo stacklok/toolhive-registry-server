@@ -177,6 +177,9 @@ func TestNewRegistryApp_CedarModeAnonymousCatalog(t *testing.T) {
 	app.GetInternalHTTPServer().Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
 	assert.Equal(t, http.StatusOK, rec.Code)
 
+	// Stop sync before closing storage, as RegistryApp.Stop does; closing the
+	// pool under a running sync makes the sync fail.
+	require.NoError(t, app.components.Sync.Stop())
 	app.cancelFunc() // closes the audit log
 	events := readJSONLines(t, auditLog)
 	var admissions, deniedReads int
