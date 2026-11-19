@@ -4,16 +4,16 @@ The ToolHive Registry Server automatically synchronizes data from external sourc
 
 ## Overview
 
-Each configured data source has an associated sync record that tracks the current state of synchronization. The server runs a background coordinator that continuously checks which sources need syncing and processes them one at a time.
+Each configured data source has an associated sync record that tracks the current state of synchronization. How a source is synced depends on its type:
 
-Sources fall into two categories:
-
-- **Synced sources** (`git`, `api`, `file`): Automatically synchronized from an external data source on a configurable interval.
-- **Non-synced sources** (`managed`, `kubernetes`): Data is managed directly via the API or discovered through other means. These sources do not participate in the sync loop.
+- **Polled sources** (`git`, `api`, and `file` with a `path` or `url`): fetched on the source's `syncPolicy.interval`.
+- **Inline sources** (`file` with `data`, usually created through the admin API): synced as soon as they are created or changed. Their data lives in the source definition, so there is nothing to poll.
+- **Kubernetes sources** (`kubernetes`): watch MCP server resources and sync whenever one changes.
+- **Managed sources** (`managed`): written only by `POST /v1/entries` and the delete endpoints. They are never synced.
 
 ## Sync Status
 
-Every source has a sync status that reflects the outcome of the most recent sync operation.
+Every source except a managed one has a sync status that reflects the outcome of the most recent sync operation.
 
 | Status | Description |
 |--------|-------------|
@@ -21,76 +21,87 @@ Every source has a sync status that reflects the outcome of the most recent sync
 | `Complete` | The last sync completed successfully |
 | `Failed` | The last sync failed; the source will be retried |
 
+A managed source reports `Complete` with the message `Non-synced source (type: managed)` from its first start onwards.
+
+A Kubernetes source reports the outcome of its last sync, with its server count, like any other synced source. In v1.5.4 it always reported `Complete` with the message `Non-synced source (type: kubernetes)` and a server count of 0.
+
 ### State Machine
 
 ```
                    ┌──────────────────────────────────────┐
-                   │            Server Startup            │
+                   │   Source created or definition changed │
                    └──────────────────┬───────────────────┘
                                       │
               ┌───────────────────────┴────────────────────────┐
-              │ non-synced source                              │ synced source
-              │ (managed / kubernetes)                         │ (git / api / file)
-              ▼                                                │
-         ┌──────────┐                                          │ no existing row
-         │ Complete │                                          ▼
-         └──────────┘                                   ┌──────────┐
-              │                                         │  Failed  │◄──────────┐
-              │ stays here forever                      └────┬─────┘           │
-              │ (no sync loop)                               │                 │ failure
-                                                             │ coordinator     │
-                                                             │ picks up        │
-                                                             ▼                 │
-                                                      ┌───────────┐            │
-                                               ┌─────►│  Syncing  │            │
-                                               │      └─────┬─────┘            │
-                                               │            │                  │
-                                               │     ┌──────┴──────┐           │
-                                               │  success        failure ──────┘
-                                               │     │
-                                               │     ▼
-                                               │ ┌──────────┐
-                                               │ │ Complete │
-                                               │ └────┬─────┘
-                                               │      │ interval elapsed
-                                               └──────┘ or data changed
+              │ managed source                                 │ any other source
+              ▼                                                ▼
+         ┌──────────┐                                    ┌───────────┐
+         │ Complete │                             ┌─────►│  Syncing  │
+         └──────────┘                             │      └─────┬─────┘
+              │ stays here                        │            │
+              │ (never synced)                    │     ┌──────┴──────┐
+                                                  │  success       failure
+                                                  │     │             │
+                                                  │     ▼             ▼
+                                                  │ ┌──────────┐ ┌──────────┐
+                                                  │ │ Complete │ │  Failed  │
+                                                  │ └────┬─────┘ └────┬─────┘
+                                                  │      │            │
+                                                  └──────┴────────────┘
+                                                   next sync is due
+                                                   (see "When Sync Is Triggered")
 ```
 
 The sync record also includes:
 - The start time of the last sync attempt and the finish time of the last completed sync attempt
-- The number of consecutive failures since the last success
+- The number of attempts since the last success (reset to 0 when a sync succeeds)
 - The entry counts (servers, skills, plugins) from the last successful sync
 - A hash of the last synced data, used for change detection
 
-## Sync Scheduling
-
-The coordinator polls for pending work every **two minutes**, with a small random jitter applied to each interval. This prevents multiple server instances from hitting the database simultaneously.
-
-When selecting a source to sync, the coordinator always picks the source with the oldest completed sync attempt first (sources that have never completed an attempt are prioritized). Row-level locking ensures that multiple instances of the server can run concurrently without processing the same source twice.
-
 ## When Sync Is Triggered
 
-A sync is triggered when any of the following conditions are true:
+### Polled sources (`git`, `api`, `file` path or URL)
+
+A polled source is due when any of the following is true:
 
 | Condition | Description |
 |-----------|-------------|
-| Initial sync | The source has never been successfully synced, or its last sync failed |
-| Filter changed | The source's filter configuration has changed since the last sync |
-| Interval elapsed | Enough time has passed since the last sync attempt, as defined by the source's configured sync interval |
-| Data changed | The upstream data has changed since the last sync (detected by hash comparison) |
+| Never synced | The source has no sync record yet |
+| Definition changed | The source's configuration (location, filter, interval, …) has changed since the last attempt |
+| Interval elapsed | At least `syncPolicy.interval` has passed since the last attempt finished |
+| Retry after failure | The last attempt failed and **2 minutes** or `syncPolicy.interval`, whichever is shorter, have passed since it finished |
 
-If a source is currently syncing (`Syncing` status), it is skipped until the in-progress operation completes.
+A failing source is retried every two minutes (or on its interval, if shorter) until a sync succeeds, as in v1.5.4.
+
+If the fetched data hashes the same as the last successful sync and the filter has not changed, the attempt completes without rewriting any entries.
+
+### Inline sources
+
+An inline source is synced when it is created and whenever its data or filter changes. Its status is `Complete` once that sync succeeds. In v1.5.4, inline sources created through the admin API were never synced and stayed `Failed` with `No previous sync status found`.
+
+### Kubernetes sources
+
+A Kubernetes source syncs when a watched resource is added, changed or removed, and re-lists every resource in its scope every **5 minutes** to catch anything a watch missed. A failed sync is retried after about a second. The API server ends watches routinely; the source restarts them on its own.
+
+## Sync Scheduling
+
+Every server instance checks for a due polled source about once a second. It takes a **lease** on the source before fetching, so only one instance syncs a given source at a time; other instances skip it and move on. A lease lasts one minute and is renewed while the sync runs, so a sync abandoned by a crashed instance is picked up again after about a minute.
+
+When several sources are due, the one whose last attempt finished longest ago goes first; sources that have never been synced go before all others.
+
+Changing a source's definition while it is syncing invalidates the running sync. Its result is discarded and the source is synced again with the new definition.
 
 ## Sync Process
 
-When a source is selected for sync:
+When a source is synced:
 
-1. **Fetch**: Data is retrieved from the upstream source (git repository, API endpoint, or file).
-2. **Filter**: If the source has a filter configuration, it is applied to the fetched data.
-3. **Store**: The processed data is written to the database in a single atomic transaction. Existing entries are updated, and entries no longer present in the source are removed.
-4. **Update status**: The sync record is updated with the outcome — success or failure, along with the new data hash and entry counts (servers, skills, plugins).
+1. **Fetch**: Data is retrieved from the upstream source (git repository, API endpoint, file, inline data or Kubernetes resources).
+2. **Validate**: The data is parsed and validated. Invalid data fails the sync before anything is written.
+3. **Filter**: If the source has a filter configuration, it is applied to the fetched data.
+4. **Store**: The processed data is written to the database in a single serializable transaction. Existing entries are updated, and entries no longer present in the source are removed. Entry claims are written in the same transaction.
+5. **Update status**: The sync record is updated with the outcome — success or failure, along with the new data hash and entry counts (servers, skills, plugins).
 
-If the sync fails at any stage, the source is marked as `Failed` and will be retried on the next coordinator cycle. There is no permanent error state; every failed source is eligible for retry.
+If the sync fails at any stage, nothing is written, the previous data stays visible, and the source is marked as `Failed`. There is no permanent error state; every failed source is retried. The status message names the failed stage (`Fetch failed`, `Registry validation failed`, `Storage failed`, `Sync cancelled`) rather than the raw error, which can contain credentials; the server log has the details.
 
 ## Source Types
 
@@ -106,16 +117,22 @@ Fetches server and version data from a remote MCP Registry API endpoint over HTT
 
 Reads data from a local file path, a remote URL, or an inline data string (for API-created sources).
 
+### Kubernetes
+
+Reads ToolHive MCP server resources (`MCPServer`, `VirtualMCPServer`, `MCPRemoteProxy`) that carry the `toolhive.stacklok.dev/registry-export=true` annotation. See [Kubernetes](configuration.md#kubernetes) in the configuration reference.
+
 ### Managed
 
 Data is written directly through the administration API. The server maintains the data; there is no external source to sync from.
 
 ## Sync Interval Configuration
 
-The sync interval for each source is configured as a duration string (for example, `30m` or `2h`). This controls how frequently the coordinator will check whether the source's data has changed and trigger a new sync if needed.
+The sync interval for each polled source is configured as a duration string (for example, `30m` or `2h`) and is required. The source is fetched once per interval; a failed sync is retried after two minutes, or after the interval if that is shorter.
 
-Sources with no configured interval are only synced when first created or when their filter configuration changes.
+In v1.5.4 the interval was checked on a fixed two-minute cycle, so sources were fetched at most every two minutes and often later than their interval. Sources are now fetched on their interval, which can mean more upstream requests for sources with short intervals.
+
+`syncPolicy` has no effect on inline, Kubernetes and managed sources; if one is set, it is ignored with a warning.
 
 ## Multi-Instance Behavior
 
-The sync coordinator is designed to run safely across multiple instances of the server. Database-level row locking (`FOR UPDATE SKIP LOCKED`) ensures that only one instance processes a given source at a time. Other instances skip locked rows and process the next available source instead.
+Sync is designed to run safely across multiple instances of the server. Leases stored in the database ensure that only one instance syncs a given source at a time, and a lease that is not renewed expires so another instance can take over.

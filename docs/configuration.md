@@ -250,8 +250,9 @@ kubernetes:
 **Per-entry claims:** CRDs can carry per-entry authorization claims via the
 `toolhive.stacklok.dev/authz-claims` JSON annotation. The annotation value uses the same
 `map[string]any` format as source claims (strings or arrays of strings). Source claims are
-**not** merged — entries get exactly the claims from the annotation. Entries without the
-annotation have no claims and are invisible when authz is configured (default-deny).
+**not** merged: an entry with the annotation gets exactly the claims from the annotation,
+including `{}` or `null` as written. An entry without the annotation gets the source's
+claims. A malformed annotation skips that resource with a warning.
 
 ```yaml
 # Example CRD annotation for per-entry claims:
@@ -291,9 +292,14 @@ metadata:
     toolhive.stacklok.dev/registry-version: '2.5.0'
 ```
 
+**Package URL:** a network package (any transport other than `stdio`) without a URL gets
+the `toolhive.stacklok.dev/registry-url` annotation's value as its `transport.url`, because
+the upstream server schema requires one. v1.5.4 left `transport.url` out of these packages.
+A cluster status address is never used.
+
 **Features:**
-- Queries running Kubernetes resources
-- No background synchronization (on-demand only)
+- Watches exported resources and syncs when one changes; re-lists every 5 minutes
+- Reports its real sync status and server count (see [Registry Sync](registry-sync.md#kubernetes-sources))
 - Requires in-cluster service account or kubeconfig
 
 **Does NOT support:**
@@ -315,9 +321,13 @@ syncPolicy:
 |-------|------|----------|---------|-------------|
 | `interval` | string | Yes | - | Sync interval (e.g., "30m", "1h", "24h") |
 
-**Not applicable for:**
+The source is fetched once per interval. A failed sync is retried after two minutes, or after
+the interval if that is shorter. See [Registry Sync](registry-sync.md#when-sync-is-triggered).
+
+**Not applicable for** (ignored with a warning if set):
 - Managed registries (no sync)
-- Kubernetes registries (no sync)
+- Kubernetes registries (sync on watch events)
+- Inline `file.data` sources (sync when their data changes)
 
 ## Filtering
 

@@ -16,6 +16,12 @@ var (
 	ErrStale = errors.New("sync job stale")
 )
 
+// FailedRetryInterval caps how long ClaimNext waits to retry a source whose last
+// attempt failed: it is due again after the shorter of its schedule and this
+// interval, so a transient upstream failure does not leave a long-schedule source
+// stale for a whole period. This matches v1.5.4's two-minute coordinator cycle.
+const FailedRetryInterval = 2 * time.Minute
+
 // Job carries an opaque lease identity and the source definition captured at claim.
 // Renew returns a new expiry; the lease identity remains unchanged. DB time, not
 // this value or the caller's clock, is authoritative at each write.
@@ -42,9 +48,11 @@ const (
 // definition has changed. Direct replacement clears the prior baseline.
 // A zero Failure means no categorized error (including unknown legacy errors).
 type JobStatus struct {
-	SourceID       string
-	Phase          JobPhase
-	BaselineValid  bool
+	SourceID      string
+	Phase         JobPhase
+	BaselineValid bool
+	// Attempts counts attempts since the last success, including one in
+	// progress; a successful attempt resets it to zero.
 	Attempts       int64
 	StartedAt      *time.Time
 	EndedAt        *time.Time
@@ -76,7 +84,10 @@ const (
 )
 
 // Jobs coordinates source-scoped, expiring leases and atomic snapshot acknowledgements.
-// ClaimNext polls only scheduled git/API/file sources; Acquire(ctx, sourceName, duration)
+// ClaimNext polls only scheduled git/API/file sources. One is due when it has never
+// been attempted, its definition changed since the last attempt, its schedule has
+// elapsed since the last attempt ended, or that attempt failed and the shorter of
+// the schedule and FailedRetryInterval has elapsed. Acquire(ctx, sourceName, duration)
 // may explicitly lease any non-managed source, including Kubernetes and inline files.
 // Status(ctx, sourceName) also looks up by name. Job.Source.ID is the immutable
 // source incarnation used for fencing, not the lookup name. Explicit Acquire

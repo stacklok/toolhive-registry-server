@@ -51,8 +51,9 @@ func (d *Jobs) ClaimNext(ctx context.Context, duration time.Duration) (persisten
 		result, found = persistence.Job{}, false // a serialization retry must not return a rolled-back claim
 		q := sqlc.New(tx)
 		excluded := []string{}
+		retry := persistence.FailedRetryInterval.Microseconds()
 		for {
-			name, e := q.JobNext(ctx, excluded)
+			name, e := q.JobNext(ctx, sqlc.JobNextParams{Excluded: excluded, FailedRetryMicros: retry})
 			if errors.Is(e, pgx.ErrNoRows) {
 				return nil
 			}
