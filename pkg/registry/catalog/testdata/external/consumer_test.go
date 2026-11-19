@@ -23,7 +23,7 @@ func (b ownBackend) ListViewEntries(ctx context.Context, view string, q persiste
 		return persistence.EntryPage{}, err
 	}
 	if view != "catalog" {
-		return persistence.EntryPage{}, persistence.ErrNotFound
+		return persistence.EntryPage{}, persistence.ErrViewNotFound
 	}
 	page := persistence.EntryPage{Entries: []persistence.Entry{}}
 	for _, entry := range b.entries {

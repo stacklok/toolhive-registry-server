@@ -723,6 +723,46 @@ func TestApplyConfigClaims_ClaimChangesOnRestart(t *testing.T) {
 	assertJSONColumn(t, "", f.registryClaims(t, "main"))
 }
 
+func TestApplyConfigClaims_RecordsManagedSyncStatus(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cfg := claimsTestConfig()
+	f := newClaimsFixture(t, cfg)
+
+	syncRow := func(source string) (status string, msg *string, ended *time.Time) {
+		t.Helper()
+		require.NoError(t, f.pool.QueryRow(ctx,
+			`SELECT sync_status::text, error_msg, ended_at FROM registry_sync WHERE source_id = $1`,
+			f.sources[source]).Scan(&status, &msg, &ended))
+		return status, msg, ended
+	}
+	rowCount := func(source string) int {
+		t.Helper()
+		var n int
+		require.NoError(t, f.pool.QueryRow(ctx,
+			`SELECT count(*) FROM registry_sync WHERE source_id = $1`, f.sources[source]).Scan(&n))
+		return n
+	}
+
+	require.NoError(t, applyConfigClaims(ctx, f.pool, cfg))
+	status, msg, ended := syncRow("managed-src")
+	assert.Equal(t, "COMPLETED", status, "a fresh managed source reports a completed status, as in v1.5.4")
+	require.NotNil(t, msg)
+	assert.Equal(t, "Non-synced source (type: managed)", *msg)
+	assert.Nil(t, ended, "no sync ever ran, so there is no last sync time")
+	for _, name := range []string{"api-src", "file-src"} {
+		assert.Zero(t, rowCount(name), "synced sources get their status from their first sync job")
+	}
+
+	// A restart leaves an existing row alone.
+	_, err := f.pool.Exec(ctx, `UPDATE registry_sync SET error_msg = 'kept' WHERE source_id = $1`, f.sources["managed-src"])
+	require.NoError(t, err)
+	require.NoError(t, applyConfigClaims(ctx, f.pool, cfg))
+	_, msg, _ = syncRow("managed-src")
+	require.NotNil(t, msg)
+	assert.Equal(t, "kept", *msg)
+}
+
 func TestApplyConfigClaims_DoesNotTouchAPIRows(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

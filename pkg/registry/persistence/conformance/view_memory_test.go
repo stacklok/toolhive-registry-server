@@ -43,7 +43,7 @@ func (m *memory) ListViewEntries(ctx context.Context, view string, query persist
 	}
 	definition, ok := m.views[view]
 	if !ok {
-		return persistence.EntryPage{}, persistence.ErrNotFound
+		return persistence.EntryPage{}, persistence.ErrViewNotFound
 	}
 	ids := make([]string, 0, len(definition.Sources))
 	winners := map[string]string{}

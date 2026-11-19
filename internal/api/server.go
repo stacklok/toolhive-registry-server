@@ -126,11 +126,17 @@ func auditConsumerRoute(route httpapi.RouteDescriptor, next http.Handler) http.H
 }
 
 // mapConsumerError keeps v1.5.4's 403 for a registry the caller's claims do
-// not reach; every other error uses the library's sanitized defaults.
+// not reach and its "registry not found" for a missing registry; every other
+// error uses the library's sanitized defaults.
 func mapConsumerError(_ *http.Request, _ httpapi.RouteDescriptor, err error) httpapi.ErrorMapping {
-	if errors.Is(err, claims.ErrRegistryForbidden) {
+	switch {
+	case errors.Is(err, claims.ErrRegistryForbidden):
 		return httpapi.ErrorMapping{
 			Status: http.StatusForbidden, Body: httpapi.ErrorResponse{Error: claims.ErrRegistryForbidden.Error()},
+		}
+	case errors.Is(err, persistence.ErrViewNotFound):
+		return httpapi.ErrorMapping{
+			Status: http.StatusNotFound, Body: httpapi.ErrorResponse{Error: "registry not found"},
 		}
 	}
 	return httpapi.ErrorMapping{}

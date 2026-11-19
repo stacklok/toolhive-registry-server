@@ -137,6 +137,7 @@ func sourcePreflight(d persistence.SourceDefinition) error {
 //     commits a full snapshot so annotation overrides are honored;
 //   - the managed source: published entries keep their own claims. v1.5.4
 //     reset them to the source's claims on every restart; that was a bug.
+//     Its initial sync status is recorded here too, as v1.5.4 did.
 func applyConfigClaims(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -168,7 +169,15 @@ func applyConfigClaims(ctx context.Context, pool *pgxpool.Pool, cfg *config.Conf
 				}
 			}
 		case config.SourceTypeManaged:
-			// Published entries keep their own claims.
+			// Published entries keep their own claims. The library never syncs a
+			// managed source, so record v1.5.4's initial status for the admin API;
+			// an existing row is left alone.
+			msg := fmt.Sprintf("Non-synced source (type: %s)", config.SourceTypeManaged)
+			if err := q.InitializeSourceSync(ctx, sqlc.InitializeSourceSyncParams{
+				Name: s.Name, SyncStatus: sqlc.SyncStatusCOMPLETED, ErrorMsg: &msg,
+			}); err != nil {
+				return fmt.Errorf("failed to record sync status of source %s: %w", s.Name, err)
+			}
 		}
 	}
 	for _, r := range cfg.Registries {

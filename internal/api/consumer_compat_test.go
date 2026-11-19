@@ -105,6 +105,19 @@ func TestConsumerRegistryForbidden(t *testing.T) {
 	code, body = serve(t, stubPages{err: persistence.ErrNotFound}, nil, "/registry/main/v0.1/servers")
 	assert.Equal(t, http.StatusNotFound, code)
 	assert.Equal(t, "not found", body["error"])
+
+	// A missing registry keeps v1.5.4's message on every consumer route.
+	for _, path := range []string{
+		"/registry/main/v0.1/servers",
+		"/registry/main/v0.1/servers/io.test%2Fsrv/versions",
+		"/registry/main/v0.1/servers/io.test%2Fsrv/versions/latest",
+		"/registry/main/v0.1/x/dev.toolhive/skills",
+		"/registry/main/v0.1/x/dev.toolhive/plugins",
+	} {
+		code, body = serve(t, stubPages{err: persistence.ErrViewNotFound}, nil, path)
+		assert.Equal(t, http.StatusNotFound, code, path)
+		assert.Equal(t, "registry not found", body["error"], path)
+	}
 }
 
 func TestConsumerManagedLookupFailure(t *testing.T) {
