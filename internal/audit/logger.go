@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stacklok/toolhive-core/audit"
 )
 
@@ -77,11 +78,16 @@ func (l *Logger) Admission(ctx context.Context, request *http.Request, actor, ac
 	case "error":
 		outcome = audit.OutcomeError
 	}
+	// Same source as the request's own event, and its request ID, so the two
+	// events can be joined.
 	event := audit.NewAuditEvent("authorization.admission",
-		audit.EventSource{Type: audit.SourceTypeNetwork, Value: request.RemoteAddr},
-		outcome, map[string]string{"actor": actor}, ComponentRegistryAPI,
+		SourceFromRequest(request), outcome, map[string]string{"actor": actor}, ComponentRegistryAPI,
 	).WithTarget(map[string]string{"action": action, "resource": resource})
-	event.Metadata.Extra = map[string]any{"decision": decision, "policy_revision": revision}
+	extra := map[string]any{"decision": decision, "policy_revision": revision}
+	if reqID := middleware.GetReqID(request.Context()); reqID != "" {
+		extra["request_id"] = reqID
+	}
+	event.Metadata.Extra = extra
 	event.LogTo(ctx, l.Slog(), audit.LevelAudit)
 }
 

@@ -3,6 +3,7 @@ package audit
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stacklok/toolhive-core/audit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,6 +56,8 @@ func TestLogger_Admission(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodGet, "/registry/main/v0.1/servers", nil)
 			req.RemoteAddr = "192.0.2.10:4242"
+			req.Header.Set("User-Agent", "thv-test/1.0")
+			req = req.WithContext(context.WithValue(req.Context(), middleware.RequestIDKey, "req-123"))
 			logger.Admission(req.Context(), req, `https://idp.example|alice`, "catalog.read",
 				`Registry::View::"main"`, "sha256:abc", tt.decision)
 			require.NoError(t, logger.Close())
@@ -71,9 +75,12 @@ func TestLogger_Admission(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, audit.SourceTypeNetwork, source["type"])
 			assert.Equal(t, "192.0.2.10:4242", source["value"])
+			assert.Equal(t, map[string]any{"user_agent": "thv-test/1.0"}, source["extra"])
 			metadata, ok := event["metadata"].(map[string]any)
 			require.True(t, ok)
-			assert.Equal(t, map[string]any{"decision": tt.decision, "policy_revision": "sha256:abc"}, metadata["extra"])
+			// The request ID joins this event to the request's own audit event.
+			assert.Equal(t, map[string]any{"decision": tt.decision, "policy_revision": "sha256:abc", "request_id": "req-123"},
+				metadata["extra"])
 		})
 	}
 }

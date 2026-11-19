@@ -208,7 +208,8 @@ Health, readiness, version and metrics stay on the internal port.
 
 With audit logging enabled, every Cedar decision is recorded as an
 `authorization.admission` event with the principal ID, action, resource, decision
-(`allow`, `deny` or `error`) and the policy revision (`sha256:` of the policy).
+(`allow`, `deny` or `error`), the policy revision (`sha256:` of the policy) and the request ID,
+which joins it to the request's own event.
 The event never contains tokens, claims or policy text. Each request is also
 audited with its usual event type (`server.list`, `source.create`, …), including
 refused ones. `audit.includeRequestData` captures request bodies even for refused
