@@ -23,6 +23,15 @@ CREATE TABLE latest_entry_version_repair (
     pending BOOLEAN PRIMARY KEY DEFAULT true CHECK (pending)
 );
 INSERT INTO latest_entry_version_repair DEFAULT VALUES;
+-- Grant explicitly instead of relying on the default privileges set by whoever
+-- ran migration 1: a deployment that changed its migration role since then
+-- would otherwise leave the application role unable to read this table.
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON latest_entry_version_repair TO toolhive_registry_server;
+    END IF;
+END $$;
 CREATE FUNCTION check_latest_entry_kind() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF NOT EXISTS (
