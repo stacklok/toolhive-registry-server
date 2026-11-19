@@ -1,8 +1,11 @@
 package persistence
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
 
 	thvregistry "github.com/stacklok/toolhive-core/registry/types"
@@ -95,21 +98,52 @@ func ValidateSnapshot(s *model.Snapshot) error {
 		}
 	}
 	for _, v := range s.Data.Skills {
-		if err := v.Validate(); err != nil {
-			return fmt.Errorf("%w: invalid skill payload", ErrInvalid)
-		}
 		if err := uniqueVersion(seen, SkillKind, v.Name, v.Version); err != nil {
 			return err
+		}
+	}
+	for _, v := range s.Data.Plugins {
+		if err := uniqueVersion(seen, PluginKind, v.Name, v.Version); err != nil {
+			return err
+		}
+	}
+	return validateSchemas(s)
+}
+
+// validateSchemas checks a snapshot against the wire schemas. toolhive-core
+// compiles a schema on every call, once per snapshot plus once per skill,
+// plugin and server extension block, which dominates sync CPU. One sync
+// validates the same content several times (fetcher, coordinator, commit), and
+// an unchanged source re-validates it on every resync, so successful results
+// are remembered by content digest. The result depends only on the content.
+func validateSchemas(s *model.Snapshot) error {
+	digest, digestErr := snapshotDigest(s)
+	if digestErr == nil && validated.contains(digest) {
+		return nil
+	}
+	for _, v := range s.Data.Skills {
+		if err := v.Validate(); err != nil {
+			return fmt.Errorf("%w: invalid skill payload", ErrInvalid)
 		}
 	}
 	for _, v := range s.Data.Plugins {
 		if err := v.Validate(); err != nil {
 			return fmt.Errorf("%w: invalid plugin payload", ErrInvalid)
 		}
-		if err := uniqueVersion(seen, PluginKind, v.Name, v.Version); err != nil {
-			return err
-		}
 	}
+	check := wireCheck(s)
+	if err := check.Validate(); err != nil {
+		return fmt.Errorf("%w: invalid snapshot format", ErrInvalid)
+	}
+	if digestErr == nil {
+		validated.add(digest)
+	}
+	return nil
+}
+
+// wireCheck returns a copy of s completed for the wire schema check; s itself
+// is never changed.
+func wireCheck(s *model.Snapshot) model.Snapshot {
 	// Validate the same wire schema as imported registries, without requiring an
 	// envelope for a caller-constructed (possibly empty) catalog snapshot.
 	check := *s
@@ -143,10 +177,48 @@ func ValidateSnapshot(s *model.Snapshot) error {
 		check.Data.Servers = servers
 		break
 	}
-	if err := check.Validate(); err != nil {
-		return fmt.Errorf("%w: invalid snapshot format", ErrInvalid)
+	return check
+}
+
+// validatedSnapshotCapacity bounds the memo to a few kilobytes of digests.
+const validatedSnapshotCapacity = 256
+
+var validated = &digestSet{seen: map[[sha256.Size]byte]struct{}{}}
+
+// digestSet remembers the most recent digests, evicting the oldest first.
+type digestSet struct {
+	mu    sync.Mutex
+	seen  map[[sha256.Size]byte]struct{}
+	order [][sha256.Size]byte
+}
+
+func (d *digestSet) contains(digest [sha256.Size]byte) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	_, ok := d.seen[digest]
+	return ok
+}
+
+func (d *digestSet) add(digest [sha256.Size]byte) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, ok := d.seen[digest]; ok {
+		return
 	}
-	return nil
+	if len(d.order) == validatedSnapshotCapacity {
+		delete(d.seen, d.order[0])
+		d.order = slices.Delete(d.order, 0, 1)
+	}
+	d.seen[digest] = struct{}{}
+	d.order = append(d.order, digest)
+}
+
+func snapshotDigest(s *model.Snapshot) ([sha256.Size]byte, error) {
+	data, err := json.Marshal(s)
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	return sha256.Sum256(data), nil
 }
 
 func uniqueVersion(seen map[string]bool, kind EntryKind, name, version string) error {

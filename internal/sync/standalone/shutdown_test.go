@@ -228,6 +228,42 @@ func TestInlineFetchRetryAndCleanupFailure(t *testing.T) {
 	}
 }
 
+func TestInlineCommitConflictRetries(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	sources, jobs, fetcher := standalonemocks.NewMockSources(ctrl), mocks.NewMockJobs(ctrl), mocks.NewMockFetcher(ctrl)
+	d := persistence.SourceDefinition{ID: "inline-id", Name: "inline", File: &persistence.FileSpec{Data: "persisted"}}
+	job := persistence.Job{Source: d, LeaseID: "lease", Generation: 1}
+	sources.EXPECT().ListSources(gomock.Any()).Return([]persistence.SourceDefinition{d}, nil).AnyTimes()
+	jobs.EXPECT().ClaimNext(gomock.Any(), time.Minute).Return(persistence.Job{}, false, nil).AnyTimes()
+	jobs.EXPECT().Status(gomock.Any(), d.Name).Return(persistence.JobStatus{SourceID: d.ID}, nil).AnyTimes()
+	jobs.EXPECT().Acquire(gomock.Any(), d.Name, time.Minute).Return(job, nil).AnyTimes()
+	fetcher.EXPECT().Fetch(gomock.Any(), d).Return(ingest.Result{Hash: "hash"}, nil).Times(2)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	// Concurrent publishes can exhaust a commit's serialization retries.
+	conflict := jobs.EXPECT().CommitSnapshot(gomock.Any(), job, gomock.Any(), gomock.Any()).
+		Return(fmt.Errorf("%w: concurrent modification, retry", persistence.ErrConflict))
+	fail := jobs.EXPECT().Fail(gomock.Any(), job, persistence.FailureStorage).After(conflict).Return(nil)
+	jobs.EXPECT().CommitSnapshot(gomock.Any(), job, gomock.Any(), gomock.Any()).After(fail).DoAndReturn(
+		func(context.Context, persistence.Job, persistence.SyncResult, model.Snapshot) error {
+			cancel()
+			return nil
+		})
+	opts := options()
+	opts.Reconcile.PollInterval = time.Millisecond
+	r, err := standalone.New(sources, jobs, fetcher, opts)
+	require.NoError(t, err)
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx) }()
+	select {
+	case err := <-done:
+		require.NoError(t, err, "a commit conflict must retry, not stop the runtime")
+	case <-time.After(3 * time.Second):
+		t.Fatal("runtime did not finish")
+	}
+}
+
 func TestDiscoveryJoinsLateBackendError(t *testing.T) {
 	t.Parallel()
 	for _, terminal := range []string{"initial cancel", "refresh cancel", "refresh worker"} {

@@ -480,7 +480,11 @@ func retryInline(err error) bool {
 	if wrapped, ok := err.(interface{ Unwrap() error }); ok && wrapped.Unwrap() != nil {
 		return retryInline(wrapped.Unwrap())
 	}
-	return err == nil || ownershipError(err) || errors.Is(err, persistence.ErrBusy) || errors.Is(err, ingest.ErrFetch)
+	// A conflict (serialization retries lost to concurrent writers, or a
+	// recreated source) is recorded and retried on the next tick. Other storage
+	// failures stop the runtime, which the server restarts with backoff.
+	return err == nil || ownershipError(err) || errors.Is(err, persistence.ErrBusy) || errors.Is(err, ingest.ErrFetch) ||
+		errors.Is(err, persistence.ErrConflict)
 }
 
 func (w *inlineWorker) Ready() bool { return w.ready.Load() }

@@ -56,9 +56,13 @@ localhost:5432:toolhive_registry:db_app:app_password
 localhost:5432:toolhive_registry:db_migrator:migration_password
 EOF
 
-# Set secure permissions (REQUIRED - pgx will ignore files with wrong permissions)
+# Restrict access to the file owner
 chmod 600 ~/.pgpass
 ```
+
+Unlike `psql` and other libpq clients, the server's driver (pgx) reads the pgpass file
+whatever its permissions, so nothing warns you about a world-readable file. Restrict it
+yourself.
 
 ### Custom pgpass Location
 
@@ -77,7 +81,29 @@ The server supports separate database users for different privilege levels:
 - **Application user** (`user` config field): Limited privileges for normal operations (SELECT, INSERT, UPDATE, DELETE)
 - **Migration user** (`migrationUser` config field): Elevated privileges for schema changes (CREATE, ALTER, DROP)
 
-Both users' passwords are provided via the pgpass file - one entry per user.
+Each user's password comes from the config, the environment or the pgpass file (one entry per user).
+
+**The migration user** must:
+
+- own the registry's tables, because migrations alter them. Run every migration as the same
+  user (or as a member of the role that owns the tables); if you change it, transfer ownership
+  first with `REASSIGN OWNED BY old_migrator TO new_migrator`.
+- have `CREATE` on the `public` schema.
+- on the first install, have `CREATEROLE`, because the first migration creates the
+  `toolhive_registry_server` role. If the role already exists (for example, created by
+  [`prime-db`](#option-1-using-prime-db-command-recommended) run as an administrator),
+  `CREATEROLE` is not needed.
+
+**The application user** must:
+
+- be a member of `toolhive_registry_server`. The migrations grant that role `SELECT`,
+  `INSERT`, `UPDATE` and `DELETE` on the registry's tables, including `schema_migrations`,
+  which the server reads and locks to check the schema version before every write.
+- have `TEMPORARY` on the database, because sync stages incoming entries in temporary
+  tables. PostgreSQL grants `TEMPORARY` to `PUBLIC` by default, so this matters only if
+  your database revokes it; without it every sync fails with `permission denied to create
+  temporary tables`.
+- have `CONNECT` on the database and `USAGE` on the `public` schema.
 
 ### Security Best Practices
 
@@ -153,17 +179,20 @@ The server requires that the database user has the `toolhive_registry_server` ro
 
 ### Option 1: Using prime-db Command (Recommended)
 
-The `prime-db` subcommand configures a user with the correct role:
+The `prime-db` subcommand creates the `toolhive_registry_server` role and an application
+user that is a member of it. It takes the new user's name as its argument, reads the new
+user's password from standard input, and connects with the database settings in `--config`
+(as the migration user), which needs `CREATEROLE`:
 
 ```bash
-# Interactive mode (prompts for password)
-thv-registry-api prime-db --config examples/config-database-dev.yaml
+# Interactive mode (prompts for the new user's password)
+thv-registry-api prime-db thvr_user --config examples/config-database-dev.yaml
 
-# Pipe password via stdin
-echo "mypassword" | thv-registry-api prime-db --config examples/config-database-dev.yaml
+# Pipe the password via stdin
+echo "mypassword" | thv-registry-api prime-db thvr_user --config examples/config-database-dev.yaml
 
 # Dry run (print SQL without executing)
-thv-registry-api prime-db --config examples/config-database-dev.yaml --dry-run
+thv-registry-api prime-db thvr_user --config examples/config-database-dev.yaml --dry-run
 ```
 
 ### Option 2: Manual SQL Setup

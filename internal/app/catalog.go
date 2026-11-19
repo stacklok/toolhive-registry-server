@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/gobwas/glob"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -190,18 +191,31 @@ func applyConfigClaims(ctx context.Context, pool *pgxpool.Pool, cfg *config.Conf
 	return tx.Commit(ctx)
 }
 
+// Restart delays after the sync runtime stops on an error.
+const (
+	defaultSyncRestartMin = time.Second
+	defaultSyncRestartMax = time.Minute
+)
+
 // syncRunner runs the library sync runtime for the app's lifetime.
 type syncRunner struct {
 	runtime *standalone.Runtime
+	// restartMin and restartMax bound the delay before a failed runtime is
+	// restarted; zero means the defaults.
+	restartMin, restartMax time.Duration
+
 	mu      sync.Mutex
 	stopped bool
 	cancel  context.CancelFunc
 	done    chan struct{}
 }
 
-// Start runs the runtime until Stop or ctx ends; it blocks. An error that
+// Start runs the runtime until Stop or ctx ends; it blocks and returns nil.
+// The runtime stops on a storage failure it cannot attribute to one source (the
+// database unreachable, a privilege missing); Start logs that and restarts it
+// with exponential backoff, so sync resumes once the cause clears. An error that
 // surfaces while shutting down (such as a fetch that failed as it was being
-// cancelled) is not a failure of the run and is not returned.
+// cancelled) is not a failure of the run.
 func (s *syncRunner) Start(ctx context.Context) error {
 	s.mu.Lock()
 	if s.stopped {
@@ -214,12 +228,36 @@ func (s *syncRunner) Start(ctx context.Context) error {
 	s.mu.Unlock()
 	defer close(done)
 	defer cancel()
-	err := s.runtime.Run(ctx)
-	if err != nil && ctx.Err() != nil {
-		slog.Debug("Source synchronization stopped", "error", err)
-		return nil
+	low, high := s.restartMin, s.restartMax
+	if low <= 0 {
+		low = defaultSyncRestartMin
 	}
-	return err
+	if high < low {
+		high = max(low, defaultSyncRestartMax)
+	}
+	delay := low
+	for {
+		began := time.Now()
+		err := s.runtime.Run(ctx)
+		if ctx.Err() != nil {
+			if err != nil {
+				slog.Debug("Source synchronization stopped", "error", err)
+			}
+			return nil
+		}
+		if time.Since(began) > high {
+			delay = low // a run that lasted counts as recovered
+		}
+		slog.Error("Source synchronization stopped; restarting", "error", err, "retry_in", delay)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil
+		case <-timer.C:
+		}
+		delay = min(2*delay, high)
+	}
 }
 
 // Stop ends the runtime and waits for its workers to finish. Called before

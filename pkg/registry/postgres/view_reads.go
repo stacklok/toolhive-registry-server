@@ -106,7 +106,7 @@ func viewReadError(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return context.DeadlineExceeded
 	}
-	return persistence.ErrUnavailable
+	return unavailable(err)
 }
 
 func viewListParams(id uuid.UUID, query persistence.ViewQuery, binding string) (sqlc.ViewEntryListParams, error) {
