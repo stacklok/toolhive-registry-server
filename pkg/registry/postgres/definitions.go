@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -698,8 +699,21 @@ func classify(err error) error {
 		case "40001", "40P01":
 			return retryable{}
 		default:
-			return persistence.ErrUnavailable
+			return unavailable(err)
 		}
 	}
+	return unavailable(err)
+}
+
+// unavailable reports an unclassified backend failure as ErrUnavailable. Callers
+// see only the category, so the cause (a missing privilege, a lost connection, a
+// constraint the adapter does not map) is logged here, with its SQLSTATE.
+func unavailable(err error) error {
+	attrs := []any{"error", err}
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) {
+		attrs = append(attrs, "sqlstate", pg.Code)
+	}
+	slog.Error("Registry storage operation failed", attrs...)
 	return persistence.ErrUnavailable
 }
