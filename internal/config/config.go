@@ -156,11 +156,6 @@ type Config struct {
 	// Can be set via THV_REGISTRY_WATCH_NAMESPACE environment variable
 	// Not loaded from YAML file - environment variable only
 	WatchNamespace string
-
-	// LeaderElectionID is the unique identifier for the leader election lease.
-	// Can be set via THV_REGISTRY_LEADER_ELECTION_ID environment variable
-	// Not loaded from YAML file - environment variable only
-	LeaderElectionID string
 }
 
 // SourceConfig defines a single data source configuration
@@ -836,10 +831,6 @@ func LoadConfig(opts ...Option) (*Config, error) {
 	// Set watchNamespace from environment variable (THV_REGISTRY_WATCH_NAMESPACE)
 	// This is not loaded from YAML - environment variable only
 	config.WatchNamespace = v.GetString("watch_namespace")
-
-	// Set leaderElectionID from environment variable (THV_REGISTRY_LEADER_ELECTION_ID)
-	// This is not loaded from YAML - environment variable only
-	config.LeaderElectionID = v.GetString("leader_election_id")
 
 	// Validate the config
 	if err := config.validate(); err != nil {
