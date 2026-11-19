@@ -126,6 +126,16 @@ func (f *Fetcher) Fetch(ctx context.Context, definition persistence.SourceDefini
 		}
 		return strings.Compare(a.Version, b.Version)
 	})
+	// An invalid resource is left out rather than failing the source. Checking the
+	// whole snapshot first keeps the usual case to one schema validation; only a
+	// failing snapshot is checked resource by resource.
+	if persistence.ValidateSnapshot(&snapshot) != nil {
+		snapshot.Data.Servers = slices.DeleteFunc(snapshot.Data.Servers, func(server model.Server) bool {
+			single := model.Snapshot{}
+			single.Data.Servers = []model.Server{server}
+			return persistence.ValidateSnapshot(&single) != nil
+		})
+	}
 	// Duplicate name/version exports must fail rather than silently pick a resource.
 	// Same-name exports with different versions retain the historical identity;
 	// the cross-kind identity decision is still pending.
@@ -171,11 +181,6 @@ func exportedServer(object client.Object) *model.Server {
 		if transport.Type != "stdio" && transport.URL == "" {
 			transport.URL = annotations[defaultRegistryURLAnnotation]
 		}
-	}
-	single := model.Snapshot{}
-	single.Data.Servers = []model.Server{*server}
-	if persistence.ValidateSnapshot(&single) != nil {
-		return nil
 	}
 	return server
 }

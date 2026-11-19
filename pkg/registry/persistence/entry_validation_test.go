@@ -2,6 +2,7 @@ package persistence_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	upstreammodel "github.com/modelcontextprotocol/registry/pkg/model"
@@ -65,5 +66,27 @@ func TestValidateSnapshotAcceptsServerWithoutSchema(t *testing.T) {
 	snapshot.Data.Servers[0].Schema = "not a uri"
 	if err := persistence.ValidateSnapshot(&snapshot); !errors.Is(err, persistence.ErrInvalid) {
 		t.Fatalf("a present but invalid $schema must still fail: %v", err)
+	}
+}
+
+func TestValidateSnapshotRemembersOnlyValidContent(t *testing.T) {
+	t.Parallel()
+	server := model.Server{Schema: "https://example.org/schema.json", Name: "com.example/remembered", Version: "1", Description: "ok"}
+	valid := model.Snapshot{Data: thvregistry.UpstreamData{Servers: []model.Server{server}}}
+	for range 2 {
+		if err := persistence.ValidateSnapshot(&valid); err != nil {
+			t.Fatalf("valid snapshot: %v", err)
+		}
+	}
+	// A remembered digest never vouches for different content.
+	long := server
+	long.Description = strings.Repeat("x", 101)
+	invalid := model.Snapshot{Data: thvregistry.UpstreamData{Servers: []model.Server{long}}}
+	// Identity checks run before the memo: a duplicate of valid content fails.
+	duplicate := model.Snapshot{Data: thvregistry.UpstreamData{Servers: []model.Server{server, server}}}
+	for _, s := range []*model.Snapshot{&invalid, &invalid, &duplicate} {
+		if err := persistence.ValidateSnapshot(s); !errors.Is(err, persistence.ErrInvalid) {
+			t.Fatalf("invalid snapshot: %v", err)
+		}
 	}
 }

@@ -249,6 +249,50 @@ func TestRunRetriesAndIsolatesSources(t *testing.T) {
 	require.False(t, c.Ready())
 }
 
+func TestRunContinuesAfterCommitConflict(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	jobs, fetcher := mocks.NewMockJobs(ctrl), mocks.NewMockFetcher(ctrl)
+	c := newCoordinator(t, jobs, fetcher, time.Minute)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	conflicted, healthy := jobFixture(), jobFixture()
+	healthy.Source.Name, healthy.Source.ID, healthy.LeaseID = "other", "other-id", "other-lease"
+	// Serialization retries exhausted by concurrent writers end as ErrConflict.
+	conflict := fmt.Errorf("%w: concurrent modification, retry", persistence.ErrConflict)
+	gomock.InOrder(
+		jobs.EXPECT().ClaimNext(gomock.Any(), time.Minute).Return(conflicted, true, nil),
+		fetcher.EXPECT().Fetch(gomock.Any(), conflicted.Source).Return(ingest.Result{Snapshot: snapshotFixture(), Hash: "hash"}, nil),
+		jobs.EXPECT().Status(gomock.Any(), conflicted.Source.Name).Return(persistence.JobStatus{SourceID: conflicted.Source.ID}, nil),
+		jobs.EXPECT().CommitSnapshot(gomock.Any(), conflicted, gomock.Any(), gomock.Any()).Return(conflict),
+		jobs.EXPECT().Fail(gomock.Any(), conflicted, persistence.FailureStorage).Return(nil),
+		jobs.EXPECT().ClaimNext(gomock.Any(), time.Minute).Return(healthy, true, nil),
+		fetcher.EXPECT().Fetch(gomock.Any(), healthy.Source).Return(ingest.Result{Snapshot: snapshotFixture(), Hash: "healthy"}, nil),
+		jobs.EXPECT().Status(gomock.Any(), healthy.Source.Name).Return(persistence.JobStatus{SourceID: healthy.Source.ID}, nil),
+		jobs.EXPECT().CommitSnapshot(gomock.Any(), healthy, gomock.Any(), gomock.Any()).DoAndReturn(func(context.Context, persistence.Job, persistence.SyncResult, model.Snapshot) error {
+			cancel()
+			return nil
+		}),
+	)
+	require.NoError(t, c.Run(ctx))
+}
+
+func TestRunStopsOnUnrecordedConflict(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	jobs, fetcher := mocks.NewMockJobs(ctrl), mocks.NewMockFetcher(ctrl)
+	job := jobFixture()
+	gomock.InOrder(
+		jobs.EXPECT().ClaimNext(gomock.Any(), time.Minute).Return(job, true, nil),
+		fetcher.EXPECT().Fetch(gomock.Any(), job.Source).Return(ingest.Result{Snapshot: snapshotFixture(), Hash: "hash"}, nil),
+		jobs.EXPECT().Status(gomock.Any(), job.Source.Name).Return(persistence.JobStatus{SourceID: job.Source.ID}, nil),
+		jobs.EXPECT().CommitSnapshot(gomock.Any(), job, gomock.Any(), gomock.Any()).Return(persistence.ErrConflict),
+		jobs.EXPECT().Fail(gomock.Any(), job, persistence.FailureStorage).Return(persistence.ErrUnavailable),
+	)
+	err := newCoordinator(t, jobs, fetcher, time.Minute).Run(t.Context())
+	require.ErrorIs(t, err, persistence.ErrUnavailable)
+}
+
 func TestStatusDuringAcquiredWork(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

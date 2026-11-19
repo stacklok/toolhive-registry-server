@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,6 +85,21 @@ func TestCompleteScopeAndExportChanges(t *testing.T) {
 	changed.ID = "recreated"
 	_, err = f.Fetch(t.Context(), changed)
 	require.ErrorIs(t, err, persistence.ErrInvalid)
+}
+
+func TestInvalidResourceLeftOut(t *testing.T) {
+	t.Parallel()
+	valid := &mcp.VirtualMCPServer{ObjectMeta: metadata("valid", "one")}
+	invalid := &mcp.VirtualMCPServer{ObjectMeta: metadata("invalid", "two")}
+	// The wire schema limits a server description to 100 characters.
+	invalid.Annotations["toolhive.stacklok.dev/registry-description"] = strings.Repeat("x", 101)
+	c := fake.NewClientBuilder().WithScheme(scheme(t)).WithObjects(valid, invalid).Build()
+	f, err := operator.NewFetcher(c, definition())
+	require.NoError(t, err)
+	got, err := f.Fetch(t.Context(), definition())
+	require.NoError(t, err)
+	require.Len(t, got.Snapshot.Data.Servers, 1)
+	require.Equal(t, "com.toolhive.k8s.one/valid", got.Snapshot.Data.Servers[0].Name)
 }
 
 func TestHistoricalCrossKindNameIdentityNotRewritten(t *testing.T) {
