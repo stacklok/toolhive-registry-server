@@ -37,7 +37,8 @@ type ViewQuery struct {
 // incarnations and entries coherently; pages do not share a frozen snapshot.
 // The first linked source with versions wins the whole (kind,name), before ALL
 // filters, latest selection and pagination. Losing sources never fill gaps.
-// Missing views and Get misses return ErrNotFound; an existing empty list does not.
+// Missing views return ErrViewNotFound and Get misses ErrNotFound (ErrViewNotFound
+// is errors.Is-compatible with ErrNotFound); an existing empty list returns no error.
 // Invalid queries/cursors return ErrInvalid; backend/payload failures return
 // ErrUnavailable without backend details. Context cancellation is preserved.
 type ViewEntryReader interface {

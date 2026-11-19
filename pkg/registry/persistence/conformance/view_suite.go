@@ -451,11 +451,19 @@ func runViewCursors(t *testing.T, factory ViewEntriesFactory, kind persistence.E
 		t.Fatalf("empty history: %+v / %v", empty, e)
 	}
 	_, e = reader.List(ctx, "missing", q)
-	if !errors.Is(e, persistence.ErrNotFound) {
+	if !errors.Is(e, persistence.ErrViewNotFound) {
 		t.Fatalf("missing view: %v", e)
 	}
+	_, e = reader.Get(ctx, "missing", catalog.EntryName{Kind: kind, Name: name}, catalog.VersionSelector{Latest: true})
+	if !errors.Is(e, persistence.ErrViewNotFound) {
+		t.Fatalf("missing view get: %v", e)
+	}
+	_, e = reader.ListVersions(ctx, "missing", catalog.EntryName{Kind: kind, Name: name}, catalog.PageRequest{Limit: 1})
+	if !errors.Is(e, persistence.ErrViewNotFound) {
+		t.Fatalf("missing view history: %v", e)
+	}
 	_, e = reader.Get(ctx, consumerView, catalog.EntryName{Kind: kind, Name: name}, catalog.VersionSelector{Latest: true})
-	if !errors.Is(e, persistence.ErrNotFound) {
+	if !errors.Is(e, persistence.ErrNotFound) || errors.Is(e, persistence.ErrViewNotFound) {
 		t.Fatalf("missing entry: %v", e)
 	}
 	canceled, cancel := context.WithCancel(ctx)
