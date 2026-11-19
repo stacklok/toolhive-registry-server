@@ -168,7 +168,7 @@ type Querier interface {
 	JobFinishUnchanged(ctx context.Context, arg JobFinishUnchangedParams) (int64, error)
 	JobInvalidateSnapshot(ctx context.Context, dollar_1 uuid.UUID) error
 	JobLockSource(ctx context.Context, name string) (JobLockSourceRow, error)
-	JobNext(ctx context.Context, dollar_1 []string) (string, error)
+	JobNext(ctx context.Context, arg JobNextParams) (string, error)
 	JobRenew(ctx context.Context, arg JobRenewParams) (pgtype.Timestamptz, error)
 	JobSnapshotAllowed(ctx context.Context, dollar_1 uuid.UUID) (bool, error)
 	JobStatus(ctx context.Context, name string) (JobStatusRow, error)

@@ -352,6 +352,59 @@ func TestJobPollingAfterCompletionBecomesDue(t *testing.T) {
 	}
 }
 
+// A failed source is due again after the shorter of its schedule and
+// persistence.FailedRetryInterval; a successful one still waits its schedule.
+func TestJobPollingRetriesFailureBeforeSchedule(t *testing.T) {
+	t.Parallel()
+	retry := persistence.FailedRetryInterval
+	for _, tc := range []struct {
+		name     string
+		schedule string
+		fail     bool
+		age      time.Duration
+		due      bool
+	}{
+		{"failed long schedule waits for the retry", "1h", true, retry - 10*time.Second, false},
+		{"failed long schedule retries after the retry", "1h", true, retry + 10*time.Second, true},
+		{"failed short schedule retries after its schedule", "30s", true, 40 * time.Second, true},
+		{"completed long schedule waits its schedule", "1h", false, retry + 10*time.Second, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d, pool := newBackend(t)
+			jobs, err := postgres.NewJobs(pool, 65536)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, err := d.CreateSource(t.Context(), persistence.SourceDefinition{Name: "retry", API: &persistence.APISpec{Endpoint: "https://example.org"}, Schedule: tc.schedule})
+			if err != nil {
+				t.Fatal(err)
+			}
+			j, ok, err := jobs.ClaimNext(t.Context(), time.Minute)
+			if err != nil || !ok {
+				t.Fatalf("first poll: %t %v", ok, err)
+			}
+			if tc.fail {
+				err = jobs.Fail(t.Context(), j, persistence.FailureFetch)
+			} else {
+				err = jobs.CommitSnapshot(t.Context(), j, persistence.SyncResult{Hash: "H", FilterHash: "F"}, model.Snapshot{})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok, err = jobs.ClaimNext(t.Context(), time.Minute); err != nil || ok {
+				t.Fatalf("immediate poll: %t %v", ok, err)
+			}
+			if _, err = pool.Exec(t.Context(), `UPDATE registry_sync SET ended_at=clock_timestamp()-($2::bigint * interval '1 microsecond') WHERE source_id=$1`, s.ID, tc.age.Microseconds()); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok, err = jobs.ClaimNext(t.Context(), time.Minute); err != nil || ok != tc.due {
+				t.Fatalf("aged poll: due %t %v, want %t", ok, err, tc.due)
+			}
+		})
+	}
+}
+
 func TestJobStatusLegacyUnknownValues(t *testing.T) {
 	t.Parallel()
 	d, pool := newBackend(t)

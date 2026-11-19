@@ -1,9 +1,10 @@
 -- name: JobNext :one
 SELECT s.name FROM source s LEFT JOIN registry_sync rs ON rs.source_id=s.id
 WHERE s.syncable AND s.source_type IN ('git','api','file') AND s.sync_schedule IS NOT NULL
- AND NOT (s.name = ANY($1::text[]))
+ AND NOT (s.name = ANY(sqlc.arg(excluded)::text[]))
  AND (rs.lease_id IS NULL OR rs.lease_expires_at <= clock_timestamp() OR rs.lease_generation <> s.definition_generation)
  AND (rs.ended_at IS NULL OR rs.ended_at + s.sync_schedule <= clock_timestamp()
+      OR (rs.sync_status='FAILED' AND rs.ended_at + LEAST(s.sync_schedule, sqlc.arg(failed_retry_micros)::bigint * interval '1 microsecond') <= clock_timestamp())
       OR rs.observed_generation IS DISTINCT FROM s.definition_generation)
 ORDER BY rs.ended_at ASC NULLS FIRST, s.name COLLATE "C"
 LIMIT 1 FOR UPDATE OF s SKIP LOCKED;
@@ -40,7 +41,7 @@ WHERE rs.source_id=$1::uuid AND rs.lease_id=$2::uuid AND rs.lease_generation=$3:
 FOR UPDATE OF s,rs;
 
 -- name: JobFinish :execrows
-UPDATE registry_sync SET sync_status='COMPLETED',error_msg=NULL,ended_at=clock_timestamp(),
+UPDATE registry_sync SET sync_status='COMPLETED',error_msg=NULL,ended_at=clock_timestamp(),attempt_count=0,
  lease_id=NULL,lease_expires_at=NULL,lease_generation=NULL,
  last_sync_hash=$4,last_applied_filter_hash=$5,server_count=$6,skill_count=$7,plugin_count=$8,
  applied_generation=$3::bigint
@@ -49,7 +50,7 @@ WHERE source_id=$1::uuid AND lease_id=$2::uuid AND lease_generation=$3::bigint
  AND lease_generation=(SELECT definition_generation FROM source WHERE id=$1::uuid);
 
 -- name: JobFinishUnchanged :execrows
-UPDATE registry_sync SET sync_status='COMPLETED',error_msg=NULL,ended_at=clock_timestamp(),
+UPDATE registry_sync SET sync_status='COMPLETED',error_msg=NULL,ended_at=clock_timestamp(),attempt_count=0,
  lease_id=NULL,lease_expires_at=NULL,lease_generation=NULL
 WHERE source_id=$1::uuid AND lease_id=$2::uuid AND lease_generation=$3::bigint
  AND lease_expires_at>clock_timestamp() AND sync_status='IN_PROGRESS'

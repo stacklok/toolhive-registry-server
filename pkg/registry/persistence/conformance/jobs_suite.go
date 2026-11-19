@@ -23,6 +23,48 @@ type JobsPairFactory func(*testing.T) (persistence.Sources, persistence.Entries,
 //nolint:gocyclo,lll // Independent lifecycle cases verify all three kinds and failure transitions.
 func RunJobs(t *testing.T, factory JobsFactory) {
 	t.Helper()
+	t.Run("attempts count since the last success", func(t *testing.T) {
+		t.Parallel()
+		sources, _, jobs := factory(t)
+		ctx := t.Context()
+		s := newEntrySource(t, sources, "attempts")
+		attempts := func(want int64, step string) {
+			t.Helper()
+			state, err := jobs.Status(ctx, s.Name)
+			if err != nil || state.Attempts != want {
+				t.Fatalf("%s: attempts %+v %v, want %d", step, state, err, want)
+			}
+		}
+		for i := int64(1); i <= 2; i++ {
+			j, err := jobs.Acquire(ctx, s.Name, time.Minute)
+			if err != nil {
+				t.Fatal(err)
+			}
+			attempts(i, "in progress")
+			if err = jobs.Fail(ctx, j, persistence.FailureFetch); err != nil {
+				t.Fatal(err)
+			}
+			attempts(i, "failed")
+		}
+		r := persistence.SyncResult{Hash: "h", FilterHash: "f"}
+		j, err := jobs.Acquire(ctx, s.Name, time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		attempts(3, "retry in progress")
+		if err = jobs.CommitSnapshot(ctx, j, r, model.Snapshot{}); err != nil {
+			t.Fatal(err)
+		}
+		attempts(0, "committed")
+		if j, err = jobs.Acquire(ctx, s.Name, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		attempts(1, "unchanged in progress")
+		if err = jobs.Complete(ctx, j, r); err != nil {
+			t.Fatal(err)
+		}
+		attempts(0, "unchanged completed")
+	})
 	t.Run("lifecycle and all kinds", func(t *testing.T) {
 		t.Parallel()
 		sources, entries, jobs := factory(t)
