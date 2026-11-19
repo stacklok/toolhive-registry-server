@@ -47,6 +47,9 @@ func (m *memory) ClaimNext(ctx context.Context, duration time.Duration) (persist
 			if err != nil {
 				return err
 			}
+			if state.Status.Phase == persistence.JobFailed {
+				period = min(period, persistence.FailedRetryInterval)
+			}
 			if state.Status.EndedAt != nil && state.Observed == n.generations[source.ID] && state.Status.EndedAt.Add(period).After(n.clock()) {
 				continue
 			}
@@ -197,6 +200,7 @@ func (n *memory) fence(job persistence.Job) (memJob, error) {
 func (n *memory) succeed(id string, state memJob, result persistence.SyncResult) {
 	state.Lease = ""
 	state.Status.Phase = persistence.JobCompleted
+	state.Status.Attempts = 0
 	state.Status.BaselineValid = state.Applied == state.Generation
 	state.Status.Failure = ""
 	state.Status.LastHash = result.Hash

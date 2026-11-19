@@ -106,7 +106,7 @@ func (q *Queries) JobFence(ctx context.Context, arg JobFenceParams) (*uuid.UUID,
 }
 
 const jobFinish = `-- name: JobFinish :execrows
-UPDATE registry_sync SET sync_status='COMPLETED',error_msg=NULL,ended_at=clock_timestamp(),
+UPDATE registry_sync SET sync_status='COMPLETED',error_msg=NULL,ended_at=clock_timestamp(),attempt_count=0,
  lease_id=NULL,lease_expires_at=NULL,lease_generation=NULL,
  last_sync_hash=$4,last_applied_filter_hash=$5,server_count=$6,skill_count=$7,plugin_count=$8,
  applied_generation=$3::bigint
@@ -144,7 +144,7 @@ func (q *Queries) JobFinish(ctx context.Context, arg JobFinishParams) (int64, er
 }
 
 const jobFinishUnchanged = `-- name: JobFinishUnchanged :execrows
-UPDATE registry_sync SET sync_status='COMPLETED',error_msg=NULL,ended_at=clock_timestamp(),
+UPDATE registry_sync SET sync_status='COMPLETED',error_msg=NULL,ended_at=clock_timestamp(),attempt_count=0,
  lease_id=NULL,lease_expires_at=NULL,lease_generation=NULL
 WHERE source_id=$1::uuid AND lease_id=$2::uuid AND lease_generation=$3::bigint
  AND lease_expires_at>clock_timestamp() AND sync_status='IN_PROGRESS'
@@ -206,13 +206,19 @@ WHERE s.syncable AND s.source_type IN ('git','api','file') AND s.sync_schedule I
  AND NOT (s.name = ANY($1::text[]))
  AND (rs.lease_id IS NULL OR rs.lease_expires_at <= clock_timestamp() OR rs.lease_generation <> s.definition_generation)
  AND (rs.ended_at IS NULL OR rs.ended_at + s.sync_schedule <= clock_timestamp()
+      OR (rs.sync_status='FAILED' AND rs.ended_at + LEAST(s.sync_schedule, $2::bigint * interval '1 microsecond') <= clock_timestamp())
       OR rs.observed_generation IS DISTINCT FROM s.definition_generation)
 ORDER BY rs.ended_at ASC NULLS FIRST, s.name COLLATE "C"
 LIMIT 1 FOR UPDATE OF s SKIP LOCKED
 `
 
-func (q *Queries) JobNext(ctx context.Context, dollar_1 []string) (string, error) {
-	row := q.db.QueryRow(ctx, jobNext, dollar_1)
+type JobNextParams struct {
+	Excluded          []string `json:"excluded"`
+	FailedRetryMicros int64    `json:"failed_retry_micros"`
+}
+
+func (q *Queries) JobNext(ctx context.Context, arg JobNextParams) (string, error) {
+	row := q.db.QueryRow(ctx, jobNext, arg.Excluded, arg.FailedRetryMicros)
 	var name string
 	err := row.Scan(&name)
 	return name, err
