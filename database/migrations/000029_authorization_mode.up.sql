@@ -13,3 +13,13 @@ CREATE TABLE authorization_mode (
 INSERT INTO authorization_mode (mode)
 SELECT 'claims'
  WHERE EXISTS (SELECT 1 FROM source) OR EXISTS (SELECT 1 FROM registry);
+
+-- Grant explicitly instead of relying on the default privileges set by whoever
+-- ran migration 1: a deployment that changed its migration role since then
+-- would otherwise leave the application role unable to read this table.
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'toolhive_registry_server') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON authorization_mode TO toolhive_registry_server;
+    END IF;
+END $$;
