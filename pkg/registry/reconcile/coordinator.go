@@ -60,8 +60,9 @@ func New(jobs persistence.Jobs, fetcher Fetcher, options Options) (*Coordinator,
 // does not make a poller ready. Operator readiness has a stronger startup barrier.
 func (c *Coordinator) Ready() bool { return c.ready.Load() }
 
-// Run polls until cancellation (nil), or a fatal backend error. Fetch/validation
-// failures are safely recorded and retried on the backend's schedule. Even an
+// Run polls until cancellation (nil), or a fatal backend error. Fetch, validation
+// and storage-conflict failures are safely recorded and retried on the backend's
+// schedule. Even an
 // immediately due failing backend cannot cause a hot loop: every attempt waits.
 func (c *Coordinator) Run(ctx context.Context) error {
 	if !c.running.CompareAndSwap(false, true) {
@@ -143,7 +144,25 @@ func (c *Coordinator) execute(ctx context.Context, job persistence.Job) (bool, e
 		(!errors.Is(failErr, persistence.ErrStale) || !staleOnly(failErr)) {
 		return false, errors.Join(err, failErr)
 	}
-	return category == persistence.FailureFetch || category == persistence.FailureValidation, err
+	return retryable(category, err), err
+}
+
+// retryable reports whether Run keeps polling after a recorded failure. Fetch and
+// validation failures belong to one source. So does a storage conflict: a commit
+// that lost its serialization retries to concurrent writers (publishes, another
+// source's sync) or found the source recreated. Any other storage failure means
+// the backend itself is unhealthy and ends Run.
+func retryable(category persistence.FailureCategory, err error) bool {
+	switch category {
+	case persistence.FailureFetch, persistence.FailureValidation:
+		return true
+	case persistence.FailureStorage:
+		return errors.Is(err, persistence.ErrConflict)
+	case persistence.FailureCancelled:
+		return false
+	default:
+		return false
+	}
 }
 
 func staleOnly(err error) bool {
