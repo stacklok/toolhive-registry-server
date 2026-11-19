@@ -922,14 +922,59 @@ func TestSyncRunner_ParentContextCancellation(t *testing.T) {
 	require.NoError(t, runner.Stop())
 }
 
-func TestSyncRunner_StartReturnsRuntimeFailure(t *testing.T) {
+func TestSyncRunner_RestartsFailedRuntime(t *testing.T) {
 	t.Parallel()
 	listErr := errors.New("list failed")
-	runner := &syncRunner{runtime: newTestRuntime(t, listErr)}
+	ctrl := gomock.NewController(t)
+	sources := standalonemocks.NewMockSources(ctrl)
+	// The database fails twice, then recovers.
+	var lists atomic.Int32
+	sources.EXPECT().ListSources(gomock.Any()).DoAndReturn(func(context.Context) ([]persistence.SourceDefinition, error) {
+		if lists.Add(1) <= 2 {
+			return nil, listErr
+		}
+		return nil, nil
+	}).AnyTimes()
+	jobs := reconcilemocks.NewMockJobs(ctrl)
+	jobs.EXPECT().ClaimNext(gomock.Any(), gomock.Any()).Return(persistence.Job{}, false, nil).AnyTimes()
+	runtime, err := standalone.New(sources, jobs, reconcilemocks.NewMockFetcher(ctrl), standalone.Options{
+		Reconcile: reconcile.Options{PollInterval: time.Hour, LeaseDuration: time.Minute},
+		Operator: func(persistence.SourceDefinition) (standalone.Worker, error) {
+			return nil, errors.New("no operator in this test")
+		},
+		Preflight: func(context.Context, persistence.SourceDefinition) error { return nil },
+	})
+	require.NoError(t, err)
+	runner := &syncRunner{runtime: runtime, restartMin: time.Millisecond, restartMax: 4 * time.Millisecond}
 
-	err := runner.Start(context.Background())
-	require.Error(t, err)
-	assert.ErrorIs(t, err, listErr)
+	done := make(chan error, 1)
+	go func() { done <- runner.Start(context.Background()) }()
+	waitFor(t, runner.Ready, "runtime was not restarted after failures")
+	require.GreaterOrEqual(t, lists.Load(), int32(3))
+
+	require.NoError(t, runner.Stop())
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start did not return after Stop")
+	}
+}
+
+func TestSyncRunner_StopDuringRestartDelay(t *testing.T) {
+	t.Parallel()
+	runner := &syncRunner{runtime: newTestRuntime(t, errors.New("list failed")), restartMin: time.Hour}
+
+	done := make(chan error, 1)
+	go func() { done <- runner.Start(context.Background()) }()
+	time.Sleep(20 * time.Millisecond) // let the first run fail and the delay begin
+	require.NoError(t, runner.Stop())
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop did not end the restart delay")
+	}
 	assert.False(t, runner.Ready())
 }
 
