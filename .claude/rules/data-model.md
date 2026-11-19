@@ -90,14 +90,16 @@ recreated.
 
 ## 6. Source Names Must Be Valid DNS Subdomains (RFC 1123)
 
-Source names are used as suffixes for Kubernetes leader-election lease names. Invalid DNS
-labels fail lease creation opaquely.
+v1.5.4 needed this because source names suffixed Kubernetes leader-election lease names.
+The server no longer uses leader election (database leases fence sync), so the rule is now
+an API contract rather than a technical need: every existing source already satisfies it,
+and relaxing it is a deliberate, separate change.
 
 **What must hold:** `IsValidDNSSubdomain` gates every source name at write time (config +
 API). Max 63 chars, lowercase alphanumeric + hyphens, no leading/trailing hyphen.
 
-**Breaks if violated:** leader election silently fails; operators see "no leader" instead
-of a validation error.
+**Breaks if violated:** clients and scripts that assume DNS-safe source names (as in
+labels, file names or URLs) start receiving names they did not expect.
 
 ## 7. One Sanctioned JSONB Claims Check in SQL; Everything Else in Go
 
