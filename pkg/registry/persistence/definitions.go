@@ -23,6 +23,9 @@ var (
 	ErrReferenceNotFound = fmt.Errorf("%w: referenced source not found", ErrNotFound)
 	// ErrNoManagedSource refines ErrNotFound when the publication destination is absent.
 	ErrNoManagedSource = fmt.Errorf("%w: no managed source", ErrNotFound)
+	// ErrViewNotFound refines ErrNotFound when a read names a view that does not
+	// exist, distinct from a missing entry in an existing view.
+	ErrViewNotFound = fmt.Errorf("%w: view not found", ErrNotFound)
 	// ErrConflict means an immutable property or ownership constraint was violated.
 	ErrConflict = errors.New("definition conflict")
 	// ErrAlreadyExists refines ErrConflict only for an existing source or view name.

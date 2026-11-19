@@ -63,7 +63,7 @@ func (d *Entries) ListViewEntries(ctx context.Context, view string, query persis
 	q := sqlc.New(tx)
 	rawID, err := q.DefViewID(ctx, view)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return persistence.EntryPage{}, persistence.ErrNotFound
+		return persistence.EntryPage{}, persistence.ErrViewNotFound
 	}
 	if err != nil {
 		return persistence.EntryPage{}, viewReadError(err)
