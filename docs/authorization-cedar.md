@@ -178,6 +178,29 @@ Grants are independent: a publisher who should also browse needs a
 | Policy evaluation failure | 503 | `{"error":"authorization denied or unavailable"}` |
 | Admin route with `admin.enabled` off, `/v1/me`, `/v1/entries/{type}/{name}/claims` | 404 | |
 
+Cedar admits a request before the registry is looked up, so a registry name the caller
+has no `catalog.read` permit for returns 403 whether or not the registry exists. Callers
+cannot use the status to learn which registry names exist. A caller permitted to read any
+registry (for example through `resource is Registry::View`) gets 404 `{"error":"not found"}`
+for one that doesn't exist. Claims mode returns 404 `{"error":"registry not found"}` in both
+cases.
+
+### Differences from claims mode
+
+Cedar mode is new, so these differences break no existing client, but they matter if you
+move a client from a claims-mode deployment:
+
+- **Admin error bodies are categories**, not the claims-mode messages. A failed admin request
+  returns a short category such as `invalid request` (400), `referenced source not found` (400),
+  `source type or location change not allowed` (400), `cannot modify config-created resource`
+  (403), `not found` (404), `resource conflict` (409) and `internal server error` (500). For
+  example, publishing a version that already exists returns 409 `resource conflict` rather
+  than a message naming the server and version.
+- **`POST /v1/entries` returns the stored server or skill as published**, without the empty
+  `_meta` object claims mode adds to servers. Consumer reads still return `_meta`.
+- **Unknown registries return 403** unless the policy permits reads of every registry; see
+  above.
+
 Only `/.well-known/oauth-protected-resource` is served without authorization.
 Health, readiness, version and metrics stay on the internal port.
 
