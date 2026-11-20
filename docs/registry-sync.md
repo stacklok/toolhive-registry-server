@@ -121,6 +121,8 @@ When a source is synced:
 4. **Store**: The processed data is written to the database in a single serializable transaction. Existing entries are updated, and entries no longer present in the source are removed. Entry claims are written in the same transaction.
 5. **Update status**: The sync record is updated with the outcome — success or failure, along with the new data hash and entry counts (servers, skills, plugins).
 
+For file and Git sources, the fetched bytes are hashed before they are parsed. When that hash and the filter configuration both match the last successful sync, the sync stops there: nothing is parsed, validated or written, and only the next due time moves. API sources are compared after decoding, because their hash covers the decoded data rather than the raw response.
+
 If the sync fails at any stage, nothing is written, the previous data stays visible, and the source is marked as `Failed`. There is no permanent error state; every failed source is retried. The status message names the failed stage (`Fetch failed`, `Registry validation failed`, `Storage failed`, `Sync cancelled`) rather than the raw error, which can contain credentials; the server log has the details.
 
 A commit that keeps conflicting with concurrent writes, such as publishes, fails only that attempt; the source is retried like any other failure. If the database itself fails (unreachable, or missing a privilege), sync stops for every source and the server restarts it, after 1 second and then doubling up to 1 minute, logging `Source synchronization stopped; restarting` with the cause each time. Consumer reads keep serving the last synced data meanwhile.
