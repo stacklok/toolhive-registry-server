@@ -120,6 +120,18 @@ func TestUnsetAuthorizationEnvironmentKeepsClaimsMode(t *testing.T) {
 	assert.Equal(t, AuthorizationModeClaims, cfg.AuthorizationMode())
 }
 
+//nolint:paralleltest // sets process environment variables
+func TestEmptyAuthorizationEnvironmentKeepsClaimsMode(t *testing.T) {
+	t.Setenv(envAuthorizationPolicyFile, "")
+	t.Setenv(envAuthorizationAllowAnonymous, "")
+	t.Setenv(envAdminEnabled, "")
+	cfg, err := loadAuthzConfig(t, "auth: {mode: anonymous}\n")
+	require.NoError(t, err)
+	assert.Nil(t, cfg.Authorization, "an empty variable counts as unset")
+	assert.Nil(t, cfg.Admin)
+	assert.Equal(t, AuthorizationModeClaims, cfg.AuthorizationMode())
+}
+
 func TestCedarIdentityMappingsValidated(t *testing.T) {
 	t.Parallel()
 	ok := oauthBlock + `authorization:

@@ -184,6 +184,7 @@ problem and run the command again.
 |-----------|-----------|--------------|
 | 24 | up | The database has more than one managed source. See [Repairing more than one managed source](#repairing-more-than-one-managed-source). |
 | 26 | down | A sync job holds a live lease. Stop every server, wait for the leases to expire (at most the lease duration, one minute by default), then retry. |
+| 29 | down | The database runs in Cedar authorization mode. No earlier version supports Cedar mode, and re-applying migration 29 would record claims mode, so a Cedar deployment cannot be rolled back. |
 
 The checks are not locks: stop every server before a manual `migrate down`, so
 no new lease is taken between the check and the migration.

@@ -84,18 +84,20 @@ func (c *Config) AdminEnabled() bool {
 // applyAuthorizationEnv applies the Cedar-mode environment overrides. They are
 // read directly rather than through viper defaults so that an unset variable
 // never makes the authorization block present, which would select Cedar mode.
+// A variable set to the empty string counts as unset, so a templated
+// "VAR=" cannot switch a deployment into Cedar mode.
 func (c *Config) applyAuthorizationEnv() error {
-	if v, ok := os.LookupEnv(envAuthorizationPolicyFile); ok {
+	if v, ok := lookupNonEmptyEnv(envAuthorizationPolicyFile); ok {
 		c.ensureAuthorization().PolicyFile = v
 	}
-	if v, ok := os.LookupEnv(envAuthorizationAllowAnonymous); ok {
+	if v, ok := lookupNonEmptyEnv(envAuthorizationAllowAnonymous); ok {
 		b, err := strconv.ParseBool(v)
 		if err != nil {
 			return fmt.Errorf("%s: %w", envAuthorizationAllowAnonymous, err)
 		}
 		c.ensureAuthorization().AllowAnonymousCatalog = b
 	}
-	if v, ok := os.LookupEnv(envAdminEnabled); ok {
+	if v, ok := lookupNonEmptyEnv(envAdminEnabled); ok {
 		b, err := strconv.ParseBool(v)
 		if err != nil {
 			return fmt.Errorf("%s: %w", envAdminEnabled, err)
@@ -178,4 +180,11 @@ func (c *Config) oauthIssuers() []string {
 		issuers = append(issuers, p.IssuerURL)
 	}
 	return issuers
+}
+
+// lookupNonEmptyEnv reports a variable's value only when it is set and not
+// empty.
+func lookupNonEmptyEnv(name string) (string, bool) {
+	v, ok := os.LookupEnv(name)
+	return v, ok && v != ""
 }
