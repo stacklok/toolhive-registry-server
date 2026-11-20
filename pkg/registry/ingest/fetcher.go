@@ -239,7 +239,7 @@ func (defaultGit) Read(ctx context.Context, spec persistence.GitSpec, password s
 	defer func() { _ = client.Cleanup(ctx, repo) }()
 	attrs := []any{"source", source, "repository", repository, "duration", time.Since(started).String(), "branch", repo.Branch}
 	if repo.Repository != nil {
-		if ref, headErr := repo.Repository.Head(); headErr == nil {
+		if ref, lookupErr := repo.Repository.Head(); lookupErr == nil {
 			attrs = append(attrs, "commit_sha", ref.Hash().String())
 		}
 	}
