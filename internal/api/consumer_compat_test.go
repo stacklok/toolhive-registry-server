@@ -24,14 +24,16 @@ import (
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
-// stubPages serves fixed entries, or err, for every consumer read.
+// stubPages serves fixed entries, or err, for every consumer read; lists
+// carry cursor as their continuation.
 type stubPages struct {
 	entries []persistence.Entry
 	err     error
+	cursor  string
 }
 
 func (p stubPages) List(context.Context, string, catalog.Query) (catalog.Page, error) {
-	return catalog.Page{Entries: p.clone()}, p.err
+	return catalog.Page{Entries: p.clone(), NextCursor: p.cursor}, p.err
 }
 
 func (p stubPages) Get(context.Context, string, catalog.EntryName, catalog.VersionSelector) (persistence.Entry, error) {

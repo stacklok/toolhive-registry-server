@@ -11,8 +11,10 @@ import (
 	mcp "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -246,6 +248,7 @@ func TestOperatorWorkerFailureAfterRestart(t *testing.T) {
 	}{
 		{name: "transient storage failure is retried", failure: errors.New("database unavailable"), retried: true},
 		{name: "ownership error returns", failure: persistence.ErrNotFound, retried: false},
+		{name: "unavailable storage returns", failure: persistence.ErrUnavailable, retried: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setRestartDelays(t, time.Millisecond, 4*time.Millisecond, time.Hour)
@@ -306,4 +309,57 @@ func TestOperatorWorkerFailureAfterRestart(t *testing.T) {
 			require.NoError(t, <-done)
 		})
 	}
+}
+
+// A source the server cannot list yet (here, RBAC forbids it) fails its first
+// sync. The failure is recorded on the source and the worker retries; it does
+// not return, which would stop sync for every other source.
+//
+//nolint:paralleltest // mutates the package-level restart delays
+func TestOperatorWorkerRetriesFailureBeforeFirstSync(t *testing.T) {
+	setRestartDelays(t, time.Millisecond, 4*time.Millisecond, time.Hour)
+	s := runtime.NewScheme()
+	require.NoError(t, mcp.AddToScheme(s))
+	forbidden := apierrors.NewForbidden(schema.GroupResource{Group: "toolhive.stacklok.dev", Resource: "mcpservers"}, "",
+		errors.New("cannot list"))
+	var lists atomic.Int32
+	api := fake.NewClientBuilder().WithScheme(s).WithInterceptorFuncs(interceptor.Funcs{
+		Watch: func(context.Context, client.WithWatch, client.ObjectList, ...client.ListOption) (watch.Interface, error) {
+			return watch.NewRaceFreeFake(), nil
+		},
+		List: func(ctx context.Context, api client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			if lists.Add(1) <= 3 { // the first three attempts fail on their first list
+				return forbidden
+			}
+			return api.List(ctx, list, opts...)
+		},
+	}).Build()
+	d := restartDefinition()
+	job := persistence.Job{Source: d, LeaseID: "lease", Generation: 1}
+	jobs := mocks.NewMockJobs(gomock.NewController(t))
+	jobs.EXPECT().Acquire(gomock.Any(), d.Name, time.Minute).AnyTimes().Return(job, nil)
+	jobs.EXPECT().Fail(gomock.Any(), job, persistence.FailureFetch).Times(3).Return(nil)
+	jobs.EXPECT().Status(gomock.Any(), d.Name).AnyTimes().Return(persistence.JobStatus{SourceID: d.ID}, nil)
+	committed := make(chan struct{})
+	jobs.EXPECT().CommitSnapshot(gomock.Any(), job, gomock.Any(), gomock.Any()).DoAndReturn(
+		func(context.Context, persistence.Job, persistence.SyncResult, model.Snapshot) error {
+			close(committed)
+			return nil
+		})
+	worker, err := NewStandaloneOperator(api, jobs, d, restartOptions(), nil)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- worker.Run(ctx) }()
+	select {
+	case <-committed:
+	case err := <-done:
+		t.Fatalf("worker returned instead of retrying: %v", err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("source never synced after the failures cleared")
+	}
+	require.Eventually(t, worker.Ready, 3*time.Second, time.Millisecond)
+	cancel()
+	require.NoError(t, <-done)
 }

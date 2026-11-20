@@ -80,7 +80,7 @@ func TestDiscoveryCompletionIgnoresNilWorkerAfterLifetimeCancellation(t *testing
 	defer cancel()
 	result := make(chan error, 1)
 	go func() {
-		_, err := r.discover(t.Context(), lifetime, false, nil, func() {})
+		_, err := r.discover(t.Context(), lifetime, nil, func() {})
 		result <- err
 	}()
 	lifecycleBarrier(t, listed)

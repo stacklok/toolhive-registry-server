@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -112,12 +113,9 @@ func TestNewRegistryApp_UsesInjectedFetcher(t *testing.T) {
 	called := make(chan persistence.SourceDefinition, 1)
 	fetcher := reconcilemocks.NewMockFetcher(gomock.NewController(t))
 	fetcher.EXPECT().Fetch(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, d persistence.SourceDefinition) (ingest.Result, error) {
+		func(_ context.Context, d persistence.SourceDefinition) (ingest.Result, error) {
 			once.Do(func() { called <- d })
-			// Block until Stop: injected I/O must honor cancellation
-			// (standalone.Options), and this keeps shutdown deterministic.
-			<-ctx.Done()
-			return ingest.Result{}, ctx.Err()
+			return ingest.Result{}, errors.New("upstream unreachable")
 		}).AnyTimes()
 
 	recorder := tracetest.NewSpanRecorder()
@@ -136,14 +134,25 @@ func TestNewRegistryApp_UsesInjectedFetcher(t *testing.T) {
 	case <-time.After(15 * time.Second):
 		t.Fatal("injected fetcher was never called")
 	}
+	// v1.5.4's sync span records the failed sync.
 	require.Eventually(t, func() bool {
-		for _, s := range recorder.Started() {
-			if s.Name() == "sync.fetch" {
+		for _, s := range recorder.Ended() {
+			if s.Name() == "sync.performRegistrySync" && s.InstrumentationScope().Name == SyncTracerName {
 				return true
 			}
 		}
 		return false
-	}, 5*time.Second, 20*time.Millisecond, "a tracer provider wraps the fetcher in a span")
+	}, 5*time.Second, 20*time.Millisecond, "a tracer provider records sync spans")
+
+	// Consumer reads get v1.5.4's database service spans.
+	rec := httptest.NewRecorder()
+	app.GetHTTPServer().Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/registry/main/v0.1/servers", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	var listed bool
+	for _, s := range recorder.Ended() {
+		listed = listed || s.Name() == "dbService.ListServers"
+	}
+	assert.True(t, listed, "a consumer list records dbService.ListServers")
 }
 
 func TestNewRegistryApp_WithMeterProvider(t *testing.T) {
@@ -156,7 +165,7 @@ func TestNewRegistryApp_WithMeterProvider(t *testing.T) {
 	app := newTestRegistryApp(t, WithConfig(cfg), WithReconcileOptions(fastReconcile), WithMeterProvider(provider))
 	runSync(t, app.components.Sync)
 
-	// The inline sync completes through measuredJobs, which records it.
+	// The inline sync commits through observedJobs, which records it.
 	require.Eventually(t, func() bool {
 		var rm metricdata.ResourceMetrics
 		if err := reader.Collect(context.Background(), &rm); err != nil {
@@ -383,22 +392,49 @@ func TestBuildCatalog_KubernetesSourceUsesOperator(t *testing.T) {
 	require.NoError(t, <-done)
 }
 
+// A Kubernetes source the server cannot list yet (no permission, CRDs not
+// installed, API server unreachable) does not stop startup, as in v1.5.4: it
+// is logged and its worker retries. Invalid configuration still stops it.
 func TestBuildCatalog_OperatorPreflightFailure(t *testing.T) {
 	t.Parallel()
-	cfg := catalogTestConfig(newTestDatabaseConfig(t))
-	cfg.Sources = append(cfg.Sources, config.SourceConfig{Name: "k8s-src", Kubernetes: &config.KubernetesConfig{}})
-	preflightErr := errors.New("CRDs not installed")
-	b := newBuildCatalogConfig(t, cfg)
-	b.operator = &fakeOperator{preflightErr: preflightErr}
+	for _, tc := range []struct {
+		name        string
+		err         error
+		wantStartup bool
+	}{
+		{name: "kubernetes cannot be listed", err: errors.New("CRDs not installed"), wantStartup: true},
+		{name: "invalid definition", err: fmt.Errorf("%w: bad namespace", persistence.ErrInvalid), wantStartup: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := catalogTestConfig(newTestDatabaseConfig(t))
+			cfg.Sources = append(cfg.Sources, config.SourceConfig{Name: "k8s-src", Kubernetes: &config.KubernetesConfig{}})
+			b := newBuildCatalogConfig(t, cfg)
+			operator := &fakeOperator{preflightErr: tc.err}
+			b.operator = operator
 
-	built, err := buildCatalog(context.Background(), b)
-	require.ErrorIs(t, err, preflightErr)
-	assert.Nil(t, built)
+			built, err := buildCatalog(context.Background(), b)
+			sources, listErr := listPersistedSources(t, b)
+			require.NoError(t, listErr)
+			if !tc.wantStartup {
+				require.ErrorIs(t, err, tc.err)
+				assert.Nil(t, built)
+				// Nothing was reconciled: preflight runs before definitions are written.
+				assert.Empty(t, sources)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, built)
+			assert.Len(t, sources, 3, "every config source is stored, the kubernetes one included")
 
-	// Nothing was reconciled: preflight runs before definitions are written.
-	sources, err := listPersistedSources(t, b)
-	require.NoError(t, err)
-	assert.Empty(t, sources)
+			// The kubernetes source still gets its worker, which retries.
+			done := make(chan error, 1)
+			go func() { done <- built.sync.Start(context.Background()) }()
+			require.Eventually(t, func() bool { return operator.workers.Load() == 1 }, 10*time.Second, 20*time.Millisecond)
+			require.NoError(t, built.sync.Stop())
+			require.NoError(t, <-done)
+		})
+	}
 }
 
 // listPersistedSources lists persisted sources through a fresh catalog handle.

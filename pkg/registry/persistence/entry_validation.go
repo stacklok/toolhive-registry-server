@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	thvregistry "github.com/stacklok/toolhive-core/registry/types"

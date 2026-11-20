@@ -2,7 +2,7 @@ package kubernetes
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"sync"
 
 	mcp "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
@@ -63,7 +63,7 @@ func (f *StandaloneFactory) Worker(
 func NewStandaloneClient() (client.WithWatch, error) {
 	cfg, err := ctrlconfig.GetConfig()
 	if err != nil {
-		return nil, errors.New("operator client configuration unavailable")
+		return nil, fmt.Errorf("kubernetes client configuration unavailable: %w", err)
 	}
 	scheme := runtime.NewScheme()
 	if err := mcp.AddToScheme(scheme); err != nil {
@@ -71,7 +71,7 @@ func NewStandaloneClient() (client.WithWatch, error) {
 	}
 	api, err := client.NewWithWatch(cfg, client.Options{Scheme: scheme})
 	if err != nil {
-		return nil, errors.New("operator client unavailable")
+		return nil, fmt.Errorf("kubernetes client unavailable: %w", err)
 	}
 	return api, nil
 }

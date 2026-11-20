@@ -11,8 +11,10 @@ import (
 	mcp "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -180,11 +182,18 @@ func TestStandaloneLaterNamespaceKindAndIncompleteListsNeverCommit(t *testing.T)
 				require.NotContains(t, err.Error(), "sensitive")
 				jobs := mocks.NewMockJobs(gomock.NewController(t))
 				job := persistence.Job{Source: d, LeaseID: "lease"}
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
 				jobs.EXPECT().Acquire(gomock.Any(), d.Name, time.Minute).Return(job, nil)
-				jobs.EXPECT().Fail(gomock.Any(), job, persistence.FailureFetch).Return(nil)
+				// The failure is recorded on the source; the worker then retries
+				// it (until cancelled here) rather than stop sync for others.
+				jobs.EXPECT().Fail(gomock.Any(), job, persistence.FailureFetch).DoAndReturn(
+					func(context.Context, persistence.Job, persistence.FailureCategory) error { cancel(); return nil })
 				runner, err := kubernetes.NewStandaloneOperator(api, jobs, d, standaloneOptions(), nil)
 				require.NoError(t, err)
-				require.ErrorIs(t, runner.Run(t.Context()), ingest.ErrFetch)
+				if err := runner.Run(ctx); err != nil {
+					require.ErrorIs(t, err, ingest.ErrFetch, "only the recorded attempt's failure, cancelled before a retry")
+				}
 			})
 		}
 	}
@@ -239,8 +248,7 @@ func TestStandaloneAnnotationChangeForcesCommit(t *testing.T) {
 		"toolhive.stacklok.dev/registry-url":         "https://example.org/mcp",
 		"toolhive.stacklok.dev/registry-description": "description",
 	})
-	quiet := exportObject("VirtualMCPServer", nil) // not exported; updating it only wakes the runner
-	api := fake.NewClientBuilder().WithScheme(standaloneScheme(t)).WithObjects(obj, quiet).Build()
+	api := fake.NewClientBuilder().WithScheme(standaloneScheme(t)).WithObjects(obj).Build()
 	d := standaloneDefinition()
 	claims := kubernetes.NewAnnotationClaims()
 	jobs := mocks.NewMockJobs(gomock.NewController(t))
@@ -290,12 +298,15 @@ func TestStandaloneAnnotationChangeForcesCommit(t *testing.T) {
 		o.SetAnnotations(a)
 		require.NoError(t, api.Update(t.Context(), o))
 	}
-	update(quiet, func(a map[string]string) { a["touch"] = "1" })
+	// An unrelated annotation on the exported object wakes the runner (events
+	// on objects that are not exported are filtered out) without changing the
+	// exported server or its claims.
+	update(obj, func(a map[string]string) { a["touch"] = "1" })
 	require.Equal(t, "complete", next(), "nothing changed: no commit")
 	update(obj, func(a map[string]string) { a[retiredKey] = `{"team":"b"}` })
 	require.Equal(t, "commit", next(), "annotation-only change commits")
 	require.Equal(t, map[string][]byte{"com.toolhive.k8s.two/mcpserver": []byte(`{"team":"b"}`)}, claims.EntryClaims(d.Name))
-	update(quiet, func(a map[string]string) { a["touch"] = "2" })
+	update(obj, func(a map[string]string) { a["touch"] = "2" })
 	require.Equal(t, "complete", next(), "after the commit, unchanged again")
 	cancel()
 	require.NoError(t, <-done)
@@ -422,5 +433,57 @@ func TestStandaloneIgnoresClaimsOfUnexportedResources(t *testing.T) {
 		require.NoError(t, worker.Run(ctx))
 		require.Empty(t, claims.EntryClaims(d.Name), annotation)
 		cancel()
+	}
+}
+
+// A preflight list failure names the source, kind, namespace and Kubernetes
+// reason and keeps the client error for apierrors and logs, but its message
+// carries no client error text.
+func TestStandalonePreflightErrorNamesTheFailedList(t *testing.T) {
+	t.Parallel()
+	forbidden := apierrors.NewForbidden(schema.GroupResource{Group: "toolhive.stacklok.dev", Resource: "virtualmcpservers"},
+		"", errors.New("user \"system:serviceaccount:x:y\" cannot list"))
+	api := fake.NewClientBuilder().WithScheme(standaloneScheme(t)).WithInterceptorFuncs(interceptor.Funcs{
+		List: func(ctx context.Context, api client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			if _, ok := list.(*mcp.VirtualMCPServerList); ok {
+				return forbidden
+			}
+			return api.List(ctx, list, opts...)
+		},
+	}).Build()
+	err := kubernetes.PreflightStandaloneOperator(t.Context(), api, standaloneDefinition())
+	var preflightErr *kubernetes.PreflightError
+	require.ErrorAs(t, err, &preflightErr)
+	require.ErrorIs(t, err, ingest.ErrFetch)
+	require.True(t, apierrors.IsForbidden(err))
+	require.Equal(t, "operator", preflightErr.Source)
+	require.Equal(t, "VirtualMCPServer", preflightErr.Kind)
+	require.Equal(t, "one", preflightErr.Namespace)
+	require.Equal(t, "Forbidden", preflightErr.Reason())
+	require.Equal(t, `kubernetes source "operator": listing VirtualMCPServer in namespace one failed (Forbidden)`, err.Error())
+	require.Contains(t, preflightErr.Cause(), "cannot list")
+}
+
+// A namespace scope the operator would reject is explained, both in preflight
+// and when building the worker.
+func TestStandaloneInvalidNamespaces(t *testing.T) {
+	t.Parallel()
+	api := fake.NewClientBuilder().WithScheme(standaloneScheme(t)).Build()
+	for _, tc := range []struct {
+		namespaces []string
+		want       string
+	}{
+		{namespaces: []string{"Bad_NS"}, want: `namespace "Bad_NS" is not a valid namespace name`},
+		{namespaces: []string{"a", "a"}, want: `namespace "a" is listed more than once`},
+		{namespaces: []string{""}, want: `namespace "" is not a valid namespace name`},
+	} {
+		d := standaloneDefinition()
+		d.Kubernetes.Namespaces = tc.namespaces
+		err := kubernetes.PreflightStandaloneOperator(t.Context(), api, d)
+		require.ErrorIs(t, err, persistence.ErrInvalid)
+		require.ErrorContains(t, err, tc.want)
+		_, err = kubernetes.NewStandaloneOperator(api, mocks.NewMockJobs(gomock.NewController(t)), d, standaloneOptions(), nil)
+		require.ErrorIs(t, err, persistence.ErrInvalid)
+		require.ErrorContains(t, err, tc.want)
 	}
 }

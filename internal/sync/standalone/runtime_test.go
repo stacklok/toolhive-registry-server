@@ -468,36 +468,39 @@ func TestInlineCancellationAndIncarnationGuard(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			sources, jobs, fetcher := standalonemocks.NewMockSources(ctrl), mocks.NewMockJobs(ctrl), mocks.NewMockFetcher(ctrl)
 			d := persistence.SourceDefinition{ID: "old", Name: "inline", File: &persistence.FileSpec{Data: inlineData}}
-			sources.EXPECT().ListSources(gomock.Any()).Return([]persistence.SourceDefinition{d}, nil)
+			// The short poll interval below also reruns discovery.
+			sources.EXPECT().ListSources(gomock.Any()).Return([]persistence.SourceDefinition{d}, nil).MinTimes(1)
 			jobs.EXPECT().ClaimNext(gomock.Any(), time.Minute).Return(persistence.Job{}, false, nil).AnyTimes()
-			jobs.EXPECT().Status(gomock.Any(), d.Name).Return(persistence.JobStatus{SourceID: d.ID}, nil)
+			first := jobs.EXPECT().Status(gomock.Any(), d.Name).Return(persistence.JobStatus{SourceID: d.ID}, nil)
 			job := persistence.Job{Source: d, LeaseID: "lease"}
 			if recreated {
 				job.Source.ID = "new"
 			}
 			jobs.EXPECT().Acquire(gomock.Any(), d.Name, time.Minute).Return(job, nil)
 			opts := options()
+			opts.Reconcile.PollInterval = time.Millisecond
 			r, err := standalone.New(sources, jobs, fetcher, opts)
 			require.NoError(t, err)
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			category := persistence.FailureCancelled
 			if recreated {
-				category = persistence.FailureFetch
+				// The lease belongs to a newer incarnation: the old worker must
+				// not fetch or record a failure on it. It keeps polling and sees
+				// the new incarnation, which it does not own, so it never syncs.
+				jobs.EXPECT().Status(gomock.Any(), d.Name).After(first).DoAndReturn(
+					func(context.Context, string) (persistence.JobStatus, error) {
+						cancel()
+						return persistence.JobStatus{SourceID: "new"}, nil
+					})
 			} else {
 				fetcher.EXPECT().Fetch(gomock.Any(), d).DoAndReturn(func(ctx context.Context, _ persistence.SourceDefinition) (ingest.Result, error) {
 					cancel()
 					<-ctx.Done()
 					return ingest.Result{}, ctx.Err()
 				})
+				jobs.EXPECT().Fail(gomock.Any(), job, persistence.FailureCancelled).Return(nil)
 			}
-			jobs.EXPECT().Fail(gomock.Any(), job, category).DoAndReturn(func(context.Context, persistence.Job, persistence.FailureCategory) error { cancel(); return nil })
-			err = r.Run(ctx)
-			if recreated {
-				require.ErrorIs(t, err, ingest.ErrFetch, "cancellation during cleanup must not erase the completed attempt's failure")
-			} else {
-				require.NoError(t, err)
-			}
+			require.NoError(t, r.Run(ctx))
 			require.False(t, r.Ready())
 		})
 	}

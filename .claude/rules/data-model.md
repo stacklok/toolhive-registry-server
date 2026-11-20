@@ -91,7 +91,10 @@ that upserts over rows with `creation_type = 'API'`; API handlers that don't ret
 
 **Instead**: config-load reconciliation only touches `CONFIG` rows. API writes to a `CONFIG`
 resource return 403. A resource is never "converted" between the two — it is deleted and
-recreated.
+recreated. A config that collides with `API` rows is not applied at all, and does not stop
+startup: the server logs the conflict and keeps serving and syncing the stored definitions,
+writing config claims only to `CONFIG` rows of the same type (`reconcileConfig` in
+`internal/app/catalog_compat.go`).
 
 ## 6. Source Names Must Be Valid DNS Subdomains (RFC 1123)
 

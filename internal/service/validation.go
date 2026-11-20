@@ -3,6 +3,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
@@ -77,11 +78,31 @@ func validateSourceSpecific(req *SourceCreateRequest) error {
 		// Managed registries have no required fields
 		return nil
 	case config.SourceTypeKubernetes:
-		// Kubernetes registries have no required fields
-		return nil
+		return validateKubernetesConfig(req.Kubernetes)
 	default:
 		return fmt.Errorf("unknown source type")
 	}
+}
+
+// validateKubernetesConfig checks the namespace scope. No namespaces means the
+// server's watch namespaces (THV_REGISTRY_WATCH_NAMESPACE), else all
+// namespaces; the app applies that default before storing the source. Each
+// listed namespace must be a valid Kubernetes namespace name.
+func validateKubernetesConfig(cfg *config.KubernetesConfig) error {
+	if cfg == nil {
+		return nil
+	}
+	for i, namespace := range cfg.Namespaces {
+		if strings.TrimSpace(namespace) == "" {
+			return fmt.Errorf("kubernetes.namespaces[%d] is empty; omit kubernetes.namespaces to use the server's "+
+				"watch namespaces", i)
+		}
+		if !config.IsValidDNSSubdomain(strings.TrimSpace(namespace)) {
+			return fmt.Errorf("kubernetes.namespaces[%d]: %q is not a valid namespace name "+
+				"(lowercase alphanumeric and hyphens, max 63 chars)", i, namespace)
+		}
+	}
+	return nil
 }
 
 // validateGitConfig validates Git source configuration

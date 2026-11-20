@@ -102,6 +102,7 @@ func (s *dbService) PublishSkill(
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to convert skill: %w", err)
 	}
+	publishableSkill(librarySkill)
 	sourceName, err := s.publishThroughLibrary(ctx, persistence.Entry{
 		Kind: persistence.SkillKind, Name: skill.Name, Version: skill.Version, Skill: librarySkill,
 	}, gateClaims, claimsJSON)

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -15,8 +16,10 @@ import (
 	"sync/atomic"
 
 	mcp "github.com/stacklok/toolhive/cmd/thv-operator/api/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/stacklok/toolhive-registry-server/internal/db"
@@ -54,7 +57,9 @@ func NewAnnotationClaims() *AnnotationClaims {
 
 // EntryClaims returns the recorded per-server claims of a source. Scopes are
 // merged in a fixed order, so a name annotated in two scopes resolves the same
-// way every time.
+// way every time: as in v1.5.4, the last kind wins in the order MCPServer,
+// VirtualMCPServer, MCPRemoteProxy; within a kind, namespaces are merged in
+// name order.
 func (a *AnnotationClaims) EntryClaims(sourceName string) map[string][]byte {
 	if a == nil {
 		return nil
@@ -62,13 +67,28 @@ func (a *AnnotationClaims) EntryClaims(sourceName string) map[string][]byte {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	scopes := slices.SortedFunc(maps.Keys(a.bySource[sourceName]), func(x, y listScope) int {
-		return cmp.Or(cmp.Compare(x.namespace, y.namespace), cmp.Compare(x.kind, y.kind))
+		return cmp.Or(cmp.Compare(kindPrecedence(x.kind), kindPrecedence(y.kind)), cmp.Compare(x.namespace, y.namespace))
 	})
 	out := map[string][]byte{}
 	for _, scope := range scopes {
 		maps.Copy(out, a.bySource[sourceName][scope])
 	}
 	return out
+}
+
+// kindPrecedence orders exported kinds for claims merging; a later kind's
+// claims replace an earlier kind's for the same server name.
+func kindPrecedence(kind string) int {
+	switch kind {
+	case "MCPServer":
+		return 0
+	case "VirtualMCPServer":
+		return 1
+	case "MCPRemoteProxy":
+		return 2
+	default:
+		return 3
+	}
 }
 
 // replace swaps the recorded claims of one namespace and kind for a source.
@@ -188,6 +208,9 @@ func NewStandaloneOperator(
 	if api == nil {
 		return nil, persistence.ErrInvalid
 	}
+	if err := ValidateNamespaces(definition); err != nil {
+		return nil, err
+	}
 	if claims != nil {
 		// The runtime stops the previous worker before building this one.
 		claims.reset(definition.Name)
@@ -204,18 +227,57 @@ func NewStandaloneOperator(
 	return worker, nil
 }
 
+// PreflightError reports a Kubernetes list that failed during preflight. It
+// satisfies errors.Is for ingest.ErrFetch and wraps the Kubernetes client
+// error, so apierrors helpers work on it. Its message names the source, kind,
+// namespace and Kubernetes reason but not the client's error text, which is
+// for logs (Cause).
+type PreflightError struct {
+	Source    string
+	Kind      string
+	Namespace string
+	Err       error
+}
+
+// Error names the source, kind, namespace and Kubernetes reason.
+func (e *PreflightError) Error() string {
+	namespace := "namespace " + e.Namespace
+	if e.Namespace == "" {
+		namespace = "all namespaces"
+	}
+	msg := fmt.Sprintf("kubernetes source %q: listing %s in %s failed", e.Source, e.Kind, namespace)
+	if reason := e.Reason(); reason != "" {
+		msg += " (" + reason + ")"
+	}
+	return msg
+}
+
+// Cause returns the Kubernetes client error text with URL credentials and
+// queries removed, for logs.
+func (e *PreflightError) Cause() string { return ingest.RedactURLs(e.Err.Error()) }
+
+// Unwrap returns ingest.ErrFetch and the Kubernetes client error.
+func (e *PreflightError) Unwrap() []error { return []error{ingest.ErrFetch, e.Err} }
+
+// Reason returns the Kubernetes status reason (such as Forbidden or NotFound),
+// or "" when the API server gave none (a connection failure, for example).
+func (e *PreflightError) Reason() string { return string(apierrors.ReasonForError(e.Err)) }
+
 // PreflightStandaloneOperator lists all persisted effective namespaces/kinds.
-// It does not watch, lease or write.
+// It does not watch, lease or write. An invalid definition is
+// persistence.ErrInvalid; a failed list is a *PreflightError.
 func PreflightStandaloneOperator(ctx context.Context, api client.WithWatch, definition persistence.SourceDefinition) error {
 	if api == nil {
 		return persistence.ErrInvalid
 	}
+	if err := ValidateNamespaces(definition); err != nil {
+		return err
+	}
 	if definition.ID == "" {
 		definition.ID = "preflight"
 	}
-	checked := &standaloneExportClient{WithWatch: api}
-	if _, err := operator.NewFetcher(checked, definition); err != nil {
-		return err
+	if _, err := operator.NewFetcher(api, definition); err != nil {
+		return fmt.Errorf("kubernetes source %q: %w", definition.Name, err)
 	}
 	namespaces := definition.Kubernetes.Namespaces
 	if len(namespaces) == 0 {
@@ -223,10 +285,40 @@ func PreflightStandaloneOperator(ctx context.Context, api client.WithWatch, defi
 	}
 	for _, namespace := range namespaces {
 		for _, list := range []client.ObjectList{&mcp.MCPServerList{}, &mcp.VirtualMCPServerList{}, &mcp.MCPRemoteProxyList{}} {
-			if err := checked.List(ctx, list, client.InNamespace(namespace)); err != nil {
-				return err
+			if err := api.List(ctx, list, client.InNamespace(namespace)); err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return &PreflightError{Source: definition.Name, Kind: listKind(list), Namespace: namespace, Err: err}
+			}
+			if list.GetContinue() != "" {
+				return &PreflightError{Source: definition.Name, Kind: listKind(list), Namespace: namespace,
+					Err: errors.New("the API server returned an incomplete list page")}
 			}
 		}
+	}
+	return nil
+}
+
+// ValidateNamespaces explains why the operator would reject a Kubernetes
+// definition's namespace scope: each namespace must be a valid Kubernetes
+// namespace name (a DNS-1123 label), listed once. It returns nil for a
+// definition that is not a Kubernetes source.
+func ValidateNamespaces(definition persistence.SourceDefinition) error {
+	if definition.Kubernetes == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, namespace := range definition.Kubernetes.Namespaces {
+		if problems := validation.IsDNS1123Label(namespace); len(problems) != 0 {
+			return fmt.Errorf("%w: kubernetes source %q: namespace %q is not a valid namespace name: %s",
+				persistence.ErrInvalid, definition.Name, namespace, strings.Join(problems, "; "))
+		}
+		if seen[namespace] {
+			return fmt.Errorf("%w: kubernetes source %q: namespace %q is listed more than once",
+				persistence.ErrInvalid, definition.Name, namespace)
+		}
+		seen[namespace] = true
 	}
 	return nil
 }
@@ -240,25 +332,21 @@ type standaloneExportClient struct {
 	claims *AnnotationClaims
 }
 
+// A failed list keeps the Kubernetes error in its chain, so the library's
+// sync failure log carries the reason (Forbidden, NotFound, connection
+// refused); the library redacts URLs before logging it.
 func (c *standaloneExportClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
 	if err := c.WithWatch.List(ctx, list, opts...); err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		return ingest.ErrFetch
+		return fmt.Errorf("%w: %w", ingest.ErrFetch, err)
 	}
 	if list.GetContinue() != "" {
-		return ingest.ErrFetch
+		return fmt.Errorf("%w: incomplete list page", ingest.ErrFetch)
 	}
-	var kind string
-	switch list.(type) {
-	case *mcp.MCPServerList:
-		kind = "MCPServer"
-	case *mcp.VirtualMCPServerList:
-		kind = "VirtualMCPServer"
-	case *mcp.MCPRemoteProxyList:
-		kind = "MCPRemoteProxy"
-	default:
+	kind := listKind(list)
+	if kind == "" {
 		return nil
 	}
 	items, err := meta.ExtractList(list)
@@ -278,6 +366,20 @@ func (c *standaloneExportClient) List(ctx context.Context, list client.ObjectLis
 	listOptions.ApplyOptions(opts)
 	c.claims.replace(c.source, listScope{namespace: listOptions.Namespace, kind: kind}, byName)
 	return nil
+}
+
+// listKind names the exported kind a list holds, or "" for another list.
+func listKind(list client.ObjectList) string {
+	switch list.(type) {
+	case *mcp.MCPServerList:
+		return "MCPServer"
+	case *mcp.VirtualMCPServerList:
+		return "VirtualMCPServer"
+	case *mcp.MCPRemoteProxyList:
+		return "MCPRemoteProxy"
+	default:
+		return ""
+	}
 }
 
 // exportedClaims records the authz-claims annotation of each exported item,
