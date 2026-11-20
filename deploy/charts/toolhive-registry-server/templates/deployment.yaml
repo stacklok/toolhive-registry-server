@@ -66,8 +66,11 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if or (eq .Values.rbac.scope "namespace") .Values.extraEnv }}
           env:
+            {{- /* Deprecated: unused by this release; kept for older images (see
+            leader-election-role.yaml). Remove in the next release. */}}
+            - name: THV_REGISTRY_LEADER_ELECTION_ID
+              value: "{{ include "toolhive-registry-server.fullname" . }}-leader-election"
             {{- if eq .Values.rbac.scope "namespace" }}
             - name: THV_REGISTRY_WATCH_NAMESPACE
               value: "{{ .Values.rbac.allowedNamespaces | join "," }}"
@@ -75,7 +78,6 @@ spec:
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- end }}
           {{- with .Values.extraEnvFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
