@@ -22,7 +22,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
-//go:generate mockgen -destination=mocks/fetcher.go -package=mocks . Fetcher
+//go:generate mockgen -destination=mocks/fetcher.go -package=mocks . Fetcher,ChangeFetcher
 //go:generate mockgen -destination=mocks/jobs.go -package=mocks github.com/stacklok/toolhive-registry-server/pkg/registry/persistence Jobs
 
 // Fetcher must return a complete snapshot, never partial data on failure. It must
@@ -32,6 +32,20 @@ import (
 // coordinator logs it and returns only the category.
 type Fetcher interface {
 	Fetch(context.Context, persistence.SourceDefinition) (ingest.Result, error)
+}
+
+// ChangeFetcher is an optional Fetcher extension that skips decoding content
+// the source has already applied. When the source's applied baseline matches
+// the job's definition and filter, the coordinator calls FetchIfChanged with
+// the applied hash instead of Fetch. Reporting unchanged requires the fetched
+// content's hash to equal appliedHash; the Result then needs only Hash. When it
+// reports changed it must behave exactly like Fetch. Wrappers that do not
+// implement it are still correct; they only lose the shortcut.
+// ingest.Fetcher implements it for file and Git sources.
+type ChangeFetcher interface {
+	Fetcher
+	FetchIfChanged(ctx context.Context, source persistence.SourceDefinition, appliedHash string) (
+		result ingest.Result, unchanged bool, err error)
 }
 
 // Options configures the single-worker poller. Both durations must be positive;
@@ -290,25 +304,40 @@ func logFailure(ctx context.Context, source string, category persistence.Failure
 
 //nolint:gocyclo // Keep snapshot decisions and cancellation-aware failure classification in one attempt.
 func (c *Coordinator) apply(ctx context.Context, job persistence.Job) attempt {
-	fetched, err := c.fetcher.Fetch(ctx, job.Source)
+	filterHash, err := filterConfigHash(job.Source.Filter)
 	if err != nil {
-		if ctx.Err() != nil {
-			return failed(persistence.FailureCancelled, errors.Join(ctx.Err(), err), nil)
-		}
-		if errors.Is(err, persistence.ErrStale) {
-			// The fetcher captured an older definition: nothing is recorded and
-			// the fetcher's own error is returned so its owner can replace it.
-			return failed(persistence.FailureStorage, err, nil)
-		}
-		if errors.Is(err, persistence.ErrInvalid) {
-			return failed(persistence.FailureValidation, persistence.ErrInvalid, err)
-		}
-		return failed(persistence.FailureFetch, ingest.ErrFetch, err)
+		return failed(persistence.FailureValidation, persistence.ErrInvalid, fmt.Errorf("applying the source filter: %w", err))
+	}
+	// status is the source's job status when it was read before fetching
+	// (only for a ChangeFetcher); otherwise it is read after fetching. Either
+	// way Complete and CommitSnapshot fence a baseline or lease that changed
+	// since the read.
+	fetched, unchanged, status, err := c.fetch(ctx, job, filterHash)
+	if err != nil {
+		return fetchFailure(ctx, err)
 	}
 	if fetched.Hash == "" {
 		return failed(persistence.FailureValidation, persistence.ErrInvalid, errors.New("fetcher returned no content hash"))
 	}
-	snapshot, filterHash, err := filterSnapshot(ctx, fetched.Snapshot, job.Source.Filter)
+	if unchanged {
+		result := persistence.SyncResult{Hash: fetched.Hash, FilterHash: filterHash}
+		err = c.jobs.Complete(ctx, job, result)
+		if err == nil {
+			return attempt{unchanged: true, hash: result.Hash}
+		}
+		if !errors.Is(err, persistence.ErrConflict) || ctx.Err() != nil {
+			return failed(persistence.FailureStorage, err, nil)
+		}
+		// The applied baseline changed after it was read: fetch and apply in full.
+		status = nil
+		if fetched, err = c.fetcher.Fetch(ctx, job.Source); err != nil {
+			return fetchFailure(ctx, err)
+		}
+		if fetched.Hash == "" {
+			return failed(persistence.FailureValidation, persistence.ErrInvalid, errors.New("fetcher returned no content hash"))
+		}
+	}
+	snapshot, err := filterSnapshot(ctx, fetched.Snapshot, job.Source.Filter)
 	if err != nil {
 		return failed(persistence.FailureValidation, persistence.ErrInvalid, fmt.Errorf("applying the source filter: %w", err))
 	}
@@ -319,15 +348,18 @@ func (c *Coordinator) apply(ctx context.Context, job persistence.Job) attempt {
 		return failed(persistence.FailureValidation, persistence.ErrInvalid, err)
 	}
 	result := persistence.SyncResult{Hash: fetched.Hash, FilterHash: filterHash}
-	status, err := c.jobs.Status(ctx, job.Source.Name)
-	if err != nil && ctx.Err() != nil {
-		return failed(persistence.FailureCancelled, err, nil)
-	}
-	if errors.Is(err, persistence.ErrNotFound) {
-		return failed(persistence.FailureStorage, persistence.ErrStale, nil)
-	}
-	if err != nil {
-		return failed(persistence.FailureStorage, err, nil)
+	if status == nil {
+		read, err := c.jobs.Status(ctx, job.Source.Name)
+		if err != nil && ctx.Err() != nil {
+			return failed(persistence.FailureCancelled, err, nil)
+		}
+		if errors.Is(err, persistence.ErrNotFound) {
+			return failed(persistence.FailureStorage, persistence.ErrStale, nil)
+		}
+		if err != nil {
+			return failed(persistence.FailureStorage, err, nil)
+		}
+		status = &read
 	}
 	if status.SourceID != job.Source.ID {
 		return failed(persistence.FailureStorage, persistence.ErrStale, nil)
@@ -352,26 +384,75 @@ func (c *Coordinator) apply(ctx context.Context, job persistence.Job) attempt {
 	return failed(persistence.FailureStorage, err, nil)
 }
 
-func filterSnapshot(ctx context.Context, snapshot model.Snapshot, filter *persistence.Filter) (model.Snapshot, string, error) {
+// fetch fetches job's source. A ChangeFetcher first gets the source's job
+// status, which is returned for reuse: when the applied baseline belongs to
+// this definition and filter, content matching the applied hash is reported
+// unchanged without being decoded. A failed status read only loses the
+// shortcut; the status is then nil and apply reads it again after fetching.
+func (c *Coordinator) fetch(ctx context.Context, job persistence.Job, filterHash string) (
+	ingest.Result, bool, *persistence.JobStatus, error,
+) {
+	changes, ok := c.fetcher.(ChangeFetcher)
+	if !ok {
+		fetched, err := c.fetcher.Fetch(ctx, job.Source)
+		return fetched, false, nil, err
+	}
+	status, err := c.jobs.Status(ctx, job.Source.Name)
+	if err != nil {
+		fetched, err := changes.Fetch(ctx, job.Source)
+		return fetched, false, nil, err
+	}
+	if !status.BaselineValid || status.SourceID != job.Source.ID ||
+		status.LastFilterHash != filterHash || status.LastHash == "" {
+		fetched, err := changes.Fetch(ctx, job.Source)
+		return fetched, false, &status, err
+	}
+	fetched, unchanged, err := changes.FetchIfChanged(ctx, job.Source, status.LastHash)
+	return fetched, unchanged, &status, err
+}
+
+// fetchFailure classifies a fetch error.
+func fetchFailure(ctx context.Context, err error) attempt {
+	if ctx.Err() != nil {
+		return failed(persistence.FailureCancelled, errors.Join(ctx.Err(), err), nil)
+	}
+	if errors.Is(err, persistence.ErrStale) {
+		// The fetcher captured an older definition: nothing is recorded and
+		// the fetcher's own error is returned so its owner can replace it.
+		return failed(persistence.FailureStorage, err, nil)
+	}
+	if errors.Is(err, persistence.ErrInvalid) {
+		return failed(persistence.FailureValidation, persistence.ErrInvalid, err)
+	}
+	return failed(persistence.FailureFetch, ingest.ErrFetch, err)
+}
+
+// filterConfigHash identifies a filter configuration. A baseline applied under
+// the same filter hash and content hash stored the same filtered snapshot.
+func filterConfigHash(filter *persistence.Filter) (string, error) {
+	data, err := json.Marshal(filter)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(data)), nil
+}
+
+func filterSnapshot(ctx context.Context, snapshot model.Snapshot, filter *persistence.Filter) (model.Snapshot, error) {
 	if filter != nil && filter.Names != nil {
 		for _, patterns := range [][]string{filter.Names.Include, filter.Names.Exclude} {
 			for _, pattern := range patterns {
 				if _, err := filepath.Match(pattern, ""); err != nil {
-					return model.Snapshot{}, "", err
+					return model.Snapshot{}, err
 				}
 				if _, err := glob.Compile(pattern); err != nil {
-					return model.Snapshot{}, "", err
+					return model.Snapshot{}, err
 				}
 			}
 		}
 	}
-	data, err := json.Marshal(filter)
-	if err != nil {
-		return model.Snapshot{}, "", err
-	}
 	filtered, err := filtering.NewDefaultFilterService().ApplyFilters(ctx, &snapshot, filter)
 	if err != nil {
-		return model.Snapshot{}, "", err
+		return model.Snapshot{}, err
 	}
-	return *filtered, fmt.Sprintf("%x", sha256.Sum256(data)), nil
+	return *filtered, nil
 }

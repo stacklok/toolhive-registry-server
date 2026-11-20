@@ -90,29 +90,48 @@ func New(options Options) *Fetcher {
 // generated timestamp). Errors are ErrFetch or persistence.ErrInvalid (or the
 // context's error) with the redacted cause attached for logs (see Cause).
 func (f *Fetcher) Fetch(ctx context.Context, source persistence.SourceDefinition) (Result, error) {
+	result, _, err := f.FetchIfChanged(ctx, source, "")
+	return result, err
+}
+
+// FetchIfChanged is Fetch for a caller that has already applied content with
+// appliedHash. File and Git content is hashed before it is decoded: when the
+// hash equals appliedHash it reports unchanged with only Result.Hash set,
+// skipping decoding and the acceptance policy. API hashes cover decoded data,
+// so an API source is always fetched and decoded in full and never reported
+// unchanged here. An empty appliedHash never matches. It implements
+// reconcile.ChangeFetcher.
+func (f *Fetcher) FetchIfChanged(
+	ctx context.Context, source persistence.SourceDefinition, appliedHash string,
+) (result Result, unchanged bool, err error) {
 	kind, err := source.Kind()
 	if err != nil {
-		return Result{}, err
+		return Result{}, false, err
 	}
 	switch kind {
 	case "api":
-		return f.fetchAPI(ctx, source)
+		result, err := f.fetchAPI(ctx, source)
+		return result, false, err
 	case "git", "file":
 	default:
-		return Result{}, persistence.ErrInvalid
+		return Result{}, false, persistence.ErrInvalid
 	}
 	data, err := f.read(ctx, source)
 	if err != nil {
-		return Result{}, fetchError(ctx, err)
+		return Result{}, false, fetchError(ctx, err)
 	}
 	if err := ctx.Err(); err != nil {
-		return Result{}, err
+		return Result{}, false, err
+	}
+	hash := fmt.Sprintf("%x", sha256.Sum256(data))
+	if appliedHash != "" && hash == appliedHash {
+		return Result{Hash: hash}, true, nil
 	}
 	snapshot, err := formats.DecodeUpstream(data)
 	if err != nil {
-		return Result{}, WithCause(persistence.ErrInvalid, err)
+		return Result{}, false, WithCause(persistence.ErrInvalid, err)
 	}
-	return Result{Snapshot: *snapshot, Hash: fmt.Sprintf("%x", sha256.Sum256(data))}, nil
+	return Result{Snapshot: *snapshot, Hash: hash}, false, nil
 }
 
 func (f *Fetcher) fetchAPI(ctx context.Context, source persistence.SourceDefinition) (Result, error) {
