@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"sync"
 	"time"
 
 	thvregistry "github.com/stacklok/toolhive-core/registry/types"
 
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/internal/digestset"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 )
 
@@ -49,8 +49,11 @@ func (e Entry) Validate() error {
 	return ValidateSnapshot(&snapshot)
 }
 
-// ValidateSnapshot validates every version before any write. An empty snapshot
-// is a valid deletion of a source's catalog.
+// ValidateSnapshot is the strict publication check: identity, server name
+// format, required description, no duplicate packages, remotes or icons, and
+// the wire schemas. Publish paths use it. Synced data uses the narrower
+// ValidateStorableSnapshot instead, after the fetcher applied its source's own
+// acceptance policy. An empty snapshot is a valid deletion of a source's catalog.
 //
 //nolint:gocyclo // Server/skill/plugin and their related metadata share one validation boundary.
 func ValidateSnapshot(s *model.Snapshot) error {
@@ -118,7 +121,7 @@ func ValidateSnapshot(s *model.Snapshot) error {
 // are remembered by content digest. The result depends only on the content.
 func validateSchemas(s *model.Snapshot) error {
 	digest, digestErr := snapshotDigest(s)
-	if digestErr == nil && validated.contains(digest) {
+	if digestErr == nil && validated.Contains(digest) {
 		return nil
 	}
 	for _, v := range s.Data.Skills {
@@ -136,7 +139,7 @@ func validateSchemas(s *model.Snapshot) error {
 		return fmt.Errorf("%w: invalid snapshot format", ErrInvalid)
 	}
 	if digestErr == nil {
-		validated.add(digest)
+		validated.Add(digest)
 	}
 	return nil
 }
@@ -183,35 +186,7 @@ func wireCheck(s *model.Snapshot) model.Snapshot {
 // validatedSnapshotCapacity bounds the memo to a few kilobytes of digests.
 const validatedSnapshotCapacity = 256
 
-var validated = &digestSet{seen: map[[sha256.Size]byte]struct{}{}}
-
-// digestSet remembers the most recent digests, evicting the oldest first.
-type digestSet struct {
-	mu    sync.Mutex
-	seen  map[[sha256.Size]byte]struct{}
-	order [][sha256.Size]byte
-}
-
-func (d *digestSet) contains(digest [sha256.Size]byte) bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	_, ok := d.seen[digest]
-	return ok
-}
-
-func (d *digestSet) add(digest [sha256.Size]byte) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if _, ok := d.seen[digest]; ok {
-		return
-	}
-	if len(d.order) == validatedSnapshotCapacity {
-		delete(d.seen, d.order[0])
-		d.order = slices.Delete(d.order, 0, 1)
-	}
-	d.seen[digest] = struct{}{}
-	d.order = append(d.order, digest)
-}
+var validated = digestset.New(validatedSnapshotCapacity)
 
 func snapshotDigest(s *model.Snapshot) ([sha256.Size]byte, error) {
 	data, err := json.Marshal(s)

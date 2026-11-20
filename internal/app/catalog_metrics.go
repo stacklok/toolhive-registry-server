@@ -2,50 +2,63 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/stacklok/toolhive-registry-server/internal/otel"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
-	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
-	"github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile"
 )
 
-// tracedFetcher records one span per source fetch.
-type tracedFetcher struct {
-	raw    reconcile.Fetcher
-	tracer trace.Tracer
+// SyncTracerName is the tracer of sync spans, kept from v1.5.4's sync
+// coordinator so existing trace queries keep working.
+const SyncTracerName = "github.com/stacklok/toolhive-registry-server/sync/coordinator"
+
+// syncSpanName is v1.5.4's span for one sync that ran.
+const syncSpanName = "sync.performRegistrySync"
+
+// syncErrorTypes maps failure categories to v1.5.4's error_type label values
+// of stacklok_registry_errors_total{area="sync"}. Cancelled is new: v1.5.4
+// did not count cancelled syncs as errors.
+var syncErrorTypes = map[persistence.FailureCategory]string{
+	persistence.FailureFetch:      "FetchFailed",
+	persistence.FailureValidation: "ValidationFailed",
+	persistence.FailureStorage:    "StorageFailed",
+	persistence.FailureCancelled:  "Cancelled",
 }
 
-func (f tracedFetcher) Fetch(ctx context.Context, d persistence.SourceDefinition) (ingest.Result, error) {
-	ctx, span := f.tracer.Start(ctx, "sync.fetch", trace.WithAttributes(attribute.String("source", d.Name)))
-	defer span.End()
-	result, err := f.raw.Fetch(ctx, d)
-	if err != nil {
-		span.SetStatus(codes.Error, "source fetch failed")
-	}
-	return result, err
-}
-
-// measuredJobs records the duration and outcome of each complete leased sync
-// attempt. The wrapped Jobs stays authoritative; metrics never change results.
-type measuredJobs struct {
+// observedJobs records metrics and a trace span for each sync that committed
+// a snapshot or failed, as v1.5.4 did for each sync it ran. A poll that found
+// the data unchanged (Complete) records neither. The wrapped Jobs stays
+// authoritative; observation never changes results. metrics and tracer may
+// each be nil.
+type observedJobs struct {
 	persistence.Jobs
 	metrics *telemetry.SyncMetrics
+	tracer  trace.Tracer
 	mu      sync.Mutex
-	started map[string]time.Time
+	// started holds the lease and start time of each source's current attempt.
+	// It is keyed by source name, so an attempt that ends without Complete,
+	// CommitSnapshot or Fail (a lost or stale lease) is replaced by the next
+	// one instead of accumulating.
+	started map[string]syncAttempt
 }
 
-func newMeasuredJobs(jobs persistence.Jobs, metrics *telemetry.SyncMetrics) *measuredJobs {
-	return &measuredJobs{Jobs: jobs, metrics: metrics, started: map[string]time.Time{}}
+type syncAttempt struct {
+	lease string
+	start time.Time
 }
 
-func (j *measuredJobs) ClaimNext(ctx context.Context, d time.Duration) (persistence.Job, bool, error) {
+func newObservedJobs(jobs persistence.Jobs, metrics *telemetry.SyncMetrics, tracer trace.Tracer) *observedJobs {
+	return &observedJobs{Jobs: jobs, metrics: metrics, tracer: tracer, started: map[string]syncAttempt{}}
+}
+
+func (j *observedJobs) ClaimNext(ctx context.Context, d time.Duration) (persistence.Job, bool, error) {
 	job, ok, err := j.Jobs.ClaimNext(ctx, d)
 	if err == nil && ok {
 		j.start(job)
@@ -53,7 +66,7 @@ func (j *measuredJobs) ClaimNext(ctx context.Context, d time.Duration) (persiste
 	return job, ok, err
 }
 
-func (j *measuredJobs) Acquire(ctx context.Context, n string, d time.Duration) (persistence.Job, error) {
+func (j *observedJobs) Acquire(ctx context.Context, n string, d time.Duration) (persistence.Job, error) {
 	job, err := j.Jobs.Acquire(ctx, n, d)
 	if err == nil {
 		j.start(job)
@@ -61,45 +74,99 @@ func (j *measuredJobs) Acquire(ctx context.Context, n string, d time.Duration) (
 	return job, err
 }
 
-func (j *measuredJobs) Complete(ctx context.Context, job persistence.Job, result persistence.SyncResult) error {
+func (j *observedJobs) Complete(ctx context.Context, job persistence.Job, result persistence.SyncResult) error {
 	err := j.Jobs.Complete(ctx, job, result)
 	if err == nil {
-		j.finish(ctx, job, true, "")
+		j.take(job) // unchanged data: v1.5.4 did not run (or record) a sync
 	}
 	return err
 }
 
-func (j *measuredJobs) CommitSnapshot(
+func (j *observedJobs) CommitSnapshot(
 	ctx context.Context, job persistence.Job, result persistence.SyncResult, snapshot model.Snapshot,
 ) error {
 	err := j.Jobs.CommitSnapshot(ctx, job, result, snapshot)
 	if err == nil {
-		j.finish(ctx, job, true, "")
+		if start, ok := j.take(job); ok {
+			duration := time.Since(start)
+			j.metrics.RecordSyncDuration(ctx, job.Source.Name, duration, true)
+			j.span(ctx, job, start, duration, nil,
+				attribute.Int("sync.server_count", len(snapshot.Data.Servers)),
+				attribute.Int("sync.skill_count", len(snapshot.Data.Skills)),
+				attribute.Int("sync.plugin_count", len(snapshot.Data.Plugins)),
+			)
+		}
 	}
 	return err
 }
 
-func (j *measuredJobs) Fail(ctx context.Context, job persistence.Job, reason persistence.FailureCategory) error {
+func (j *observedJobs) Fail(ctx context.Context, job persistence.Job, reason persistence.FailureCategory) error {
 	err := j.Jobs.Fail(ctx, job, reason)
-	j.finish(ctx, job, false, string(reason))
+	if start, ok := j.take(job); ok {
+		duration := time.Since(start)
+		errorType, known := syncErrorTypes[reason]
+		if !known {
+			errorType = string(reason)
+		}
+		j.metrics.RecordSyncDuration(ctx, job.Source.Name, duration, false)
+		j.metrics.RecordSyncError(ctx, errorType)
+		j.span(ctx, job, start, duration, fmt.Errorf("sync failed: %s", reason))
+	}
 	return err
 }
 
-func (j *measuredJobs) start(job persistence.Job) {
+func (j *observedJobs) start(job persistence.Job) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.started[job.LeaseID] = time.Now()
+	j.started[job.Source.Name] = syncAttempt{lease: job.LeaseID, start: time.Now()}
 }
 
-func (j *measuredJobs) finish(ctx context.Context, job persistence.Job, success bool, reason string) {
+// take removes and returns the start of job's attempt, if it is the current one.
+func (j *observedJobs) take(job persistence.Job) (time.Time, bool) {
 	j.mu.Lock()
-	start, ok := j.started[job.LeaseID]
-	delete(j.started, job.LeaseID)
-	j.mu.Unlock()
-	if ok {
-		j.metrics.RecordSyncDuration(ctx, job.Source.Name, time.Since(start), success)
-		if !success {
-			j.metrics.RecordSyncError(ctx, reason)
-		}
+	defer j.mu.Unlock()
+	a, ok := j.started[job.Source.Name]
+	if !ok || a.lease != job.LeaseID {
+		return time.Time{}, false
+	}
+	delete(j.started, job.Source.Name)
+	return a.start, true
+}
+
+// span records v1.5.4's sync span for a finished attempt, starting it at the
+// attempt's start. failure is nil for a sync that committed.
+func (j *observedJobs) span(
+	ctx context.Context, job persistence.Job, start time.Time, duration time.Duration, failure error,
+	attrs ...attribute.KeyValue,
+) {
+	if j.tracer == nil {
+		return
+	}
+	_, span := j.tracer.Start(ctx, syncSpanName, trace.WithTimestamp(start), trace.WithAttributes(
+		otel.AttrRegistryName.String(job.Source.Name),
+		otel.AttrRegistryType.String(sourceType(job.Source)),
+		attribute.Bool("sync.success", failure == nil),
+		attribute.Float64("sync.duration_seconds", duration.Seconds()),
+	))
+	span.SetAttributes(attrs...)
+	otel.RecordError(span, failure)
+	span.End(trace.WithTimestamp(start.Add(duration)))
+}
+
+// sourceType names a source's type as v1.5.4's registry.type attribute did.
+func sourceType(d persistence.SourceDefinition) string {
+	switch {
+	case d.Git != nil:
+		return "git"
+	case d.API != nil:
+		return "api"
+	case d.File != nil:
+		return "file"
+	case d.Managed != nil:
+		return "managed"
+	case d.Kubernetes != nil:
+		return "kubernetes"
+	default:
+		return ""
 	}
 }

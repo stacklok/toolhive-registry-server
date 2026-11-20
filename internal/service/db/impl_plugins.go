@@ -103,6 +103,7 @@ func (s *dbService) PublishPlugin(
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("failed to convert plugin: %w", err)
 	}
+	publishablePlugin(libraryPlugin)
 	sourceName, err := s.publishThroughLibrary(ctx, persistence.Entry{
 		Kind: persistence.PluginKind, Name: plugin.Name, Version: plugin.Version, Plugin: libraryPlugin,
 	}, gateClaims, claimsJSON)

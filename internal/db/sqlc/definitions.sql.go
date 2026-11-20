@@ -297,6 +297,17 @@ func (q *Queries) DefLockView(ctx context.Context, name string) (DefLockViewRow,
 	return i, err
 }
 
+const defOtherManagedSource = `-- name: DefOtherManagedSource :one
+SELECT name FROM source WHERE source_type='managed' AND creation_type='API' AND name<>$1
+ORDER BY name LIMIT 1
+`
+
+func (q *Queries) DefOtherManagedSource(ctx context.Context, name string) (string, error) {
+	row := q.db.QueryRow(ctx, defOtherManagedSource, name)
+	err := row.Scan(&name)
+	return name, err
+}
+
 const defPruneSources = `-- name: DefPruneSources :exec
 DELETE FROM source WHERE creation_type='CONFIG' AND NOT (name=ANY($1::text[]))
 `
@@ -313,6 +324,26 @@ DELETE FROM registry WHERE creation_type='CONFIG' AND NOT (name=ANY($1::text[]))
 func (q *Queries) DefPruneViews(ctx context.Context, dollar_1 []string) error {
 	_, err := q.db.Exec(ctx, defPruneViews, dollar_1)
 	return err
+}
+
+const defPrunedSourceUser = `-- name: DefPrunedSourceUser :one
+SELECT s.name AS source_name, r.name AS registry_name
+FROM source s JOIN registry_source l ON l.source_id=s.id JOIN registry r ON r.id=l.registry_id
+WHERE s.creation_type='CONFIG' AND NOT (s.name=ANY($1::text[])) AND r.creation_type='API'
+ORDER BY s.name, r.name LIMIT 1
+`
+
+type DefPrunedSourceUserRow struct {
+	SourceName   string `json:"source_name"`
+	RegistryName string `json:"registry_name"`
+}
+
+// An API registry that still links a CONFIG source the new config drops.
+func (q *Queries) DefPrunedSourceUser(ctx context.Context, dollar_1 []string) (DefPrunedSourceUserRow, error) {
+	row := q.db.QueryRow(ctx, defPrunedSourceUser, dollar_1)
+	var i DefPrunedSourceUserRow
+	err := row.Scan(&i.SourceName, &i.RegistryName)
+	return i, err
 }
 
 const defSourceRaw = `-- name: DefSourceRaw :one
@@ -379,9 +410,10 @@ func (q *Queries) DefUpdateSource(ctx context.Context, arg DefUpdateSourceParams
 const defUpsertConfigSource = `-- name: DefUpsertConfigSource :execrows
 INSERT INTO source(name,creation_type,source_type,source_config,filter_config,sync_schedule,syncable)
 VALUES($1,'CONFIG',$2,$3::jsonb,$4::jsonb,$5::interval,$6)
-ON CONFLICT(name) DO UPDATE SET source_config=excluded.source_config,filter_config=excluded.filter_config,
-sync_schedule=excluded.sync_schedule,syncable=excluded.syncable,updated_at=now()
-WHERE source.creation_type='CONFIG' AND source.source_type=excluded.source_type
+ON CONFLICT(name) DO UPDATE SET source_type=excluded.source_type,source_config=excluded.source_config,
+filter_config=excluded.filter_config,sync_schedule=excluded.sync_schedule,syncable=excluded.syncable,updated_at=now()
+WHERE source.creation_type='CONFIG'
+ AND (source.source_type='managed') = (excluded.source_type='managed')
 `
 
 type DefUpsertConfigSourceParams struct {
@@ -393,6 +425,9 @@ type DefUpsertConfigSourceParams struct {
 	Syncable   bool             `json:"syncable"`
 }
 
+// A CONFIG source may change kind in place, as v1.5.4 allowed, except to or
+// from managed. Entries stay until the next successful sync replaces them; the
+// generation trigger makes the source due at once.
 func (q *Queries) DefUpsertConfigSource(ctx context.Context, arg DefUpsertConfigSourceParams) (int64, error) {
 	result, err := q.db.Exec(ctx, defUpsertConfigSource,
 		arg.Name,

@@ -3,21 +3,24 @@ package operator
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	"github.com/stacklok/toolhive-registry-server/internal/shutdown"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile"
 )
 
 // ErrWatch means a watch could not start, closed, or returned an error event.
-// Details are deliberately not logged; the host decides restart/backoff policy.
+// The runner logs the Kubernetes reason; the host decides restart/backoff policy.
 var ErrWatch = errors.New("operator watch failed")
 
 // DefaultResyncInterval is how often an idle runner re-lists its whole scope
@@ -94,17 +97,24 @@ func (*Runner) NeedLeaderElection() bool { return true }
 // Start implements manager.Runnable and has the same lifecycle as Run.
 func (r *Runner) Start(ctx context.Context) error { return r.Run(ctx) }
 
-// Ready is false until a full startup snapshot (including empty) is committed.
-// It stays true during transient refresh failures with the last good snapshot,
-// and resets when Run exits. It does not assert that every CRD was exportable.
+// Ready is false until a full startup snapshot (including empty) is committed,
+// or until a sync's validation failure is recorded on the source (the source's
+// previous data stays visible, as for polled sources). It stays true during
+// refresh failures, and resets when Run exits. It does not assert that every
+// CRD was exportable.
 func (r *Runner) Ready() bool { return r.ready.Load() }
 
 // Run starts all watches then performs a full refresh, even with zero resources.
-// Initial access/list/commit failures and any watch failure return to the host;
-// subsequent refresh errors retry at PollInterval. Watches end routinely (the
-// API server times them out), so a long-lived host restarts Run when it
-// returns ErrWatch; each Run begins with a full refresh. Reconfigured scope/incarnation
-// requires a new runner. Cancellation stops watches, cancels work, and joins it.
+// A validation failure (such as two exported resources with the same name and
+// version) is recorded on the source, which keeps its previous data, and the
+// runner keeps watching: it never ends Run. Initial access/list/commit failures,
+// a changed or deleted source definition and any watch failure return to the
+// host; subsequent refresh errors retry at PollInterval. Watch events that
+// cannot change the export (see Fetcher.Relevant) do not trigger a refresh.
+// Watches end routinely (the API server times them out), so a long-lived host
+// restarts Run when it returns ErrWatch; each Run begins with a full refresh.
+// Reconfigured scope/incarnation requires a new runner. Cancellation stops
+// watches, cancels work, and joins it.
 //
 //nolint:gocyclo // One lifecycle owns watch startup, refresh, cancellation and joined cleanup.
 func (r *Runner) Run(ctx context.Context) error {
@@ -137,11 +147,14 @@ func (r *Runner) Run(ctx context.Context) error {
 				if ctx.Err() != nil && shutdown.Result(err) == nil {
 					return nil
 				}
+				slog.WarnContext(ctx, "Failed to start Kubernetes watch", "source", r.fetcher.definition.Name,
+					"kind", listKind(list), "namespace", namespace, "error", ingest.RedactURLs(err.Error()))
 				return ErrWatch
 			}
 			watches = append(watches, w)
 			workers.Add(1)
-			go func() { defer workers.Done(); pump(work, cancel, w, wake, fatal) }()
+			p := pump{source: r.fetcher.definition.Name, kind: listKind(list), namespace: namespace, relevant: r.fetcher.Relevant}
+			go func() { defer workers.Done(); p.run(work, cancel, w, wake, fatal) }()
 		}
 	}
 	timer := time.NewTimer(r.resync)
@@ -156,10 +169,16 @@ func (r *Runner) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return shutdown.Result(err)
 		}
-		if err == nil {
+		var recorded *reconcile.FailureError
+		switch {
+		case err == nil:
 			r.ready.Store(true)
-		} else if errors.Is(err, persistence.ErrInvalid) || errors.Is(err, persistence.ErrNotFound) ||
-			(!r.ready.Load() && !errors.Is(err, persistence.ErrBusy)) {
+		case errors.As(err, &recorded) && recorded.Category == persistence.FailureValidation:
+			// Recorded on the source with its previous data kept; a later event
+			// or retry may fix it. Like reconcile.Coordinator, keep running.
+			r.ready.Store(true)
+		case errors.Is(err, errDefinitionChanged) || errors.Is(err, persistence.ErrInvalid) ||
+			errors.Is(err, persistence.ErrNotFound) || (!r.ready.Load() && !errors.Is(err, persistence.ErrBusy)):
 			return err
 		}
 		// An idle runner relies on its watches; only a failed sync retries soon.
@@ -179,7 +198,13 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 }
 
-func pump(ctx context.Context, cancel context.CancelFunc, w watch.Interface, wake chan<- struct{}, fatal chan<- error) {
+// pump forwards relevant events of one watch to the refresh loop.
+type pump struct {
+	source, kind, namespace string
+	relevant                func(watch.Event) bool
+}
+
+func (p pump) run(ctx context.Context, cancel context.CancelFunc, w watch.Interface, wake chan<- struct{}, fatal chan<- error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -187,6 +212,7 @@ func pump(ctx context.Context, cancel context.CancelFunc, w watch.Interface, wak
 		case event, ok := <-w.ResultChan():
 			if !ok || event.Type == watch.Error {
 				if ctx.Err() == nil {
+					p.logEnd(ctx, event, ok)
 					select {
 					case fatal <- ErrWatch:
 					default:
@@ -195,7 +221,7 @@ func pump(ctx context.Context, cancel context.CancelFunc, w watch.Interface, wak
 				}
 				return
 			}
-			if event.Type != watch.Bookmark {
+			if event.Type != watch.Bookmark && p.relevant(event) {
 				select {
 				case wake <- struct{}{}:
 				default:
@@ -203,4 +229,16 @@ func pump(ctx context.Context, cancel context.CancelFunc, w watch.Interface, wak
 			}
 		}
 	}
+}
+
+func (p pump) logEnd(ctx context.Context, event watch.Event, open bool) {
+	attrs := []any{"source", p.source, "kind", p.kind, "namespace", p.namespace}
+	if !open {
+		slog.DebugContext(ctx, "Kubernetes watch ended", attrs...)
+		return
+	}
+	if status, ok := event.Object.(*metav1.Status); ok {
+		attrs = append(attrs, "reason", string(status.Reason), "code", status.Code, "error", ingest.RedactURLs(status.Message))
+	}
+	slog.WarnContext(ctx, "Kubernetes watch failed", attrs...)
 }

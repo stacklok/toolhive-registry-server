@@ -19,7 +19,8 @@ var (
 // FailedRetryInterval caps how long ClaimNext waits to retry a source whose last
 // attempt failed: it is due again after the shorter of its schedule and this
 // interval, so a transient upstream failure does not leave a long-schedule source
-// stale for a whole period. This matches v1.5.4's two-minute coordinator cycle.
+// stale for a whole period. v1.5.4 waited the whole schedule after a failure;
+// two minutes matches its coordinator cycle.
 const FailedRetryInterval = 2 * time.Minute
 
 // Job carries an opaque lease identity and the source definition captured at claim.
@@ -47,6 +48,10 @@ const (
 // Failure preserves successful metadata, but BaselineValid is false when the
 // definition has changed. Direct replacement clears the prior baseline.
 // A zero Failure means no categorized error (including unknown legacy errors).
+// While an attempt runs, EndedAt and Failure still describe the previous one.
+// An unchanged Complete after a successful attempt leaves every field as it
+// was before the attempt; only the due time moves. An attempt whose lease is
+// no longer live reports the phase, start time and attempt count it replaced.
 type JobStatus struct {
 	SourceID      string
 	Phase         JobPhase
@@ -86,8 +91,10 @@ const (
 // Jobs coordinates source-scoped, expiring leases and atomic snapshot acknowledgements.
 // ClaimNext polls only scheduled git/API/file sources. One is due when it has never
 // been attempted, its definition changed since the last attempt, its schedule has
-// elapsed since the last attempt ended, or that attempt failed and the shorter of
-// the schedule and FailedRetryInterval has elapsed. Acquire(ctx, sourceName, duration)
+// elapsed since the last attempt ended or last found the data unchanged, that
+// attempt failed and the shorter of the schedule and FailedRetryInterval has
+// elapsed, or an attempt was left unfinished by a lease that is no longer live.
+// Acquire(ctx, sourceName, duration)
 // may explicitly lease any non-managed source, including Kubernetes and inline files.
 // Status(ctx, sourceName) also looks up by name. Job.Source.ID is the immutable
 // source incarnation used for fencing, not the lookup name. Explicit Acquire

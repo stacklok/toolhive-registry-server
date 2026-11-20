@@ -6,6 +6,10 @@ DO $$ BEGIN
         RAISE EXCEPTION 'drain active sync jobs before downgrade';
     END IF;
 END $$;
+ALTER TABLE registry_sync DROP COLUMN prev_attempt_count;
+ALTER TABLE registry_sync DROP COLUMN prev_started_at;
+ALTER TABLE registry_sync DROP COLUMN prev_sync_status;
+ALTER TABLE registry_sync DROP COLUMN checked_at;
 ALTER TABLE registry_sync DROP CONSTRAINT registry_sync_lease_columns;
 ALTER TABLE registry_sync DROP COLUMN applied_generation;
 ALTER TABLE registry_sync DROP COLUMN observed_generation;

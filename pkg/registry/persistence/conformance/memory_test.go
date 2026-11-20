@@ -298,7 +298,7 @@ func (m *memory) Reconcile(ctx context.Context, sources []persistence.SourceDefi
 				}
 				a, _ := old.Kind()
 				b, _ := s.Kind()
-				if a != b || old.File != nil && fileLocation(old.File) != fileLocation(s.File) {
+				if (a == "managed") != (b == "managed") {
 					return persistence.ErrKindChange
 				}
 			}

@@ -42,15 +42,17 @@ WITH page AS (
  AND (NOT $7::boolean OR EXISTS(
   SELECT 1 FROM latest_entry_version lv WHERE lv.latest_version_id=v.id))
  AND ($8::timestamptz IS NULL OR v.updated_at>$8::timestamptz)
- AND ($9::text IS NULL OR strpos(lower(v.name),lower($9::text))>0
-  OR strpos(lower(coalesce(v.title,'')),lower($9::text))>0
-  OR strpos(lower(coalesce(v.description,'')),lower($9::text))>0)
- AND ($10::text IS NULL OR e.name COLLATE "C">=$10::text COLLATE "C")
+ AND ($9::text IS NULL
+  OR LOWER(e.name) LIKE LOWER('%'||$9::text||'%')
+  OR LOWER(v.title) LIKE LOWER('%'||$9::text||'%')
+  OR LOWER(v.description) LIKE LOWER('%'||$9::text||'%'))
+ AND ($10::text IS NULL OR e.name>=$10::text)
  AND ($10::text IS NULL
-  OR (e.name COLLATE "C",v.version COLLATE "C",coalesce(sk.namespace,pl.namespace,'') COLLATE "C")>
-  ($10::text COLLATE "C",$11::text COLLATE "C",
-   coalesce($12::text,'') COLLATE "C"))
- ORDER BY e.name COLLATE "C",v.version COLLATE "C",coalesce(sk.namespace,pl.namespace,'') COLLATE "C"
+  OR ($11::text IS NULL
+   AND (e.name,v.version)>($10::text,$12::text))
+  OR (e.name,v.version,coalesce(sk.namespace,pl.namespace,''))>
+  ($10::text,$12::text,$11::text))
+ ORDER BY e.name,v.version,coalesce(sk.namespace,pl.namespace,'')
  LIMIT $13::bigint
 )
 SELECT e.source_id::text AS source_id,v.id::text AS id,e.name,v.version,v.title,v.description,
@@ -77,7 +79,7 @@ LEFT JOIN latest_entry_version l ON l.source_id=e.source_id AND l.entry_type=e.e
 LEFT JOIN mcp_server s ON s.version_id=v.id
 LEFT JOIN skill sk ON sk.version_id=v.id
 LEFT JOIN plugin pl ON pl.version_id=v.id
-ORDER BY v.name COLLATE "C",v.version COLLATE "C",coalesce(sk.namespace,pl.namespace,'') COLLATE "C"
+ORDER BY e.name,v.version,coalesce(sk.namespace,pl.namespace,'')
 `
 
 type ViewEntryListParams struct {
@@ -91,8 +93,8 @@ type ViewEntryListParams struct {
 	UpdatedSince    pgtype.Timestamptz `json:"updated_since"`
 	Search          *string            `json:"search"`
 	CursorName      *string            `json:"cursor_name"`
-	CursorVersion   *string            `json:"cursor_version"`
 	CursorNamespace *string            `json:"cursor_namespace"`
+	CursorVersion   *string            `json:"cursor_version"`
 	PageSize        int64              `json:"page_size"`
 }
 
@@ -119,16 +121,21 @@ type ViewEntryListRow struct {
 	PluginGit      string     `json:"plugin_git"`
 }
 
-// Walks entries of one kind in byte-wise name order, then their versions, and
-// keeps a version only when its entry wins the name: no entry with a version
-// in a higher-priority source of the view (position, then source name) has the
-// same kind and name and, for skills and plugins, a version in the same
-// namespace, so io.a/x and io.b/x from different sources are both reachable.
-// Winners are chosen before the version, latest, search and time filters, so a
-// filter never promotes a lower-priority source. The walk follows
-// registry_entry_type_name_c_idx and stops at the page size; the redundant
-// e.name >= cursor bound lets the index scan start at the cursor. Namespace is
-// the last sort key, so equal name/version pairs page deterministically.
+// Walks entries of one kind in name order, then their versions, and keeps a
+// version only when its entry wins the name: no entry with a version in a
+// higher-priority source of the view (position, then source name) has the same
+// kind and name and, for skills and plugins, a version in the same namespace,
+// so io.a/x and io.b/x from different sources are both reachable. Winners are
+// chosen before the version, latest, search and time filters, so a filter never
+// promotes a lower-priority source. Names and versions sort and compare in the
+// database's default collation, as v1.5.4's ORDER BY name, version did, so
+// v1.5.4 cursors keep their position; namespace is the last sort key, so equal
+// name/version pairs page deterministically. A cursor without a namespace
+// (servers, and v1.5.4 cursors) resumes after its whole name/version. Search is v1.5.4's
+// LOWER(col) LIKE LOWER('%'||search||'%'): % and _ are wildcards and a
+// backslash escapes the next character. The walk follows
+// registry_entry_type_name_idx and stops at the page size; the redundant
+// e.name >= cursor bound lets the index scan start at the cursor.
 // caller is NULL for the library. The server's claims mode passes the caller's
 // JWT claims; an entry the caller cannot see then neither appears nor hides a
 // lower-priority source's entry of the same name (claims_visible, migration
@@ -145,8 +152,8 @@ func (q *Queries) ViewEntryList(ctx context.Context, arg ViewEntryListParams) ([
 		arg.UpdatedSince,
 		arg.Search,
 		arg.CursorName,
-		arg.CursorVersion,
 		arg.CursorNamespace,
+		arg.CursorVersion,
 		arg.PageSize,
 	)
 	if err != nil {
@@ -181,31 +188,6 @@ func (q *Queries) ViewEntryList(ctx context.Context, arg ViewEntryListParams) ([
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const viewEntrySources = `-- name: ViewEntrySources :many
-SELECT s.id::text AS id FROM registry_source rs JOIN source s ON s.id=rs.source_id
-WHERE rs.registry_id=$1::uuid ORDER BY rs.position,s.name COLLATE "C"
-`
-
-func (q *Queries) ViewEntrySources(ctx context.Context, viewID uuid.UUID) ([]string, error) {
-	rows, err := q.db.Query(ctx, viewEntrySources, viewID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

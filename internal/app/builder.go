@@ -137,31 +137,12 @@ func NewRegistryApp(
 		return nil, fmt.Errorf("failed to build base configuration: %w", err)
 	}
 
-	// Create storage factory for all storage-dependent components
-	if err := ensureStorageFactory(ctx, cfg); err != nil {
-		return nil, err
+	if cfg.config == nil {
+		return nil, fmt.Errorf("configuration is required")
 	}
 
-	// Ensure cleanup happens on error
-	var cleanupNeeded = true
-	defer func() {
-		if cleanupNeeded && cfg.storageFactory != nil {
-			cfg.storageFactory.Cleanup()
-		}
-	}()
-
-	built, err := buildCatalog(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build catalog: %w", err)
-	}
-
-	registryService, err := cfg.storageFactory.CreateRegistryService(ctx, built.catalog.Entries,
-		database.WithSourcesChanged(built.sync.runtime.Refresh))
-	if err != nil {
-		return nil, fmt.Errorf("failed to build service components: %w", err)
-	}
-
-	// Build auth middleware (if not injected)
+	// Auth and audit are built before anything touches the database, so a start
+	// that fails on their configuration leaves the database unchanged.
 	if cfg.authMiddleware == nil {
 		var authErr error
 		cfg.authMiddleware, cfg.authInfoHandler, authErr = auth.NewAuthMiddleware(ctx, cfg.config.Auth, auth.DefaultValidatorFactory)
@@ -169,19 +150,44 @@ func NewRegistryApp(
 			return nil, fmt.Errorf("failed to build auth middleware: %w", authErr)
 		}
 	}
-
-	// Build audit logger (if audit is enabled)
 	auditLogger, err := buildAuditLogger(cfg.config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create audit logger: %w", err)
 	}
 
-	// Build HTTP server
-	httpServer, err := buildHTTPServer(ctx, cfg, registryService, built.pages, auditLogger)
-	if err != nil {
+	// Ensure cleanup happens on error
+	var cleanupNeeded = true
+	defer func() {
+		if !cleanupNeeded {
+			return
+		}
 		if auditLogger != nil {
 			_ = auditLogger.Close()
 		}
+		if cfg.storageFactory != nil {
+			cfg.storageFactory.Cleanup()
+		}
+	}()
+
+	// Create storage factory for all storage-dependent components
+	if err := ensureStorageFactory(ctx, cfg); err != nil {
+		return nil, err
+	}
+
+	built, err := buildCatalog(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build catalog: %w", err)
+	}
+
+	registryService, err := cfg.storageFactory.CreateRegistryService(ctx, built.catalog.Entries,
+		database.WithSourcesChanged(built.sync.runtime.Refresh), database.WithSourcePreparer(built.prepareSource))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build service components: %w", err)
+	}
+
+	// Build HTTP server
+	httpServer, err := buildHTTPServer(ctx, cfg, registryService, built.pages, auditLogger)
+	if err != nil {
 		return nil, fmt.Errorf("failed to build HTTP server: %w", err)
 	}
 
@@ -357,11 +363,14 @@ type builtCatalog struct {
 	// admin is the library admin API for Cedar mode; nil in claims mode,
 	// whose /v1 handlers run over the registry service.
 	admin *httpapi.AdminOperations
+	// prepareSource scopes and preflights admin-API Kubernetes sources.
+	prepareSource database.SourcePreparer
 }
 
 // buildCatalog opens the library adapters, checks the database's
 // authorization mode, reconciles the config file's sources and registries,
-// stores config claims (claims mode), and prepares the sync runtime. Nothing
+// stores config claims and normalizes the v1.5.4 settings of stored
+// API-created sources (claims mode), and prepares the sync runtime. Nothing
 // runs until Start.
 //
 //nolint:gocyclo // Each step is a distinct, ordered preparation stage.
@@ -416,27 +425,29 @@ func buildCatalog(ctx context.Context, b *registryAppConfig) (*builtCatalog, err
 		return ctx.Err()
 	}
 	for _, d := range sources {
-		if err := preflight(ctx, d); err != nil {
+		if err := startupPreflight(ctx, d, preflight); err != nil {
 			return nil, err
 		}
 	}
-	if err := cat.Definitions.Reconcile(ctx, sources, views); err != nil {
-		return nil, fmt.Errorf("failed to apply config sources and registries: %w", err)
+	if err := reconcileConfig(ctx, cat, b.config, sources, views, claimsMode); err != nil {
+		return nil, err
 	}
+	// Only a claims-mode database can hold rows v1.5.4's admin API stored;
+	// Cedar mode always starts on a new database.
 	if claimsMode {
-		if err := applyConfigClaims(ctx, cat.Pool, b.config); err != nil {
+		if err := normalizeStoredSources(ctx, cat.Pool); err != nil {
 			return nil, err
 		}
 	}
 
 	var jobs persistence.Jobs = cat.Jobs
+	var syncMetrics *telemetry.SyncMetrics
 	if b.meterProvider != nil {
-		syncMetrics, err := telemetry.NewSyncMetrics(b.meterProvider)
+		syncMetrics, err = telemetry.NewSyncMetrics(b.meterProvider)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create sync metrics: %w", err)
 		}
 		if syncMetrics != nil {
-			jobs = newMeasuredJobs(jobs, syncMetrics)
 			slog.Info("Sync metrics enabled")
 		}
 		if readerFactory, ok := b.storageFactory.(registryMetricsReaderFactory); ok {
@@ -449,13 +460,18 @@ func buildCatalog(ctx context.Context, b *registryAppConfig) (*builtCatalog, err
 			}
 		}
 	}
+	var syncTracer, readTracer trace.Tracer
+	if b.tracerProvider != nil {
+		syncTracer, readTracer = b.tracerProvider.Tracer(SyncTracerName), b.tracerProvider.Tracer(database.ServiceTracerName)
+	}
+	if syncMetrics != nil || syncTracer != nil {
+		jobs = newObservedJobs(jobs, syncMetrics, syncTracer)
+	}
 	fetcher := b.fetcher
 	if fetcher == nil {
 		fetcher = ingest.New(ingest.Options{LoadSecret: config.LoadSecret})
 	}
-	if b.tracerProvider != nil {
-		fetcher = tracedFetcher{raw: fetcher, tracer: b.tracerProvider.Tracer("registry.sync")}
-	}
+	fetcher = withAmbiguousGitRefs(fetcher, b.config)
 	runtime, err := standalone.New(cat.Definitions, jobs, fetcher, standalone.Options{
 		Reconcile: b.reconcile,
 		Operator: func(d persistence.SourceDefinition) (standalone.Worker, error) {
@@ -490,7 +506,10 @@ func buildCatalog(ctx context.Context, b *registryAppConfig) (*builtCatalog, err
 		}
 		return ids, nil
 	}
-	built := &builtCatalog{catalog: cat, sync: &syncRunner{runtime: runtime}, pages: pages}
+	built := &builtCatalog{
+		catalog: cat, sync: &syncRunner{runtime: runtime}, pages: newTracedPages(pages, readTracer),
+		prepareSource: kubernetesSourcePreparer(b.config.WatchNamespace, operator.Preflight),
+	}
 	if !claimsMode && b.config.AdminEnabled() {
 		if built.admin, err = libraryAdmin(cat, runtime, b.config.WatchNamespace, preflight); err != nil {
 			return nil, err

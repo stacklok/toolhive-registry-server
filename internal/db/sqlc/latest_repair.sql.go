@@ -11,6 +11,23 @@ import (
 	"github.com/google/uuid"
 )
 
+const repairCreateTempLatest = `-- name: RepairCreateTempLatest :exec
+CREATE TEMP TABLE temp_latest_repair (
+    source_id UUID NOT NULL,
+    entry_type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    version_id UUID NOT NULL
+) ON COMMIT DROP
+`
+
+// The winners computed in Go are copied here, then applied in one statement.
+// entry_type is text so COPY needs no enum codec on the connection.
+func (q *Queries) RepairCreateTempLatest(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, repairCreateTempLatest)
+	return err
+}
+
 const repairListVersions = `-- name: RepairListVersions :many
 SELECT e.source_id, e.entry_type, e.name, v.version, v.id AS version_id
 FROM registry_entry e JOIN entry_version v ON v.entry_id=e.id
@@ -85,5 +102,19 @@ func (q *Queries) RepairSetLatest(ctx context.Context, arg RepairSetLatestParams
 		arg.Version,
 		arg.VersionID,
 	)
+	return err
+}
+
+const repairUpsertLatestFromTemp = `-- name: RepairUpsertLatestFromTemp :exec
+INSERT INTO latest_entry_version(source_id,entry_type,name,version,latest_version_id)
+SELECT source_id, entry_type::entry_type, name, version, version_id FROM temp_latest_repair
+ON CONFLICT(source_id,entry_type,name) DO UPDATE SET
+version=excluded.version,latest_version_id=excluded.latest_version_id
+WHERE (latest_entry_version.version, latest_entry_version.latest_version_id)
+ IS DISTINCT FROM (excluded.version, excluded.latest_version_id)
+`
+
+func (q *Queries) RepairUpsertLatestFromTemp(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, repairUpsertLatestFromTemp)
 	return err
 }

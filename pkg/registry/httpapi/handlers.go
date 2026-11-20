@@ -153,16 +153,16 @@ func entryName(r *http.Request, kind persistence.EntryKind) (catalog.EntryName, 
 // listQuery deliberately ignores extension status/version/updated_since: the
 // legacy handlers parsed status but never passed it to selection, and the other
 // two parameters were unsupported. Lists include all versions, despite Swagger.
+// Like v1.5.4's r.URL.Query(), malformed pairs (bad percent-encoding, a ';')
+// are dropped rather than rejected. Query strings over maxQueryBytes are
+// rejected with 400; v1.5.4 had no such cap.
 //
 //nolint:gocyclo // Compatibility requires distinct server/extension query rules.
 func listQuery(r *http.Request, kind persistence.EntryKind) (catalog.Query, error) {
-	if len(r.URL.RawQuery) > 16384 {
+	if len(r.URL.RawQuery) > maxQueryBytes {
 		return catalog.Query{}, fmt.Errorf("query parameters too large")
 	}
-	values, err := url.ParseQuery(r.URL.RawQuery)
-	if err != nil {
-		return catalog.Query{}, fmt.Errorf("invalid query parameters")
-	}
+	values := r.URL.Query()
 	query := catalog.Query{Kind: kind, Limit: 30, Search: values.Get("search"), Cursor: values.Get("cursor")}
 	integerError := "Invalid limit parameter: must be an integer"
 	if kind != persistence.ServerKind {

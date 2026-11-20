@@ -78,8 +78,24 @@ func SetupTestDB(t *testing.T) (*pgx.Conn, func()) {
 // SetupTestDBAt creates an isolated fixture at an explicit historical schema.
 func SetupTestDBAt(t *testing.T, version uint) (*pgx.Conn, func()) {
 	t.Helper()
+	return setupTestDB(t, version, "")
+}
 
-	db, release, err := acquireSharedTestDB(t.Context(), version)
+// SetupTestDBWithICULocale returns an isolated, migrated database whose
+// default collation is the ICU locale (for example "en-US"). The shared test
+// server is initialized with the C locale, under which text sorts byte-wise;
+// production databases usually use a linguistic default collation instead.
+func SetupTestDBWithICULocale(t *testing.T, locale string) (*pgx.Conn, func()) {
+	t.Helper()
+	require.Regexp(t, `^[A-Za-z0-9-]+$`, locale)
+	return setupTestDB(t, database.LatestSchemaVersion,
+		" TEMPLATE template0 LOCALE_PROVIDER icu ICU_LOCALE '"+locale+"' LOCALE 'C' ENCODING 'UTF8'")
+}
+
+func setupTestDB(t *testing.T, version uint, createOptions string) (*pgx.Conn, func()) {
+	t.Helper()
+
+	db, release, err := acquireSharedTestDB(t.Context(), version, createOptions)
 	require.NoError(t, err)
 
 	var once sync.Once
@@ -138,7 +154,9 @@ var sharedTestDB struct {
 	instance *sharedTestPostgres
 }
 
-func acquireSharedTestDB(ctx context.Context, version uint) (*pgx.Conn, func(context.Context) error, error) {
+func acquireSharedTestDB(
+	ctx context.Context, version uint, createOptions string,
+) (*pgx.Conn, func(context.Context) error, error) {
 	sharedTestDB.Lock()
 	defer sharedTestDB.Unlock()
 
@@ -162,7 +180,7 @@ func acquireSharedTestDB(ctx context.Context, version uint) (*pgx.Conn, func(con
 			discardUnusedSharedTestPostgres(instance),
 		)
 	}
-	_, createErr := admin.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{databaseName}.Sanitize())
+	_, createErr := admin.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{databaseName}.Sanitize()+createOptions)
 	closeErr := admin.Close(ctx)
 	if createErr != nil || closeErr != nil {
 		return nil, nil, errors.Join(createErr, closeErr, discardUnusedSharedTestPostgres(instance))

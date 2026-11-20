@@ -46,12 +46,18 @@ type Querier interface {
 	DefListViewNames(ctx context.Context) ([]string, error)
 	DefLockSource(ctx context.Context, name string) (DefLockSourceRow, error)
 	DefLockView(ctx context.Context, name string) (DefLockViewRow, error)
+	DefOtherManagedSource(ctx context.Context, name string) (string, error)
 	DefPruneSources(ctx context.Context, dollar_1 []string) error
 	DefPruneViews(ctx context.Context, dollar_1 []string) error
+	// An API registry that still links a CONFIG source the new config drops.
+	DefPrunedSourceUser(ctx context.Context, dollar_1 []string) (DefPrunedSourceUserRow, error)
 	DefSourceRaw(ctx context.Context, name string) (DefSourceRawRow, error)
 	DefSourceUsed(ctx context.Context, dollar_1 uuid.UUID) (bool, error)
 	DefTouchAPIView(ctx context.Context, dollar_1 uuid.UUID) error
 	DefUpdateSource(ctx context.Context, arg DefUpdateSourceParams) error
+	// A CONFIG source may change kind in place, as v1.5.4 allowed, except to or
+	// from managed. Entries stay until the next successful sync replaces them; the
+	// generation trigger makes the source due at once.
 	DefUpsertConfigSource(ctx context.Context, arg DefUpsertConfigSourceParams) (int64, error)
 	DefUpsertConfigView(ctx context.Context, name string) (string, error)
 	DefViewID(ctx context.Context, name string) (string, error)
@@ -161,17 +167,32 @@ type Querier interface {
 	// Forces the next sync of a source to commit a full snapshot, so entry claims
 	// are recomputed even when the fetched data is unchanged.
 	InvalidateSourceSyncBaseline(ctx context.Context, name string) error
+	// The previous status, start time and attempt count are kept in prev_* so an
+	// unchanged fetch can put them back; ended_at and error_msg are left alone, so
+	// the last finish time and message stay visible while the attempt runs. A row
+	// still IN_PROGRESS from an expired lease already holds the values to keep.
 	JobAcquire(ctx context.Context, arg JobAcquireParams) (JobAcquireRow, error)
 	JobClearSnapshotBaseline(ctx context.Context, dollar_1 uuid.UUID) error
 	JobFail(ctx context.Context, arg JobFailParams) (int64, error)
 	JobFence(ctx context.Context, arg JobFenceParams) (*uuid.UUID, error)
 	JobFinish(ctx context.Context, arg JobFinishParams) (int64, error)
+	// After a successful attempt, an unchanged fetch only moves checked_at (the due
+	// time): status, start and finish times, message and attempt count return to
+	// what they were before the acquire, as v1.5.4 left them. After a failed or
+	// unknown attempt it records a success as JobFinish does.
 	JobFinishUnchanged(ctx context.Context, arg JobFinishUnchangedParams) (int64, error)
 	JobInvalidateSnapshot(ctx context.Context, dollar_1 uuid.UUID) error
 	JobLockSource(ctx context.Context, name string) (JobLockSourceRow, error)
+	// A source is due when it was never attempted, its schedule has elapsed since
+	// the later of its last finished attempt and its last unchanged check, its last
+	// attempt failed and the shorter retry has elapsed, its definition changed, or
+	// an attempt was left IN_PROGRESS by a lease that is no longer live.
 	JobNext(ctx context.Context, arg JobNextParams) (string, error)
 	JobRenew(ctx context.Context, arg JobRenewParams) (pgtype.Timestamptz, error)
 	JobSnapshotAllowed(ctx context.Context, dollar_1 uuid.UUID) (bool, error)
+	// An attempt whose lease is no longer live reports the values it replaced, so
+	// a crashed or expired attempt neither stays IN_PROGRESS nor hides the last
+	// outcome.
 	JobStatus(ctx context.Context, name string) (JobStatusRow, error)
 	LinkRegistrySource(ctx context.Context, arg LinkRegistrySourceParams) error
 	ListAllSourceNames(ctx context.Context) ([]string, error)
@@ -211,9 +232,13 @@ type Querier interface {
 	PropagateSourceClaimsToEntries(ctx context.Context, arg PropagateSourceClaimsToEntriesParams) error
 	// Records the mode on a database that has none yet; a recorded mode is kept.
 	RecordAuthorizationMode(ctx context.Context, mode string) error
+	// The winners computed in Go are copied here, then applied in one statement.
+	// entry_type is text so COPY needs no enum codec on the connection.
+	RepairCreateTempLatest(ctx context.Context) error
 	RepairListVersions(ctx context.Context) ([]RepairListVersionsRow, error)
 	RepairPruneLatest(ctx context.Context) error
 	RepairSetLatest(ctx context.Context, arg RepairSetLatestParams) error
+	RepairUpsertLatestFromTemp(ctx context.Context) error
 	// Stores a config-file registry's claims after the library reconciled the
 	// definitions; the claims-free library never writes registry claims.
 	SetConfigRegistryClaims(ctx context.Context, arg SetConfigRegistryClaimsParams) (int64, error)
@@ -254,22 +279,26 @@ type Querier interface {
 	// Business logic in Go guards against cross-type overwrites.
 	UpsertSource(ctx context.Context, arg UpsertSourceParams) (uuid.UUID, error)
 	UpsertSourceSyncByName(ctx context.Context, arg UpsertSourceSyncByNameParams) error
-	// Walks entries of one kind in byte-wise name order, then their versions, and
-	// keeps a version only when its entry wins the name: no entry with a version
-	// in a higher-priority source of the view (position, then source name) has the
-	// same kind and name and, for skills and plugins, a version in the same
-	// namespace, so io.a/x and io.b/x from different sources are both reachable.
-	// Winners are chosen before the version, latest, search and time filters, so a
-	// filter never promotes a lower-priority source. The walk follows
-	// registry_entry_type_name_c_idx and stops at the page size; the redundant
-	// e.name >= cursor bound lets the index scan start at the cursor. Namespace is
-	// the last sort key, so equal name/version pairs page deterministically.
+	// Walks entries of one kind in name order, then their versions, and keeps a
+	// version only when its entry wins the name: no entry with a version in a
+	// higher-priority source of the view (position, then source name) has the same
+	// kind and name and, for skills and plugins, a version in the same namespace,
+	// so io.a/x and io.b/x from different sources are both reachable. Winners are
+	// chosen before the version, latest, search and time filters, so a filter never
+	// promotes a lower-priority source. Names and versions sort and compare in the
+	// database's default collation, as v1.5.4's ORDER BY name, version did, so
+	// v1.5.4 cursors keep their position; namespace is the last sort key, so equal
+	// name/version pairs page deterministically. A cursor without a namespace
+	// (servers, and v1.5.4 cursors) resumes after its whole name/version. Search is v1.5.4's
+	// LOWER(col) LIKE LOWER('%'||search||'%'): % and _ are wildcards and a
+	// backslash escapes the next character. The walk follows
+	// registry_entry_type_name_idx and stops at the page size; the redundant
+	// e.name >= cursor bound lets the index scan start at the cursor.
 	// caller is NULL for the library. The server's claims mode passes the caller's
 	// JWT claims; an entry the caller cannot see then neither appears nor hides a
 	// lower-priority source's entry of the same name (claims_visible, migration
 	// 28). This is the one sanctioned JSONB claims check in SQL.
 	ViewEntryList(ctx context.Context, arg ViewEntryListParams) ([]ViewEntryListRow, error)
-	ViewEntrySources(ctx context.Context, viewID uuid.UUID) ([]string, error)
 }
 
 var _ Querier = (*Queries)(nil)

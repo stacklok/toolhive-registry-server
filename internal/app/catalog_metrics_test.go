@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	thv "github.com/stacklok/toolhive-core/registry/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
@@ -15,11 +16,9 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/mock/gomock"
 
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
-	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 	reconcilemocks "github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile/mocks"
@@ -37,11 +36,13 @@ type recordedSync struct {
 	count   uint64
 }
 
-// metricsHarness wraps a MockJobs in measuredJobs with an in-memory reader.
+// metricsHarness wraps a MockJobs in observedJobs with an in-memory metric
+// reader and span recorder.
 type metricsHarness struct {
 	jobs   *reconcilemocks.MockJobs
-	sut    *measuredJobs
+	sut    *observedJobs
 	reader *sdkmetric.ManualReader
+	spans  *tracetest.SpanRecorder
 }
 
 func newMetricsHarness(t *testing.T) metricsHarness {
@@ -51,8 +52,13 @@ func newMetricsHarness(t *testing.T) metricsHarness {
 	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
 	syncMetrics, err := telemetry.NewSyncMetrics(provider)
 	require.NoError(t, err)
+	spans := tracetest.NewSpanRecorder()
+	tracerProvider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+	t.Cleanup(func() { _ = tracerProvider.Shutdown(context.Background()) })
 	jobs := reconcilemocks.NewMockJobs(gomock.NewController(t))
-	return metricsHarness{jobs: jobs, sut: newMeasuredJobs(jobs, syncMetrics), reader: reader}
+	return metricsHarness{
+		jobs: jobs, sut: newObservedJobs(jobs, syncMetrics, tracerProvider.Tracer(SyncTracerName)), reader: reader, spans: spans,
+	}
 }
 
 func (h metricsHarness) collect(t *testing.T) metricdata.ResourceMetrics {
@@ -111,14 +117,14 @@ func (h metricsHarness) syncErrors(t *testing.T) map[string]int64 {
 
 func testJob(lease, source string) persistence.Job {
 	return persistence.Job{
-		Source:     persistence.SourceDefinition{ID: "id-" + source, Name: source},
+		Source:     persistence.SourceDefinition{ID: "id-" + source, Name: source, Git: &persistence.GitSpec{Repository: "r"}},
 		LeaseID:    lease,
 		Generation: 3,
 		ExpiresAt:  time.Unix(1700000000, 0),
 	}
 }
 
-func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
+func TestObservedJobs_RecordsSyncsThatRan(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	result := persistence.SyncResult{Hash: "h", FilterHash: "f"}
@@ -129,9 +135,11 @@ func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
 		run        func(t *testing.T, h metricsHarness)
 		wantSyncs  []recordedSync
 		wantErrors map[string]int64
+		// open means the attempt has not ended yet (no outcome recorded).
+		open bool
 	}{
 		{
-			name: "ClaimNext then Complete records success",
+			name: "an unchanged poll (Complete) records nothing, as v1.5.4 ran no sync",
 			run: func(t *testing.T, h metricsHarness) {
 				t.Helper()
 				job := testJob("l1", "git-src")
@@ -143,7 +151,6 @@ func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
 				assert.Equal(t, job, got)
 				require.NoError(t, h.sut.Complete(ctx, job, result))
 			},
-			wantSyncs: []recordedSync{{source: "git-src", outcome: "success", count: 1}},
 		},
 		{
 			name: "Acquire then CommitSnapshot records success",
@@ -160,7 +167,7 @@ func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
 			wantSyncs: []recordedSync{{source: "inline", outcome: "success", count: 1}},
 		},
 		{
-			name: "Fail records error outcome and error type",
+			name: "Fail records error outcome and v1.5.4's error type",
 			run: func(t *testing.T, h metricsHarness) {
 				t.Helper()
 				job := testJob("l3", "api-src")
@@ -171,7 +178,21 @@ func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
 				require.NoError(t, h.sut.Fail(ctx, job, persistence.FailureFetch))
 			},
 			wantSyncs:  []recordedSync{{source: "api-src", outcome: "error", count: 1}},
-			wantErrors: map[string]int64{"fetch": 1},
+			wantErrors: map[string]int64{"FetchFailed": 1},
+		},
+		{
+			name: "a cancelled sync counts as Cancelled",
+			run: func(t *testing.T, h metricsHarness) {
+				t.Helper()
+				job := testJob("l3c", "api-src")
+				h.jobs.EXPECT().ClaimNext(ctx, time.Minute).Return(job, true, nil)
+				h.jobs.EXPECT().Fail(ctx, job, persistence.FailureCancelled).Return(nil)
+				_, _, err := h.sut.ClaimNext(ctx, time.Minute)
+				require.NoError(t, err)
+				require.NoError(t, h.sut.Fail(ctx, job, persistence.FailureCancelled))
+			},
+			wantSyncs:  []recordedSync{{source: "api-src", outcome: "error", count: 1}},
+			wantErrors: map[string]int64{"Cancelled": 1},
 		},
 		{
 			name: "Fail records even when the underlying Fail errors, and passes the error through",
@@ -186,7 +207,7 @@ func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
 				assert.Same(t, failErr, h.sut.Fail(ctx, job, persistence.FailureStorage))
 			},
 			wantSyncs:  []recordedSync{{source: "api-src", outcome: "error", count: 1}},
-			wantErrors: map[string]int64{"storage": 1},
+			wantErrors: map[string]int64{"StorageFailed": 1},
 		},
 		{
 			name: "failed Complete records nothing and a following Fail records the attempt once",
@@ -203,7 +224,7 @@ func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
 				require.NoError(t, h.sut.Fail(ctx, job, persistence.FailureValidation))
 			},
 			wantSyncs:  []recordedSync{{source: "git-src", outcome: "error", count: 1}},
-			wantErrors: map[string]int64{"validation": 1},
+			wantErrors: map[string]int64{"ValidationFailed": 1},
 		},
 		{
 			name: "failed CommitSnapshot records nothing",
@@ -216,6 +237,7 @@ func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
 				require.NoError(t, err)
 				assert.ErrorIs(t, h.sut.CommitSnapshot(ctx, job, result, snapshot), persistence.ErrStale)
 			},
+			open: true,
 		},
 		{
 			name: "no claim means no start, so a later finish records nothing",
@@ -223,12 +245,12 @@ func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
 				t.Helper()
 				job := testJob("l7", "git-src")
 				h.jobs.EXPECT().ClaimNext(ctx, time.Minute).Return(persistence.Job{}, false, nil)
-				h.jobs.EXPECT().Complete(ctx, job, result).Return(nil)
+				h.jobs.EXPECT().CommitSnapshot(ctx, job, result, snapshot).Return(nil)
 				h.jobs.EXPECT().Fail(ctx, job, persistence.FailureFetch).Return(nil)
 				_, ok, err := h.sut.ClaimNext(ctx, time.Minute)
 				require.NoError(t, err)
 				require.False(t, ok)
-				require.NoError(t, h.sut.Complete(ctx, job, result))
+				require.NoError(t, h.sut.CommitSnapshot(ctx, job, result, snapshot))
 				require.NoError(t, h.sut.Fail(ctx, job, persistence.FailureFetch))
 			},
 		},
@@ -239,12 +261,12 @@ func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
 				job := testJob("l8", "git-src")
 				claimErr := errors.New("db down")
 				h.jobs.EXPECT().ClaimNext(ctx, time.Minute).Return(job, true, claimErr)
-				h.jobs.EXPECT().Complete(ctx, job, result).Return(nil)
+				h.jobs.EXPECT().CommitSnapshot(ctx, job, result, snapshot).Return(nil)
 				got, ok, err := h.sut.ClaimNext(ctx, time.Minute)
 				assert.Same(t, claimErr, err)
 				assert.True(t, ok, "results pass through unchanged")
 				assert.Equal(t, job, got)
-				require.NoError(t, h.sut.Complete(ctx, job, result))
+				require.NoError(t, h.sut.CommitSnapshot(ctx, job, result, snapshot))
 			},
 		},
 		{
@@ -266,11 +288,32 @@ func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
 				t.Helper()
 				job := testJob("l10", "git-src")
 				h.jobs.EXPECT().ClaimNext(ctx, time.Minute).Return(job, true, nil)
-				h.jobs.EXPECT().Complete(ctx, job, result).Return(nil).Times(2)
+				h.jobs.EXPECT().CommitSnapshot(ctx, job, result, snapshot).Return(nil).Times(2)
 				_, _, err := h.sut.ClaimNext(ctx, time.Minute)
 				require.NoError(t, err)
-				require.NoError(t, h.sut.Complete(ctx, job, result))
-				require.NoError(t, h.sut.Complete(ctx, job, result))
+				require.NoError(t, h.sut.CommitSnapshot(ctx, job, result, snapshot))
+				require.NoError(t, h.sut.CommitSnapshot(ctx, job, result, snapshot))
+			},
+			wantSyncs: []recordedSync{{source: "git-src", outcome: "success", count: 1}},
+		},
+		{
+			name: "a lease abandoned without an outcome is replaced by the source's next lease",
+			run: func(t *testing.T, h metricsHarness) {
+				t.Helper()
+				stale, next := testJob("old", "git-src"), testJob("new", "git-src")
+				gomock.InOrder(
+					h.jobs.EXPECT().Acquire(ctx, "git-src", time.Minute).Return(stale, nil),
+					h.jobs.EXPECT().Acquire(ctx, "git-src", time.Minute).Return(next, nil),
+				)
+				h.jobs.EXPECT().Fail(ctx, stale, persistence.FailureFetch).Return(persistence.ErrStale)
+				h.jobs.EXPECT().CommitSnapshot(ctx, next, result, snapshot).Return(nil)
+				_, err := h.sut.Acquire(ctx, "git-src", time.Minute)
+				require.NoError(t, err)
+				_, err = h.sut.Acquire(ctx, "git-src", time.Minute)
+				require.NoError(t, err)
+				assert.Len(t, h.sut.started, 1, "one entry per source, however many leases ended without an outcome")
+				assert.ErrorIs(t, h.sut.Fail(ctx, stale, persistence.FailureFetch), persistence.ErrStale)
+				require.NoError(t, h.sut.CommitSnapshot(ctx, next, result, snapshot))
 			},
 			wantSyncs: []recordedSync{{source: "git-src", outcome: "success", count: 1}},
 		},
@@ -281,20 +324,20 @@ func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
 				a, b := testJob("la", "src-a"), testJob("lb", "src-b")
 				h.jobs.EXPECT().Acquire(ctx, "src-a", time.Minute).Return(a, nil)
 				h.jobs.EXPECT().Acquire(ctx, "src-b", time.Minute).Return(b, nil)
-				h.jobs.EXPECT().Complete(ctx, b, result).Return(nil)
+				h.jobs.EXPECT().CommitSnapshot(ctx, b, result, snapshot).Return(nil)
 				h.jobs.EXPECT().Fail(ctx, a, persistence.FailureFetch).Return(nil)
 				_, err := h.sut.Acquire(ctx, "src-a", time.Minute)
 				require.NoError(t, err)
 				_, err = h.sut.Acquire(ctx, "src-b", time.Minute)
 				require.NoError(t, err)
-				require.NoError(t, h.sut.Complete(ctx, b, result))
+				require.NoError(t, h.sut.CommitSnapshot(ctx, b, result, snapshot))
 				require.NoError(t, h.sut.Fail(ctx, a, persistence.FailureFetch))
 			},
 			wantSyncs: []recordedSync{
 				{source: "src-a", outcome: "error", count: 1},
 				{source: "src-b", outcome: "success", count: 1},
 			},
-			wantErrors: map[string]int64{"fetch": 1},
+			wantErrors: map[string]int64{"FetchFailed": 1},
 		},
 	}
 
@@ -309,11 +352,15 @@ func TestMeasuredJobs_RecordsCompleteAttempts(t *testing.T) {
 			} else {
 				assert.Equal(t, tt.wantErrors, h.syncErrors(t))
 			}
+			assert.Len(t, h.spans.Ended(), len(tt.wantSyncs), "one sync span per recorded sync")
+			if !tt.open {
+				assert.Empty(t, h.sut.started, "every finished attempt is forgotten")
+			}
 		})
 	}
 }
 
-func TestMeasuredJobs_DelegatesUnwrappedMethods(t *testing.T) {
+func TestObservedJobs_DelegatesUnwrappedMethods(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	h := newMetricsHarness(t)
@@ -334,28 +381,32 @@ func TestMeasuredJobs_DelegatesUnwrappedMethods(t *testing.T) {
 	assert.Empty(t, h.syncs(t), "Renew and Status are not measured")
 }
 
-func TestMeasuredJobs_DurationCoversTheAttempt(t *testing.T) {
+func TestObservedJobs_DurationCoversTheAttempt(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	h := newMetricsHarness(t)
 	job := testJob("l1", "git-src")
 	h.jobs.EXPECT().ClaimNext(ctx, time.Minute).Return(job, true, nil)
-	h.jobs.EXPECT().Complete(ctx, job, gomock.Any()).Return(nil)
+	h.jobs.EXPECT().CommitSnapshot(ctx, job, gomock.Any(), gomock.Any()).Return(nil)
 
 	_, _, err := h.sut.ClaimNext(ctx, time.Minute)
 	require.NoError(t, err)
 	time.Sleep(20 * time.Millisecond)
-	require.NoError(t, h.sut.Complete(ctx, job, persistence.SyncResult{}))
+	require.NoError(t, h.sut.CommitSnapshot(ctx, job, persistence.SyncResult{}, model.Snapshot{}))
 
 	m, ok := findMetric(h.collect(t), syncDurationMetric)
 	require.True(t, ok)
 	hist, ok := m.Data.(metricdata.Histogram[float64])
 	require.True(t, ok)
 	require.Len(t, hist.DataPoints, 1)
-	assert.GreaterOrEqual(t, hist.DataPoints[0].Sum, 0.02, "duration runs from claim to completion, in seconds")
+	assert.GreaterOrEqual(t, hist.DataPoints[0].Sum, 0.02, "duration runs from claim to commit, in seconds")
+	spans := h.spans.Ended()
+	require.Len(t, spans, 1)
+	assert.GreaterOrEqual(t, spans[0].EndTime().Sub(spans[0].StartTime()), 20*time.Millisecond,
+		"the span starts when the attempt was claimed")
 }
 
-func TestMeasuredJobs_ConcurrentUse(t *testing.T) {
+func TestObservedJobs_ConcurrentUse(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	h := newMetricsHarness(t)
@@ -364,7 +415,7 @@ func TestMeasuredJobs_ConcurrentUse(t *testing.T) {
 		func(_ context.Context, name string, _ time.Duration) (persistence.Job, error) {
 			return testJob("lease-"+name, name), nil
 		}).Times(workers)
-	h.jobs.EXPECT().Complete(ctx, gomock.Any(), gomock.Any()).Return(nil).Times(workers)
+	h.jobs.EXPECT().CommitSnapshot(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(workers)
 
 	var wg sync.WaitGroup
 	for i := range workers {
@@ -374,7 +425,7 @@ func TestMeasuredJobs_ConcurrentUse(t *testing.T) {
 			name := "src-" + string(rune('a'+i))
 			job, err := h.sut.Acquire(ctx, name, time.Minute)
 			assert.NoError(t, err)
-			assert.NoError(t, h.sut.Complete(ctx, job, persistence.SyncResult{}))
+			assert.NoError(t, h.sut.CommitSnapshot(ctx, job, persistence.SyncResult{}, model.Snapshot{}))
 		}()
 	}
 	wg.Wait()
@@ -388,51 +439,85 @@ func TestMeasuredJobs_ConcurrentUse(t *testing.T) {
 	assert.Empty(t, h.sut.started)
 }
 
-func TestTracedFetcher(t *testing.T) {
+// The sync span keeps v1.5.4's name and attributes.
+func TestObservedJobs_SyncSpan(t *testing.T) {
 	t.Parallel()
-	def := persistence.SourceDefinition{Name: "git-src", Git: &persistence.GitSpec{Repository: "https://example.com/r.git"}}
-	fetchErr := errors.New("fetch failed: secret-token-in-url")
+	ctx := context.Background()
+	snapshot := model.Snapshot{}
+	snapshot.Data.Servers = make([]model.Server, 2)
+	snapshot.Data.Skills = make([]thv.Skill, 1)
 
 	tests := []struct {
 		name       string
-		result     ingest.Result
-		err        error
+		finish     func(h metricsHarness, job persistence.Job) error
+		wantAttrs  []attribute.KeyValue
 		wantStatus codes.Code
 	}{
-		{name: "success leaves status unset", result: ingest.Result{Hash: "abc"}, wantStatus: codes.Unset},
-		{name: "failure marks the span as error", err: fetchErr, wantStatus: codes.Error},
+		{
+			name: "committed",
+			finish: func(h metricsHarness, job persistence.Job) error {
+				h.jobs.EXPECT().CommitSnapshot(ctx, job, gomock.Any(), snapshot).Return(nil)
+				return h.sut.CommitSnapshot(ctx, job, persistence.SyncResult{}, snapshot)
+			},
+			wantAttrs: []attribute.KeyValue{
+				attribute.Bool("sync.success", true),
+				attribute.Int("sync.server_count", 2),
+				attribute.Int("sync.skill_count", 1),
+				attribute.Int("sync.plugin_count", 0),
+			},
+			wantStatus: codes.Unset,
+		},
+		{
+			name: "failed",
+			finish: func(h metricsHarness, job persistence.Job) error {
+				h.jobs.EXPECT().Fail(ctx, job, persistence.FailureValidation).Return(nil)
+				return h.sut.Fail(ctx, job, persistence.FailureValidation)
+			},
+			wantAttrs:  []attribute.KeyValue{attribute.Bool("sync.success", false)},
+			wantStatus: codes.Error,
+		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			recorder := tracetest.NewSpanRecorder()
-			provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
-			t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+			h := newMetricsHarness(t)
+			job := testJob("l1", "git-src")
+			h.jobs.EXPECT().ClaimNext(ctx, time.Minute).Return(job, true, nil)
+			_, _, err := h.sut.ClaimNext(ctx, time.Minute)
+			require.NoError(t, err)
+			require.NoError(t, tt.finish(h, job))
 
-			raw := reconcilemocks.NewMockFetcher(gomock.NewController(t))
-			raw.EXPECT().Fetch(gomock.Any(), def).DoAndReturn(
-				func(ctx context.Context, _ persistence.SourceDefinition) (ingest.Result, error) {
-					assert.True(t, trace.SpanFromContext(ctx).SpanContext().IsValid(), "the raw fetcher runs inside the span")
-					return tt.result, tt.err
-				})
-
-			f := tracedFetcher{raw: raw, tracer: provider.Tracer("registry.sync")}
-			got, err := f.Fetch(context.Background(), def)
-			assert.Equal(t, tt.result, got)
-			if tt.err != nil {
-				assert.Same(t, tt.err, err, "the fetch error passes through unchanged")
-			} else {
-				require.NoError(t, err)
-			}
-
-			spans := recorder.Ended()
+			spans := h.spans.Ended()
 			require.Len(t, spans, 1)
 			span := spans[0]
-			assert.Equal(t, "sync.fetch", span.Name())
-			assert.Contains(t, span.Attributes(), attribute.String("source", "git-src"))
+			assert.Equal(t, "sync.performRegistrySync", span.Name())
+			assert.Equal(t, SyncTracerName, span.InstrumentationScope().Name)
+			attrs := span.Attributes()
+			assert.Contains(t, attrs, attribute.String("registry.name", "git-src"))
+			assert.Contains(t, attrs, attribute.String("registry.type", "git"))
+			for _, want := range tt.wantAttrs {
+				assert.Contains(t, attrs, want)
+			}
+			var hasDuration bool
+			for _, a := range attrs {
+				hasDuration = hasDuration || a.Key == "sync.duration_seconds"
+			}
+			assert.True(t, hasDuration, "sync.duration_seconds is recorded")
 			assert.Equal(t, tt.wantStatus, span.Status().Code)
-			assert.NotContains(t, span.Status().Description, "secret", "the span never carries the raw error text")
 		})
 	}
+}
+
+// Without a tracer or metrics the wrapper still delegates.
+func TestObservedJobs_NilMetricsAndTracer(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	jobs := reconcilemocks.NewMockJobs(gomock.NewController(t))
+	sut := newObservedJobs(jobs, nil, nil)
+	job := testJob("l1", "git-src")
+	jobs.EXPECT().Acquire(ctx, "git-src", time.Minute).Return(job, nil)
+	jobs.EXPECT().Fail(ctx, job, persistence.FailureFetch).Return(nil)
+	_, err := sut.Acquire(ctx, "git-src", time.Minute)
+	require.NoError(t, err)
+	require.NoError(t, sut.Fail(ctx, job, persistence.FailureFetch))
 }

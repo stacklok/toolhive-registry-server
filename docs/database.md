@@ -170,6 +170,102 @@ task migrate-down CONFIG=examples/config-database-dev.yaml NUM_STEPS=1
 - Interactive confirmation prompts (bypass with `--yes` flag)
 - Strong warnings displayed for destructive operations
 - Configuration validation before connecting to database
+- Precondition checks before any migration runs (see below)
+
+### Migration Preconditions
+
+Before applying or reverting anything, `serve`, `migrate up` and `migrate down`
+check that the database can take the migrations they are about to cross. If a
+check fails, the command stops with an error that names the problem, and the
+database is left exactly as it was: same schema version, not dirty. Fix the
+problem and run the command again.
+
+| Migration | Direction | Refused when |
+|-----------|-----------|--------------|
+| 24 | up | The database has more than one managed source. See [Repairing more than one managed source](#repairing-more-than-one-managed-source). |
+| 26 | down | A sync job holds a live lease. Stop every server, wait for the leases to expire (at most the lease duration, one minute by default), then retry. |
+
+The checks are not locks: stop every server before a manual `migrate down`, so
+no new lease is taken between the check and the migration.
+
+### Repairing More Than One Managed Source
+
+This version allows one managed source (the source that API-published entries
+go into). Databases created on v1.1.x or earlier can have more than one, and the
+upgrade then stops with an error such as:
+
+```
+migration precondition failed: the database has 2 managed sources (legacy, published) ...
+```
+
+Repair it while the database is still on its old schema, using the old server
+version or `psql` as the migration user:
+
+1. List the managed sources, how many entries each holds and which registries use them:
+
+   ```sql
+   SELECT s.name, s.creation_type, count(DISTINCT e.id) AS entries,
+          string_agg(DISTINCT r.name, ', ') AS registries
+   FROM source s
+   LEFT JOIN registry_entry e ON e.source_id = s.id
+   LEFT JOIN registry_source rs ON rs.source_id = s.id
+   LEFT JOIN registry r ON r.id = rs.registry_id
+   WHERE s.source_type = 'managed'
+   GROUP BY s.name, s.creation_type;
+   ```
+
+2. Pick the managed source to keep, normally the one your configuration names in
+   its `managed: {}` block.
+3. For each other managed source whose entries you still need, publish those
+   entries again (`POST /v1/entries` on the old server) so they land in the
+   source you keep. Entries in the extra sources are deleted in the next step.
+4. Remove each extra managed source:
+   - created from the configuration (`creation_type = 'CONFIG'`): remove it from
+     the configuration file and its registries, then restart the old server, which
+     deletes config sources that are no longer listed;
+   - created through the API (`creation_type = 'API'`): remove it from every
+     registry that lists it (`PUT /v1/registries/{name}`), then delete it
+     (`DELETE /v1/sources/{name}`);
+   - or, as a last resort, delete it directly. This deletes its entries and
+     registry links too:
+
+     ```sql
+     DELETE FROM source WHERE source_type = 'managed' AND name = 'legacy';
+     ```
+
+5. Run the upgrade again.
+
+### Recovering from a Dirty Schema Version
+
+If a migration fails part-way (for example, because the connection was lost or a
+statement failed), the schema version is recorded as dirty. Every later
+migration, and the server's startup, then refuses to run until the operator
+records which version the schema actually matches:
+
+```bash
+# Show the recorded version and dirty flag: every migrate command logs them,
+# or query directly:
+#   SELECT version, dirty FROM schema_migrations;
+
+# Record VERSION as clean, without running any migration (-1 records none)
+thv-registry-api migrate force VERSION --config config.yaml
+```
+
+> **Warning:** `migrate force` does not change the schema; it only rewrites the
+> recorded version. First compare the schema with the migration files in
+> `database/migrations/` and finish or undo the failed migration by hand, so the
+> schema matches `VERSION` exactly. Forcing a version that the schema does not
+> match makes later migrations fail or corrupt data. Back up the database first.
+
+Usually `VERSION` is the version before the failed migration, after undoing its
+partial changes, and then `migrate up` (or a server start) runs it again.
+
+### One-Time Latest Version Rebuild
+
+The first start after upgrading past migration 25 rebuilds the latest-version
+pointer of every entry once, before the server starts serving, and logs
+`Rebuilt latest version pointers after schema upgrade`. Fresh installs skip the
+log line. The rebuild takes a few seconds even for catalogs of 150,000 names.
 
 ## Setup Guide
 

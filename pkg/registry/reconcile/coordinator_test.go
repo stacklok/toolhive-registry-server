@@ -363,25 +363,33 @@ func TestRunStatusFailureIsolation(t *testing.T) {
 	}
 }
 
-func TestFiltersDoNotHideInvalidSnapshots(t *testing.T) {
+// Storage safety applies to what is stored: a filter can exclude a record that
+// could not be stored (v1.5.4 validated only what the writer received), while a
+// malformed filter or an unstorable included record fails the source.
+func TestFiltersApplyBeforeStorageSafety(t *testing.T) {
 	t.Parallel()
-	for _, mode := range []string{"fully filtered", "malformed filter", "invalid excluded entry"} {
-		t.Run(mode, func(t *testing.T) {
+	for _, tc := range []struct {
+		mode    string
+		include string
+		version string
+		commit  bool
+	}{
+		{mode: "fully filtered", include: "excluded/*", version: "1.0.0", commit: true},
+		{mode: "unstorable excluded entry", include: "excluded/*", version: "", commit: true},
+		{mode: "malformed filter", include: "[", version: "1.0.0"},
+		{mode: "unstorable included entry", include: "io.example/server", version: ""},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			jobs, fetcher := mocks.NewMockJobs(ctrl), mocks.NewMockFetcher(ctrl)
 			job := jobFixture()
-			job.Source.Filter = &persistence.Filter{Names: &persistence.NameFilter{Include: []string{"excluded/*"}}}
+			job.Source.Filter = &persistence.Filter{Names: &persistence.NameFilter{Include: []string{tc.include}}}
 			snapshot := snapshotFixture()
-			if mode == "malformed filter" {
-				job.Source.Filter.Names.Include = []string{"["}
-			}
-			if mode == "invalid excluded entry" {
-				snapshot.Data.Servers[0].Version = ""
-			}
+			snapshot.Data.Servers[0].Version = tc.version
 			jobs.EXPECT().Acquire(gomock.Any(), job.Source.Name, time.Minute).Return(job, nil)
 			fetcher.EXPECT().Fetch(gomock.Any(), job.Source).Return(ingest.Result{Snapshot: snapshot, Hash: "hash"}, nil)
-			if mode == "fully filtered" {
+			if tc.commit {
 				jobs.EXPECT().Status(gomock.Any(), job.Source.Name).Return(persistence.JobStatus{SourceID: job.Source.ID}, nil)
 				jobs.EXPECT().CommitSnapshot(gomock.Any(), job, gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ persistence.Job, _ persistence.SyncResult, snapshot model.Snapshot) error {
 					require.Empty(t, snapshot.Data.Servers)
@@ -393,11 +401,14 @@ func TestFiltersDoNotHideInvalidSnapshots(t *testing.T) {
 				jobs.EXPECT().Fail(gomock.Any(), job, persistence.FailureValidation).Return(nil)
 			}
 			err := newCoordinator(t, jobs, fetcher, time.Minute).Sync(t.Context(), job.Source.Name)
-			if mode == "fully filtered" {
+			if tc.commit {
 				require.NoError(t, err)
-			} else {
-				require.ErrorIs(t, err, persistence.ErrInvalid)
+				return
 			}
+			require.ErrorIs(t, err, persistence.ErrInvalid)
+			var recorded *reconcile.FailureError
+			require.ErrorAs(t, err, &recorded)
+			require.Equal(t, persistence.FailureValidation, recorded.Category)
 		})
 	}
 }

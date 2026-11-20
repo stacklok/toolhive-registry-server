@@ -23,12 +23,14 @@ var (
 // OperatorWorker runs a Kubernetes source's runner for the life of the server.
 // The library leaves restart policy to the host: a runner returns
 // operator.ErrWatch whenever one of its watches ends, and returns its first
-// failure before it has synced. This worker runs it again in both cases once
-// the source has synced at least once, so neither a routine watch timeout nor
-// a transient failure right after one stops sync. Each run re-establishes the
-// watches and starts with a full refresh, so nothing changed meanwhile is
-// missed. Ownership errors (the definition changed or was removed) still
-// return, for the runtime to replace the worker.
+// failure before it has synced (the Kubernetes API refusing a list or watch,
+// for example). This worker runs it again with backoff in every case that
+// belongs to this source, so neither a routine watch timeout, a missing
+// permission nor a transient failure stops sync for other sources. Each run
+// re-establishes the watches and starts with a full refresh, so nothing
+// changed meanwhile is missed. Ownership errors (the definition changed or was
+// removed) return, for the runtime to replace the worker, and so does storage
+// being unavailable, which is not this source's failure.
 type OperatorWorker struct {
 	runner *operator.Runner
 	source string
@@ -46,7 +48,7 @@ func (w *OperatorWorker) Run(ctx context.Context) error {
 	for {
 		started := time.Now()
 		err := w.runner.Run(ctx)
-		if ctx.Err() != nil || !w.restartable(err) {
+		if ctx.Err() != nil || !restartable(err) {
 			return err
 		}
 		routine := time.Since(started) >= watchRestartReset
@@ -65,16 +67,16 @@ func (w *OperatorWorker) Run(ctx context.Context) error {
 	}
 }
 
-func (w *OperatorWorker) restartable(err error) bool {
-	if err == nil || errors.Is(err, persistence.ErrInvalid) || errors.Is(err, persistence.ErrNotFound) ||
-		errors.Is(err, persistence.ErrStale) {
-		return false
-	}
-	return errors.Is(err, operator.ErrWatch) || w.synced.Load()
+// restartable reports whether err belongs to this source, so running the
+// runner again (after a delay) may fix it. The runner records validation
+// failures on the source itself and keeps running.
+func restartable(err error) bool {
+	return err != nil && !errors.Is(err, persistence.ErrStale) && !errors.Is(err, persistence.ErrNotFound) &&
+		!errors.Is(err, persistence.ErrUnavailable)
 }
 
 // logRestart reports a restart. Runner errors are sentinels without upstream
-// detail, so they are safe to log.
+// detail, so they are safe to log; the library logs the Kubernetes reason.
 func (w *OperatorWorker) logRestart(ctx context.Context, err error, routine bool, delay time.Duration) {
 	switch {
 	case routine && errors.Is(err, operator.ErrWatch):

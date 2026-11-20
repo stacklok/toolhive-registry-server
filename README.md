@@ -52,7 +52,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 
 ### Kubernetes and observability
 
-- **Kubernetes-native discovery**: A built-in reconciler watches for MCP server CRDs across namespaces and syncs them into the registry automatically. Per-entry access control via CRD annotations, multi-namespace support, and leader election for HA.
+- **Kubernetes-native discovery**: A built-in reconciler watches for MCP server CRDs across namespaces and syncs them into the registry automatically. Per-entry access control via CRD annotations and multi-namespace support. Several replicas can run against one database: sync jobs take a lease per source, so only one replica syncs a given source at a time (there is no leader election).
 - **OpenTelemetry**: Distributed tracing and metrics out of the box.
 - **Standards-compliant**: Implements the official MCP Registry API specification. Clients that speak the spec work out of the box.
 - **PostgreSQL backend**: Database storage with automatic migrations.
@@ -170,6 +170,14 @@ Fully compatible with the upstream MCP Registry API specification:
 - `GET /registry/{registryName}/v0.1/servers/{name}/versions/{version}` - Get a specific server version
 
 **Note:** Git, API, File, and Kubernetes sources are read-only through the registry API.
+
+List endpoints (servers, skills and plugins) sort by name, then version, in the
+database's default collation. `search` is a case-insensitive SQL `LIKE` match on
+name, title and description, so `%` and `_` act as wildcards and `\` escapes the
+next character. `nextCursor` is positional: you can change `limit`, `search` or
+`version` between pages, and cursors issued by earlier releases keep working.
+Malformed query pairs are ignored. A query string longer than 16 KiB is
+rejected with `400`.
 
 ### Admin API v1
 

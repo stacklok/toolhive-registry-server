@@ -33,6 +33,7 @@ type options struct {
 	skipAuthz   bool
 	publisher   persistence.ManagedPublisher
 	changed     func(context.Context) error
+	prepare     SourcePreparer
 }
 
 // Option is a functional option for configuring the database service
@@ -111,6 +112,8 @@ type dbService struct {
 	publisher   persistence.ManagedPublisher
 	// sourcesChanged is notified after source definition writes.
 	sourcesChanged func(context.Context) error
+	// prepare completes and checks source requests before they are stored.
+	prepare SourcePreparer
 }
 
 var _ service.RegistryService = (*dbService)(nil)
@@ -133,6 +136,7 @@ func New(opts ...Option) (service.RegistryService, error) {
 		publisher:   o.publisher,
 
 		sourcesChanged: o.changed,
+		prepare:        o.prepare,
 	}, nil
 }
 

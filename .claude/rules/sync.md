@@ -54,9 +54,20 @@ The library's runtime owns all ingestion. There is no second writer for synced d
 - A `kubernetes` worker syncs on watch events and otherwise re-lists only every
   `operator.DefaultResyncInterval`; a failed sync retries at the poll interval. The API
   server ends watches routinely, so `internal/kubernetes.OperatorWorker` restarts the
-  runner (with backoff) when it returns `operator.ErrWatch`, and — once the source has
-  synced — on any other non-ownership failure too. Never let a watch ending, or a transient
-  error right after one, stop source sync; ownership errors still go to the runtime.
+  runner (with backoff) on every failure that belongs to the source: a watch ending, the
+  API refusing a list or watch (Forbidden, CRDs missing, unreachable), before or after the
+  first sync. Ownership errors (`ErrStale`, `ErrNotFound`) go to the runtime to replace the
+  worker, and `ErrUnavailable` (storage) stops the runtime.
+- Errors that belong to one source never stop sync for the others: a worker the
+  runtime cannot build (a stored Kubernetes definition the operator rejects) is replaced by
+  a stand-in that records the failure on that source and retries the build with backoff;
+  `standalone.Runtime.Run` does not preflight. Only storage-wide failures end `Run`, and
+  the server's supervisor restarts it.
+- A config Kubernetes source the server cannot list at startup is logged (source, kind,
+  namespace, reason) and startup continues, as in v1.5.4; invalid configuration (an
+  invalid namespace) still stops startup. Admin-API Kubernetes sources get the config
+  sources' namespace scoping (`THV_REGISTRY_WATCH_NAMESPACE` when none are given) and
+  preflight; an invalid namespace or failed preflight is a 400.
 - `managed` sources are written only by the publish/delete/claim-update handlers.
 - A `syncPolicy` or `filter` on a source that cannot use it is ignored with a warning, as
   in v1.5.4 — not rejected: config sources in `internal/app/catalog.go`, admin requests and
@@ -85,7 +96,8 @@ claims when present and the source's claims otherwise; the server keeps that beh
   entries keep their own claims.
 - Annotations are recorded per namespace and kind (reset when the worker is rebuilt), and only
   for resources the fetcher exports, so a multi-namespace source keeps every namespace's
-  overrides. The snapshot hash covers server data only, so `annotationJobs` stores a digest
+  overrides. When several resources annotate the same server name, the last kind wins in
+  v1.5.4's order MCPServer, VirtualMCPServer, MCPRemoteProxy (namespace order within a kind). The snapshot hash covers server data only, so `annotationJobs` stores a digest
   of the written annotation claims with the sync result and forces a full commit when the
   current digest differs; otherwise an annotation-only change would complete as unchanged
   and the claims hook would never run. The digest lives in storage, not process memory, so
@@ -94,14 +106,37 @@ claims when present and the source's claims otherwise; the server keeps that beh
 **Detect**: CRD ingestion that proceeds on a malformed annotation; claims written for K8s
 entries outside the claims hook.
 
-## 4. Fetchers Validate Before They Return
+## 4. Validation Is Split: Source Policy, Then Storage Safety
 
-`pkg/registry/ingest` and `pkg/registry/operator` return a snapshot only when it parses and
-passes `persistence.ValidateSnapshot`. The writer trusts its input.
+Synced data keeps v1.5.4's per-source acceptance. Tightening it silently drops or
+fails catalogs that upgraded users relied on, so the strict publication rules
+(`persistence.ValidateSnapshot`: server name format, required description, no
+duplicate packages/remotes/icons, full wire schemas) apply to publish only.
 
-**Detect**: a fetcher that returns an unvalidated snapshot; writer code that re-validates
-what a fetcher already returned.
+**What must hold:**
+- Fetchers apply their source's policy and nothing stricter. File and Git:
+  `formats.DecodeUpstream` (toolhive-core wire schema, at least one server, name and
+  description required). API: decode the v0.1 pages only; no schema; zero servers is a
+  valid, catalog-emptying result. Kubernetes: no schema; every resource with the export,
+  URL and description annotations is exported; conversion failures are skipped with a
+  warning naming the resource.
+- Storage safety (`persistence.ValidateStorableSnapshot`) runs on the *filtered*
+  snapshot in `reconcile.Coordinator` and again in `CommitSnapshot`/`ReplaceSnapshot`.
+  It checks only what the database and read routes need: non-empty name/version within
+  the route limit, per-kind uniqueness, a `namespace/name` server shape, enum-valid
+  status, valid UTF-8 without NUL. The writer collapses duplicate packages, remotes and
+  icons to the first.
+- Content the database rejects (SQLSTATE class 22, 54000) is `ErrInvalid` for that
+  source, never `ErrUnavailable`: a data problem must not stop the sync runtime.
+- Every failure is logged once by the coordinator (`Sync failed`, with category and
+  cause); a validation cause names the record (kind, name, version). Returned errors and
+  stored status stay categories. Fetch causes travel via `ingest.WithCause`, with URL
+  userinfo, query strings and fragments removed; never log headers or credentials.
 
-**Instead**: validation is the fetcher's responsibility. The writer assumes valid input
-and focuses on transactional correctness. Registry files may omit a server's `$schema`;
-validation accepts that, as v1.5.4 did.
+**Detect**: `ValidateSnapshot` called on a sync path; a schema check on API or
+Kubernetes data; storage checks on the unfiltered snapshot; a data-dependent database
+error classified as unavailable; a fetch error that drops its cause without
+`WithCause`, or one whose message includes it.
+
+**Instead**: put a new acceptance rule in the one source's fetcher, and a new storage
+requirement in `ValidateStorableSnapshot` with the database or route reason beside it.

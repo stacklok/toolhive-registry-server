@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/gobwas/glob"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/stacklok/toolhive-registry-server/internal/app/storage"
@@ -23,7 +21,8 @@ import (
 // catalogDefinitions maps the YAML sources and registries to library
 // definitions. It keeps v1.5.4's leniency: a syncPolicy or filter on a source
 // that is never polled (managed, kubernetes, inline data) is ignored with a
-// warning instead of rejected.
+// warning instead of rejected, and settings v1.5.4 accepted but the library
+// refuses are normalized with a warning (see docs/configuration.md).
 func catalogDefinitions(cfg *config.Config) ([]persistence.SourceDefinition, []persistence.ViewDefinition, error) {
 	sources := make([]persistence.SourceDefinition, 0, len(cfg.Sources))
 	for _, s := range cfg.Sources {
@@ -35,7 +34,7 @@ func catalogDefinitions(cfg *config.Config) ([]persistence.SourceDefinition, []p
 	}
 	views := make([]persistence.ViewDefinition, 0, len(cfg.Registries))
 	for _, v := range cfg.Registries {
-		views = append(views, persistence.ViewDefinition{Name: v.Name, Sources: v.Sources})
+		views = append(views, persistence.ViewDefinition{Name: v.Name, Sources: dedupeRegistrySources(v.Name, v.Sources)})
 	}
 	return sources, views, persistence.ValidateReconcile(sources, views)
 }
@@ -44,15 +43,20 @@ func sourceDefinition(cfg *config.Config, s config.SourceConfig) (persistence.So
 	d := persistence.SourceDefinition{Name: s.Name}
 	switch s.GetType() {
 	case config.SourceTypeGit:
-		g := s.Git
-		d.Git = &persistence.GitSpec{Repository: g.Repository, Branch: g.Branch, Tag: g.Tag, Commit: g.Commit, Path: g.Path}
-		if g.Auth != nil {
-			d.Git.Auth = &persistence.GitAuth{Username: g.Auth.Username, PasswordFile: g.Auth.PasswordFile}
+		spec, ambiguous := normalizeGitRefs(gitSpec(s.Git))
+		if ambiguous {
+			slog.Warn("Git source sets more than one of branch, tag and commit; as in v1.5.4, "+
+				"every sync of it fails until only one is set", "source", s.Name)
 		}
+		d.Git = &spec
 	case config.SourceTypeAPI:
 		d.API = &persistence.APISpec{Endpoint: s.API.Endpoint, Timeout: s.API.Timeout}
 	case config.SourceTypeFile:
-		d.File = &persistence.FileSpec{Path: s.File.Path, URL: s.File.URL, Data: s.File.Data, Timeout: s.File.Timeout}
+		timeout, warning := config.NormalizeFileTimeout(s.File)
+		if warning != "" {
+			slog.Warn("Normalized file.timeout", "source", s.Name, "detail", warning)
+		}
+		d.File = &persistence.FileSpec{Path: s.File.Path, URL: s.File.URL, Data: s.File.Data, Timeout: timeout}
 	case config.SourceTypeManaged:
 		d.Managed = &persistence.ManagedSpec{}
 	case config.SourceTypeKubernetes:
@@ -75,24 +79,33 @@ func applySyncSettings(d *persistence.SourceDefinition, s config.SourceConfig) {
 	polled := !s.IsNonSyncedSource() && !inline
 	if s.SyncPolicy != nil {
 		if polled {
-			d.Schedule = s.SyncPolicy.Interval
+			interval, warning := config.NormalizeSyncInterval(s.SyncPolicy.Interval)
+			if warning != "" {
+				slog.Warn("Normalized syncPolicy.interval", "source", s.Name, "detail", warning)
+			}
+			d.Schedule = interval
 		} else {
 			slog.Warn("Ignoring syncPolicy on a source that is not polled", "source", s.Name)
 		}
 	}
 	if s.Filter != nil {
 		if polled || inline {
-			d.Filter = persistenceFilter(s.Filter)
+			d.Filter = persistenceFilter(s.Name, s.Filter)
 		} else {
 			slog.Warn("Ignoring filter on a source that is not synced", "source", s.Name)
 		}
 	}
 }
 
-func persistenceFilter(f *config.FilterConfig) *persistence.Filter {
+// persistenceFilter maps a filter, rewriting invalid name patterns to the
+// selection v1.5.4 made with them (see config.NormalizeNameFilter).
+func persistenceFilter(source string, f *config.FilterConfig) *persistence.Filter {
 	out := &persistence.Filter{}
-	if f.Names != nil {
-		out.Names = &persistence.NameFilter{Include: f.Names.Include, Exclude: f.Names.Exclude}
+	if names, warning := config.NormalizeNameFilter(f.Names); names != nil {
+		if warning != "" {
+			slog.Error("Invalid name filter pattern", "source", source, "detail", warning)
+		}
+		out.Names = &persistence.NameFilter{Include: names.Include, Exclude: names.Exclude}
 	}
 	if f.Tags != nil {
 		out.Tags = &persistence.NameFilter{Include: f.Tags.Include, Exclude: f.Tags.Exclude}
@@ -114,17 +127,8 @@ func sourcePreflight(d persistence.SourceDefinition) error {
 			return fmt.Errorf("%w: source %q has incompatible inline registry data", persistence.ErrInvalid, d.Name)
 		}
 	}
-	if d.Filter != nil && d.Filter.Names != nil {
-		for _, patterns := range [][]string{d.Filter.Names.Include, d.Filter.Names.Exclude} {
-			for _, pattern := range patterns {
-				if _, err := filepath.Match(pattern, ""); err != nil {
-					return fmt.Errorf("%w: source %q has an invalid name filter", persistence.ErrInvalid, d.Name)
-				}
-				if _, err := glob.Compile(pattern); err != nil {
-					return fmt.Errorf("%w: source %q has an invalid name filter", persistence.ErrInvalid, d.Name)
-				}
-			}
-		}
+	if !validNameFilter(d.Filter) {
+		return fmt.Errorf("%w: source %q has an invalid name filter", persistence.ErrInvalid, d.Name)
 	}
 	return nil
 }
@@ -248,7 +252,7 @@ func (s *syncRunner) Start(ctx context.Context) error {
 		if time.Since(began) > high {
 			delay = low // a run that lasted counts as recovered
 		}
-		slog.Error("Source synchronization stopped; restarting", "error", err, "retry_in", delay)
+		slog.Error("Source synchronization stopped; restarting", "error", err, "retry_in", delay.String())
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():

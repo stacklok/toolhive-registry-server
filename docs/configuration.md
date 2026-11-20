@@ -10,6 +10,8 @@ Complete configuration reference for the ToolHive Registry API server.
 - [Data Sources](#data-sources)
 - [Sync Policy](#sync-policy)
 - [Filtering](#filtering)
+- [Settings Normalized for v1.5.4 Compatibility](#settings-normalized-for-v154-compatibility)
+- [Conflicts with API-Created Sources and Registries](#conflicts-with-api-created-sources-and-registries)
 - [Authentication](#authentication)
 - [Authorization](#authorization)
 - [Database](#database)
@@ -135,7 +137,7 @@ The `registries:` block aggregates sources into named registry views. At least o
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Unique name for this registry |
-| `sources` | array | Yes | Ordered list of source names that feed this registry |
+| `sources` | array | Yes | Ordered list of source names that feed this registry. A source listed more than once keeps the position of its last listing, with a warning (see [normalization](#settings-normalized-for-v154-compatibility)). |
 | `claims` | map | No | Key-value pairs for authorization purposes |
 
 ## Data Sources
@@ -163,7 +165,7 @@ git:
 | `repository` | string | Yes | Git repository URL (HTTPS or SSH) |
 | `branch` | string | No | Branch name (default: default branch) |
 | `tag` | string | No | Tag name (mutually exclusive with branch/commit) |
-| `commit` | string | No | Commit SHA (mutually exclusive with branch/tag) |
+| `commit` | string | No | Commit SHA (mutually exclusive with branch/tag). A source that sets more than one of `branch`, `tag` and `commit` starts, but every sync of it fails, as in v1.5.4 (see [normalization](#settings-normalized-for-v154-compatibility)). |
 | `path` | string | Yes | Path to registry JSON file within repo |
 | `auth.username` | string | No | Git username for private repos |
 | `auth.passwordFile` | string | No | Path to file containing Git password/token |
@@ -188,7 +190,7 @@ api:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `endpoint` | string | Yes | Base API URL (without path); the server appends MCP Registry API v0.1 paths automatically |
-| `timeout` | string | No | Per-request HTTP timeout as a Go duration (e.g. `30s`, `1m`). Defaults to `10s`; must be greater than `0` and at most `5m`. Raise this for public or occasionally-slow upstreams where individual requests can take longer. |
+| `timeout` | string | No | Per-request HTTP timeout as a Go duration (e.g. `30s`, `1m`). Defaults to `10s`; must be greater than `0` and at most `5m`. Raise this for public or occasionally-slow upstreams where individual requests can take longer. The timeout applies to each request (the probe and every page) separately; a paginated sync as a whole has no time limit. |
 
 **Supports:**
 - Automatic background synchronization
@@ -207,7 +209,11 @@ file:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `path` | string | Yes | Absolute path to registry JSON file |
+| `path` | string | No* | Absolute path to registry JSON file |
+| `url` | string | No* | HTTP(S) URL of the registry JSON file |
+| `timeout` | string | No | Per-request HTTP timeout for `url` (Go duration). Defaults to `30s`. Ignored, with a warning, on a `path` source; `0s` means `10s` and a negative value means the default (see [normalization](#settings-normalized-for-v154-compatibility)). |
+
+\* Exactly one of `path` and `url`.
 
 **Supports:**
 - Automatic background synchronization (monitors file changes)
@@ -245,7 +251,20 @@ kubernetes:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `namespaces` | array | No | Kubernetes namespaces to watch (empty = uses `THV_REGISTRY_WATCH_NAMESPACE` env var) |
+| `namespaces` | array | No | Kubernetes namespaces to watch (empty = uses `THV_REGISTRY_WATCH_NAMESPACE` env var; neither = all namespaces). Each must be a valid namespace name |
+
+The same applies to Kubernetes sources created or updated through the admin API
+(`PUT /v1/sources/{name}`): no `namespaces` means `THV_REGISTRY_WATCH_NAMESPACE`, an
+invalid namespace name is rejected with 400, and the server must be able to list the
+toolhive resources in the scope, or the request is rejected with 400 naming the kind,
+namespace and Kubernetes reason.
+
+If the server cannot list a config file's Kubernetes source at startup (missing RBAC
+permission, CRDs not installed, API server unreachable), it logs the source, kind,
+namespace and reason and starts anyway, serving every other source; the Kubernetes
+source keeps retrying in the background with backoff, logging each failure. One source's
+failure (including a stored definition the server cannot use, which is recorded as a
+failed sync of that source) never stops sync for the other sources.
 
 **Per-entry claims:** CRDs can carry per-entry authorization claims via the
 `toolhive.stacklok.dev/authz-claims` JSON annotation. The annotation value uses the same
@@ -319,7 +338,7 @@ syncPolicy:
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `interval` | string | Yes | - | Sync interval (e.g., "30m", "1h", "24h") |
+| `interval` | string | Yes | - | Sync interval (e.g., "30m", "1h", "24h"). Zero or negative means `2m`; below `1s` means `1s` (see [normalization](#settings-normalized-for-v154-compatibility)). |
 
 The source is fetched once per interval. A failed sync is retried after two minutes, or after
 the interval if that is shorter. See [Registry Sync](registry-sync.md#when-sync-is-triggered).
@@ -361,10 +380,70 @@ filter:
 **Pattern matching:**
 - Uses glob patterns (wildcards: `*`, `?`, `[...]`)
 - Examples: `official/*`, `company/*/stable`, `*-prod`
+- An invalid pattern does not stop startup; it selects what it selected in v1.5.4, which
+  usually means the source is emptied (see [normalization](#settings-normalized-for-v154-compatibility)).
 
 **Not applicable for:**
 - Managed registries (controlled via API)
 - Kubernetes registries (use labelSelector instead)
+
+## Settings Normalized for v1.5.4 Compatibility
+
+v1.5.4 accepted some source settings that the current sync runtime cannot use as written. A
+config that started on v1.5.4 still starts: each such setting is rewritten to what v1.5.4
+effectively did (or the nearest value the runtime supports) and a warning naming the source is
+logged. Settings sent to the admin API (`PUT /v1/sources/{name}`) that v1.5.4 accepted are
+rewritten the same way before they are stored, so `GET /v1/sources` shows the effective value.
+Settings that v1.5.4's admin API rejected are still rejected there.
+
+| Setting | v1.5.4 behavior | Now | Log level | Applies to |
+|---------|-----------------|-----|-----------|------------|
+| `syncPolicy.interval` zero or negative | Synced on every coordinator tick (every 2 minutes) | Interval `2m` | WARN | Config, admin API |
+| `syncPolicy.interval` above zero and below `1s` | Synced every 2 minutes at most | Interval `1s`, the runtime's polling granularity | WARN | Config, admin API |
+| `syncPolicy.interval` with sub-microsecond precision | Truncated by the database interval column | Truncated to microseconds | WARN | Config, admin API |
+| `file.timeout` on a `file.path` source | Ignored | Ignored (dropped) | WARN | Config (the admin API rejects it, as v1.5.4 did) |
+| `file.timeout: 0s` on a `file.url` source | Its HTTP client replaced 0 with its 10-second default | Timeout `10s` | WARN | Config, admin API |
+| Negative `file.timeout` on a `file.url` source | No request timeout | The default timeout (`30s`); a timeout can no longer be disabled | WARN | Config, admin API |
+| Git source with more than one of `branch`, `tag`, `commit` | Started, but every sync failed with `only one of branch, tag, or commit may be specified` | Same: the source is stored (keeping one ref, in the order commit, branch, tag) and every sync fails with that error, keeping previously synced data, until only one ref is set | WARN | Config (the admin API rejects it, as v1.5.4 did) |
+| Registry listing a source more than once | Each later listing overwrote the earlier position | Each source keeps the position of its last listing: `[a, b, a]` becomes `[b, a]` | WARN | Config (the admin API rejects it, as v1.5.4 did) |
+| Invalid `filter.names` glob pattern | Patterns were tried in order and an invalid one counted as a non-match that ended the search | An invalid `exclude` pattern excludes every entry. An invalid `include` pattern keeps only the include patterns before it; when it is the first, every entry is excluded | ERROR | Config, admin API |
+
+Fix the setting to silence the warning. The invalid-glob case is logged as an error because it
+usually empties the source.
+
+Sources that v1.5.4's admin API already stored in the database get the same rewrites once, at
+the first start after the upgrade. After config sources are applied, the server looks for
+API-created sources that cannot be synced because of a zero or negative `syncPolicy.interval`, a
+`file.timeout` the runtime refuses, or an invalid `filter.names` pattern. It rewrites those settings
+as in the table above and stores the result, keeping the source's claims and its other settings.
+The source then syncs again with the new settings. For each rewritten source it logs a WARN,
+`Normalized stored settings of an API-created source that v1.5.4 accepted but cannot be synced as
+stored`, with the source name and the changes. A rewritten source is valid, so later starts leave
+it alone, and `GET /v1/sources` shows the new values. A stored source that is unusable for any
+other reason, or still unusable after the rewrite, is left unchanged. The sync runtime logs and
+skips it, as before (`Skipping source with an invalid definition`). Update or recreate it through
+the admin API.
+
+## Conflicts with API-Created Sources and Registries
+
+The config file and the admin API own separate sources and registries. When the config
+conflicts with what the admin API created, startup does not fail. The conflicts are:
+
+- a config source with the same name as an API-created source;
+- a config registry with the same name as an API-created registry;
+- a config that removes a source that an API-created registry still uses;
+- a config managed source while an API-created managed source exists;
+- a config source that changes to or from `managed`.
+
+The server logs an error naming the sources and registries involved (`Config sources and
+registries were not applied because they conflict with the database; ...`) and applies none of
+the config's sources and registries: it keeps serving, and keeps syncing, the definitions already
+stored. Config claims are applied only to config sources the database already holds with the same
+type, and to config-owned registries; they are never written to an API-created source or
+registry. Readiness is not affected. Resolve the conflict (rename or remove the config item, or
+delete the API-created one) and restart to apply the config.
+
+v1.5.4 also kept serving after such a conflict, but stopped syncing every source.
 
 ## Authentication
 
@@ -589,7 +668,7 @@ The configuration is validated on startup. Common validation errors:
 - **Invalid duration format**: Use format like "30m", "1h", "24h"
 - **Invalid auth mode**: Must be "anonymous" or "oauth"
 - **Missing OAuth providers**: At least one provider required when mode is "oauth"
-- **Invalid filter patterns**: Check glob pattern syntax
+- **Invalid filter patterns**: Startup continues; see [normalization](#settings-normalized-for-v154-compatibility)
 - **Database connection**: Verify connection parameters
 
 Run with `--debug` flag for detailed validation output:

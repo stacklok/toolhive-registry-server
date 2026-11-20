@@ -57,6 +57,9 @@ func (s *dbService) createSource(
 		otel.RecordError(span, err)
 		return nil, err
 	}
+	if err := s.prepareSource(ctx, span, name, req); err != nil {
+		return nil, err
+	}
 
 	// Add source type attribute after validation
 	span.SetAttributes(attribute.String("source.type", string(req.GetSourceType())))
@@ -114,6 +117,7 @@ func (s *dbService) createSource(
 	}
 
 	// Prepare insert parameters
+	req = service.NormalizeSourceRequest(ctx, name, req)
 	now := time.Now()
 	sourceType := string(req.GetSourceType())
 
@@ -227,6 +231,9 @@ func (s *dbService) updateSource(
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidSourceConfig, err)
 	}
+	if err := s.prepareSource(ctx, span, name, req); err != nil {
+		return nil, err
+	}
 
 	// Begin transaction
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
@@ -289,6 +296,7 @@ func (s *dbService) updateSource(
 	}
 
 	// Prepare update parameters
+	req = service.NormalizeSourceRequest(ctx, name, req)
 	now := time.Now()
 	sourceType := string(req.GetSourceType())
 

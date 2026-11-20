@@ -210,6 +210,29 @@ func TestValidateSourceConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "valid_kubernetes_namespaces",
+			req: &SourceCreateRequest{
+				Kubernetes: &config.KubernetesConfig{Namespaces: []string{"team-a", "default"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "kubernetes_invalid_namespace_returns_error",
+			req: &SourceCreateRequest{
+				Kubernetes: &config.KubernetesConfig{Namespaces: []string{"default", "Bad_NS"}},
+			},
+			wantErr: true,
+			errMsg:  `kubernetes.namespaces[1]: "Bad_NS" is not a valid namespace name`,
+		},
+		{
+			name: "kubernetes_empty_namespace_returns_error",
+			req: &SourceCreateRequest{
+				Kubernetes: &config.KubernetesConfig{Namespaces: []string{" "}},
+			},
+			wantErr: true,
+			errMsg:  "kubernetes.namespaces[0] is empty",
+		},
 
 		// Sync policy validation for synced types
 		{

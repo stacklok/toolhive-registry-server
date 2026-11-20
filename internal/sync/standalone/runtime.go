@@ -34,6 +34,8 @@ type Worker interface {
 
 // Options supplies a dormant operator factory and read-only compatibility check.
 // Callbacks and injected I/O must honor cancellation. No implicit scope fallback.
+// Run does not call Preflight: a source that fails it (or whose worker cannot
+// be built) fails alone, in its own worker, while every other source syncs.
 type Options struct {
 	Reconcile reconcile.Options
 	Operator  func(persistence.SourceDefinition) (Worker, error)
@@ -148,8 +150,11 @@ func (r *Runtime) SyncInline(ctx context.Context, name string) error {
 	return c.Sync(ctx, name)
 }
 
-// Run blocks until cancellation or a terminal worker/backend failure. All owned
-// siblings are canceled and joined on every exit; borrowed resources stay open.
+// Run blocks until cancellation or a terminal worker/backend failure. Errors
+// that belong to one source (its definition, its worker, its fetch or
+// validation) are recorded on that source and retried by its worker; only
+// storage-wide failures end Run. All owned siblings are canceled and joined on
+// every exit; borrowed resources stay open.
 //
 //nolint:gocyclo // Keep initiating-failure classification and sibling cleanup on the owning lifecycle goroutine.
 func (r *Runtime) Run(ctx context.Context) (err error) {
@@ -180,7 +185,7 @@ func (r *Runtime) Run(ctx context.Context) (err error) {
 		}
 		err = errors.Join(err, r.stopAll())
 	}()
-	if err := r.replace(work, work, true, nil, cancel); err != nil {
+	if err := r.replace(work, work, nil, cancel); err != nil {
 		return err
 	}
 	pollDone = make(chan error, 1)
@@ -198,7 +203,7 @@ func (r *Runtime) Run(ctx context.Context) (err error) {
 		case req := <-r.refresh:
 			requestCtx, requestCancel := context.WithCancel(req.ctx)
 			stop := context.AfterFunc(work, requestCancel)
-			err := r.replace(requestCtx, work, false, pollDone, cancel)
+			err := r.replace(requestCtx, work, pollDone, cancel)
 			stop()
 			requestCancel()
 			req.result <- err
@@ -206,7 +211,7 @@ func (r *Runtime) Run(ctx context.Context) (err error) {
 				return err
 			}
 		case <-ticker.C:
-			if err := r.replace(work, work, false, pollDone, cancel); err != nil {
+			if err := r.replace(work, work, pollDone, cancel); err != nil {
 				return err
 			}
 		}
@@ -263,7 +268,7 @@ func (r *Runtime) reportSkipped(ctx context.Context, d persistence.SourceDefinit
 // Only discovery runs concurrently; ownership changes stay on Run's goroutine.
 // A terminal event cancels the whole run before joining the pending discovery.
 func (r *Runtime) discover(
-	ctx, lifetime context.Context, preflight bool, pollDone chan error, cancel context.CancelFunc,
+	ctx, lifetime context.Context, pollDone chan error, cancel context.CancelFunc,
 ) (_ []persistence.SourceDefinition, result error) {
 	ctx, discoveryCancel := context.WithCancel(ctx)
 	done := make(chan struct{})
@@ -271,7 +276,7 @@ func (r *Runtime) discover(
 	var err error
 	go func() {
 		defer close(done)
-		definitions, err = r.definitions(ctx, preflight)
+		definitions, err = r.definitions(ctx, false)
 	}()
 	defer func() {
 		discoveryCancel()
@@ -302,9 +307,9 @@ func (r *Runtime) discover(
 }
 
 func (r *Runtime) replace(
-	ctx, lifetime context.Context, preflight bool, pollDone chan error, cancel context.CancelFunc,
+	ctx, lifetime context.Context, pollDone chan error, cancel context.CancelFunc,
 ) error {
-	definitions, err := r.discover(ctx, lifetime, preflight, pollDone, cancel)
+	definitions, err := r.discover(ctx, lifetime, pollDone, cancel)
 	if err != nil {
 		return err
 	}
@@ -331,12 +336,9 @@ func (r *Runtime) replace(
 	for name, d := range desired {
 		var w Worker
 		if d.Kubernetes != nil {
-			w, err = r.options.Operator(d)
+			w = r.operatorWorker(d)
 		} else {
 			w = &inlineWorker{jobs: r.jobs, definition: d, fetcher: r.fetcher, options: r.options.Reconcile}
-		}
-		if err != nil {
-			return err
 		}
 		work, cancel := context.WithCancel(lifetime)
 		owned := &owned{definition: d, worker: w, cancel: cancel, done: make(chan error, 1)}
@@ -357,6 +359,23 @@ func (r *Runtime) replace(
 	}
 	r.ready.Store(true)
 	return nil
+}
+
+// operatorWorker builds the worker of a Kubernetes source. A worker that
+// cannot be built (a stored definition the operator rejects, an unavailable
+// client) belongs to that source alone: an unbuiltWorker records the failure
+// and retries the build, so it never stops sync for other sources.
+func (r *Runtime) operatorWorker(d persistence.SourceDefinition) Worker {
+	w, err := r.options.Operator(d)
+	if err == nil && w != nil {
+		return w
+	}
+	if err == nil {
+		err = persistence.ErrInvalid
+	}
+	return &unbuiltWorker{
+		jobs: r.jobs, definition: d, build: r.options.Operator, lease: r.options.Reconcile.LeaseDuration, err: err,
+	}
 }
 
 func ownershipError(err error) bool {
@@ -397,7 +416,7 @@ func (r *Runtime) checkWorkers(ctx context.Context, pollDone chan error, cancel 
 	// A public runner can observe a changed fence before discovery does.
 	// Re-read ownership once before treating that mismatch as terminal.
 	if ownershipError(err) {
-		if err = r.replace(ctx, ctx, false, pollDone, cancel); err == nil {
+		if err = r.replace(ctx, ctx, pollDone, cancel); err == nil {
 			err = r.workerError(ctx)
 		}
 	}

@@ -320,6 +320,15 @@ func bulkInsertPackages(
 	var packageRows [][]any
 	serverIDs := make(map[uuid.UUID]bool)
 
+	// Keep the first package per primary key (server_id, registry_type,
+	// pkg_identifier, transport): a repeated key in one upsert would fail the
+	// whole statement. Strict publication rejects duplicates before this point.
+	type packageKey struct {
+		serverID                         uuid.UUID
+		registryType, identifier, transp string
+	}
+	seenPackages := make(map[packageKey]bool)
+
 	for _, server := range servers {
 		serverID, ok := serverIDMap[serverKey(server.Name, server.Version)]
 		if !ok {
@@ -328,6 +337,11 @@ func bulkInsertPackages(
 		serverIDs[serverID] = true
 
 		for _, pkg := range server.Packages {
+			key := packageKey{serverID: serverID, registryType: pkg.RegistryType, identifier: pkg.Identifier, transp: pkg.Transport.Type}
+			if seenPackages[key] {
+				continue
+			}
+			seenPackages[key] = true
 			runtimeArgsJSON, err := validators.SerializeArguments(pkg.RuntimeArguments)
 			if err != nil {
 				return fmt.Errorf("failed to serialize runtime arguments for %s: %w", pkg.Identifier, err)
@@ -417,7 +431,6 @@ func bulkInsertRemotes(
 		url       string
 	}
 	seenRemotes := make(map[remoteKey]bool)
-	skippedCount := 0
 
 	for _, server := range servers {
 		serverID, ok := serverIDMap[serverKey(server.Name, server.Version)]
@@ -436,7 +449,6 @@ func bulkInsertRemotes(
 
 			if seenRemotes[key] {
 				// Skip duplicate - already processed this remote
-				skippedCount++
 				continue
 			}
 			seenRemotes[key] = true
@@ -453,12 +465,6 @@ func bulkInsertRemotes(
 				variablesJSON,
 			})
 		}
-	}
-
-	// Log if duplicates were found
-	if skippedCount > 0 {
-		// TODO: Use structured logging when available
-		_ = skippedCount // Placeholder
 	}
 
 	if len(remoteRows) == 0 {
@@ -508,6 +514,14 @@ func bulkInsertIcons(
 	var iconRows [][]any
 	serverIDs := make(map[uuid.UUID]bool)
 
+	// Keep the first icon per primary key (server_id, source_uri, mime_type,
+	// theme), after the same theme and MIME defaults the row gets.
+	type iconKey struct {
+		serverID             uuid.UUID
+		src, mimeType, theme string
+	}
+	seenIcons := make(map[iconKey]bool)
+
 	for _, server := range servers {
 		serverID, ok := serverIDMap[serverKey(server.Name, server.Version)]
 		if !ok {
@@ -535,6 +549,12 @@ func bulkInsertIcons(
 			if icon.MimeType != nil {
 				mimeType = *icon.MimeType
 			}
+
+			key := iconKey{serverID: serverID, src: icon.Src, mimeType: mimeType, theme: theme}
+			if seenIcons[key] {
+				continue
+			}
+			seenIcons[key] = true
 
 			iconRows = append(iconRows, []any{
 				serverID,

@@ -7,8 +7,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -173,9 +175,21 @@ func decodeEntry(sourceID string, kind persistence.EntryKind, r sqlc.EntryListRo
 		entry.Plugin, err = decodePlugin(r)
 	}
 	if err != nil {
-		return persistence.Entry{}, fmt.Errorf("%w: unreadable catalog payload", persistence.ErrUnavailable)
+		return persistence.Entry{}, undecodableEntry(kind, r.Name, r.Version, err)
 	}
 	return entry, nil
+}
+
+// errMissingPayload is the logged cause for a version row without its
+// kind-specific payload row.
+var errMissingPayload = errors.New("missing kind payload row")
+
+// undecodableEntry logs why a stored version could not be read (the response
+// carries only the category) and returns the domain error.
+func undecodableEntry(kind persistence.EntryKind, name, version string, cause error) error {
+	slog.Error("Stored registry entry could not be decoded",
+		"kind", kind, "name", name, "version", version, "error", cause)
+	return fmt.Errorf("%w: unreadable catalog payload", persistence.ErrUnavailable)
 }
 
 //nolint:gocyclo // The normalized server and related rows need independent decoding and error handling.

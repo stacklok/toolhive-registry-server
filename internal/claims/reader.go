@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 
@@ -98,6 +99,7 @@ func (r *Reader) scope(ctx context.Context, view string) (context.Context, error
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return ctx, err
 		}
+		slog.ErrorContext(ctx, "Failed to look up registry claims", "registry", view, "error", err)
 		return ctx, persistence.ErrUnavailable
 	}
 	if !GateVisible(caller, registry.Claims) {
@@ -108,6 +110,7 @@ func (r *Reader) scope(ctx context.Context, view string) (context.Context, error
 	}
 	callerJSON, err := json.Marshal(caller)
 	if err != nil {
+		slog.ErrorContext(ctx, "Failed to encode caller claims", "registry", view, "error", err)
 		return ctx, persistence.ErrUnavailable
 	}
 	return WithViewCaller(ctx, callerJSON), nil

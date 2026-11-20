@@ -378,26 +378,6 @@ func TestCatalogDefinitions_Errors(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
-			name: "invalid name include glob",
-			cfg: &config.Config{Sources: []config.SourceConfig{{
-				Name: "git-src", Git: &config.GitConfig{Repository: "https://github.com/example/repo.git"},
-				SyncPolicy: &config.SyncPolicyConfig{Interval: "1h"},
-				Filter:     &config.FilterConfig{Names: &config.NameFilterConfig{Include: []string{"[unclosed"}}},
-			}}},
-			errContains: `source "git-src" has an invalid name filter`,
-			wantInvalid: true,
-		},
-		{
-			name: "invalid name exclude glob",
-			cfg: &config.Config{Sources: []config.SourceConfig{{
-				Name: "git-src", Git: &config.GitConfig{Repository: "https://github.com/example/repo.git"},
-				SyncPolicy: &config.SyncPolicyConfig{Interval: "1h"},
-				Filter:     &config.FilterConfig{Names: &config.NameFilterConfig{Exclude: []string{"{a,b"}}},
-			}}},
-			errContains: `source "git-src" has an invalid name filter`,
-			wantInvalid: true,
-		},
-		{
 			name: "polled source without schedule",
 			cfg: &config.Config{Sources: []config.SourceConfig{{
 				Name: "api-src", API: &config.APIConfig{Endpoint: "https://registry.example.com"},
@@ -434,7 +414,7 @@ func TestCatalogDefinitions_Errors(t *testing.T) {
 				Sources:    []config.SourceConfig{{Name: "managed-src", Managed: &config.ManagedConfig{}}},
 				Registries: []config.RegistryConfig{{Name: "main", Sources: []string{"missing"}}},
 			},
-			errContains: "outside config set",
+			errContains: "outside the config set",
 			wantInvalid: true,
 		},
 		{

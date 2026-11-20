@@ -16,8 +16,8 @@ change what.
 | `persistence` | Storage-neutral contracts: definitions, entries, view reads, sync jobs |
 | `catalog` | Small reader, admin, publisher and diagnostics capabilities over `persistence` |
 | `httpapi` | Consumer and optional admin HTTP routers; authorization is a host-supplied `Authorizer` |
-| `ingest` | Git, API and file source fetching with full snapshot validation |
-| `reconcile` | Leased, fenced source reconciliation over `persistence.Jobs` |
+| `ingest` | Git, API and file source fetching, each with its source type's acceptance policy |
+| `reconcile` | Leased, fenced source reconciliation over `persistence.Jobs`; storage-safety check and sync logging |
 | `operator` | Optional Kubernetes adapter that exports ToolHive CRDs as a source |
 | `postgres` | PostgreSQL implementation of the `persistence` contracts |
 | `cedar` | Optional reference Cedar authorizer for the `httpapi` routes |
@@ -82,6 +82,15 @@ that passes authentication may perform every action, so with the admin routes
 mounted, every authenticated caller is a full admin. Supply a policy before
 enabling admin routes. `NewAuthorizer` fails if the library adds a route it has
 no action for, so an upgrade cannot silently expose a new route.
+## Validation and logging
+
+Publication (`persistence.ValidateSnapshot`, `Entry.Validate`) is strict. Synced
+data is not: fetchers apply their source type's policy, and
+`persistence.ValidateStorableSnapshot` checks only what storage and the read
+routes need, on the filtered snapshot. See `docs/registry-sync.md` for both
+rule sets. The library logs sync progress and failures with `log/slog` on the
+default logger; returned errors and stored status carry only a category, and
+`ingest.Cause` recovers a fetch failure's redacted cause.
 
 ## Importability
 

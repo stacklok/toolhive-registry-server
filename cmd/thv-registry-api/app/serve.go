@@ -302,7 +302,9 @@ func resolveAuthMode(cfg *config.Config, override string) {
 }
 
 // repairLatestPointers runs the one-time latest-pointer rebuild that migration
-// 25 schedules. After it has run once this only reads the repair mark.
+// 25 schedules. After it has run once this only reads the repair mark. It logs
+// only when existing pointers were rebuilt, not when a fresh install clears
+// the mark.
 func repairLatestPointers(ctx context.Context, conn *pgx.Conn) error {
 	repaired, err := db.RepairPendingLatestVersions(ctx, conn)
 	if err != nil {
