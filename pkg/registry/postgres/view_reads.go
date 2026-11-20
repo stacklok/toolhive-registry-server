@@ -3,12 +3,11 @@ package postgres
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -40,14 +39,24 @@ func (d *Entries) GetViewEntry(
 	return page.Entries[0], nil
 }
 
-// ListViewEntries resolves view/link identities, cursor binding and a bounded
-// winner page in one read-only repeatable-read transaction. Subsequent calls
-// recompute winners against live data; no history is pinned by a cursor.
+// ListViewEntries resolves the view and a bounded winner page in one read-only
+// repeatable-read transaction. Subsequent calls recompute winners against live
+// data; no history is pinned by a cursor. Names and versions are ordered in the
+// database's default collation, as v1.5.4 ordered them.
+//
+// Cursors are positional: they carry only the entry kind and the last (name,
+// version) returned, so a client may change the limit, filters, view sources or
+// even the view between pages, as with v1.5.4. v1.5.4 cursors (standard base64
+// of "name,version") are accepted for every kind.
 func (d *Entries) ListViewEntries(ctx context.Context, view string, query persistence.ViewQuery) (persistence.EntryPage, error) {
 	if err := query.Validate(view); err != nil {
 		return persistence.EntryPage{}, err
 	}
 	if err := ctx.Err(); err != nil {
+		return persistence.EntryPage{}, err
+	}
+	params, err := viewListParams(query)
+	if err != nil {
 		return persistence.EntryPage{}, err
 	}
 	tx, err := d.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -73,15 +82,7 @@ func (d *Entries) ListViewEntries(ctx context.Context, view string, query persis
 	if err != nil {
 		return persistence.EntryPage{}, persistence.ErrUnavailable
 	}
-	sources, err := q.ViewEntrySources(ctx, id)
-	if err != nil {
-		return persistence.EntryPage{}, viewReadError(err)
-	}
-	binding := viewBinding(view, rawID, sources, query)
-	params, err := viewListParams(id, query, binding)
-	if err != nil {
-		return persistence.EntryPage{}, err
-	}
+	params.ViewID = id
 	// Set only by the server's claims mode, through a module-internal context
 	// key; library callers always read unfiltered.
 	params.Caller = db.ViewCaller(ctx)
@@ -89,7 +90,7 @@ func (d *Entries) ListViewEntries(ctx context.Context, view string, query persis
 	if err != nil {
 		return persistence.EntryPage{}, viewReadError(err)
 	}
-	page, err := decodeViewPage(rows, query, binding)
+	page, err := decodeViewPage(rows, query)
 	if err != nil {
 		return persistence.EntryPage{}, err
 	}
@@ -109,10 +110,9 @@ func viewReadError(err error) error {
 	return unavailable(err)
 }
 
-func viewListParams(id uuid.UUID, query persistence.ViewQuery, binding string) (sqlc.ViewEntryListParams, error) {
+func viewListParams(query persistence.ViewQuery) (sqlc.ViewEntryListParams, error) {
 	params := sqlc.ViewEntryListParams{
-		ViewID: id, EntryType: sqlc.EntryType(query.Kind),
-		LatestOnly: query.VersionSelector.Latest, PageSize: int64(query.Limit + 1),
+		EntryType: sqlc.EntryType(query.Kind), LatestOnly: query.VersionSelector.Latest, PageSize: int64(query.Limit + 1),
 	}
 	if query.Name != "" {
 		params.Name = &query.Name
@@ -130,7 +130,7 @@ func viewListParams(id uuid.UUID, query persistence.ViewQuery, binding string) (
 		params.UpdatedSince = pgtype.Timestamptz{Time: *query.UpdatedSince, Valid: true}
 	}
 	if query.Cursor != "" {
-		cur, err := decodeViewCursor(query.Cursor, binding)
+		cur, err := decodeViewCursor(query.Cursor, query.Kind)
 		if err != nil {
 			return sqlc.ViewEntryListParams{}, err
 		}
@@ -142,7 +142,7 @@ func viewListParams(id uuid.UUID, query persistence.ViewQuery, binding string) (
 	return params, nil
 }
 
-func decodeViewPage(rows []sqlc.ViewEntryListRow, query persistence.ViewQuery, binding string) (persistence.EntryPage, error) {
+func decodeViewPage(rows []sqlc.ViewEntryListRow, query persistence.ViewQuery) (persistence.EntryPage, error) {
 	page := persistence.EntryPage{Entries: make([]persistence.Entry, 0, min(len(rows), query.Limit))}
 	more := len(rows) > query.Limit
 	if more {
@@ -159,7 +159,7 @@ func decodeViewPage(rows []sqlc.ViewEntryListRow, query persistence.ViewQuery, b
 			payload = r.PluginData
 		}
 		if len(payload) == 0 || string(payload) == nullJSON {
-			return persistence.EntryPage{}, persistence.ErrUnavailable
+			return persistence.EntryPage{}, undecodableEntry(query.Kind, r.Name, r.Version, errMissingPayload)
 		}
 		entry, e := decodeEntry(r.SourceID, query.Kind, sqlc.EntryListRow{
 			ID: r.ID, Name: r.Name, Version: r.Version, Title: r.Title, Description: r.Description,
@@ -175,8 +175,10 @@ func decodeViewPage(rows []sqlc.ViewEntryListRow, query persistence.ViewQuery, b
 	}
 	if more {
 		last := rows[len(rows)-1]
-		data, e := json.Marshal(viewCursor{Version: 1, Binding: binding, AfterName: last.Name, AfterVersion: last.Version,
-			AfterNamespace: last.Namespace})
+		data, e := json.Marshal(viewCursor{
+			Version: viewCursorVersion, Kind: query.Kind, AfterName: last.Name, AfterVersion: last.Version,
+			AfterNamespace: last.Namespace,
+		})
 		if e != nil {
 			return persistence.EntryPage{}, persistence.ErrUnavailable
 		}
@@ -188,9 +190,19 @@ func decodeViewPage(rows []sqlc.ViewEntryListRow, query persistence.ViewQuery, b
 	return page, nil
 }
 
+// viewCursorVersion is the format of the cursors this backend emits. Version 1
+// (never released) bound a cursor to the whole query and is rejected.
+const viewCursorVersion = 2
+
+// legacyCursorSeparator splits v1.5.4's base64("name,version") cursor.
+const legacyCursorSeparator = ","
+
+// viewCursor is a position in a view listing: the kind it walks and the last
+// (name, version) returned. It binds nothing else, so it stays valid when the
+// limit, filters or view sources change between pages.
 type viewCursor struct {
 	Version      int
-	Binding      string
+	Kind         persistence.EntryKind
 	AfterName    string
 	AfterVersion string
 	// AfterNamespace breaks name/version ties between skills or plugins of
@@ -198,27 +210,32 @@ type viewCursor struct {
 	AfterNamespace string `json:",omitempty"`
 }
 
-func viewBinding(view, incarnation string, sources []string, query persistence.ViewQuery) string {
-	query.Cursor = ""
-	if query.UpdatedSince != nil {
-		t := query.UpdatedSince.UTC()
-		query.UpdatedSince = &t
-	}
-	data, _ := json.Marshal([]any{"postgres-view-v1", view, incarnation, sources, query, "name-version-C"})
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
-func decodeViewCursor(token, binding string) (viewCursor, error) {
+// decodeViewCursor accepts this backend's cursor (base64url JSON object) for
+// the same kind, or a v1.5.4 cursor (standard base64 of "name,version") for any
+// kind. v1.5.4 names never start with '{', so the two cannot be confused.
+func decodeViewCursor(token string, kind persistence.EntryKind) (viewCursor, error) {
 	var cur viewCursor
-	data, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return cur, persistence.ErrInvalid
+	if data, err := base64.RawURLEncoding.DecodeString(token); err == nil && len(data) > 0 && data[0] == '{' {
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&cur) != nil || decoder.Decode(new(any)) != io.EOF ||
+			cur.Version != viewCursorVersion || cur.Kind != kind {
+			return viewCursor{}, persistence.ErrInvalid
+		}
+	} else {
+		data, err := base64.StdEncoding.DecodeString(token)
+		if err != nil {
+			return viewCursor{}, persistence.ErrInvalid
+		}
+		// v1.5.4 required exactly one comma, so splitting at the first comma
+		// accepts every cursor v1.5.4 accepted.
+		name, version, found := strings.Cut(string(data), legacyCursorSeparator)
+		if !found {
+			return viewCursor{}, persistence.ErrInvalid
+		}
+		cur = viewCursor{Version: viewCursorVersion, Kind: kind, AfterName: name, AfterVersion: version}
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&cur) != nil || decoder.Decode(new(any)) != io.EOF || cur.Version != 1 ||
-		cur.Binding != binding || cur.AfterName == "" || cur.AfterVersion == "" {
+	if cur.AfterName == "" || cur.AfterVersion == "" {
 		return viewCursor{}, persistence.ErrInvalid
 	}
 	name := persistence.EntryName{Kind: persistence.ServerKind, Name: cur.AfterName}

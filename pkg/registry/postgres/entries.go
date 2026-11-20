@@ -69,7 +69,7 @@ func (d *Entries) ReplaceSnapshot(ctx context.Context, source persistence.Source
 	if kind == managedSourceKind {
 		return fmt.Errorf("%w: managed source cannot be snapshotted", persistence.ErrConflict)
 	}
-	if err := persistence.ValidateSnapshot(&snapshot); err != nil {
+	if err := persistence.ValidateStorableSnapshot(&snapshot); err != nil {
 		return err
 	}
 	if err := d.validateMetadata(snapshot); err != nil {
@@ -271,7 +271,7 @@ func storeSnapshotTx(
 		return err
 	}
 	if err := writer.StoreSourceTx(ctx, tx, id, snapshot, maxMetaSize); err != nil {
-		return classify(err)
+		return classifySnapshotWrite(err)
 	}
 	return o.after(ctx, tx, write)
 }

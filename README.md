@@ -171,6 +171,14 @@ Fully compatible with the upstream MCP Registry API specification:
 
 **Note:** Git, API, File, and Kubernetes sources are read-only through the registry API.
 
+List endpoints (servers, skills and plugins) sort by name, then version, in the
+database's default collation. `search` is a case-insensitive SQL `LIKE` match on
+name, title and description, so `%` and `_` act as wildcards and `\` escapes the
+next character. `nextCursor` is positional: you can change `limit`, `search` or
+`version` between pages, and cursors issued by earlier releases keep working.
+Malformed query pairs are ignored. A query string longer than 16 KiB is
+rejected with `400`.
+
 ### Admin API v1
 
 ToolHive-specific endpoints for managing sources, registries, and entries:

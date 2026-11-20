@@ -103,7 +103,7 @@ func (m *memory) Complete(ctx context.Context, job persistence.Job, result persi
 	})
 }
 func (m *memory) CommitSnapshot(ctx context.Context, job persistence.Job, result persistence.SyncResult, snapshot model.Snapshot) error {
-	if err := persistence.ValidateSnapshot(&snapshot); err != nil {
+	if err := persistence.ValidateStorableSnapshot(&snapshot); err != nil {
 		return err
 	}
 	return m.transact(ctx, func(n *memory) error {

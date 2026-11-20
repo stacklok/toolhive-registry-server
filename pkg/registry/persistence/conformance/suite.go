@@ -235,17 +235,19 @@ func Run(t *testing.T, newStore Factory) {
 			_, e = d.GetSource(ctx, apiName)
 			must(t, e)
 		}},
-		{"file config location immutable", func(t *testing.T, d persistence.Definitions) {
+		{"file config location changes in place", func(t *testing.T, d persistence.Definitions) {
 			t.Helper()
 			ctx := t.Context()
 			file := persistence.SourceDefinition{Name: "file", File: &persistence.FileSpec{Path: "/tmp/a"}, Schedule: "1s"}
 			must(t, d.Reconcile(ctx, []persistence.SourceDefinition{file}, nil))
+			before, err := d.GetSource(ctx, "file")
+			must(t, err)
 			file.File = &persistence.FileSpec{Data: "{}"}
 			file.Schedule = ""
-			want(t, d.Reconcile(ctx, []persistence.SourceDefinition{file}, nil), persistence.ErrConflict)
+			must(t, d.Reconcile(ctx, []persistence.SourceDefinition{file}, nil))
 			got, err := d.GetSource(ctx, "file")
 			must(t, err)
-			if got.File.Path != "/tmp/a" {
+			if got.ID != before.ID || got.File.Path != "" || got.File.Data != "{}" {
 				t.Fatal(got)
 			}
 		}},

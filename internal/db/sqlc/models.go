@@ -411,6 +411,10 @@ type RegistrySync struct {
 	LeaseGeneration       pgtype.Int8        `json:"lease_generation"`
 	ObservedGeneration    pgtype.Int8        `json:"observed_generation"`
 	AppliedGeneration     pgtype.Int8        `json:"applied_generation"`
+	CheckedAt             pgtype.Timestamptz `json:"checked_at"`
+	PrevSyncStatus        NullSyncStatus     `json:"prev_sync_status"`
+	PrevStartedAt         pgtype.Timestamptz `json:"prev_started_at"`
+	PrevAttemptCount      pgtype.Int8        `json:"prev_attempt_count"`
 }
 
 type Skill struct {
@@ -468,6 +472,14 @@ type TempEntryVersion struct {
 	Description *string    `json:"description"`
 	CreatedAt   *time.Time `json:"created_at"`
 	UpdatedAt   *time.Time `json:"updated_at"`
+}
+
+type TempLatestRepair struct {
+	SourceID  uuid.UUID `json:"source_id"`
+	EntryType string    `json:"entry_type"`
+	Name      string    `json:"name"`
+	Version   string    `json:"version"`
+	VersionID uuid.UUID `json:"version_id"`
 }
 
 type TempMcpServer struct {

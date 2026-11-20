@@ -54,6 +54,11 @@ disabled when it is absent; allowing multiple would fork the publish path.
 - Config-load validation rejects more than one `managed: {}` block (the `managedCount > 1`
   check in `config.go`).
 - Runtime `getManagedSource()` errors if the DB contains more than one — defense in depth.
+- Migration 24's unique index `source_single_managed_idx` enforces it in the schema. An
+  older database with two managed sources is refused by the Go precondition in
+  `database/preconditions.go` before any migration runs (never let migration 24 fail
+  part-way); `docs/database.md` documents the repair.
+- A config source may change kind in place on reconcile, except to or from `managed`.
 - Publishing returns `ErrNoManagedSource` (500) when none is configured.
 
 **Breaks if violated:** publish destination becomes non-deterministic; migrations or API

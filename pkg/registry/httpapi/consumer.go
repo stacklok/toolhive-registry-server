@@ -60,6 +60,11 @@ type RouteDescriptor struct {
 // ConsumerOptions supplies ordinary host middleware and optional per-route
 // decoration. Decorate runs once per registration, including slash aliases.
 // A host may leave routes unprotected, or require the complete manifest for admission.
+//
+// Query strings are parsed leniently, as v1.5.4 did with r.URL.Query():
+// malformed pairs are dropped, not rejected, unless StrictQueries is set. A
+// list query string longer than 16 KiB is rejected with 400 "query parameters
+// too large" (v1.5.4 had no cap).
 type ConsumerOptions struct {
 	Middleware []func(http.Handler) http.Handler
 	Decorate   func(RouteDescriptor, http.Handler) http.Handler

@@ -296,6 +296,11 @@ func (d *Definitions) DeleteView(ctx context.Context, name string) error {
 }
 
 // Reconcile atomically replaces only CONFIG-owned definitions and links.
+// A CONFIG source may change kind in place (git, API, file path, URL or inline
+// data, Kubernetes), as v1.5.4 allowed: its entries stay until the next
+// successful sync replaces them, and the definition change makes it due at
+// once. A change to or from managed is refused. Errors name the source or
+// view they concern.
 //
 //nolint:gocyclo // The all-or-nothing collision, ownership, and FK checks are deliberately colocated.
 func (d *Definitions) Reconcile(
@@ -307,25 +312,8 @@ func (d *Definitions) Reconcile(
 	return d.write(ctx, func(tx pgx.Tx) error {
 		// Check every collision before touching data, including names late in the input.
 		for _, s := range sources {
-			old, e := getSource(ctx, tx, s.Name, true)
-			if e != nil && !errors.Is(e, persistence.ErrNotFound) {
+			if e := reconcileSourceCollision(ctx, tx, s); e != nil {
 				return e
-			}
-			if e == nil {
-				if old.Origin != persistence.OriginConfig {
-					return fmt.Errorf("%w: API source name", persistence.ErrConflict)
-				}
-				a, _ := old.Kind()
-				b, _ := s.Kind()
-				if a != b {
-					return fmt.Errorf("%w: source kind immutable", persistence.ErrKindChange)
-				}
-				if e = requireKnownFields(ctx, tx, s.Name, old); e != nil {
-					return e
-				}
-				if old.File != nil && fileKind(old.File) != fileKind(s.File) {
-					return fmt.Errorf("%w: file location kind immutable", persistence.ErrKindChange)
-				}
 			}
 		}
 		for _, v := range views {
@@ -333,10 +321,8 @@ func (d *Definitions) Reconcile(
 			if e != nil && !errors.Is(e, persistence.ErrNotFound) {
 				return e
 			}
-			if e == nil {
-				if old.Origin != persistence.OriginConfig {
-					return fmt.Errorf("%w: API view name", persistence.ErrConflict)
-				}
+			if e == nil && old.Origin != persistence.OriginConfig {
+				return fmt.Errorf("%w: registry %q is API-created", persistence.ErrConflict, v.Name)
 			}
 		}
 		keepViews := make([]string, 0, len(views))
@@ -358,6 +344,14 @@ func (d *Definitions) Reconcile(
 		if err != nil {
 			return classify(err)
 		}
+		user, err := sqlc.New(tx).DefPrunedSourceUser(ctx, keepSources)
+		if err == nil {
+			return fmt.Errorf("%w: source %q is removed from the config but API-created registry %q uses it",
+				persistence.ErrInUse, user.SourceName, user.RegistryName)
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return classify(err)
+		}
 		err = sqlc.New(tx).DefPruneSources(ctx, keepSources)
 		if err != nil {
 			return classify(err)
@@ -372,22 +366,22 @@ func (d *Definitions) Reconcile(
 				Name: s.Name, SourceType: kind, Column3: spec, Column4: filter, Column5: schedule, Syncable: synced(s),
 			})
 			if e != nil {
-				return classify(e)
+				return fmt.Errorf("source %q: %w", s.Name, classify(e))
 			}
 			if rows != 1 {
-				return fmt.Errorf("%w: source name owned by another writer", persistence.ErrConflict)
+				return fmt.Errorf("%w: source %q is owned by another writer", persistence.ErrConflict, s.Name)
 			}
 		}
 		for _, v := range views {
 			id, e := sqlc.New(tx).DefUpsertConfigView(ctx, v.Name)
 			if e != nil {
-				return classify(e)
+				return fmt.Errorf("registry %q: %w", v.Name, classify(e))
 			}
 			if e = sqlc.New(tx).DefDeleteViewLinks(ctx, uuid.MustParse(id)); e != nil {
 				return classify(e)
 			}
 			if e = link(ctx, tx, id, v.Sources); e != nil {
-				return e
+				return fmt.Errorf("registry %q: %w", v.Name, e)
 			}
 		}
 		return nil
@@ -457,7 +451,42 @@ func writeTx(ctx context.Context, pool *pgxpool.Pool, lock bool, fn func(pgx.Tx)
 		}
 		return classify(err)
 	}
-	return fmt.Errorf("%w: concurrent modification, retry", persistence.ErrConflict)
+	return persistence.ErrContention
+}
+
+// reconcileSourceCollision refuses a config source that would take over an
+// API-created source, change to or from managed, sit beside an API-created
+// managed source, or overwrite fields this version cannot represent.
+func reconcileSourceCollision(ctx context.Context, tx pgx.Tx, s persistence.SourceDefinition) error {
+	kind, _ := s.Kind()
+	old, e := getSource(ctx, tx, s.Name, true)
+	if e != nil && !errors.Is(e, persistence.ErrNotFound) {
+		return e
+	}
+	if e == nil {
+		if old.Origin != persistence.OriginConfig {
+			return fmt.Errorf("%w: source %q is API-created", persistence.ErrConflict, s.Name)
+		}
+		oldKind, _ := old.Kind()
+		if (oldKind == managedSourceKind) != (kind == managedSourceKind) {
+			return fmt.Errorf("%w: source %q cannot change from %s to %s", persistence.ErrKindChange, s.Name, oldKind, kind)
+		}
+		if e = requireKnownFields(ctx, tx, s.Name, old); e != nil {
+			return fmt.Errorf("source %q: %w", s.Name, e)
+		}
+	}
+	if kind != managedSourceKind {
+		return nil
+	}
+	other, e := sqlc.New(tx).DefOtherManagedSource(ctx, s.Name)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return nil
+	}
+	if e != nil {
+		return classify(e)
+	}
+	return fmt.Errorf("%w: managed source %q conflicts with API-created managed source %q; only one managed source is allowed",
+		persistence.ErrConflict, s.Name, other)
 }
 
 func insertSource(ctx context.Context, q querier, s persistence.SourceDefinition) (persistence.SourceDefinition, error) {

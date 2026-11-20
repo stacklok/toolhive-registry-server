@@ -2,10 +2,13 @@ package app
 
 import "github.com/spf13/cobra"
 
+// confirmYes is the answer the migrate prompts accept as confirmation.
+const confirmYes = "yes"
+
 var migrateCmd = &cobra.Command{
 	Use:   "migrate",
 	Short: "Database migration tool",
-	Long:  `Database migration tool for managing schema versions. Use with 'up' or 'down' subcommands.`,
+	Long:  `Database migration tool for managing schema versions. Use with 'up', 'down' or 'force' subcommands.`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return cmd.Usage()
 	},
@@ -23,4 +26,5 @@ func init() {
 	// Add subcommands
 	migrateCmd.AddCommand(migrateUpCmd)
 	migrateCmd.AddCommand(migrateDownCmd)
+	migrateCmd.AddCommand(migrateForceCmd)
 }

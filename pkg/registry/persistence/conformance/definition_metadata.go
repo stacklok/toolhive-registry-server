@@ -198,8 +198,28 @@ func runDefinitionMetadata(t *testing.T, factory Factory) {
 		preciseConflict(t, err, persistence.ErrConfigOwned)
 		preciseConflict(t, d.DeleteSource(ctx, cs.Name), persistence.ErrConfigOwned)
 		preciseConflict(t, d.DeleteView(ctx, cv.Name), persistence.ErrConfigOwned)
-		config.File = &persistence.FileSpec{URL: "https://fixture.example.org"}
-		preciseConflict(t, d.Reconcile(ctx, []persistence.SourceDefinition{config}, []persistence.ViewDefinition{cv}), persistence.ErrKindChange)
+		// A CONFIG source may change kind in place, as v1.5.4 allowed, except
+		// to or from managed.
+		for _, changed := range []persistence.SourceDefinition{
+			{Name: configName, File: &persistence.FileSpec{URL: "https://fixture.example.org"}, Schedule: "1h"},
+			{Name: configName, Git: &persistence.GitSpec{Repository: "https://fixture.example.org/r.git"}, Schedule: "1h"},
+			{Name: configName, Kubernetes: &persistence.KubernetesSpec{}},
+			{Name: configName, API: &persistence.APISpec{Endpoint: "https://fixture.example.org"}, Schedule: "1h"},
+		} {
+			must(t, d.Reconcile(ctx, []persistence.SourceDefinition{changed}, []persistence.ViewDefinition{cv}))
+			got, err := d.GetSource(ctx, configName)
+			must(t, err)
+			if got.ID != cs.ID {
+				t.Fatalf("kind change replaced the source: %s -> %s", cs.ID, got.ID)
+			}
+			gotKind, _ := got.Kind()
+			wantKind, _ := changed.Kind()
+			if gotKind != wantKind {
+				t.Fatalf("kind = %s, want %s", gotKind, wantKind)
+			}
+		}
+		toManaged := persistence.SourceDefinition{Name: configName, Managed: &persistence.ManagedSpec{}}
+		preciseConflict(t, d.Reconcile(ctx, []persistence.SourceDefinition{toManaged}, []persistence.ViewDefinition{cv}), persistence.ErrKindChange)
 	})
 }
 

@@ -14,7 +14,13 @@ import (
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
+// maxQueryBytes caps a consumer request's raw query string (16 KiB); longer
+// query strings get 400 "query parameters too large".
+const maxQueryBytes = 16384
+
 // Legacy detail/history queries are intentionally not parsed unless opted in.
+// Without StrictQueries, malformed pairs are dropped as v1.5.4's
+// r.URL.Query() dropped them; StrictQueries rejects them.
 //
 //nolint:gocyclo // Keep the complete route-specific query inventory at the boundary.
 func consumerQuery(r *http.Request, route RouteDescriptor, options ConsumerOptions) (url.Values, error) {
@@ -22,15 +28,15 @@ func consumerQuery(r *http.Request, route RouteDescriptor, options ConsumerOptio
 		(!options.AllowExactName || route.Operation != List) {
 		return nil, nil
 	}
-	if len(r.URL.RawQuery) > 16384 {
+	if len(r.URL.RawQuery) > maxQueryBytes {
 		return nil, fmt.Errorf("query parameters too large")
+	}
+	if !options.StrictQueries {
+		return r.URL.Query(), nil
 	}
 	values, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
 		return nil, fmt.Errorf("invalid query parameters")
-	}
-	if !options.StrictQueries {
-		return values, nil
 	}
 	for key, items := range values {
 		allowed := false

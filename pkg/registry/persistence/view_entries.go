@@ -17,10 +17,16 @@ type EntryName struct {
 
 // ViewQuery selects versions after whole-name source priority has been resolved.
 // An empty VersionSelector selects all versions; Exact and Latest are exclusive.
-// Search is a case-insensitive literal substring of name, title or description.
+// Search matches name, title or description case-insensitively as the SQL
+// pattern LOWER(col) LIKE LOWER('%'||Search||'%'), as v1.5.4 did: % and _ are
+// wildcards and a backslash makes the next character literal.
 // UpdatedSince is exclusive. Namespace is supported only for skills/plugins.
-// Results are ordered by name then exact raw version, ascending byte-lexically.
-// Limit must be 1..1000. Cursors are backend-private and at most MaxCursorBytes.
+// Results are ordered by name then exact raw version, ascending in the
+// backend's text collation (PostgreSQL: the database's default collation, as
+// v1.5.4 ordered them; the in-memory fixture: byte order).
+// Limit must be 1..1000. Cursors are backend-private, at most MaxCursorBytes,
+// and positional: a cursor names the kind and the last position returned, so it
+// stays valid when the limit, filters, view or view sources change.
 type ViewQuery struct {
 	Kind            EntryKind
 	Name            string

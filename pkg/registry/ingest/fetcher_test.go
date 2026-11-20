@@ -200,7 +200,24 @@ func TestAPIPagination(t *testing.T) {
 			source := persistence.SourceDefinition{Name: "api", API: &persistence.APISpec{Endpoint: remote.URL, Timeout: timeout}, Schedule: "1h"}
 			f := ingest.New(ingest.Options{})
 			got, err := f.Fetch(t.Context(), source)
-			if mode != "success" {
+			switch mode {
+			case "empty":
+				// v1.5.4 policy: zero servers is a valid catalog that empties the source.
+				require.NoError(t, err)
+				require.Empty(t, got.Snapshot.Data.Servers)
+				require.NotEmpty(t, got.Hash)
+				return
+			case "invalid payload":
+				// v1.5.4 policy: API data is decoded only, never schema-checked. The
+				// storage check rejects the version-less server later, by name.
+				require.NoError(t, err)
+				require.Len(t, got.Snapshot.Data.Servers, 2)
+				err = persistence.ValidateStorableSnapshot(&got.Snapshot)
+				require.ErrorIs(t, err, persistence.ErrInvalid)
+				require.Contains(t, err.Error(), `server "bad"`)
+				return
+			case "success":
+			default:
 				require.Error(t, err)
 				require.Empty(t, got.Hash)
 				require.NotContains(t, err.Error(), "secret response")
