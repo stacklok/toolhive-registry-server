@@ -8,6 +8,58 @@ const docTemplate = `{
     "schemes": {{ marshal .Schemes }},
     "components": {
         "schemas": {
+            "api.PluginListMetadata": {
+                "properties": {
+                    "count": {
+                        "type": "integer"
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "api.PluginListResponse": {
+                "properties": {
+                    "metadata": {
+                        "$ref": "#/components/schemas/api.PluginListMetadata"
+                    },
+                    "plugins": {
+                        "items": {
+                            "$ref": "#/components/schemas/registry.Plugin"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "api.SkillListMetadata": {
+                "properties": {
+                    "count": {
+                        "type": "integer"
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "api.SkillListResponse": {
+                "properties": {
+                    "metadata": {
+                        "$ref": "#/components/schemas/api.SkillListMetadata"
+                    },
+                    "skills": {
+                        "items": {
+                            "$ref": "#/components/schemas/registry.Skill"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
             "github_com_stacklok_toolhive-registry-server_internal_config.APIConfig": {
                 "properties": {
                     "endpoint": {
@@ -760,58 +812,6 @@ const docTemplate = `{
                     "claims": {
                         "additionalProperties": {},
                         "type": "object"
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api_x_plugins.PluginListMetadata": {
-                "properties": {
-                    "count": {
-                        "type": "integer"
-                    },
-                    "nextCursor": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api_x_plugins.PluginListResponse": {
-                "properties": {
-                    "metadata": {
-                        "$ref": "#/components/schemas/internal_api_x_plugins.PluginListMetadata"
-                    },
-                    "plugins": {
-                        "items": {
-                            "$ref": "#/components/schemas/registry.Plugin"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api_x_skills.SkillListMetadata": {
-                "properties": {
-                    "count": {
-                        "type": "integer"
-                    },
-                    "nextCursor": {
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
-            "internal_api_x_skills.SkillListResponse": {
-                "properties": {
-                    "metadata": {
-                        "$ref": "#/components/schemas/internal_api_x_skills.SkillListMetadata"
-                    },
-                    "skills": {
-                        "items": {
-                            "$ref": "#/components/schemas/registry.Skill"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
                     }
                 },
                 "type": "object"
@@ -1926,7 +1926,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/internal_api_x_plugins.PluginListResponse"
+                                    "$ref": "#/components/schemas/api.PluginListResponse"
                                 }
                             }
                         },
@@ -2101,7 +2101,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/internal_api_x_plugins.PluginListResponse"
+                                    "$ref": "#/components/schemas/api.PluginListResponse"
                                 }
                             }
                         },
@@ -2312,7 +2312,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/internal_api_x_skills.SkillListResponse"
+                                    "$ref": "#/components/schemas/api.SkillListResponse"
                                 }
                             }
                         },
@@ -2487,7 +2487,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/internal_api_x_skills.SkillListResponse"
+                                    "$ref": "#/components/schemas/api.SkillListResponse"
                                 }
                             }
                         },

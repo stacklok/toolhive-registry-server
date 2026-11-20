@@ -17,8 +17,8 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/service"
 )
 
-// UpdateEntryClaims updates the claims on a published registry entry within the managed source.
-func (s *dbService) UpdateEntryClaims(ctx context.Context, opts ...service.Option) error {
+// updateEntryClaims updates the claims on a published registry entry within the managed source.
+func (s *dbService) updateEntryClaims(ctx context.Context, opts ...service.Option) error {
 	ctx, span := s.startSpan(ctx, "dbService.UpdateEntryClaims")
 	defer span.End()
 	start := time.Now()

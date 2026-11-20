@@ -393,6 +393,19 @@ func (q *Queries) InsertSource(ctx context.Context, arg InsertSourceParams) (Sou
 	return i, err
 }
 
+const invalidateSourceSyncBaseline = `-- name: InvalidateSourceSyncBaseline :exec
+UPDATE registry_sync
+   SET applied_generation = NULL
+ WHERE source_id = (SELECT id FROM source WHERE name = $1)
+`
+
+// Forces the next sync of a source to commit a full snapshot, so entry claims
+// are recomputed even when the fetched data is unchanged.
+func (q *Queries) InvalidateSourceSyncBaseline(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, invalidateSourceSyncBaseline, name)
+	return err
+}
+
 const listAllSourceNames = `-- name: ListAllSourceNames :many
 SELECT name FROM source ORDER BY name
 `
@@ -489,6 +502,29 @@ func (q *Queries) ListSources(ctx context.Context, arg ListSourcesParams) ([]Lis
 		return nil, err
 	}
 	return items, nil
+}
+
+const setConfigSourceClaims = `-- name: SetConfigSourceClaims :execrows
+UPDATE source
+   SET claims = $1
+ WHERE name = $2
+   AND creation_type = 'CONFIG'
+   AND claims IS DISTINCT FROM $1
+`
+
+type SetConfigSourceClaimsParams struct {
+	Claims []byte `json:"claims"`
+	Name   string `json:"name"`
+}
+
+// Stores a config-file source's claims after the library reconciled the
+// definitions; the claims-free library never writes source claims.
+func (q *Queries) SetConfigSourceClaims(ctx context.Context, arg SetConfigSourceClaimsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setConfigSourceClaims, arg.Claims, arg.Name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateSource = `-- name: UpdateSource :one

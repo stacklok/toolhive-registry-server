@@ -3,6 +3,7 @@ paths:
   - "internal/config/**/*.go"
   - "internal/service/**/*.go"
   - "internal/sources/**/*.go"
+  - "internal/claims/**/*.go"
   - "database/**/*.sql"
   - "database/**/*.go"
 ---
@@ -90,30 +91,46 @@ that upserts over rows with `creation_type = 'API'`; API handlers that don't ret
 
 **Instead**: config-load reconciliation only touches `CONFIG` rows. API writes to a `CONFIG`
 resource return 403. A resource is never "converted" between the two — it is deleted and
-recreated.
+recreated. A config that collides with `API` rows is not applied at all, and does not stop
+startup: the server logs the conflict and keeps serving and syncing the stored definitions,
+writing config claims only to `CONFIG` rows of the same type (`reconcileConfig` in
+`internal/app/catalog_compat.go`).
 
 ## 6. Source Names Must Be Valid DNS Subdomains (RFC 1123)
 
-Source names are used as suffixes for Kubernetes leader-election lease names. Invalid DNS
-labels fail lease creation opaquely.
+v1.5.4 needed this because source names suffixed Kubernetes leader-election lease names.
+The server no longer uses leader election (database leases fence sync), so the rule is now
+an API contract rather than a technical need: every existing source already satisfies it,
+and relaxing it is a deliberate, separate change.
 
 **What must hold:** `IsValidDNSSubdomain` gates every source name at write time (config +
 API). Max 63 chars, lowercase alphanumeric + hyphens, no leading/trailing hyphen.
 
-**Breaks if violated:** leader election silently fails; operators see "no leader" instead
-of a validation error.
+**Breaks if violated:** clients and scripts that assume DNS-safe source names (as in
+labels, file names or URLs) start receiving names they did not expect.
 
-## 7. No JSONB Operators in Production SQL
+## 7. One Sanctioned JSONB Claims Check in SQL; Everything Else in Go
 
-Claims come out of the DB as raw bytes and are filtered in Go. No `@>`, `->>`, or GIN
-indexes on claim columns.
+The claims-mode consumer list must filter entries **before** it picks each name's winning
+source (`api.md` §5), inside a bounded, index-ordered page walk. That cannot be done by
+filtering rows after the query, so the shared list query `ViewEntryList`
+(`database/queries/view_entries.sql`) takes an optional `caller` and applies the SQL
+function `claims_visible(caller, record)` (migration 28). This is the only place SQL
+evaluates claims. No `@>`, `->>`, or GIN indexes on claim columns anywhere.
 
-**Detect**: new SQL queries using `@>`, `->>`, `jsonb_path_query`; migrations creating GIN
-indexes on `claims` columns; service code that expects SQL to do containment filtering.
+**What must hold:**
+- `claims_visible` and the Go read rule (`internal/claims.Visible` / `VisibleJSON`) agree
+  on every input. The shared case table in `internal/claims/claims_test.go` runs each case
+  against both; extend it whenever either side changes.
+- Only the server's claims mode sets `caller`, through the module-internal context key
+  `internal/db.WithViewCaller`. The library (`pkg/registry`) never knows about claims, and
+  external embedders cannot enable the filter.
+- Single-resource gates (registry gate, admin reads, publish, delete, claims updates) stay
+  in Go (`internal/service/db/claims_filter.go`, `internal/claims`).
 
-**Instead**: filtering happens in `RecordFilter` chains in `internal/service/db/` during
-row streaming. The DB returns candidates; Go code decides visibility. Moving to SQL-level
-filtering is a migration, not a drop-in change — authz tests assume app-level semantics.
+**Detect**: a second query evaluating claims in SQL; `claims_visible` or the Go rule changed
+without the shared case table; `pkg/registry` code that reads or writes claim columns.
 
-**Why**: for current data volumes (hundreds to low thousands of distinct names), streaming
-+ Go filtering is simpler than JSONB + GIN and keeps all auth logic in one place.
+**Why**: Go-side filtering after a paged, deduplicated query either hides names whose
+winner the caller cannot see or returns short pages. Keeping one SQL function, pinned to
+the Go rule by tests, preserves a single matching algorithm.

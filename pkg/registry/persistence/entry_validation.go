@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	thvregistry "github.com/stacklok/toolhive-core/registry/types"
@@ -160,6 +161,24 @@ func wireCheck(s *model.Snapshot) model.Snapshot {
 	}
 	if check.Data.Servers == nil {
 		check.Data.Servers = []model.Server{}
+	}
+	// A server's "$schema" is optional in imported registry files: the wire
+	// schema only applies its uri format when the key is present. The decoded
+	// model has no "absent", so re-encoding an omitted $schema would produce
+	// "" and fail that format. Validate omitted values as present-and-valid,
+	// on a copy, without changing what is stored.
+	for i := range check.Data.Servers {
+		if check.Data.Servers[i].Schema != "" {
+			continue
+		}
+		servers := slices.Clone(check.Data.Servers)
+		for j := i; j < len(servers); j++ {
+			if servers[j].Schema == "" {
+				servers[j].Schema = "https://example.org/server.schema.json"
+			}
+		}
+		check.Data.Servers = servers
+		break
 	}
 	return check
 }

@@ -139,29 +139,6 @@ func rowToSkill(r skillRow) *Skill {
 	return resp
 }
 
-// ListSkillsRowToSkill maps a sqlc ListSkillsRow to a service Skill.
-func ListSkillsRowToSkill(row sqlc.ListSkillsRow) *Skill {
-	return rowToSkill(skillRow{
-		ID:            row.VersionID,
-		Name:          row.Name,
-		Version:       row.Version,
-		IsLatest:      row.IsLatest,
-		CreatedAt:     row.CreatedAt,
-		UpdatedAt:     row.UpdatedAt,
-		Description:   row.Description,
-		Title:         row.Title,
-		Namespace:     row.Namespace,
-		Status:        row.Status,
-		License:       row.License,
-		Compatibility: row.Compatibility,
-		AllowedTools:  row.AllowedTools,
-		Repository:    row.Repository,
-		Icons:         row.Icons,
-		Metadata:      row.Metadata,
-		ExtensionMeta: row.ExtensionMeta,
-	})
-}
-
 // GetSkillVersionRowToSkill maps a sqlc GetSkillVersionRow to a service Skill.
 func GetSkillVersionRowToSkill(row sqlc.GetSkillVersionRow) *Skill {
 	return rowToSkill(skillRow{

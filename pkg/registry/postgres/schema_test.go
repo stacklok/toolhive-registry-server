@@ -36,7 +36,7 @@ func TestSchemaCompatibilityIsHTTPBackendMaintenance(t *testing.T) {
 	_, err = defs.CreateSource(t.Context(), persistence.SourceDefinition{Name: "item", Managed: &persistence.ManagedSpec{}})
 	require.ErrorIs(t, err, persistence.ErrUnavailable)
 	require.NotErrorIs(t, err, persistence.ErrConflict)
-	require.ErrorContains(t, err, "clean schema 27 required")
+	require.ErrorContains(t, err, fmt.Sprintf("clean schema %d required", postgres.RequiredSchemaVersion))
 	response := httptest.NewRecorder()
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/sources/item", strings.NewReader(`{"managed":{}}`))
 	router.ServeHTTP(response, request)

@@ -3,6 +3,7 @@ paths:
   - "internal/auth/**/*.go"
   - "internal/authz/**/*.go"
   - "internal/service/db/claims_filter.go"
+  - "internal/claims/**/*.go"
   - "internal/service/db/*claims*.go"
   - "internal/api/v1/entries.go"
 ---
@@ -47,7 +48,7 @@ extraction and injects resolved roles into the request context.
 ## 3. Claim Matching Has Two Rules, Split by Direction: Visibility (OR) and Subset (AND)
 
 Claim comparison splits by *which question is being asked*. Both share one key-level
-matcher (`claimsMatch` in `claims_filter.go`: AND across keys, caller must hold each key,
+matcher (`match` in `internal/claims/claims.go`: AND across keys, caller must hold each key,
 empty-array vacuously satisfied, fail-closed on bad types) and, at the gate layer, the same
 super-admin bypass and empty-resource default-deny (`validateClaimsWith`). They differ
 **only** in the within-array direction:
@@ -56,8 +57,9 @@ super-admin bypass and empty-resource default-deny (`validateClaimsWith`). They 
   **AND across keys, OR within array values, absent key = not checked.** A record tagged
   `team: [platform, data]` is an allow-list: a caller in *either* team matches. Used by the
   registry access gate, per-user entry filtering, single-resource reads, deletes, and
-  referencing a source. Implemented by `claimsVisible` / `validateClaimsVisible` /
-  `validateClaimsVisibleBytes`. Role resolution (`matchesClaimValue` in
+  referencing a source. Implemented by `claims.Visible` (and, for the consumer list, the
+  SQL function `claims_visible` that mirrors it — `data-model.md` §7) /
+  `validateClaimsVisible` / `validateClaimsVisibleBytes`. Role resolution (`matchesClaimValue` in
   `internal/auth/roles.go`) uses the same AND-keys/OR-array shape, but is a *separate*
   matcher — it has no super-admin bypass or default-deny (roles are how super-admin is
   derived) and treats an empty required array as no-match, so don't assume gate parity.
@@ -66,9 +68,9 @@ super-admin bypass and empty-resource default-deny (`validateClaimsWith`). They 
   **AND across keys, AND within array values (containment).** The caller must hold *every*
   value, or they could create a resource with broader visibility than their own identity —
   privilege escalation (§5). Used only on create/update/publish/update-claims, against the
-  incoming request claims. Implemented by `claimsContain` / `validateClaimsSubset`.
+  incoming request claims. Implemented by `claims.Contain` / `validateClaimsSubset`.
 
-**Detect**: a read/gate check calling `validateClaimsSubset` / `claimsContain` (should be
+**Detect**: a read/gate check calling `validateClaimsSubset` / `claims.Contain` (should be
 the `*Visible` variant); a create/update check on incoming claims calling
 `validateClaimsVisible` (should be `validateClaimsSubset`); hand-rolled JSON comparison
 loops over claim maps; a fifth matching algorithm.

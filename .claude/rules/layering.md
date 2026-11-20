@@ -16,11 +16,13 @@ Ingestion, storage, and consumer views are distinct layers. Sources are an admin
 registries are the consumer boundary, and the entry pool is the only shared state.
 
 **Detect**: admin concepts (sync config, source filters, ingestion hashes) leaking into
-`/registry/{name}/v0.1/...` request/response shapes; new per-registry tables; handlers under
-`internal/api/registry/v01/` that reference `sources.*` types directly.
+`/registry/{name}/v0.1/...` request/response shapes; new per-registry tables; consumer
+route code that reaches source definitions or sync state.
 
-**Instead**: admin concerns belong under `/v1/` (`internal/api/v1/`). Consumer endpoints go
-through `service.RegistryService` and see only `registry_entry` + `entry_version` data.
+**Instead**: admin concerns belong under `/v1/` (`internal/api/v1/`), served through
+`service.RegistryService`. Consumer endpoints are the library's `httpapi` router over a
+`catalog.Reader` (the claims-mode `internal/claims.Reader` when authz is on) and see only
+`registry_entry` + `entry_version` data.
 
 ## 2. Layer Direction: API → Service → Storage/Sources
 

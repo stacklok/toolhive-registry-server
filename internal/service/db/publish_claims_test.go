@@ -138,8 +138,9 @@ func TestPublishServerVersion_ClaimsSubset(t *testing.T) {
 
 			opts := []service.Option{
 				service.WithServerData(&upstreamv0.ServerJSON{
-					Name:    "com.test/pub-srv-" + tt.serverSlug,
-					Version: "1.0.0",
+					Name:        "com.test/pub-srv-" + tt.serverSlug,
+					Version:     "1.0.0",
+					Description: "test description",
 				}),
 			}
 			if tt.claims != nil {
@@ -245,8 +246,9 @@ func TestPublishServerVersion_SourceClaimsGate(t *testing.T) {
 
 			opts := []service.Option{
 				service.WithServerData(&upstreamv0.ServerJSON{
-					Name:    "com.test/pubsrc-" + tt.slug,
-					Version: "1.0.0",
+					Name:        "com.test/pubsrc-" + tt.slug,
+					Version:     "1.0.0",
+					Description: "test description",
 				}),
 			}
 			if tt.entryClaims != nil {
@@ -318,10 +320,11 @@ func TestPublishSkill_SourceClaimsGate(t *testing.T) {
 
 			ctx := context.Background()
 			skill := &service.Skill{
-				Namespace: "com.test",
-				Name:      "pubskill-" + tt.slug,
-				Version:   "1.0.0",
-				Title:     "Test Skill",
+				Namespace:   "com.test",
+				Name:        "pubskill-" + tt.slug,
+				Version:     "1.0.0",
+				Title:       "Test Skill",
+				Description: "test description",
 			}
 
 			opts := []service.Option{}
@@ -393,10 +396,11 @@ func TestPublishSkill_ClaimsSubset(t *testing.T) {
 			ctx := context.Background()
 
 			skill := &service.Skill{
-				Namespace: "com.test",
-				Name:      "skill-" + tt.name,
-				Version:   "1.0.0",
-				Title:     "Test Skill",
+				Namespace:   "com.test",
+				Name:        "skill-" + slugName(tt.name),
+				Version:     "1.0.0",
+				Title:       "Test Skill",
+				Description: "test description",
 			}
 
 			opts := []service.Option{}
@@ -470,8 +474,9 @@ func TestDeleteServerVersion_ClaimsAuthorization(t *testing.T) {
 			// Publish a server version with claims
 			publishOpts := []service.Option{
 				service.WithServerData(&upstreamv0.ServerJSON{
-					Name:    serverName,
-					Version: "1.0.0",
+					Name:        serverName,
+					Version:     "1.0.0",
+					Description: "test description",
 				}),
 			}
 			if tt.publishClaims != nil {
@@ -551,10 +556,11 @@ func TestDeleteSkillVersion_ClaimsAuthorization(t *testing.T) {
 
 			// Publish a skill version with claims
 			skill := &service.Skill{
-				Namespace: namespace,
-				Name:      skillName,
-				Version:   "1.0.0",
-				Title:     "Test Skill",
+				Namespace:   namespace,
+				Name:        skillName,
+				Version:     "1.0.0",
+				Title:       "Test Skill",
+				Description: "test description",
 			}
 			publishOpts := []service.Option{}
 			if tt.publishClaims != nil {
@@ -568,7 +574,6 @@ func TestDeleteSkillVersion_ClaimsAuthorization(t *testing.T) {
 			deleteOpts := []service.Option{
 				service.WithName(skillName),
 				service.WithVersion("1.0.0"),
-				service.WithNamespace(namespace),
 			}
 			if tt.deleteJWTClaims != nil {
 				deleteOpts = append(deleteOpts, service.WithJWTClaims(tt.deleteJWTClaims))
@@ -634,10 +639,11 @@ func TestPublishPlugin_SourceClaimsGate(t *testing.T) {
 
 			ctx := context.Background()
 			plugin := &service.Plugin{
-				Namespace: "com.test",
-				Name:      "pubplugin-" + tt.slug,
-				Version:   "1.0.0",
-				Title:     "Test Plugin",
+				Namespace:   "com.test",
+				Name:        "pubplugin-" + tt.slug,
+				Version:     "1.0.0",
+				Title:       "Test Plugin",
+				Description: "test description",
 			}
 
 			opts := []service.Option{}
@@ -709,10 +715,11 @@ func TestPublishPlugin_ClaimsSubset(t *testing.T) {
 			ctx := context.Background()
 
 			plugin := &service.Plugin{
-				Namespace: "com.test",
-				Name:      "plugin-" + tt.name,
-				Version:   "1.0.0",
-				Title:     "Test Plugin",
+				Namespace:   "com.test",
+				Name:        "plugin-" + slugName(tt.name),
+				Version:     "1.0.0",
+				Title:       "Test Plugin",
+				Description: "test description",
 			}
 
 			opts := []service.Option{}
@@ -787,10 +794,11 @@ func TestDeletePluginVersion_ClaimsAuthorization(t *testing.T) {
 
 			// Publish a plugin version with claims
 			plugin := &service.Plugin{
-				Namespace: namespace,
-				Name:      pluginName,
-				Version:   "1.0.0",
-				Title:     "Test Plugin",
+				Namespace:   namespace,
+				Name:        pluginName,
+				Version:     "1.0.0",
+				Title:       "Test Plugin",
+				Description: "test description",
 			}
 			publishOpts := []service.Option{}
 			if tt.publishClaims != nil {
@@ -804,7 +812,6 @@ func TestDeletePluginVersion_ClaimsAuthorization(t *testing.T) {
 			deleteOpts := []service.Option{
 				service.WithName(pluginName),
 				service.WithVersion("1.0.0"),
-				service.WithNamespace(namespace),
 			}
 			if tt.deleteJWTClaims != nil {
 				deleteOpts = append(deleteOpts, service.WithJWTClaims(tt.deleteJWTClaims))
@@ -835,10 +842,11 @@ func TestPublishSkill_LowercaseStatus(t *testing.T) {
 
 	ctx := context.Background()
 	skill := &service.Skill{
-		Namespace: "com.test",
-		Name:      "skill-lowercase-status",
-		Version:   "1.0.0",
-		Status:    "active",
+		Namespace:   "com.test",
+		Name:        "skill-lowercase-status",
+		Version:     "1.0.0",
+		Status:      "active",
+		Description: "test description",
 	}
 
 	result, err := svc.PublishSkill(ctx, skill)
@@ -859,10 +867,11 @@ func TestPublishPlugin_LowercaseStatus(t *testing.T) {
 
 	ctx := context.Background()
 	plugin := &service.Plugin{
-		Namespace: "com.test",
-		Name:      "plugin-lowercase-status",
-		Version:   "1.0.0",
-		Status:    "deprecated",
+		Namespace:   "com.test",
+		Name:        "plugin-lowercase-status",
+		Version:     "1.0.0",
+		Status:      "deprecated",
+		Description: "test description",
 	}
 
 	result, err := svc.PublishPlugin(ctx, plugin)

@@ -53,3 +53,12 @@ JOIN source s ON rs.source_id = s.id
 WHERE rs.registry_id = sqlc.arg(registry_id)
 ORDER BY rs.position;
 
+
+-- name: SetConfigRegistryClaims :execrows
+-- Stores a config-file registry's claims after the library reconciled the
+-- definitions; the claims-free library never writes registry claims.
+UPDATE registry
+   SET claims = sqlc.narg(claims)
+ WHERE name = sqlc.arg(name)
+   AND creation_type = 'CONFIG'
+   AND claims IS DISTINCT FROM sqlc.narg(claims);

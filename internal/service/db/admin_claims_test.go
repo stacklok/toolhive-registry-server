@@ -17,7 +17,8 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/state"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/postgres"
 )
 
 // setupTestServiceWithCodecs creates a test service whose connection pool
@@ -71,6 +72,7 @@ func setupTestServiceWithCodecs(t *testing.T) (*dbService, func()) {
 		pool:        pool,
 		maxMetaSize: config.DefaultMaxMetaSize,
 	}
+	withLibraryPublisher(t, svc)
 	return svc, svcCleanup
 }
 
@@ -167,18 +169,16 @@ func TestInitialize_RejectsConfigManagedWhenAPIManagedExists(t *testing.T) {
 	_, err := svc.CreateSource(ctx, "api-managed", managedSourceReq(nil))
 	require.NoError(t, err)
 
-	// Attempt to initialize with a config that also has a managed source
-	stateSvc := state.NewDBStateService(svc.pool)
-	err = stateSvc.Initialize(ctx, &config.Config{
-		Sources: []config.SourceConfig{
-			{Name: "config-managed", Managed: &config.ManagedConfig{}},
-		},
-		Registries: []config.RegistryConfig{
-			{Name: "reg", Sources: []string{"config-managed"}},
-		},
-	})
+	// Applying a config that also has a managed source must fail: at most
+	// one managed source may exist (migration 24).
+	definitions, err := postgres.NewDefinitions(svc.pool)
+	require.NoError(t, err)
+	err = definitions.Reconcile(ctx,
+		[]persistence.SourceDefinition{{Name: "config-managed", Managed: &persistence.ManagedSpec{}}},
+		[]persistence.ViewDefinition{{Name: "reg", Sources: []string{"config-managed"}}})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "API-created managed source")
+	_, err = svc.GetSourceByName(ctx, "config-managed")
+	require.Error(t, err, "the rejected config must not create the source")
 }
 
 func TestCreateSource_NonManagedAllowedWhenManagedExists(t *testing.T) {

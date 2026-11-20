@@ -377,6 +377,49 @@ func (q *Queries) PropagateSourceClaimsToEntries(ctx context.Context, arg Propag
 	return err
 }
 
+const setEntryClaims = `-- name: SetEntryClaims :exec
+UPDATE registry_entry
+   SET claims = $1
+ WHERE source_id = $2::uuid
+   AND entry_type = $3
+   AND name = $4
+   AND claims IS DISTINCT FROM $1
+`
+
+type SetEntryClaimsParams struct {
+	Claims    []byte    `json:"claims"`
+	SourceID  uuid.UUID `json:"source_id"`
+	EntryType EntryType `json:"entry_type"`
+	Name      string    `json:"name"`
+}
+
+// Sets one entry name's claims inside a library write transaction (claims mode only).
+func (q *Queries) SetEntryClaims(ctx context.Context, arg SetEntryClaimsParams) error {
+	_, err := q.db.Exec(ctx, setEntryClaims,
+		arg.Claims,
+		arg.SourceID,
+		arg.EntryType,
+		arg.Name,
+	)
+	return err
+}
+
+const setSourceEntryClaimsFromSource = `-- name: SetSourceEntryClaimsFromSource :exec
+UPDATE registry_entry e
+   SET claims = s.claims
+  FROM source s
+ WHERE s.id = $1::uuid
+   AND e.source_id = s.id
+   AND e.claims IS DISTINCT FROM s.claims
+`
+
+// Gives every entry of a synced source the source's claims, inside the
+// library's snapshot transaction (claims mode only).
+func (q *Queries) SetSourceEntryClaimsFromSource(ctx context.Context, sourceID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, setSourceEntryClaimsFromSource, sourceID)
+	return err
+}
+
 const updateRegistryEntryClaims = `-- name: UpdateRegistryEntryClaims :execrows
 UPDATE registry_entry
    SET claims = $1,

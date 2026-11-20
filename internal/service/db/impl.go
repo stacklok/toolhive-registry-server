@@ -2,16 +2,17 @@
 package database
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
 const (
@@ -24,21 +25,15 @@ var (
 	ErrBug = errors.New("bug")
 )
 
-// serverCursor represents a cursor for pagination based on server name and version.
-// This provides deterministic ordering regardless of timestamp values.
-type serverCursor struct {
-	Name     string
-	Version  string
-	Position int32
-	SourceID uuid.UUID
-}
-
 // options holds configuration options for the database service
 type options struct {
 	pool        *pgxpool.Pool
 	tracer      trace.Tracer
 	maxMetaSize int
 	skipAuthz   bool
+	publisher   persistence.ManagedPublisher
+	changed     func(context.Context) error
+	prepare     SourcePreparer
 }
 
 // Option is a functional option for configuring the database service
@@ -87,12 +82,38 @@ func WithSkipAuthz() Option {
 	}
 }
 
+// WithPublisher sets the library adapter that performs managed publish and
+// delete writes. Install a ClaimsHook on it so claims stay in step.
+func WithPublisher(publisher persistence.ManagedPublisher) Option {
+	return func(o *options) error {
+		if publisher == nil {
+			return fmt.Errorf("publisher is required")
+		}
+		o.publisher = publisher
+		return nil
+	}
+}
+
+// WithSourcesChanged sets the callback run after a source is created,
+// updated or deleted; the app passes the sync runtime's Refresh.
+func WithSourcesChanged(f func(context.Context) error) Option {
+	return func(o *options) error {
+		o.changed = f
+		return nil
+	}
+}
+
 // dbService implements the RegistryService interface using a database backend
 type dbService struct {
 	pool        *pgxpool.Pool
 	tracer      trace.Tracer
 	maxMetaSize int
 	skipAuthz   bool
+	publisher   persistence.ManagedPublisher
+	// sourcesChanged is notified after source definition writes.
+	sourcesChanged func(context.Context) error
+	// prepare completes and checks source requests before they are stored.
+	prepare SourcePreparer
 }
 
 var _ service.RegistryService = (*dbService)(nil)
@@ -112,6 +133,10 @@ func New(opts ...Option) (service.RegistryService, error) {
 		tracer:      o.tracer,
 		maxMetaSize: o.maxMetaSize,
 		skipAuthz:   o.skipAuthz,
+		publisher:   o.publisher,
+
+		sourcesChanged: o.changed,
+		prepare:        o.prepare,
 	}, nil
 }
 

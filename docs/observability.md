@@ -117,8 +117,8 @@ Every series additionally carries the constant labels `stacklok_component="regis
 | `stacklok_registry_servers` | Gauge | `source` | Number of distinct servers in each source |
 | `stacklok_registry_skills` | Gauge | `source` | Number of distinct skills in each source |
 | `stacklok_registry_plugins` | Gauge | `source` | Number of distinct plugins in each source |
-| `stacklok_registry_sync_duration_seconds` | Histogram | `source`, `outcome` | Duration of sync operations (`outcome` is `success` or `error`) |
-| `stacklok_registry_errors_total` | Counter | `error_type`, `area` | Additive error-by-type classification for the sync (`area="sync"`) and HTTP (`area="http"`) paths — supplementary detail, not a replacement for the `outcome` label on `stacklok_registry_sync_duration_seconds` or `http_response_status_code` on `stacklok_registry_http_requests_total` |
+| `stacklok_registry_sync_duration_seconds` | Histogram | `source`, `outcome` | Duration of sync operations (`outcome` is `success` or `error`). Recorded for each sync that stored new data or failed, for every synced source type (git, api, file, inline data, kubernetes); a poll that found the data unchanged is not recorded |
+| `stacklok_registry_errors_total` | Counter | `error_type`, `area` | Additive error-by-type classification for the sync (`area="sync"`) and HTTP (`area="http"`) paths — supplementary detail, not a replacement for the `outcome` label on `stacklok_registry_sync_duration_seconds` or `http_response_status_code` on `stacklok_registry_http_requests_total`. Sync `error_type` values: `FetchFailed`, `ValidationFailed`, `StorageFailed`, and `Cancelled` (a sync cut short by shutdown; new since v1.5.4, which did not count these) |
 | `stacklok_build_info_ratio` | Gauge | `component`, `version`, `commit` | Always `1`; build identity carried on labels. The OTel Prometheus exporter appends `_ratio` to gauges with unit `1`. Registered once per process and never unregistered — `RegistryMetrics.Unregister()` does not tear this gauge down, so it keeps observing for the life of the meter provider |
 
 ### Histogram Buckets
@@ -150,6 +150,9 @@ The Registry Server implements distributed tracing across three layers: HTTP, Se
 │                sync.duration_seconds, sync.server_count             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+The sync span is recorded when a sync ends, with its start time set to when
+the sync acquired its source. It has no child spans.
 
 ### Span Reference
 
@@ -198,6 +201,10 @@ If you need to debug health check issues, HTTP metrics (`http_server_request_dur
 | `dbService.ListServers` | List servers with optional filtering |
 | `dbService.ListServerVersions` | List versions of a specific server |
 | `dbService.GetServerVersion` | Get a specific server version |
+| `dbService.ListSkills` | List skills, or the versions of one skill |
+| `dbService.GetSkillVersion` | Get a specific skill version |
+| `dbService.ListPlugins` | List plugins, or the versions of one plugin |
+| `dbService.GetPluginVersion` | Get a specific plugin version |
 | `dbService.PublishServerVersion` | Publish a new server version |
 | `dbService.DeleteServerVersion` | Delete a server version |
 | `dbService.ListRegistries` | List all registries |
@@ -206,9 +213,14 @@ If you need to debug health check issues, HTTP metrics (`http_server_request_dur
 | `dbService.UpdateRegistry` | Update an existing registry |
 | `dbService.DeleteRegistry` | Delete a registry |
 
+The consumer read spans (`List*`, `Get*Version`) wrap the consumer API's
+reads of a registry; server reads carry the server, pagination and result
+attributes below, skill and plugin reads carry `registry.name`.
+
 **Common Attributes:**
 | Attribute | Type | Description |
 |-----------|------|-------------|
+| `db.system` | string | Always `postgresql` |
 | `registry.name` | string | Name of the registry |
 | `server.name` | string | Name of the server |
 | `server.version` | string | Version of the server |
@@ -221,16 +233,22 @@ If you need to debug health check issues, HTTP metrics (`http_server_request_dur
 
 | Span Name | Description |
 |-----------|-------------|
-| `sync.performRegistrySync` | Sync a registry from its source |
+| `sync.performRegistrySync` | Sync a source: one span for each sync that stored new data or failed; a poll that found the data unchanged records none |
 
 **Attributes:**
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `registry.name` | string | Name of the registry being synced |
-| `registry.type` | string | Type of registry source |
+| `registry.name` | string | Name of the source being synced |
+| `registry.type` | string | Type of the source (`git`, `api`, `file`, `kubernetes`) |
 | `sync.success` | bool | Whether sync completed successfully |
 | `sync.duration_seconds` | float64 | Duration of the sync operation |
 | `sync.server_count` | int | Number of servers synced (on success) |
+| `sync.skill_count` | int | Number of skills synced (on success) |
+| `sync.plugin_count` | int | Number of plugins synced (on success) |
+
+A failed sync has error status and an error event naming the failure
+category (`fetch`, `validation`, `storage`, `cancelled`); the cause is in the
+server log (`Sync failed`).
 
 ### Example Traces
 

@@ -20,14 +20,13 @@ import (
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/otel"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
-	"github.com/stacklok/toolhive-registry-server/internal/sources"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
 
-// CreateSource creates a new API-managed source
+// createSource creates a new API-managed source
 //
 //nolint:gocyclo // complexity driven by validation, claim checks, and config serialization
-func (s *dbService) CreateSource(
+func (s *dbService) createSource(
 	ctx context.Context,
 	name string,
 	req *service.SourceCreateRequest,
@@ -56,6 +55,9 @@ func (s *dbService) CreateSource(
 	}
 	if err := validateClaimsSubset(ctx, callerClaims, req.Claims); err != nil {
 		otel.RecordError(span, err)
+		return nil, err
+	}
+	if err := s.prepareSource(ctx, span, name, req); err != nil {
 		return nil, err
 	}
 
@@ -115,6 +117,7 @@ func (s *dbService) CreateSource(
 	}
 
 	// Prepare insert parameters
+	req = service.NormalizeSourceRequest(ctx, name, req)
 	now := time.Now()
 	sourceType := string(req.GetSourceType())
 
@@ -192,6 +195,7 @@ func (s *dbService) CreateSource(
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	s.notifySourcesChanged(ctx)
 	slog.InfoContext(ctx, "Source created",
 		"duration_ms", time.Since(start).Milliseconds(),
 		"name", name,
@@ -203,10 +207,10 @@ func (s *dbService) CreateSource(
 	return buildSourceInfoFromDBSource(&source), nil
 }
 
-// UpdateSource updates an existing API source
+// updateSource updates an existing API source
 //
 //nolint:gocyclo // complexity from creation_type guard is intentional
-func (s *dbService) UpdateSource(
+func (s *dbService) updateSource(
 	ctx context.Context,
 	name string,
 	req *service.SourceCreateRequest,
@@ -226,6 +230,9 @@ func (s *dbService) UpdateSource(
 	if err := service.ValidateSourceConfig(req); err != nil {
 		otel.RecordError(span, err)
 		return nil, fmt.Errorf("%w: %v", service.ErrInvalidSourceConfig, err)
+	}
+	if err := s.prepareSource(ctx, span, name, req); err != nil {
+		return nil, err
 	}
 
 	// Begin transaction
@@ -289,6 +296,7 @@ func (s *dbService) UpdateSource(
 	}
 
 	// Prepare update parameters
+	req = service.NormalizeSourceRequest(ctx, name, req)
 	now := time.Now()
 	sourceType := string(req.GetSourceType())
 
@@ -332,6 +340,7 @@ func (s *dbService) UpdateSource(
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	s.notifySourcesChanged(ctx)
 	slog.InfoContext(ctx, "Source updated",
 		"duration_ms", time.Since(start).Milliseconds(),
 		"name", name,
@@ -343,8 +352,8 @@ func (s *dbService) UpdateSource(
 	return buildSourceInfoFromDBSource(&source), nil
 }
 
-// DeleteSource deletes an API source
-func (s *dbService) DeleteSource(ctx context.Context, name string) error {
+// deleteSource deletes an API source
+func (s *dbService) deleteSource(ctx context.Context, name string) error {
 	ctx, span := s.startSpan(ctx, "dbService.DeleteSource")
 	defer span.End()
 	start := time.Now()
@@ -423,6 +432,7 @@ func (s *dbService) DeleteSource(ctx context.Context, name string) error {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	s.notifySourcesChanged(ctx)
 	slog.InfoContext(ctx, "Source deleted",
 		"duration_ms", time.Since(start).Milliseconds(),
 		"name", name,
@@ -539,68 +549,6 @@ func (s *dbService) GetSourceByName(ctx context.Context, name string) (*service.
 		"source", name,
 		"request_id", middleware.GetReqID(ctx))
 	return info, nil
-}
-
-// ProcessInlineSourceData processes inline source data synchronously.
-// It parses the data, validates it, and stores the servers in the database.
-func (s *dbService) ProcessInlineSourceData(ctx context.Context, name string, data string) error {
-	// Capture actual start time for accurate timing
-	startTime := time.Now()
-
-	// Parse the inline data using the registry validator
-	validator := sources.NewRegistryDataValidator()
-	registry, err := validator.ValidateData([]byte(data))
-	if err != nil {
-		// Update sync status to failed with actual timing
-		errMsg := fmt.Sprintf("failed to parse registry data: %v", err)
-		if updateErr := s.updateSyncStatusFailed(ctx, name, errMsg, startTime); updateErr != nil {
-			slog.ErrorContext(ctx, "Failed to update sync status after parse error",
-				"registry", name,
-				"parse_error", err,
-				"update_error", updateErr)
-		}
-		return fmt.Errorf("failed to parse inline registry data: %w", err)
-	}
-
-	// Create a sync writer to store the servers
-	syncWriter, err := writer.NewDBSyncWriter(s.pool, s.maxMetaSize)
-	if err != nil {
-		errMsg := fmt.Sprintf("failed to create sync writer: %v", err)
-		if updateErr := s.updateSyncStatusFailed(ctx, name, errMsg, startTime); updateErr != nil {
-			slog.ErrorContext(ctx, "Failed to update sync status after writer creation error",
-				"registry", name,
-				"writer_error", err,
-				"update_error", updateErr)
-		}
-		return fmt.Errorf("failed to create sync writer: %w", err)
-	}
-
-	// Store the servers in the database
-	if err := syncWriter.Store(ctx, name, registry); err != nil {
-		errMsg := fmt.Sprintf("failed to store servers: %v", err)
-		if updateErr := s.updateSyncStatusFailed(ctx, name, errMsg, startTime); updateErr != nil {
-			slog.ErrorContext(ctx, "Failed to update sync status after store error",
-				"registry", name,
-				"store_error", err,
-				"update_error", updateErr)
-		}
-		return fmt.Errorf("failed to store inline registry data: %w", err)
-	}
-
-	// Update sync status to completed with actual timing
-	if err := s.updateSyncStatusCompleted(ctx, name, len(registry.Data.Servers), startTime); err != nil {
-		slog.ErrorContext(ctx, "Failed to update sync status to completed",
-			"registry", name,
-			"error", err)
-		// Don't return error here - the data was successfully stored
-	}
-
-	slog.InfoContext(ctx, "Inline registry data processed successfully",
-		"duration_ms", time.Since(startTime).Milliseconds(),
-		"registry", name,
-		"server_count", len(registry.Data.Servers))
-
-	return nil
 }
 
 // ListSourceEntries returns all entries for a source with their versions.
@@ -926,44 +874,8 @@ func fetchSyncStatus(ctx context.Context, querier *sqlc.Queries, sourceName stri
 		ServerCount:  int(syncRecord.ServerCount),
 		SkillCount:   int(syncRecord.SkillCount),
 		PluginCount:  int(syncRecord.PluginCount),
-		Message:      getStatusMessage(syncRecord.ErrorMsg),
+		Message:      getStatusMessage(syncRecord.SyncStatus, syncRecord.ErrorMsg),
 	}
-}
-
-// updateSyncStatusFailed updates the sync status to failed with an error message.
-// startTime is the time when processing began, endTime is captured when this is called.
-func (s *dbService) updateSyncStatusFailed(
-	ctx context.Context, name string, errorMsg string, startTime time.Time,
-) error {
-	querier := sqlc.New(s.pool)
-	endTime := time.Now()
-	return querier.UpsertSourceSyncByName(ctx, sqlc.UpsertSourceSyncByNameParams{
-		Name:         name,
-		SyncStatus:   sqlc.SyncStatusFAILED,
-		ErrorMsg:     &errorMsg,
-		StartedAt:    &startTime,
-		EndedAt:      &endTime,
-		AttemptCount: 1,
-		ServerCount:  0,
-	})
-}
-
-// updateSyncStatusCompleted updates the sync status to completed.
-// startTime is the time when processing began, endTime is captured when this is called.
-func (s *dbService) updateSyncStatusCompleted(
-	ctx context.Context, name string, serverCount int, startTime time.Time,
-) error {
-	querier := sqlc.New(s.pool)
-	endTime := time.Now()
-	return querier.UpsertSourceSyncByName(ctx, sqlc.UpsertSourceSyncByNameParams{
-		Name:         name,
-		SyncStatus:   sqlc.SyncStatusCOMPLETED,
-		ErrorMsg:     nil,
-		StartedAt:    &startTime,
-		EndedAt:      &endTime,
-		AttemptCount: 1,
-		ServerCount:  int64(serverCount),
-	})
 }
 
 // getAPISourceInitialSyncStatus returns the initial sync status and message for an API source.
@@ -1007,11 +919,30 @@ func convertSyncPhase(status sqlc.SyncStatus) string {
 }
 
 // getStatusMessage converts error message pointer to string
-func getStatusMessage(errorMsg *string) string {
-	if errorMsg == nil || *errorMsg == "" {
-		return ""
+func getStatusMessage(status sqlc.SyncStatus, errorMsg *string) string {
+	msg := ""
+	if errorMsg != nil {
+		msg = *errorMsg
 	}
-	return *errorMsg
+	// The library's sync jobs record a completed sync without a message and a
+	// failed one as a bounded category, never raw error text, which can carry
+	// credentials. Show them in v1.5.4's wording.
+	switch {
+	case status == sqlc.SyncStatusCOMPLETED && msg == "":
+		return "Sync completed successfully"
+	case status == sqlc.SyncStatusFAILED:
+		switch persistence.FailureCategory(msg) {
+		case persistence.FailureFetch:
+			return "Fetch failed"
+		case persistence.FailureValidation:
+			return "Registry validation failed"
+		case persistence.FailureStorage:
+			return "Storage failed"
+		case persistence.FailureCancelled:
+			return "Sync cancelled"
+		}
+	}
+	return msg
 }
 
 // streamSourceRows fetches source rows in batches, filtering by caller claims,
@@ -1049,4 +980,17 @@ func streamSourceRows(
 	}
 
 	return accumulated, nil
+}
+
+// notifySourcesChanged tells the sync runtime that source definitions changed,
+// so it starts or stops workers for inline and Kubernetes sources. Polled
+// sources are picked up by the runtime's own scheduling; a failed notification
+// only delays the change, so it is logged rather than returned.
+func (s *dbService) notifySourcesChanged(ctx context.Context) {
+	if s.sourcesChanged == nil {
+		return
+	}
+	if err := s.sourcesChanged(ctx); err != nil {
+		slog.DebugContext(ctx, "Sync runtime not refreshed after source change", "error", err)
+	}
 }

@@ -52,7 +52,7 @@ It implements the official [Model Context Protocol (MCP) Registry API specificat
 
 ### Kubernetes and observability
 
-- **Kubernetes-native discovery**: A built-in reconciler watches for MCP server CRDs across namespaces and syncs them into the registry automatically. Per-entry access control via CRD annotations, multi-namespace support, and leader election for HA.
+- **Kubernetes-native discovery**: A built-in reconciler watches for MCP server CRDs across namespaces and syncs them into the registry automatically. Per-entry access control via CRD annotations and multi-namespace support. Several replicas can run against one database: sync jobs take a lease per source, so only one replica syncs a given source at a time (there is no leader election).
 - **OpenTelemetry**: Distributed tracing and metrics out of the box.
 - **Standards-compliant**: Implements the official MCP Registry API specification. Clients that speak the spec work out of the box.
 - **PostgreSQL backend**: Database storage with automatic migrations.

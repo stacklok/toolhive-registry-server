@@ -24,7 +24,7 @@ var migrationsFS embed.FS
 var primeTemplateFS embed.FS
 
 // LatestSchemaVersion is the newest embedded migration version.
-const LatestSchemaVersion uint = 27
+const LatestSchemaVersion uint = 28
 
 // GetMigrate creates a new migrate instance using the embedded migrations.
 // It bypasses the migration preconditions; prefer MigrateUp, MigrateUpTo and
