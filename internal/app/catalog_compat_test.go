@@ -25,6 +25,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/formats"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/ingest"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile"
 	reconcilemocks "github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile/mocks"
 )
 
@@ -232,6 +233,41 @@ func TestAmbiguousGitRefFetcher(t *testing.T) {
 		t.Parallel()
 		raw := reconcilemocks.NewMockFetcher(gomock.NewController(t))
 		assert.Same(t, raw, withAmbiguousGitRefs(raw, &config.Config{Sources: cfg.Sources[1:]}))
+	})
+
+	for _, tt := range tests {
+		t.Run("unchanged shortcut: "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			raw := reconcilemocks.NewMockChangeFetcher(gomock.NewController(t))
+			if !tt.refused {
+				raw.EXPECT().FetchIfChanged(gomock.Any(), tt.def, "applied").Return(ingest.Result{Hash: "applied"}, true, nil)
+			}
+			wrapped, ok := withAmbiguousGitRefs(raw, cfg).(reconcile.ChangeFetcher)
+			require.True(t, ok, "the wrapper keeps the unchanged-content shortcut")
+			result, unchanged, err := wrapped.FetchIfChanged(context.Background(), tt.def, "applied")
+			if !tt.refused {
+				require.NoError(t, err)
+				assert.True(t, unchanged)
+				assert.Equal(t, "applied", result.Hash)
+				return
+			}
+			require.ErrorIs(t, err, ingest.ErrFetch)
+			assert.False(t, unchanged)
+			assert.Equal(t, errAmbiguousGitRef.Error(), ingest.Cause(err))
+		})
+	}
+
+	t.Run("unchanged shortcut over a plain fetcher fetches in full", func(t *testing.T) {
+		t.Parallel()
+		raw := reconcilemocks.NewMockFetcher(gomock.NewController(t))
+		def := persistence.SourceDefinition{Name: "clear", Origin: persistence.OriginConfig, Git: &stored}
+		raw.EXPECT().Fetch(gomock.Any(), def).Return(ingest.Result{Hash: "h"}, nil)
+		wrapped, ok := withAmbiguousGitRefs(raw, cfg).(reconcile.ChangeFetcher)
+		require.True(t, ok)
+		result, unchanged, err := wrapped.FetchIfChanged(context.Background(), def, "h")
+		require.NoError(t, err)
+		assert.False(t, unchanged, "only a fetcher that can skip decoding reports unchanged")
+		assert.Equal(t, "h", result.Hash)
 	})
 }
 

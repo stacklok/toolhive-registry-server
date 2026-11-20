@@ -74,11 +74,30 @@ type ambiguousGitRefFetcher struct {
 
 // Fetch fails a refused source with v1.5.4's error and delegates the rest.
 func (f ambiguousGitRefFetcher) Fetch(ctx context.Context, d persistence.SourceDefinition) (ingest.Result, error) {
-	spec, ok := f.refused[d.Name]
-	if ok && d.Origin == persistence.OriginConfig && d.Git != nil && sameGitSpec(*d.Git, spec) {
+	if f.refuses(d) {
 		return ingest.Result{}, ingest.WithCause(ingest.ErrFetch, errAmbiguousGitRef)
 	}
 	return f.raw.Fetch(ctx, d)
+}
+
+// FetchIfChanged refuses the same sources as Fetch and otherwise keeps the
+// wrapped fetcher's unchanged-content shortcut (reconcile.ChangeFetcher).
+func (f ambiguousGitRefFetcher) FetchIfChanged(
+	ctx context.Context, d persistence.SourceDefinition, appliedHash string,
+) (ingest.Result, bool, error) {
+	changes, ok := f.raw.(reconcile.ChangeFetcher)
+	if !ok || f.refuses(d) {
+		result, err := f.Fetch(ctx, d)
+		return result, false, err
+	}
+	return changes.FetchIfChanged(ctx, d, appliedHash)
+}
+
+// refuses reports whether d is still the definition built from an ambiguous
+// git config.
+func (f ambiguousGitRefFetcher) refuses(d persistence.SourceDefinition) bool {
+	spec, ok := f.refused[d.Name]
+	return ok && d.Origin == persistence.OriginConfig && d.Git != nil && sameGitSpec(*d.Git, spec)
 }
 
 // isConfigConflict reports whether a reconcile error is a conflict between the
