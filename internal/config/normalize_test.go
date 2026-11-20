@@ -24,7 +24,7 @@ func TestNormalizeSyncInterval(t *testing.T) {
 		{name: "nanoseconds are raised to one second", interval: "1ns", want: "1s", warning: "shorter than 1s"},
 		{name: "sub-microsecond precision is truncated", interval: "1h0.0000015s", want: "1h0m0.000001s",
 			warning: "sub-microsecond"},
-		{name: "unparseable is left for validation", interval: "soon", want: "soon"},
+		{name: "unparsable is left for validation", interval: "soon", want: "soon"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -54,7 +54,7 @@ func TestNormalizeFileTimeout(t *testing.T) {
 		{name: "URL timeout is kept", file: &FileConfig{URL: "https://example.com/r.json", Timeout: "45s"}, want: "45s"},
 		{name: "path timeout is ignored", file: &FileConfig{Path: "/data/r.json", Timeout: "30s"}, want: "",
 			warning: "applies only to file.url"},
-		{name: "unparseable path timeout is ignored", file: &FileConfig{Path: "/data/r.json", Timeout: "later"}, want: "",
+		{name: "unparsable path timeout is ignored", file: &FileConfig{Path: "/data/r.json", Timeout: "later"}, want: "",
 			warning: "applies only to file.url"},
 		{name: "inline timeout is ignored", file: &FileConfig{Data: "{}", Timeout: "30s"}, want: "",
 			warning: "applies only to file.url"},
@@ -62,7 +62,7 @@ func TestNormalizeFileTimeout(t *testing.T) {
 			want: "10s", warning: "the timeout v1.5.4 applied"},
 		{name: "negative URL timeout uses the default", file: &FileConfig{URL: "https://example.com/r.json", Timeout: "-1s"},
 			want: "", warning: "can no longer be disabled"},
-		{name: "unparseable URL timeout is left for validation",
+		{name: "unparsable URL timeout is left for validation",
 			file: &FileConfig{URL: "https://example.com/r.json", Timeout: "later"}, want: "later"},
 	}
 	for _, tt := range tests {
