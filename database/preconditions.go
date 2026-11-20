@@ -41,6 +41,11 @@ var preconditions = []precondition{
 	// the later down steps already ran, leaving the database dirty one version
 	// below its real schema.
 	{applies: crossesDown(26), check: checkNoLiveSyncLease},
+	// Reverting migration 29 drops the recorded authorization mode, and
+	// re-applying it stamps any catalog as claims mode. A Cedar deployment has no
+	// earlier version to roll back to, and a later upgrade would refuse its
+	// Cedar configuration.
+	{applies: crossesDown(29), check: checkNotCedarMode},
 }
 
 // crossesUp matches an upgrade that applies migration v.
@@ -116,4 +121,18 @@ WHERE rs.lease_id IS NOT NULL AND rs.lease_expires_at > clock_timestamp()`).Scan
 	}
 	return fmt.Errorf("%w: sync jobs hold live leases on sources %s; stop every server, wait for the leases "+
 		"to expire, then retry the downgrade; nothing was changed", ErrPrecondition, names)
+}
+
+func checkNotCedarMode(ctx context.Context, q queryer, _ uint) error {
+	var cedar bool
+	err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM authorization_mode WHERE mode = 'cedar')`).Scan(&cedar)
+	if err != nil {
+		return fmt.Errorf("check the authorization mode before reverting migration 29: %w", err)
+	}
+	if !cedar {
+		return nil
+	}
+	return fmt.Errorf("%w: this database runs in Cedar authorization mode, which no version before migration 29 "+
+		"supports, and reverting it would record claims mode on the next upgrade; nothing was changed",
+		ErrPrecondition)
 }

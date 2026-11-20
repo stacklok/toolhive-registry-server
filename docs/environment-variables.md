@@ -37,6 +37,9 @@ All environment variables use the `THV_REGISTRY_` prefix (ToolHive Registry) to 
 | `database.port` | `THV_REGISTRY_DATABASE_PORT` | `5432` |
 | `auth.mode` | `THV_REGISTRY_AUTH_MODE` | `oauth` |
 | `auth.oauth.realm` | `THV_REGISTRY_AUTH_OAUTH_REALM` | `mcp-registry` |
+| `authorization.policyFile` | `THV_REGISTRY_AUTHORIZATION_POLICYFILE` | `/etc/registry/policies.cedar` (selects Cedar mode) |
+| `authorization.allowAnonymousCatalog` | `THV_REGISTRY_AUTHORIZATION_ALLOWANONYMOUSCATALOG` | `true` (selects Cedar mode) |
+| `admin.enabled` | `THV_REGISTRY_ADMIN_ENABLED` | `true` (Cedar mode only) |
 
 ## Common Configuration Examples
 

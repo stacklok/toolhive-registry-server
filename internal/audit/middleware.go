@@ -177,6 +177,9 @@ func emitEvent(
 		"duration_ms":    duration.Milliseconds(),
 		"response_bytes": bytesWritten,
 	}
+	if info := RouteInfoFromContext(r.Context()); info != nil && info.MutationCommitted {
+		extra["mutation_committed"] = true
+	}
 	if reqID := middleware.GetReqID(r.Context()); reqID != "" {
 		extra["request_id"] = reqID
 	}

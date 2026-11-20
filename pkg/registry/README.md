@@ -5,8 +5,9 @@
 > declare it stable. Pin an exact version if you depend on them.
 
 The packages let another Go program host the registry's catalog without running
-the standalone server. They carry no identity, claims or policy engine. The host
-decides who may read or change what.
+the standalone server. They carry no identity or claims, and only the optional
+`cedar` package carries a policy engine. The host decides who may read or
+change what.
 
 | Package | Purpose |
 |---|---|
@@ -19,6 +20,7 @@ decides who may read or change what.
 | `reconcile` | Leased, fenced source reconciliation over `persistence.Jobs`; storage-safety check and sync logging |
 | `operator` | Optional Kubernetes adapter that exports ToolHive CRDs as a source |
 | `postgres` | PostgreSQL implementation of the `persistence` contracts |
+| `cedar` | Optional reference Cedar authorizer for the `httpapi` routes |
 
 ## Database
 
@@ -48,6 +50,38 @@ write and is returned unchanged; a serialization failure retries the whole
 transaction, so a hook may run more than once and must act only through the
 transaction it is given.
 
+## Cedar authorization
+
+`cedar` is an optional, route-level authorizer for the `httpapi` routers. It
+does not filter entries: a request is either admitted to a route or rejected.
+
+- Every consumer route is the action `catalog.read` on `Registry::View::"<name>"`,
+  where the name comes from the `{registryName}` path segment. A policy can
+  grant or deny whole views.
+- Admin routes are instance-wide actions on `Registry::Instance::"catalog"`:
+  `sources.read|write|delete`, `views.read|write|delete`, `entries.publish`
+  and `entries.delete`. `Authorizer.Protect` guards host routes such as
+  `/openapi.json` with `metadata.read` or another instance action.
+- The host authenticates the request and hands the verified caller to
+  `Options.Identity`. `Mapping` turns token claims into the principal's
+  optional `groups` and `scopes` sets; check them with `ValidateMappings`.
+- Responses: 401 for anonymous callers on authenticated-only actions or for
+  malformed mapped claims, 403 on deny, 503 when evaluation fails, 500 on
+  wiring faults (no identity, unknown route). `Options.OnDecision` receives
+  each decision for audit logs.
+
+```go
+engine, err := cedar.Load(policyPath) // "" uses the permit-all default
+authz, err := cedar.NewAuthorizer(engine, cedar.Options{Identity: identityFromRequest})
+consumer, err := httpapi.ConsumerRouter(reader, httpapi.ConsumerOptions{Decorate: authz.Decorate})
+admin, err := httpapi.AdminRouter(ops, httpapi.AdminOptions{Decorate: authz.Decorate})
+```
+
+**The default policy permits everything.** Without a policy file, any caller
+that passes authentication may perform every action, so with the admin routes
+mounted, every authenticated caller is a full admin. Supply a policy before
+enabling admin routes. `NewAuthorizer` fails if the library adds a route it has
+no action for, so an upgrade cannot silently expose a new route.
 ## Validation and logging
 
 Publication (`persistence.ValidateSnapshot`, `Entry.Validate`) is strict. Synced

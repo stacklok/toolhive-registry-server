@@ -27,10 +27,13 @@ var errAmbiguousGitRef = errors.New("registry validation failed: only one of bra
 // holds with the same type. Any other failure is returned.
 func reconcileConfig(
 	ctx context.Context, cat *storage.Catalog, cfg *config.Config,
-	sources []persistence.SourceDefinition, views []persistence.ViewDefinition,
+	sources []persistence.SourceDefinition, views []persistence.ViewDefinition, claimsMode bool,
 ) error {
 	err := cat.Definitions.Reconcile(ctx, sources, views)
 	if err == nil {
+		if !claimsMode {
+			return nil
+		}
 		return applyConfigClaims(ctx, cat.Pool, cfg)
 	}
 	if !isConfigConflict(err) {
@@ -38,6 +41,9 @@ func reconcileConfig(
 	}
 	slog.Error("Config sources and registries were not applied because they conflict with the database; "+
 		"serving and syncing the stored definitions until the conflict is resolved", "error", err)
+	if !claimsMode {
+		return nil
+	}
 	stored, err := cat.Definitions.ListSources(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to read stored sources: %w", err)

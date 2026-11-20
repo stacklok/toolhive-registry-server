@@ -1,12 +1,15 @@
 package audit
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stacklok/toolhive-core/audit"
 )
 
@@ -63,6 +66,29 @@ func NewLogger(logFile string) (*Logger, error) {
 // Slog returns the underlying *slog.Logger for use with AuditEvent.LogTo().
 func (l *Logger) Slog() *slog.Logger {
 	return l.logger
+}
+
+// Admission records a Cedar authorization decision (allow, deny or error) for
+// a request, separately from the request's own audit event.
+func (l *Logger) Admission(ctx context.Context, request *http.Request, actor, action, resource, revision, decision string) {
+	outcome := audit.OutcomeDenied
+	switch decision {
+	case "allow":
+		outcome = audit.OutcomeSuccess
+	case "error":
+		outcome = audit.OutcomeError
+	}
+	// Same source as the request's own event, and its request ID, so the two
+	// events can be joined.
+	event := audit.NewAuditEvent("authorization.admission",
+		SourceFromRequest(request), outcome, map[string]string{"actor": actor}, ComponentRegistryAPI,
+	).WithTarget(map[string]string{"action": action, "resource": resource})
+	extra := map[string]any{"decision": decision, "policy_revision": revision}
+	if reqID := middleware.GetReqID(request.Context()); reqID != "" {
+		extra["request_id"] = reqID
+	}
+	event.Metadata.Extra = extra
+	event.LogTo(ctx, l.Slog(), audit.LevelAudit)
 }
 
 // Close releases any resources held by the logger (e.g., open file handles).

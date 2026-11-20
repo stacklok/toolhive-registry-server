@@ -208,3 +208,35 @@ func TestMigrateDirtyAndForce(t *testing.T) {
 	require.NoError(t, database.MigrateUp(t.Context(), conn))
 	require.Error(t, database.Force(conn.Config().ConnString(), -2))
 }
+
+func TestMigrateDownRefusesCedarMode(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		mode    string
+		refused bool
+	}{
+		{name: "cedar database", mode: "cedar", refused: true},
+		{name: "claims database", mode: "claims"},
+		{name: "no recorded mode"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			conn, _ := dbtest.SetupTestDB(t)
+			if tc.mode != "" {
+				_, err := conn.Exec(t.Context(), `INSERT INTO authorization_mode (mode) VALUES ($1)`, tc.mode)
+				require.NoError(t, err)
+			}
+			err := database.MigrateDown(t.Context(), conn, 1)
+			if !tc.refused {
+				require.NoError(t, err)
+				require.Equal(t, schemaState{Version: 28}, readSchemaState(t, conn))
+				return
+			}
+			require.ErrorIs(t, err, database.ErrPrecondition)
+			require.ErrorContains(t, err, "Cedar")
+			require.Equal(t, schemaState{Version: 29}, readSchemaState(t, conn), "a refused downgrade reverts nothing")
+			require.True(t, exists(t, conn, `SELECT EXISTS (SELECT 1 FROM authorization_mode WHERE mode = 'cedar')`))
+		})
+	}
+}

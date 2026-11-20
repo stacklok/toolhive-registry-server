@@ -24,8 +24,8 @@ import (
 type Catalog struct {
 	Pool        *pgxpool.Pool
 	Definitions *postgres.Definitions
-	// Entries and Jobs carry the claims hook, so library writes keep
-	// registry_entry.claims in step.
+	// Entries and Jobs carry the entry write hook, if any; in claims mode it
+	// keeps registry_entry.claims in step with library writes.
 	Entries *postgres.Entries
 	Jobs    *postgres.Jobs
 }
@@ -33,9 +33,10 @@ type Catalog struct {
 // Factory creates storage-dependent components as a family and manages the
 // lifecycle of storage resources (e.g., database connections).
 type Factory interface {
-	// CreateCatalog opens the library adapters. overrides supplies per-entry
-	// claims for Kubernetes sources and may be nil.
-	CreateCatalog(ctx context.Context, overrides database.EntryClaimsProvider) (*Catalog, error)
+	// CreateCatalog opens the library adapters. hook, when not nil, runs
+	// around every entry write (claims mode installs its ClaimsHook; Cedar
+	// mode passes nil).
+	CreateCatalog(ctx context.Context, hook postgres.EntryWriteHook) (*Catalog, error)
 
 	// CreateRegistryService creates the admin registry service. publisher
 	// performs managed publish and delete writes; opts add optional wiring

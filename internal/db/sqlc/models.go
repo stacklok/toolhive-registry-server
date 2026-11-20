@@ -270,6 +270,12 @@ func (ns NullSyncStatus) Value() (driver.Value, error) {
 	return string(ns.SyncStatus), nil
 }
 
+type AuthorizationMode struct {
+	Singleton  bool               `json:"singleton"`
+	Mode       string             `json:"mode"`
+	RecordedAt pgtype.Timestamptz `json:"recorded_at"`
+}
+
 type EntryVersion struct {
 	ID          uuid.UUID  `json:"id"`
 	EntryID     uuid.UUID  `json:"entry_id"`

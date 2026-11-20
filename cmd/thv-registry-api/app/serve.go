@@ -88,12 +88,16 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	// Priority: flag > config file > default
 	authModeOverride, _ := cmd.Flags().GetString("auth-mode")
 	resolveAuthMode(cfg, authModeOverride)
+	if err := cfg.ValidateAuthorizationMode(); err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
 
 	slog.Info("Loaded configuration",
 		"config_path", configPath,
 		"source_count", len(cfg.Sources),
 		"registry_count", len(cfg.Registries),
 		"auth_mode", cfg.Auth.Mode,
+		"authorization_mode", cfg.AuthorizationMode(),
 	)
 
 	// Log database configuration (sanitized - no passwords or connection strings)
