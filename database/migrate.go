@@ -9,8 +9,9 @@ import (
 	"io/fs"
 
 	"github.com/golang-migrate/migrate/v4"
-	// postgres driver is required for golang-migrate to work with postgres databases
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	migratedb "github.com/golang-migrate/migrate/v4/database"
+	// The postgres driver also registers the postgres:// scheme GetMigrate uses.
+	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5"
@@ -47,17 +48,13 @@ func GetMigrate(connString string) (*migrate.Migrate, error) {
 // migration preconditions and returns an error wrapping ErrPrecondition,
 // without changing the database, when one fails.
 func MigrateUp(ctx context.Context, db *pgx.Conn) error {
-	m, err := GetMigrate(db.Config().ConnString())
+	m, driver, err := openMigrate(db.Config().ConnString())
 	if err != nil {
 		return err
 	}
 	defer m.Close()
 
-	from, err := cleanVersion(m)
-	if err != nil {
-		return err
-	}
-	if err := runPreconditions(ctx, db, from, LatestSchemaVersion); err != nil {
+	if err := prepareMigration(ctx, db, driver, func(uint) (uint, error) { return LatestSchemaVersion, nil }); err != nil {
 		return err
 	}
 	// Up, not Migrate(LatestSchemaVersion): a database already newer than this
@@ -71,17 +68,13 @@ func MigrateUp(ctx context.Context, db *pgx.Conn) error {
 // MigrateUpTo moves the schema to target, after the same precondition checks
 // as MigrateUp for the versions it crosses.
 func MigrateUpTo(ctx context.Context, db *pgx.Conn, target uint) error {
-	m, err := GetMigrate(db.Config().ConnString())
+	m, driver, err := openMigrate(db.Config().ConnString())
 	if err != nil {
 		return err
 	}
 	defer m.Close()
 
-	from, err := cleanVersion(m)
-	if err != nil {
-		return err
-	}
-	if err := runPreconditions(ctx, db, from, target); err != nil {
+	if err := prepareMigration(ctx, db, driver, func(uint) (uint, error) { return target, nil }); err != nil {
 		return err
 	}
 	if err := m.Migrate(target); err != nil && !errors.Is(err, migrate.ErrNoChange) {
@@ -93,27 +86,65 @@ func MigrateUpTo(ctx context.Context, db *pgx.Conn, target uint) error {
 // MigrateDown reverts the last steps migrations, after checking the migration
 // preconditions for the versions it would cross.
 func MigrateDown(ctx context.Context, db *pgx.Conn, steps int) error {
-	m, err := GetMigrate(db.Config().ConnString())
+	m, driver, err := openMigrate(db.Config().ConnString())
 	if err != nil {
 		return err
 	}
 	defer m.Close()
 
-	from, err := cleanVersion(m)
-	if err != nil {
-		return err
-	}
-	to, err := versionBelow(from, steps)
-	if err != nil {
-		return err
-	}
-	if err := runPreconditions(ctx, db, from, to); err != nil {
+	if err := prepareMigration(ctx, db, driver, func(from uint) (uint, error) {
+		return versionBelow(from, steps)
+	}); err != nil {
 		return err
 	}
 	if err := m.Steps(-steps); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("failed to revert migrations: %w", err)
 	}
 	return nil
+}
+
+// openMigrate is GetMigrate that also returns the database driver, so the
+// caller can hold golang-migrate's migration lock. Closing the Migrate closes
+// the driver.
+func openMigrate(connString string) (*migrate.Migrate, migratedb.Driver, error) {
+	src, err := migrationSource()
+	if err != nil {
+		return nil, nil, err
+	}
+	driver, err := (&postgres.Postgres{}).Open(connString)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open the migration database: %w", err)
+	}
+	m, err := migrate.NewWithInstance("iofs", src, "postgres", driver)
+	if err != nil {
+		_ = driver.Close()
+		return nil, nil, fmt.Errorf("failed to create migrate instance: %w", err)
+	}
+	return m, driver, nil
+}
+
+// prepareMigration reads the current schema version and checks the
+// preconditions for moving to target(version) while holding golang-migrate's
+// migration lock, then releases it; the migration takes the lock again. A
+// replica migrating at the same time holds that lock and marks the version
+// dirty while it runs, so this waits for it instead of reporting the
+// in-progress version as a migration that failed part-way.
+func prepareMigration(
+	ctx context.Context, db *pgx.Conn, driver migratedb.Driver, target func(from uint) (uint, error),
+) error {
+	if err := driver.Lock(); err != nil {
+		return fmt.Errorf("failed to acquire the migration lock: %w", err)
+	}
+	defer func() { _ = driver.Unlock() }()
+	from, err := cleanVersion(driver)
+	if err != nil {
+		return err
+	}
+	to, err := target(from)
+	if err != nil {
+		return err
+	}
+	return runPreconditions(ctx, db, from, to)
 }
 
 // runPreconditions runs the migration preconditions on a connection of their
@@ -193,21 +224,24 @@ func migrationSource() (source.Driver, error) {
 
 // cleanVersion returns the recorded schema version (0 for an empty database)
 // and refuses a dirty one with a pointer to the recovery procedure.
-func cleanVersion(m *migrate.Migrate) (uint, error) {
-	version, dirty, err := m.Version()
-	if errors.Is(err, migrate.ErrNilVersion) {
-		return 0, nil
-	}
+func cleanVersion(driver migratedb.Driver) (uint, error) {
+	version, dirty, err := driver.Version()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get version: %w", err)
+	}
+	if version == migratedb.NilVersion {
+		return 0, nil
 	}
 	if dirty {
 		return 0, fmt.Errorf("schema version %d is dirty because a migration failed part-way; make the schema "+
 			"match a known version and record it with `thv-registry-api migrate force`, as described in "+
 			"docs/database.md (\"Recovering from a dirty schema version\"): %w",
-			version, migrate.ErrDirty{Version: int(version)}) //nolint:gosec // migration versions are small
+			version, migrate.ErrDirty{Version: version})
 	}
-	return version, nil
+	if version < 0 {
+		return 0, fmt.Errorf("invalid schema version %d", version)
+	}
+	return uint(version), nil
 }
 
 // versionBelow returns the schema version left after reverting steps
