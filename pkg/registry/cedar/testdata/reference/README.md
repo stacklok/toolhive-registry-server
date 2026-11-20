@@ -19,16 +19,10 @@ this file, not in documentation, so editing docs never invalidates the fixtures.
 
 ## Provenance of the current results
 
-The results were produced with cedar-policy 4.13.0 for PR #946, where the
-generator read the `group-grants` policy from the Cedar blocks of
-`docs/registry-cedar-authorization.md` rather than from `cases.json`. When the
-fixtures moved here, that policy text was copied byte-for-byte into
-`cases.json` (its SHA-256, `e2a3c4d67ac1d067f4fdb99cb167f5bf618e8deb9ef9b66e8b3669ee92458fea`,
-matches the `examples_sha256` the Rust generator recorded), the schema is
-byte-identical (same `schema_sha256`), and every case, attribute set and
-expected result is unchanged. Only `cases_sha256` was re-pinned, without
-re-running Rust, because no Rust toolchain was available at the time. The next
-regeneration replaces this note's caveat with a fresh run.
+`results.json` was regenerated from this directory's generator, `cases.json`
+and the schema with cedar-policy 4.13.0 under Rust 1.89.0 (`--locked`), and
+the output was byte-identical to the committed file, including both pinned
+hashes.
 
 ## Reproduce from the repository root
 
