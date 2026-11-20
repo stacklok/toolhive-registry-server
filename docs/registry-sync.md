@@ -110,6 +110,8 @@ When a source is selected for sync:
 3. **Store**: The processed data is written to the database in a single atomic transaction. Existing entries are updated, and entries no longer present in the source are removed.
 4. **Update status**: The sync record is updated with the outcome — success or failure, along with the new data hash and entry counts (servers, skills, plugins).
 
+For file and Git sources, the fetched bytes are hashed before they are parsed. When that hash and the filter configuration both match the last successful sync, the sync stops there: nothing is parsed, validated or written, and only the next due time moves. API sources are compared after decoding, because their hash covers the decoded data rather than the raw response.
+
 If the sync fails at any stage, the source is marked as `Failed` and will be retried on the next coordinator cycle. There is no permanent error state; every failed source is eligible for retry.
 
 Timeouts (`api.timeout`, `file.timeout`) apply to each HTTP request, not to the whole sync. A sync that runs longer than its job lease keeps the lease by renewing it while it works, so a large paginated API or a slow Git clone is not cut off.
