@@ -3,6 +3,7 @@ package database_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/jackc/pgx/v5"
@@ -30,6 +31,33 @@ func exists(t *testing.T, conn *pgx.Conn, query string) bool {
 	var ok bool
 	require.NoError(t, conn.QueryRow(t.Context(), query).Scan(&ok))
 	return ok
+}
+
+// serve runs MigrateUp with the connection of an open SERIALIZABLE
+// transaction, as v1.5.4 did. The precondition reads must not hold locks in
+// that transaction: migration 26 alters `source`, and a read lock kept until
+// the caller commits would make the migration wait on its own caller forever.
+func TestMigrateUpInsideCallerTransaction(t *testing.T) {
+	t.Parallel()
+	conn, _ := dbtest.SetupTestDBAt(t, 23)
+	_, err := conn.Exec(t.Context(), `INSERT INTO source(name, source_type, creation_type) VALUES ('synced', 'git', 'CONFIG')`)
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(),
+		`INSERT INTO source(name, source_type, creation_type, syncable) VALUES ('published', 'managed', 'API', false)`)
+	require.NoError(t, err)
+
+	tx, err := conn.BeginTx(t.Context(), pgx.TxOptions{IsoLevel: pgx.Serializable, AccessMode: pgx.ReadWrite})
+	require.NoError(t, err)
+	done := make(chan error, 1)
+	go func() { done <- database.MigrateUp(t.Context(), tx.Conn()) }()
+	select {
+	case err = <-done:
+	case <-time.After(60 * time.Second):
+		t.Fatal("MigrateUp blocked: a precondition read holds a lock that a migration needs")
+	}
+	require.NoError(t, err)
+	require.NoError(t, tx.Commit(t.Context()))
+	require.Equal(t, schemaState{Version: database.LatestSchemaVersion}, readSchemaState(t, conn))
 }
 
 // Migration 24 adds a unique index for the single managed source. A database

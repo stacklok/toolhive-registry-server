@@ -57,7 +57,7 @@ func MigrateUp(ctx context.Context, db *pgx.Conn) error {
 	if err != nil {
 		return err
 	}
-	if err := checkPreconditions(ctx, db, from, LatestSchemaVersion); err != nil {
+	if err := runPreconditions(ctx, db, from, LatestSchemaVersion); err != nil {
 		return err
 	}
 	// Up, not Migrate(LatestSchemaVersion): a database already newer than this
@@ -81,7 +81,7 @@ func MigrateUpTo(ctx context.Context, db *pgx.Conn, target uint) error {
 	if err != nil {
 		return err
 	}
-	if err := checkPreconditions(ctx, db, from, target); err != nil {
+	if err := runPreconditions(ctx, db, from, target); err != nil {
 		return err
 	}
 	if err := m.Migrate(target); err != nil && !errors.Is(err, migrate.ErrNoChange) {
@@ -107,13 +107,36 @@ func MigrateDown(ctx context.Context, db *pgx.Conn, steps int) error {
 	if err != nil {
 		return err
 	}
-	if err := checkPreconditions(ctx, db, from, to); err != nil {
+	if err := runPreconditions(ctx, db, from, to); err != nil {
 		return err
 	}
 	if err := m.Steps(-steps); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("failed to revert migrations: %w", err)
 	}
 	return nil
+}
+
+// runPreconditions runs the migration preconditions on a connection of their
+// own, in a read-only transaction that ends before any migration runs. The
+// caller's connection may be inside a transaction (serve wraps MigrateUp in
+// one, as v1.5.4 did); reads there would keep locks on tables the migrations
+// alter until the caller commits, so a migration would wait on its own caller
+// forever.
+func runPreconditions(ctx context.Context, db *pgx.Conn, from, to uint) error {
+	conn, err := pgx.ConnectConfig(ctx, db.Config().Copy())
+	if err != nil {
+		return fmt.Errorf("failed to connect to check migration preconditions: %w", err)
+	}
+	defer func() { _ = conn.Close(context.WithoutCancel(ctx)) }()
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return fmt.Errorf("failed to begin precondition checks: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	if err := checkPreconditions(ctx, tx, from, to); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // Force records version as the current schema version and clears the dirty
