@@ -90,7 +90,7 @@ func (q *Queries) GetSourceSync(ctx context.Context, id uuid.UUID) (GetSourceSyn
 }
 
 const getSourceSyncByName = `-- name: GetSourceSyncByName :one
-SELECT rs.id, rs.source_id, rs.sync_status, rs.error_msg, rs.started_at, rs.ended_at, rs.attempt_count, rs.last_sync_hash, rs.last_applied_filter_hash, rs.server_count, rs.skill_count, rs.plugin_count, rs.lease_id, rs.lease_expires_at, rs.lease_generation, rs.observed_generation, rs.applied_generation
+SELECT rs.id, rs.source_id, rs.sync_status, rs.error_msg, rs.started_at, rs.ended_at, rs.attempt_count, rs.last_sync_hash, rs.last_applied_filter_hash, rs.server_count, rs.skill_count, rs.plugin_count, rs.lease_id, rs.lease_expires_at, rs.lease_generation, rs.observed_generation, rs.applied_generation, rs.checked_at, rs.prev_sync_status, rs.prev_started_at, rs.prev_attempt_count
 FROM registry_sync rs
 INNER JOIN source s ON rs.source_id = s.id
 WHERE s.name = $1
@@ -117,6 +117,10 @@ func (q *Queries) GetSourceSyncByName(ctx context.Context, name string) (Registr
 		&i.LeaseGeneration,
 		&i.ObservedGeneration,
 		&i.AppliedGeneration,
+		&i.CheckedAt,
+		&i.PrevSyncStatus,
+		&i.PrevStartedAt,
+		&i.PrevAttemptCount,
 	)
 	return i, err
 }

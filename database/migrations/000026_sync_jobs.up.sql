@@ -26,3 +26,11 @@ ALTER TABLE registry_sync ADD COLUMN applied_generation BIGINT;
 ALTER TABLE registry_sync ADD CONSTRAINT registry_sync_lease_columns CHECK
     ((lease_id IS NULL AND lease_expires_at IS NULL AND lease_generation IS NULL)
       OR (lease_id IS NOT NULL AND lease_expires_at IS NOT NULL AND lease_generation IS NOT NULL));
+-- An unchanged fetch moves only checked_at, the due time; the prev_* columns
+-- hold the status, start time and attempt count an attempt replaced, so such
+-- a fetch can put them back and a status read can show them while the
+-- attempt's lease is no longer live.
+ALTER TABLE registry_sync ADD COLUMN checked_at TIMESTAMPTZ;
+ALTER TABLE registry_sync ADD COLUMN prev_sync_status sync_status;
+ALTER TABLE registry_sync ADD COLUMN prev_started_at TIMESTAMPTZ;
+ALTER TABLE registry_sync ADD COLUMN prev_attempt_count BIGINT;

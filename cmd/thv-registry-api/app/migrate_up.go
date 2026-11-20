@@ -64,7 +64,7 @@ func runMigrateUp(cmd *cobra.Command, _ []string) error {
 		if _, err := fmt.Scanln(&response); err != nil {
 			return fmt.Errorf("failed to read user input: %w", err)
 		}
-		if response != "yes" && response != "y" {
+		if response != confirmYes && response != "y" {
 			slog.Info("Migration cancelled by user")
 			return nil
 		}

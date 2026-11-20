@@ -209,9 +209,15 @@ func RunConsumer(t *testing.T, defs persistence.Definitions, store ConsumerBacke
 					t.Fatal("extension applied unsupported wire filters")
 				}
 			}
-			_, count, _ = decodePage(get(base+"?search="+url.QueryEscape("%_ bracket["), 200), family.key)
-			if count != 2 {
-				t.Fatal("search interpreted literal wildcard characters")
+			// v1.5.4 search is a LIKE pattern: _ and % are wildcards, \ escapes.
+			for _, tc := range []struct {
+				search string
+				want   int
+			}{{`\%\_ bracket[`, 2}, {"lit_ral", 2}, {"literal%bracket", 2}, {`\_\%`, 0}, {"winner_", 0}} {
+				_, count, _ = decodePage(get(base+"?search="+url.QueryEscape(tc.search), 200), family.key)
+				if count != tc.want {
+					t.Fatalf("LIKE search %q: %d; want %d", tc.search, count, tc.want)
+				}
 			}
 			literalName := persistence.EntryName{Kind: family.kind, Name: "literal", Namespace: "com.example"}
 			literalPath := "/com.example/literal"
@@ -241,20 +247,35 @@ func RunConsumer(t *testing.T, defs persistence.Definitions, store ConsumerBacke
 			if count != 1 || second[0].Version != "3" || tail != "" {
 				t.Fatalf("second: %+v / %s", second, tail)
 			}
-			get(base+"?search=changed&limit=1&cursor="+url.QueryEscape(cursor), 400)
+			// Cursors are positional, as in v1.5.4: changing the search, limit
+			// or view sources between pages resumes after the same position.
+			_, count, _ = decodePage(get(base+"?search=changed&limit=1&cursor="+url.QueryEscape(cursor), 200), family.key)
+			if count != 0 {
+				t.Fatal("changed search did not resume at the cursor")
+			}
+			second, count, tail = decodePage(get(base+"?search=winner&limit=5&cursor="+url.QueryEscape(cursor), 200), family.key)
+			if count != 1 || second[0].Version != "3" || tail != "" {
+				t.Fatalf("changed limit: %+v / %s", second, tail)
+			}
 			get(base+"?cursor=malformed", 400)
 			_, err = defs.UpdateView(t.Context(), "public", persistence.ViewDefinition{Name: "public", Sources: []string{loser.Name, winner.Name}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			get(base+"?search=winner&limit=1&cursor="+url.QueryEscape(cursor), 400)
+			second, _, _ = decodePage(get(base+"?limit=1&cursor="+url.QueryEscape(cursor), 200), family.key)
+			if len(second) != 1 || second[0].Version != "9" || second[0].Description != "lower-only" {
+				t.Fatalf("reordered sources: %+v", second)
+			}
 			if err := defs.DeleteView(t.Context(), "public"); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := defs.CreateView(t.Context(), persistence.ViewDefinition{Name: "public", Sources: []string{winner.Name, loser.Name}}); err != nil {
 				t.Fatal(err)
 			}
-			get(base+"?search=winner&limit=1&cursor="+url.QueryEscape(cursor), 400)
+			second, _, _ = decodePage(get(base+"?search=winner&limit=1&cursor="+url.QueryEscape(cursor), 200), family.key)
+			if len(second) != 1 || second[0].Version != "3" {
+				t.Fatalf("recreated view: %+v", second)
+			}
 			counts, bound := []int{29, 30, 31}, 30
 			if family.kind == persistence.ServerKind {
 				counts, bound = []int{999, 1000, 1001}, 1000

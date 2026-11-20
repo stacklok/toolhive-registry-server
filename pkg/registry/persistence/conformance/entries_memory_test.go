@@ -20,7 +20,7 @@ import (
 var _ persistence.Entries = (*memory)(nil)
 
 func (m *memory) ReplaceSnapshot(ctx context.Context, source persistence.SourceDefinition, snapshot model.Snapshot) error {
-	if err := persistence.ValidateSnapshot(&snapshot); err != nil {
+	if err := persistence.ValidateStorableSnapshot(&snapshot); err != nil {
 		return err
 	}
 	kind, err := source.Kind()

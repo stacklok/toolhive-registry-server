@@ -77,29 +77,62 @@ func TestCompleteScopeAndExportChanges(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, got.Snapshot.Data.Servers)
 	require.NotEmpty(t, got.Hash)
+	// A changed scope or incarnation is stale: nothing is recorded against the
+	// new definition and the runner returns so the host builds a new one.
 	changed := definition()
 	changed.Kubernetes.Namespaces = []string{"one"}
 	_, err = f.Fetch(t.Context(), changed)
-	require.ErrorIs(t, err, persistence.ErrInvalid)
+	require.ErrorIs(t, err, persistence.ErrStale)
 	changed = definition()
 	changed.ID = "recreated"
 	_, err = f.Fetch(t.Context(), changed)
-	require.ErrorIs(t, err, persistence.ErrInvalid)
+	require.ErrorIs(t, err, persistence.ErrStale)
 }
 
-func TestInvalidResourceLeftOut(t *testing.T) {
+// Kubernetes exports keep v1.5.4's acceptance: every resource with the export,
+// URL and description annotations is exported, with no schema validation.
+func TestExportsWithoutSchemaValidation(t *testing.T) {
 	t.Parallel()
-	valid := &mcp.VirtualMCPServer{ObjectMeta: metadata("valid", "one")}
-	invalid := &mcp.VirtualMCPServer{ObjectMeta: metadata("invalid", "two")}
-	// The wire schema limits a server description to 100 characters.
-	invalid.Annotations["toolhive.stacklok.dev/registry-description"] = strings.Repeat("x", 101)
-	c := fake.NewClientBuilder().WithScheme(scheme(t)).WithObjects(valid, invalid).Build()
+	const (
+		category    = "toolhive.stacklok.dev/registry-category"
+		description = "toolhive.stacklok.dev/registry-description"
+		icon        = "toolhive.stacklok.dev/registry-icon"
+		title       = "toolhive.stacklok.dev/registry-title"
+		tools       = "toolhive.stacklok.dev/tools"
+		url         = "toolhive.stacklok.dev/registry-url"
+	)
+	annotated := func(name string, annotations map[string]string) metav1.ObjectMeta {
+		m := metadata(name, "one")
+		for k, v := range annotations {
+			m.Annotations[k] = v
+		}
+		return m
+	}
+	objects := []client.Object{
+		&mcp.MCPServer{ObjectMeta: annotated("latest-tag", nil), Spec: mcp.MCPServerSpec{Image: "example.org/image:latest"}},
+		&mcp.MCPServer{ObjectMeta: annotated("no-tag", nil), Spec: mcp.MCPServerSpec{Image: "example.org/image"}},
+		&mcp.VirtualMCPServer{ObjectMeta: annotated("upper-category", map[string]string{category: "Databases"})},
+		&mcp.VirtualMCPServer{ObjectMeta: annotated("short-category", map[string]string{category: "x"})},
+		&mcp.VirtualMCPServer{ObjectMeta: annotated("empty-description", map[string]string{description: ""})},
+		&mcp.VirtualMCPServer{ObjectMeta: annotated("long-description", map[string]string{description: strings.Repeat("x", 101)})},
+		&mcp.VirtualMCPServer{ObjectMeta: annotated("long-title", map[string]string{title: strings.Repeat("t", 200)})},
+		&mcp.MCPRemoteProxy{ObjectMeta: annotated("no-scheme", map[string]string{url: "example.org/mcp"})},
+		&mcp.MCPRemoteProxy{ObjectMeta: annotated("relative-icon", map[string]string{icon: "icons/logo.png"})},
+		&mcp.MCPRemoteProxy{ObjectMeta: annotated("odd-tools", map[string]string{tools: "[\"a.b\",\"a.b\"]"})},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme(t)).WithObjects(objects...).Build()
 	f, err := operator.NewFetcher(c, definition())
 	require.NoError(t, err)
 	got, err := f.Fetch(t.Context(), definition())
 	require.NoError(t, err)
-	require.Len(t, got.Snapshot.Data.Servers, 1)
-	require.Equal(t, "com.toolhive.k8s.one/valid", got.Snapshot.Data.Servers[0].Name)
+	require.Len(t, got.Snapshot.Data.Servers, len(objects))
+	// Each is rejected by the strict publication check, accepted by storage safety.
+	for _, server := range got.Snapshot.Data.Servers {
+		single := model.Snapshot{}
+		single.Data.Servers = []model.Server{server}
+		require.ErrorIs(t, persistence.ValidateSnapshot(&single), persistence.ErrInvalid, server.Name)
+	}
+	require.NoError(t, persistence.ValidateStorableSnapshot(&got.Snapshot))
 }
 
 func TestHistoricalCrossKindNameIdentityNotRewritten(t *testing.T) {
@@ -116,13 +149,14 @@ func TestHistoricalCrossKindNameIdentityNotRewritten(t *testing.T) {
 			fetcher, err := operator.NewFetcher(api, definition())
 			require.NoError(t, err)
 			got, err := fetcher.Fetch(t.Context(), definition())
+			require.NoError(t, err)
 			if version == "1.0.0" {
-				require.ErrorIs(t, err, persistence.ErrInvalid)
-				require.Empty(t, got.Hash)
-				require.Empty(t, got.Snapshot.Data.Servers)
+				// Duplicate name/version exports fail the source at the storage
+				// check rather than silently pick a resource.
+				require.Len(t, got.Snapshot.Data.Servers, 2)
+				require.ErrorIs(t, persistence.ValidateStorableSnapshot(&got.Snapshot), persistence.ErrInvalid)
 				return
 			}
-			require.NoError(t, err)
 			require.Len(t, got.Snapshot.Data.Servers, 2)
 			for _, s := range got.Snapshot.Data.Servers {
 				require.Equal(t, "com.toolhive.k8s.one/same", s.Name)

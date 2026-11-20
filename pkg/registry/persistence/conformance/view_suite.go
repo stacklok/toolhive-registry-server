@@ -94,7 +94,8 @@ func RunViewEntries(t *testing.T, factory ViewEntriesFactory) {
 					{Kind: kind, Name: name, Search: "lower-only", Limit: 2},
 					{Kind: kind, Name: name, UpdatedSince: &since, Limit: 2},
 					{Kind: kind, Name: name, VersionSelector: catalog.VersionSelector{Exact: "1"}, Limit: 2},
-					{Kind: kind, Name: name, Search: "%", VersionSelector: catalog.VersionSelector{Latest: true}, Limit: 2},
+					// Matches only the winner's non-latest version (escaped literal %).
+					{Kind: kind, Name: name, Search: `winner \%`, VersionSelector: catalog.VersionSelector{Latest: true}, Limit: 2},
 					{Kind: kind, Name: name, Search: "lower-only", VersionSelector: catalog.VersionSelector{Latest: true}, Limit: 2},
 				} {
 					page, e := reader.List(ctx, consumerView, q)
@@ -129,14 +130,22 @@ func RunViewEntries(t *testing.T, factory ViewEntriesFactory) {
 					}
 					identity.Namespace = ""
 				}
-				for _, literal := range []string{"%", "_", "\\", "WINNER"} {
-					page, e := reader.List(ctx, consumerView, catalog.Query{Kind: kind, Search: literal, Limit: 1000})
-					want := 1
-					if literal == "WINNER" {
-						want = 2
-					}
-					if e != nil || len(page.Entries) != want {
-						t.Fatalf("literal search %q: %+v / %v", literal, page, e)
+				// Search is v1.5.4's LOWER(col) LIKE LOWER('%'||search||'%'):
+				// % and _ are wildcards and a backslash escapes the next
+				// character. Winners: item 2 "winner %_\ literal", item 3
+				// "winner description", z-last 2 "last".
+				for _, tc := range []struct {
+					search string
+					want   int
+				}{
+					{"%", 3}, {"_", 3}, {"WINNER", 2}, {"w_nner", 2}, {"winner%literal", 1},
+					{`\%`, 1}, {`\_`, 1}, {`\\`, 1}, {`%\_\\`, 1},
+					// '%'||'\'||'%' escapes the closing %: values ending in "%".
+					{`\`, 0}, {"winner_%", 2}, {"description%_", 0},
+				} {
+					page, e := reader.List(ctx, consumerView, catalog.Query{Kind: kind, Search: tc.search, Limit: 1000})
+					if e != nil || len(page.Entries) != tc.want {
+						t.Fatalf("LIKE search %q: %+v / %v; want %d", tc.search, page, e, tc.want)
 					}
 				}
 				history, e := reader.ListVersions(ctx, consumerView, identity, catalog.PageRequest{Limit: 1000})
@@ -322,56 +331,86 @@ func runViewCursors(t *testing.T, factory ViewEntriesFactory, kind persistence.E
 			t.Fatalf("invalid token accepted: %v", e)
 		}
 	}
-	now := time.Now()
-	changes := []catalog.Query{q, q, q, q, q, q, q}
-	changes[0].Name = name
-	changes[1].Search = "cursor"
-	changes[2].Limit = 2
-	changes[3].VersionSelector.Exact = testLiteralLatest
-	changes[4].UpdatedSince = &now
-	changes[5].VersionSelector.Latest = true
-	changes[6].Kind = persistence.SkillKind
-	if kind == persistence.SkillKind {
-		changes[6].Kind = persistence.PluginKind
+	// Cursors are positional (kind plus last name/version), as v1.5.4's were:
+	// limit, filters, view and view sources may change between pages, and the
+	// continuation resumes strictly after the cursor's position.
+	all, e := reader.List(ctx, consumerView, catalog.Query{Kind: kind, Limit: 1000})
+	if e != nil || len(all.Entries) != len(versions) || !sameEntryOrder(all.Entries[:1], first.Entries) {
+		t.Fatalf("whole listing: %+v / %v", all, e)
 	}
-	if kind != persistence.ServerKind {
-		bad := q
-		bad.Namespace = "com.example"
-		changes = append(changes, bad)
+	rest := all.Entries[1:]
+	after := func(version string) bool {
+		for _, v := range rest {
+			if v.Version == version {
+				return true
+			}
+		}
+		return false
 	}
-	for _, bad := range changes {
-		bad.Cursor = first.NextCursor
-		_, e = reader.List(ctx, consumerView, bad)
-		if !errors.Is(e, persistence.ErrInvalid) {
-			t.Fatalf("query changed accepted %+v / %v", bad, e)
+	resume := func(label, view string, changed catalog.Query, want []persistence.Entry) {
+		t.Helper()
+		changed.Cursor = first.NextCursor
+		page, e := reader.List(ctx, view, changed)
+		if e != nil || !sameEntryOrder(page.Entries, want) {
+			t.Fatalf("%s: %+v / %v; want %+v", label, page, e, want)
 		}
 	}
-	bad := q
-	bad.Cursor = first.NextCursor
-	_, e = reader.List(ctx, "other", bad)
-	if !errors.Is(e, persistence.ErrInvalid) {
-		t.Fatalf("other view token: %v", e)
+	now := time.Now()
+	changed := q
+	changed.Limit = 1000
+	resume("limit", consumerView, changed, rest)
+	changed.Name = name
+	resume("name", consumerView, changed, rest)
+	changed.Search = "cursor"
+	resume("search", consumerView, changed, rest)
+	changed.Search = "no-such-description"
+	resume("search miss", consumerView, changed, nil)
+	if kind != persistence.ServerKind {
+		changed = q
+		changed.Limit, changed.Namespace = 1000, "com.example"
+		resume("namespace", consumerView, changed, rest)
+	}
+	for _, version := range versions {
+		changed = q
+		changed.VersionSelector.Exact = version
+		var want []persistence.Entry
+		if after(version) {
+			want = []persistence.Entry{{Name: name, Version: version, SourceID: a.ID}}
+		}
+		resume("exact "+version, consumerView, changed, want)
+	}
+	changed = q
+	changed.VersionSelector.Latest = true
+	var wantLatest []persistence.Entry
+	if after(best) {
+		wantLatest = []persistence.Entry{{Name: name, Version: best, SourceID: a.ID}}
+	}
+	resume("latest", consumerView, changed, wantLatest)
+	changed = q
+	changed.UpdatedSince = &now
+	resume("updated since", consumerView, changed, nil)
+	changed = q
+	changed.Limit = 1000
+	resume("other view", "other", changed, rest)
+	// The cursor names its kind; another kind's walk rejects it.
+	otherKind := persistence.SkillKind
+	if kind == persistence.SkillKind {
+		otherKind = persistence.PluginKind
+	}
+	wrongKind := q
+	wrongKind.Kind, wrongKind.Cursor = otherKind, first.NextCursor
+	if _, e = reader.List(ctx, consumerView, wrongKind); !errors.Is(e, persistence.ErrInvalid) {
+		t.Fatalf("other kind token: %v", e)
 	}
 	if _, e = defs.UpdateView(ctx, consumerView, persistence.ViewDefinition{Name: consumerView, Sources: []string{b.Name, a.Name}}); e != nil {
 		t.Fatal(e)
 	}
-	_, e = reader.List(ctx, consumerView, bad)
-	if !errors.Is(e, persistence.ErrInvalid) {
-		t.Fatalf("reordered links: %v", e)
-	}
+	resume("reordered links", consumerView, changed, rest)
 	if e = defs.DeleteView(ctx, consumerView); e != nil {
 		t.Fatal(e)
 	}
 	createView(t, defs, consumerView, []string{a.Name, b.Name})
-	_, e = reader.List(ctx, consumerView, bad)
-	if !errors.Is(e, persistence.ErrInvalid) {
-		t.Fatalf("view recreation: %v", e)
-	}
-	first, e = reader.List(ctx, consumerView, q)
-	if e != nil {
-		t.Fatal(e)
-	}
-	bad.Cursor = first.NextCursor
+	resume("view recreation", consumerView, changed, rest)
 	if _, e = defs.UpdateView(ctx, consumerView, persistence.ViewDefinition{Name: consumerView, Sources: []string{b.Name}}); e != nil {
 		t.Fatal(e)
 	}
@@ -385,10 +424,7 @@ func runViewCursors(t *testing.T, factory ViewEntriesFactory, kind persistence.E
 	if _, e = defs.UpdateView(ctx, consumerView, persistence.ViewDefinition{Name: consumerView, Sources: []string{a.Name, b.Name}}); e != nil {
 		t.Fatal(e)
 	}
-	_, e = reader.List(ctx, consumerView, bad)
-	if !errors.Is(e, persistence.ErrInvalid) {
-		t.Fatalf("source recreation: %v", e)
-	}
+	resume("source recreation", consumerView, changed, nil)
 	empty, e := reader.List(ctx, consumerView, q)
 	if e != nil || len(empty.Entries) != 0 {
 		t.Fatalf("empty view: %+v / %v", empty, e)
@@ -560,13 +596,40 @@ func walkView(t *testing.T, r catalog.Reader, view string, q catalog.Query) []pe
 		}
 		q.Cursor = page.NextCursor
 	}
-	for i := 1; i < len(all); i++ {
-		a, b := all[i-1], all[i]
-		if a.Name > b.Name || a.Name == b.Name && a.Version >= b.Version {
+	// The order is the backend's text collation (PostgreSQL: the database
+	// default), so check what every collation guarantees: no repeats, one
+	// contiguous run per name, and the same sequence as one unpaginated read.
+	seen, done := map[string]bool{}, map[string]bool{}
+	for i, v := range all {
+		key := v.Name + "\x00" + v.Version
+		if seen[key] || done[v.Name] {
 			t.Fatal("non-deterministic ordering", reflect.ValueOf(all))
 		}
+		seen[key] = true
+		if i > 0 && all[i-1].Name != v.Name {
+			done[all[i-1].Name] = true
+		}
+	}
+	q.Cursor, q.Limit = "", 1000
+	whole, e := r.List(t.Context(), view, q)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(all) <= q.Limit && !sameEntryOrder(whole.Entries, all) {
+		t.Fatal("paged order differs from unpaged order", reflect.ValueOf(all))
 	}
 	return all
+}
+func sameEntryOrder(a, b []persistence.Entry) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Version != b[i].Version || a[i].SourceID != b[i].SourceID {
+			return false
+		}
+	}
+	return true
 }
 func mutateViewPayload(v persistence.Entry) {
 	if v.Server != nil {

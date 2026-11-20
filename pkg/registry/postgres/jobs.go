@@ -161,7 +161,9 @@ func (d *Jobs) Complete(ctx context.Context, job persistence.Job, result persist
 }
 
 // CommitSnapshot writes all three entry kinds and the success acknowledgement
-// in one serializable transaction. Failure/cancellation rolls back both and
+// in one serializable transaction. It checks storage safety
+// (persistence.ValidateStorableSnapshot), not the strict publication rules, and
+// reports content the database rejects as persistence.ErrInvalid. Failure/cancellation rolls back both and
 // leaves the attempt live until Fail or expiry. The final SQL update checks
 // fresh database wall time AFTER staging/COPY, not transaction-start now().
 func (d *Jobs) CommitSnapshot(
@@ -171,7 +173,7 @@ func (d *Jobs) CommitSnapshot(
 	if err != nil {
 		return err
 	}
-	if err = persistence.ValidateSnapshot(&snapshot); err != nil {
+	if err = persistence.ValidateStorableSnapshot(&snapshot); err != nil {
 		return err
 	}
 	if err = (&Entries{maxMetaSize: d.maxMetaSize}).validateMetadata(snapshot); err != nil {
@@ -194,7 +196,7 @@ func (d *Jobs) CommitSnapshot(
 			return persistence.ErrStale
 		}
 		if e = writer.StoreSourceTx(ctx, tx, id, &snapshot, d.maxMetaSize); e != nil {
-			return classify(e)
+			return classifySnapshotWrite(e)
 		}
 		n, e := q.JobFinish(ctx, sqlc.JobFinishParams{Column1: id, Column2: lease, Column3: job.Generation,
 			LastSyncHash: &result.Hash, LastAppliedFilterHash: &result.FilterHash,
@@ -247,16 +249,16 @@ func (d *Jobs) Status(ctx context.Context, sourceName string) (persistence.JobSt
 	}
 	status := persistence.JobStatus{
 		SourceID: row.SourceID, Phase: persistence.JobPhase(row.Phase),
-		StartedAt: row.StartedAt, EndedAt: row.EndedAt,
+		EndedAt: row.EndedAt, Attempts: row.AttemptCount,
 		BaselineValid: row.BaselineValid.Valid && row.BaselineValid.Bool,
+	}
+	if row.StartedAt.Valid {
+		status.StartedAt = &row.StartedAt.Time
 	}
 	switch status.Phase {
 	case persistence.JobPending, persistence.JobInProgress, persistence.JobCompleted, persistence.JobFailed:
 	default:
 		status.Phase = persistence.JobPending
-	}
-	if row.AttemptCount.Valid {
-		status.Attempts = row.AttemptCount.Int64
 	}
 	if row.LeaseExpiresAt.Valid {
 		status.LeaseExpiresAt = &row.LeaseExpiresAt.Time

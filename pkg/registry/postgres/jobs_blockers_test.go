@@ -228,7 +228,8 @@ func TestJobCompleteExpiredWhileWaitingForFence(t *testing.T) {
 		t.Fatalf("expired acknowledgement: %v", err)
 	}
 	status, err := jobs.Status(t.Context(), s.Name)
-	if err != nil || status.Phase != persistence.JobInProgress || status.LastHash != "" {
+	// The expired first attempt reports the state before it: never attempted.
+	if err != nil || status.Phase != persistence.JobPending || status.StartedAt != nil || status.LastHash != "" {
 		t.Fatalf("expired acknowledgement mutated status: %+v %v", status, err)
 	}
 }
@@ -337,7 +338,7 @@ func TestJobPollingAfterCompletionBecomesDue(t *testing.T) {
 	if _, ok, err = jobs.ClaimNext(t.Context(), time.Minute); err != nil || ok {
 		t.Fatalf("early poll: %t %v", ok, err)
 	}
-	if _, err = pool.Exec(t.Context(), `UPDATE registry_sync SET ended_at=clock_timestamp()-interval '2 hours' WHERE source_id=$1`, s.ID); err != nil {
+	if _, err = pool.Exec(t.Context(), `UPDATE registry_sync SET ended_at=clock_timestamp()-interval '2 hours', checked_at=clock_timestamp()-interval '2 hours' WHERE source_id=$1`, s.ID); err != nil {
 		t.Fatal(err)
 	}
 	j, ok, err = jobs.ClaimNext(t.Context(), time.Minute)
@@ -395,7 +396,8 @@ func TestJobPollingRetriesFailureBeforeSchedule(t *testing.T) {
 			if _, ok, err = jobs.ClaimNext(t.Context(), time.Minute); err != nil || ok {
 				t.Fatalf("immediate poll: %t %v", ok, err)
 			}
-			if _, err = pool.Exec(t.Context(), `UPDATE registry_sync SET ended_at=clock_timestamp()-($2::bigint * interval '1 microsecond') WHERE source_id=$1`, s.ID, tc.age.Microseconds()); err != nil {
+			if _, err = pool.Exec(t.Context(), `UPDATE registry_sync SET ended_at=clock_timestamp()-($2::bigint * interval '1 microsecond'),
+ checked_at=clock_timestamp()-($2::bigint * interval '1 microsecond') WHERE source_id=$1`, s.ID, tc.age.Microseconds()); err != nil {
 				t.Fatal(err)
 			}
 			if _, ok, err = jobs.ClaimNext(t.Context(), time.Minute); err != nil || ok != tc.due {

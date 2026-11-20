@@ -34,6 +34,12 @@ var (
 	ErrConfigOwned = fmt.Errorf("%w: config owned", ErrConflict)
 	// ErrKindChange refines ErrConflict for a source kind or file location kind change.
 	ErrKindChange = fmt.Errorf("%w: kind change", ErrConflict)
+	// ErrContention means a write lost to concurrent writers on every retry and
+	// was abandoned. It refines ErrConflict, so callers that retry conflicts
+	// keep working; check it before ErrConflict to tell a lost race (worth
+	// retrying, or reporting as a server error) from a genuine duplicate or
+	// ownership conflict.
+	ErrContention = fmt.Errorf("%w: concurrent modification, retry", ErrConflict)
 	// ErrInUse means a referenced source cannot be removed.
 	ErrInUse = errors.New("source in use")
 	// ErrUnavailable means storage could not be reached or returned an unclassified backend error.
@@ -324,7 +330,7 @@ func ValidateReconcile(sources []SourceDefinition, views []ViewDefinition) error
 			return e
 		}
 		if names[s.Name] {
-			return fmt.Errorf("%w: duplicate source", ErrInvalid)
+			return fmt.Errorf("%w: duplicate source %q", ErrInvalid, s.Name)
 		}
 		names[s.Name] = true
 		if kind == managedKind {
@@ -343,12 +349,12 @@ func ValidateReconcile(sources []SourceDefinition, views []ViewDefinition) error
 			return e
 		}
 		if vn[v.Name] {
-			return fmt.Errorf("%w: duplicate view", ErrInvalid)
+			return fmt.Errorf("%w: duplicate registry %q", ErrInvalid, v.Name)
 		}
 		vn[v.Name] = true
 		for _, n := range v.Sources {
 			if !names[n] {
-				return fmt.Errorf("%w: config view references source outside config set", ErrInvalid)
+				return fmt.Errorf("%w: config registry %q references source %q outside the config set", ErrInvalid, v.Name, n)
 			}
 		}
 	}

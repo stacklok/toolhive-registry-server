@@ -304,8 +304,14 @@ func TestJobsLateFailureAndExpiry(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
+			// A live attempt shows IN_PROGRESS; an expired one reports the
+			// outcome it replaced (the previous subtest's failure).
+			wantPhase := persistence.JobInProgress
+			if tc.want == persistence.ErrStale {
+				wantPhase = persistence.JobFailed
+			}
 			state, e := jobs.Status(t.Context(), s.Name)
-			if e != nil || state.LastHash != "good" || state.Phase != "IN_PROGRESS" || state.ServerCount != 1 || state.SkillCount != 1 || state.PluginCount != 1 {
+			if e != nil || state.LastHash != "good" || state.Phase != wantPhase || state.ServerCount != 1 || state.SkillCount != 1 || state.PluginCount != 1 {
 				t.Fatalf("rolled-back status: %+v %v", state, e)
 			}
 			for _, v := range []struct {

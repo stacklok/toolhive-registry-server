@@ -15,8 +15,8 @@ decides who may read or change what.
 | `persistence` | Storage-neutral contracts: definitions, entries, view reads, sync jobs |
 | `catalog` | Small reader, admin, publisher and diagnostics capabilities over `persistence` |
 | `httpapi` | Consumer and optional admin HTTP routers; authorization is a host-supplied `Authorizer` |
-| `ingest` | Git, API and file source fetching with full snapshot validation |
-| `reconcile` | Leased, fenced source reconciliation over `persistence.Jobs` |
+| `ingest` | Git, API and file source fetching, each with its source type's acceptance policy |
+| `reconcile` | Leased, fenced source reconciliation over `persistence.Jobs`; storage-safety check and sync logging |
 | `operator` | Optional Kubernetes adapter that exports ToolHive CRDs as a source |
 | `postgres` | PostgreSQL implementation of the `persistence` contracts |
 
@@ -35,6 +35,16 @@ for the length of one scan. Later calls only read a marker row.
 
 The standalone server does not use these packages yet. Running the server and a
 library host against the same database at the same time is not supported.
+
+## Validation and logging
+
+Publication (`persistence.ValidateSnapshot`, `Entry.Validate`) is strict. Synced
+data is not: fetchers apply their source type's policy, and
+`persistence.ValidateStorableSnapshot` checks only what storage and the read
+routes need, on the filtered snapshot. See `docs/registry-sync.md` for both
+rule sets. The library logs sync progress and failures with `log/slog` on the
+default logger; returned errors and stored status carry only a category, and
+`ingest.Cause` recovers a fetch failure's redacted cause.
 
 ## Importability
 

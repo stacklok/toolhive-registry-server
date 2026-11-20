@@ -313,7 +313,7 @@ func TestListQueryCompatibility(t *testing.T) {
 		}{
 			{"", def, 200}, {"?limit=1", 1, 200}, {"?limit=100", 100, 200},
 			{"?limit=0", 0, 400}, {"?limit=-1", 0, 400}, {"?limit=oops", 0, 400}, {"?limit=999999999999999999999999", 0, 400},
-			{"?search=%00", 0, 400}, {"?search=%FF", 0, 400}, {"?cursor=%00", 0, 400}, {"?cursor=" + strings.Repeat("a", 4097), 0, 400}, {"?search=%ZZ", 0, 400},
+			{"?search=%00", 0, 400}, {"?search=%FF", 0, 400}, {"?cursor=%00", 0, 400}, {"?cursor=" + strings.Repeat("a", 4097), 0, 400}, {"?search=%ZZ", def, 200}, {"?search=%ZZ&limit=2", 2, 200}, {"?limit=%ZZ", def, 200}, {"?search=a;b&limit=3", 3, 200},
 			{"?limit=1001", 1000, 200}, {"?search=" + strings.Repeat("a", 16385), 0, 400},
 		} {
 			if tc.limit == 1000 && kind != persistence.ServerKind {
@@ -369,6 +369,33 @@ func TestListQueryCompatibility(t *testing.T) {
 				t.Fatal(fake)
 			}
 		}
+	}
+}
+
+// v1.5.4 parsed list queries with r.URL.Query(), which drops malformed pairs
+// and keeps the rest; a bad pair must not turn the request into a 400.
+func TestListQueryDropsMalformedPairs(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, query, search, cursor string
+		limit                       int
+	}{
+		{name: "bad escape in search", query: "?search=%ZZ&limit=2&cursor=tok", limit: 2, cursor: "tok"},
+		{name: "bad escape in limit", query: "?limit=%ZZ&search=item", limit: 30, search: "item"},
+		{name: "semicolon", query: "?search=a;b&limit=3", limit: 3},
+		{name: "bad escape in key", query: "?%ZZ=x&search=ok", limit: 30, search: "ok"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fake := &selectedPages{}
+			w := response(t, mounted(t, fake, httpapi.ConsumerOptions{}), "GET", "/registry/public/v0.1/servers"+tc.query)
+			if w.Code != 200 || fake.calls != 1 {
+				t.Fatalf("%d %s", w.Code, w.Body.String())
+			}
+			if fake.query.Search != tc.search || fake.query.Limit != tc.limit || fake.query.Cursor != tc.cursor {
+				t.Fatalf("query %+v", fake.query)
+			}
+		})
 	}
 }
 

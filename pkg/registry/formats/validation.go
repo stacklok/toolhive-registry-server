@@ -2,18 +2,26 @@ package formats
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 
 	thvregistry "github.com/stacklok/toolhive-core/registry/types"
 
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/internal/digestset"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 )
+
+// upstreamSchemaPassed remembers documents that passed the upstream schema.
+// toolhive-core compiles the schema on every call, and an unchanged file or Git
+// source re-validates the same bytes on every resync.
+var upstreamSchemaPassed = digestset.New(64)
 
 // DecodeUpstream validates and decodes an upstream registry snapshot. It uses the
 // existing core validator and preserves encoding/json decoding semantics while
 // retaining dynamic metadata numbers. The import format requires at least one
 // server, even though an empty reconciled snapshot can be valid elsewhere.
+// This is v1.5.4's acceptance policy for file and Git sources.
 func DecodeUpstream(data []byte) (*model.Snapshot, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("data cannot be empty")
@@ -21,8 +29,12 @@ func DecodeUpstream(data []byte) (*model.Snapshot, error) {
 	if !json.Valid(data) {
 		return nil, fmt.Errorf("invalid upstream registry JSON")
 	}
-	if err := thvregistry.ValidateUpstreamRegistryBytes(data); err != nil {
-		return nil, err
+	digest := sha256.Sum256(data)
+	if !upstreamSchemaPassed.Contains(digest) {
+		if err := thvregistry.ValidateUpstreamRegistryBytes(data); err != nil {
+			return nil, err
+		}
+		upstreamSchemaPassed.Add(digest)
 	}
 	var registry model.Snapshot
 	decoder := json.NewDecoder(bytes.NewReader(data))

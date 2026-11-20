@@ -62,6 +62,26 @@ The sync record also includes:
 - The entry counts (servers, skills, plugins) from the last successful sync
 - A hash of the last synced data, used for change detection
 
+### What a Sync Attempt Changes
+
+While an attempt runs, the status is `Syncing` and the start time is the
+attempt's. The finish time (`lastSyncTime`) and the message of the previous
+attempt stay visible until the attempt ends.
+
+| Outcome | Status | Start time | Finish time (`lastSyncTime`) | Message | Attempt count |
+|---------|--------|------------|------------------------------|---------|---------------|
+| Data changed, stored | `Complete` | this attempt | now | cleared | 0 |
+| Failed | `Failed` | this attempt | now | failure category | +1 |
+| Data unchanged, previous attempt succeeded | unchanged | unchanged | unchanged | unchanged | unchanged |
+| Data unchanged, previous attempt failed | `Complete` | this attempt | now | cleared | 0 |
+
+An unchanged fetch after a success moves only the source's next due time, which
+the record keeps separately; everything shown above is left as it was, as in
+v1.5.4. If a server stops in the middle of an attempt, the attempt's lease
+expires and the source is due again at once, so the next poll replaces the
+leftover `Syncing` row; until then the library's job status already reports the
+values from before the attempt.
+
 ## Sync Scheduling
 
 The coordinator polls for pending work every **two minutes**, with a small random jitter applied to each interval. This prevents multiple server instances from hitting the database simultaneously.
@@ -91,6 +111,41 @@ When a source is selected for sync:
 4. **Update status**: The sync record is updated with the outcome — success or failure, along with the new data hash and entry counts (servers, skills, plugins).
 
 If the sync fails at any stage, the source is marked as `Failed` and will be retried on the next coordinator cycle. There is no permanent error state; every failed source is eligible for retry.
+
+Timeouts (`api.timeout`, `file.timeout`) apply to each HTTP request, not to the whole sync. A sync that runs longer than its job lease keeps the lease by renewing it while it works, so a large paginated API or a slow Git clone is not cut off.
+
+## Validation
+
+Each source type keeps the acceptance rules it had in v1.5.4. Fetched data is checked in two steps:
+
+1. **Source policy** (before filtering, on everything fetched):
+
+   | Source | Checks |
+   |--------|--------|
+   | `file`, `git` | The upstream registry format, validated against the ToolHive wire schema; at least one server; every server has a name and a description. |
+   | `api` | The MCP Registry v0.1 protocol only (a `servers` array on every page). No schema check. Zero servers is a valid result and empties the source. |
+   | `kubernetes` | No schema check. Every resource annotated `toolhive.stacklok.dev/registry-export: "true"` with the `registry-url` and `registry-description` annotations is exported. A resource that cannot be converted is skipped with the warning `Failed to extract ServerJSON from K8s resource, skipping`. |
+
+2. **Storage safety** (after filtering, on what will be stored). A filter can therefore exclude a record that could not be stored. Each server, skill and plugin needs a non-empty name and version (at most 4096 bytes each), unique per kind within the source; server names must have the shape `namespace/name` (exactly one `/`, no whitespace); a skill or plugin `status`, when set, must be `active`, `deprecated` or `archived` in any case; and all text must be valid UTF-8 without NUL characters. Duplicate packages, remotes and icons within one server are not errors: the first of each is stored.
+
+A record that fails either step fails the sync for that source only, with the category `validation`; the source keeps its previous data. Content the database itself rejects (for example an index entry that is too large) is reported the same way. Publishing through the API applies stricter rules (the MCP server name format, a required description, no duplicates, and the full wire schemas).
+
+## Logging
+
+The sync pipeline logs with these messages, so operators can follow each source:
+
+| Message | Level | Fields |
+|---------|-------|--------|
+| `Starting sync operation` | Info | `source` |
+| `Sync completed successfully` | Info | `source`, `server_count`, `skill_count`, `plugin_count`, `hash` (first 8 characters) |
+| `Registry does not need sync` | Debug | `source`, `reason` (the fetched data is unchanged) |
+| `Sync failed` | Error | `source`, `category` (`fetch`, `validation`, `storage`), `error` (the underlying cause) |
+| `Sync cancelled` | Info | `source` (the server is shutting down) |
+| `Fetched all servers from upstream API` | Info | `source`, `count` |
+| `Starting git clone`, `Git clone completed`, `Git clone failed` | Info / Info / Error | `source`, `repository`, `branch`, `tag`, `commit`, `duration`, `commit_sha` |
+| `Failed to start Kubernetes watch`, `Kubernetes watch failed` | Warn | `source`, `kind`, `namespace`, `reason`, `error` |
+
+A validation `error` names the record (kind, name and version) and the reason. Logged URLs never include user information (user names, passwords, tokens), query strings or fragments, and request headers and credentials are never logged. The source status and API responses report only the category.
 
 ## Source Types
 

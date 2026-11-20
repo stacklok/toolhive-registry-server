@@ -1,15 +1,15 @@
--- name: ViewEntrySources :many
-SELECT s.id::text AS id FROM registry_source rs JOIN source s ON s.id=rs.source_id
-WHERE rs.registry_id=sqlc.arg(view_id)::uuid ORDER BY rs.position,s.name COLLATE "C";
-
 -- name: ViewEntryList :many
--- Walks entries of one kind in byte-wise name order, then their versions, and
--- keeps a version only when its entry wins the name: no entry with a version
--- in a higher-priority source of the view (position, then source name) has the
--- same kind and name. Winners are chosen before the version, latest, search and
--- time filters, so a filter never promotes a lower-priority source. The walk
--- follows registry_entry_type_name_c_idx and stops at the page size; the
--- redundant e.name >= cursor bound lets the index scan start at the cursor.
+-- Walks entries of one kind in name order, then their versions, and keeps a
+-- version only when its entry wins the name: no entry with a version in a
+-- higher-priority source of the view (position, then source name) has the same
+-- kind and name. Winners are chosen before the version, latest, search and time
+-- filters, so a filter never promotes a lower-priority source. Names and
+-- versions sort and compare in the database's default collation, as v1.5.4's
+-- ORDER BY name, version did, so v1.5.4 cursors keep their position. Search is
+-- v1.5.4's LOWER(col) LIKE LOWER('%'||search||'%'): % and _ are wildcards and
+-- a backslash escapes the next character. The walk follows
+-- registry_entry_type_name_idx and stops at the page size; the redundant
+-- e.name >= cursor bound lets the index scan start at the cursor.
 WITH page AS (
  SELECT v.id
  FROM registry_entry e
@@ -33,13 +33,14 @@ WITH page AS (
  AND (NOT sqlc.arg(latest_only)::boolean OR EXISTS(
   SELECT 1 FROM latest_entry_version lv WHERE lv.latest_version_id=v.id))
  AND (sqlc.narg(updated_since)::timestamptz IS NULL OR v.updated_at>sqlc.narg(updated_since)::timestamptz)
- AND (sqlc.narg(search)::text IS NULL OR strpos(lower(v.name),lower(sqlc.narg(search)::text))>0
-  OR strpos(lower(coalesce(v.title,'')),lower(sqlc.narg(search)::text))>0
-  OR strpos(lower(coalesce(v.description,'')),lower(sqlc.narg(search)::text))>0)
- AND (sqlc.narg(cursor_name)::text IS NULL OR e.name COLLATE "C">=sqlc.narg(cursor_name)::text COLLATE "C")
- AND (sqlc.narg(cursor_name)::text IS NULL OR (e.name COLLATE "C",v.version COLLATE "C")>
-  (sqlc.narg(cursor_name)::text COLLATE "C",sqlc.narg(cursor_version)::text COLLATE "C"))
- ORDER BY e.name COLLATE "C",v.version COLLATE "C"
+ AND (sqlc.narg(search)::text IS NULL
+  OR LOWER(e.name) LIKE LOWER('%'||sqlc.narg(search)::text||'%')
+  OR LOWER(v.title) LIKE LOWER('%'||sqlc.narg(search)::text||'%')
+  OR LOWER(v.description) LIKE LOWER('%'||sqlc.narg(search)::text||'%'))
+ AND (sqlc.narg(cursor_name)::text IS NULL OR e.name>=sqlc.narg(cursor_name)::text)
+ AND (sqlc.narg(cursor_name)::text IS NULL OR (e.name,v.version)>
+  (sqlc.narg(cursor_name)::text,sqlc.narg(cursor_version)::text))
+ ORDER BY e.name,v.version
  LIMIT sqlc.arg(page_size)::bigint
 )
 SELECT e.source_id::text AS source_id,v.id::text AS id,e.name,v.version,v.title,v.description,
@@ -65,4 +66,4 @@ LEFT JOIN latest_entry_version l ON l.source_id=e.source_id AND l.entry_type=e.e
 LEFT JOIN mcp_server s ON s.version_id=v.id
 LEFT JOIN skill sk ON sk.version_id=v.id
 LEFT JOIN plugin pl ON pl.version_id=v.id
-ORDER BY v.name COLLATE "C",v.version COLLATE "C";
+ORDER BY e.name,v.version;

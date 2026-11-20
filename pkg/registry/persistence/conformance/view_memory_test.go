@@ -3,9 +3,7 @@ package conformance
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"sort"
@@ -44,11 +42,9 @@ func (m *memory) ListViewEntries(ctx context.Context, view string, query persist
 	if !ok {
 		return persistence.EntryPage{}, persistence.ErrViewNotFound
 	}
-	ids := make([]string, 0, len(definition.Sources))
 	winners := map[string]string{}
 	for _, source := range definition.Sources {
 		id := m.sources[source].ID
-		ids = append(ids, id)
 		for _, v := range m.records {
 			if v.SourceID != id {
 				continue
@@ -59,15 +55,7 @@ func (m *memory) ListViewEntries(ctx context.Context, view string, query persist
 			}
 		}
 	}
-	bindQuery := query
-	bindQuery.Cursor = ""
-	if bindQuery.UpdatedSince != nil {
-		t := bindQuery.UpdatedSince.UTC()
-		bindQuery.UpdatedSince = &t
-	}
-	data, _ := json.Marshal([]any{"memory-view-v1", view, m.viewIDs[view], ids, bindQuery, "name-version-byte"})
-	sum := sha256.Sum256(data)
-	binding := hex.EncodeToString(sum[:])
+	// Cursors are positional: only the kind and the last (name, version).
 	var cur memoryViewCursor
 	if query.Cursor != "" {
 		data, err := base64.RawURLEncoding.DecodeString(query.Cursor)
@@ -76,7 +64,7 @@ func (m *memory) ListViewEntries(ctx context.Context, view string, query persist
 		}
 		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.DisallowUnknownFields()
-		if decoder.Decode(&cur) != nil || decoder.Decode(new(any)) != io.EOF || cur.Format != 1 || cur.Binding != binding || cur.Name == "" || cur.Version == "" {
+		if decoder.Decode(&cur) != nil || decoder.Decode(new(any)) != io.EOF || cur.Format != 2 || cur.Kind != query.Kind || cur.Name == "" || cur.Version == "" {
 			return persistence.EntryPage{}, persistence.ErrInvalid
 		}
 		if err := (persistence.EntryName{Kind: query.Kind, Name: cur.Name}).Validate(view, persistence.VersionSelector{Exact: cur.Version}); err != nil {
@@ -104,8 +92,8 @@ func (m *memory) ListViewEntries(ctx context.Context, view string, query persist
 			query.UpdatedSince != nil && !m.updated[memKey(v)].After(*query.UpdatedSince) {
 			continue
 		}
-		needle := strings.ToLower(query.Search)
-		if !strings.Contains(strings.ToLower(v.Name), needle) && !strings.Contains(strings.ToLower(title), needle) && !strings.Contains(strings.ToLower(description), needle) {
+		needle := "%" + strings.ToLower(query.Search) + "%"
+		if query.Search != "" && !sqlLike(strings.ToLower(v.Name), needle) && !sqlLike(strings.ToLower(title), needle) && !sqlLike(strings.ToLower(description), needle) {
 			continue
 		}
 		if cur.Name != "" && (v.Name < cur.Name || v.Name == cur.Name && v.Version <= cur.Version) {
@@ -122,7 +110,7 @@ func (m *memory) ListViewEntries(ctx context.Context, view string, query persist
 	page := persistence.EntryPage{}
 	if len(entries) > query.Limit {
 		last := entries[query.Limit-1]
-		data, _ := json.Marshal(memoryViewCursor{Format: 1, Binding: binding, Name: last.Name, Version: last.Version})
+		data, _ := json.Marshal(memoryViewCursor{Format: 2, Kind: query.Kind, Name: last.Name, Version: last.Version})
 		page.NextCursor = base64.RawURLEncoding.EncodeToString(data)
 		if len(page.NextCursor) > persistence.MaxCursorBytes {
 			return persistence.EntryPage{}, persistence.ErrInvalid
@@ -138,9 +126,50 @@ func (m *memory) ListViewEntries(ctx context.Context, view string, query persist
 
 type memoryViewCursor struct {
 	Format  int
-	Binding string
+	Kind    persistence.EntryKind
 	Name    string
 	Version string
+}
+
+// sqlLike matches value against a SQL LIKE pattern with the default escape:
+// % matches any run of characters, _ any one character, and \ makes the next
+// character literal. It mirrors PostgreSQL for the patterns search builds.
+func sqlLike(value, pattern string) bool {
+	v, p := []rune(value), []rune(pattern)
+	var match func(i, j int) bool
+	match = func(i, j int) bool {
+		for j < len(p) {
+			switch c := p[j]; {
+			case c == '%':
+				for j < len(p) && p[j] == '%' {
+					j++
+				}
+				for k := i; k <= len(v); k++ {
+					if match(k, j) {
+						return true
+					}
+				}
+				return false
+			case c == '_':
+				if i == len(v) {
+					return false
+				}
+			case c == '\\' && j+1 < len(p):
+				j++
+				if i == len(v) || v[i] != p[j] {
+					return false
+				}
+			default:
+				if i == len(v) || v[i] != c {
+					return false
+				}
+			}
+			i++
+			j++
+		}
+		return i == len(v)
+	}
+	return match(0, 0)
 }
 
 func TestMemoryViewEntries(t *testing.T) {

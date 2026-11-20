@@ -37,13 +37,14 @@ WITH page AS (
  AND (NOT $6::boolean OR EXISTS(
   SELECT 1 FROM latest_entry_version lv WHERE lv.latest_version_id=v.id))
  AND ($7::timestamptz IS NULL OR v.updated_at>$7::timestamptz)
- AND ($8::text IS NULL OR strpos(lower(v.name),lower($8::text))>0
-  OR strpos(lower(coalesce(v.title,'')),lower($8::text))>0
-  OR strpos(lower(coalesce(v.description,'')),lower($8::text))>0)
- AND ($9::text IS NULL OR e.name COLLATE "C">=$9::text COLLATE "C")
- AND ($9::text IS NULL OR (e.name COLLATE "C",v.version COLLATE "C")>
-  ($9::text COLLATE "C",$10::text COLLATE "C"))
- ORDER BY e.name COLLATE "C",v.version COLLATE "C"
+ AND ($8::text IS NULL
+  OR LOWER(e.name) LIKE LOWER('%'||$8::text||'%')
+  OR LOWER(v.title) LIKE LOWER('%'||$8::text||'%')
+  OR LOWER(v.description) LIKE LOWER('%'||$8::text||'%'))
+ AND ($9::text IS NULL OR e.name>=$9::text)
+ AND ($9::text IS NULL OR (e.name,v.version)>
+  ($9::text,$10::text))
+ ORDER BY e.name,v.version
  LIMIT $11::bigint
 )
 SELECT e.source_id::text AS source_id,v.id::text AS id,e.name,v.version,v.title,v.description,
@@ -69,7 +70,7 @@ LEFT JOIN latest_entry_version l ON l.source_id=e.source_id AND l.entry_type=e.e
 LEFT JOIN mcp_server s ON s.version_id=v.id
 LEFT JOIN skill sk ON sk.version_id=v.id
 LEFT JOIN plugin pl ON pl.version_id=v.id
-ORDER BY v.name COLLATE "C",v.version COLLATE "C"
+ORDER BY e.name,v.version
 `
 
 type ViewEntryListParams struct {
@@ -108,13 +109,17 @@ type ViewEntryListRow struct {
 	PluginGit      string     `json:"plugin_git"`
 }
 
-// Walks entries of one kind in byte-wise name order, then their versions, and
-// keeps a version only when its entry wins the name: no entry with a version
-// in a higher-priority source of the view (position, then source name) has the
-// same kind and name. Winners are chosen before the version, latest, search and
-// time filters, so a filter never promotes a lower-priority source. The walk
-// follows registry_entry_type_name_c_idx and stops at the page size; the
-// redundant e.name >= cursor bound lets the index scan start at the cursor.
+// Walks entries of one kind in name order, then their versions, and keeps a
+// version only when its entry wins the name: no entry with a version in a
+// higher-priority source of the view (position, then source name) has the same
+// kind and name. Winners are chosen before the version, latest, search and time
+// filters, so a filter never promotes a lower-priority source. Names and
+// versions sort and compare in the database's default collation, as v1.5.4's
+// ORDER BY name, version did, so v1.5.4 cursors keep their position. Search is
+// v1.5.4's LOWER(col) LIKE LOWER('%'||search||'%'): % and _ are wildcards and
+// a backslash escapes the next character. The walk follows
+// registry_entry_type_name_idx and stops at the page size; the redundant
+// e.name >= cursor bound lets the index scan start at the cursor.
 func (q *Queries) ViewEntryList(ctx context.Context, arg ViewEntryListParams) ([]ViewEntryListRow, error) {
 	rows, err := q.db.Query(ctx, viewEntryList,
 		arg.ViewID,
@@ -160,31 +165,6 @@ func (q *Queries) ViewEntryList(ctx context.Context, arg ViewEntryListParams) ([
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const viewEntrySources = `-- name: ViewEntrySources :many
-SELECT s.id::text AS id FROM registry_source rs JOIN source s ON s.id=rs.source_id
-WHERE rs.registry_id=$1::uuid ORDER BY rs.position,s.name COLLATE "C"
-`
-
-func (q *Queries) ViewEntrySources(ctx context.Context, viewID uuid.UUID) ([]string, error) {
-	rows, err := q.db.Query(ctx, viewEntrySources, viewID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

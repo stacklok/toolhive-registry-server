@@ -74,11 +74,26 @@ DELETE FROM registry_source WHERE registry_id IN (SELECT id FROM registry WHERE 
 DELETE FROM source WHERE creation_type='CONFIG' AND NOT (name=ANY($1::text[]));
 
 -- name: DefUpsertConfigSource :execrows
+-- A CONFIG source may change kind in place, as v1.5.4 allowed, except to or
+-- from managed. Entries stay until the next successful sync replaces them; the
+-- generation trigger makes the source due at once.
 INSERT INTO source(name,creation_type,source_type,source_config,filter_config,sync_schedule,syncable)
 VALUES($1,'CONFIG',$2,$3::jsonb,$4::jsonb,$5::interval,$6)
-ON CONFLICT(name) DO UPDATE SET source_config=excluded.source_config,filter_config=excluded.filter_config,
-sync_schedule=excluded.sync_schedule,syncable=excluded.syncable,updated_at=now()
-WHERE source.creation_type='CONFIG' AND source.source_type=excluded.source_type;
+ON CONFLICT(name) DO UPDATE SET source_type=excluded.source_type,source_config=excluded.source_config,
+filter_config=excluded.filter_config,sync_schedule=excluded.sync_schedule,syncable=excluded.syncable,updated_at=now()
+WHERE source.creation_type='CONFIG'
+ AND (source.source_type='managed') = (excluded.source_type='managed');
+
+-- name: DefOtherManagedSource :one
+SELECT name FROM source WHERE source_type='managed' AND creation_type='API' AND name<>$1
+ORDER BY name LIMIT 1;
+
+-- name: DefPrunedSourceUser :one
+-- An API registry that still links a CONFIG source the new config drops.
+SELECT s.name AS source_name, r.name AS registry_name
+FROM source s JOIN registry_source l ON l.source_id=s.id JOIN registry r ON r.id=l.registry_id
+WHERE s.creation_type='CONFIG' AND NOT (s.name=ANY($1::text[])) AND r.creation_type='API'
+ORDER BY s.name, r.name LIMIT 1;
 
 -- name: DefUpsertConfigView :one
 INSERT INTO registry(name,creation_type) VALUES($1,'CONFIG')
